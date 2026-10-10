@@ -1,0 +1,308 @@
+# OpenChuckCAM – Initial Requirements
+
+2026-10-10 · @Paul H
+
+## 1. Introduction
+
+This document sets the initial requirements for a Rust CAM application that turns a 3D model into G-code for true 4-axis (XYZA) CNC machining.
+
+**Aim.** A user loads a 3D object, applies machining strategies (optionally driven by geometry selected on the model), checks the result in a simulation, and exports G-code for their machine. The focus is solely 4th-axis machining: toolpaths are real XYZA motion that can express complex operations, going well beyond basic unwrap strategies.
+
+**In scope**
+
+- Import and visualisation of 3D models
+- Stock, setup and 4th-axis (rotary) definition
+- Tool management
+- 4-axis toolpath strategies, selected by geometry
+- Toolpath visualisation and material removal simulation
+- G-code output through multiple post-processors
+- Human-readable, version-control-friendly project files
+- Secondary goals: collision detection, built-in version control, and a pathing library other projects such as FreeCAD can integrate
+
+**Out of scope (initial release)**
+
+- Direct interfacing with, or streaming to, a CNC machine
+- CAD modelling or editing of the imported geometry
+- 5-axis machining and lathe/turning operations
+
+**Priority key**
+
+| Priority | Meaning |
+|---|---|
+| P1 | Core: needed for the first usable release |
+| P2 | Secondary: planned, follows the core |
+| P3 | Suggested: included only if you approve it (see section 6) |
+
+**Glossary**
+
+| Term | Meaning |
+|---|---|
+| 4th axis / A axis | Rotary axis, assumed to rotate the workpiece about the X axis |
+| XYZA | Simultaneous linear X, Y, Z motion plus rotation A |
+| Unwrap | Mapping a cylindrical surface onto a flat plane to apply 2D/3-axis strategies |
+| Post-processor | Translates neutral toolpath data into the G-code dialect of a specific controller |
+| WCS | Work coordinate system, the origin and orientation of the part on the machine |
+| Stock | The raw material blank before cutting |
+
+## 2. Users and primary workflow
+
+The assumed user is a machinist, maker or small-shop programmer who owns a mill with a rotary axis and wants more than unwrap-style toolpaths, without the cost of a commercial multi-axis CAM package. They are comfortable with G-code, tooling and feeds and speeds.
+
+The core workflow is:
+
+1. Create a project and import a 3D model.
+2. Define the machine, stock and rotary-axis setup, and position the part in it.
+3. Choose or define the tools.
+4. Add an operation: pick a strategy, select the geometry it applies to, and set its parameters.
+5. Generate the toolpath and review it in the 3D view.
+6. Simulate material removal; return to step 4 to adjust until the result is right.
+7. Post-process the operations into G-code for the target controller and export it.
+8. Save the project at any point so it can be reopened or committed to version control.
+
+## 3. Core functional requirements
+
+These requirements define the first usable release unless marked P2. Each has a unique ID so it can be referenced in discussion, tasks and tests.
+
+### 3.1 Model import and geometry
+
+| ID | Requirement | Priority |
+|---|---|---|
+| IMP-01 | Import STL files (ASCII and binary). | P1 |
+| IMP-02 | Import STEP files and retain the B-rep (faces, edges), so selection and surface evaluation use exact geometry, not only a mesh. Conditional waiver: if spike SP-9 finds no usable exact evaluation of NURBS faces, the first release evaluates non-analytic faces on the tessellation and the UI says so. | P1 |
+| IMP-03 | Read model units from the file, allow the user to override them, and work internally in a single unit system (millimetres). | P1 |
+| IMP-04 | Check imported meshes for holes, non-manifold edges, flipped normals and degenerate triangles, and report problems to the user. | P1 |
+| IMP-05 | Translate, rotate, scale and mirror the model, and orient it relative to the rotary axis. | P1 |
+| IMP-06 | Tessellate B-rep models to a mesh at a user-controlled tolerance for display and toolpath computation. | P1 |
+| IMP-07 | Re-import a changed source file while keeping operations and geometry selections attached where they can still be matched. | P2 |
+| IMP-08 | Import curves from DXF and SVG files, for engraving and carving along curves (see OP-08). | P2 |
+
+### 3.2 Visualisation and user interface
+
+| ID | Requirement | Priority |
+|---|---|---|
+| UI-01 | Cross-platform desktop application for Windows, macOS and Linux from one codebase. | P1 |
+| UI-02 | Interactive 3D viewport: orbit, pan, zoom, standard views, perspective and orthographic cameras, shaded, wireframe and edge display. | P1 |
+| UI-03 | Display the rotary axis, work coordinate system, stock and part together in the viewport. | P1 |
+| UI-04 | Select geometry in the viewport: faces and edges on B-rep models; triangle regions on meshes, including select-by-angle and flood fill. | P1 |
+| UI-05 | Save selections as named sets that operations can reference and that update when the selection is edited. | P1 |
+| UI-06 | Project tree listing the model, stock, setups, operations and tools; operations can be reordered, enabled, disabled and duplicated. | P1 |
+| UI-07 | Parameter panels with units, validation and sensible defaults. | P1 |
+| UI-08 | Undo and redo for all edits to the project. | P1 |
+| UI-09 | Run toolpath generation and simulation off the UI thread, with progress reporting and cancellation. | P1 |
+
+### 3.3 Machine, stock and setup
+
+| ID | Requirement | Priority |
+|---|---|---|
+| SET-01 | Define a machine profile: rotary axis orientation (about X), A-axis range and whether it rotates continuously, linear travel limits, and maximum feed rates. | P1 |
+| SET-02 | Support a rotary axis about Y as well as X. | P2 |
+| SET-03 | Define stock as a cylinder, a box, or the model bounding box plus an offset. | P1 |
+| SET-04 | Use an imported model as custom stock (for example a casting or a pre-cut blank). | P2 |
+| SET-05 | Position the part relative to the rotary centreline and work coordinate system, including a work offset reference (for example G54). | P1 |
+| SET-06 | Define clearance geometry (a safe cylinder around the axis plus a safe Z) used by retracts and rapid links. | P1 |
+| SET-07 | Multiple setups per project (for example re-gripping or flipping the part), each with its own coordinate system and starting stock. | P2 |
+
+### 3.4 Tool management
+
+| ID | Requirement | Priority |
+|---|---|---|
+| TL-01 | A tool library stored separately from projects, with import and export in a human-readable format. | P1 |
+| TL-02 | Tool types: flat end mill, ball end mill, bull-nose (corner radius) and tapered ball nose. | P1 |
+| TL-03 | Further tool types: V-bit or chamfer, drill, and tools defined by a custom profile, which can be imported from a text file or drawn in the UI. | P1 |
+| TL-04 | Tool parameters: diameter, flute length, overall length, shank diameter, flute count, corner radius, taper angle, material and tool number. | P1 |
+| TL-05 | Cutting data per tool and stock material: spindle speed, feed per tooth, plunge feed, default stepover and stepdown. | P1 |
+| TL-06 | Map each tool to controller values (tool number, length offset, diameter offset) used by the post-processor. | P1 |
+| TL-07 | The project stores a snapshot of every tool it uses, so it opens correctly on a machine without the original library. | P1 |
+| TL-08 | Define holder and collet geometry as part of a tool assembly (needed for collision checking in section 4). | P2 |
+| TL-09 | A material library holding cutting data per material and tool, used to pre-fill the values in TL-05. | P2 |
+| TL-10 | Import tool tables from other systems (for example LinuxCNC tool tables). | P3 |
+
+### 3.5 Machining strategies and toolpath generation
+
+Every strategy must produce toolpaths in XYZA. Geometry selected on the model (faces, regions, edge chains) defines where an operation cuts, and what surface drives it. With a rotary axis, the tool axis can only tilt in the plane perpendicular to the rotation axis, so strategies choose A to control orientation within that limit.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| OP-01 | An operation combines a strategy, tool, setup, geometry selection and parameters, and can be regenerated at any time. | P1 |
+| OP-02 | Limit an operation to selected faces or regions, with an optional containment boundary and optional avoid or check surfaces. | P1 |
+| OP-03 | Rotary roughing that is aware of remaining stock, in both indexed (3+1 positional) and continuous forms. | P1 |
+| OP-04 | Baseline finishing: helical (spiral around the axis), axial (parallel to the axis, stepping in A) and indexed finishing at fixed A positions. | P1 |
+| OP-05 | True simultaneous 4-axis finishing, where A varies continuously with X, Y and Z to follow the selected surface. | P1 |
+| OP-06 | Tool-axis control: choose A to keep the tool as close to the surface normal as possible, within user-set lead and tilt limits. | P1 |
+| OP-07 | Swarf (flank) machining of ruled or near-ruled selected surfaces using the side of the tool. | P1 |
+| OP-08 | Edge and curve following: engraving or carving along selected edge chains or curves projected onto the surface. | P1 |
+| OP-09 | Rest machining and pencil clean-up of material left by earlier operations. | P1 |
+| OP-10 | Radial drilling at indexed A positions, with holes selectable from model geometry. | P1 |
+| OP-11 | Common parameters: tolerance, stepover, stepdown, stock to leave (per operation and per selection), feeds, lead-in and lead-out, ramping, and retract strategy. | P1 |
+| OP-12 | Gouge protection: paths never cut into the model beyond tolerance for the tool, and for the holder where it is defined. | P1 |
+| OP-13 | Feed calculation for simultaneous motion so the feed at the cutter contact point is correct, using compensated feed rates in units per minute by default; inverse-time feed (G93) is offered only as an optional post-processor capability for controllers that support it. | P1 |
+| OP-14 | Linking moves that retract and traverse using the clearance geometry, without crossing the stock or part. | P1 |
+| OP-15 | A-axis management: respect range limits, minimise reversals, and handle wrap-around and unwinding. | P1 |
+| OP-16 | Strategies implement a common internal interface, so new ones can be added without changing the rest of the application. | P1 |
+| OP-17 | Adaptive (constant-engagement) roughing for rotary parts. | P2 |
+| OP-18 | Feature recognition: detect holes, grooves and cylindrical features on the model and propose operations for them. | P3 |
+
+### 3.6 Visualisation and material removal simulation
+
+| ID | Requirement | Priority |
+|---|---|---|
+| SIM-01 | Show toolpaths in the 3D view, with rapid and cutting moves distinguished, and per-operation visibility. | P1 |
+| SIM-02 | Show the tool at any point along the path, with the correct A rotation of the workpiece. | P1 |
+| SIM-03 | Material removal simulation: the stock is updated as the tool sweeps through it, including rotation about the A axis. | P1 |
+| SIM-04 | Playback controls: play, pause, step, speed, and jump to an operation or move. | P1 |
+| SIM-05 | Compare the simulated stock with the target model and colour the result by remaining material and overcut; report the worst values. | P1 |
+| SIM-06 | Carry the simulated stock from one operation to the next, so later operations see the material actually left. | P1 |
+| SIM-07 | Adjustable simulation resolution, trading accuracy against speed. | P1 |
+| SIM-08 | Estimate machining time per operation and in total from feeds, rapids and tool changes. | P2 |
+| SIM-09 | Load exported G-code into the simulator and run it, to check the post-processor output as well as the internal toolpath. | P3 |
+| SIM-10 | Adjust feed rates using the tool engagement measured in the simulation, for faster cuts at a steady tool load. | P3 |
+
+### 3.7 G-code generation and post-processing
+
+| ID | Requirement | Priority |
+|---|---|---|
+| GC-01 | Toolpaths are held in a neutral intermediate form, independent of any controller. | P1 |
+| GC-02 | A post-processor interface, with several post-processors available and one selected per machine profile. | P1 |
+| GC-03 | Post-processors are defined as text templates that the user can edit or add without recompiling the application. | P1 |
+| GC-04 | Post options: units, A-axis letter, direction and wrap behaviour, header and footer, tool change sequence, coolant, work offsets, line numbering, decimal precision, maximum feed, and feed mode for rotary moves. These machine-specific conventions live in the post-processor definition, not in the engine. | P1 |
+| GC-05 | Output as one file for the whole project, or as one file per setup, operation or tool. | P1 |
+| GC-06 | Comments in the output naming the operation and tool, and the estimated time once SIM-08 is available. | P1 |
+| GC-07 | Deterministic output: the same project and post-processor always give byte-identical G-code. | P1 |
+| GC-08 | Check generated G-code for axis limit violations, missing feeds and invalid numbers before export. | P2 |
+| GC-09 | A post-processor for the Makera Z1, the reference machine for the first release; existing Makera machine profiles are inspected during development to derive its rotary-axis conventions. | P1 |
+| GC-10 | A verification post-processor producing LinuxCNC-dialect G-code, to be run in the LinuxCNC simulator to confirm the toolpaths and the post-processing. | P1 |
+| GC-11 | A command-line mode that regenerates G-code from a project file without the UI. | P1 |
+| GC-12 | Export a setup sheet (tools, operations, stock and estimated times) as HTML or PDF; times appear once SIM-08 is available. | P1 |
+| GC-13 | An embedded scripting language for post-processors, for logic that text templates cannot express. | P2 |
+
+### 3.8 Project files
+
+| ID | Requirement | Priority |
+|---|---|---|
+| PRJ-01 | Projects are saved in a text-based format with stable ordering and formatting, so changes show cleanly in a line-based diff. | P1 |
+| PRJ-02 | Large model files stay as separate files referenced by relative path, with a content hash recorded so a changed model is detected on load. | P1 |
+| PRJ-03 | Generated data (toolpaths, simulation caches, G-code) is not stored in the project file; it is regenerated, and any cache is kept somewhere easy to ignore. | P1 |
+| PRJ-04 | Every project file records its schema version, and older versions are migrated on load. | P1 |
+| PRJ-05 | Operations, tools, setups and selection sets have stable unique IDs, and their order is stored explicitly, so two branches that edit different items merge cleanly. | P1 |
+| PRJ-06 | Geometry selections are stored in a form that survives save and load of the same model. | P1 |
+| PRJ-07 | Selections also store descriptors (position, normal, area) so they can be matched again after the model is re-exported. | P2 |
+| PRJ-08 | Autosave and crash recovery. | P2 |
+
+## 4. Secondary requirements
+
+These follow the core release. The core architecture should leave room for them: collision checking needs the tool assembly (TL-08) and machine geometry, in-app version control builds on the project file rules in section 3.8, and library integration builds on the separation of engine and UI in NFR-01.
+
+### 4.1 Collision detection in simulation
+
+| ID | Requirement | Priority |
+|---|---|---|
+| COL-01 | Detect collisions between the cutting part of the tool and the model or stock during non-cutting moves (rapids and links). | P2 |
+| COL-02 | Detect collisions between the tool shank, collet and holder and the model, stock and workholding. | P2 |
+| COL-03 | Detect collisions between the machine head or spindle and the part, stock, workholding and rotary hardware (chuck, tailstock). | P2 |
+| COL-04 | Define machine head and fixture geometry in the machine profile, as simplified imported solids. | P2 |
+| COL-05 | Test collisions against the in-process stock as simulated, not only the final model. | P2 |
+| COL-06 | A user-set safety margin for collision checks. | P2 |
+| COL-07 | List collisions with the operation, move and location, highlight them in the viewport, and jump to each from the list. | P2 |
+| COL-08 | Automatically avoid collisions in linking moves and retracts, using the checks in COL-01 to COL-05. | P3 |
+
+### 4.2 Version control within the software
+
+| ID | Requirement | Priority |
+|---|---|---|
+| VC-01 | Save named revisions of a project, each with a timestamp and a message. | P2 |
+| VC-02 | Browse revision history and restore any earlier revision. | P2 |
+| VC-03 | Compare two revisions as a structured difference of operations, tools, setups and parameters, not only as text. | P2 |
+| VC-04 | Keep alternative approaches (for example two roughing strategies) as branches and merge them back. | P2 |
+| VC-05 | Build the revision system on an embedded Git library, so the project folder is a standard Git repository that external Git tools can read; using the built-in system must never stop a project folder being committed to Git. The chosen library (git2) is evaluated in section 4.3. | P2 |
+| VC-06 | Write the revision identifier into the G-code header, so output can be traced to the project state that produced it. | P2 |
+
+### 4.3 Embedded Git library evaluation
+
+Decision: use libgit2 through the git2 crate, and keep revision handling behind a small internal interface so gix can replace it later. In-app revisions need only local operations (commit, history, diff, restore, branch, merge), not network access.
+
+| Option | Benefits | Risks |
+|---|---|---|
+| [git2](https://github.com/rust-lang/git2-rs) (Rust bindings to libgit2) | Maintained under the rust-lang GitHub organisation. Local repositories work by default, with network support optional. The libgit2 source is bundled and built automatically. The crate is MIT or Apache-2.0, and libgit2 is GPLv2 with a linking exception, which suits a GPL-compatible project ([libgit2 licence](https://github.com/serenial/libgit2)). | A C library to build on all three platforms, which you have accepted. libgit2 is an independent implementation of Git, so edge-case behaviour can differ from the git command. It tracks libgit2 releases (currently 1.9.6 or newer). |
+| [gix](https://github.com/GitoxideLabs/gitoxide) (gitoxide, pure Rust) | No C toolchain. Supports commit, status, diffing, fetch and low-level editing of objects and the index. | Its [status page](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md) lists checkout, restore, reset and merge workflows as still to do, and push as unimplemented. Restoring a revision and merging branches (VC-02, VC-04) need those, so more of that code would be ours to write. |
+
+Both options share one risk: STEP and STL files are binary, so every changed model version adds to the repository size. PRJ-02 keeps models as separate files, which leaves room to handle them differently later. Before committing to a library, prototype commit, restore and merge on a real project folder.
+
+### 4.4 Pathing library for use by other applications
+
+A secondary goal is that the toolpath engine can be used as a library by other projects such as FreeCAD, not only through this application's UI. It builds on NFR-01.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| INT-01 | The engine is a standalone library with a documented public API, and no dependency on this application's UI or project file. | P2 |
+| INT-02 | The API takes geometry (meshes, and B-rep faces and edges), stock, tools, machine profile and operation parameters as plain data, and returns toolpaths in the neutral intermediate form (GC-01). | P2 |
+| INT-03 | Post-processing can be used on its own, so a host can turn its own toolpaths into G-code with the templates from GC-03. | P2 |
+| INT-04 | Progress reporting and cancellation are part of the API, so a host can run generation in the background (see UI-09). | P2 |
+| INT-05 | Python bindings, so the library can be called from FreeCAD's scripting environment. | P2 |
+| INT-06 | A C-compatible interface for hosts that cannot use the Rust API or Python bindings directly. | P3 |
+| INT-07 | A versioned public API, with breaking changes recorded in a changelog. | P2 |
+| INT-08 | Documentation and a small example host application showing how to call the library. | P2 |
+| INT-09 | The library is AGPL like the rest of the project; if FreeCAD needs it, add a licence exception or a dual licence. | P2 |
+
+## 5. Non-functional requirements and constraints
+
+Technology choices (crates, geometry kernel, rendering stack) are made in the architecture document, not here; this section states only the constraints that bind them, and the git2 decision in section 4.3 is the one exception. The performance figures are confirmed as a starting point and can be revised once there is something to measure.
+
+| ID | Requirement | Priority |
+|---|---|---|
+| NFR-01 | Written in Rust, with the engine (import, toolpaths, simulation, post-processing) in a library separate from the UI, so it can run headless and be tested without a window. | P1 |
+| NFR-02 | Runs on Windows, macOS and Linux, with 3D rendering through each platform's native graphics support. | P1 |
+| NFR-03 | Orbit, pan and zoom stay smooth (target 30 frames per second or better) on models of up to 1 million triangles. | P1 |
+| NFR-04 | Toolpath generation and simulation use multiple CPU cores, and never block the UI. | P1 |
+| NFR-05 | Geometry and toolpaths are computed in double precision, with a default toolpath tolerance of 0.01 mm that the user can change. | P1 |
+| NFR-06 | Repeatable results: the same project and software version produce identical toolpaths and G-code, regardless of thread count. | P1 |
+| NFR-07 | Invalid or damaged input files produce a clear error message, never a crash. | P1 |
+| NFR-08 | Automated tests include golden-file tests for G-code and regression tests on known geometry with known expected toolpaths. | P1 |
+| NFR-09 | Works fully offline, with no account, licence server or telemetry. | P1 |
+| NFR-10 | The project is open source under the AGPL, covering every crate including the pathing library; third-party dependency licences are recorded and must be compatible with it. | P1 |
+| NFR-11 | User documentation, including a guide to writing a post-processor. | P2 |
+| NFR-12 | The software states clearly that generated G-code must be verified by the user before it is run on a machine. | P1 |
+| NFR-13 | Bindings to C++ libraries, for example for STEP import, are acceptable where they are the best-maintained option, provided they build on Windows, macOS and Linux. | P1 |
+| NFR-14 | Choose dependencies for long-term health: well featured, actively maintained, thoroughly documented, tested with CI, and used by several mature open-source projects. Newer crates, and crates with a high proportion of AI-generated contribution, count as a risk that must be justified. | P1 |
+
+## 6. Suggested additional features for decision
+
+These are not in your brief. Each has a proposed priority; your decisions are in the last column. Items marked Include are now requirements in sections 3 to 5, and the two marked Defer stay here for later.
+
+| ID | Suggestion and benefit | Proposed | Decision |
+|---|---|---|---|
+| SUG-01 | Simulate the exported G-code, not only the internal toolpath. Catches post-processor errors before the machine does. | P3 | Include |
+| SUG-02 | Adaptive (constant-engagement) roughing for rotary parts. Shorter cycle times and lower tool load in hard materials. | P2 | Include |
+| SUG-03 | Command-line mode that regenerates G-code from a project file. Gives repeatable builds and automated tests. | P2 | Include |
+| SUG-04 | Setup sheet export (tools, operations, stock, estimated times) as HTML or PDF. A printable job summary for the operator. | P1 | Include |
+| SUG-05 | Material library holding cutting data per material and tool. Pre-fills feeds and speeds. | P2 | Include |
+| SUG-06 | Curve import (DXF, SVG) for engraving and carving along curves. Extends OP-08 beyond model edges. | P2 | Include |
+| SUG-07 | Automatic collision avoidance in linking moves and retracts, building on section 4.1. Less manual fixing. | P3 | Include |
+| SUG-08 | Feature recognition: detect holes, grooves and cylindrical features and propose operations. Faster programming. | P3 | Include |
+| SUG-09 | Feed optimisation using tool engagement data from the simulation. Faster cuts at a steady tool load. | P3 | Include |
+| SUG-10 | Extra model formats (OBJ, 3MF, IGES). Wider compatibility with other tools. | P3 | Defer |
+| SUG-11 | Scripting or plugin interface for custom strategies and post-processors. Lets users extend the software without forking it. | P3 | Defer |
+| SUG-12 | Import of existing tool tables from other systems (for example LinuxCNC). Saves re-entering tools. | P3 | Include |
+
+## 7. Decisions, assumptions and open questions
+
+Decisions are settled and already reflected in the requirements. The assumptions still need confirming, and no open questions remain.
+
+**Decisions**
+
+- Reference machine is the Makera Z1. The first release needs a Z1 post-processor and a verification post-processor that targets the LinuxCNC simulator (GC-09, GC-10).
+- Rotary axis: X only for the first release; Y stays P2 (SET-02).
+- STEP import may wrap a C++ library such as OpenCASCADE (NFR-13).
+- Post-processors start as text templates, with scripting later (GC-03, GC-13).
+- Machine-specific rotary conventions (axis letter, units, wrap-around, feed mode) live in the post-processor definition, informed by existing Makera machine profiles during development (GC-04, GC-09).
+- The project is open source under the AGPL, covering every crate including the pathing library. A licence exception or dual licence for FreeCAD can be added later if needed (NFR-10, INT-09).
+- In-app version control uses the git2 crate (section 4.3).
+- The performance targets in NFR-03 are accepted as a starting point.
+
+**Assumptions**
+
+- The A axis rotates the workpiece about the machine X axis, with a vertical tool axis (Z).
+- The target is a milling machine with a rotary axis programmed in degrees; the Makera Z1 is the reference machine, and G93 inverse-time feed is assumed unsupported until confirmed.
+- The internal unit is millimetres; inch display and input are a user setting.
+- Work is for a single user on a single machine at a time; there is no multi-user collaboration.
+- Threading, turning and 5-axis tool orientation are not needed.
+
