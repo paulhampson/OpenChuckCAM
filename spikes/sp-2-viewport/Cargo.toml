@@ -1,0 +1,18 @@
+# SP-2 viewport spike. Throwaway: never merged into the product (work breakdown, spike rules).
+# Standalone workspace so it does not touch the product workspace or its dependency rules.
+[workspace]
+
+[package]
+name = "sp2-viewport"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "AGPL-3.0-only"
+
+[dependencies]
+eframe = { version = "=0.36.2", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+bytemuck = { version = "=1.25.0", features = ["derive"] }
+parry3d-f64 = "=0.31.1"
+
+[profile.release]
+debug = 1
