@@ -1,0 +1,10 @@
+[package]
+name = "sp1-step"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cxx = "1"
+glam = "0.24"
+opencascade = "0.3.0"
+opencascade-sys = "0.3.0"
