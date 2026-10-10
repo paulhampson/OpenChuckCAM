@@ -13,3 +13,11 @@ One file per decision, named `NNNN-short-title.md` (four digits, starting at `00
 - **Consequences:** documents or code that must change, and any rule exceptions (for example an entry in the `xtask` dependency allow-list, which also needs the NFR-14 justification).
 
 When a record is accepted, update the affected document in the same pull request.
+
+## Index
+
+Add a row for each new record. Read the records that touch your task before you start.
+
+| Record | Title | Status |
+| --- | --- | --- |
+| [0001](0001-sp-2-viewport-spike.md) | SP-2 viewport spike, interim result | Proposed (keep or fall back is open until the NFR-03 measurements are recorded) |
