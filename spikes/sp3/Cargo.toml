@@ -1,0 +1,12 @@
+[package]
+name = "sp3-wrapped-path"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "AGPL-3.0-only"
+description = "SP-3 throwaway spike: wrapped engraving path on a cylinder to G-code with A words"
+
+[workspace]
+
+[dependencies]
+gcode = "=0.7.0"
