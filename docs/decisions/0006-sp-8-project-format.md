@@ -9,7 +9,7 @@ Work breakdown, Spikes, SP-8 (2 d): which serialisation format and order-key sch
 
 Requirements and sections affected: PRJ-01 (text format with stable ordering), PRJ-04 (schema version in every file), PRJ-05 (stable IDs and explicit order, clean merges of different items), NFR-05 and NFR-06 (exact doubles, deterministic output); architecture sections 5.6 (project folder, IDs and order), 7 (project files: `serde` with `serde_json`, `toml_edit` for hand-edited files; order keys in-house with `fractional_index` as a reference), 9 (project file tests) and 14 (order key scheme risk); verification plan section 2 (project file tests).
 
-The spike code is throwaway (spike rules). It is in `spikes/sp-8-project-format/` on branch `claude/sp-8-dhnvjs`, with its write-up and full output in `RESULT.md` there. It is a separate Cargo project, not a workspace member, and must not be merged into the product.
+The spike code is throwaway (spike rules). It is in `spikes/sp-8-project-format/` on branch `spike/sp-8-project-format`, with its write-up and full output in `RESULT.md` there. It is a separate Cargo project, not a workspace member, and must not be merged into the product.
 
 The slice 1 work on branch `claude/slice-1-project-model` waits on this record: its decision record leaves the file format, order keys, schema versions and migration to SP-8 (its open item "Apply SP-8's result to slice 1").
 
