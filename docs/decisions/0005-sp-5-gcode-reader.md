@@ -1,6 +1,6 @@
 # 0005: SP-5 result, G-code reader
 
-- **Status:** accepted by the project owner on 11 Oct 2026. The LinuxCNC check of the hand-written fixture is outstanding and is run separately (OI-31); it gates only the fixture, not the choice.
+- **Status:** accepted by the project owner on 11 Oct 2026. The LinuxCNC check of the hand-written fixture (OI-31) was run afterwards ([decision 0009](0009-linuxcnc-fixture-checks.md)): LinuxCNC rejects the file as written because four arcs have inconsistent radii, and reads it with those lines corrected (OI-46). It gated only the fixture, not the choice, and does not change the choice.
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/sp-5-gcode-reader` (throwaway, never merged). The full write-up is in `spikes/sp5/RESULT.md` on that branch, and the raw output is in `spikes/sp5/out/report.md`.
 

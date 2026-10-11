@@ -1,6 +1,6 @@
 # 0001: SP-3 result, wrapped path to G-code with A words
 
-- **Status:** proposed. The IR and profile fields below are proposals for slice 0. The simulator criterion is outstanding, so this record is not accepted until the open items are closed.
+- **Status:** accepted by the project owner on 11 Oct 2026, on the strength of the LinuxCNC runs in [decision 0009](0009-linuxcnc-fixture-checks.md) (accepted the same day). The IR fields (decision item 1) and the profile fields (item 2) are the working design slice 0 built, as accepted in [decision 0004](0004-slice-0-guardrails.md); the IR is not frozen (OI-21). Open items 1 and 5 are closed (OI-01 by 0009, OI-05 by decision 0005). Items 3, 4, 6, 7 and 8 stay open in [open-items.md](../open-items.md) (OI-03, OI-04, OI-06 to OI-08), and item 2 waits on OI-03. Decision item 3 (feed modes) is amended for the Z1 by [decision 0007](0007-sp-12-z1-conventions.md): the compensated G94 rule it describes is LinuxCNC's, not the Z1's.
 - **Date:** 10 Oct 2026
 - **Spike branch:** `spike/sp-3-wrapped-path-gcode` (throwaway, never merged; full write-up in `spikes/sp3/RESULT.md` on that branch)
 
