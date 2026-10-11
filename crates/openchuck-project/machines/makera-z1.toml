@@ -50,20 +50,20 @@ radius = 45.0
 safe_z = 60.0
 
 [machine.provenance.rotary_axis]
-state = "unconfirmed"
-source = "7 of 7 Makera 4-axis profiles agree: Fusion (Z1, Carvera, Carvera Air, Carvera Harmonic) and FreeCAD (Z1, C1, Air) put the rotary axis along +X on the Y table; Makera's Mastercam and Carveco posts also rotate about X (decision 0012)"
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the rotary axis is along X. Consistent with 7 of 7 Makera 4-axis profiles (Fusion Z1, Carvera, Carvera Air and Carvera Harmonic; FreeCAD Z1, C1 and Air) and the Makera Mastercam and Carveco posts (decision 0012)"
 
 [machine.provenance.a_sense]
-state = "unconfirmed"
-source = "right-handed about +X by consensus of 3 host families: Fusion (4 four-axis machine files, axis +X, right-handed, not reversed), Mastercam (CW positive for the tool around the part, viewed from +X) and SolidCAM (+CCW); FreeCAD agrees by default, none contradicts, Carveco and VCarve only negate their own angle. Not checked on a Z1: air cut step 1 (decision 0012, OI-03, OI-37)"
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The air cut (OI-37, step 1) is kept open as a cross check (decision 0012)"
 
 [machine.provenance.rotary_origin]
 state = "unconfirmed"
 source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is a placeholder: the default work Z0 is the chuck centre (owner's experience of the machine), but no Makera source gives its machine Z (decision 0012, OI-57)"
 
 [machine.provenance.a_range]
-state = "unconfirmed"
-source = "continuous by consensus: Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous), Z1 firmware (no A soft limit)"
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the A axis is continuous. Consistent with Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous) and the Z1 firmware (no A soft limit)"
 
 [machine.provenance.travel]
 state = "unconfirmed"

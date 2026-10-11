@@ -149,12 +149,25 @@ mod tests {
         for field in ProfileField::ALL {
             assert!(z1.provenance.contains_key(&field), "{field} is not marked");
         }
-        // The owner confirmed the feed limits from use of the machine; the rest
-        // waits for the air cut (OI-37) and a measurement of the axis (OI-57).
-        let mut expected = ProfileField::ALL.to_vec();
-        expected.retain(|f| *f != ProfileField::MaxFeeds);
-        assert_eq!(z1.unconfirmed_fields(), expected);
-        assert!(z1.is_confirmed(ProfileField::MaxFeeds));
+        // The owner confirmed the axis, direction, range and feed limits from
+        // use of the machine. The reference point (OI-57), the travel frame
+        // and the default clearance are not machine-checked values.
+        assert_eq!(
+            z1.unconfirmed_fields(),
+            vec![
+                ProfileField::RotaryOrigin,
+                ProfileField::Travel,
+                ProfileField::Clearance
+            ]
+        );
+        for field in [
+            ProfileField::RotaryAxis,
+            ProfileField::ASense,
+            ProfileField::ARange,
+            ProfileField::MaxFeeds,
+        ] {
+            assert!(z1.is_confirmed(field), "{field}");
+        }
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
     }
