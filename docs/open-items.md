@@ -12,8 +12,8 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | --- | --- | --- | --- | --- | --- |
 | OI-01 | LinuxCNC simulator run for SP-3 not done; SP-3's pass criterion is not met. | 0001 item 1 | open | Before slice 6 accepts any golden file | Someone with LinuxCNC 2.9 or later |
 | OI-02 | No golden file with A words yet. | 0001 item 2 | open | Slice 6 | OI-01, OI-03 |
-| OI-03 | A sign and rotary offset convention for the Z1 (the spike used +1 as a placeholder). | 0001 item 3 | open | SP-12, slice 3 | Machine profiles and the air cut |
-| OI-04 | LinuxCNC feed rule on mixed XYZ and A moves; whether the Z1 accepts G93; per-move feed strategy near zero linear step. | 0001 item 4 | open | SP-12, slice 6 | OI-01 and a Z1 test |
+| OI-03 | A sign and rotary offset convention for the Z1 (the spike used +1 as a placeholder). SP-12 derived both from Makera's profiles (decision 0005): right-handed about +X (`ASense::Positive`), G54 Y0 Z0 on the A axis. Not confirmed until the air cut. | 0001 item 3 | open | SP-12, slice 3 | OI-31 (air cut) |
+| OI-04 | LinuxCNC feed rule on mixed XYZ and A moves; whether the Z1 accepts G93; per-move feed strategy near zero linear step. SP-12 (decision 0005): the LinuxCNC rule is confirmed in the simulator; the Z1 firmware source ignores G93 and uses its own feed rule, which has no near-zero feeds. Open until the air cut confirms the Z1 half. | 0001 item 4 | open | SP-12, slice 6 | OI-31 (air cut), OI-32 |
 | OI-05 | G-code reader: `gcode` 0.7.0 with an f64 layer, or an in-house reader. | 0001 item 5 | open | Slice 6 (SP-5) | SP-5 |
 | OI-06 | A limits and unwinding policy (range limits, when and which way to unwind). | 0001 item 6 | open | Slice 5 (OP-15) | A range in the machine profile |
 | OI-07 | Off-top contact and tilted tools (tool axis variation, cutter shape). | 0001 item 7 | open | Slices 5 and 13 | SP-4, SP-13 |
@@ -35,6 +35,11 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-28 | Golden tests that depend on kernel tessellation or kernel-computed numbers need a tolerance on non-analytic faces, or per-platform golden files (verification plan section 2, policy 7): tessellation differs between x86-64 and arm64. | Decision 0003, cross-platform differences | open | Slice 11 | Agreement on the verification approach |
 | OI-29 | Add the OpenCASCADE licence notice and source offer to the release checklist (LGPL-2.1, statically linked). | Decision 0003, NFR-10 | open | Slice 20 | Release checklist |
 | OI-30 | Examples for the library crates other than `openchuck-types` (slice 0 item 7). Each gets one in the slice that gives it a public API. | 0004, slice close | deferred | Slices 5 (path), 6 (post, gcode), 2 (geom) and later | A public API |
+| OI-31 | Run the SP-12 air cut (`spikes/sp12/AIR-CUT.md` on the spike branch) and record the results: A direction, `G92.4` wrap, the Z1 feed rule (T3, T4) and G93 (T5). Until then every Z1 convention is *derived*, not confirmed. | Decision 0005 item 1 | open | Before slice 3's Z1 profile is accepted | Project owner and the Z1 |
+| OI-32 | Per-controller feed rule in the post (`linuxcnc` and `makera`): compute it in the post template (SP-10's engine) or in the neutral machine program stage with the rule named by the post definition. | Decision 0005 item 2 | open | Slice 6 (with SP-10) | OI-31 timing results |
+| OI-33 | Z1 limits disagree between sources: Makera's Fusion file (4000 mm/min, X -10..200, Y -200..10, Z 0..100), its FreeCAD file (X and Y 0..200) and a reported 1200 mm/min in Makera Studio's machine table. | Decision 0005 item 3 | open | Slice 3 | The owner's Z1 and Makera Studio |
+| OI-34 | Z1 work offset: programs need G54 Y0 Z0 on the A axis (the firmware's feed rule assumes it). Map SET-05 and the profile's `rotary_origin` onto that convention. | Decision 0005 item 4 | open | Slice 3 | |
+| OI-35 | The Z1 tool change (`M5`, `T<n> M6`) is not exercised by the air cut, which runs without a tool. | Decision 0005 item 5 | open | Slice 20 (gate 5), or an attended tool-change test before it | Project owner and the Z1 |
 
 ## Closed
 
