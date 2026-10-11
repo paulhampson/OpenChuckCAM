@@ -35,6 +35,10 @@ cargo run -p openchuck-cli -- regenerate <project-folder>
 
 The toolchain is pinned in `rust-toolchain.toml`.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Contributors sign the [contributor licence agreement](CLA.md) once.
+
 ## Licence
 
 AGPL-3.0-or-later for every crate. See [LICENSES/](LICENSES/).
