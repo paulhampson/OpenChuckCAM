@@ -23,7 +23,7 @@ jobs:
     name: Dependency activity (cargo-unmaintained)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-unmaintained@2.1.0
@@ -39,7 +39,7 @@ jobs:
         if: always()
         working-directory: fuzz
         run: cargo unmaintained --color never 2>&1 | tee ../unmaintained-fuzz.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: unmaintained-report
