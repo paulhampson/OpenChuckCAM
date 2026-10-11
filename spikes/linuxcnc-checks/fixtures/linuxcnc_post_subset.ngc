@@ -1,0 +1,53 @@
+%
+(SP-5 hand-written LinuxCNC file: every code a rotary post is expected to emit)
+(verify before running any machine, NFR-12)
+; semicolon comment on its own line
+N10 G21 G90 G17 G40 G49 G54 G94 G64 P0.01 (several modal codes on one line)
+N20 G90.1
+N30 G91.1
+N40 T2 M6 (tool change, T and M on one line)
+N50 G43 H2
+N55 S8000 M4
+N60 S12000 M3
+N70 M8
+N75 M7
+N80 G0 G53 Z0.
+N90 G0 X0 Y0 A0
+N100 G0 Z5.0
+N110 G1 Z-1.25 F120.0
+N120 X10.5 Y-3.25 A45.0 F600.
+N130 A-90.125 ; A on its own, negative, trailing comment
+N140 X.5 Y+2.75 A1234.5678
+N150 A-12345.6789
+N160 G2 X20.0 Y0 I5.0 J0 F300
+N170 G3 X10.0 Y0 R5.0
+N180 G18 G2 X15.0 Z-1.25 I2.5 K0
+N190 G19 G3 Y5.0 Z-1.25 J2.5 K0
+N200 G17
+N210 G93 G1 X12.0 A30.0 F45.5
+N220 X14.0 A60.0 F52.25
+N230 G94 G1 X16.0 F500
+N240 G91 G1 X1.0 A10.0
+N250 G90
+N260 G4 P0.5
+N270 G61
+N280 G61.1
+N290 G64
+N300 G20
+N310 G21
+N320 G55
+N330 G56
+N340 G57
+N350 G58
+N360 G59
+N370 G54
+N380 G28
+N390 G0 Z25.4
+N400 M9
+N410 M5
+N420 (MSG, end of program)
+N430 M1
+N440 M0
+N450 M2
+N460 M30
+%

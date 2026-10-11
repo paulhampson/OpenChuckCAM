@@ -1,0 +1,12 @@
+fixtures/sp3_g94.ngc: 312 moving lines, errors []
+  node checks outside the sample window: 10 of 1244 (worst 0.0026)
+  final position: 30.0000 2.0000 -10.0000 -90.0000
+  cut time (first to last cut line, 308 lines): 37.859 s against IR 38.002 s (-0.37 %)
+fixtures/sp3_g93.ngc: 312 moving lines, errors []
+  node checks outside the sample window: 10 of 1244 (worst 0.0026)
+  final position: 30.0000 2.0000 -10.0000 -90.0000
+  cut time (first to last cut line, 308 lines): 37.860 s against IR 38.002 s (-0.37 %)
+fixtures/sp3_naive.ngc: 312 moving lines, errors []
+  node checks outside the sample window: 44 of 1244 (worst 0.3412)
+  final position: 30.0000 2.0000 -10.0000 -90.0000
+  cut time (first to last cut line, 308 lines): 24.042 s against IR 38.002 s (-36.74 %)
