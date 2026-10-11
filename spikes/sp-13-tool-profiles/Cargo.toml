@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# SP-13 spike (work breakdown, Spikes): one revolved-profile tool model driving
+# drop-cutter tool-centre solving, an independent gouge checker and a stock
+# sweep. Throwaway code under the spike rules: never a workspace member and
+# never a product dependency. The empty [workspace] keeps it out of the root
+# workspace. No third-party dependencies.
+
+[package]
+name = "sp13-tool-profiles"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+
+[profile.test]
+opt-level = 3
+
+[profile.release]
+debug = "line-tables-only"
