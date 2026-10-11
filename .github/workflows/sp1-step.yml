@@ -13,6 +13,10 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
+    env:
+      # First CI run failed on Windows and macOS: runners ship CMake 4.x, which rejects the
+      # cmake_minimum_required(<3.5) in OCCT 7.8.1. Documented CMake workaround.
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
     defaults:
       run:
         shell: bash

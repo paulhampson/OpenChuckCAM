@@ -1,0 +1,9 @@
+[package]
+name = "sp1-brepkit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+brepkit-io = "=4.1.48"
+brepkit-operations = "=4.1.48"
+brepkit-topology = "=4.1.48"
