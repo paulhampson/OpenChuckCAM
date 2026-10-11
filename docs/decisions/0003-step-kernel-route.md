@@ -1,6 +1,6 @@
 # 0003: STEP kernel route (SP-1)
 
-- **Status:** proposed. Needs your decision before slice 11 design starts.
+- **Status:** proposed. Needs your decision before slice 11 design starts. Updated 11 Oct 2026 with Linux and macOS CI results; Windows outstanding.
 - **Date:** 11 Oct 2026
 - **Spike code:** branch `spike/sp-1-step-kernel` (throwaway, never merged into `main`)
 - **Context:** requirements IMP-01 to IMP-03, IMP-06, NFR-01, NFR-07, NFR-09, NFR-10, NFR-13, NFR-14, INT-02, INT-09. Architecture sections 3, 4, 7, 12 and 13. Work breakdown spike SP-1 and slices 0, 11. Verification plan, C++ bindings and licence flags.
@@ -21,10 +21,10 @@ Does the `opencascade` crate build on all three platforms and expose topology, s
 
 | Criterion | Result | Verdict |
 | --- | --- | --- |
-| Builds in CI on Windows, macOS and Linux | Linux: yes. macOS: kernel and bindings built in 8 min; the harness failed on its own build-script ordering, since fixed and re-running. Windows: kernel built (48 min), then compiling the `opencascade-sys` bridge failed under MSVC 14.51 (VS 2026). The diagnostic was lost to a log `tail`; logging fixed, re-running. Both Windows and macOS first failed on CMake 4 (see Platform notes). | **Not yet met.** Windows unresolved. |
+| Builds in CI on Windows, macOS and Linux | Linux: builds and runs (GitHub runner: 32 to 51 min cold). macOS (Apple silicon): builds and runs (8 to 9 min cold). Windows: not yet built. Two runs built the kernel (about 48 min) and then failed compiling the `opencascade-sys` bridge under MSVC 14.51 (Visual Studio 2026); the compiler diagnostic was lost to a log `tail` and a third run with the full log is still going. All three first failed on CMake 4 and needed a workaround (see Platform notes). | **Met on Linux and macOS. Windows not met.** |
 | Faces, edges, surface types readable | Edge type: yes (safe API). Face surface type: not in the safe API, but readable from `opencascade-sys` as a class name (`Geom_CylindricalSurface`, and so on). Analytic parameters (radius, axis, cone angle), UV bounds and a `GeomAbs_SurfaceType` are not bound. | **Partly met.** |
 | Tolerance controls triangle count | Yes: cylinder 124 to 396 triangles, sphere 1,504 to 15,018, filleted box 628 to 3,492 as tolerance goes 0.1 to 0.01 mm. Only linear deflection is exposed; angular deflection is fixed at the default. | **Met, with limits.** |
-| Same file gives identical IDs twice | Yes: identical topology digest over 5 separate processes for all 8 fixtures and a 300-solid file, and after a STEP write and re-read. IDs are `TopExp_Explorer` order. | **Met** on Linux. Cross-platform comparison pending CI. |
+| Same file gives identical IDs twice | Yes on both Linux and macOS: identical topology digest over 5 separate processes for all 8 fixtures and a 300-solid file, and after a STEP write and re-read. IDs are `TopExp_Explorer` order. **Across platforms** the topology digests match for 8 of 9 files; `rotary_blank_drilled` differs because computed face areas differ in the 7th digit (face 0: 4466.888129 on Linux, 4466.888500 on macOS) while face order, surface types and edges are the same. See "Cross-platform differences". | **Met** per platform. Cross-platform IDs match; cross-platform numbers do not match exactly. |
 | Malformed file returns an error | Empty, garbage, truncated, header-only, dangling reference and missing file: clean error. But a mutation fuzz of 450 corrupted files gave **155 segfaults** inside the STEP reader (`StepGeom_Vector::Orientation`, a null handle). | **Not met** in-process. |
 
 Spike rules say a failed criterion triggers the fallback decision, not a longer timebox. This record is that decision.
@@ -45,6 +45,7 @@ All numbers are from one Linux x86-64 container (4 cores) unless stated. Fixture
 - **Sys-crate gaps:** about 1,700 lines of hand-picked bindings. No `BRepAdaptor_Surface`, no `BRepTools::UVBounds`, no surface `D0` or `D1`, no angular deflection or parallel flag for the mesher.
 - **Read time:** 300 solids and 7,800 faces: 5.0 s read, 171 MB peak; with a walk and two tessellations, 20.9 s, 253 MB.
 - **Tolerance is not a bound on deviation.** Worst triangle-centre deviation from the exact surface at the requested tolerance 0.1 / 0.01 mm: cylinder 0.043 / 0.0044 mm, sphere 0.073 / **0.0173 mm**. The sphere at 0.01 exceeds its tolerance by 1.7 times. IMP-06 verification must measure deviation, not trust the setting.
+- **Cross-platform differences (Linux x86-64 against macOS arm64, same OpenCASCADE 7.8.1).** Face and edge order, surface types and edge types are identical. Numbers are not: the trimmed-cylinder areas of the drilled blank differ by 3.7e-4 mm² on a 4,467 mm² face (BRepGProp integration over B-spline-trimmed edges), and the tessellation of the same file at 0.1 mm gives 282 nodes and 276 triangles on Linux but 286 and 280 on macOS (identical at 0.01 mm). Pure analytic shapes matched exactly. So kernel tessellation and kernel-computed areas cannot back byte-identical results across platforms (NFR-06 is stated per software version and project, and GC-07 per post, so it holds if the kernel output is treated as input data, but golden toolpath tests that sit on kernel tessellation need a tolerance on non-analytic faces). Our own face IDs and any digest must not be derived from kernel floating-point text: the harness digest also prints signed zeros (`-0.0000`), which would be a hazard.
 - **Silent acceptance:** a file with an unknown entity type loads with exit 0 and an empty shell (0 faces). The importer must treat 0 faces as an error.
 - **Diagnostics:** OpenCASCADE prints errors and statistics to standard output through a global printer. Another reason to keep it in a child process.
 
@@ -90,8 +91,9 @@ This answers the SP-9 input for B-rep faces in principle: exact evaluation is av
 - No STEP file from another CAD system was available offline, so every fixture came from OpenCASCADE's own writer. Re-reading its own output flatters it. **Before slice 11, collect exports from at least FreeCAD, Fusion and SolidWorks** (small parts with cylinders, cones, B-spline faces and holes) and rerun the walk. This also decides `brepkit-io`.
 - Unit handling (IMP-03), re-export face matching (IMP-07, PRJ-07) and assemblies with transforms were not tested.
 - The fuzz is random byte mutation, not a coverage-guided fuzzer. It shows the reader is unsafe; it does not bound how many faults exist.
-- Cross-platform digest equality, Windows build and Windows/macOS behaviour are waiting on CI (workflow `sp1-step` on the spike branch). This record will be updated with those results and should not move to accepted until the Windows build is understood.
-- Performance figures come from one container and the GitHub runners and are not tuned.
+- Windows is untested: the kernel builds there but the `opencascade-sys` bridge failed to compile under MSVC 14.51 and the cause is not yet known. This record should not move to accepted until the Windows build is understood. If Windows cannot build the bridge, option B still applies (our own bridge), but it needs a Windows build spike.
+- On macOS the shim step in CI failed; on Linux it works locally. The cause (probably the build-script ordering workaround) is not yet known, so the shim is shown working on Linux only.
+- Performance figures come from one container and the GitHub runners and are not tuned. Cold OpenCASCADE builds on hosted runners took 32 to 51 min (Linux), 8 to 9 min (macOS arm64) and about 48 min or more (Windows) for one crate, so CI needs a build cache from day one.
 
 ## Platform notes from CI
 
