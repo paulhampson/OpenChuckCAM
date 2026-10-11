@@ -1,4 +1,4 @@
-# 0001: SP-2 viewport spike, interim result
+# 0002: SP-2 viewport spike, interim result
 
 - **Status:** proposed. The spike is partly complete. The decision to keep or replace egui and `egui_wgpu` is **open** until the measurements under "Outstanding items" are recorded, at which point this record is updated to accepted (or superseded).
 - **Date:** 10 Oct 2026.

@@ -20,4 +20,4 @@ Add a row for each new record. Read the records that touch your task before you 
 
 | Record | Title | Status |
 | --- | --- | --- |
-| [0001](0001-sp-2-viewport-spike.md) | SP-2 viewport spike, interim result | Proposed (keep or fall back is open until the NFR-03 measurements are recorded) |
+| [0002](0002-sp-2-viewport-spike.md) | SP-2 viewport spike, interim result | Proposed (keep or fall back is open until the NFR-03 measurements are recorded) |
