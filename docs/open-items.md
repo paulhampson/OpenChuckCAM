@@ -19,7 +19,6 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-07 | Off-top contact and tilted tools (tool axis variation, cutter shape). | 0001 item 7 | open | Slices 5 and 13 | SP-4, SP-13 |
 | OI-08 | Chord tolerance factor, 0.4 or 0.5 of the toolpath tolerance. | 0001 item 8 | open | Slice 5 | Measurement on the first strategy |
 | OI-09 | Measure NFR-03 (30 fps at 1M triangles) on the reference hardware, without and with edges. | 0002 item 1 | open | Before slice 8 | Project owner's physical machines |
-| OI-10 | Builds on Windows and macOS. Slice 0's CI covers it but has not run yet: everything so far was built and tested on Linux only. | 0002 item 2; 0003 open item 10 | open | First pull request of slice 0 | CI run |
 | OI-11 | Keep egui and wgpu or fall back to Tauri or iced. | 0002 item 3 | open | Before slice 8 | OI-09, OI-10 |
 | OI-12 | Define the pick budget (10 ms assumed) for the verification plan. | 0002 item 4 | open | Before slice 10 | Agreement on a verification plan change |
 | OI-13 | Define "edges" for the NFR-03 test (feature edges or all triangle edges). | 0002 item 5 | open | Before slice 8 | Agreement on a verification plan change |
@@ -43,3 +42,4 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-15 | egui's bundled fonts (`epaint_default_fonts`): OFL-1.1 and Ubuntu-font-1.0. | 0003 open item 1 | 11 Oct 2026 | Owner accepted both; `deny.toml` keeps them scoped to that crate |
 | OI-18 | Scheduled dependency activity check. | 0003 open item 7 | 11 Oct 2026 | Owner accepted the recommendation: weekly `cargo-unmaintained` job (`.github/workflows/weekly.yml`), Dependabot (`.github/dependabot.yml`) and `cargo deny` advisories; recorded in `docs/dependencies.md` |
 | OI-22 | How CLA signatures are collected. | Contributor agreement | 11 Oct 2026 | Owner chose CLA Assistant Lite (`.github/workflows/cla.yml`); signatures on the `cla-signatures` branch. Follow-up OI-24 |
+| OI-10 | Builds on Windows and macOS (NFR-02). | 0002 item 2; 0003 open item 10 | 11 Oct 2026 | PR #3 CI at `44ed463`: build, clippy, tests and each library alone pass on Windows, macOS and Linux. The NFR-03 frame-rate measurement stays open (OI-09) |

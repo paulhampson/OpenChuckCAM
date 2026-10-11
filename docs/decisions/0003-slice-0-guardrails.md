@@ -2,7 +2,7 @@
 
 - **Status:** proposed, with decision items 2 and 11 and the contributor agreement accepted by the project owner on 11 Oct 2026 and applied to the architecture (see "Owner decisions"). The other choices are what slice 0 builds on.
 - **Date:** 11 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md) (OI-10, OI-16, OI-17, OI-19 to OI-21, OI-23 and OI-24; OI-15, OI-18 and OI-22 are closed).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md) (OI-16, OI-17, OI-19 to OI-21, OI-23 and OI-24; OI-10, OI-15, OI-18 and OI-22 are closed).
 
 ## Context
 
@@ -73,7 +73,7 @@ The register in [docs/open-items.md](../open-items.md) tracks the current state;
 | 7 (OI-18, proposed) | **Scheduled dependency activity check** (verification plan section 7): no tool chosen. Candidates: a small xtask over the crates.io index, or a scheduled `cargo outdated` report. | Slice 0 close | Choice of tool (NFR-14 record) |
 | 8 (OI-19) | **Miri and sanitizers** have nothing to check: `unsafe_code` is denied and there is no FFI. Add the job with the first `unsafe` or FFI code (the STEP kernel, slice 11 after SP-1). | Slice 11 | SP-1 result |
 | 9 (OI-20) | **STEP kernel CI job**, path-filtered so a change to `docs/` or `posts/` does not rebuild it (slice 0 checklist). The `changes` job in `ci.yml` has the filter structure; the job is added with the kernel. | After SP-1 | SP-1 result |
-| 10 (OI-10) | **Three-platform CI has not run yet.** Everything was built and tested on Linux only. The first pull request runs Windows and macOS (0002 outstanding item 2). | First pull request | CI run |
+| 10 (OI-10, closed) | **Three-platform CI has not run yet.** Everything was built and tested on Linux only. The first pull request runs Windows and macOS (0002 outstanding item 2). | First pull request | CI run |
 | 11 (OI-21) | **IR not frozen.** 0001 open items 1 (simulator run), 3 (Z1 A sign and offset), 4 (feed rule on mixed moves) and 7 (tilted tools, off-top contact) may still change the IR or profile fields. | Slices 3, 5 and 6 | 0001 open items |
 
 ## Slice 0 review checklist status
