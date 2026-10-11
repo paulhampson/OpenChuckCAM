@@ -71,3 +71,9 @@ jobs:
       - name: Process isolation over the crash and malformed corpus
         if: always()
         run: ./target/release/sp1-shim isolate ../sp1-step/fixtures/crash/*.step ../sp1-step/fixtures/bad/*.step ../sp1-step/fixtures/cylinder.step
+      - name: Control - relink with the old toolkit-first order and repeat (macOS, Windows)
+        if: always() && runner.os != 'Linux'
+        run: |
+          SP1_LIB_ORDER=toolkit-first cargo build --release > relink.log 2>&1 || { tail -20 relink.log; exit 1; }
+          rc=0; ./target/release/sp1-shim selftest ../sp1-step/fixtures > /tmp/o 2>&1 || rc=$?
+          echo "toolkit-first order: selftest rc=$rc ($(tail -1 /tmp/o))"

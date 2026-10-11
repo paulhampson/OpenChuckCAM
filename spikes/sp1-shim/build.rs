@@ -3,8 +3,7 @@
 // No dependency on opencascade-sys, so its bridge headers (which do not compile under MSVC) are not used.
 use std::path::PathBuf;
 
-// Toolkits needed for STEP read, topology, adaptors, properties and meshing, highest level first
-// so single-pass static linkers (GNU ld) resolve symbols.
+// Toolkits needed for STEP read, topology, adaptors, properties and meshing, highest level first.
 const LIBS: &[&str] = &[
     "TKDESTEP", "TKDE", "TKXCAF", "TKVCAF", "TKCAF", "TKLCAF", "TKCDF", "TKXSBase", "TKMesh",
     "TKShHealing", "TKBool", "TKBO", "TKFillet", "TKOffset", "TKPrim", "TKFeat", "TKTopAlgo",
@@ -14,6 +13,7 @@ const LIBS: &[&str] = &[
 fn main() {
     println!("cargo:rerun-if-changed=cpp/shim.cpp");
     println!("cargo:rerun-if-env-changed=OCCT_ROOT");
+    println!("cargo:rerun-if-env-changed=SP1_LIB_ORDER");
     let root = match std::env::var_os("OCCT_ROOT") {
         Some(r) => PathBuf::from(r),
         None => {
@@ -46,7 +46,14 @@ fn main() {
         println!("cargo:rustc-link-arg=-lpthread");
         println!("cargo:rustc-link-arg=-ldl");
     } else {
-        for l in LIBS {
+        // Link order decides C++ static initialisation order with ld64 and MSVC. With the toolkits
+        // first, macOS segfaulted at exit inside OCCT's Standard_Type registry (a static destroyed
+        // before something that still uses it). TKernel first, as opencascade-sys does, keeps the
+        // kernel's statics initialised first and destroyed last. SP1_LIB_ORDER=toolkit-first
+        // restores the old order so CI can show the difference.
+        let toolkit_first = std::env::var("SP1_LIB_ORDER").as_deref() == Ok("toolkit-first");
+        let libs: Vec<&str> = if toolkit_first { LIBS.to_vec() } else { LIBS.iter().rev().copied().collect() };
+        for l in libs {
             println!("cargo:rustc-link-lib=static={l}");
         }
     }
