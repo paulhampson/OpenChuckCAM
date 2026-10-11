@@ -17,6 +17,7 @@ cargo-fuzz = true
 libfuzzer-sys = "=0.4.13"
 serde_json = { version = "=1.0.152", features = ["float_roundtrip"] }
 openchuck-types = { path = "../crates/openchuck-types" }
+openchuck-project = { path = "../crates/openchuck-project" }
 
 [workspace]
 members = ["."]
@@ -31,6 +32,13 @@ bench = false
 [[bin]]
 name = "toolpath_ir_json"
 path = "fuzz_targets/toolpath_ir_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_files"
+path = "fuzz_targets/project_files.rs"
 test = false
 doc = false
 bench = false

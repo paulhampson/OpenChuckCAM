@@ -2,6 +2,6 @@
 
 The OpenChuckCAM application layer: commands, queries, the event stream, the job manager and the operation pipeline (architecture section 5.7). UI-agnostic; the UI and the CLI are two equal front ends over this API.
 
-**Status:** skeleton from work breakdown slice 0. A project is an empty document until slice 1 defines the project format.
+**Status:** slice 1. Projects are created, opened and saved as folders of TOML files (a folder with none gives `NoProject`, to which a front end offers `create`), and every project edit is a command with undo and redo (decision record 0008).
 
 Licence: AGPL-3.0-or-later.

@@ -13,6 +13,15 @@ authors.workspace = true
 
 [dependencies]
 openchuck-types.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+blake3.workspace = true
+uuid.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true
