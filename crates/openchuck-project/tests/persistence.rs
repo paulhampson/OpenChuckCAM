@@ -1,0 +1,645 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The project folder on disk (work breakdown slice 1 items 2 and 5; decision
+//! records 0006 and 0007). The Git merge scenarios S1 to S6 follow SP-8.
+
+// Test code may unwrap, index and panic (NFR-07 applies to library code).
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{Duration, SystemTime};
+
+use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
+use openchuck_project::{
+    ContentHash, Item, ItemId, ModelRef, Operation, OrderKey, ParameterValue, Placement, Project,
+    ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot, file,
+};
+use openchuck_types::brep::FaceId;
+use openchuck_types::tool::{Tool, ToolShape};
+use openchuck_types::units::Millimetres;
+
+fn temp_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("openchuck-persist-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+const SETUP: SetupId = SetupId::from_u128(10);
+
+fn op_id(n: u128) -> OperationId {
+    OperationId::from_u128(n)
+}
+
+fn model(n: u128) -> ModelRef {
+    ModelRef {
+        id: ModelId::from_u128(n),
+        path: RelativePath::new(format!("models/part{n}.stl")).unwrap(),
+        hash: ContentHash::of_bytes(&n.to_le_bytes()),
+    }
+}
+
+fn operation(n: u128) -> Operation {
+    Operation {
+        id: op_id(n),
+        order: OrderKey::default(),
+        name: format!("Operation {n}"),
+        setup: SETUP,
+        strategy: "helical_finish".into(),
+        tool: Some(ToolId::from_u128(20)),
+        selections: vec![SelectionSetId::from_u128(30)],
+        parameters: BTreeMap::from([
+            ("stepover".into(), ParameterValue::Number(0.5)),
+            ("passes".into(), ParameterValue::Integer(3)),
+            ("climb".into(), ParameterValue::Flag(true)),
+            ("pattern".into(), ParameterValue::Text("spiral".into())),
+        ]),
+    }
+}
+
+/// One model, setup, tool and selection set, and operations 101 to 104.
+fn sample() -> Project {
+    let mut p = Project::new("sample");
+    p.insert(Item::Model(model(1)), Placement::End).unwrap();
+    p.insert(
+        Item::Setup(Setup {
+            id: SETUP,
+            order: OrderKey::default(),
+            name: "Setup 1".into(),
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    p.insert(
+        Item::Tool(ToolSnapshot {
+            id: ToolId::from_u128(20),
+            order: OrderKey::default(),
+            name: "6 mm ball".into(),
+            tool: Tool {
+                shape: ToolShape::BallEnd,
+                diameter: Millimetres(6.0),
+                flute_length: Millimetres(20.0),
+                shank_diameter: Millimetres(6.0),
+                stickout: Millimetres(30.0),
+            },
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    p.insert(
+        Item::SelectionSet(SelectionSet {
+            id: SelectionSetId::from_u128(30),
+            order: OrderKey::default(),
+            name: "Outer faces".into(),
+            model: ModelId::from_u128(1),
+            model_hash: model(1).hash,
+            target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7), FaceId(12)])),
+            descriptors: Vec::new(),
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    for n in 101..=104 {
+        p.insert(Item::Operation(operation(n)), Placement::End)
+            .unwrap();
+    }
+    p
+}
+
+/// Every file under `root` (not `.git`), by relative path.
+fn read_tree(root: &Path) -> BTreeMap<String, String> {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.file_name().is_some_and(|n| n == ".git") {
+                continue;
+            }
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.insert(rel, std::fs::read_to_string(&path).unwrap());
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(root, root, &mut out);
+    out
+}
+
+/// Sets every file's modification time well into the past and returns it.
+fn age_files(root: &Path) -> SystemTime {
+    let past = SystemTime::now() - Duration::from_secs(86_400);
+    for rel in read_tree(root).keys() {
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join(rel))
+            .unwrap();
+        file.set_modified(past).unwrap();
+    }
+    past
+}
+
+fn modified(root: &Path) -> BTreeMap<String, SystemTime> {
+    read_tree(root)
+        .keys()
+        .map(|rel| {
+            let time = std::fs::metadata(root.join(rel))
+                .unwrap()
+                .modified()
+                .unwrap();
+            (rel.clone(), time)
+        })
+        .collect()
+}
+
+/// (files changed, lines changed) between two trees, by a line-by-line
+/// comparison of files with the same path.
+fn diff_size(a: &BTreeMap<String, String>, b: &BTreeMap<String, String>) -> (usize, usize) {
+    let paths: BTreeSet<_> = a.keys().chain(b.keys()).collect();
+    let mut files = 0;
+    let mut lines = 0;
+    for path in paths {
+        let (x, y) = (a.get(path), b.get(path));
+        if x == y {
+            continue;
+        }
+        files += 1;
+        let x: Vec<_> = x.map(|t| t.lines().collect()).unwrap_or_default();
+        let y: Vec<_> = y.map(|t| t.lines().collect()).unwrap_or_default();
+        lines += x.len().max(y.len()) - x.iter().zip(&y).filter(|(p, q)| p == q).count();
+    }
+    (files, lines)
+}
+
+fn set_parameter(p: &mut Project, op: u128, value: f64) {
+    let mut edited = p.operation(op_id(op)).unwrap().clone();
+    edited
+        .parameters
+        .insert("stepover".into(), ParameterValue::Number(value));
+    p.replace(Item::Operation(edited)).unwrap();
+}
+
+fn order_of(p: &Project) -> Vec<u128> {
+    p.operations().iter().map(|o| o.id.as_u128()).collect()
+}
+
+#[test]
+fn req_prj_01_saving_twice_is_byte_identical() {
+    let p = sample();
+    let a = temp_dir("twice-a");
+    let b = temp_dir("twice-b");
+    file::save(&p, &a).unwrap();
+    let first = read_tree(&a);
+    file::save(&p, &a).unwrap();
+    file::save(&p, &b).unwrap();
+    assert_eq!(read_tree(&a), first);
+    assert_eq!(read_tree(&b), first);
+    for (path, text) in &first {
+        assert!(text.ends_with('\n'), "{path} has no final newline");
+        assert!(!text.contains('\r'), "{path} has a carriage return");
+    }
+}
+
+#[test]
+fn req_prj_01_load_then_save_is_a_no_op() {
+    let dir = temp_dir("noop");
+    file::save(&sample(), &dir).unwrap();
+    let before = read_tree(&dir);
+    let past = age_files(&dir);
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, sample());
+    file::save(&loaded, &dir).unwrap();
+    assert_eq!(read_tree(&dir), before);
+    for (path, time) in modified(&dir) {
+        assert_eq!(time, past, "{path} was rewritten");
+    }
+}
+
+#[test]
+fn req_prj_01_windows_line_endings_are_not_rewritten() {
+    let dir = temp_dir("crlf");
+    file::save(&sample(), &dir).unwrap();
+    for (rel, text) in read_tree(&dir) {
+        std::fs::write(dir.join(rel), text.replace('\n', "\r\n")).unwrap();
+    }
+    let past = age_files(&dir);
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, sample());
+    file::save(&loaded, &dir).unwrap();
+    for (path, time) in modified(&dir) {
+        assert_eq!(time, past, "{path} was rewritten");
+    }
+}
+
+#[test]
+fn req_prj_01_one_parameter_edit_changes_one_line() {
+    let dir = temp_dir("one-line");
+    let mut p = sample();
+    file::save(&p, &dir).unwrap();
+    let before = read_tree(&dir);
+    set_parameter(&mut p, 102, 0.25);
+    file::save(&p, &dir).unwrap();
+    assert_eq!(diff_size(&before, &read_tree(&dir)), (1, 1));
+}
+
+#[test]
+fn req_prj_05_reorder_and_add_touch_one_file() {
+    let dir = temp_dir("reorder");
+    let mut p = sample();
+    file::save(&p, &dir).unwrap();
+    let before = read_tree(&dir);
+    p.move_item(ItemId::Operation(op_id(104)), 0).unwrap();
+    file::save(&p, &dir).unwrap();
+    let moved = read_tree(&dir);
+    assert_eq!(diff_size(&before, &moved), (1, 1));
+    assert_eq!(order_of(&file::load(&dir).unwrap()), [104, 101, 102, 103]);
+
+    p.insert(Item::Operation(operation(105)), Placement::Index(2))
+        .unwrap();
+    file::save(&p, &dir).unwrap();
+    assert_eq!(diff_size(&moved, &read_tree(&dir)).0, 1);
+    assert_eq!(
+        order_of(&file::load(&dir).unwrap()),
+        [104, 101, 105, 102, 103]
+    );
+}
+
+#[test]
+fn req_prj_05_removed_items_lose_their_files() {
+    let dir = temp_dir("remove");
+    let mut p = sample();
+    file::save(&p, &dir).unwrap();
+    for n in 101..=104 {
+        p.remove(ItemId::Operation(op_id(n))).unwrap();
+    }
+    file::save(&p, &dir).unwrap();
+    assert!(!dir.join("operations").exists());
+    // Other files in the folder are left alone.
+    std::fs::create_dir_all(dir.join("setups")).unwrap();
+    std::fs::write(dir.join("setups").join("notes.txt"), "mine").unwrap();
+    file::save(&p, &dir).unwrap();
+    assert!(dir.join("setups").join("notes.txt").exists());
+    assert_eq!(file::load(&dir).unwrap(), p);
+}
+
+#[test]
+fn req_prj_06_selections_survive_save_and_load() {
+    let dir = temp_dir("selections");
+    let p = sample();
+    file::save(&p, &dir).unwrap();
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded.selection_sets(), p.selection_sets());
+    assert_eq!(
+        loaded.operations()[0].selections,
+        p.operations()[0].selections
+    );
+}
+
+#[test]
+fn req_prj_03_project_files_hold_no_generated_data() {
+    let dir = temp_dir("no-generated");
+    file::save(&sample(), &dir).unwrap();
+    let folders: BTreeSet<_> = read_tree(&dir)
+        .keys()
+        .map(|path| path.split('/').next().unwrap().to_owned())
+        .collect();
+    let expected: BTreeSet<_> = [
+        "operations",
+        "project.toml",
+        "selections",
+        "setups",
+        "tools",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    assert_eq!(folders, expected);
+}
+
+fn git(dir: &Path, args: &[&str]) -> std::process::Output {
+    Command::new("git")
+        .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
+        .args(["-c", "core.autocrlf=false", "-c", "init.defaultBranch=main"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git must be installed to run this test")
+}
+
+fn git_ok(dir: &Path, args: &[&str]) {
+    let out = git(dir, args);
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Commits the sample, applies `a` and `b` on two branches, saving and
+/// committing each, then merges `a` into `b`. Returns whether the merge was
+/// clean and the folder.
+fn merge(name: &str, a: impl Fn(&mut Project), b: impl Fn(&mut Project)) -> (bool, PathBuf) {
+    let dir = temp_dir(&format!("merge-{name}"));
+    git_ok(&dir, &["init", "-q"]);
+    file::save(&sample(), &dir).unwrap();
+    git_ok(&dir, &["add", "-A"]);
+    git_ok(&dir, &["commit", "-q", "-m", "base"]);
+    for (branch, edit) in [("a", &a as &dyn Fn(&mut Project)), ("b", &b)] {
+        git_ok(&dir, &["checkout", "-q", "-b", branch, "main"]);
+        let mut p = file::load(&dir).unwrap();
+        edit(&mut p);
+        file::save(&p, &dir).unwrap();
+        git_ok(&dir, &["add", "-A"]);
+        git_ok(&dir, &["commit", "-q", "-m", branch]);
+    }
+    let clean = git(&dir, &["merge", "-q", "--no-edit", "a"])
+        .status
+        .success();
+    (clean, dir)
+}
+
+fn merged(name: &str, a: impl Fn(&mut Project), b: impl Fn(&mut Project)) -> Project {
+    let (clean, dir) = merge(name, a, b);
+    assert!(clean, "{name}: the merge conflicted");
+    file::load(&dir).unwrap()
+}
+
+fn param(p: &Project, op: u128) -> Option<&ParameterValue> {
+    p.operation(op_id(op)).unwrap().parameters.get("stepover")
+}
+
+#[test]
+fn req_prj_05_git_merges_of_different_items_are_clean() {
+    // S1: reorder one operation / edit another.
+    let p = merged(
+        "s1",
+        |p| drop(p.move_item(ItemId::Operation(op_id(104)), 0).unwrap()),
+        |p| set_parameter(p, 102, 0.25),
+    );
+    assert_eq!(order_of(&p), [104, 101, 102, 103]);
+    assert_eq!(param(&p, 102), Some(&ParameterValue::Number(0.25)));
+
+    // S2: reorder one operation / edit the same operation.
+    let p = merged(
+        "s2",
+        |p| drop(p.move_item(ItemId::Operation(op_id(104)), 0).unwrap()),
+        |p| set_parameter(p, 104, 0.25),
+    );
+    assert_eq!(order_of(&p), [104, 101, 102, 103]);
+    assert_eq!(param(&p, 104), Some(&ParameterValue::Number(0.25)));
+
+    // S3: move one to the top / move another to the end.
+    let p = merged(
+        "s3",
+        |p| drop(p.move_item(ItemId::Operation(op_id(103)), 0).unwrap()),
+        |p| drop(p.move_item(ItemId::Operation(op_id(102)), 3).unwrap()),
+    );
+    assert_eq!(order_of(&p), [103, 101, 104, 102]);
+
+    // S4: add after the first / add at the end.
+    let p = merged(
+        "s4",
+        |p| {
+            drop(
+                p.insert(Item::Operation(operation(105)), Placement::Index(1))
+                    .unwrap(),
+            )
+        },
+        |p| {
+            drop(
+                p.insert(Item::Operation(operation(106)), Placement::End)
+                    .unwrap(),
+            )
+        },
+    );
+    assert_eq!(order_of(&p), [101, 105, 102, 103, 104, 106]);
+
+    // S5: both add at the same spot; equal keys order by ID.
+    let p = merged(
+        "s5",
+        |p| {
+            drop(
+                p.insert(Item::Operation(operation(106)), Placement::Index(1))
+                    .unwrap(),
+            )
+        },
+        |p| {
+            drop(
+                p.insert(Item::Operation(operation(105)), Placement::Index(1))
+                    .unwrap(),
+            )
+        },
+    );
+    assert_eq!(order_of(&p), [101, 105, 106, 102, 103, 104]);
+    // Inserting between the two equal keys re-keys the upper one only.
+    let mut p = p;
+    p.insert(Item::Operation(operation(107)), Placement::Index(2))
+        .unwrap();
+    assert_eq!(order_of(&p), [101, 105, 107, 106, 102, 103, 104]);
+    p.validate().unwrap();
+
+    // S6: delete one / edit another.
+    let p = merged(
+        "s6",
+        |p| drop(p.remove(ItemId::Operation(op_id(103))).unwrap()),
+        |p| set_parameter(p, 102, 0.25),
+    );
+    assert_eq!(order_of(&p), [101, 102, 104]);
+    assert_eq!(param(&p, 102), Some(&ParameterValue::Number(0.25)));
+}
+
+#[test]
+fn req_prj_05_conflicting_model_additions_are_reported_clearly() {
+    // Model references share project.toml (decision record 0007), so adding
+    // one on each branch conflicts. Loading names the file and line.
+    let (clean, dir) = merge(
+        "models",
+        |p| drop(p.insert(Item::Model(model(2)), Placement::End).unwrap()),
+        |p| drop(p.insert(Item::Model(model(3)), Placement::End).unwrap()),
+    );
+    assert!(!clean);
+    let err = file::load(&dir).unwrap_err();
+    assert!(matches!(err, ProjectError::MergeConflict { .. }), "{err}");
+    let message = err.to_string();
+    assert!(message.contains("project.toml"), "{message}");
+    assert!(
+        message.contains("unresolved merge conflict at line"),
+        "{message}"
+    );
+}
+
+#[test]
+fn req_nfr_07_damaged_project_folders_are_errors() {
+    let base = temp_dir("damaged-base");
+    file::save(&sample(), &base).unwrap();
+    let op_file = "operations/00000000-0000-0000-0000-000000000065.toml";
+
+    // Each case edits one file of a fresh copy and expects this text in the error.
+    // (case name, file to damage, damage, text expected in the error)
+    type Case = (&'static str, &'static str, fn(&str) -> String, &'static str);
+    let cases: &[Case] = &[
+        (
+            "syntax",
+            op_file,
+            |t| format!("{t}\nname = "),
+            "cannot read",
+        ),
+        (
+            "unknown-field",
+            op_file,
+            |t| t.replace("schema = 1\n", "schema = 1\nspeed = 3\n"),
+            "unknown field",
+        ),
+        (
+            "no-schema",
+            op_file,
+            |t| t.replace("schema = 1\n", ""),
+            "no schema version",
+        ),
+        (
+            "newer",
+            "project.toml",
+            |t| t.replace("schema = 1", "schema = 9"),
+            "newer OpenChuckCAM",
+        ),
+        (
+            "bad-key",
+            op_file,
+            |t| t.replace("order = \"V\"", "order = \"V0\""),
+            "order key",
+        ),
+        (
+            "bad-id",
+            op_file,
+            |t| t.replace("setup = \"00000000", "setup = \"x0000000"),
+            "setup ID",
+        ),
+        (
+            "dangling",
+            op_file,
+            |t| t.replace("-00000000000a\"", "-00000000000b\""),
+            "does not exist",
+        ),
+        (
+            "nan",
+            op_file,
+            |t| t.replace("stepover = 0.5", "stepover = nan"),
+            "not a finite number",
+        ),
+    ];
+    for (name, rel, damage, expected) in cases {
+        let dir = temp_dir(&format!("damaged-{name}"));
+        for (path, text) in read_tree(&base) {
+            let target = dir.join(&path);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            let text = if path == *rel { damage(&text) } else { text };
+            std::fs::write(target, text).unwrap();
+        }
+        let err = file::load(&dir).unwrap_err().to_string();
+        assert!(err.contains(expected), "{name}: {err}");
+    }
+
+    // A file not named by an ID, and a file named after another item.
+    let dir = temp_dir("damaged-name");
+    file::save(&sample(), &dir).unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 1\n").unwrap();
+    let err = file::load(&dir).unwrap_err().to_string();
+    assert!(err.contains("not a operation ID"), "{err}");
+    std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
+    std::fs::rename(
+        dir.join(op_file),
+        dir.join("operations/00000000-0000-0000-0000-0000000000ff.toml"),
+    )
+    .unwrap();
+    let err = file::load(&dir).unwrap_err().to_string();
+    assert!(err.contains("not named after it"), "{err}");
+
+    // No project file.
+    let empty = temp_dir("damaged-empty");
+    let err = file::load(&empty).unwrap_err();
+    assert!(matches!(err, ProjectError::NotAProject(_)), "{err}");
+}
+
+#[test]
+fn req_prj_05_long_keys_are_reported_and_renumber_fixes_them() {
+    let mut p = sample();
+    // Inserting again and again right after the first item grows keys.
+    for n in 0..250 {
+        p.insert(Item::Operation(operation(1000 + n)), Placement::Index(1))
+            .unwrap();
+    }
+    assert!(!p.long_order_keys().is_empty());
+    let before = order_of(&p);
+    p.renumber(openchuck_project::ListKind::Operations).unwrap();
+    assert!(p.long_order_keys().is_empty());
+    assert_eq!(order_of(&p), before);
+}
+
+mod parser {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use openchuck_project::file::{FileKind, parse_file};
+    use proptest::prelude::*;
+
+    const KINDS: [FileKind; 5] = [
+        FileKind::Project,
+        FileKind::Setup,
+        FileKind::Tool,
+        FileKind::SelectionSet,
+        FileKind::Operation,
+    ];
+
+    fn kind_of(path: &str) -> FileKind {
+        match path.split('/').next() {
+            Some("setups") => FileKind::Setup,
+            Some("tools") => FileKind::Tool,
+            Some("selections") => FileKind::SelectionSet,
+            Some("operations") => FileKind::Operation,
+            _ => FileKind::Project,
+        }
+    }
+
+    proptest! {
+        // The fuzz target runs this parser for longer in CI; this is the
+        // quick local check that it returns errors, never panics (NFR-07).
+        #[test]
+        fn req_nfr_07_project_file_parser_never_panics_on_text(
+            kind in 0usize..5,
+            text in ".{0,200}",
+        ) {
+            let _ = parse_file(KINDS[kind], &text);
+        }
+
+        #[test]
+        fn req_nfr_07_project_file_parser_never_panics_on_damaged_files(
+            pick in any::<usize>(),
+            at in any::<usize>(),
+            cut in 0usize..20,
+            insert in ".{0,12}",
+        ) {
+            let files = file::render(&sample()).unwrap();
+            let (path, text) = files.iter().nth(pick % files.len()).unwrap();
+            // Damage the text at a character boundary.
+            let mut chars: Vec<char> = text.chars().collect();
+            let at = at % (chars.len() + 1);
+            let end = (at + cut).min(chars.len());
+            chars.splice(at..end, insert.chars());
+            let damaged: String = chars.into_iter().collect();
+            let _ = parse_file(kind_of(path), &damaged);
+            // The undamaged text always parses.
+            prop_assert!(parse_file(kind_of(path), text).is_ok());
+        }
+    }
+}

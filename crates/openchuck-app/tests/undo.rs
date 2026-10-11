@@ -13,8 +13,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{
-    ContentHash, Item, ItemId, MachineRef, ModelRef, Operation, ParameterValue, Project,
-    RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot,
+    ContentHash, Item, ItemId, ListKind, MachineRef, ModelRef, Operation, OrderKey, ParameterValue,
+    Placement, Project, RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot, file,
 };
 use openchuck_app::{AppError, Application, Command, Threads};
 use openchuck_types::brep::FaceId;
@@ -24,8 +24,8 @@ use proptest::prelude::*;
 
 fn open_app(name: &str) -> Application {
     let dir = std::env::temp_dir().join(format!("openchuck-undo-{name}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    Application::open(&dir, Threads::Exactly(1)).unwrap()
+    let _ = std::fs::remove_dir_all(&dir);
+    Application::create(&dir, name, Threads::Exactly(1)).unwrap()
 }
 
 fn tool(diameter: f64) -> Tool {
@@ -41,6 +41,7 @@ fn tool(diameter: f64) -> Tool {
 /// One random edit, chosen against the project as it is when the edit runs.
 #[derive(Debug, Clone)]
 enum Edit {
+    Renumber(usize),
     Rename(String),
     Machine(Option<String>),
     AddSetup(Option<usize>),
@@ -105,7 +106,12 @@ fn edit() -> impl Strategy<Value = Edit> {
             .prop_map(|(pick, tool)| Edit::SetTool { pick, tool }),
         (any::<usize>(), "[A-Z][a-z]{0,6}")
             .prop_map(|(pick, name)| Edit::RenameSetup { pick, name }),
+        (0usize..5).prop_map(Edit::Renumber),
     ]
+}
+
+fn placement(index: Option<usize>) -> Placement {
+    index.map_or(Placement::End, Placement::Index)
 }
 
 fn pick<T>(items: &[T], pick: usize) -> Option<&T> {
@@ -145,17 +151,19 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
         Edit::AddSetup(index) => Command::Add {
             item: Item::Setup(Setup {
                 id: SetupId::from_u128(id),
+                order: OrderKey::default(),
                 name: format!("Setup {id}"),
             }),
-            index,
+            placement: placement(index),
         },
         Edit::AddTool(diameter) => Command::Add {
             item: Item::Tool(ToolSnapshot {
                 id: ToolId::from_u128(id),
+                order: OrderKey::default(),
                 name: format!("{diameter} mm"),
                 tool: tool(diameter),
             }),
-            index: None,
+            placement: Placement::End,
         },
         Edit::AddModel => Command::Add {
             item: Item::Model(ModelRef {
@@ -163,13 +171,14 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                 path: RelativePath::new(format!("models/m{id}.stl")).unwrap(),
                 hash: ContentHash::of_bytes(&id.to_le_bytes()),
             }),
-            index: None,
+            placement: Placement::End,
         },
         Edit::AddSelection { pick: n, faces } => {
             let model = pick(p.models(), n)?;
             Command::Add {
                 item: Item::SelectionSet(SelectionSet {
                     id: SelectionSetId::from_u128(id),
+                    order: OrderKey::default(),
                     name: format!("Set {id}"),
                     model: model.id,
                     model_hash: model.hash,
@@ -178,7 +187,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                     ),
                     descriptors: Vec::new(),
                 }),
-                index: None,
+                placement: Placement::End,
             }
         }
         Edit::AddOperation { pick: n, index } => {
@@ -186,6 +195,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
             Command::Add {
                 item: Item::Operation(Operation {
                     id: OperationId::from_u128(id),
+                    order: OrderKey::default(),
                     name: format!("Op {id}"),
                     setup: setup.id,
                     strategy: "helical_finish".into(),
@@ -196,7 +206,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                         .collect(),
                     parameters: BTreeMap::new(),
                 }),
-                index,
+                placement: placement(index),
             }
         }
         Edit::Remove { kind, pick: n } => Command::Remove(*pick(&item_ids(p, kind), n)?),
@@ -222,6 +232,15 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
             op.tool = tool.and_then(|t| pick(p.tools(), t)).map(|t| t.id);
             Command::Replace(Item::Operation(op))
         }
+        Edit::Renumber(kind) => Command::Renumber(
+            [
+                ListKind::Models,
+                ListKind::Setups,
+                ListKind::Tools,
+                ListKind::SelectionSets,
+                ListKind::Operations,
+            ][kind],
+        ),
         Edit::RenameSetup { pick: n, name } => {
             let mut setup = pick(p.setups(), n)?.clone();
             setup.name = name;
@@ -250,14 +269,15 @@ fn run(app: &mut Application, edits: Vec<Edit>, next: &mut u128) -> usize {
     recorded
 }
 
+/// The project as saved: every file's path and bytes (verification plan,
+/// UI-08: "byte for byte").
 fn snapshot(p: &Project) -> String {
-    // Debug output tells -0.0 from 0.0, so it is stricter than equality. The
-    // byte-for-byte check against the saved file arrives with SP-8.
-    format!("{p:#?}")
+    format!("{:?}", file::render(p).unwrap())
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
+
 
     #[test]
     fn req_ui_08_full_undo_restores_and_redo_reapplies(
@@ -295,9 +315,10 @@ fn req_ui_08_new_command_clears_redo_and_failed_command_is_not_recorded() {
     app.execute(Command::Add {
         item: Item::Setup(Setup {
             id: setup,
+            order: OrderKey::default(),
             name: "Setup 1".into(),
         }),
-        index: None,
+        placement: Placement::End,
     })
     .unwrap();
     app.execute(Command::RenameProject("renamed".into()))

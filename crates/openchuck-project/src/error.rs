@@ -24,6 +24,43 @@ pub enum ProjectError {
         /// What is wrong with it.
         reason: &'static str,
     },
+    /// An order key is not valid.
+    #[error("invalid order key '{key}': {reason}")]
+    InvalidOrderKey {
+        /// The key found.
+        key: String,
+        /// What is wrong with it.
+        reason: &'static str,
+    },
+    /// A project file still holds Git merge conflict markers.
+    #[error("'{}' has an unresolved merge conflict at line {line}; resolve it in Git, then open the project again", path.display())]
+    MergeConflict {
+        /// The file.
+        path: PathBuf,
+        /// The first marker's line, from 1.
+        line: usize,
+    },
+    /// A project file was written by a newer version of OpenChuckCAM.
+    #[error("'{}' uses project schema {found}, but this version reads up to {supported}; open it with a newer OpenChuckCAM", path.display())]
+    SchemaTooNew {
+        /// The file.
+        path: PathBuf,
+        /// Its schema version.
+        found: i64,
+        /// The newest this build reads.
+        supported: i64,
+    },
+    /// A project file could not be read as a project file.
+    #[error("cannot read '{}': {reason}", path.display())]
+    BadFile {
+        /// The file.
+        path: PathBuf,
+        /// What is wrong, from the parser or a check.
+        reason: String,
+    },
+    /// The folder has no `project.toml`.
+    #[error("'{}' is not a project folder: it has no project.toml", .0.display())]
+    NotAProject(PathBuf),
     /// Two items share an ID.
     #[error("two items use the {kind} ID {id}")]
     DuplicateId {

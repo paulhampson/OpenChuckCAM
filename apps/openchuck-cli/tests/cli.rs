@@ -33,7 +33,9 @@ fn run(args: &[&std::ffi::OsStr]) -> Outcome {
 
 fn empty_project(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("openchuck-{name}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let out = run(&["new".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
     dir
 }
 
@@ -107,4 +109,56 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
     assert_eq!(out.code, Some(2));
     assert!(out.stderr.contains("unexpected argument"), "{}", out.stderr);
     assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+}
+
+#[test]
+fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
+    let project = empty_project("resave");
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(text.starts_with("schema = 1\n"), "{text}");
+    let out = run(&["resave".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(
+        std::fs::read_to_string(project.join("project.toml")).unwrap(),
+        text
+    );
+    // A second `new` in the same folder is refused.
+    let out = run(&["new".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("already exists"), "{}", out.stderr);
+}
+
+#[test]
+fn req_prj_02_cli_validate_reports_a_changed_model() {
+    let project = empty_project("model-check");
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    std::fs::write(project.join("models/part.stl"), "solid part").unwrap();
+    // A recorded hash that does not match the file, as after an edit.
+    let hash = "blake3:0e8cb5af4c10b1b6c8b8f3b5c8f4c6c8b0a5e5f4a9d8b1c2e3f4a5b6c7d8e9f0";
+    let file = project.join("project.toml");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("models = []\n"), "{text}");
+    let text = text.replace(
+        "models = []\n",
+        &format!(
+            "\n[[models]]\nid = \"00000000-0000-0000-0000-000000000001\"\npath = \"models/part.stl\"\nhash = \"{hash}\"\n"
+        ),
+    );
+    std::fs::write(&file, text).unwrap();
+    let out = run(&["validate".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(1), "{}", out.stdout);
+    assert!(
+        out.stderr.contains("has changed since it was added"),
+        "{}",
+        out.stderr
+    );
+}
+
+#[test]
+fn req_nfr_07_cli_reports_a_folder_without_a_project() {
+    let dir = std::env::temp_dir().join(format!("openchuck-bare-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = run(&["validate".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("has no project.toml"), "{}", out.stderr);
 }

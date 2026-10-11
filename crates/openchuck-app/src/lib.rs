@@ -8,9 +8,8 @@
 //! caller's thread (UI-09, NFR-04).
 //!
 //! Every project edit is a [`Command`] and can be undone and redone (UI-08).
-//! Saving and loading the project folder (TOML, decision record 0006) is not
-//! built yet (decision record 0007, OI-37), so an existing folder still opens
-//! as an empty project, and regeneration runs the
+//! Projects are folders of TOML files (decision records 0006 and 0007). No
+//! strategy exists yet, and regeneration runs the
 //! pipeline over no operations and produces an empty toolpath.
 
 #![warn(missing_docs)]
@@ -24,7 +23,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use command::History;
-use openchuck_project::Project;
+use openchuck_project::id::ModelId;
+use openchuck_project::{ModelCheck, Project};
 
 pub use command::Command;
 pub use error::AppError;
@@ -120,38 +120,52 @@ pub struct Application {
 impl Application {
     /// Opens the project in `folder` with a worker pool of `threads`.
     ///
-    /// Until project loading is built (decision record 0007, OI-37) an
-    /// existing folder opens as an empty project named after the folder. A
-    /// missing path or a path to a file is an error.
+    /// A missing path, a path to a file, a folder with no `project.toml` and a
+    /// damaged project are errors with a message for the user (NFR-07).
     pub fn open(folder: &Path, threads: Threads) -> Result<Self, AppError> {
-        let metadata = std::fs::metadata(folder).map_err(|source| {
-            if source.kind() == std::io::ErrorKind::NotFound {
-                AppError::ProjectNotFound(folder.to_path_buf())
-            } else {
-                AppError::Io {
-                    path: folder.to_path_buf(),
-                    source,
-                }
-            }
-        })?;
-        if !metadata.is_dir() {
-            return Err(AppError::NotAProjectFolder(folder.to_path_buf()));
-        }
+        check_folder(folder)?;
+        let project = openchuck_project::file::load(folder)?;
+        Self::with_project(folder, project, threads)
+    }
+
+    /// Creates a new, empty project named `name` in `folder` (created if
+    /// needed) and opens it. Fails if the folder already holds a project.
+    pub fn create(folder: &Path, name: &str, threads: Threads) -> Result<Self, AppError> {
+        let project = openchuck_project::file::create(folder, name)?;
+        Self::with_project(folder, project, threads)
+    }
+
+    fn with_project(folder: &Path, project: Project, threads: Threads) -> Result<Self, AppError> {
         let (events_tx, events_rx) = channel();
-        let name = folder
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
         Ok(Self {
             document: Document {
                 location: folder.to_path_buf(),
-                project: Project::new(name),
+                project,
             },
             history: History::default(),
             jobs: JobManager::new(threads)?,
             events_tx,
             events_rx,
         })
+    }
+
+    /// Saves the project to its folder. Only changed files are written
+    /// (PRJ-01).
+    pub fn save(&self) -> Result<(), AppError> {
+        Ok(openchuck_project::file::save(
+            &self.document.project,
+            &self.document.location,
+        )?)
+    }
+
+    /// Checks every model file against its recorded content hash (PRJ-02).
+    pub fn check_models(&self) -> Result<Vec<(ModelId, ModelCheck)>, AppError> {
+        self.document
+            .project
+            .models()
+            .iter()
+            .map(|m| Ok((m.id, m.check(&self.document.location)?)))
+            .collect()
     }
 
     /// Applies a command and records it for undo. On error the project is
@@ -214,5 +228,24 @@ impl Application {
     /// Regenerates and waits for the result.
     pub fn regenerate(&self) -> Result<Regeneration, AppError> {
         self.start_regenerate().wait()
+    }
+}
+
+/// Fails unless `folder` is an existing folder.
+fn check_folder(folder: &Path) -> Result<(), AppError> {
+    let metadata = std::fs::metadata(folder).map_err(|source| {
+        if source.kind() == std::io::ErrorKind::NotFound {
+            AppError::ProjectNotFound(folder.to_path_buf())
+        } else {
+            AppError::Io {
+                path: folder.to_path_buf(),
+                source,
+            }
+        }
+    })?;
+    if metadata.is_dir() {
+        Ok(())
+    } else {
+        Err(AppError::NotAProjectFolder(folder.to_path_buf()))
     }
 }

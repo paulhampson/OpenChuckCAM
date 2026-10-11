@@ -1,0 +1,618 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The project folder on disk (PRJ-01, PRJ-04; decision records 0006 and 0007).
+//!
+//! ```text
+//! project.toml            schema, name, machine reference, model references
+//! setups/<id>.toml        one file per setup
+//! tools/<id>.toml         one file per tool snapshot
+//! selections/<id>.toml    one file per selection set
+//! operations/<id>.toml    one file per operation
+//! .openchuck-cache/       generated data, ignored by Git (PRJ-03)
+//! ```
+//!
+//! Every file is TOML written through `serde` and `toml`, starts with
+//! `schema`, the project folder's schema version, and ends with a newline.
+//! Files are written only when their text changes, so a load then save leaves
+//! the folder untouched, and the files of removed items are deleted. Each file
+//! is written to a temporary file and renamed into place.
+//!
+//! Loading checks, in order: unresolved Git merge conflict markers (two
+//! branches that both add a model conflict in `project.toml`), TOML syntax,
+//! the schema version (newer is refused, older is migrated step by step on the
+//! raw TOML), the typed fields (unknown fields are refused), that each item
+//! file's name is its ID, and finally the whole document (`Project::validate`).
+//! Files that do not end in `.toml` are ignored.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+
+use crate::error::ProjectError;
+use crate::hash::ContentHash;
+use crate::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
+use crate::model::{
+    Descriptor, MachineRef, ModelRef, Operation, ParameterValue, Project, SelectionSet,
+    SelectionTarget, Setup, ToolSnapshot,
+};
+use crate::order::OrderKey;
+
+/// The project folder schema version this build writes and reads.
+pub const SCHEMA: i64 = 1;
+
+/// Name of the project file in the project folder.
+pub const PROJECT_FILE: &str = "project.toml";
+
+/// One schema step: changes a file's raw TOML from version `n` to `n + 1`.
+/// Fails with a message when the file cannot be migrated.
+pub type Migration = fn(FileKind, &mut toml::Table) -> Result<(), String>;
+
+/// The migrations from each older schema to the next, oldest first. Entry `i`
+/// takes schema `SCHEMA - MIGRATIONS.len() + i` one step forward. Schema 1 is
+/// the first, so there are none yet.
+const MIGRATIONS: &[Migration] = &[];
+
+/// The kinds of file in a project folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FileKind {
+    /// `project.toml`.
+    Project,
+    /// A setup file.
+    Setup,
+    /// A tool snapshot file.
+    Tool,
+    /// A selection set file.
+    SelectionSet,
+    /// An operation file.
+    Operation,
+}
+
+impl FileKind {
+    /// The folder that holds this kind of item file, if it is one.
+    pub fn folder(self) -> Option<&'static str> {
+        match self {
+            Self::Project => None,
+            Self::Setup => Some("setups"),
+            Self::Tool => Some("tools"),
+            Self::SelectionSet => Some("selections"),
+            Self::Operation => Some("operations"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectFile {
+    schema: i64,
+    name: String,
+    machine: Option<MachineRef>,
+    #[serde(default)]
+    models: Vec<ModelRef>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetupFile {
+    schema: i64,
+    id: SetupId,
+    order: OrderKey,
+    name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolFile {
+    schema: i64,
+    id: ToolId,
+    order: OrderKey,
+    name: String,
+    tool: openchuck_types::tool::Tool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SelectionFile {
+    schema: i64,
+    id: SelectionSetId,
+    order: OrderKey,
+    name: String,
+    model: ModelId,
+    model_hash: ContentHash,
+    target: SelectionTarget,
+    #[serde(default)]
+    descriptors: Vec<Descriptor>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperationFile {
+    schema: i64,
+    id: OperationId,
+    order: OrderKey,
+    name: String,
+    setup: SetupId,
+    strategy: String,
+    tool: Option<ToolId>,
+    #[serde(default)]
+    selections: Vec<SelectionSetId>,
+    #[serde(default)]
+    parameters: BTreeMap<String, ParameterValue>,
+}
+
+/// Every file of `project` as (path relative to the project folder, text),
+/// in path order. Paths use `/`.
+pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectError> {
+    project.validate()?;
+    let mut files = BTreeMap::new();
+    let project_file = ProjectFile {
+        schema: SCHEMA,
+        name: project.name().to_owned(),
+        machine: project.machine().cloned(),
+        models: project.models().to_vec(),
+    };
+    files.insert(PROJECT_FILE.to_owned(), to_text(&project_file)?);
+    for s in project.setups() {
+        let file = SetupFile {
+            schema: SCHEMA,
+            id: s.id,
+            order: s.order.clone(),
+            name: s.name.clone(),
+        };
+        files.insert(item_path(FileKind::Setup, &s.id), to_text(&file)?);
+    }
+    for t in project.tools() {
+        let file = ToolFile {
+            schema: SCHEMA,
+            id: t.id,
+            order: t.order.clone(),
+            name: t.name.clone(),
+            tool: t.tool.clone(),
+        };
+        files.insert(item_path(FileKind::Tool, &t.id), to_text(&file)?);
+    }
+    for s in project.selection_sets() {
+        let file = SelectionFile {
+            schema: SCHEMA,
+            id: s.id,
+            order: s.order.clone(),
+            name: s.name.clone(),
+            model: s.model,
+            model_hash: s.model_hash,
+            target: s.target.clone(),
+            descriptors: s.descriptors.clone(),
+        };
+        files.insert(item_path(FileKind::SelectionSet, &s.id), to_text(&file)?);
+    }
+    for o in project.operations() {
+        let file = OperationFile {
+            schema: SCHEMA,
+            id: o.id,
+            order: o.order.clone(),
+            name: o.name.clone(),
+            setup: o.setup,
+            strategy: o.strategy.clone(),
+            tool: o.tool,
+            selections: o.selections.clone(),
+            parameters: o.parameters.clone(),
+        };
+        files.insert(item_path(FileKind::Operation, &o.id), to_text(&file)?);
+    }
+    Ok(files)
+}
+
+/// Saves `project` into the folder `root`, creating it if needed. Only files
+/// whose text changes are written, and the files of removed items are deleted.
+pub fn save(project: &Project, root: &Path) -> Result<(), ProjectError> {
+    let files = render(project)?;
+    std::fs::create_dir_all(root).map_err(io(root))?;
+    for (relative, text) in &files {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(io(parent))?;
+        }
+        write_if_changed(&path, text)?;
+    }
+    for kind in [
+        FileKind::Setup,
+        FileKind::Tool,
+        FileKind::SelectionSet,
+        FileKind::Operation,
+    ] {
+        let Some(folder) = kind.folder() else {
+            continue;
+        };
+        let dir = root.join(folder);
+        for (stem, path) in item_files(&dir)? {
+            if !files.contains_key(&format!("{folder}/{stem}.toml")) && is_item_name(kind, &stem) {
+                std::fs::remove_file(&path).map_err(io(&path))?;
+            }
+        }
+        // An emptied folder goes too; Git does not track empty folders.
+        if dir.is_dir() && item_files(&dir)?.is_empty() {
+            let _ = std::fs::remove_dir(&dir);
+        }
+    }
+    Ok(())
+}
+
+/// Creates a new project folder at `root` holding an empty project.
+/// Fails if `root` already holds a project.
+pub fn create(root: &Path, name: &str) -> Result<Project, ProjectError> {
+    let project_file = root.join(PROJECT_FILE);
+    if project_file.exists() {
+        return Err(ProjectError::BadFile {
+            path: project_file,
+            reason: "a project already exists here".to_owned(),
+        });
+    }
+    let project = Project::new(name);
+    save(&project, root)?;
+    Ok(project)
+}
+
+/// Loads the project in the folder `root`.
+pub fn load(root: &Path) -> Result<Project, ProjectError> {
+    load_with(root, MIGRATIONS, SCHEMA)
+}
+
+/// Parses and checks the text of one project file of `kind`, as loading does,
+/// without the cross-file checks. For fuzzing and tools.
+pub fn parse_file(kind: FileKind, text: &str) -> Result<(), ProjectError> {
+    let path = Path::new(match kind {
+        FileKind::Project => PROJECT_FILE,
+        _ => "item.toml",
+    });
+    match kind {
+        FileKind::Project => parse::<ProjectFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop),
+        FileKind::Setup => parse::<SetupFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop),
+        FileKind::Tool => parse::<ToolFile>(path, text, kind, MIGRATIONS, SCHEMA)
+            .and_then(|f| Ok(f.tool.validate()?)),
+        FileKind::SelectionSet => {
+            parse::<SelectionFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop)
+        }
+        FileKind::Operation => {
+            parse::<OperationFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop)
+        }
+    }
+}
+
+fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Project, ProjectError> {
+    let project_path = root.join(PROJECT_FILE);
+    let text = match std::fs::read_to_string(&project_path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && root.is_dir() => {
+            return Err(ProjectError::NotAProject(root.to_path_buf()));
+        }
+        Err(e) => return Err(io(&project_path)(e)),
+    };
+    let file: ProjectFile = parse(&project_path, &text, FileKind::Project, migrations, schema)?;
+
+    let setups = read_items::<SetupFile>(root, FileKind::Setup, migrations, schema)?
+        .into_iter()
+        .map(|(path, f)| {
+            check_name(&path, &f.id)?;
+            Ok(Setup {
+                id: f.id,
+                order: f.order,
+                name: f.name,
+            })
+        })
+        .collect::<Result<Vec<_>, ProjectError>>()?;
+    let tools = read_items::<ToolFile>(root, FileKind::Tool, migrations, schema)?
+        .into_iter()
+        .map(|(path, f)| {
+            check_name(&path, &f.id)?;
+            Ok(ToolSnapshot {
+                id: f.id,
+                order: f.order,
+                name: f.name,
+                tool: f.tool,
+            })
+        })
+        .collect::<Result<Vec<_>, ProjectError>>()?;
+    let selection_sets =
+        read_items::<SelectionFile>(root, FileKind::SelectionSet, migrations, schema)?
+            .into_iter()
+            .map(|(path, f)| {
+                check_name(&path, &f.id)?;
+                Ok(SelectionSet {
+                    id: f.id,
+                    order: f.order,
+                    name: f.name,
+                    model: f.model,
+                    model_hash: f.model_hash,
+                    target: f.target,
+                    descriptors: f.descriptors,
+                })
+            })
+            .collect::<Result<Vec<_>, ProjectError>>()?;
+    let operations = read_items::<OperationFile>(root, FileKind::Operation, migrations, schema)?
+        .into_iter()
+        .map(|(path, f)| {
+            check_name(&path, &f.id)?;
+            Ok(Operation {
+                id: f.id,
+                order: f.order,
+                name: f.name,
+                setup: f.setup,
+                strategy: f.strategy,
+                tool: f.tool,
+                selections: f.selections,
+                parameters: f.parameters,
+            })
+        })
+        .collect::<Result<Vec<_>, ProjectError>>()?;
+
+    Project::from_parts(
+        file.name,
+        file.machine,
+        file.models,
+        setups,
+        tools,
+        selection_sets,
+        operations,
+    )
+    .map_err(|e| ProjectError::BadFile {
+        path: root.to_path_buf(),
+        reason: e.to_string(),
+    })
+}
+
+/// Reads every item file of `kind`, in file name order.
+fn read_items<T: DeserializeOwned>(
+    root: &Path,
+    kind: FileKind,
+    migrations: &[Migration],
+    schema: i64,
+) -> Result<Vec<(PathBuf, T)>, ProjectError> {
+    let Some(folder) = kind.folder() else {
+        return Ok(Vec::new());
+    };
+    let mut items = Vec::new();
+    for (stem, path) in item_files(&root.join(folder))? {
+        if !is_item_name(kind, &stem) {
+            return Err(ProjectError::BadFile {
+                path,
+                reason: format!("the file name is not a {} ID", kind_name(kind)),
+            });
+        }
+        let text = std::fs::read_to_string(&path).map_err(io(&path))?;
+        let item = parse(&path, &text, kind, migrations, schema)?;
+        items.push((path, item));
+    }
+    Ok(items)
+}
+
+/// The `.toml` files directly in `dir` as (file stem, path), sorted by name.
+/// A missing folder has none.
+fn item_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, ProjectError> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(io(dir)(e)),
+    };
+    let mut files = Vec::new();
+    for entry in entries {
+        let path = entry.map_err(io(dir))?.path();
+        if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("toml") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        files.push((stem, path));
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn kind_name(kind: FileKind) -> &'static str {
+    match kind {
+        FileKind::Project => "project",
+        FileKind::Setup => SetupId::KIND,
+        FileKind::Tool => ToolId::KIND,
+        FileKind::SelectionSet => SelectionSetId::KIND,
+        FileKind::Operation => OperationId::KIND,
+    }
+}
+
+fn is_item_name(kind: FileKind, stem: &str) -> bool {
+    match kind {
+        FileKind::Project => false,
+        FileKind::Setup => stem.parse::<SetupId>().is_ok(),
+        FileKind::Tool => stem.parse::<ToolId>().is_ok(),
+        FileKind::SelectionSet => stem.parse::<SelectionSetId>().is_ok(),
+        FileKind::Operation => stem.parse::<OperationId>().is_ok(),
+    }
+}
+
+/// Fails unless the file at `path` is named after `id`.
+fn check_name(path: &Path, id: &impl std::fmt::Display) -> Result<(), ProjectError> {
+    let id = id.to_string();
+    if path.file_stem().and_then(|s| s.to_str()) == Some(id.as_str()) {
+        Ok(())
+    } else {
+        Err(ProjectError::BadFile {
+            path: path.to_path_buf(),
+            reason: format!("the file holds item {id}, but is not named after it"),
+        })
+    }
+}
+
+fn item_path(kind: FileKind, id: &impl std::fmt::Display) -> String {
+    format!("{}/{id}.toml", kind.folder().unwrap_or_default())
+}
+
+fn to_text<T: Serialize>(value: &T) -> Result<String, ProjectError> {
+    let mut text = toml::to_string_pretty(value).map_err(|e| ProjectError::BadFile {
+        path: PathBuf::new(),
+        reason: format!("cannot write TOML: {e}"),
+    })?;
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    Ok(text)
+}
+
+/// The line (from 1) of the first Git merge conflict marker in `text`.
+fn conflict_line(text: &str) -> Option<usize> {
+    text.lines()
+        .position(|line| {
+            let line = line.trim_end_matches('\r');
+            line.starts_with("<<<<<<<")
+                || line.starts_with(">>>>>>>")
+                || line.starts_with("|||||||")
+                || line == "======="
+        })
+        .map(|i| i + 1)
+}
+
+/// Checks, migrates and deserialises one file's text.
+fn parse<T: DeserializeOwned>(
+    path: &Path,
+    text: &str,
+    kind: FileKind,
+    migrations: &[Migration],
+    current: i64,
+) -> Result<T, ProjectError> {
+    let bad = |reason: String| ProjectError::BadFile {
+        path: path.to_path_buf(),
+        reason,
+    };
+    if let Some(line) = conflict_line(text) {
+        return Err(ProjectError::MergeConflict {
+            path: path.to_path_buf(),
+            line,
+        });
+    }
+    let mut table: toml::Table = text
+        .parse()
+        .map_err(|e: toml::de::Error| bad(e.to_string()))?;
+    let schema = table
+        .get("schema")
+        .and_then(toml::Value::as_integer)
+        .ok_or_else(|| bad("the file has no schema version".to_owned()))?;
+    if schema > current {
+        return Err(ProjectError::SchemaTooNew {
+            path: path.to_path_buf(),
+            found: schema,
+            supported: current,
+        });
+    }
+    let oldest = current - migrations.len() as i64;
+    if schema < oldest {
+        return Err(bad(format!(
+            "schema {schema} is not a version this build can read (oldest {oldest})"
+        )));
+    }
+    for step in migrations.iter().skip((schema - oldest) as usize) {
+        step(kind, &mut table).map_err(&bad)?;
+    }
+    table.insert("schema".to_owned(), toml::Value::Integer(current));
+    table
+        .try_into()
+        .map_err(|e: toml::de::Error| bad(e.to_string()))
+}
+
+/// Writes `text` unless the file already holds it (line endings aside, so a
+/// checkout with Windows line endings is not rewritten).
+fn write_if_changed(path: &Path, text: &str) -> Result<(), ProjectError> {
+    match std::fs::read_to_string(path) {
+        Ok(current) if current.replace("\r\n", "\n") == text => return Ok(()),
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
+        Err(e) => return Err(io(path)(e)),
+    }
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(".tmp");
+    let temp = PathBuf::from(temp);
+    std::fs::write(&temp, text).map_err(io(&temp))?;
+    std::fs::rename(&temp, path).map_err(io(path))
+}
+
+fn io(path: &Path) -> impl Fn(std::io::Error) -> ProjectError + '_ {
+    move |source| ProjectError::Io {
+        path: path.to_path_buf(),
+        source,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
+    use super::*;
+
+    /// A test-only step from schema 0, where the project name was called
+    /// `title`, to schema 1. The real list is empty because schema 1 is the
+    /// first (decision record 0007).
+    fn rename_title(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+        if kind == FileKind::Project {
+            let title = table
+                .remove("title")
+                .ok_or_else(|| "a schema 0 project file needs a title".to_owned())?;
+            table.insert("name".to_owned(), title);
+        }
+        Ok(())
+    }
+
+    fn fixture() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-0")
+    }
+
+    #[test]
+    fn req_prj_04_older_schema_migrates_on_load() {
+        let project = load_with(&fixture(), &[rename_title], 1).unwrap();
+        assert_eq!(project.name(), "Schema 0 fixture");
+        assert_eq!(project.operations().len(), 1);
+        assert_eq!(project.setups().len(), 1);
+        // Without the step the same folder is refused with a clear message.
+        let err = load_with(&fixture(), &[], 1).unwrap_err();
+        assert!(err.to_string().contains("schema 0"), "{err}");
+    }
+
+    #[test]
+    fn req_prj_04_newer_schema_is_refused() {
+        let err = parse::<ProjectFile>(
+            Path::new(PROJECT_FILE),
+            "schema = 2\nname = \"x\"\n",
+            FileKind::Project,
+            MIGRATIONS,
+            SCHEMA,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, ProjectError::SchemaTooNew { found: 2, .. }),
+            "{err}"
+        );
+        assert!(err.to_string().contains("newer OpenChuckCAM"), "{err}");
+    }
+
+    #[test]
+    fn req_prj_04_every_file_records_the_schema() {
+        let mut project = Project::new("p");
+        project
+            .insert(
+                crate::Item::Setup(Setup {
+                    id: SetupId::from_u128(1),
+                    order: OrderKey::default(),
+                    name: "s".into(),
+                }),
+                crate::Placement::End,
+            )
+            .unwrap();
+        for (path, text) in render(&project).unwrap() {
+            assert!(text.starts_with("schema = 1\n"), "{path}: {text}");
+        }
+    }
+
+    #[test]
+    fn conflict_markers_are_found_by_line() {
+        let text = "schema = 1\n<<<<<<< HEAD\nname = \"a\"\n=======\nname = \"b\"\n>>>>>>> other\n";
+        assert_eq!(conflict_line(text), Some(2));
+        assert_eq!(conflict_line("name = \"=======\"\n"), None);
+    }
+}

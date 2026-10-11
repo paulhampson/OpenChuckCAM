@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, ModelCheck, ModelRef, Operation, ParameterValue, Project,
-    ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot, cache,
+    ContentHash, Item, ItemId, ModelCheck, ModelRef, OldPlace, Operation, OrderKey, ParameterValue,
+    Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
+    ToolSnapshot, cache,
 };
 use openchuck_types::brep::FaceId;
 use openchuck_types::tool::{Tool, ToolShape};
@@ -50,6 +51,7 @@ fn model(id: u128) -> ModelRef {
 fn operation(id: u128, setup: SetupId) -> Operation {
     Operation {
         id: OperationId::from_u128(id),
+        order: OrderKey::default(),
         name: format!("Operation {id}"),
         setup,
         strategy: "helical_finish".into(),
@@ -65,40 +67,43 @@ fn sample() -> Project {
     let tool_id = ToolId::from_u128(20);
     let set = SelectionSetId::from_u128(30);
     let mut p = Project::new("sample");
-    p.insert(Item::Model(model(1)), None).unwrap();
+    p.insert(Item::Model(model(1)), Placement::End).unwrap();
     p.insert(
         Item::Setup(Setup {
             id: setup,
+            order: OrderKey::default(),
             name: "Setup 1".into(),
         }),
-        None,
+        Placement::End,
     )
     .unwrap();
     p.insert(
         Item::Tool(ToolSnapshot {
             id: tool_id,
+            order: OrderKey::default(),
             name: "6 mm ball".into(),
             tool: tool(),
         }),
-        None,
+        Placement::End,
     )
     .unwrap();
     p.insert(
         Item::SelectionSet(SelectionSet {
             id: set,
+            order: OrderKey::default(),
             name: "Top faces".into(),
             model: ModelId::from_u128(1),
             model_hash: model(1).hash,
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7)])),
             descriptors: Vec::new(),
         }),
-        None,
+        Placement::End,
     )
     .unwrap();
     let mut op = operation(40, setup);
     op.tool = Some(tool_id);
     op.selections = vec![set];
-    p.insert(Item::Operation(op), None).unwrap();
+    p.insert(Item::Operation(op), Placement::End).unwrap();
     p.validate().unwrap();
     p
 }
@@ -125,15 +130,18 @@ fn req_prj_05_ids_are_unique_and_references_must_exist() {
 
     let duplicate = Item::Setup(Setup {
         id: setup,
+        order: OrderKey::default(),
         name: "again".into(),
     });
     assert!(matches!(
-        p.insert(duplicate, None),
+        p.insert(duplicate, Placement::End),
         Err(ProjectError::DuplicateId { .. })
     ));
 
     let orphan = operation(41, SetupId::from_u128(99));
-    let err = p.insert(Item::Operation(orphan), None).unwrap_err();
+    let err = p
+        .insert(Item::Operation(orphan), Placement::End)
+        .unwrap_err();
     assert!(matches!(err, ProjectError::UnknownReference { .. }));
     assert!(err.to_string().contains("does not exist"), "{err}");
 
@@ -168,12 +176,16 @@ fn req_prj_05_reorder_keeps_ids_and_contents() {
     let mut p = sample();
     let setup = SetupId::from_u128(10);
     for id in 41..44 {
-        p.insert(Item::Operation(operation(id, setup)), None)
+        p.insert(Item::Operation(operation(id, setup)), Placement::End)
             .unwrap();
     }
     let before: BTreeSet<_> = p.operations().iter().map(|o| o.id).collect();
     let moved = ItemId::Operation(OperationId::from_u128(43));
-    assert_eq!(p.move_item(moved, 0).unwrap(), 3);
+    match p.move_item(moved, 0).unwrap() {
+        // Only the moved item's key changes, so one file changes.
+        OldPlace::Keys(old) => assert_eq!(old.len(), 1),
+        other => panic!("expected keys, got {other:?}"),
+    }
     let order: Vec<_> = p.operations().iter().map(|o| o.id.as_u128()).collect();
     assert_eq!(order, [43, 40, 41, 42]);
     let after: BTreeSet<_> = p.operations().iter().map(|o| o.id).collect();
@@ -190,7 +202,7 @@ fn req_nfr_07_bad_values_are_errors() {
     let mut op = operation(41, SetupId::from_u128(10));
     op.parameters
         .insert("depth".into(), ParameterValue::Number(f64::NAN));
-    let err = p.insert(Item::Operation(op), None).unwrap_err();
+    let err = p.insert(Item::Operation(op), Placement::End).unwrap_err();
     assert!(err.to_string().contains("not a finite number"), "{err}");
 
     let mut bad_tool = tool();
@@ -199,10 +211,11 @@ fn req_nfr_07_bad_values_are_errors() {
         .insert(
             Item::Tool(ToolSnapshot {
                 id: ToolId::from_u128(21),
+                order: OrderKey::default(),
                 name: "bad".into(),
                 tool: bad_tool,
             }),
-            None,
+            Placement::End,
         )
         .unwrap_err();
     assert!(err.to_string().contains("tool.diameter"), "{err}");

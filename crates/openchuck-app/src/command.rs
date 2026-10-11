@@ -8,11 +8,16 @@
 //! is linear and unbounded.
 
 use openchuck_project::id::OperationId;
-use openchuck_project::{Item, ItemId, MachineRef, ParameterValue, Project};
+use openchuck_project::{
+    Item, ItemId, ListKind, MachineRef, OldPlace, OrderKey, ParameterValue, Placement, Project,
+};
 
 use crate::AppError;
 
 /// A change to the project. Every command is undoable (UI-08).
+///
+/// Undo restores order keys exactly, never by computing new ones, so a saved
+/// project is byte for byte what it was (decision record 0007).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Command {
@@ -20,16 +25,17 @@ pub enum Command {
     RenameProject(String),
     /// Sets or clears the machine reference.
     SetMachine(Option<MachineRef>),
-    /// Adds an item at a position in its list, or at the end for `None`.
+    /// Adds an item.
     Add {
         /// The new item, with a fresh ID.
         item: Item,
         /// Where it goes.
-        index: Option<usize>,
+        placement: Placement,
     },
     /// Removes an item that nothing uses.
     Remove(ItemId),
-    /// Replaces an item with a new version that has the same ID.
+    /// Replaces an item with a new version that has the same ID. Its order key
+    /// and position stay.
     Replace(Item),
     /// Moves an item to a position in its list.
     Move {
@@ -38,6 +44,11 @@ pub enum Command {
         /// Its new position.
         index: usize,
     },
+    /// Sets the order keys of keyed items.
+    SetOrderKeys(Vec<(ItemId, OrderKey)>),
+    /// Gives a list short, evenly spaced order keys (OI-35). Every item in the
+    /// list changes, so this is only ever an explicit user action.
+    Renumber(ListKind),
     /// Sets an operation parameter, or removes it for `None`.
     SetParameter {
         /// The operation.
@@ -47,6 +58,8 @@ pub enum Command {
         /// The new value.
         value: Option<ParameterValue>,
     },
+    /// Several commands applied in order as one step; all or none.
+    Batch(Vec<Command>),
 }
 
 impl Command {
@@ -56,23 +69,31 @@ impl Command {
         Ok(match self {
             Self::RenameProject(name) => Self::RenameProject(project.set_name(name)),
             Self::SetMachine(machine) => Self::SetMachine(project.set_machine(machine)),
-            Self::Add { item, index } => {
+            Self::Add { item, placement } => {
                 let id = item.id();
-                project.insert(item, index)?;
-                Self::Remove(id)
+                let rekeyed = project.insert(item, placement)?;
+                if rekeyed.is_empty() {
+                    Self::Remove(id)
+                } else {
+                    Self::Batch(vec![Self::Remove(id), Self::SetOrderKeys(rekeyed)])
+                }
             }
             Self::Remove(id) => {
                 let (index, item) = project.remove(id)?;
-                Self::Add {
-                    item,
-                    index: Some(index),
-                }
+                let placement = if id.list() == ListKind::Models {
+                    Placement::Index(index)
+                } else {
+                    Placement::Keep
+                };
+                Self::Add { item, placement }
             }
             Self::Replace(item) => Self::Replace(project.replace(item)?),
-            Self::Move { id, index } => {
-                let from = project.move_item(id, index)?;
-                Self::Move { id, index: from }
-            }
+            Self::Move { id, index } => match project.move_item(id, index)? {
+                OldPlace::Keys(keys) => Self::SetOrderKeys(keys),
+                OldPlace::Index(from) => Self::Move { id, index: from },
+            },
+            Self::SetOrderKeys(keys) => Self::SetOrderKeys(project.set_order_keys(&keys)?),
+            Self::Renumber(kind) => Self::SetOrderKeys(project.renumber(kind)?),
             Self::SetParameter {
                 operation,
                 name,
@@ -94,6 +115,23 @@ impl Command {
                     name,
                     value: old,
                 }
+            }
+            Self::Batch(commands) => {
+                let mut inverses = Vec::with_capacity(commands.len());
+                for command in commands {
+                    match command.apply(project) {
+                        Ok(inverse) => inverses.push(inverse),
+                        Err(e) => {
+                            // Put back what was done so far, newest first.
+                            for inverse in inverses.into_iter().rev() {
+                                inverse.apply(project)?;
+                            }
+                            return Err(e);
+                        }
+                    }
+                }
+                inverses.reverse();
+                Self::Batch(inverses)
             }
         })
     }

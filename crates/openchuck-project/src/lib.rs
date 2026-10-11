@@ -3,23 +3,25 @@
 //!
 //! Architecture section 5.6; requirements PRJ-01 to PRJ-08, TL-01 to TL-10, UI-05, VC-03.
 //!
-//! Slice 1 so far provides the in-memory document ([`Project`]) with stable IDs
-//! ([`id`]), model content hashes ([`ContentHash`], PRJ-02), selection sets with
-//! reserved descriptor fields (PRJ-06, PRJ-07) and the cache folder for
-//! generated data ([`cache`], PRJ-03). Saving to TOML with per-item order keys
-//! (decision record 0006), schema versions and migration are still to build
-//! (decision record 0007, OI-37).
+//! The crate provides the document ([`Project`]) with stable IDs ([`id`]) and
+//! order keys ([`order`], PRJ-05), model content hashes ([`ContentHash`],
+//! PRJ-02), selection sets with reserved descriptor fields (PRJ-06, PRJ-07),
+//! the project folder as TOML files with schema versions and migration
+//! ([`file`](mod@file), PRJ-01, PRJ-04) and the cache folder for generated data
+//! ([`cache`], PRJ-03). Decision records 0006 and 0007.
 //!
 //! ```
 //! use openchuck_project::id::{OperationId, SetupId};
-//! use openchuck_project::{Item, Operation, Project, Setup};
+//! use openchuck_project::{Item, Operation, OrderKey, Placement, Project, Setup, file};
 //!
 //! let mut project = Project::new("bracket");
 //! let setup = SetupId::new();
-//! project.insert(Item::Setup(Setup { id: setup, name: "Setup 1".into() }), None)?;
+//! let new_setup = Setup { id: setup, order: OrderKey::default(), name: "Setup 1".into() };
+//! project.insert(Item::Setup(new_setup), Placement::End)?;
 //! project.insert(
 //!     Item::Operation(Operation {
 //!         id: OperationId::new(),
+//!         order: OrderKey::default(),
 //!         name: "Rough".into(),
 //!         setup,
 //!         strategy: "rotary_rough".into(),
@@ -27,9 +29,13 @@
 //!         selections: Vec::new(),
 //!         parameters: Default::default(),
 //!     }),
-//!     None,
+//!     Placement::End,
 //! )?;
-//! assert_eq!(project.operations().len(), 1);
+//!
+//! let folder = std::env::temp_dir().join(format!("openchuck-doc-{}", std::process::id()));
+//! file::save(&project, &folder)?;
+//! assert_eq!(file::load(&folder)?, project);
+//! # std::fs::remove_dir_all(&folder).ok();
 //! # Ok::<(), openchuck_project::ProjectError>(())
 //! ```
 
@@ -37,13 +43,17 @@
 
 pub mod cache;
 mod error;
+pub mod file;
 mod hash;
 pub mod id;
 mod model;
+pub mod order;
 
 pub use error::ProjectError;
 pub use hash::ContentHash;
 pub use model::{
-    Descriptor, Item, ItemId, MachineRef, ModelCheck, ModelRef, Operation, ParameterValue, Project,
-    RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot,
+    Descriptor, Item, ItemId, ListKind, MachineRef, ModelCheck, ModelRef, OldKeys, OldPlace,
+    Operation, ParameterValue, Placement, Project, RelativePath, SelectionSet, SelectionTarget,
+    Setup, ToolSnapshot,
 };
+pub use order::OrderKey;

@@ -11,6 +11,7 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use openchuck_app::project::ModelCheck;
 use openchuck_app::{Application, Query, QueryResult, Threads, VERIFY_GCODE_NOTICE};
 
 #[derive(Debug, Parser)]
@@ -25,8 +26,22 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Action {
-    /// Check that a project opens and its contents are valid.
+    /// Create a new, empty project folder.
+    New {
+        /// The project folder (created if needed).
+        project: PathBuf,
+        /// The project's name (default: the folder name).
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Check that a project opens, its files are valid and its model files
+    /// match their recorded hashes.
     Validate {
+        /// The project folder.
+        project: PathBuf,
+    },
+    /// Load and save a project, rewriting only files whose text changes.
+    Resave {
         /// The project folder.
         project: PathBuf,
     },
@@ -58,10 +73,52 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> Result<()> {
     let threads = cli.threads.map_or(Threads::All, Threads::Exactly);
     match cli.command {
+        Action::New { project, name } => {
+            let name = name.unwrap_or_else(|| {
+                project
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            });
+            Application::create(&project, &name, threads)?;
+            println!("{}: created project '{name}'", project.display());
+        }
         Action::Validate { project } => {
             let app = Application::open(&project, threads)?;
+            let mut problems = 0;
+            for (id, check) in app.check_models()? {
+                let model = app.project().models().iter().find(|m| m.id == id);
+                let path = model.map(|m| m.path.as_str()).unwrap_or_default();
+                match check {
+                    ModelCheck::Unchanged => {}
+                    ModelCheck::Changed { .. } => {
+                        problems += 1;
+                        eprintln!("model '{path}' has changed since it was added (PRJ-02)");
+                    }
+                    ModelCheck::Missing => {
+                        problems += 1;
+                        eprintln!("model '{path}' is missing");
+                    }
+                }
+            }
+            let long = app.project().long_order_keys();
+            if !long.is_empty() {
+                // A warning only: the project is valid (OI-35).
+                eprintln!(
+                    "warning: {} items have long order keys; renumbering their list would shorten them",
+                    long.len()
+                );
+            }
+            if problems > 0 {
+                anyhow::bail!("{}: {problems} model problem(s)", project.display());
+            }
             app.regenerate()?;
             println!("{}: valid", project.display());
+        }
+        Action::Resave { project } => {
+            let app = Application::open(&project, threads)?;
+            app.save()?;
+            println!("{}: saved", project.display());
         }
         Action::Regenerate { project, out } => {
             let app = Application::open(&project, threads)?;
