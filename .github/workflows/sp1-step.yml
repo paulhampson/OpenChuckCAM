@@ -57,6 +57,8 @@ jobs:
             ./target/release/sp1-step walk $f --tess 2>&1 | grep -a "^face\|^  edge\|^topology-digest\|^tess\|^root\|^solids\|^ERR" > results/walk_$n.txt
             echo "$n $(grep -a topology-digest results/walk_$n.txt)"
           done | tee results/digests.txt
+      - name: Print one full report so platforms can be diffed from the log
+        run: cat results/walk_rotary_blank_drilled.txt
       - name: Determinism (5 processes) and STEP round trip
         run: |
           for f in fixtures/*.step; do
@@ -72,7 +74,7 @@ jobs:
           printf 'this is not a STEP file\n' > fixtures/bad/garbage.step
           head -c 3000 fixtures/filleted_box.step > fixtures/bad/truncated.step
           for f in fixtures/bad/*.step /nonexistent.step; do
-            ./target/release/sp1-step walk $f > /tmp/out.txt 2>&1; rc=$?
+            rc=0; ./target/release/sp1-step walk $f > /tmp/out.txt 2>&1 || rc=$?
             echo "$f exit=$rc $(grep -a '^ERR' /tmp/out.txt | head -1)"
           done | tee results/malformed.txt
       - name: Shim (analytic surface data) and mesh controls
