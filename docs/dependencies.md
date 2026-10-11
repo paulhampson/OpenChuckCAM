@@ -57,6 +57,7 @@ These were tried in a spike and are recorded now so the slice that first uses th
 
 | Crate | Version tried | Score | Licence | For | Notes |
 | --- | --- | --- | --- | --- | --- |
+| `tracing` | 0.1.44 | 89 | MIT | `openchuck-app` and the front ends, when logging is added | Application logging and spans for job timing (architecture section 7, errors and logging). Libraries log nothing. Not declared until something logs. |
 | `parry3d-f64` | 0.31.1 | 83 (as parry3d) | Apache-2.0 | `openchuck-geom`, `openchuck-path`, `openchuck-sim` | SP-2 used it for picking. Its public types are `glamx` types, which must stay behind `openchuck-geom` (decision record 0002). Highest API churn of the CAM-critical crates. |
 | `bytemuck` | 1.25.0 | 96 | Zlib OR Apache-2.0 OR MIT | `openchuck-viewport` | Vertex buffer casts (SP-2). |
 | `occt-sys` | 7.8.1 | not scored | LGPL-2.1 (OpenCASCADE: LGPL-2.1 with its exception) | `openchuck-import`, build dependency only (slice 11) | Builds OpenCASCADE for the in-house C ABI wrapper chosen by SP-1 ([decision 0003](decisions/0003-step-kernel-route.md)). The licence is accepted there. Needs a survey-style score, a pin and `deny.toml` licence entries when slice 11 declares it (OI-20). |

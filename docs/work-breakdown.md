@@ -109,17 +109,17 @@ These apply to every slice and are not repeated below.
 13. CI tooling from the verification plan: nextest, cargo-hack (each library alone), cargo-semver-checks on the library family, cargo-audit, cargo-about for notices, llvm-cov for trends, Miri and sanitizers on unsafe and FFI code, a scheduled beta build and activity check, fuzzing for 1 minute per parser on pull requests and 1 hour nightly in a separate nightly job, and a benchmark regression flag at 10% on a dedicated runner.
 14. Decisions recorded: AGPL for every crate, including `openchuck-types` and `openchuck-post` and the application crates (decided: AGPL), the contributor agreement approach, and the docs location (decided: the authoritative copy lives in `docs/` in the repository, and the Claude artifacts become working drafts).
 
-**Review checklist**
+**Review checklist** (closed 11 Oct 2026, [decision 0004](decisions/0004-slice-0-guardrails.md))
 
-- [ ] Each dependency rule, including the library-family rule, fails CI when deliberately broken
-- [ ] Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel
-- [ ] The IR carries every field listed above and round-trips through serde
-- [ ] The CLI runs on an empty project and gives clear errors for bad input
-- [ ] The determinism harness catches a deliberately scheduling-dependent test
-- [ ] Every dependency has a record, a pinned version and one workspace declaration; the licence list is generated and the SPDX check passes
-- [ ] The licence, contributor agreement and docs-location decisions are written down
-- [ ] The kinematic oracle agrees with the shared machine model over a set of A angles including negative angles and the 0/360 seam, and fails when the A sign in the shared model is flipped
-- [ ] The traceability report flags a seeded gap in a closed slice and fails CI
+- [x] Each dependency rule, including the library-family rule, fails CI when deliberately broken
+- [x] Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel (no kernel yet; its CI job arrives with the slice 11 wrapper, decision 0003)
+- [x] The IR carries every field listed above and round-trips through serde
+- [x] The CLI runs on an empty project and gives clear errors for bad input
+- [x] The determinism harness catches a deliberately scheduling-dependent test
+- [x] Every dependency has a record, a pinned version and one workspace declaration; the licence list is generated and the SPDX check passes
+- [x] The licence, contributor agreement and docs-location decisions are written down
+- [x] The kinematic oracle agrees with the shared machine model over a set of A angles including negative angles and the 0/360 seam, and fails when the A sign in the shared model is flipped
+- [x] The traceability report flags a seeded gap in a closed slice and fails CI
 
 ## Slice 1 – Project documents, persistence and undo
 

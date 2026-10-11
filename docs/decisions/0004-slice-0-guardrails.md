@@ -1,8 +1,8 @@
 # 0004: Slice 0 design refinement, guardrails and shared data
 
-- **Status:** proposed, with decision items 2 and 11 and the contributor agreement accepted by the project owner on 11 Oct 2026 and applied to the architecture (see "Owner decisions"). The other choices are what slice 0 builds on.
+- **Status:** accepted by the project owner on 11 Oct 2026, including the items accepted earlier the same day (see "Owner decisions"). The IR fields (decision item 3) are accepted as the working design but deliberately not frozen until a later slice (OI-21).
 - **Date:** 11 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md) (OI-16, OI-17, OI-19 to OI-21, OI-23 and OI-24; OI-10, OI-15, OI-18 and OI-22 are closed).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md) (OI-17, OI-19 to OI-21, OI-23, OI-24 and OI-30 are open or deferred; OI-10, OI-15, OI-16, OI-18 and OI-22 are closed).
 
 ## Context
 
@@ -44,6 +44,16 @@ Spike inputs, used as the project owner asked even though they are not accepted:
 - **Activity check:** accepted as recommended: a weekly `cargo-unmaintained` job, Dependabot update pull requests checked against the register, and `cargo deny` advisories (OI-18 closed).
 - **CLA signatures** are collected with CLA Assistant Lite (OI-22 closed; follow-up OI-24).
 
+## Slice close, 11 Oct 2026
+
+- **Record accepted** as a whole by the project owner.
+- **IR freeze:** not needed until a later slice. The IR is the working design and may change as SP-3's open items close (OI-21).
+- **Crate names:** the project owner is publishing the six `0.0.0` placeholders (`openchuck`, `openchuckcam`, `openchuck-types`, `-path`, `-post`, `-gcode`) and treats them as claimed (OI-16 closed). The application crates are not published, so their names are not reserved.
+- **Library examples** (slice 0 item 7): `openchuck-types` has one (`examples/kinematics.rs`). The other library crates are shells with no public API to demonstrate, so each gets its example in the slice that gives it an API (OI-30).
+- **`tracing`** (slice 0 item 12) is recorded in `docs/dependencies.md` but not declared: nothing logs yet, and libraries never log (architecture section 7).
+- **Slice 0 is closed** in `xtask/traceability.toml`, so CI now fails if GC-01, NFR-01 or NFR-05 loses its tests. The cross-cutting NFRs close at slice 20 and NFR-02 at slice 8.
+- **Kernel line of the review checklist:** ticked on the basis that no kernel exists yet and the path filter is in place; the kernel build job arrives with the slice 11 wrapper (decision 0003, OI-20).
+
 ## SP-1 follow-up, 11 Oct 2026
 
 Decision 0003 lists consequences for slice 0. Applied in this change:
@@ -78,7 +88,7 @@ The register in [docs/open-items.md](../open-items.md) tracks the current state;
 | 2 (OI-C2, closed) | Add `openchuck-testkit` and `openchuck-benches` to the architecture (decision item 2). | Review of this record | Agreement |
 | 3 (OI-C3, closed) | `AGPL-3.0-or-later` or `AGPL-3.0-only` (decision item 11). | Review of this record | Project owner |
 | 4 (OI-C4, closed) | **Contributor agreement** allowing a later licence exception or dual licence (INT-09; work breakdown slice 0 item 14). Not decided here. A DCO alone would not give the project the right to relicense; a CLA or a copyright assignment would. | Before outside contributions | Project owner |
-| 5 (OI-16) | **Reserve the `openchuck-*` names on crates.io** (slice 0 item 7). This publishes placeholder crates, so it is the owner's action. | Slice 0 close | Project owner |
+| 5 (OI-16, closed) | **Reserve the `openchuck-*` names on crates.io** (slice 0 item 7). This publishes placeholder crates, so it is the owner's action. | Slice 0 close | Project owner |
 | 6 (OI-17, deferred) | **Benchmark regression flag at 10%** needs a dedicated runner (verification plan section 4.1). The criterion baseline exists (`benches/`), but no workflow runs it yet. | Slice 0 close or when a runner exists | A self-hosted runner |
 | 7 (OI-18, proposed) | **Scheduled dependency activity check** (verification plan section 7): no tool chosen. Candidates: a small xtask over the crates.io index, or a scheduled `cargo outdated` report. | Slice 0 close | Choice of tool (NFR-14 record) |
 | 8 (OI-19) | **Miri and sanitizers** have nothing to check: `unsafe_code` is denied and there is no FFI. Add the job with the first `unsafe` or FFI code: the OpenCASCADE wrapper in slice 11 (decision 0003). | Slice 11 | The wrapper |
