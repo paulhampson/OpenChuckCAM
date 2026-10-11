@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "sp5-gcode-reader"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-or-later"
+description = "SP-5 throwaway spike: does a G-code reader handle A words and the LinuxCNC dialect?"
+
+[workspace]
+
+[dependencies]
+gcode = "=0.7.0"
+g-code = "=0.6.0"

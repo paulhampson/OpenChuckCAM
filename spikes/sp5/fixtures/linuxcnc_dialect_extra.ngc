@@ -1,0 +1,13 @@
+(LinuxCNC dialect features our posts do not plan to emit)
+(each should give a clear error or a clear structure, never a silent misread)
+#1 = 5.0
+#<depth> = -1.5
+G1 X#1 Y[2 * 3] Z#<depth> F100
+g1 x1.0 y2.0 a3.0
+G 1 X 1 . 5 A 2 0
+/ G0 X99
+o100 sub
+G38.2 Z-10 F50
+G33.1 Z-5 K1.25
+G10 L2 P1 X0 Y0 Z0
+M30
