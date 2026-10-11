@@ -176,7 +176,7 @@ These apply to every slice and are not repeated below.
 - [x] Known-bad samples report the right counts for each defect type
 - [x] A mirrored part has outward normals
 - [x] A unit override survives save and load
-- [ ] The fuzz target runs for 1 minute on pull requests and 1 hour nightly (`stl_import` is in both workflows and ran 2 minutes locally without a crash; tick after its first CI runs)
+- [x] The fuzz target runs for 1 minute on pull requests and 1 hour nightly (`stl_import` is in both workflows; the 1-minute run passed on pull request #12. **Waived by the owner, 11 Oct 2026:** the first nightly hour has not run yet, and any nightly failure is fixed when it occurs, with the failing input added to the corpus)
 
 ## Slice 3 – Machine, stock and setup
 
