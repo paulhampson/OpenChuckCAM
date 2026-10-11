@@ -2,7 +2,7 @@
 
 - **Status:** proposed (11 Oct 2026). The spike met pass criteria 1, 2 and 4; criterion 3 (sweep time within the SP-6 budget) cannot be judged until SP-6 sets that budget, and is carried to SP-6 (OI-53). Items 2 and 6 below need the owner's agreement (OI-54, OI-55).
 - **Date:** 11 Oct 2026.
-- **Spike code:** `spikes/sp-13-tool-profiles/` (throwaway, a separate Cargo project with no third-party dependencies, never a workspace member). The write-up with the full report is `spikes/sp-13-tool-profiles/RESULT.md`. Under the spike rules it belongs on its own branch, `spike/sp-13-tool-profiles`, and must not be merged into the product; it was built on `claude/sp-13-slice-4-dh7j4e`, and is moved off that branch before it merges.
+- **Spike branch:** `spike/sp-13-tool-profiles` (throwaway, never merged). The code is in `spikes/sp-13-tool-profiles/`, a separate Cargo project with no third-party dependencies, never a workspace member; the write-up is `spikes/sp-13-tool-profiles/RESULT.md` and the full report `spikes/sp-13-tool-profiles/out/report.md`.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-07 progressed; OI-53 to OI-55 are new.
 
 Numbering: record 0010 and OI-49 to OI-52 are claimed on the unmerged slice 2 branch (`claude/slice-2-stl-import`), so this record takes 0011 and OI-53 onwards.
