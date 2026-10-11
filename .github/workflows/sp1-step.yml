@@ -36,9 +36,17 @@ jobs:
       - name: Build (includes compiling OpenCASCADE from source)
         run: |
           start=$(date +%s)
-          cargo build --release 2>&1 | tail -15
-          cargo build --release 2>&1 | tail -5   # second pass builds the shim once OCCT headers exist
+          # Full log kept: the first Windows failure lost the compiler diagnostic to `tail`.
+          set +e
+          cargo build --release > build.log 2>&1; rc1=$?
+          echo "first pass rc=$rc1"
+          cargo build --release >> build.log 2>&1; rc2=$?   # second pass builds the shim once OCCT headers exist
+          echo "second pass rc=$rc2"
           echo "BUILD_SECONDS=$(( $(date +%s) - start ))" | tee build_time.txt
+          if [ $rc2 -ne 0 ]; then
+            grep -n -a -i "error\|fatal\|C[0-9][0-9][0-9][0-9]" build.log | tail -60
+            exit 1
+          fi
       - name: Generate fixtures
         run: ./target/release/sp1-step gen fixtures > /dev/null 2>&1; ls -la fixtures
       - name: Walk, tessellate, digest
@@ -81,6 +89,7 @@ jobs:
           path: |
             spikes/sp1-step/results/*.txt
             spikes/sp1-step/build_time.txt
+            spikes/sp1-step/build.log
   compare:
     needs: build
     runs-on: ubuntu-latest
