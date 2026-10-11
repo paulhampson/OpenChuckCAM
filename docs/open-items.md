@@ -14,7 +14,7 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-02 | No golden file with A words yet. | 0001 item 2 | open | Slice 6 | OI-01, OI-03 |
 | OI-03 | A sign and rotary offset convention for the Z1 (the spike used +1 as a placeholder). | 0001 item 3 | open | SP-12, slice 3 | Machine profiles and the air cut |
 | OI-04 | LinuxCNC feed rule on mixed XYZ and A moves; whether the Z1 accepts G93; per-move feed strategy near zero linear step. | 0001 item 4 | open | SP-12, slice 6 | OI-01 and a Z1 test |
-| OI-05 | G-code reader: `gcode` 0.7.0 with an f64 layer, or an in-house reader. | 0001 item 5 | open | Slice 6 (SP-5) | SP-5 |
+| OI-05 | G-code reader: `gcode` 0.7.0 with an f64 layer, or an in-house reader. SP-5 ran: an in-house reader is proposed ([decision 0005](decisions/0005-sp-5-gcode-reader.md)); `gcode` drops codes silently and is `f32`, `g-code` panics. | 0001 item 5; 0005 item 1 | proposed | Slice 6 | Project owner |
 | OI-06 | A limits and unwinding policy (range limits, when and which way to unwind). | 0001 item 6 | open | Slice 5 (OP-15) | A range in the machine profile |
 | OI-07 | Off-top contact and tilted tools (tool axis variation, cutter shape). | 0001 item 7 | open | Slices 5 and 13 | SP-4, SP-13 |
 | OI-08 | Chord tolerance factor, 0.4 or 0.5 of the toolpath tolerance. | 0001 item 8 | open | Slice 5 | Measurement on the first strategy |
@@ -35,6 +35,7 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-28 | Golden tests that depend on kernel tessellation or kernel-computed numbers need a tolerance on non-analytic faces, or per-platform golden files (verification plan section 2, policy 7): tessellation differs between x86-64 and arm64. | Decision 0003, cross-platform differences | open | Slice 11 | Agreement on the verification approach |
 | OI-29 | Add the OpenCASCADE licence notice and source offer to the release checklist (LGPL-2.1, statically linked). | Decision 0003, NFR-10 | open | Slice 20 | Release checklist |
 | OI-30 | Examples for the library crates other than `openchuck-types` (slice 0 item 7). Each gets one in the slice that gives it a public API. | 0004, slice close | deferred | Slices 5 (path), 6 (post, gcode), 2 (geom) and later | A public API |
+| OI-31 | Run the SP-5 hand-written file `linuxcnc_post_subset.ngc` through LinuxCNC's own interpreter (`rs274` standalone or the simulator) before it becomes a `testdata/` fixture; it was checked by hand only. | 0005 item 2 | open | Before slice 6 adds the fixture | Someone with LinuxCNC 2.9 or later (with OI-01) |
 
 ## Closed
 
