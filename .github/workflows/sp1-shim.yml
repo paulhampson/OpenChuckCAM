@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Toolchain versions
         run: rustc --version; cmake --version | head -1
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: |
             spikes/sp1-shim/target
@@ -36,14 +36,38 @@ jobs:
           cargo build --release > build.log 2>&1; rc=$?
           echo "BUILD_SECONDS=$(( $(date +%s) - start )) rc=$rc"
           if [ $rc -ne 0 ]; then grep -n -a -i "error\|warning: unused\|C[0-9][0-9][0-9][0-9]\|undefined" build.log | tail -80; exit 1; fi
+      # Save the (slow) OpenCASCADE build even when a later step fails.
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            spikes/sp1-shim/target
+            ~/.cargo/registry
+          key: sp1-shim-${{ matrix.os }}-${{ hashFiles('spikes/sp1-shim/Cargo.lock', 'spikes/sp1-shim/build.rs') }}
       - name: Closed-form self test
-        run: ./target/release/sp1-shim selftest ../sp1-step/fixtures
+        run: SP1_DIAG=1 ./target/release/sp1-shim selftest ../sp1-step/fixtures
+      - name: Exit-crash diagnosis (first macOS run passed every check, then segfaulted)
+        if: always()
+        run: |
+          F=../sp1-step/fixtures
+          for v in "" SP1_LEAK=1 SP1_NOQUIET=1 SP1_FASTEXIT=1; do
+            rc=0; env SP1_DIAG=1 $v ./target/release/sp1-shim selftest $F > /tmp/o 2>&1 || rc=$?
+            echo "variant [${v:-none}] rc=$rc last: $(tail -2 /tmp/o | tr '\n' '|')"
+          done
+          for args in "walk $F/box.step" "walk $F/sphere.step --tess" "walk $F/filleted_box.step --tess"; do
+            rc=0; ./target/release/sp1-shim $args > /dev/null 2>&1 || rc=$?; echo "$args rc=$rc"
+          done
+          if command -v lldb > /dev/null; then
+            lldb --batch -o run -o "bt 40" -o quit -- ./target/release/sp1-shim selftest $F 2>&1 | grep -v "^PASS" | tail -60
+          fi
       - name: Walk all fixtures (digests to compare across platforms)
+        if: always()
         run: |
           for f in ../sp1-step/fixtures/*.step; do
             echo "$(basename $f) $(./target/release/sp1-shim walk $f --tess | grep -a 'digest\|^tess' | tr '\n' ' ')"
           done
       - name: Full report for the drilled blank
+        if: always()
         run: ./target/release/sp1-shim walk ../sp1-step/fixtures/rotary_blank_drilled.step --tess
       - name: Process isolation over the crash and malformed corpus
+        if: always()
         run: ./target/release/sp1-shim isolate ../sp1-step/fixtures/crash/*.step ../sp1-step/fixtures/bad/*.step ../sp1-step/fixtures/cylinder.step

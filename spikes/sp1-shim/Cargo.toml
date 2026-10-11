@@ -12,3 +12,7 @@ publish = false
 [build-dependencies]
 cc = "=1.7.0"
 occt-sys = "=7.8.1"
+
+[profile.release]
+# Line tables so lldb backtraces from CI are readable.
+debug = "line-tables-only"

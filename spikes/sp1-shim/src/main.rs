@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 extern "C" {
     fn occ_quiet();
+    fn _exit(code: c_int) -> !;
     fn occ_read_step(path: *const c_char, err: *mut c_char, err_len: c_int) -> *mut c_void;
     fn occ_free(m: *mut c_void);
     fn occ_face_count(m: *mut c_void) -> c_int;
@@ -31,7 +32,16 @@ const CURV: [&str; 9] = ["Line", "Circle", "Ellipse", "Hyperbola", "Parabola", "
 struct Model(*mut c_void);
 impl Drop for Model {
     fn drop(&mut self) {
-        unsafe { occ_free(self.0) }
+        // SP1_LEAK=1 skips freeing (diagnosis of the macOS exit crash).
+        if std::env::var_os("SP1_LEAK").is_none() {
+            unsafe { occ_free(self.0) }
+        }
+    }
+}
+
+fn diag(msg: &str) {
+    if std::env::var_os("SP1_DIAG").is_some() {
+        eprintln!("[diag] {msg}");
     }
 }
 
@@ -195,6 +205,7 @@ fn cmd_selftest(dir: &str) -> Result<(), String> {
     let mesh = fb.mesh(0.05, 0.5)?;
     check("filleted box: every one of 26 faces has its own triangles", mesh.len() == 26 && mesh.iter().all(|(_, t)| !t.is_empty()));
 
+    diag("selftest checks done; models are dropped on return");
     if fails.is_empty() {
         println!("selftest: all checks passed");
         Ok(())
@@ -237,7 +248,9 @@ fn cmd_isolate(files: &[String]) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    unsafe { occ_quiet() };
+    if std::env::var_os("SP1_NOQUIET").is_none() {
+        unsafe { occ_quiet() };
+    }
     let a: Vec<String> = std::env::args().collect();
     let r = match a.get(1).map(String::as_str) {
         Some("walk") if a.len() > 2 => cmd_walk(&a[2], a.iter().any(|x| x == "--tess")),
@@ -245,11 +258,20 @@ fn main() -> ExitCode {
         Some("isolate") => cmd_isolate(&a[2..]),
         _ => Err("usage: walk <file> [--tess] | selftest <dir> | isolate <file>...".into()),
     };
-    match r {
-        Ok(()) => ExitCode::SUCCESS,
+    diag("command returned; all models dropped");
+    let code = match r {
+        Ok(()) => 0,
         Err(e) => {
             println!("ERR {e}");
-            ExitCode::from(2)
+            2
         }
+    };
+    if std::env::var_os("SP1_FASTEXIT").is_some() {
+        // Skip C++ static destructors (diagnosis of the macOS exit crash).
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        unsafe { _exit(code) }
     }
+    diag("returning from main; C++ static destructors run next");
+    ExitCode::from(code as u8)
 }
