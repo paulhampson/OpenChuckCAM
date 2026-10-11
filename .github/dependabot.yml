@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Dependency updates arrive as reviewed pull requests, never silently
+# (verification plan section 7; docs/open-items.md OI-18). Every pin has a row
+# in docs/dependencies.md, so `cargo xtask records` fails a bump until its row
+# is updated: each update gets an NFR-14 look.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # The UI and graphics stack moves together (architecture section 13, API churn).
+      ui-graphics:
+        patterns: ["eframe", "egui*", "epaint*", "wgpu*"]
+      test-tools:
+        patterns: ["proptest", "insta", "assert_cmd", "criterion"]
+  - package-ecosystem: cargo
+    directory: "/fuzz"
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]

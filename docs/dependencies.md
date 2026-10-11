@@ -9,6 +9,7 @@ The NFR-14 record for every third-party crate the workspace declares. Each row g
 - **Pins.** Every third-party version is an exact `=` pin, declared once in the root `Cargo.toml` and inherited with `workspace = true` (architecture section 12). `Cargo.lock` is committed.
 - **Adding a crate.** Add the pin, a row here with the survey score (or a survey-style score if the survey did not cover it) and a justification. A crate outside the architecture's selection, a crate under two years old, or one with agent-instruction files needs a decision record with its fallback (NFR-14).
 - **Upgrade cadence.** Dependency updates arrive as reviewed pull requests, never silently. Review pins once a month, and within a week of a security advisory. Fast-moving crates (egui and eframe, wgpu, parry3d, i\_overlay, minijinja) are upgraded deliberately, one family per pull request, with the spike or adapter tests for that layer re-run; their types stay behind our interfaces so an upgrade touches one crate.
+- **Update and activity checks.** Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for Cargo and GitHub Actions, grouping the egui and wgpu crates. A bump fails `cargo xtask records` until its row here is updated. A weekly job (`.github/workflows/weekly.yml`) runs `cargo-unmaintained` to flag archived, missing or stalled dependencies; it never blocks a pull request, and its findings are reviewed at the monthly pin review. `cargo deny` reports RustSec unmaintained notices on every pull request.
 - **Licences.** Must be compatible with AGPL-3.0-or-later (NFR-10). `deny.toml` lists the licences allowed on purpose.
 
 ## Register
@@ -31,6 +32,14 @@ The NFR-14 record for every third-party crate the workspace declares. Each row g
 | `assert_cmd` | 2.2.2 | 88 | MIT OR Apache-2.0 | Dev-dependency of `openchuck-cli` | CLI end-to-end scenarios (verification plan section 8). |
 | `criterion` | 0.8.2 | 88 | Apache-2.0 OR MIT | Dev-dependency of `openchuck-benches` | Benchmarks and the 10% regression flag (verification plan section 4.1). |
 | `libfuzzer-sys` | 0.4.13 | 79 | (MIT OR Apache-2.0) AND NCSA | `fuzz/` only (separate workspace, nightly) | Fuzz targets through cargo-fuzz (82). NCSA is allowed on purpose for this dev-only crate (architecture section 7). |
+
+## CI tools
+
+Tools that CI installs and runs. They are never linked into the product, so NFR-09 and the dependency rules do not apply, but they are chosen and recorded the same way. Only tools outside the architecture's selection (section 7) are listed.
+
+| Tool | Version | Score | Licence | Used in | Justification |
+| --- | --- | --- | --- | --- | --- |
+| `cargo-unmaintained` | 2.1.0 | 68 (survey-style, computed 11 Oct 2026) | AGPL-3.0 | `.github/workflows/weekly.yml` | The scheduled dependency activity check (verification plan section 7, OI-18). Trail of Bits. Scores: maintenance 5 (released Aug 2026, 9 releases in 12 months), maturity 2 (first release Nov 2023), features 4, quality about 3.3 (docs 2, tests 3, CI 5: three workflows and Dependabot), adoption 1 (a tool: no dependent crates, about 2,500 downloads in 90 days), AI risk 5 (no agent-instruction files). The low adoption is normal for a command-line tool (architecture section 7, CI tooling). Fallback: a scheduled `cargo outdated` report plus manual review. |
 
 ## Recorded but not yet declared
 

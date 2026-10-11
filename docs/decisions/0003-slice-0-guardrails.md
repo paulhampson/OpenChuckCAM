@@ -2,7 +2,7 @@
 
 - **Status:** proposed, with decision items 2 and 11 and the contributor agreement accepted by the project owner on 11 Oct 2026 and applied to the architecture (see "Owner decisions"). The other choices are what slice 0 builds on.
 - **Date:** 11 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md) (OI-10 and OI-15 to OI-23).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md) (OI-10, OI-16, OI-17, OI-19 to OI-21, OI-23 and OI-24; OI-15, OI-18 and OI-22 are closed).
 
 ## Context
 
@@ -39,9 +39,10 @@ Spike inputs, used as the project owner asked even though they are not accepted:
 
 - Decision items 2 and 11 accepted; the architecture is edited to match.
 - **Contributor agreement:** a standard agreement that supports relicensing later. `CLA.md` (individual) and `CLA-ENTITY.md` (organisations) adapt the Apache ICLA v2.2 and CCLA, the most widely adapted CLAs. Their copyright grant includes the right to sublicense, which lets the Maintainer add a licence exception or dual licence (INT-09); section 2 says so explicitly, and section 9 commits that contributions stay available under AGPL-3.0-or-later or another OSI-approved or FSF-recognised licence. Signing is by pull request comment. The Harmony agreements were the other candidate; their site was unreachable from the working environment, and the Apache text is the more familiar to contributors. Follow-ups: OI-22 (signature collection) and OI-23 (legal review).
-- **Fonts:** OFL-1.1 accepted. Ubuntu-font-1.0 is still open (OI-15).
+- **Fonts:** OFL-1.1 and Ubuntu-font-1.0 accepted for egui's bundled fonts (OI-15 closed).
 - **Dedicated runners deferred** (OI-17).
-- **Activity check:** a recommendation is in the open-items register (OI-18).
+- **Activity check:** accepted as recommended: a weekly `cargo-unmaintained` job, Dependabot update pull requests checked against the register, and `cargo deny` advisories (OI-18 closed).
+- **CLA signatures** are collected with CLA Assistant Lite (OI-22 closed; follow-up OI-24).
 
 ## Alternatives considered
 

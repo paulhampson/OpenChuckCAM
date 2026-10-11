@@ -35,9 +35,9 @@ allow = [
 # Allowed licences that no crate currently uses are not an error.
 unused-allowed-license = "allow"
 
-# egui's bundled fonts, scoped to this crate only. OFL-1.1 was accepted by the
-# project owner on 11 Oct 2026; Ubuntu-font-1.0 is pending (docs/open-items.md,
-# OI-15). The fonts are data shipped with the binary, not linked code.
+# egui's bundled fonts, scoped to this crate only. OFL-1.1 and Ubuntu-font-1.0
+# were accepted by the project owner on 11 Oct 2026 (docs/open-items.md, OI-15).
+# The fonts are data shipped with the binary, not linked code.
 [[licenses.exceptions]]
 crate = "epaint_default_fonts"
 allow = ["OFL-1.1", "Ubuntu-font-1.0"]

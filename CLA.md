@@ -10,11 +10,11 @@ Thank you for your interest in OpenChuckCAM. To clarify the intellectual propert
 
 ## How to sign
 
-Sign once, before your first pull request is merged. Add a comment to your pull request containing exactly:
+Sign once, before your first pull request is merged. When you open a pull request, the CLA check (CLA Assistant) asks you to sign. Post a comment on the pull request containing exactly this sentence, on its own:
 
 > I have read the OpenChuckCAM Individual Contributor Licence Agreement, version 1.0, and I agree to its terms.
 
-The comment, with your GitHub account name and the date, is your signature. If you contribute on behalf of an employer or other organisation that holds rights in your work, that organisation must also sign the [entity agreement](CLA-ENTITY.md), or confirm in writing that it waives those rights (section 4).
+The comment, with your GitHub account name and the date, is your signature. CLA Assistant records it and the check turns green; later pull requests need no new signature. If the check does not update, comment `recheck`. If you contribute on behalf of an employer or other organisation that holds rights in your work, that organisation must also sign the [entity agreement](CLA-ENTITY.md), or confirm in writing that it waives those rights (section 4).
 
 ## Terms
 

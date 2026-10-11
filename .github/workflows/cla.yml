@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Contributor licence agreement signatures (CLA.md, CONTRIBUTING.md;
+# docs/open-items.md OI-22), collected with CLA Assistant Lite. A contributor
+# signs by commenting the sentence in CLA.md on their pull request; the action
+# records the signature in signatures/cla.json on the `cla-signatures` branch
+# and sets a status check. The pull request's code is never checked out or run
+# here, so pull_request_target is safe.
+name: CLA
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    name: CLA signatures
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+        (github.event.comment.body == 'recheck' ||
+         github.event.comment.body == 'I have read the OpenChuckCAM Individual Contributor Licence Agreement, version 1.0, and I agree to its terms.'))
+    steps:
+      - uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/paulhampson/OpenChuckCAM/blob/main/CLA.md
+          path-to-signatures: signatures/cla.json
+          branch: cla-signatures
+          # The Maintainer and bots do not sign. Organisation signers
+          # (CLA-ENTITY.md) are recorded by the Maintainer.
+          allowlist: paulhampson,dependabot[bot],github-actions[bot]
+          custom-pr-sign-comment: I have read the OpenChuckCAM Individual Contributor Licence Agreement, version 1.0, and I agree to its terms.
+          custom-notsigned-prcomment: >-
+            Thank you for your contribution. Before it can be merged, please read the
+            [OpenChuckCAM Individual Contributor Licence Agreement](https://github.com/paulhampson/OpenChuckCAM/blob/main/CLA.md)
+            and sign it by posting the comment below on this pull request. If an employer or other
+            organisation holds rights in your work, it also signs the
+            [entity agreement](https://github.com/paulhampson/OpenChuckCAM/blob/main/CLA-ENTITY.md).
+          custom-allsigned-prcomment: All contributors have signed the OpenChuckCAM CLA. Thank you.
+          lock-pullrequest-aftermerge: false
