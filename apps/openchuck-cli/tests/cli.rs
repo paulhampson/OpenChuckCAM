@@ -566,12 +566,22 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(
         out.stdout
-            .contains("set G55 to machine X 18.000 Y 0.000 Z 0.000"),
+            .contains("set G55 to machine X -162.400 Y -108.800 Z 0.000"),
         "{}",
         out.stdout
     );
+    // The Z1 profile has no machine Z for the axis (OI-57), so the safe Z
+    // cannot be checked against the travel: the only warning says so, and
+    // names the unconfirmed values it used.
+    let warnings: Vec<&str> = out
+        .stdout
+        .lines()
+        .filter(|l| l.starts_with("  - "))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{}", out.stdout);
     assert!(
-        out.stdout.contains("checks:     no problems found"),
+        warnings[0].contains("the safe Z is at machine Z 60.000")
+            && warnings[0].contains("rotary_origin"),
         "{}",
         out.stdout
     );

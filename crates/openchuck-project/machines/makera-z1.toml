@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Makera Z1 with its 4th-axis module (decision records 0007 and 0011).
-# Every value is derived from Makera's own profiles and the Z1 firmware
-# source, not measured on a Z1: each stays unconfirmed until the SP-12 air
-# cut (OI-37) and a check of the machine's limits (OI-39).
+# Makera Z1 with its 4th-axis module (decision records 0007, 0011 and 0012).
+# Values are a consensus across Makera's published profiles and the Z1
+# firmware's default configuration, not measured on a Z1: each stays
+# unconfirmed until the SP-12 air cut (OI-37) and the measurements in OI-39.
+# Machine coordinates are the firmware's (G53): home at 0, travel negative.
 schema = 1
 
 [machine]
@@ -11,29 +12,36 @@ name = "Makera Z1"
 rotary_axis = "x"
 a_sense = "positive"
 
+# Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
+# anchor1_y + rotation_offset_y from the firmware's Z1 config (-192.4 + 12.0,
+# -194.3 + 85.5). No Makera source gives the machine Z of the axis, so Z is a
+# placeholder (OI-57).
 [machine.rotary_origin]
-x = 0.0
-y = 0.0
+x = -180.4
+y = -108.8
 z = 0.0
 
 [machine.a_range]
 type = "continuous"
 
 [machine.travel.min]
-x = -10.0
+x = -200.0
 y = -200.0
-z = 0.0
+z = -100.0
 
 [machine.travel.max]
-x = 200.0
-y = 10.0
-z = 100.0
+x = 0.0
+y = 0.0
+z = 0.0
 
+# The firmware limits X and Y to 1200 mm/min and Z to 600 mm/min; the profile
+# has one linear value (OI-56), so it holds the X and Y figure. G0 is limited
+# to the same per-axis rates, so rapids equal the feed limits.
 [machine.max_feeds]
-linear = 4000.0
-rotary = 21600.0
-rapid_linear = 4000.0
-rapid_rotary = 21600.0
+linear = 1200.0
+rotary = 3600.0
+rapid_linear = 1200.0
+rapid_rotary = 3600.0
 
 [machine.clearance]
 radius = 45.0
@@ -41,27 +49,27 @@ safe_z = 60.0
 
 [machine.provenance.rotary_axis]
 state = "unconfirmed"
-source = "Makera's Fusion and FreeCAD Z1 machines: A parallel to machine X, on the Y table (decision 0007)"
+source = "7 of 7 Makera 4-axis profiles agree: Fusion (Z1, Carvera, Carvera Air, Carvera Harmonic) and FreeCAD (Z1, C1, Air) put the rotary axis along +X on the Y table; Makera's Mastercam and Carveco posts also rotate about X (decision 0012)"
 
 [machine.provenance.a_sense]
 state = "unconfirmed"
-source = "Makera's Fusion Z1 machine: right-handed, not reversed; the firmware's direction is factory configuration (decision 0007, OI-03, air cut step 1)"
+source = "right-handed about +X by consensus of 3 host families: Fusion (4 four-axis machine files, axis +X, right-handed, not reversed), Mastercam (CW positive for the tool around the part, viewed from +X) and SolidCAM (+CCW); FreeCAD agrees by default, none contradicts, Carveco and VCarve only negate their own angle. Not checked on a Z1: air cut step 1 (decision 0012, OI-03, OI-37)"
 
 [machine.provenance.rotary_origin]
 state = "unconfirmed"
-source = "placeholder: Makera's Fusion machine frame appears to have its origin on the A axis; measure the A axis and chuck face in machine coordinates (OI-39)"
+source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is a placeholder, no Makera source gives it (decision 0012, OI-39, OI-57)"
 
 [machine.provenance.a_range]
 state = "unconfirmed"
-source = "Z1 firmware 1.1.2 source: no A soft limit (decision 0007)"
+source = "continuous by consensus: Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous), Z1 firmware (no A soft limit)"
 
 [machine.provenance.travel]
 state = "unconfirmed"
-source = "Makera's Fusion Z1 machine; its FreeCAD machine says X and Y 0 to 200 (OI-39)"
+source = "spans 200 x 200 x 100 mm: FreeCAD Z1 exactly, Fusion Z1 with 10 mm extra on X and Y, firmware soft limits -206/-206/-102 (disabled by default). Frame is the firmware's G53 with home at 0; with the rotary module and soft limits on, the firmware holds Y above -160 (decision 0012, OI-39)"
 
 [machine.provenance.max_feeds]
 state = "unconfirmed"
-source = "Makera's Fusion Z1 machine (4000 mm/min, 21600 deg/min); Makera Studio's table is reported as 1200 mm/min; rapids not stated, so the feed limits are used (OI-39)"
+source = "A 3600 deg/min (10 RPM): Makera's published figure and the Z1 and Z1 Pro firmware delta_max_rate agree. X and Y 1200 mm/min and Z 600 mm/min from the same firmware config (Carvera and Air differ), matching the 1200 reported from Makera Studio. Fusion (4000, 21600), FreeCAD (6000, 4000), Mastercam and NX figures are identical across Makera's machines, so they carry no Z1 information (decision 0012, OI-39, OI-56)"
 
 [machine.provenance.clearance]
 state = "unconfirmed"

@@ -129,7 +129,7 @@ fn req_set_01_machine_copy_survives_save_and_load() {
 
     // Editing one value of the copy changes one line.
     let mut edited = z1();
-    edited.max_feeds.linear.0 = 1200.0;
+    edited.max_feeds.linear.0 = 1000.0;
     project.set_machine(Some(edited)).unwrap();
     file::save(&project, &dir).unwrap();
     let after = std::fs::read_to_string(dir.join(file::MACHINE_FILE)).unwrap();

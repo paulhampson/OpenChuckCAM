@@ -125,7 +125,7 @@ fn req_set_01_z1_warnings_name_unconfirmed_values() {
     let text: Vec<String> = report.warnings.iter().map(ToString::to_string).collect();
     assert!(
         text.iter().any(
-            |t| t.starts_with("the end of the stock is at machine X 207.000")
+            |t| t.starts_with("the end of the stock is at machine X 26.600")
                 && t.ends_with(
                     "(uses machine values not confirmed on the machine: rotary_origin, travel)"
                 )
