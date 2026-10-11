@@ -1,6 +1,6 @@
 # SP-13 result: custom-profile tools
 
-Throwaway spike code (work breakdown, Spikes; spike rules). The decision record is [`docs/decisions/0011-sp-13-tool-profiles.md`](../../docs/decisions/0011-sp-13-tool-profiles.md); this file is the write-up, and [`out/report.md`](out/report.md) is the full report.
+Throwaway spike code (work breakdown, Spikes; spike rules). The decision record is `docs/decisions/0012-sp-13-tool-profiles.md` on branch `docs/decision-0012-sp-13-tool-profiles` (open items OI-56 to OI-58); this file is the write-up, and [`out/report.md`](out/report.md) is the full report.
 
 ## Question
 
@@ -59,7 +59,7 @@ SP-6 has not set a budget, so criterion 3 is not judged here.
 
 ## Decision
 
-Proposed in record 0011: keep `ToolProfile`; validate it with the monotone rule; map the standard types by "cutting end to D/2, then a vertical side to the flute length"; solve tool centres with the generic drop-cutter, with normal-offset as a convex-only fast path; keep the gouge checker independent as built; leave the sweep budget to SP-6.
+Proposed in record 0012: keep `ToolProfile`; validate it with the monotone rule; map the standard types by "cutting end to D/2, then a vertical side to the flute length"; solve tool centres with the generic drop-cutter, with normal-offset as a convex-only fast path; keep the gouge checker independent as built; leave the sweep budget to SP-6.
 
 ## Fallback status
 
