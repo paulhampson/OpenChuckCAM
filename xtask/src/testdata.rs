@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The test-data size policy (work breakdown slice 0 item 10, decision record 0003):
+//! The test-data size policy (work breakdown slice 0 item 10, decision record 0004):
 //! no file in `testdata/` above 1 MiB and no more than 20 MiB in total.
 //! Larger models are generated procedurally or, if ever needed, go to Git LFS
 //! or a separate repository (architecture section 13, open).

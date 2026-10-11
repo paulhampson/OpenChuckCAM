@@ -1,4 +1,4 @@
-# 0003: Slice 0 design refinement, guardrails and shared data
+# 0004: Slice 0 design refinement, guardrails and shared data
 
 - **Status:** proposed, with decision items 2 and 11 and the contributor agreement accepted by the project owner on 11 Oct 2026 and applied to the architecture (see "Owner decisions"). The other choices are what slice 0 builds on.
 - **Date:** 11 Oct 2026.
@@ -12,7 +12,7 @@ Spike inputs, used as the project owner asked even though they are not accepted:
 
 - **0001 (SP-3, proposed):** IR fields (item 1), A sign and rotary offset as profile data (item 2), feed intent (item 3) and the oracle design (item 6). Its open items stay open; in particular the simulator run (item 1) and the Z1 conventions (item 3) are not resolved here, so the IR is **not frozen** by this record.
 - **0002 (SP-2, proposed):** egui, eframe and wgpu versions (item 6), the three-platform build (item 2), and keeping `parry3d-f64` types behind `openchuck-geom`.
-- **SP-1 (STEP kernel) is still in progress.** `openchuck-import` links no STEP kernel, the B-rep data in `openchuck-types` is minimal, and no CI job builds C++ yet.
+- **SP-1 (STEP kernel)** was in progress when this record was written. It has since been decided by [decision 0003](0003-step-kernel-route.md) (accepted): a thin in-house C ABI wrapper over OpenCASCADE in `openchuck-import`, with STEP parsing in an isolated child process. Its slice 0 consequences are applied here (see "SP-1 follow-up" below); the wrapper itself is slice 11 work, so `openchuck-import` still links no kernel and no CI job builds C++ yet.
 
 ## Decision
 
@@ -44,6 +44,16 @@ Spike inputs, used as the project owner asked even though they are not accepted:
 - **Activity check:** accepted as recommended: a weekly `cargo-unmaintained` job, Dependabot update pull requests checked against the register, and `cargo deny` advisories (OI-18 closed).
 - **CLA signatures** are collected with CLA Assistant Lite (OI-22 closed; follow-up OI-24).
 
+## SP-1 follow-up, 11 Oct 2026
+
+Decision 0003 lists consequences for slice 0. Applied in this change:
+
+- **CI:** `CMAKE_POLICY_VERSION_MINIMUM=3.5` is set for every CI job, because CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's `cmake_minimum_required`. The kernel build job itself, with a per-platform build cache, a path filter so only `openchuck-import` rebuilds it, `TKernel` linked first and a clean-exit test, is added with the wrapper in slice 11 (OI-20).
+- **Dependency rule:** the xtask STEP-kernel rule already names `occt-sys`, `opencascade` and `opencascade-sys`, so no `-sys` crate can reach the library family or any crate but `openchuck-import`; a unit test now covers `occt-sys`.
+- **NFR-14 records** for `occt-sys`, `opencascade`/`opencascade-sys`, `cadrum` and `brepkit-io` are in `docs/dependencies.md` (tried, rejected or watched; none declared).
+- **B-rep data:** the `openchuck-types::brep` documentation now states the decided numbering (`TopExp_Explorer` order, assigned by the importer) and that zero faces is an importer error. Surface parameters stay out of the shared types until SP-9 decides how exact evaluation reaches `openchuck-path`.
+- **Open items** from decision 0003 are added to the register (OI-25 to OI-29), and OI-14, OI-19 and OI-20 are updated.
+
 ## Alternatives considered
 
 - **Oracle and harness as modules inside `openchuck-types`, behind a feature.** Rejected: test code would ship in the published library and a feature could be enabled by accident. A module in one crate's `tests/` cannot be shared.
@@ -71,8 +81,8 @@ The register in [docs/open-items.md](../open-items.md) tracks the current state;
 | 5 (OI-16) | **Reserve the `openchuck-*` names on crates.io** (slice 0 item 7). This publishes placeholder crates, so it is the owner's action. | Slice 0 close | Project owner |
 | 6 (OI-17, deferred) | **Benchmark regression flag at 10%** needs a dedicated runner (verification plan section 4.1). The criterion baseline exists (`benches/`), but no workflow runs it yet. | Slice 0 close or when a runner exists | A self-hosted runner |
 | 7 (OI-18, proposed) | **Scheduled dependency activity check** (verification plan section 7): no tool chosen. Candidates: a small xtask over the crates.io index, or a scheduled `cargo outdated` report. | Slice 0 close | Choice of tool (NFR-14 record) |
-| 8 (OI-19) | **Miri and sanitizers** have nothing to check: `unsafe_code` is denied and there is no FFI. Add the job with the first `unsafe` or FFI code (the STEP kernel, slice 11 after SP-1). | Slice 11 | SP-1 result |
-| 9 (OI-20) | **STEP kernel CI job**, path-filtered so a change to `docs/` or `posts/` does not rebuild it (slice 0 checklist). The `changes` job in `ci.yml` has the filter structure; the job is added with the kernel. | After SP-1 | SP-1 result |
+| 8 (OI-19) | **Miri and sanitizers** have nothing to check: `unsafe_code` is denied and there is no FFI. Add the job with the first `unsafe` or FFI code: the OpenCASCADE wrapper in slice 11 (decision 0003). | Slice 11 | The wrapper |
+| 9 (OI-20) | **STEP kernel CI job**, path-filtered so a change to `docs/` or `posts/` does not rebuild it (slice 0 checklist). The `changes` job in `ci.yml` has the filter structure; the job is added with the wrapper in slice 11, as decision 0003 specifies. | Slice 11 | The wrapper result |
 | 10 (OI-10, closed) | **Three-platform CI has not run yet.** Everything was built and tested on Linux only. The first pull request runs Windows and macOS (0002 outstanding item 2). | First pull request | CI run |
 | 11 (OI-21) | **IR not frozen.** 0001 open items 1 (simulator run), 3 (Z1 A sign and offset), 4 (feed rule on mixed moves) and 7 (tilted tools, off-top contact) may still change the IR or profile fields. | Slices 3, 5 and 6 | 0001 open items |
 
@@ -81,7 +91,7 @@ The register in [docs/open-items.md](../open-items.md) tracks the current state;
 | Checklist item | State |
 | --- | --- |
 | Each dependency rule, including the library-family rule, fails CI when deliberately broken | Done: xtask unit tests break each rule on a synthetic graph; `cargo xtask deps` passes on the real workspace |
-| Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel | Library part done (`libraries-alone` CI job). No kernel yet (open item 9) |
+| Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel | Library part done (`libraries-alone` CI job). The kernel arrives with the slice 11 wrapper (decision 0003; open item 9, OI-20) |
 | The IR carries every field listed and round-trips through serde | Done, including a property test that doubles survive exactly |
 | The CLI runs on an empty project and gives clear errors for bad input | Done (`apps/openchuck-cli/tests/cli.rs`) |
 | The determinism harness catches a deliberately scheduling-dependent test | Done: thread-dependent chunking and shared push order are both caught |

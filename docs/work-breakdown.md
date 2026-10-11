@@ -95,7 +95,7 @@ These apply to every slice and are not repeated below.
 **Design refinement:** confirm the monorepo layout (architecture section 12), the crate layout and the dependency rules against sections 3 and 4; fix the IR fields after SP-3; define the job context, error model and dependency policy (pins, upgrade cadence).
 
 1. Monorepo layout from architecture section 12: `crates/` for the library crates, `apps/` for `openchuck-ui` and `openchuck-cli` (wiring only), plus `posts/`, `testdata/`, `fuzz/`, `benches/`, `docs/` and `xtask/`; `bindings/` is created later.
-2. Crates as shells: `openchuck-types`, `-path`, `-post`, `-gcode`, `-geom`, `-import`, `-sim`, `-project`, `-app` and `-viewport` in `crates/`, with `-ui` and `-cli` in `apps/` (`openchuck-vcs` is P2 and not built); the test-only `openchuck-testkit` in `crates/` and the `openchuck-benches` package in `benches/` (decision record 0003).
+2. Crates as shells: `openchuck-types`, `-path`, `-post`, `-gcode`, `-geom`, `-import`, `-sim`, `-project`, `-app` and `-viewport` in `crates/`, with `-ui` and `-cli` in `apps/` (`openchuck-vcs` is P2 and not built); the test-only `openchuck-testkit` in `crates/` and the `openchuck-benches` package in `benches/` (decision record 0004).
 3. Repository root: workspace `Cargo.toml` with every third-party version declared once in `[workspace.dependencies]`, committed `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, `LICENSES/` and `.github/` workflows; trunk-based branching.
 4. `openchuck-types`: millimetre and degree types in double precision, mesh and B-rep data, stock, tool, machine profile, the neutral toolpath IR (tool tip, tool axis, explicit A, move kind, contact feed, segment duration, tags to operation, tool and setup), job context (cancel token, progress sink), typed errors and the one shared forward-kinematics implementation (XYZA to tool tip); the data types are serde-serialisable (GC-01, NFR-05).
 5. CI on Windows, macOS and Linux with path-filtered jobs: build, test, `clippy`, `rustfmt`, lints against `unwrap` and unchecked indexing, and `cargo deny` for licences and advisories. Each library builds and tests alone without the C++ toolchain or GPU libraries (NFR-01, NFR-07, NFR-10).
@@ -406,7 +406,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-1 (kernel), SP-9 (exact surfaces).
 
-**Design refinement:** the kernel route chosen in SP-1 (`opencascade`, a thin in-house wrapper, or `cadrum`), the deterministic face and edge numbering, how exact evaluation reaches `openchuck-path` (analytic Rust for simple surface types, kernel-backed or NURBS crate otherwise, per SP-9), and the licence boundary (the LGPL kernel stays in `openchuck-import`).
+**Design refinement:** the kernel route chosen in SP-1 (a thin in-house wrapper over OpenCASCADE with an isolated import process, [decision 0003](decisions/0003-step-kernel-route.md)), the deterministic face and edge numbering, how exact evaluation reaches `openchuck-path` (analytic Rust for simple surface types, kernel-backed or NURBS crate otherwise, per SP-9), and the licence boundary (the LGPL kernel stays in `openchuck-import`).
 
 1. Wrapped C++ kernel inside `openchuck-import` only, behind `ModelImporter`; exceptions converted to errors.
 2. B-rep topology (faces, edges, vertices) with deterministic numbering, so the same file always gives the same IDs.

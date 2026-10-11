@@ -2,10 +2,15 @@
 //! Boundary-representation data handed from the STEP importer to the libraries (INT-02).
 //!
 //! Face and edge IDs are assigned deterministically by the importer, so the
-//! same file always gives the same IDs (architecture section 5.4). The exact
-//! surface description is deliberately minimal until spikes SP-1 (STEP kernel)
-//! and SP-9 (exact surfaces) report; only the surface kind and a tessellation
-//! are carried for now.
+//! same file always gives the same IDs (architecture section 5.4). SP-1
+//! (decision 0003) settled how: the importer numbers faces and edges in the
+//! OpenCASCADE `TopExp_Explorer` order, which is identical on Linux, macOS and
+//! Windows, and treats a file that yields no faces as an error. Kernel
+//! tessellation and kernel-computed numbers are not bit-identical across CPU
+//! architectures, so no ID is derived from them.
+//!
+//! Only the surface kind and a tessellation are carried for now. How exact
+//! surface evaluation reaches the pathing library is decided by SP-9.
 
 use serde::{Deserialize, Serialize};
 

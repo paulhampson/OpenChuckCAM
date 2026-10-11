@@ -25,7 +25,7 @@ pub const LIBRARY_FAMILY: &[&str] = &[
 /// Project crates each crate may depend on (normal and build dependencies),
 /// from the "Project dependencies" column of architecture section 3.
 /// `openchuck-testkit` and `openchuck-benches` are test-only additions
-/// (decision record 0003).
+/// (decision record 0004).
 pub const ALLOWED_INTERNAL: &[(&str, &[&str])] = &[
     ("openchuck-types", &[]),
     ("openchuck-path", &["openchuck-types"]),
@@ -470,6 +470,19 @@ mod tests {
         let mut g = healthy();
         g.add("openchuck-import", "opencascade", Kind::Normal);
         assert_eq!(check_graph(&g, &[]), Findings::new());
+    }
+
+    #[test]
+    fn req_nfr_01_occt_sys_reaches_only_import() {
+        // Decision 0003: the kernel is built by occt-sys for openchuck-import only.
+        let mut g = healthy();
+        g.add("openchuck-import", "occt-sys", Kind::Normal);
+        assert_eq!(check_graph(&g, &[]), Findings::new());
+        g.add("openchuck-types", "some-wrapper", Kind::Normal);
+        g.add("some-wrapper", "occt-sys", Kind::Normal);
+        let findings = check_graph(&g, &[]);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].contains("openchuck-types must not depend on occt-sys"));
     }
 
     #[test]

@@ -21,6 +21,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
+  # cmake_minimum_required; needed once openchuck-import builds the kernel
+  # (decision 0003, slice 11).
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   changes:

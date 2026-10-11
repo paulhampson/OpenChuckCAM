@@ -33,6 +33,16 @@ The NFR-14 record for every third-party crate the workspace declares. Each row g
 | `criterion` | 0.8.2 | 88 | Apache-2.0 OR MIT | Dev-dependency of `openchuck-benches` | Benchmarks and the 10% regression flag (verification plan section 4.1). |
 | `libfuzzer-sys` | 0.4.13 | 79 | (MIT OR Apache-2.0) AND NCSA | `fuzz/` only (separate workspace, nightly) | Fuzz targets through cargo-fuzz (82). NCSA is allowed on purpose for this dev-only crate (architecture section 7). |
 
+## Tried and not adopted
+
+Recorded so the evidence is not lost. None is declared; adopting one later needs a new record.
+
+| Crate | Version tried | Score | Licence | Outcome | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `opencascade`, `opencascade-sys` | 0.3.0 | 66 | LGPL-2.1 | Rejected by SP-1 (decision 0003) | The safe API lacks per-face triangles, surface parameters, UV bounds and angular deflection; `opencascade-sys` does not compile under MSVC. Not used even for its build glue. |
+| `cadrum` | 0.9.0 | 63 | MIT | Rejected by SP-1 (decision 0003) | Face IDs change every run, reads solids only, same reader crashes, downloads a prebuilt binary at build time, agent-instruction files. |
+| `brepkit-io` | 4.1.48 | 60 | AGPL-3.0-only | Watched (decision 0003, OI-26) | No crashes in the mutation fuzz and exact surfaces in Rust, but fails the full sphere and shell-only files and is unproven on real CAD exports. Re-spike when those are fixed. |
+
 ## CI tools
 
 Tools that CI installs and runs. They are never linked into the product, so NFR-09 and the dependency rules do not apply, but they are chosen and recorded the same way. Only tools outside the architecture's selection (section 7) are listed.
@@ -49,4 +59,5 @@ These were tried in a spike and are recorded now so the slice that first uses th
 | --- | --- | --- | --- | --- | --- |
 | `parry3d-f64` | 0.31.1 | 83 (as parry3d) | Apache-2.0 | `openchuck-geom`, `openchuck-path`, `openchuck-sim` | SP-2 used it for picking. Its public types are `glamx` types, which must stay behind `openchuck-geom` (decision record 0002). Highest API churn of the CAM-critical crates. |
 | `bytemuck` | 1.25.0 | 96 | Zlib OR Apache-2.0 OR MIT | `openchuck-viewport` | Vertex buffer casts (SP-2). |
+| `occt-sys` | 7.8.1 | not scored | LGPL-2.1 (OpenCASCADE: LGPL-2.1 with its exception) | `openchuck-import`, build dependency only (slice 11) | Builds OpenCASCADE for the in-house C ABI wrapper chosen by SP-1 ([decision 0003](decisions/0003-step-kernel-route.md)). The licence is accepted there. Needs a survey-style score, a pin and `deny.toml` licence entries when slice 11 declares it (OI-20). |
 | `gcode` | 0.7.0 | 75 | MIT OR Apache-2.0 | `openchuck-gcode` (test reader) | SP-3 found it stores numbers as `f32`; the reader decision is open until slice 6 (decision record 0001, open item 5). |
