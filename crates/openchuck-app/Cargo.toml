@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-app"
+description = "OpenChuckCAM application layer: commands, queries, events, job manager and operation pipeline. UI-agnostic."
+readme = "README.md"
+categories = ["science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+openchuck-path.workspace = true
+openchuck-post.workspace = true
+openchuck-gcode.workspace = true
+openchuck-geom.workspace = true
+openchuck-import.workspace = true
+openchuck-sim.workspace = true
+openchuck-project.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
+rayon.workspace = true
+
+[lints]
+workspace = true

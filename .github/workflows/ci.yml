@@ -1,0 +1,259 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Pull request and main-branch CI (work breakdown slice 0 items 5 and 13;
+# verification plan sections 7 to 9). Jobs are path-filtered: a change to
+# docs/ or posts/ alone does not rebuild the Rust workspace.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
+  # cmake_minimum_required; needed once openchuck-import builds the kernel
+  # (decision 0003, slice 11).
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    # paths-filter lists a pull request's changed files through the API.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      records: ${{ steps.filter.outputs.records }}
+      fuzz: ${{ steps.filter.outputs.fuzz }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'apps/**'
+              - 'xtask/**'
+              - 'benches/**'
+              - 'fuzz/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'clippy.toml'
+              - 'rustfmt.toml'
+              - 'deny.toml'
+              - 'about.toml'
+              - 'about.hbs'
+              - '.cargo/**'
+              - '.github/workflows/**'
+            records:
+              - 'docs/requirements.md'
+              - 'docs/work-breakdown.md'
+              - 'docs/dependencies.md'
+              - 'testdata/**'
+            fuzz:
+              - 'fuzz/**'
+              - 'crates/openchuck-types/**'
+
+  fmt:
+    name: rustfmt
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all --check
+
+  build-test:
+    name: Build and test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: clippy (deny warnings, unwrap and unchecked indexing)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo nextest run --workspace --locked --no-fail-fast
+      - name: Doctests
+        run: cargo test --workspace --doc --locked
+      - name: Examples run
+        run: cargo run --locked -p openchuck-types --example kinematics
+
+  libraries-alone:
+    name: Each library alone (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack
+      # The library family builds and tests on its own, without the C++
+      # toolchain, GPU libraries or application crates (architecture section 12).
+      - name: Build each library crate on its own
+        run: >
+          cargo hack check --no-dev-deps
+          --package openchuck-types --package openchuck-path
+          --package openchuck-post --package openchuck-gcode
+          --package openchuck-geom --package openchuck-sim --package openchuck-project
+      - name: Test each library-family crate on its own
+        shell: bash
+        run: |
+          for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
+            cargo test --locked -p "$crate"
+          done
+
+  repository-checks:
+    name: Repository checks (xtask)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Dependency rules (architecture sections 4 and 12)
+        run: cargo xtask deps
+      - name: SPDX headers and crate licences (NFR-10)
+        run: cargo xtask licences
+      - name: Dependency pins and records (NFR-14)
+        run: cargo xtask records
+      - name: Test-data size policy
+        run: cargo xtask testdata
+      - name: Traceability report
+        run: cargo xtask trace --report target/traceability.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traceability-report
+          path: target/traceability.md
+
+  cargo-deny:
+    name: cargo deny (licences, advisories, sources)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  cargo-audit:
+    name: cargo audit
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit --deny warnings
+
+  licence-notices:
+    name: Licence notices (cargo about)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.html
+
+  semver:
+    name: Semver check (library family)
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+      # Compares the public API with the pull request's base (INT-07). Crates
+      # that do not exist on the base yet are skipped.
+      - name: cargo semver-checks
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
+            if git cat-file -e "$BASE:crates/$crate/Cargo.toml" 2>/dev/null; then
+              cargo semver-checks --package "$crate" --baseline-rev "$BASE"
+            else
+              echo "$crate is new in this change; no baseline"
+            fi
+          done
+
+  fuzz-smoke:
+    name: Fuzz smoke (1 minute per target)
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [machine_profile_json, toolpath_ir_json]
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install nightly --profile minimal
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=60
+
+  coverage:
+    name: Coverage trend
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info

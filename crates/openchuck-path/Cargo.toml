@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-path"
+description = "Reusable 4-axis pathing library: strategies, tool-axis control, A-axis management, linking, gouge protection and feed intent."
+readme = "README.md"
+categories = ["science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+
+[lints]
+workspace = true

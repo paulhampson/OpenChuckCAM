@@ -95,7 +95,7 @@ These apply to every slice and are not repeated below.
 **Design refinement:** confirm the monorepo layout (architecture section 12), the crate layout and the dependency rules against sections 3 and 4; fix the IR fields after SP-3; define the job context, error model and dependency policy (pins, upgrade cadence).
 
 1. Monorepo layout from architecture section 12: `crates/` for the library crates, `apps/` for `openchuck-ui` and `openchuck-cli` (wiring only), plus `posts/`, `testdata/`, `fuzz/`, `benches/`, `docs/` and `xtask/`; `bindings/` is created later.
-2. Crates as shells: `openchuck-types`, `-path`, `-post`, `-gcode`, `-geom`, `-import`, `-sim`, `-project`, `-app` and `-viewport` in `crates/`, with `-ui` and `-cli` in `apps/` (`openchuck-vcs` is P2 and not built).
+2. Crates as shells: `openchuck-types`, `-path`, `-post`, `-gcode`, `-geom`, `-import`, `-sim`, `-project`, `-app` and `-viewport` in `crates/`, with `-ui` and `-cli` in `apps/` (`openchuck-vcs` is P2 and not built); the test-only `openchuck-testkit` in `crates/` and the `openchuck-benches` package in `benches/` (decision record 0004).
 3. Repository root: workspace `Cargo.toml` with every third-party version declared once in `[workspace.dependencies]`, committed `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, `LICENSES/` and `.github/` workflows; trunk-based branching.
 4. `openchuck-types`: millimetre and degree types in double precision, mesh and B-rep data, stock, tool, machine profile, the neutral toolpath IR (tool tip, tool axis, explicit A, move kind, contact feed, segment duration, tags to operation, tool and setup), job context (cancel token, progress sink), typed errors and the one shared forward-kinematics implementation (XYZA to tool tip); the data types are serde-serialisable (GC-01, NFR-05).
 5. CI on Windows, macOS and Linux with path-filtered jobs: build, test, `clippy`, `rustfmt`, lints against `unwrap` and unchecked indexing, and `cargo deny` for licences and advisories. Each library builds and tests alone without the C++ toolchain or GPU libraries (NFR-01, NFR-07, NFR-10).
@@ -109,17 +109,17 @@ These apply to every slice and are not repeated below.
 13. CI tooling from the verification plan: nextest, cargo-hack (each library alone), cargo-semver-checks on the library family, cargo-audit, cargo-about for notices, llvm-cov for trends, Miri and sanitizers on unsafe and FFI code, a scheduled beta build and activity check, fuzzing for 1 minute per parser on pull requests and 1 hour nightly in a separate nightly job, and a benchmark regression flag at 10% on a dedicated runner.
 14. Decisions recorded: AGPL for every crate, including `openchuck-types` and `openchuck-post` and the application crates (decided: AGPL), the contributor agreement approach, and the docs location (decided: the authoritative copy lives in `docs/` in the repository, and the Claude artifacts become working drafts).
 
-**Review checklist**
+**Review checklist** (closed 11 Oct 2026, [decision 0004](decisions/0004-slice-0-guardrails.md))
 
-- [ ] Each dependency rule, including the library-family rule, fails CI when deliberately broken
-- [ ] Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel
-- [ ] The IR carries every field listed above and round-trips through serde
-- [ ] The CLI runs on an empty project and gives clear errors for bad input
-- [ ] The determinism harness catches a deliberately scheduling-dependent test
-- [ ] Every dependency has a record, a pinned version and one workspace declaration; the licence list is generated and the SPDX check passes
-- [ ] The licence, contributor agreement and docs-location decisions are written down
-- [ ] The kinematic oracle agrees with the shared machine model over a set of A angles including negative angles and the 0/360 seam, and fails when the A sign in the shared model is flipped
-- [ ] The traceability report flags a seeded gap in a closed slice and fails CI
+- [x] Each dependency rule, including the library-family rule, fails CI when deliberately broken
+- [x] Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel (no kernel yet; its CI job arrives with the slice 11 wrapper, decision 0003)
+- [x] The IR carries every field listed above and round-trips through serde
+- [x] The CLI runs on an empty project and gives clear errors for bad input
+- [x] The determinism harness catches a deliberately scheduling-dependent test
+- [x] Every dependency has a record, a pinned version and one workspace declaration; the licence list is generated and the SPDX check passes
+- [x] The licence, contributor agreement and docs-location decisions are written down
+- [x] The kinematic oracle agrees with the shared machine model over a set of A angles including negative angles and the 0/360 seam, and fails when the A sign in the shared model is flipped
+- [x] The traceability report flags a seeded gap in a closed slice and fails CI
 
 ## Slice 1 – Project documents, persistence and undo
 

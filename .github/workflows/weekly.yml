@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Weekly dependency activity check (verification plan section 7; docs/open-items.md
+# OI-18). cargo-unmaintained flags dependencies whose repository is archived or
+# missing, or that have stopped releasing while their own dependencies fell
+# behind. It never blocks a pull request: findings fail this scheduled run and
+# are reviewed at the monthly pin review (docs/dependencies.md).
+name: Weekly
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  unmaintained:
+    name: Dependency activity (cargo-unmaintained)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-unmaintained@2.1.0
+      - name: Token for the archived-repository check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/github-token"
+          echo "GITHUB_TOKEN_PATH=$RUNNER_TEMP/github-token" >> "$GITHUB_ENV"
+      - name: Main workspace
+        run: cargo unmaintained --all-targets --color never 2>&1 | tee unmaintained.txt
+      - name: Fuzz workspace
+        if: always()
+        working-directory: fuzz
+        run: cargo unmaintained --color never 2>&1 | tee ../unmaintained-fuzz.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unmaintained-report
+          path: unmaintained*.txt

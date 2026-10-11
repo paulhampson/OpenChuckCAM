@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Fuzz targets (NFR-07). cargo-fuzz needs a nightly toolchain, so this is a
+# separate workspace. Third-party versions are pinned and recorded in
+# docs/dependencies.md like the main workspace's (checked by `cargo xtask records`).
+[package]
+name = "openchuck-fuzz"
+publish = false
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+serde_json = { version = "=1.0.152", features = ["float_roundtrip"] }
+openchuck-types = { path = "../crates/openchuck-types" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "machine_profile_json"
+path = "fuzz_targets/machine_profile_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "toolpath_ir_json"
+path = "fuzz_targets/toolpath_ir_json.rs"
+test = false
+doc = false
+bench = false
