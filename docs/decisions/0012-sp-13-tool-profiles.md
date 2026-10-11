@@ -1,6 +1,6 @@
 # 0012: SP-13 result, one revolved-profile tool model
 
-- **Status:** proposed (11 Oct 2026). The spike met pass criteria 1, 2 and 4; criterion 3 (sweep time within the SP-6 budget) cannot be judged until SP-6 sets that budget, and is carried to SP-6 (OI-56). Items 2 and 6 below need the owner's agreement (OI-57, OI-58).
+- **Status:** accepted by the project owner (11 Oct 2026), including the two proposals that needed agreement: the monotone rule that excludes undercut tools (item 2, OI-57) and the TOML text format for custom profiles (item 6, OI-58). The spike met pass criteria 1, 2 and 4; criterion 3 (sweep time within the SP-6 budget) cannot be judged until SP-6 sets that budget, and is carried to SP-6 (OI-56, still open).
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/sp-13-tool-profiles` (throwaway, never merged). The code is in `spikes/sp-13-tool-profiles/`, a separate Cargo project with no third-party dependencies, never a workspace member; the write-up is `spikes/sp-13-tool-profiles/RESULT.md` and the full report `spikes/sp-13-tool-profiles/out/report.md`, both on that branch.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-07 progressed; OI-56 to OI-58 are new.
@@ -49,7 +49,7 @@ Findings:
 - **Precision**: the edge test first computed horizontal distance from an expanded quadratic, which lost about 1e-8 mm to cancellation near the tool axis and put a sharp V's apex 2e-9 mm *above* the surface; evaluating the distance directly fixed it. The product should evaluate distances directly.
 - **Cost**: `h(r)` takes 5 to 8 ns. One drop on a 147,070-triangle sphere with a plain XY grid index takes 0.35 ms (flat) to 3.2 ms (tapered ball) on one thread, after a height cull (triangles visited from the highest down, stopping when none can lift the tool, valid because `h(r) >= 0`) brought it down from about 12 ms. It was not profiled; the edge tests' golden-section searches are the likely cost. That is slow for a dense finishing pass; slice 5 should add a bounding structure (SP-4's choice) and cull edges by their own height before searching. Normal-offset solving takes about 0.1 microseconds. The dexel stand-in sweeps at 16 to 21 ns per cell and pose for every tool, the rotary-grid stand-in at 23 to 101 ns, all on one thread; 4 threads take 2 to 3 times less.
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **Keep `ToolProfile` as the one tool description.** Its input form (segments from the tip, on the axis, each running from the previous point; arcs by end point and centre) needs no direction flag under the rule in item 2. Every tool type maps to it, and path solving, the gouge checker and the sweep read only the profile.
 2. **Validity rule: monotone profiles.** Along the profile neither the radius nor the height decreases; each segment has non-zero length; an arc's ends lie on one circle within 1e-6 mm and the arc stays within one quarter turn (radius and height both increasing along it); the first segment leaves the axis; every value is finite. This makes a profile connected, non-self-intersecting and revolvable by construction, makes `h(r)` a function, and fixes each arc's direction. It excludes undercut tools (dovetail, lollipop, keyseat, back chamfer); P1 accepts that if the owner agrees (OI-57). This is the fallback's "line and arc segments with a validity check", reached as the design rather than after a failure.
@@ -81,5 +81,5 @@ Findings:
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
 | 1 | Sweep time against the SP-6 budget (criterion 3): SP-6 sets the budget and times the profile sweep in its candidates, including V-bit and custom profiles. (OI-56) | SP-6 | SP-6 |
-| 2 | Undercut tools (dovetail, lollipop, keyseat, back chamfer) are rejected by the monotone rule. Accept for P1, or ask for a general profile with a self-intersection test and a different drop. (OI-57) | On accepting this record | Project owner |
-| 3 | Custom profile text format: TOML with the `ToolProfile` fields, with an arc by `radius` as an alternative to `centre`. (OI-58) | Slice 4 design refinement | Project owner |
+| 2 | Undercut tools (dovetail, lollipop, keyseat, back chamfer) are rejected by the monotone rule. Accepted for P1 on 11 Oct 2026 (OI-57 closed); a general profile with a self-intersection test and a different drop would be a new decision. | Closed | |
+| 3 | Custom profile text format: TOML with the `ToolProfile` fields, with an arc by `radius` as an alternative to `centre`. Accepted on 11 Oct 2026 (OI-58 closed); slice 4 fixes the field names and writes the corpus tests and fuzz target. | Closed (slice 4 specifies details) | |
