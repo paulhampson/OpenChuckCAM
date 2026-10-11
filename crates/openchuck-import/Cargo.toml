@@ -14,6 +14,12 @@ authors.workspace = true
 [dependencies]
 openchuck-types.workspace = true
 openchuck-geom.workspace = true
+stl_io.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

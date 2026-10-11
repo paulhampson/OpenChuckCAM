@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 1\n"), "{text}");
+    assert!(text.starts_with("schema = 2\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -182,4 +182,328 @@ fn req_prj_01_cli_create_option_makes_the_project() {
     let out = run(&["validate".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(!out.stderr.contains("warning:"), "{}", out.stderr);
+}
+
+fn corpus(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/stl")
+        .join(name)
+}
+
+#[test]
+fn req_imp_01_imp_04_cli_inspect_prints_the_summary_and_report() {
+    let out = run(&["inspect".as_ref(), corpus("cube_binary.stl").as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("12 triangles, 8 vertices"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("X 0 to 10, Y 0 to 10, Z 0 to 10 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("checks:    no problems found"),
+        "{}",
+        out.stdout
+    );
+    // The STL tessellation statement (slice 2 item 7; verification plan section 5).
+    assert!(
+        out.stdout
+            .contains("gouge tolerance on this part is measured against this mesh"),
+        "{}",
+        out.stdout
+    );
+
+    // A part with defects: each problem is listed, and inspecting still succeeds.
+    let out = run(&[
+        "inspect".as_ref(),
+        corpus("defect_non_manifold.stl").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("checks:    2 problem(s)"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("1 non-manifold edge(s)"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("non-manifold edges: [0, 2]"),
+        "{}",
+        out.stdout
+    );
+    let out = run(&[
+        "inspect".as_ref(),
+        corpus("defect_inside_out.stl").as_os_str(),
+    ]);
+    assert!(
+        out.stdout.contains("12 flipped triangle(s)"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("and 2 more"), "{}", out.stdout);
+}
+
+#[test]
+fn req_imp_03_cli_inspect_reads_mm_and_asks_about_units() {
+    // The header's unit is reported as a question; the part stays in mm.
+    let out = run(&["inspect".as_ref(), corpus("cube_inch.stl").as_os_str()]);
+    assert!(
+        out.stdout.contains("units:     mm, the default"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("unit?      the file says its unit is in, but it was read in mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("X 0 to 1,"), "{}", out.stdout);
+
+    // A part too small or too large in mm is asked about too.
+    let out = run(&["inspect".as_ref(), corpus("cube_small.stl").as_os_str()]);
+    assert!(
+        out.stdout.contains("may be in in or cm or m"),
+        "{}",
+        out.stdout
+    );
+    let out = run(&["inspect".as_ref(), corpus("cube_huge.stl").as_os_str()]);
+    assert!(out.stdout.contains("may be in um"), "{}", out.stdout);
+    let out = run(&["inspect".as_ref(), corpus("cube_ascii.stl").as_os_str()]);
+    assert!(!out.stdout.contains("unit?"), "{}", out.stdout);
+
+    // --units answers it.
+    let out = run(&[
+        "inspect".as_ref(),
+        corpus("cube_inch.stl").as_os_str(),
+        "--units".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert!(
+        out.stdout.contains("units:     in, set by the user"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
+    assert!(!out.stdout.contains("unit?"), "{}", out.stdout);
+    let out = run(&[
+        "inspect".as_ref(),
+        corpus("cube_inch.stl").as_os_str(),
+        "--units".as_ref(),
+        "furlong".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("not a length unit"), "{}", out.stderr);
+}
+
+#[test]
+fn req_imp_03_cli_import_asks_and_stores_the_answer() {
+    // Not on a terminal: the model is added in mm, unanswered, with a warning
+    // that says how to answer.
+    let project = empty_project("unit-question");
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let file = project.join("models/inch.stl");
+    std::fs::copy(corpus("cube_inch.stl"), &file).unwrap();
+    let p = project.as_os_str();
+    let out = run(&["import".as_ref(), p, file.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stderr.contains("warning: the file says its unit is in"),
+        "{}",
+        out.stderr
+    );
+    assert!(out.stderr.contains("openchuck-cli units"), "{}", out.stderr);
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(!text.contains("units"), "{text}");
+    let out = run(&["validate".as_ref(), p]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stderr.contains("its unit is in"), "{}", out.stderr);
+
+    // The answer is stored on the model and the question is settled.
+    let out = run(&[
+        "units".as_ref(),
+        p,
+        "models/inch.stl".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(text.contains("units = \"in\"\n"), "{text}");
+    let out = run(&["validate".as_ref(), p]);
+    assert!(!out.stderr.contains("its unit is in"), "{}", out.stderr);
+
+    // --units on import answers it up front: stored, nothing asked.
+    let small = project.join("models/small.stl");
+    std::fs::copy(corpus("cube_small.stl"), &small).unwrap();
+    let out = run(&[
+        "import".as_ref(),
+        p,
+        small.as_os_str(),
+        "--units".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(!out.stderr.contains("warning"), "{}", out.stderr);
+    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
+
+    // `default` unsets it again.
+    let out = run(&[
+        "units".as_ref(),
+        p,
+        "models/inch.stl".as_ref(),
+        "default".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("unit?"), "{}", out.stdout);
+}
+
+#[test]
+fn req_nfr_07_cli_inspect_reports_a_damaged_file() {
+    for (name, expected) in [
+        ("broken_truncated_binary.stl", "it is truncated"),
+        ("broken_garbage.stl", "not a valid STL file"),
+        ("missing.stl", "cannot access"),
+    ] {
+        let out = run(&["inspect".as_ref(), corpus(name).as_os_str()]);
+        assert_eq!(out.code, Some(1), "{name}");
+        assert!(out.stderr.contains(expected), "{name}: {}", out.stderr);
+        assert!(!out.stderr.contains("panicked"), "{name}: {}", out.stderr);
+    }
+}
+
+#[test]
+fn req_imp_03_imp_05_cli_import_units_and_transform_survive_save_and_load() {
+    let project = empty_project("model-edit");
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let file = project.join("models/cube.stl");
+    std::fs::copy(corpus("cube_ascii.stl"), &file).unwrap();
+    let p = project.as_os_str();
+
+    let out = run(&["import".as_ref(), p, file.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("added model"), "{}", out.stdout);
+
+    let out = run(&[
+        "units".as_ref(),
+        p,
+        "models/cube.stl".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&[
+        "transform".as_ref(),
+        p,
+        "models/cube.stl".as_ref(),
+        "orient=+z".as_ref(),
+        "mirror=y".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+
+    // A fresh process reads the override and the placement back from the files.
+    let out = run(&["inspect".as_ref(), p]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("units:     in, set by the user"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("placement: rotate 90 deg about y; centre on the rotary axis; mirror y"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("Y -127 to 127, Z -127 to 127"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("no problems found"), "{}", out.stdout);
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(text.contains("units = \"in\"\n"), "{text}");
+    let out = run(&["validate".as_ref(), p]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+
+    // Back to the file's own unit, and the placement cleared.
+    let out = run(&[
+        "units".as_ref(),
+        p,
+        "models/cube.stl".as_ref(),
+        "default".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&[
+        "transform".as_ref(),
+        p,
+        "models/cube.stl".as_ref(),
+        "--clear".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(
+        !text.contains("units") && !text.contains("transform"),
+        "{text}"
+    );
+
+    // Bad input is refused with a message and leaves the project alone.
+    for (args, expected) in [
+        (
+            vec!["transform", "models/cube.stl", "spin=3"],
+            "is not a step",
+        ),
+        (
+            vec!["transform", "models/cube.stl", "rotate=q:3"],
+            "is not an axis",
+        ),
+        (
+            vec!["transform", "models/cube.stl", "scale=0"],
+            "greater than zero",
+        ),
+        (
+            vec!["transform", "models/cube.stl", "translate=1,2"],
+            "translate=X,Y,Z",
+        ),
+        (vec!["units", "models/other.stl", "mm"], "has no model"),
+    ] {
+        let mut full: Vec<&std::ffi::OsStr> = vec![args[0].as_ref(), p];
+        full.extend(args[1..].iter().map(|a| std::ffi::OsStr::new(*a)));
+        let out = run(&full);
+        assert_eq!(out.code, Some(1), "{args:?}");
+        assert!(out.stderr.contains(expected), "{args:?}: {}", out.stderr);
+    }
+    assert_eq!(
+        std::fs::read_to_string(project.join("project.toml")).unwrap(),
+        text
+    );
+}
+
+#[test]
+fn req_imp_04_cli_validate_warns_about_mesh_problems() {
+    let project = empty_project("model-warn");
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let file = project.join("models/holey.stl");
+    std::fs::copy(corpus("defect_hole.stl"), &file).unwrap();
+    let out = run(&["import".as_ref(), project.as_os_str(), file.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["validate".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stderr
+            .contains("warning: model 'models/holey.stl': 1 hole(s)"),
+        "{}",
+        out.stderr
+    );
+    // A model damaged after it was added fails validation.
+    std::fs::write(&file, b"solid broken\nfacet").unwrap();
+    let out = run(&["validate".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("has changed"), "{}", out.stderr);
 }

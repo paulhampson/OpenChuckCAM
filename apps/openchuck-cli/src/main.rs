@@ -12,8 +12,14 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use openchuck_app::model::{
+    Axis, AxisDirection, Degrees, LengthUnit, ModelInspection, TransformStep, UnitConcern,
+    UnitQuestion, orient_to_rotary_axis,
+};
 use openchuck_app::project::ModelCheck;
-use openchuck_app::{AppError, Application, Query, QueryResult, Threads, VERIFY_GCODE_NOTICE};
+use openchuck_app::{
+    AppError, Application, Command, Query, QueryResult, Threads, VERIFY_GCODE_NOTICE, inspect_file,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "openchuck-cli", version, about = "OpenChuckCAM without the UI")]
@@ -61,6 +67,55 @@ enum Action {
     Report {
         /// The project folder.
         project: PathBuf,
+    },
+    /// Print the summary and check report of a model file, or of every
+    /// model in a project folder (IMP-01, IMP-03, IMP-04).
+    Inspect {
+        /// A model file, or a project folder.
+        path: PathBuf,
+        /// The unit a model file is in (um, mm, cm, m or in); millimetres if
+        /// not given. Not used for a project, whose models keep their units.
+        #[arg(long)]
+        units: Option<String>,
+    },
+    /// Add a model file to a project (IMP-01).
+    Import {
+        /// The project folder.
+        project: PathBuf,
+        /// The model file. It is referenced by its path relative to the
+        /// project folder, so keep it inside or beside the project.
+        file: PathBuf,
+        /// The unit the file is in (um, mm, cm, m or in). Without it the file
+        /// is read in mm, and a terminal is asked if the file names another
+        /// unit or the part's size is implausible in mm.
+        #[arg(long)]
+        units: Option<String>,
+    },
+    /// Set the unit a project's model is in (IMP-03).
+    Units {
+        /// The project folder.
+        project: PathBuf,
+        /// The model, by ID or by its path in the project.
+        model: String,
+        /// um, mm, cm, m or in; or `default` to unset it (read in mm, and
+        /// asked again if the file suggests another unit).
+        unit: String,
+    },
+    /// Add placement steps to a project's model, applied in the order given
+    /// after its existing steps (IMP-05). Steps: `translate=X,Y,Z`,
+    /// `rotate=AXIS:DEGREES`, `scale=FACTOR`, `mirror=AXIS`, `centre` (onto
+    /// the rotary axis) and `orient=DIRECTION`, which turns the part's
+    /// DIRECTION (such as +z) onto the rotary axis and centres it.
+    Transform {
+        /// The project folder.
+        project: PathBuf,
+        /// The model, by ID or by its path in the project.
+        model: String,
+        /// The steps to add.
+        steps: Vec<String>,
+        /// Remove the model's existing steps first.
+        #[arg(long)]
+        clear: bool,
     },
 }
 
@@ -134,7 +189,21 @@ fn run(cli: Cli) -> Result<()> {
                 let model = app.project().models().iter().find(|m| m.id == id);
                 let path = model.map(|m| m.path.as_str()).unwrap_or_default();
                 match check {
-                    ModelCheck::Unchanged => {}
+                    ModelCheck::Unchanged => match app.inspect_model(id) {
+                        // Mesh problems are the user's to judge: warn only.
+                        Ok(inspection) => {
+                            if let Some(question) = &inspection.unit_question {
+                                eprintln!("warning: model '{path}': {}", question.message());
+                            }
+                            for problem in inspection.report.problems() {
+                                eprintln!("warning: model '{path}': {problem}");
+                            }
+                        }
+                        Err(e) => {
+                            problems += 1;
+                            eprintln!("model '{path}' cannot be read: {e}");
+                        }
+                    },
                     ModelCheck::Changed { .. } => {
                         problems += 1;
                         eprintln!("model '{path}' has changed since it was added (PRJ-02)");
@@ -196,6 +265,307 @@ fn run(cli: Cli) -> Result<()> {
             println!("setups:     {}", summary.setups);
             println!("operations: {}", summary.operations);
         }
+        Action::Inspect { path, units } => {
+            if path.is_dir() {
+                let app = open_project(&path, threads, create)?;
+                let ids: Vec<_> = app.project().models().iter().map(|m| m.id).collect();
+                if ids.is_empty() {
+                    println!("{}: no models", path.display());
+                }
+                for (i, id) in ids.into_iter().enumerate() {
+                    if i > 0 {
+                        println!();
+                    }
+                    println!("id:        {id}");
+                    print_inspection(&app.inspect_model(id)?);
+                }
+            } else {
+                let units = units.as_deref().map(parse_unit).transpose()?;
+                print_inspection(&inspect_file(&path, units, threads)?);
+            }
+        }
+        Action::Import {
+            project,
+            file,
+            units,
+        } => {
+            let units = units.as_deref().map(parse_unit).transpose()?;
+            let mut app = open_project(&project, threads, create)?;
+            let (id, mut inspection) = app.add_model(&file, units)?;
+            println!("{}: added model {id}", project.display());
+            // The file names another unit, or its size is implausible in mm:
+            // ask on a terminal; otherwise leave it unanswered and say how.
+            if let Some(question) = &inspection.unit_question {
+                if std::io::stdin().is_terminal() {
+                    let answer = ask_unit(question);
+                    app.execute(Command::SetModelUnits {
+                        model: id,
+                        units: Some(answer),
+                    })?;
+                    inspection = app.inspect_model(id)?;
+                } else {
+                    eprintln!("warning: {}", question.message());
+                    eprintln!(
+                        "  set it with `openchuck-cli units {} {id} <unit>`, or `mm` to keep millimetres",
+                        project.display()
+                    );
+                }
+            }
+            app.save()?;
+            print_inspection(&inspection);
+        }
+        Action::Units {
+            project,
+            model,
+            unit,
+        } => {
+            let units = match unit.as_str() {
+                "default" => None,
+                other => Some(parse_unit(other)?),
+            };
+            let mut app = open_project(&project, threads, create)?;
+            let id = app.find_model(&model)?.id;
+            app.execute(Command::SetModelUnits { model: id, units })?;
+            app.save()?;
+            print_inspection(&app.inspect_model(id)?);
+        }
+        Action::Transform {
+            project,
+            model,
+            steps,
+            clear,
+        } => {
+            let mut app = open_project(&project, threads, create)?;
+            let reference = app.find_model(&model)?;
+            let id = reference.id;
+            let mut transform = if clear {
+                Vec::new()
+            } else {
+                reference.transform.clone()
+            };
+            for step in &steps {
+                transform.extend(parse_step(step)?);
+            }
+            app.execute(Command::SetModelTransform {
+                model: id,
+                transform,
+            })?;
+            app.save()?;
+            print_inspection(&app.inspect_model(id)?);
+        }
     }
     Ok(())
+}
+
+/// Asks on the terminal which unit a model is in. Enter converts from a
+/// unit the file names, and keeps millimetres for a size question; a unit
+/// may also be typed; anything else asks again.
+fn ask_unit(question: &UnitQuestion) -> LengthUnit {
+    let named = match question.concern {
+        UnitConcern::FileNames(unit) => Some(unit),
+        _ => None,
+    };
+    loop {
+        match named {
+            Some(unit) => eprint!("{}\nConvert from {unit} to mm? [Y/n] ", question.message()),
+            None => {
+                let choices: Vec<&str> = question
+                    .suggestions
+                    .iter()
+                    .map(|u| u.short_name())
+                    .collect();
+                eprint!(
+                    "{}\nUnit [{}/mm, Enter keeps mm]: ",
+                    question.message(),
+                    choices.join("/")
+                );
+            }
+        }
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_err() {
+            return LengthUnit::Millimetre;
+        }
+        if let Some(unit) = read_answer(named, &answer) {
+            return unit;
+        }
+    }
+}
+
+/// Reads an answer to [`ask_unit`]; `None` asks again.
+fn read_answer(named: Option<LengthUnit>, answer: &str) -> Option<LengthUnit> {
+    let answer = answer.trim().to_ascii_lowercase();
+    match (named, answer.as_str()) {
+        (Some(unit), "" | "y" | "yes") => Some(unit),
+        (Some(_), "n" | "no") | (None, "") => Some(LengthUnit::Millimetre),
+        // A unit typed in full answers either question.
+        (_, text) => LengthUnit::parse(text),
+    }
+}
+
+fn parse_unit(text: &str) -> Result<LengthUnit> {
+    Ok(text.parse::<LengthUnit>()?)
+}
+
+/// Reads one placement step as the `transform` command takes it.
+fn parse_step(text: &str) -> Result<Vec<TransformStep>> {
+    let (name, value) = text.split_once('=').unwrap_or((text, ""));
+    let number = |v: &str| -> Result<f64> {
+        v.trim()
+            .parse::<f64>()
+            .with_context(|| format!("'{v}' in '{text}' is not a number"))
+    };
+    let axis = |v: &str| {
+        Axis::parse(v).with_context(|| format!("'{v}' in '{text}' is not an axis (x, y or z)"))
+    };
+    let step = match name {
+        "translate" => {
+            let parts: Vec<&str> = value.split(',').collect();
+            let [x, y, z] = parts.as_slice() else {
+                anyhow::bail!("'{text}': give translate=X,Y,Z in millimetres");
+            };
+            TransformStep::Translate {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            }
+        }
+        "rotate" => {
+            let (a, angle) = value.split_once(':').with_context(|| {
+                format!("'{text}': give rotate=AXIS:DEGREES, such as rotate=z:90")
+            })?;
+            TransformStep::Rotate {
+                axis: axis(a)?,
+                angle: Degrees(number(angle)?),
+            }
+        }
+        "scale" => TransformStep::Scale {
+            factor: number(value)?,
+        },
+        "mirror" => TransformStep::Mirror { axis: axis(value)? },
+        "centre" | "center" => TransformStep::CentreOnRotaryAxis,
+        "orient" => {
+            let along = AxisDirection::parse(value)
+                .with_context(|| format!("'{text}': give orient=DIRECTION, such as orient=+z"))?;
+            return Ok(orient_to_rotary_axis(along));
+        }
+        _ => anyhow::bail!(
+            "'{text}' is not a step: use translate=X,Y,Z, rotate=AXIS:DEGREES, scale=FACTOR, \
+             mirror=AXIS, centre or orient=DIRECTION"
+        ),
+    };
+    Ok(vec![step])
+}
+
+/// Prints the most a list shows before it is cut short.
+const LIST_LIMIT: usize = 10;
+
+fn list<T: std::fmt::Debug>(items: &[T]) -> String {
+    let shown: Vec<String> = items
+        .iter()
+        .take(LIST_LIMIT)
+        .map(|i| format!("{i:?}"))
+        .collect();
+    let more = items.len().saturating_sub(LIST_LIMIT);
+    if more > 0 {
+        format!("{} and {more} more", shown.join(", "))
+    } else {
+        shown.join(", ")
+    }
+}
+
+/// Prints a model's summary and check report (slice 2 item 6).
+fn print_inspection(inspection: &ModelInspection) {
+    let summary = &inspection.summary;
+    let report = &inspection.report;
+    println!(
+        "model:     {} ({})",
+        inspection.path.display(),
+        inspection.format.name()
+    );
+    println!("units:     {}", inspection.units.describe());
+    if let Some(question) = &inspection.unit_question {
+        println!("unit?      {}", question.message());
+    }
+    if inspection.transform.is_empty() {
+        println!("placement: none");
+    } else {
+        let steps: Vec<String> = inspection
+            .transform
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        println!("placement: {}", steps.join("; "));
+    }
+    println!(
+        "size:      {} triangles, {} vertices, {} edges, {} piece(s)",
+        summary.triangles, summary.vertices, report.edges, report.shells
+    );
+    if let Some(b) = summary.bounds {
+        println!(
+            "bounds:    X {} to {}, Y {} to {}, Z {} to {} mm (model frame; X is the rotary axis)",
+            b.min.x, b.max.x, b.min.y, b.max.y, b.min.z, b.max.z
+        );
+    }
+    match report.volume {
+        Some(volume) => println!(
+            "area:      {:.3} mm2; closed, volume {volume:.3} mm3",
+            summary.area
+        ),
+        None => println!(
+            "area:      {:.3} mm2; not closed, so no volume",
+            summary.area
+        ),
+    }
+    let problems = report.problems();
+    if problems.is_empty() {
+        println!("checks:    no problems found");
+    } else {
+        println!("checks:    {} problem(s)", problems.len());
+        for problem in &problems {
+            println!("  - {problem}");
+        }
+        if !report.holes.is_empty() {
+            let edges: Vec<[u32; 2]> = report.holes.iter().flat_map(|h| h.edges.clone()).collect();
+            println!("  open edges: {}", list(&edges));
+        }
+        if !report.non_manifold_edges.is_empty() {
+            println!("  non-manifold edges: {}", list(&report.non_manifold_edges));
+        }
+        if !report.flipped_triangles.is_empty() {
+            println!("  flipped triangles: {}", list(&report.flipped_triangles));
+        }
+        if !report.normal_mismatches.is_empty() {
+            println!(
+                "  stated normals reversed: {}",
+                list(&report.normal_mismatches)
+            );
+        }
+        if !report.degenerate_triangles.is_empty() {
+            println!(
+                "  degenerate triangles: {}",
+                list(&report.degenerate_triangles)
+            );
+        }
+    }
+    for note in &inspection.notes {
+        println!("note:      {note}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_imp_03_terminal_answers_to_the_unit_question() {
+        let inch = Some(LengthUnit::Inch);
+        assert_eq!(read_answer(inch, "\n"), inch);
+        assert_eq!(read_answer(inch, "Y\n"), inch);
+        assert_eq!(read_answer(inch, "no\n"), Some(LengthUnit::Millimetre));
+        assert_eq!(read_answer(inch, "cm\n"), Some(LengthUnit::Centimetre));
+        assert_eq!(read_answer(inch, "maybe\n"), None);
+        assert_eq!(read_answer(None, "\n"), Some(LengthUnit::Millimetre));
+        assert_eq!(read_answer(None, " M \n"), Some(LengthUnit::Metre));
+        assert_eq!(read_answer(None, "y\n"), None);
+    }
 }

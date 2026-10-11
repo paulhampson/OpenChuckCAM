@@ -17,8 +17,9 @@ use std::time::{Duration, SystemTime};
 
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, ModelRef, Operation, OrderKey, ParameterValue, Placement, Project,
-    ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot, file,
+    ContentHash, Item, ItemId, ModelCheck, ModelRef, Operation, OrderKey, ParameterValue,
+    Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
+    ToolSnapshot, file,
 };
 use openchuck_types::brep::FaceId;
 use openchuck_types::tool::{Tool, ToolShape};
@@ -38,11 +39,12 @@ fn op_id(n: u128) -> OperationId {
 }
 
 fn model(n: u128) -> ModelRef {
-    ModelRef {
-        id: ModelId::from_u128(n),
-        path: RelativePath::new(format!("models/part{n}.stl")).unwrap(),
-        hash: ContentHash::of_bytes(&n.to_le_bytes()),
-    }
+    // STEP paths, because the sample selects faces (a B-rep selection).
+    ModelRef::new(
+        ModelId::from_u128(n),
+        RelativePath::new(format!("models/part{n}.step")).unwrap(),
+        ContentHash::of_bytes(&n.to_le_bytes()),
+    )
 }
 
 fn operation(n: u128) -> Operation {
@@ -498,19 +500,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 1\n", "schema = 1\nspeed = 3\n"),
+            |t| t.replace("schema = 2\n", "schema = 2\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 1\n", ""),
+            |t| t.replace("schema = 2\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 1", "schema = 9"),
+            |t| t.replace("schema = 2", "schema = 9"),
             "newer OpenChuckCAM",
         ),
         (
@@ -553,7 +555,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 1\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 2\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -642,4 +644,202 @@ mod parser {
             prop_assert!(parse_file(kind_of(path), text).is_ok());
         }
     }
+}
+
+#[test]
+fn req_prj_04_older_folder_migrates_to_the_current_schema() {
+    // Schema 1 is slice 1's format; schema 2 added model units and transform
+    // (decision record 0010). The fixture loads through the real migration.
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-1");
+    let project = file::load(&fixture).unwrap();
+    assert_eq!(project.name(), "Schema 1 fixture");
+    let model = &project.models()[0];
+    assert_eq!(model.units, None);
+    assert!(model.transform.is_empty());
+    assert_eq!(model.check(&fixture).unwrap(), ModelCheck::Unchanged);
+    assert_eq!(project.selection_sets().len(), 1);
+    assert_eq!(project.operations().len(), 1);
+
+    // Saved again, every file is schema 2 and otherwise unchanged.
+    let dir = temp_dir("schema-1-resave");
+    file::save(&project, &dir).unwrap();
+    for (path, text) in file::render(&project).unwrap() {
+        assert!(text.starts_with("schema = 2\n"), "{path}");
+        let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
+        let old: String = old
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert_eq!(text, old.replace("schema = 1\n", "schema = 2\n"), "{path}");
+    }
+    assert_eq!(file::load(&dir).unwrap(), project);
+}
+
+fn placed_model() -> ModelRef {
+    use openchuck_types::transform::{Axis, TransformStep};
+    use openchuck_types::units::{Degrees, LengthUnit};
+    let mut model = ModelRef::new(
+        ModelId::from_u128(7),
+        RelativePath::new("models/shaft.stl").unwrap(),
+        ContentHash::of_bytes(b"shaft"),
+    );
+    model.units = Some(LengthUnit::Inch);
+    model.transform = vec![
+        TransformStep::Rotate {
+            axis: Axis::Y,
+            angle: Degrees(90.0),
+        },
+        TransformStep::Mirror { axis: Axis::Z },
+        TransformStep::Scale { factor: 1.5 },
+        TransformStep::Translate {
+            x: 2.5,
+            y: 0.0,
+            z: -1.0,
+        },
+        TransformStep::CentreOnRotaryAxis,
+    ];
+    model
+}
+
+#[test]
+fn req_imp_03_imp_05_units_and_transform_survive_save_and_load() {
+    let mut project = Project::new("placed");
+    project
+        .insert(Item::Model(placed_model()), Placement::End)
+        .unwrap();
+    let dir = temp_dir("placed");
+    file::save(&project, &dir).unwrap();
+    let back = file::load(&dir).unwrap();
+    assert_eq!(back, project);
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    // One value per line, so changing one step is a one-line diff (PRJ-01).
+    assert!(text.contains("units = \"in\"\n"), "{text}");
+    assert!(
+        text.contains("kind = \"rotate\"\naxis = \"y\"\nangle = 90.0\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("kind = \"centre_on_rotary_axis\"\n"),
+        "{text}"
+    );
+
+    // A model with neither is written exactly as schema 1 wrote it, apart
+    // from the schema number.
+    let mut plain = Project::new("plain");
+    plain.insert(Item::Model(model(1)), Placement::End).unwrap();
+    let text = file::render(&plain).unwrap()["project.toml"].clone();
+    assert!(
+        !text.contains("units") && !text.contains("transform"),
+        "{text}"
+    );
+}
+
+#[test]
+fn req_imp_05_nfr_07_invalid_transforms_are_refused() {
+    use openchuck_types::transform::TransformStep;
+    let mut bad = placed_model();
+    bad.transform.push(TransformStep::Scale { factor: 0.0 });
+    let mut project = Project::new("bad");
+    let err = project
+        .insert(Item::Model(bad), Placement::End)
+        .unwrap_err();
+    assert!(err.to_string().contains("transform[5].factor"), "{err}");
+
+    // The same from a damaged file, and an unknown step kind or unit.
+    let mut good = Project::new("good");
+    good.insert(Item::Model(placed_model()), Placement::End)
+        .unwrap();
+    for (name, from, to, expected) in [
+        (
+            "zero-scale",
+            "factor = 1.5",
+            "factor = 0.0",
+            "greater than zero",
+        ),
+        (
+            "bad-kind",
+            "kind = \"mirror\"",
+            "kind = \"shear\"",
+            "unknown variant",
+        ),
+        (
+            "bad-axis",
+            "axis = \"z\"",
+            "axis = \"w\"",
+            "unknown variant",
+        ),
+        (
+            "bad-unit",
+            "units = \"in\"",
+            "units = \"furlong\"",
+            "unknown variant",
+        ),
+        (
+            "extra",
+            "kind = \"mirror\"",
+            "kind = \"mirror\"\nangle = 3.0",
+            "unknown field",
+        ),
+    ] {
+        let dir = temp_dir(&format!("bad-transform-{name}"));
+        file::save(&good, &dir).unwrap();
+        let path = dir.join("project.toml");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(from), "{name}: {text}");
+        std::fs::write(&path, text.replace(from, to)).unwrap();
+        let err = file::load(&dir).unwrap_err().to_string();
+        assert!(err.contains(expected), "{name}: {err}");
+    }
+}
+
+#[test]
+fn req_prj_06_selections_match_the_model_kind() {
+    // Triangles on a mesh (STL) and faces on a B-rep (STEP) are accepted;
+    // the other way round is refused (architecture section 5.6, OI-44).
+    let selection = |model: &ModelRef, target: SelectionTarget| SelectionSet {
+        id: SelectionSetId::from_u128(30),
+        order: OrderKey::default(),
+        name: "Set".into(),
+        model: model.id,
+        model_hash: model.hash,
+        target,
+        descriptors: Vec::new(),
+    };
+    let stl = placed_model();
+    let step = model(1);
+    let triangles = || SelectionTarget::Triangles(BTreeSet::from([0, 4]));
+    let faces = || SelectionTarget::Faces(BTreeSet::from([FaceId(2)]));
+
+    let mut project = Project::new("kinds");
+    project
+        .insert(Item::Model(stl.clone()), Placement::End)
+        .unwrap();
+    project
+        .insert(Item::Model(step.clone()), Placement::End)
+        .unwrap();
+    let err = project
+        .insert(Item::SelectionSet(selection(&stl, faces())), Placement::End)
+        .unwrap_err();
+    assert!(err.to_string().contains("select triangles"), "{err}");
+    let err = project
+        .insert(
+            Item::SelectionSet(selection(&step, triangles())),
+            Placement::End,
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("by face and edge"), "{err}");
+    project
+        .insert(
+            Item::SelectionSet(selection(&stl, triangles())),
+            Placement::End,
+        )
+        .unwrap();
+
+    // Renaming the STL model to a STEP file would strand its triangle selection.
+    let mut renamed = stl.clone();
+    renamed.path = RelativePath::new("models/shaft.step").unwrap();
+    let err = project.replace(Item::Model(renamed)).unwrap_err();
+    assert!(err.to_string().contains("by face and edge"), "{err}");
+    assert_eq!(project.models()[0], stl);
 }

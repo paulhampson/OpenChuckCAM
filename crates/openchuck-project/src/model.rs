@@ -21,7 +21,10 @@ use std::path::{Component, Path, PathBuf};
 
 use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::geometry::{Point3, Vec3};
+use openchuck_types::model::{ModelFormat, ModelKind};
 use openchuck_types::tool::Tool;
+use openchuck_types::transform::TransformStep;
+use openchuck_types::units::LengthUnit;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ProjectError;
@@ -40,8 +43,9 @@ pub struct MachineRef {
     pub name: String,
 }
 
-/// A model file referenced by the project (PRJ-02).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A model file referenced by the project (PRJ-02), with the user's units
+/// override (IMP-03) and placement (IMP-05).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelRef {
     /// Stable ID.
@@ -50,6 +54,14 @@ pub struct ModelRef {
     pub path: RelativePath,
     /// Hash of the file's contents when it was added or last accepted.
     pub hash: ContentHash,
+    /// The unit the file is in, set by the user; `None` reads the unit from
+    /// the file, or assumes millimetres (IMP-03).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub units: Option<LengthUnit>,
+    /// How the model is placed in the model frame, whose X axis is the rotary
+    /// axis: steps applied first to last (IMP-05).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transform: Vec<TransformStep>,
 }
 
 /// A path relative to the project folder, written with `/` separators on every
@@ -154,6 +166,28 @@ pub enum ModelCheck {
 }
 
 impl ModelRef {
+    /// A reference to the file at `path` with hash `hash`, read in the
+    /// file's own units and not moved.
+    pub fn new(id: ModelId, path: RelativePath, hash: ContentHash) -> Self {
+        Self {
+            id,
+            path,
+            hash,
+            units: None,
+            transform: Vec::new(),
+        }
+    }
+
+    /// The model's format, from its file name's extension.
+    pub fn format(&self) -> Option<ModelFormat> {
+        ModelFormat::from_file_name(self.path.as_str())
+    }
+
+    /// Whether the model is a mesh or a B-rep, from its format.
+    pub fn kind(&self) -> Option<ModelKind> {
+        self.format().map(ModelFormat::kind)
+    }
+
     /// Checks the file under `project_root` against the recorded hash.
     pub fn check(&self, project_root: &Path) -> Result<ModelCheck, ProjectError> {
         let path = self.path.resolve(project_root);
@@ -971,10 +1005,24 @@ impl Project {
             }
         };
         match item {
-            Item::Model(_) | Item::Setup(_) => Ok(()),
+            Item::Model(m) => {
+                TransformStep::validate_all(&m.transform, &format!("model {}.transform", m.id))?;
+                // A changed path must not change the kind its selections need.
+                self.selection_sets
+                    .iter()
+                    .filter(|s| s.model == m.id)
+                    .try_for_each(|s| check_selection_kind(s, m.kind()))
+            }
+            Item::Setup(_) => Ok(()),
             Item::Tool(t) => Ok(t.tool.validate()?),
             Item::SelectionSet(s) => {
                 require(ItemId::Model(s.model))?;
+                let kind = self
+                    .models
+                    .iter()
+                    .find(|m| m.id == s.model)
+                    .and_then(ModelRef::kind);
+                check_selection_kind(s, kind)?;
                 for (i, d) in s.descriptors.iter().enumerate() {
                     let field = format!("selection set {}.descriptors[{i}]", s.id);
                     d.position.validate(&format!("{field}.position"))?;
@@ -1041,4 +1089,21 @@ impl Project {
             ItemId::Operation(_) => None,
         }
     }
+}
+
+/// Triangle selections apply to mesh models only, and face and edge
+/// selections to B-rep models only (architecture section 5.6). A model whose
+/// format is not known is not checked.
+fn check_selection_kind(set: &SelectionSet, kind: Option<ModelKind>) -> Result<(), ProjectError> {
+    let reason = match (&set.target, kind) {
+        (SelectionTarget::Triangles(_), Some(ModelKind::Brep)) => {
+            "a STEP model is selected by face and edge, not by triangle, because its \
+             triangles change with the tessellation tolerance"
+        }
+        (SelectionTarget::Faces(_) | SelectionTarget::Edges(_), Some(ModelKind::Mesh)) => {
+            "a mesh model has no faces or edges to select; select triangles"
+        }
+        _ => return Ok(()),
+    };
+    Err(openchuck_types::Error::invalid(format!("selection set {}.target", set.id), reason).into())
 }

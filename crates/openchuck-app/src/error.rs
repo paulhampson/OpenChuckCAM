@@ -29,6 +29,20 @@ pub enum AppError {
     /// A project edit or check failed.
     #[error(transparent)]
     Project(#[from] openchuck_project::ProjectError),
+    /// A model file could not be imported.
+    #[error(transparent)]
+    Import(#[from] openchuck_import::ImportError),
+    /// A model file cannot be referenced from the project folder.
+    #[error("'{}' cannot be referenced from the project folder: {reason}", path.display())]
+    ModelPath {
+        /// The model file.
+        path: PathBuf,
+        /// Why not.
+        reason: String,
+    },
+    /// No model has this ID or path.
+    #[error("the project has no model '{0}' (give its ID or its path as the project lists it)")]
+    UnknownModel(String),
     /// An engine library reported an error.
     #[error(transparent)]
     Engine(#[from] openchuck_types::Error),

@@ -189,9 +189,28 @@ name = "openchuck-fuzz"
 version = "0.1.0"
 dependencies = [
  "libfuzzer-sys",
+ "openchuck-geom",
+ "openchuck-import",
  "openchuck-project",
  "openchuck-types",
  "serde_json",
+]
+
+[[package]]
+name = "openchuck-geom"
+version = "0.1.0"
+dependencies = [
+ "openchuck-types",
+]
+
+[[package]]
+name = "openchuck-import"
+version = "0.1.0"
+dependencies = [
+ "openchuck-geom",
+ "openchuck-types",
+ "stl_io",
+ "thiserror",
 ]
 
 [[package]]
@@ -313,6 +332,12 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+
+[[package]]
+name = "stl_io"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567641995c51a3b8befddb13e1826187bcf7eb7ca8d13746bfd1cc5a22e89fa8"
 
 [[package]]
 name = "syn"

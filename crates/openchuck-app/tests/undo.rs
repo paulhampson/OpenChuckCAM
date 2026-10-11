@@ -11,6 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use openchuck_app::model::{Axis, Degrees, LengthUnit, TransformStep};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{
     ContentHash, Item, ItemId, ListKind, MachineRef, ModelRef, Operation, OrderKey, ParameterValue,
@@ -77,6 +78,14 @@ enum Edit {
         pick: usize,
         name: String,
     },
+    SetModelUnits {
+        pick: usize,
+        unit: Option<usize>,
+    },
+    SetModelTransform {
+        pick: usize,
+        steps: Vec<(usize, f64)>,
+    },
 }
 
 fn edit() -> impl Strategy<Value = Edit> {
@@ -107,6 +116,13 @@ fn edit() -> impl Strategy<Value = Edit> {
         (any::<usize>(), "[A-Z][a-z]{0,6}")
             .prop_map(|(pick, name)| Edit::RenameSetup { pick, name }),
         (0usize..5).prop_map(Edit::Renumber),
+        (any::<usize>(), proptest::option::of(0usize..4))
+            .prop_map(|(pick, unit)| Edit::SetModelUnits { pick, unit }),
+        (
+            any::<usize>(),
+            proptest::collection::vec((0usize..5, -100.0f64..100.0), 0..4)
+        )
+            .prop_map(|(pick, steps)| Edit::SetModelTransform { pick, steps }),
     ]
 }
 
@@ -166,11 +182,12 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
             placement: Placement::End,
         },
         Edit::AddModel => Command::Add {
-            item: Item::Model(ModelRef {
-                id: ModelId::from_u128(id),
-                path: RelativePath::new(format!("models/m{id}.stl")).unwrap(),
-                hash: ContentHash::of_bytes(&id.to_le_bytes()),
-            }),
+            // STEP, because the generated selections select faces.
+            item: Item::Model(ModelRef::new(
+                ModelId::from_u128(id),
+                RelativePath::new(format!("models/m{id}.step")).unwrap(),
+                ContentHash::of_bytes(&id.to_le_bytes()),
+            )),
             placement: Placement::End,
         },
         Edit::AddSelection { pick: n, faces } => {
@@ -246,6 +263,31 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
             setup.name = name;
             Command::Replace(Item::Setup(setup))
         }
+        Edit::SetModelUnits { pick: n, unit } => Command::SetModelUnits {
+            model: pick(p.models(), n)?.id,
+            units: unit.map(|u| LengthUnit::ALL[u]),
+        },
+        Edit::SetModelTransform { pick: n, steps } => Command::SetModelTransform {
+            model: pick(p.models(), n)?.id,
+            transform: steps
+                .into_iter()
+                .map(|(kind, v)| match kind {
+                    0 => TransformStep::Translate {
+                        x: v,
+                        y: -v,
+                        z: 1.0,
+                    },
+                    1 => TransformStep::Rotate {
+                        axis: Axis::Z,
+                        angle: Degrees(v),
+                    },
+                    // Some factors are invalid, so refused commands are exercised too.
+                    2 => TransformStep::Scale { factor: v },
+                    3 => TransformStep::Mirror { axis: Axis::Y },
+                    _ => TransformStep::CentreOnRotaryAxis,
+                })
+                .collect(),
+        },
     })
 }
 
