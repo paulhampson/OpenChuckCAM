@@ -196,7 +196,7 @@ These apply to every slice and are not repeated below.
 6. All edits as undoable commands; CLI `validate` reports setup problems.
 7. Frame conversion tests across part, setup and machine.
 
-**Progress:** items 1 to 7 are built ([decision 0011](decisions/0011-slice-3-machine-stock-setup.md), proposed). The project keeps a copy of its machine profile in `machine.toml` and setups gain part, stock, material, part and work offsets and clearance, so the project folder schema is now 3. Every Makera Z1 value is marked unconfirmed until the air cut (OI-37) and a look at the owner's Z1 (OI-39). Open: OI-53 (default machine library location), OI-54 (machine copy against the library) and OI-55 (work zero off the axis, deferred).
+**Progress:** items 1 to 7 are built ([decision 0011](decisions/0011-slice-3-machine-stock-setup.md), proposed). The project keeps a copy of its machine profile in `machine.toml` and setups gain part, stock, material, part and work offsets and clearance, so the project folder schema is now 3. Every Makera Z1 value is marked unconfirmed until the air cut (OI-37) and a measurement of the axis (OI-57). Feed limits are per axis and the Z1 defaults follow [decision 0012](decisions/0012-z1-profile-consensus.md). Open: OI-53 (default machine library location), OI-54 (machine copy against the library), OI-55 (work zero off the axis, deferred) and OI-57.
 
 **Review checklist** (evidence in decision 0011, "Verification"; ticked when the owner reviews it)
 

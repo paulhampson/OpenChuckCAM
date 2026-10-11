@@ -90,12 +90,16 @@ pub enum ARange {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MaxFeeds {
-    /// Linear axes.
+    /// The X and Y axes.
     pub linear: FeedRate,
+    /// The Z axis, which many machines limit below X and Y (OI-56).
+    pub z: FeedRate,
     /// Rotary axis.
     pub rotary: RotaryFeedRate,
-    /// Rapid traverse on the linear axes.
+    /// Rapid traverse on X and Y.
     pub rapid_linear: FeedRate,
+    /// Rapid traverse on Z.
+    pub rapid_z: FeedRate,
     /// Rapid traverse on the rotary axis.
     pub rapid_rotary: RotaryFeedRate,
 }
@@ -267,11 +271,13 @@ impl MachineProfile {
         }
         self.travel.validate("machine.travel")?;
         require_positive("machine.max_feeds.linear", self.max_feeds.linear.0)?;
+        require_positive("machine.max_feeds.z", self.max_feeds.z.0)?;
         require_positive("machine.max_feeds.rotary", self.max_feeds.rotary.0)?;
         require_positive(
             "machine.max_feeds.rapid_linear",
             self.max_feeds.rapid_linear.0,
         )?;
+        require_positive("machine.max_feeds.rapid_z", self.max_feeds.rapid_z.0)?;
         require_positive(
             "machine.max_feeds.rapid_rotary",
             self.max_feeds.rapid_rotary.0,
@@ -319,8 +325,10 @@ impl MachineProfile {
             },
             max_feeds: MaxFeeds {
                 linear: FeedRate(3000.0),
+                z: FeedRate(2000.0),
                 rotary: RotaryFeedRate(7200.0),
                 rapid_linear: FeedRate(6000.0),
+                rapid_z: FeedRate(4000.0),
                 rapid_rotary: RotaryFeedRate(14400.0),
             },
             clearance: Clearance {

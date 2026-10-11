@@ -671,8 +671,8 @@ fn print_machine(profile: &MachineProfile) {
     );
     let f = p.max_feeds;
     println!(
-        "feeds:      {} mm/min, {} deg/min; rapid {} mm/min, {} deg/min",
-        f.linear.0, f.rotary.0, f.rapid_linear.0, f.rapid_rotary.0
+        "feeds:      X and Y {} mm/min, Z {} mm/min, A {} deg/min; rapid X and Y {}, Z {} mm/min, A {} deg/min",
+        f.linear.0, f.z.0, f.rotary.0, f.rapid_linear.0, f.rapid_z.0, f.rapid_rotary.0
     );
     println!(
         "clearance:  safe cylinder radius {} mm, safe Z {} mm above the axis (default)",

@@ -90,7 +90,7 @@ Tests named after the requirement IDs (decision 0004 item 14):
 - `openchuck-types`: `kinematics::RotaryFrame`, `setup` module, `machine` changes. `openchuck-geom`: `part_extent`. `openchuck-project`: `machines` module and built-in Z1 profile, setup fields, `machine.toml`, schema 3. `openchuck-app`: `setup` module, `check_setups`, `find_setup`. CLI: `machines`, `machine`, `setup`.
 - The `openchuck-types` public API breaks (`Clearance` becomes a struct; `MachineProfile` gains `provenance`), so the workspace version goes from 0.1.0 to 0.2.0 and the change is recorded in the crate's changelog; `cargo semver-checks` against `main` reports exactly these two (INT-07).
 - `fuzz/` gains `machine_profile_toml`; `ci.yml` and `nightly.yml` run it.
-- The work breakdown's slice 3 checklist line "Every Z1 value is marked confirmed or unconfirmed" is met with every value unconfirmed; confirming them needs the air cut (OI-37) and a look at the owner's Z1 (OI-39).
+- The work breakdown's slice 3 checklist line "Every Z1 value is marked confirmed or unconfirmed" is met with every value unconfirmed; confirming them needs the air cut (OI-37) and a measurement of the axis on the owner's Z1 (OI-57).
 
 ## Open items
 
@@ -100,7 +100,7 @@ Tracked in [open-items.md](../open-items.md).
 | --- | --- | --- | --- |
 | 1 (OI-43) | How a project refers to its machine. **Settled** by item 7 when this record is accepted. | Slice 3 | Owner review |
 | 2 (OI-40) | Map SET-05 and `rotary_origin` onto the Z1's G54 Y0 Z0 convention. **Settled** by items 1, 2 and 4 when this record is accepted. | Slice 3 | Owner review |
-| 3 (OI-39) | Z1 limits, plus the machine coordinates of the A axis and chuck face (the rotary reference point is a placeholder) and the rapid feeds. | Before the Z1 profile is accepted | The owner's Z1 and Makera Studio |
+| 3 (OI-39, closed) | Z1 limits. **Closed** by decision 0012 item 5: stock defaults, and a user who changes them makes their own profile. The axis's machine position is OI-57. | Done | Owner's choice |
 | 4 (OI-53) | A default location for the user's machine library (a platform config folder needs a crate such as `directories`, not in the selection; NFR-14). Until then the CLI takes `--library`. | Slice 8 (the UI needs it) | An NFR-14 record, or a decision to use a folder beside the projects |
 | 5 (OI-54) | Report differences between a project's machine copy and the library profile it came from (as TL-07 does for tools), and offer to update the copy. Needs the copy to record which library profile it came from. | Slice 4 (with the tool snapshot report) or slice 8 | |
 | 6 (OI-55) | The work zero is always on the rotary axis. Add optional Y and Z offsets of the work zero if a controller other than the Z1 needs them. | When a need appears | User feedback |
