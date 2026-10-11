@@ -1,6 +1,6 @@
 # 0005: SP-5 result, G-code reader
 
-- **Status:** proposed. The reader choice (OI-05) is for the project owner at slice 6. The LinuxCNC check of the hand-written fixture is outstanding (OI-31).
+- **Status:** accepted by the project owner on 11 Oct 2026. The LinuxCNC check of the hand-written fixture is outstanding and is run separately (OI-31); it gates only the fixture, not the choice.
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/sp-5-gcode-reader` (throwaway, never merged). The full write-up is in `spikes/sp5/RESULT.md` on that branch, and the raw output is in `spikes/sp5/out/report.md`.
 
@@ -53,7 +53,7 @@ Cause of the silent drop: `gcode` 0.7.0's diagnostics collector implements only 
 
 All candidates are deterministic on repeat reads, and all licences are AGPL-compatible.
 
-## Decision (proposed)
+## Decision
 
 1. **Answer.** `gcode` 0.7.0 reads A words and every code our posts emit with positions, so the literal pass criterion is met with an f64 layer. It is not fit for `openchuck-gcode`, though. A reader whose job is to check exported G-code (GC-08) must not:
    - lose precision (`f32`, 2,400 times the 1e-6 degree limit of verification plan section 4.1);
@@ -62,7 +62,7 @@ All candidates are deterministic on repeat reads, and all licences are AGPL-comp
 
    With the f64 layer, `gcode` would only be supplying tokens and spans.
 2. **`g-code` 0.6.0 is rejected.** It panics on bad input (NFR-07) and rejects the usual LinuxCNC file ending.
-3. **Proposed choice: a small in-house reader in `openchuck-gcode`** for the subset our posts emit, with no third-party dependency. This is the fallback the work breakdown names.
+3. **Choice: a small in-house reader in `openchuck-gcode`** for the subset our posts emit, with no third-party dependency. This is the fallback the work breakdown names.
    - It reads case-insensitive letters, LinuxCNC spacing inside words, both comment forms (an unclosed one is an error), `%`, block delete and N numbers.
    - Values are parsed from the source text as f64.
    - Every error names line and column.
@@ -78,19 +78,30 @@ All candidates are deterministic on repeat reads, and all licences are AGPL-comp
 - **`g-code` 0.6.0.** Rejected: it panics, rejects valid files, and is the slowest of the four.
 - **Reporting the two crate bugs upstream** (the silent drop in `gcode`, the panic in `g-code`). This is worth doing and is independent of the choice. It is the project owner's call, because it is outward-facing.
 
+## Owner decision, 11 Oct 2026
+
+The project owner reviewed the record and accepted it as proposed. The LinuxCNC run of the subset fixture (OI-31) is done separately and does not hold up the choice.
+
 ## Consequences
 
-If the proposal is accepted:
+Applied in the same change as the acceptance:
 
-- **Crate selection:** the "G-code reading" row of architecture section 7 and `docs/crate-selection.md` would name an in-house reader in place of `gcode`. This is an architecture edit, so it needs the owner's agreement and is **not made here**.
-- **Dependency register:** the `gcode` row in `docs/dependencies.md` moves from "Recorded but not yet declared" to "Tried and not adopted". Until then its note points here. `g-code` is recorded as tried and not adopted now, because it failed the criterion outright.
-- **Slice 6:** builds the reader and its modal interpreter in `openchuck-gcode`, with:
-  - the subset file and the malformed cases as `testdata/` fixtures and fuzz seeds;
-  - tests named for GC-08, NFR-05 and NFR-07;
-  - a `fuzz/` target, as architecture section 12 already plans.
-- **Unchanged:** decision 0001's other items (simulator run, golden files, Z1 conventions, feed rule).
+- **Architecture:** the "G-code reading" row of section 7 names the in-house reader, the spike list in section 11 records the SP-5 result, and section 13 lists the change.
+- **Crate selection:** `docs/crate-selection.md` keeps its scores and gains a dated note pointing here.
+- **Work breakdown:** slice 6 item 7 names the in-house reader, its fuzz target and its fixtures (after OI-31).
+- **Verification plan:** the `openchuck-gcode` row names the reader chosen by SP-5.
+- **Dependency register:** `gcode` 0.7.0 and `g-code` 0.6.0 are both under "Tried and not adopted" in `docs/dependencies.md`.
+- **Open items:** OI-05 is closed.
 
-No rule exception and no `xtask` allow-list entry are needed. The proposal adds no dependency.
+Left for slice 6: build the reader and its modal interpreter in `openchuck-gcode`, with:
+
+- the subset file and the malformed cases as `testdata/` fixtures and fuzz seeds, once OI-31 is done;
+- tests named for GC-08, NFR-05 and NFR-07;
+- a `fuzz/` target, as architecture section 12 already plans.
+
+Decision 0001's other items (simulator run, golden files, Z1 conventions, feed rule) are unchanged.
+
+No rule exception and no `xtask` allow-list entry are needed. The decision adds no dependency.
 
 ## Open items
 
@@ -98,5 +109,5 @@ Tracked in [docs/open-items.md](../open-items.md).
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 (OI-05) | Reader choice: in-house reader proposed. | Slice 6 | Project owner |
+| 1 (OI-05, closed) | Reader choice: in-house reader. | Accepted 11 Oct 2026 | |
 | 2 (OI-31) | Run `linuxcnc_post_subset.ngc` through LinuxCNC's own interpreter (`rs274` standalone or the simulator) to confirm it is valid LinuxCNC before it becomes a fixture. It was checked by hand against the G-code reference only; LinuxCNC is not installable in the working environment (as in OI-01). | Before slice 6 adds the fixture to `testdata/` | Someone with LinuxCNC 2.9 or later (can be done with OI-01) |

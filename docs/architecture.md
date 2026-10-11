@@ -183,7 +183,7 @@ Taken from the crate survey, which scores crates out of 100 against NFR-14's cri
 | Spatial index | `rstar` (88) | Internal | Also pulled in by parry3d. |
 | 2D offsets and booleans | `cavalier_contours` (82) plus `i_overlay` (80) | Internal to `openchuck-path` unroll-family strategies | `clipper2` (73, C++ wrapper). `i_overlay` had five major versions in five months, so pin it. Confirm `cavalier_contours` arc support before relying on G2/G3 output. |
 | Viewer and UI | `eframe`/`egui` (90) with `egui_wgpu` (87), which uses `wgpu` (88) | `openchuck-ui`, `openchuck-viewport` | Fallbacks: Tauri (89, JavaScript viewer, so `openchuck-viewport` would be replaced) or `iced` (75, no release for 10 months). egui releases a breaking version every two to three months; wgpu went 26 to 30 in twelve. Slint (79) has agent-instruction files and a GPL-3.0 or commercial licence question. Bevy is heavy for a tool UI. |
-| G-code reading | `gcode` (75) | `openchuck-gcode` | `g-code` (73) can also emit. Neither advertises A-axis words, so confirm A-word parsing in a spike. `ngc` (46) is stale. |
+| G-code reading | In-house reader for the codes our posts emit | `openchuck-gcode` | Decided by SP-5 ([decision 0005](decisions/0005-sp-5-gcode-reader.md)). `gcode` (75) reads A words but stores numbers as `f32` and drops a code it cannot store without a diagnostic; `g-code` (73) panics on malformed input and rejects a file ending in `%` and a newline. `ngc` (46) is stale. The reader refuses parameters, expressions and O-words by name; a slice that needs them widens it. |
 | G-code writing | In-house emitter driven by post definitions | `openchuck-post` | The survey found no post-processor crate and says the emit side is ours. |
 | DXF and SVG curves (P2) | `dxf` (72), `usvg` (85) | `openchuck-import` | Only needed for IMP-08. |
 | 4th-axis planning | In-house | `openchuck-path` | No crate exists. Prior art is in other languages and informs the strategy families in 5.2. |
@@ -301,7 +301,7 @@ This follows the requirement priorities and the survey's advice to spike each la
    - STEP to tessellated mesh to an orbitable window, which also proves the STEP kernel route builds on all platforms and exposes the topology and surface data IMP-02 needs. SP-1 settled the route as a thin in-house wrapper over OpenCASCADE (decision 0003).
    - A wrapped engraving path on a cylinder to G-code with A words, replayed through `openchuck-gcode` and in LinuxCNC, and checked against the kinematic oracle.
    - A `parry3d-f64` ray-cast sweep around the A axis on a real part, to test whether continuous 4-axis is feasible.
-   - `gcode` crate reads A words and the LinuxCNC dialect.
+   - A G-code reader for A words and the LinuxCNC dialect. SP-5 settled it as an in-house reader for the codes our posts emit (decision 0005).
    - A simulation stock representation compared on accuracy, speed and memory.
 3. **Thin P1 slice.** STL import, project file, one wrap-family strategy, simulator showing deviation, Z1 and verification posts, golden files, viewport.
 4. **P1 breadth.** STEP with selection by face and edge, remaining strategies (OP-03 to OP-15), tool library and snapshots, setup sheet, undo, full project-file guarantees.
@@ -390,5 +390,6 @@ This follows the requirement priorities and the survey's advice to spike each la
 - Added crate selection from the survey (section 7), a determinism rule for parallel code, and a verification table keyed to requirement IDs.
 - Reviewed the crate needs against the survey's later sections: section 7 gained a supporting-layers table, the git2 score (96, ahead of gix at 79) and the licence flags; section 12's release tools now carry scores; and the open decisions were updated for brepkit-io as a STEP option, NURBS evaluation and the second-tier dependencies.
 - Re-checked every score and pick against the survey as updated on 10 Oct 2026: all scores match. Added the survey's remaining cautions: the licences to allow on purpose (CC0-1.0, NCSA), the pre-1.0 and release-candidate crates, rhai's agent-instruction file, minijinja 3.0, the C-compiler build cost of git2, and the setup sheet's crate (`openchuck-app`).
+- SP-5 (decision record 0005): the G-code reading row of section 7 names an in-house reader in place of `gcode`.
 - Slice 0 (decision record 0004): added the test-only `openchuck-testkit` and the `openchuck-benches` package to sections 3 and 12, fixed the licence identifier as `AGPL-3.0-or-later`, and recorded the contributor licence agreement.
 - Verification review: added an independent kinematic oracle to the verification table (it covers the case where the path library, post and G-code reader share one wrong machine model), the acceptance limits and reference hardware from the verification plan to the simulation and performance rows, and the requirement-ID test convention and traceability report to the repository section.
