@@ -167,9 +167,9 @@ These apply to every slice and are not repeated below.
 6. CLI `inspect` command printing the model summary and check report.
 7. A clear statement in the report that STL tessellation is fixed by the file and gouge tolerance will be measured against that mesh.
 
-**Progress:** items 1 to 7 are built ([decision 0010](decisions/0010-slice-2-stl-import.md), proposed). Model references gain a units override and placement steps, so the project folder schema is now 2. Units: millimetres by default, with a question for the user when the file names another unit or the part's size is implausible (owner's choice, decision 0010 item 4). Open: OI-50 (more placement step kinds, deferred), OI-51 (the UI shows the statement, report and unit question, slice 8) and OI-52 (size thresholds from the machine profile, slice 3).
+**Progress:** items 1 to 7 are built ([decision 0010](decisions/0010-slice-2-stl-import.md), accepted; slice closed 11 Oct 2026). Model references gain a units override and placement steps, so the project folder schema is now 2. Units: millimetres by default, with a question for the user when the file names another unit or the part's size is implausible (owner's choice, decision 0010 item 4). Open: OI-50 (more placement step kinds, deferred), OI-51 (the UI shows the statement, report and unit question, slice 8) and OI-52 (size thresholds from the machine profile, slice 3).
 
-**Review checklist** (evidence in decision 0010, "Verification")
+**Review checklist** (closed 11 Oct 2026, [decision 0010](decisions/0010-slice-2-stl-import.md))
 
 - [x] ASCII and binary versions of one part give identical meshes
 - [x] Truncated and corrupted files give clear errors, never a crash
