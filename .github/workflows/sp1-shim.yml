@@ -1,0 +1,49 @@
+# SP-1 option B prototype: our own thin C ABI over OpenCASCADE, with no opencascade-sys.
+# Does it build and pass the closed-form checks on Windows (MSVC), macOS and Linux, and does
+# process isolation turn reader crashes into clean errors on each? Spike branch only; never merged.
+name: sp1-shim
+on:
+  push:
+    branches: [spike/sp-1-step-kernel]
+    paths: [spikes/sp1-shim/**, spikes/sp1-step/fixtures/**, .github/workflows/sp1-shim.yml]
+  workflow_dispatch:
+jobs:
+  shim:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+        working-directory: spikes/sp1-shim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain versions
+        run: rustc --version; cmake --version | head -1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            spikes/sp1-shim/target
+            ~/.cargo/registry
+          key: sp1-shim-${{ matrix.os }}-${{ hashFiles('spikes/sp1-shim/Cargo.lock', 'spikes/sp1-shim/build.rs') }}
+      - name: Build (OpenCASCADE from source, then our shim; one pass, no ordering tricks)
+        run: |
+          start=$(date +%s)
+          set +e
+          cargo build --release > build.log 2>&1; rc=$?
+          echo "BUILD_SECONDS=$(( $(date +%s) - start )) rc=$rc"
+          if [ $rc -ne 0 ]; then grep -n -a -i "error\|warning: unused\|C[0-9][0-9][0-9][0-9]\|undefined" build.log | tail -80; exit 1; fi
+      - name: Closed-form self test
+        run: ./target/release/sp1-shim selftest ../sp1-step/fixtures
+      - name: Walk all fixtures (digests to compare across platforms)
+        run: |
+          for f in ../sp1-step/fixtures/*.step; do
+            echo "$(basename $f) $(./target/release/sp1-shim walk $f --tess | grep -a 'digest\|^tess' | tr '\n' ' ')"
+          done
+      - name: Full report for the drilled blank
+        run: ./target/release/sp1-shim walk ../sp1-step/fixtures/rotary_blank_drilled.step --tess
+      - name: Process isolation over the crash and malformed corpus
+        run: ./target/release/sp1-shim isolate ../sp1-step/fixtures/crash/*.step ../sp1-step/fixtures/bad/*.step ../sp1-step/fixtures/cylinder.step

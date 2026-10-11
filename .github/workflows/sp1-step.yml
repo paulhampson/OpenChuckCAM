@@ -4,6 +4,7 @@ name: sp1-step
 on:
   push:
     branches: [spike/sp-1-step-kernel]
+    paths: [spikes/sp1-step/**, spikes/vendor/**, .github/workflows/sp1-step.yml]
   workflow_dispatch:
 jobs:
   build:

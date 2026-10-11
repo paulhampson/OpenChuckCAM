@@ -11,3 +11,7 @@ opencascade-sys = "0.3.0"
 
 [build-dependencies]
 cc = "1.7.0"
+
+# SP-1 Windows investigation: the published opencascade-sys does not compile under MSVC.
+[patch.crates-io]
+opencascade-sys = { path = "../vendor/opencascade-sys" }

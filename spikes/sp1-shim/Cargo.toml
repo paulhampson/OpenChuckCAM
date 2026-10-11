@@ -1,0 +1,14 @@
+# SP-1 option B prototype: our own thin C ABI over OpenCASCADE, no opencascade-sys.
+# Throwaway spike code; never merged into the product.
+[package]
+name = "sp1-shim"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+
+[build-dependencies]
+cc = "=1.7.0"
+occt-sys = "=7.8.1"
