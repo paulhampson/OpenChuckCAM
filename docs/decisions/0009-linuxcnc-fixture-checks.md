@@ -1,6 +1,6 @@
 # 0009: LinuxCNC checks of the SP-3 and SP-5 fixtures
 
-- **Status:** proposed. The results are measurements and stand on their own; the decisions below (items 2 and 3) wait for agreement, and decision 0001 stays proposed until the owner accepts it.
+- **Status:** proposed. The results are measurements and stand on their own; the decisions below (items 2 and 3) wait for agreement, and the owner accepted decision 0001 on the strength of these results.
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/linuxcnc-fixture-checks` (throwaway, never merged; write-up in `spikes/linuxcnc-checks/RESULT.md`, raw output in `spikes/linuxcnc-checks/out/`, reproduced by `run_checks.sh`).
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-01 and OI-31 close here; OI-46 and OI-47 are new.
@@ -55,7 +55,7 @@ LinuxCNC 2.9.10 (branch `2.9`) was built from source in the session (run-in-plac
 ## Consequences
 
 - Slice 6 design refinement (gate 3's "xtask replay runner", verification plan section 6): the working method is a headless run of a trivkins XYZA configuration with exact stop, sampling the *commanded* position (the actual position lags it by a few servo cycles, which shows as false node errors at high A speed), comparing the elapsed time from the first to the last cut line with the IR. Three practical points for the runner: LinuxCNC's `configure` needs the Python that has `tkinter`; run as root, `rtapi_app` needs an unprivileged `RTAPI_UID`, a socket *file* for `RTAPI_FIFO_PATH`, and a build directory readable by that user and by group root; Ubuntu 24.04's package index in the session has no `linuxcnc` package (OI-47).
-- Decisions 0001 and 0005 are not edited. Their open items point here through the register.
+- Decision 0001 is accepted and decision 0005's status line is updated (both on the owner's instruction, 11 Oct 2026); their open items point here through the register. Decision 0001's remaining open items stay open.
 - No change to `requirements.md` or `architecture.md`. No dependency enters the product.
 
 ## Open items for later decisions

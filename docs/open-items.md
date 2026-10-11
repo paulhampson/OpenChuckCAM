@@ -42,6 +42,7 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-41 | The Z1 tool change (`M5`, `T<n> M6`) is not exercised by the air cut, which runs without a tool. | Decision 0007 item 5 | open | Slice 20 (gate 5), or an attended tool-change test before it | Project owner and the Z1 |
 | OI-46 | Take the corrected arc lines (N160 to N190) from `linuxcnc_post_subset_corrected.ngc` when the SP-5 post-subset file is added to `testdata/`, and apply the rule that fixtures standing for runnable programs read in `rs274` (the dialect file stays a reader fixture). LinuxCNC rejects the original: its arcs have inconsistent radii. | Decision 0009 item 1 | open | Slice 6 | |
 | OI-47 | Where gate 3's runner gets LinuxCNC on CI and on a workstation: a cached source build (works, see decision 0009), a package, or a container. Ubuntu 24.04's package index in the spike session has no `linuxcnc` package. | Decision 0009 item 2 | open | Slice 6 | A look at CI runners and the `linuxcnc.org` package route |
+| OI-48 | Architecture section 5.1 (neutral toolpath IR) does not list the contact path length that decision 0001 item 1 adds and slice 0 built (`contact_length` in `openchuck-types`). Proposed edit: add "the contact path length" after "the computed segment duration". The accepted record wins until the architecture is edited. | Decision 0001, consequences | proposed | When agreed | Agreement to edit `architecture.md` |
 
 ## Closed
 
