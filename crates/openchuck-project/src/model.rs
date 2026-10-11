@@ -2,7 +2,8 @@
 //! The project document model (architecture section 5.6).
 //!
 //! A project holds models, setups, tool snapshots, selection sets and
-//! operations, each with a stable unique ID (PRJ-05), plus a machine reference.
+//! operations, each with a stable unique ID (PRJ-05), plus a copy of the
+//! machine profile it is set up for (SET-01, decision record 0011).
 //! Setups, tool snapshots, selection sets and operations each carry an order
 //! key (decision record 0006) and are kept sorted by `(key, id)`. Model
 //! references have no key: they are listed in `project.toml` in order
@@ -21,7 +22,10 @@ use std::path::{Component, Path, PathBuf};
 
 use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::geometry::{Point3, Vec3};
+use openchuck_types::machine::{Clearance, MachineProfile};
 use openchuck_types::model::{ModelFormat, ModelKind};
+use openchuck_types::setup::{SetupFrame, validate_setup};
+use openchuck_types::stock::Stock;
 use openchuck_types::tool::Tool;
 use openchuck_types::transform::TransformStep;
 use openchuck_types::units::LengthUnit;
@@ -31,17 +35,6 @@ use crate::error::ProjectError;
 use crate::hash::ContentHash;
 use crate::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use crate::order::{self, OrderKey};
-
-/// The machine a project is set up for.
-///
-/// A placeholder until slice 3 settles how a project refers to its machine
-/// profile (SET-01, open item OI-43).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MachineRef {
-    /// The machine profile's name.
-    pub name: String,
-}
 
 /// A model file referenced by the project (PRJ-02), with the user's units
 /// override (IMP-03) and placement (IMP-05).
@@ -207,9 +200,9 @@ impl ModelRef {
     }
 }
 
-/// A setup: one way the stock is held on the machine. Stock, work offset and
-/// the rest arrive in slice 3.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A setup: one way the stock is held on the machine (SET-03, SET-05,
+/// SET-06; decision record 0011).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Setup {
     /// Stable ID.
@@ -219,6 +212,36 @@ pub struct Setup {
     pub order: OrderKey,
     /// Name shown to the user.
     pub name: String,
+    /// The model machined in this setup, once chosen. Bounding-box stock
+    /// and the setup checks measure it.
+    pub part: Option<ModelId>,
+    /// The stock, once chosen (SET-03).
+    pub stock: Option<Stock>,
+    /// The stock material, as a plain name (SET-03).
+    pub material: Option<String>,
+    /// Where the part and the work zero sit on the machine (SET-05).
+    pub frame: SetupFrame,
+    /// The setup's own clearance geometry; `None` uses the machine
+    /// profile's (SET-06).
+    pub clearance: Option<Clearance>,
+}
+
+impl Setup {
+    /// A setup with no part or stock, the part origin at the machine's
+    /// rotary reference point, the work zero in G54 at the model origin,
+    /// and the machine's clearance.
+    pub fn new(id: SetupId, name: impl Into<String>) -> Self {
+        Self {
+            id,
+            order: OrderKey::default(),
+            name: name.into(),
+            part: None,
+            stock: None,
+            material: None,
+            frame: SetupFrame::default(),
+            clearance: None,
+        }
+    }
 }
 
 /// A copy of a tool kept in the project, so the project does not change when
@@ -459,7 +482,7 @@ pub enum OldPlace {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Project {
     name: String,
-    machine: Option<MachineRef>,
+    machine: Option<MachineProfile>,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
     tools: Vec<ToolSnapshot>,
@@ -701,7 +724,7 @@ impl Project {
     /// then validates it.
     pub(crate) fn from_parts(
         name: String,
-        machine: Option<MachineRef>,
+        machine: Option<MachineProfile>,
         models: Vec<ModelRef>,
         mut setups: Vec<Setup>,
         mut tools: Vec<ToolSnapshot>,
@@ -730,8 +753,10 @@ impl Project {
         &self.name
     }
 
-    /// The machine reference, once set.
-    pub fn machine(&self) -> Option<&MachineRef> {
+    /// The project's copy of its machine profile, once chosen. The copy wins
+    /// over the machine library, so the project gives the same G-code on any
+    /// computer (GC-07, decision record 0011).
+    pub fn machine(&self) -> Option<&MachineProfile> {
         self.machine.as_ref()
     }
 
@@ -821,9 +846,21 @@ impl Project {
         std::mem::replace(&mut self.name, name.into())
     }
 
-    /// Sets the machine reference and returns the old one.
-    pub fn set_machine(&mut self, machine: Option<MachineRef>) -> Option<MachineRef> {
-        std::mem::replace(&mut self.machine, machine)
+    /// Sets the machine profile and returns the old one. Fails, leaving the
+    /// project unchanged, if the profile is not valid.
+    pub fn set_machine(
+        &mut self,
+        machine: Option<MachineProfile>,
+    ) -> Result<Option<MachineProfile>, ProjectError> {
+        if let Some(profile) = &machine {
+            profile.validate()?;
+        }
+        Ok(std::mem::replace(&mut self.machine, machine))
+    }
+
+    /// The setup with this ID.
+    pub fn setup(&self, id: SetupId) -> Option<&Setup> {
+        self.setups.iter().find(|s| s.id == id)
     }
 
     /// Adds `item` and returns the old keys of any neighbour that had to be
@@ -951,6 +988,9 @@ impl Project {
     /// and keyed lists sorted by `(key, id)`. Edits keep these rules, so this
     /// is for documents built another way, such as a loaded file.
     pub fn validate(&self) -> Result<(), ProjectError> {
+        if let Some(profile) = &self.machine {
+            profile.validate()?;
+        }
         let mut seen = BTreeSet::new();
         for item in self.items() {
             let id = item.id();
@@ -1013,7 +1053,24 @@ impl Project {
                     .filter(|s| s.model == m.id)
                     .try_for_each(|s| check_selection_kind(s, m.kind()))
             }
-            Item::Setup(_) => Ok(()),
+            Item::Setup(s) => {
+                if let Some(model) = s.part {
+                    require(ItemId::Model(model))?;
+                }
+                if s.material.as_ref().is_some_and(|m| m.trim().is_empty()) {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("setup {}.material", s.id),
+                        "the material name is empty; leave it unset instead",
+                    )
+                    .into());
+                }
+                Ok(validate_setup(
+                    &s.frame,
+                    s.stock.as_ref(),
+                    s.clearance.as_ref(),
+                    &format!("setup {}", s.id),
+                )?)
+            }
             Item::Tool(t) => Ok(t.tool.validate()?),
             Item::SelectionSet(s) => {
                 require(ItemId::Model(s.model))?;
@@ -1067,10 +1124,16 @@ impl Project {
     fn first_user_of(&self, id: ItemId) -> Option<ItemId> {
         match id {
             ItemId::Model(model) => self
-                .selection_sets
+                .setups
                 .iter()
-                .find(|s| s.model == model)
-                .map(|s| ItemId::SelectionSet(s.id)),
+                .find(|s| s.part == Some(model))
+                .map(|s| ItemId::Setup(s.id))
+                .or_else(|| {
+                    self.selection_sets
+                        .iter()
+                        .find(|s| s.model == model)
+                        .map(|s| ItemId::SelectionSet(s.id))
+                }),
             ItemId::Setup(setup) => self
                 .operations
                 .iter()

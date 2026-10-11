@@ -9,9 +9,9 @@
 
 use openchuck_project::id::{ModelId, OperationId};
 use openchuck_project::{
-    Item, ItemId, ListKind, MachineRef, ModelRef, OldPlace, OrderKey, ParameterValue, Placement,
-    Project,
+    Item, ItemId, ListKind, ModelRef, OldPlace, OrderKey, ParameterValue, Placement, Project,
 };
+use openchuck_types::machine::MachineProfile;
 use openchuck_types::transform::TransformStep;
 use openchuck_types::units::LengthUnit;
 
@@ -26,8 +26,8 @@ use crate::AppError;
 pub enum Command {
     /// Renames the project.
     RenameProject(String),
-    /// Sets or clears the machine reference.
-    SetMachine(Option<MachineRef>),
+    /// Sets or clears the project's copy of its machine profile (SET-01).
+    SetMachine(Option<Box<MachineProfile>>),
     /// Adds an item.
     Add {
         /// The new item, with a fresh ID.
@@ -86,7 +86,9 @@ impl Command {
     pub(crate) fn apply(self, project: &mut Project) -> Result<Command, AppError> {
         Ok(match self {
             Self::RenameProject(name) => Self::RenameProject(project.set_name(name)),
-            Self::SetMachine(machine) => Self::SetMachine(project.set_machine(machine)),
+            Self::SetMachine(machine) => {
+                Self::SetMachine(project.set_machine(machine.map(|m| *m))?.map(Box::new))
+            }
             Self::Add { item, placement } => {
                 let id = item.id();
                 let rekeyed = project.insert(item, placement)?;

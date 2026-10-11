@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Makera Z1 with its 4th-axis module (decision records 0007, 0011 and 0013).
+# Values are a consensus across Makera's published profiles and the Z1
+# firmware's default configuration, not measured on a Z1: each stays
+# unconfirmed until the SP-12 air cut (OI-37) and a measurement of the axis (OI-60).
+# Machine coordinates are the firmware's (G53): home at 0, travel negative.
+schema = 1
+
+[machine]
+name = "Makera Z1"
+rotary_axis = "x"
+a_sense = "positive"
+
+# Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
+# anchor1_y + rotation_offset_y from the firmware's Z1 config (-192.4 + 12.0,
+# -194.3 + 85.5). No Makera source gives the machine Z of the axis, so Z is a
+# placeholder (OI-60).
+[machine.rotary_origin]
+x = -180.4
+y = -108.8
+z = 0.0
+
+[machine.a_range]
+type = "continuous"
+
+[machine.travel.min]
+x = -200.0
+y = -200.0
+z = -100.0
+
+[machine.travel.max]
+x = 0.0
+y = 0.0
+z = 0.0
+
+# The firmware limits X and Y to 1200 mm/min, Z to 600 mm/min and A to
+# 3600 deg/min. G0 is limited to the same per-axis rates, so rapids equal the
+# feed limits.
+[machine.max_feeds]
+linear = 1200.0
+z = 600.0
+rotary = 3600.0
+rapid_linear = 1200.0
+rapid_z = 600.0
+rapid_rotary = 3600.0
+
+[machine.clearance]
+radius = 45.0
+safe_z = 60.0
+
+[machine.provenance.rotary_axis]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the rotary axis is along X. Consistent with 7 of 7 Makera 4-axis profiles (Fusion Z1, Carvera, Carvera Air and Carvera Harmonic; FreeCAD Z1, C1 and Air) and the Makera Mastercam and Carveco posts (decision 0013)"
+
+[machine.provenance.a_sense]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The air cut (OI-37, step 1) is kept open as a cross check (decision 0013)"
+
+[machine.provenance.rotary_origin]
+state = "unconfirmed"
+source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is a placeholder: the default work Z0 is the chuck centre (owner's experience of the machine), but no Makera source gives its machine Z (decision 0013, OI-60)"
+
+[machine.provenance.a_range]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the A axis is continuous. Consistent with Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous) and the Z1 firmware (no A soft limit)"
+
+[machine.provenance.travel]
+state = "unconfirmed"
+source = "spans 200 x 200 x 100 mm: FreeCAD Z1 exactly, Fusion Z1 with 10 mm extra on X and Y, firmware soft limits -206/-206/-102 (disabled by default). Frame is the firmware's G53 with home at 0; with the rotary module and soft limits on, the firmware holds Y above -160. Stock defaults: a user who changes them makes their own profile (decision 0013)"
+
+[machine.provenance.max_feeds]
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 1200 mm/min, Z 600 mm/min, A 3600 deg/min (10 RPM). Consistent with Makera's published A rate, the Z1 and Z1 Pro firmware default config (Carvera and Air differ) and the 1200 reported from Makera Studio; the CAM profiles' figures are template values and were not used (decision 0013)"
+
+[machine.provenance.clearance]
+state = "unconfirmed"
+source = "OpenChuckCAM default, not a machine value; set a clearance on each setup to suit its stock"

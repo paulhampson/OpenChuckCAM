@@ -7,8 +7,9 @@
 use libfuzzer_sys::fuzz_target;
 use openchuck_project::file::{FileKind, parse_file};
 
-const KINDS: [FileKind; 5] = [
+const KINDS: [FileKind; 6] = [
     FileKind::Project,
+    FileKind::Machine,
     FileKind::Setup,
     FileKind::Tool,
     FileKind::SelectionSet,

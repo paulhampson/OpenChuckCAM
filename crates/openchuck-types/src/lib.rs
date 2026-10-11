@@ -8,8 +8,9 @@
 //! - length units for imported models ([`units::LengthUnit`]),
 //! - mesh and B-rep data ([`mesh`], [`brep`], [`model`]), model placement
 //!   ([`transform`]), stock ([`stock`]) and tools ([`tool`]),
-//! - the machine profile ([`machine`]) and the one shared forward-kinematics
-//!   implementation ([`kinematics`]),
+//! - the machine profile ([`machine`]), the setup's part and work offset
+//!   positions and its checks ([`setup`]), and the one shared
+//!   forward-kinematics implementation ([`kinematics`]),
 //! - the neutral toolpath IR ([`ir`], GC-01),
 //! - the job context ([`job`]) and typed errors ([`Error`]).
 //!
@@ -41,6 +42,7 @@ pub mod machine;
 pub mod mesh;
 pub mod model;
 pub mod notice;
+pub mod setup;
 pub mod stock;
 pub mod tool;
 pub mod transform;

@@ -69,15 +69,8 @@ fn operation(n: u128) -> Operation {
 fn sample() -> Project {
     let mut p = Project::new("sample");
     p.insert(Item::Model(model(1)), Placement::End).unwrap();
-    p.insert(
-        Item::Setup(Setup {
-            id: SETUP,
-            order: OrderKey::default(),
-            name: "Setup 1".into(),
-        }),
-        Placement::End,
-    )
-    .unwrap();
+    p.insert(Item::Setup(Setup::new(SETUP, "Setup 1")), Placement::End)
+        .unwrap();
     p.insert(
         Item::Tool(ToolSnapshot {
             id: ToolId::from_u128(20),
@@ -500,19 +493,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 2\n", "schema = 2\nspeed = 3\n"),
+            |t| t.replace("schema = 3\n", "schema = 3\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 2\n", ""),
+            |t| t.replace("schema = 3\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 2", "schema = 9"),
+            |t| t.replace("schema = 3", "schema = 9"),
             "newer OpenChuckCAM",
         ),
         (
@@ -555,7 +548,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 2\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 3\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -660,18 +653,24 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     assert_eq!(project.selection_sets().len(), 1);
     assert_eq!(project.operations().len(), 1);
 
-    // Saved again, every file is schema 2 and otherwise unchanged.
+    // Saved again, every file is the current schema and otherwise unchanged,
+    // except that setups gain their default part and work offsets (schema 3,
+    // decision record 0011).
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 2\n"), "{path}");
+        assert!(text.starts_with("schema = 3\n"), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
-        let old: String = old
+        let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
-            .collect();
-        assert_eq!(text, old.replace("schema = 1\n", "schema = 2\n"), "{path}");
+            .collect::<String>()
+            .replace("schema = 1\n", "schema = 3\n");
+        if path.starts_with("setups/") {
+            old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
+        }
+        assert_eq!(text, old, "{path}");
     }
     assert_eq!(file::load(&dir).unwrap(), project);
 }

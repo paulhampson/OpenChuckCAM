@@ -46,6 +46,8 @@ pub mod transform;
 
 use openchuck_types::geometry::Aabb;
 use openchuck_types::mesh::TriangleMesh;
+use openchuck_types::setup::PartExtent;
+use openchuck_types::units::Millimetres;
 
 /// Size figures of a mesh for a model summary.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,4 +74,21 @@ pub fn summary(mesh: &TriangleMesh) -> MeshSummary {
         bounds: transform::bounds(mesh, &transform::Affine3::IDENTITY),
         area,
     }
+}
+
+/// The extent of a placed mesh in the model frame: its bounding box and its
+/// largest distance from the rotary axis (model X), over the vertices that
+/// triangles use. `None` for a mesh with no triangles. Setups check their
+/// stock and clearance against it (SET-06).
+pub fn part_extent(mesh: &TriangleMesh) -> Option<PartExtent> {
+    let bounds = transform::bounds(mesh, &transform::Affine3::IDENTITY)?;
+    let radius = (0..mesh.triangles.len())
+        .filter_map(|t| mesh.triangle(t))
+        .flatten()
+        .map(|p| p.y.hypot(p.z))
+        .fold(0.0, f64::max);
+    Some(PartExtent {
+        bounds,
+        radius: Millimetres(radius),
+    })
 }

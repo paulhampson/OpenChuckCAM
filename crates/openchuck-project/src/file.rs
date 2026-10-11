@@ -2,7 +2,8 @@
 //! The project folder on disk (PRJ-01, PRJ-04; decision records 0006 and 0008).
 //!
 //! ```text
-//! project.toml            schema, name, machine reference, model references
+//! project.toml            schema, name, model references
+//! machine.toml            the project's copy of its machine profile, once chosen
 //! setups/<id>.toml        one file per setup
 //! tools/<id>.toml         one file per tool snapshot
 //! selections/<id>.toml    one file per selection set
@@ -33,17 +34,27 @@ use crate::error::ProjectError;
 use crate::hash::ContentHash;
 use crate::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use crate::model::{
-    Descriptor, MachineRef, ModelRef, Operation, ParameterValue, Project, SelectionSet,
-    SelectionTarget, Setup, ToolSnapshot,
+    Descriptor, ModelRef, Operation, ParameterValue, Project, SelectionSet, SelectionTarget, Setup,
+    ToolSnapshot,
 };
 use crate::order::OrderKey;
+use openchuck_types::machine::{Clearance, MachineProfile};
+use openchuck_types::setup::{SetupFrame, WorkOffset};
+use openchuck_types::stock::Stock;
+use openchuck_types::units::Millimetres;
 
 /// The project folder schema version this build writes and reads.
 ///
 /// - 1: slice 1 (decision record 0008).
 /// - 2: model references gain the optional `units` override (IMP-03) and
 ///   `transform` steps (IMP-05) (decision record 0010).
-pub const SCHEMA: i64 = 2;
+/// - 3: the machine profile is copied into `machine.toml` instead of being
+///   named in `project.toml`; setups gain part, stock, material, part and
+///   work offsets and clearance (decision record 0011).
+pub const SCHEMA: i64 = 3;
+
+/// Name of the machine profile file in the project folder.
+pub const MACHINE_FILE: &str = "machine.toml";
 
 /// Name of the project file in the project folder.
 pub const PROJECT_FILE: &str = "project.toml";
@@ -54,11 +65,23 @@ pub type Migration = fn(FileKind, &mut toml::Table) -> Result<(), String>;
 
 /// The migrations from each older schema to the next, oldest first. Entry `i`
 /// takes schema `SCHEMA - MIGRATIONS.len() + i` one step forward.
-const MIGRATIONS: &[Migration] = &[schema_1_to_2];
+const MIGRATIONS: &[Migration] = &[schema_1_to_2, schema_2_to_3];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
 /// file does not have, so a schema 1 file needs no change but its number.
 fn schema_1_to_2(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 2 named the machine in `project.toml` (`[machine] name = …`), a
+/// placeholder no front end could set; schema 3 keeps a full copy of the
+/// profile in `machine.toml` instead. A name cannot become a profile, so it is
+/// dropped and the machine is chosen again (decision record 0011). Setups gain
+/// only fields with defaults.
+fn schema_2_to_3(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Project {
+        table.remove("machine");
+    }
     Ok(())
 }
 
@@ -67,6 +90,8 @@ fn schema_1_to_2(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
 pub enum FileKind {
     /// `project.toml`.
     Project,
+    /// `machine.toml`, or a machine profile file in a library.
+    Machine,
     /// A setup file.
     Setup,
     /// A tool snapshot file.
@@ -81,7 +106,7 @@ impl FileKind {
     /// The folder that holds this kind of item file, if it is one.
     pub fn folder(self) -> Option<&'static str> {
         match self {
-            Self::Project => None,
+            Self::Project | Self::Machine => None,
             Self::Setup => Some("setups"),
             Self::Tool => Some("tools"),
             Self::SelectionSet => Some("selections"),
@@ -95,9 +120,17 @@ impl FileKind {
 struct ProjectFile {
     schema: i64,
     name: String,
-    machine: Option<MachineRef>,
     #[serde(default)]
     models: Vec<ModelRef>,
+}
+
+/// `machine.toml`, and a machine profile file in a library
+/// ([`crate::machines`]).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MachineFile {
+    pub(crate) schema: i64,
+    pub(crate) machine: MachineProfile,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,6 +140,18 @@ struct SetupFile {
     id: SetupId,
     order: OrderKey,
     name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    part: Option<ModelId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    material: Option<String>,
+    #[serde(default)]
+    part_offset: Millimetres,
+    #[serde(default)]
+    work_offset: WorkOffset,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stock: Option<Stock>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    clearance: Option<Clearance>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -157,16 +202,28 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
     let project_file = ProjectFile {
         schema: SCHEMA,
         name: project.name().to_owned(),
-        machine: project.machine().cloned(),
         models: project.models().to_vec(),
     };
     files.insert(PROJECT_FILE.to_owned(), to_text(&project_file)?);
+    if let Some(machine) = project.machine() {
+        let file = MachineFile {
+            schema: SCHEMA,
+            machine: machine.clone(),
+        };
+        files.insert(MACHINE_FILE.to_owned(), to_text(&file)?);
+    }
     for s in project.setups() {
         let file = SetupFile {
             schema: SCHEMA,
             id: s.id,
             order: s.order.clone(),
             name: s.name.clone(),
+            part: s.part,
+            material: s.material.clone(),
+            part_offset: s.frame.part_offset,
+            work_offset: s.frame.work_offset,
+            stock: s.stock.clone(),
+            clearance: s.clearance,
         };
         files.insert(item_path(FileKind::Setup, &s.id), to_text(&file)?);
     }
@@ -222,6 +279,13 @@ pub fn save(project: &Project, root: &Path) -> Result<(), ProjectError> {
         }
         write_if_changed(&path, text)?;
     }
+    if !files.contains_key(MACHINE_FILE) {
+        let path = root.join(MACHINE_FILE);
+        match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(io(&path)(e)),
+            _ => {}
+        }
+    }
     for kind in [
         FileKind::Setup,
         FileKind::Tool,
@@ -270,10 +334,13 @@ pub fn load(root: &Path) -> Result<Project, ProjectError> {
 pub fn parse_file(kind: FileKind, text: &str) -> Result<(), ProjectError> {
     let path = Path::new(match kind {
         FileKind::Project => PROJECT_FILE,
+        FileKind::Machine => MACHINE_FILE,
         _ => "item.toml",
     });
     match kind {
         FileKind::Project => parse::<ProjectFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop),
+        FileKind::Machine => parse::<MachineFile>(path, text, kind, MIGRATIONS, SCHEMA)
+            .and_then(|f| Ok(f.machine.validate()?)),
         FileKind::Setup => parse::<SetupFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop),
         FileKind::Tool => parse::<ToolFile>(path, text, kind, MIGRATIONS, SCHEMA)
             .and_then(|f| Ok(f.tool.validate()?)),
@@ -296,6 +363,16 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
         Err(e) => return Err(io(&project_path)(e)),
     };
     let file: ProjectFile = parse(&project_path, &text, FileKind::Project, migrations, schema)?;
+    let machine_path = root.join(MACHINE_FILE);
+    let machine = match std::fs::read_to_string(&machine_path) {
+        Ok(text) => {
+            let file: MachineFile =
+                parse(&machine_path, &text, FileKind::Machine, migrations, schema)?;
+            Some(file.machine)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(io(&machine_path)(e)),
+    };
 
     let setups = read_items::<SetupFile>(root, FileKind::Setup, migrations, schema)?
         .into_iter()
@@ -305,6 +382,14 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                 id: f.id,
                 order: f.order,
                 name: f.name,
+                part: f.part,
+                stock: f.stock,
+                material: f.material,
+                frame: SetupFrame {
+                    part_offset: f.part_offset,
+                    work_offset: f.work_offset,
+                },
+                clearance: f.clearance,
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -355,7 +440,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
 
     Project::from_parts(
         file.name,
-        file.machine,
+        machine,
         file.models,
         setups,
         tools,
@@ -420,6 +505,7 @@ fn item_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, ProjectError> {
 fn kind_name(kind: FileKind) -> &'static str {
     match kind {
         FileKind::Project => "project",
+        FileKind::Machine => "machine",
         FileKind::Setup => SetupId::KIND,
         FileKind::Tool => ToolId::KIND,
         FileKind::SelectionSet => SelectionSetId::KIND,
@@ -429,7 +515,7 @@ fn kind_name(kind: FileKind) -> &'static str {
 
 fn is_item_name(kind: FileKind, stem: &str) -> bool {
     match kind {
-        FileKind::Project => false,
+        FileKind::Project | FileKind::Machine => false,
         FileKind::Setup => stem.parse::<SetupId>().is_ok(),
         FileKind::Tool => stem.parse::<ToolId>().is_ok(),
         FileKind::SelectionSet => stem.parse::<SelectionSetId>().is_ok(),
@@ -454,7 +540,7 @@ fn item_path(kind: FileKind, id: &impl std::fmt::Display) -> String {
     format!("{}/{id}.toml", kind.folder().unwrap_or_default())
 }
 
-fn to_text<T: Serialize>(value: &T) -> Result<String, ProjectError> {
+pub(crate) fn to_text<T: Serialize>(value: &T) -> Result<String, ProjectError> {
     let mut text = toml::to_string_pretty(value).map_err(|e| ProjectError::BadFile {
         path: PathBuf::new(),
         reason: format!("cannot write TOML: {e}"),
@@ -479,7 +565,7 @@ fn conflict_line(text: &str) -> Option<usize> {
 }
 
 /// Checks, migrates and deserialises one file's text.
-fn parse<T: DeserializeOwned>(
+pub(crate) fn parse<T: DeserializeOwned>(
     path: &Path,
     text: &str,
     kind: FileKind,
@@ -587,14 +673,14 @@ mod tests {
     fn req_prj_04_newer_schema_is_refused() {
         let err = parse::<ProjectFile>(
             Path::new(PROJECT_FILE),
-            "schema = 3\nname = \"x\"\n",
+            "schema = 4\nname = \"x\"\n",
             FileKind::Project,
             MIGRATIONS,
             SCHEMA,
         )
         .unwrap_err();
         assert!(
-            matches!(err, ProjectError::SchemaTooNew { found: 3, .. }),
+            matches!(err, ProjectError::SchemaTooNew { found: 4, .. }),
             "{err}"
         );
         assert!(err.to_string().contains("newer OpenChuckCAM"), "{err}");
@@ -602,20 +688,16 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 2);
+        assert_eq!(SCHEMA, 3);
         let mut project = Project::new("p");
         project
             .insert(
-                crate::Item::Setup(Setup {
-                    id: SetupId::from_u128(1),
-                    order: OrderKey::default(),
-                    name: "s".into(),
-                }),
+                crate::Item::Setup(Setup::new(SetupId::from_u128(1), "s")),
                 crate::Placement::End,
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 2\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 3\n"), "{path}: {text}");
         }
     }
 

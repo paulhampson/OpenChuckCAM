@@ -31,7 +31,7 @@ SP-12 (work breakdown, Spikes; a gating risk in finding 12) asks what rotary con
 | Header, footer | `G90 G21 G17`, `G54`; end with `M5`, `G53 G0 Z-3`, `G28`, `M2` (M30 does not end a program outside grbl mode) |
 | Tool change | `M5`, then `T<n> M6`; no `G43` (the machine measures tool length) |
 | Dialect | A `(` or `;` drops the rest of the line; each G or M word is its own command; no line numbers; 3 decimals |
-| Limits | Fusion: 4000 mm/min linear, 21600 deg/min A, X -10..200, Y -200..10, Z 0..100. Other sources disagree (OI-39). |
+| Limits | Fusion: 4000 mm/min linear, 21600 deg/min A, X -10..200, Y -200..10, Z 0..100. Other sources disagree (OI-39). *Superseded by [decision 0013](0013-z1-profile-consensus.md): the Fusion feed figures are template values shared by every Makera machine; the Z1 firmware gives 1200, 1200, 600 mm/min and 3600 deg/min.* |
 
 Replayed under the Z1 rule, SP-3's G94 file (compensated for LinuxCNC) takes 142.8 s instead of 44.2 s, and its worst move 164 times too long. The F values the Z1 needs for the same move times range from 100 to 397 mm/min, against 2.4 to 241 in the file: the Z1 rule has no near-zero feeds.
 

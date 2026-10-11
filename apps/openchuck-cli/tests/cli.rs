@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 2\n"), "{text}");
+    assert!(text.starts_with("schema = 3\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -506,4 +506,119 @@ fn req_imp_04_cli_validate_warns_about_mesh_problems() {
     let out = run(&["validate".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(1));
     assert!(out.stderr.contains("has changed"), "{}", out.stderr);
+}
+
+fn args<'a>(list: &'a [&'a str]) -> Vec<&'a std::ffi::OsStr> {
+    list.iter().map(|a| a.as_ref()).collect()
+}
+
+#[test]
+fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
+    let project = empty_project("setup");
+    let p = project.to_str().unwrap();
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let cube =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    let model = project.join("models/cube.stl");
+    std::fs::copy(cube, &model).unwrap();
+    assert_eq!(
+        run(&args(&["import", p, model.to_str().unwrap()])).code,
+        Some(0)
+    );
+    assert_eq!(
+        run(&args(&["transform", p, "models/cube.stl", "centre"])).code,
+        Some(0)
+    );
+
+    let out = run(&args(&["machines"]));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("3 of 7 values unconfirmed"));
+    let out = run(&args(&["machine", p, "makera-z1"]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    // The A direction is stated from the shared kinematics, and every Z1
+    // value is shown as confirmed or unconfirmed (four are confirmed).
+    assert!(out.stdout.contains("faces -Y at A 90"), "{}", out.stdout);
+    assert_eq!(
+        out.stdout.matches("UNCONFIRMED").count(),
+        3,
+        "{}",
+        out.stdout
+    );
+    assert!(project.join("machine.toml").is_file());
+
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--part",
+        "models/cube.stl",
+        "--stock",
+        "cylinder=20,14,-2",
+        "--material",
+        "oak",
+        "--part-offset",
+        "20",
+        "--work-offset",
+        "g55",
+        "--work-x",
+        "-2",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("set G55 to machine X -162.400 Y -108.800 Z 0.000"),
+        "{}",
+        out.stdout
+    );
+    // The Z1 profile has no machine Z for the axis (OI-60), so the safe Z
+    // cannot be checked against the travel: the only warning says so, and
+    // names the unconfirmed values it used.
+    let warnings: Vec<&str> = out
+        .stdout
+        .lines()
+        .filter(|l| l.starts_with("  - "))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{}", out.stdout);
+    assert!(
+        warnings[0].contains("the safe Z is at machine Z 60.000")
+            && warnings[0].contains("rotary_origin"),
+        "{}",
+        out.stdout
+    );
+
+    // A clearance inside the stock is a warning in `setup` and `validate`,
+    // not an error.
+    let out = run(&args(&["setup", p, "Setup 1", "--clearance", "6,30"]));
+    assert!(
+        out.stdout
+            .contains("does not enclose the stock (radius 10.000 mm)"),
+        "{}",
+        out.stdout
+    );
+    let out = run(&args(&["validate", p]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stderr
+            .contains("warning: setup 'Setup 1': the safe cylinder"),
+        "{}",
+        out.stderr
+    );
+    let out = run(&args(&["report", p]));
+    assert!(out.stdout.contains("machine:    Makera Z1") && out.stdout.contains("material:   oak"));
+
+    // Bad values are refused with a clear message.
+    let out = run(&args(&["setup", p, "Setup 1", "--clearance", "30,6"]));
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("safe Z"), "{}", out.stderr);
+    let out = run(&args(&["setup", p, "Setup 1", "--stock", "cone=1"]));
+    assert!(out.stderr.contains("is not a stock"), "{}", out.stderr);
+    let out = run(&args(&["machine", p, "no-such-machine"]));
+    assert!(
+        out.stderr.contains("is not a built-in machine"),
+        "{}",
+        out.stderr
+    );
+    let out = run(&args(&["machine", p, "--clear"]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(!project.join("machine.toml").exists());
 }

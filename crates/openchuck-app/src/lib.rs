@@ -10,7 +10,9 @@
 //! Every project edit is a [`Command`] and can be undone and redone (UI-08).
 //! Projects are folders of TOML files (decision records 0006 and 0008).
 //! Models are added, inspected (mesh checks, IMP-04), given units (IMP-03)
-//! and placed (IMP-05) through [`model`] (decision record 0010). No strategy
+//! and placed (IMP-05) through [`model`] (decision record 0010). The project's
+//! machine profile and its setups' stock, positions and clearance are checked
+//! through [`setup`] (decision record 0011). No strategy
 //! exists yet, and regeneration runs the pipeline over no operations and
 //! produces an empty toolpath.
 
@@ -21,6 +23,7 @@ mod error;
 mod jobs;
 pub mod model;
 mod pipeline;
+pub mod setup;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -31,6 +34,7 @@ use openchuck_project::id::ModelId;
 use openchuck_project::{
     ContentHash, Item, ModelCheck, ModelRef, Placement, Project, RelativePath,
 };
+use setup::{PartExtent, SetupReport};
 
 pub use command::Command;
 pub use error::AppError;
@@ -252,6 +256,79 @@ impl Application {
     /// Inspects a model of the project and waits for the result.
     pub fn inspect_model(&self, id: ModelId) -> Result<ModelInspection, AppError> {
         self.start_inspect_model(id)?.wait()
+    }
+
+    /// Checks every setup against its stock, part and the project's machine
+    /// (SET-05, SET-06). Each setup's part is imported and placed to measure
+    /// it; a part that cannot be read is noted, not an error. Problems are
+    /// warnings: nothing is refused.
+    pub fn check_setups(&self) -> Result<Vec<SetupReport>, AppError> {
+        let project = &self.document.project;
+        let mut parts: Vec<(ModelId, Result<Option<PartExtent>, String>)> = Vec::new();
+        let mut reports = Vec::new();
+        for s in project.setups() {
+            let mut notes = Vec::new();
+            let part = match s.part {
+                None => None,
+                Some(id) => {
+                    if !parts.iter().any(|(m, _)| *m == id) {
+                        let extent = self
+                            .inspect_model(id)
+                            .map(|i| i.extent)
+                            .map_err(|e| e.to_string());
+                        parts.push((id, extent));
+                    }
+                    match parts.iter().find(|(m, _)| *m == id).map(|(_, e)| e) {
+                        Some(Ok(extent)) => *extent,
+                        Some(Err(e)) => {
+                            notes.push(format!(
+                                "the part cannot be read, so it is not checked: {e}"
+                            ));
+                            None
+                        }
+                        None => None,
+                    }
+                }
+            };
+            let (warnings, expected) = match project.machine() {
+                Some(profile) => (
+                    openchuck_types::setup::check_setup(&openchuck_types::setup::SetupCheck {
+                        profile,
+                        frame: &s.frame,
+                        stock: s.stock.as_ref(),
+                        clearance: s.clearance.as_ref(),
+                        part: part.as_ref(),
+                    }),
+                    Some(setup::expected_work_offset(profile, &s.frame)),
+                ),
+                None => {
+                    notes.push(
+                        "the project has no machine profile, so the setup is not checked"
+                            .to_owned(),
+                    );
+                    (Vec::new(), None)
+                }
+            };
+            reports.push(SetupReport {
+                setup: s.id,
+                name: s.name.clone(),
+                warnings,
+                expected_work_offset: expected,
+                part,
+                notes,
+            });
+        }
+        Ok(reports)
+    }
+
+    /// The setup whose ID or name is `text`.
+    pub fn find_setup(&self, text: &str) -> Result<&openchuck_project::Setup, AppError> {
+        self.document
+            .project
+            .setups()
+            .iter()
+            .find(|s| s.id.to_string() == text || s.name == text)
+            .ok_or_else(|| AppError::UnknownSetup(text.to_owned()))
     }
 
     /// Applies a command and records it for undo. On error the project is

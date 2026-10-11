@@ -43,6 +43,9 @@ pub enum AppError {
     /// No model has this ID or path.
     #[error("the project has no model '{0}' (give its ID or its path as the project lists it)")]
     UnknownModel(String),
+    /// No setup has this ID or name.
+    #[error("the project has no setup '{0}' (give its ID or its name)")]
+    UnknownSetup(String),
     /// An engine library reported an error.
     #[error(transparent)]
     Engine(#[from] openchuck_types::Error),
