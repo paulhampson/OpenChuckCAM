@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # SP-8 result: project format and order keys
 
-Work breakdown, Spikes, SP-8 (2 d). Decision record: [0005](../../docs/decisions/0005-sp-8-project-format.md).
+Work breakdown, Spikes, SP-8 (2 d). Decision record: [0006](https://github.com/paulhampson/OpenChuckCAM/blob/docs/decision-0006-sp-8-project-format/docs/decisions/0006-sp-8-project-format.md) on branch `docs/decision-0006-sp-8-project-format`.
 
 **Question.** Which serialisation format and order-key scheme give clean diffs and merges?
 
@@ -14,7 +14,7 @@ Work breakdown, Spikes, SP-8 (2 d). Decision record: [0005](../../docs/decisions
 
 Every merge scenario runs a real `git merge` (Git 2.43.0) in a fresh repository: base commit, side A on `main`, side B on a branch, merge, then load the merged folder, check the expected result and re-save (which must change nothing). Run with `cargo run --release -- <work-dir>`; `cargo test` runs the order-key property tests (5,000 random inserts, and 2,000 each of append, prepend and insert-after-first). Two runs give byte-identical reports.
 
-**Decision.** Per-item order keys pass every criterion in both formats; the ordered list fails (scenarios S3 and S5 conflict, and in TOML S10 merges silently into an invalid list). Both formats pass, so the format choice rests on other grounds: decision 0005 proposes JSON for the project folder, as the architecture already names, with TOML (through `toml_edit`) kept for the hand-edited libraries and post definitions.
+**Decision.** Per-item order keys pass every criterion in both formats; the ordered list fails (scenarios S3 and S5 conflict, and in TOML S10 merges silently into an invalid list). Both formats pass, so the format choice rests on other grounds: decision 0006 proposes JSON for the project folder, as the architecture already names, with TOML (through `toml_edit`) kept for the hand-edited libraries and post definitions.
 
 **Fallback status.** Not needed. The named fallback (second format or key scheme) was run as part of the spike: TOML passes too, and the list scheme is rejected.
 

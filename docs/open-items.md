@@ -35,9 +35,6 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-28 | Golden tests that depend on kernel tessellation or kernel-computed numbers need a tolerance on non-analytic faces, or per-platform golden files (verification plan section 2, policy 7): tessellation differs between x86-64 and arm64. | Decision 0003, cross-platform differences | open | Slice 11 | Agreement on the verification approach |
 | OI-29 | Add the OpenCASCADE licence notice and source offer to the release checklist (LGPL-2.1, statically linked). | Decision 0003, NFR-10 | open | Slice 20 | Release checklist |
 | OI-30 | Examples for the library crates other than `openchuck-types` (slice 0 item 7). Each gets one in the slice that gives it a public API. | 0004, slice close | deferred | Slices 5 (path), 6 (post, gcode), 2 (geom) and later | A public API |
-| OI-31 | Format for the project folder: JSON (recommended, as architecture section 7 names) or TOML. Both passed SP-8. | Decision 0005, item 1 | proposed | Before slice 1 item 2 | Project owner |
-| OI-32 | Order-key growth under repeated insertion at one spot (about one character per six inserts): an explicit renumber action, or a length-prefixed key scheme. | Decision 0005, item 2 | open | Slice 1 | Slice 1 design refinement |
-| OI-33 | Concurrent edits to the same item conflict in Git (adjacent fields of one operation, additions to one selection set). PRJ-05 is met; a semantic merge driver would belong with in-app version control (P2). | Decision 0005, item 3 | deferred | When VC work starts (P2) | None for P1 |
 
 ## Closed
 
