@@ -140,7 +140,7 @@ These apply to every slice and are not repeated below.
 7. Reserve descriptor fields (position, normal, area) in the selection schema so P2 matching needs no format change; not implemented.
 8. CLI commands to validate a project and to load and save it; a fuzz target for the project loader (NFR-07).
 
-**Progress:** items 1 to 8 are built ([decision 0007](decisions/0007-slice-1-project-model.md), proposed, on [decision 0006](decisions/0006-sp-8-project-format.md)). The checklist below is ticked from local runs; the slice closes when CI is green on all three platforms and the owner accepts decision 0007.
+**Progress:** items 1 to 8 are built ([decision 0007](decisions/0007-slice-1-project-model.md), accepted, on [decision 0006](decisions/0006-sp-8-project-format.md)). The checklist below is ticked from local runs; the slice closes when CI is green on all three platforms.
 
 **Review checklist**
 

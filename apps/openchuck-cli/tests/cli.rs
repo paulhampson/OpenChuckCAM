@@ -155,10 +155,31 @@ fn req_prj_02_cli_validate_reports_a_changed_model() {
 }
 
 #[test]
-fn req_nfr_07_cli_reports_a_folder_without_a_project() {
+fn req_nfr_07_cli_warns_about_a_folder_without_a_project() {
     let dir = std::env::temp_dir().join(format!("openchuck-bare-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    // Not on a terminal and without --create: a warning, an error, no project.
     let out = run(&["validate".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("warning:"), "{}", out.stderr);
     assert!(out.stderr.contains("has no project.toml"), "{}", out.stderr);
+    assert!(out.stderr.contains("--create"), "{}", out.stderr);
+    assert!(!dir.join("project.toml").exists());
+}
+
+#[test]
+fn req_prj_01_cli_create_option_makes_the_project() {
+    let dir = std::env::temp_dir().join(format!("openchuck-create-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = run(&["--create".as_ref(), "validate".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stderr.contains("warning:"), "{}", out.stderr);
+    assert!(out.stdout.contains("created project"), "{}", out.stdout);
+    assert!(dir.join("project.toml").exists());
+    // The next run finds the project and says nothing.
+    let out = run(&["validate".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(!out.stderr.contains("warning:"), "{}", out.stderr);
 }

@@ -120,11 +120,19 @@ pub struct Application {
 impl Application {
     /// Opens the project in `folder` with a worker pool of `threads`.
     ///
-    /// A missing path, a path to a file, a folder with no `project.toml` and a
-    /// damaged project are errors with a message for the user (NFR-07).
+    /// A missing path, a path to a file and a damaged project are errors with
+    /// a message for the user (NFR-07). A folder with no `project.toml` gives
+    /// [`AppError::NoProject`], which a front end shows as a warning and
+    /// answers by offering [`Application::create`] (decision record 0007
+    /// item 8).
     pub fn open(folder: &Path, threads: Threads) -> Result<Self, AppError> {
         check_folder(folder)?;
-        let project = openchuck_project::file::load(folder)?;
+        let project = match openchuck_project::file::load(folder) {
+            Err(openchuck_project::ProjectError::NotAProject(path)) => {
+                return Err(AppError::NoProject(path));
+            }
+            other => other?,
+        };
         Self::with_project(folder, project, threads)
     }
 

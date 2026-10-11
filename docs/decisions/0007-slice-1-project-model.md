@@ -1,6 +1,6 @@
 # 0007: Slice 1 design refinement: project model, project folder and undo
 
-**Status:** Proposed. Items 9, 11, 12 and 13 were chosen by the owner on 11 Oct 2026 (answers 1 to 4 in the slice 1 design review). Items 10 and 14 to 17 were proposed in the same review and went ahead without objection. Item 18 and items 1 to 8 (proposed before SP-8) await the owner's review. The record is accepted as a whole once those are agreed. It builds on [decision 0006](0006-sp-8-project-format.md) (accepted: TOML for the project folder, a per-item order key).
+**Status:** Accepted (11 Oct 2026). Items 9, 11, 12 and 13 were chosen by the owner in the slice 1 design review. The owner accepted items 1 to 7 as proposed and amended item 8 (a folder with no project is a warning with an offer to create one, not an error). Items 10 and 14 to 17 were proposed in the same review and went ahead without objection, and item 18, never put to the owner separately, is accepted with the record as a whole. It builds on [decision 0006](0006-sp-8-project-format.md) (accepted: TOML for the project folder, a per-item order key).
 
 Numbering: this record was drafted as 0005 with open items OI-31 to OI-33; those numbers were taken on `main` by decisions 0005 (SP-5) and 0006, so it is 0007 with OI-37 to OI-39.
 
@@ -30,7 +30,7 @@ Work breakdown slice 1 (project documents, persistence and undo) covers PRJ-01 t
 5. **Selections (PRJ-06, PRJ-07, UI-05).** A selection set names its model, records the model's content hash at selection time (face and edge IDs are relative to that file version, architecture section 5.6), and selects a sorted set of faces, edges or triangles. `descriptors` (position, normal, area) are reserved: P1 writes none and keeps any it reads.
 6. **Operation parameters.** A map from name to value (integer, number, flag or text), kept in name order and written as plain TOML values (`stepover = 0.5`), so a one-parameter edit is a one-line diff. A whole number reads as an integer and a number with a decimal point as a number, as TOML itself distinguishes them. The strategy's parameter schema (OP-16, slice 5) gives units and validation.
 7. **Undo and redo (UI-08).** Commands live in `openchuck-app`. Applying a command returns its inverse, and the history keeps those: undo applies the latest inverse and keeps the inverse of that for redo, and a new command clears redo. A command that fails changes nothing and is not recorded; a `Batch` command applies several as one step, all or none. The history is linear and unbounded. `openchuck-app` re-exports `openchuck-project` so front ends build commands without an engine crate of their own (architecture section 5.8).
-8. **Opening a project.** `Application::open` loads `project.toml` and refuses a folder without one; `Application::create` makes a new project. This replaces decision 0004 item 15, under which any existing folder opened as an empty project.
+8. **Opening a project (amended by the owner).** `Application::open` loads `project.toml`. A folder without one is not a crash and not silently an empty project: `open` returns `AppError::NoProject`, which a front end shows as a warning ("has no project.toml, so it is not a project yet") and answers by offering `Application::create`. `openchuck-cli` does so: `--create` accepts the offer, a terminal is asked "Create a project here? [y/N]", and otherwise (a script, a pipe) it stops with an error naming `new` and `--create`, so nothing carries on by accident and nothing is created unasked. This replaces decision 0004 item 15, under which any existing folder opened as an empty project. A missing path, a path to a file and a damaged project stay errors.
 
 ### Second step (on decision 0006)
 
@@ -66,6 +66,7 @@ Work breakdown slice 1 (project documents, persistence and undo) covers PRJ-01 t
 - **One file per model reference** (option b of item 9). Merges cleanly when two branches add models, but needs a folder name other than `models/`, where users keep their model files. Not chosen; the conflict is detected instead.
 - **A length-prefixed order-key scheme** (option b of item 11). Grows more slowly under repeated insertion at one spot, but changes the scheme 0006 proved with real merges. Not chosen.
 - **Shipping schema 2 now** so a real older fixture exists (option b of item 12). Not chosen: a deliberate format change only to exercise the framework.
+- **Treating any folder as an empty project** (the 0004 behaviour). A mistyped path would quietly start a new project. Not chosen; the warning with an offer keeps the convenience.
 - **Serde attributes on the model types** instead of file-form structs. Less code, but ties the in-memory model to the file layout and leaves migrations without a stable target.
 - **Externally tagged parameter values** (`stepover = { number = 0.5 }`). Unambiguous, but harder to read and review; TOML already tells integers from floats.
 
@@ -74,6 +75,7 @@ Work breakdown slice 1 (project documents, persistence and undo) covers PRJ-01 t
 Tests named after the requirement IDs (decision 0004 item 14):
 
 - **PRJ-01:** saving twice is byte-identical (and identical in a second folder); load then save rewrites no file (modification times unchanged); Windows line endings are not rewritten; a one-parameter edit changes one line of one file; every file ends with a newline and has no carriage return; `openchuck-cli new`, `validate` and `resave`.
+- **Opening (item 8):** a bare folder gives `NoProject`, creating a project there then opens; the CLI warns and fails without `--create` (not on a terminal) and creates with it.
 - **PRJ-02:** relative paths; changed and missing models detected by hash; `openchuck-cli validate` fails on a changed model.
 - **PRJ-03:** the cache folder ignores itself under a real `git status`; a saved folder holds only the project file and the four item folders.
 - **PRJ-04:** every file starts with `schema = 1`; a newer schema is refused; the schema-0 fixture migrates through a test step, and is refused without it.

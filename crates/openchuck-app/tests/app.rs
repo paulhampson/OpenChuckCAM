@@ -54,7 +54,11 @@ fn req_nfr_07_a_folder_without_a_project_is_an_error() {
     let dir = std::env::temp_dir().join(format!("openchuck-app-bare-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let err = Application::open(&dir, Threads::Exactly(1)).unwrap_err();
+    assert!(matches!(err, AppError::NoProject(_)), "{err}");
     assert!(err.to_string().contains("has no project.toml"), "{err}");
+    // The front end can then offer to create one, and the folder opens.
+    Application::create(&dir, "bare", Threads::Exactly(1)).unwrap();
+    Application::open(&dir, Threads::Exactly(1)).unwrap();
     // Creating twice in one folder is refused.
     let project = empty_project("twice");
     assert!(Application::create(&project, "again", Threads::Exactly(1)).is_err());

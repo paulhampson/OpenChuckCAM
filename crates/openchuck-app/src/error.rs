@@ -11,6 +11,10 @@ pub enum AppError {
     /// The path exists but is not a folder.
     #[error("'{}' is not a project folder", .0.display())]
     NotAProjectFolder(PathBuf),
+    /// The folder exists but holds no project (no `project.toml`). Front ends
+    /// offer to create one with [`Application::create`](crate::Application::create).
+    #[error("'{}' has no project.toml, so it is not a project yet", .0.display())]
+    NoProject(PathBuf),
     /// A file could not be read or written.
     #[error("cannot access '{}': {source}", path.display())]
     Io {
