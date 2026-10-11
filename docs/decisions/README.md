@@ -30,3 +30,4 @@ Add a row for each new record. Read the records that touch your task before you 
 | [0008](0008-slice-1-project-model.md) | Slice 1 design refinement: project model, project folder layout, order keys, schema migration and undo | Accepted |
 | [0009](0009-linuxcnc-fixture-checks.md) | LinuxCNC checks of the SP-3 and SP-5 fixtures | Accepted (open items OI-46 and OI-47 in [open-items.md](../open-items.md)) |
 | [0010](0010-slice-2-stl-import.md) | Slice 2 design refinement: STL import, mesh checks, model placement and project schema 2 | Accepted (open items OI-50 to OI-52 in [open-items.md](../open-items.md)) |
+| [0012](0012-sp-13-tool-profiles.md) | SP-13 result, one revolved-profile tool model: monotone profiles, generic drop-cutter | Proposed (sweep budget waits on SP-6, OI-56; owner decisions OI-57 and OI-58) |
