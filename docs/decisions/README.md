@@ -20,10 +20,11 @@ Add a row for each new record. Read the records that touch your task before you 
 
 | Record | Title | Status |
 | --- | --- | --- |
-| [0001](0001-sp3-wrapped-path-result.md) | SP-3 result, wrapped path to G-code with A words | Proposed (simulator criterion outstanding) |
+| [0001](0001-sp3-wrapped-path-result.md) | SP-3 result, wrapped path to G-code with A words | Proposed (simulator criterion met by [0008](0008-linuxcnc-fixture-checks.md); the A direction is still unconfirmed, OI-03) |
 | [0002](0002-sp-2-viewport-spike.md) | SP-2 viewport spike, interim result | Proposed (keep or fall back is open until the NFR-03 measurements are recorded) |
 | [0003](0003-step-kernel-route.md) | SP-1 STEP kernel route: thin in-house wrapper over OpenCASCADE, isolated import process | Accepted (third-party STEP samples still required before slice 11 import work is accepted) |
 | [0004](0004-slice-0-guardrails.md) | Slice 0 design refinement, guardrails and shared data | Accepted (IR not frozen until a later slice). Open items in [open-items.md](../open-items.md) |
-| [0005](0005-sp-5-gcode-reader.md) | SP-5 result, G-code reader: in-house reader | Accepted (LinuxCNC check of the fixture outstanding, OI-31) |
+| [0005](0005-sp-5-gcode-reader.md) | SP-5 result, G-code reader: in-house reader | Accepted (LinuxCNC check of the fixture done in [0008](0008-linuxcnc-fixture-checks.md): the file needs four arc lines corrected, OI-42) |
 | [0006](0006-sp-8-project-format.md) | SP-8 result, project format and order keys: per-item order keys; TOML for the project folder | Accepted |
 | [0007](0007-sp-12-z1-conventions.md) | SP-12 result, Makera Z1 rotary conventions and G93 (desk part) | Proposed (air cut outstanding, OI-37) |
+| [0008](0008-linuxcnc-fixture-checks.md) | LinuxCNC checks of the SP-3 and SP-5 fixtures | Proposed (results are measurements; fixture decisions await agreement) |
