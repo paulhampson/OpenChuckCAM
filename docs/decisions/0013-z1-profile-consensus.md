@@ -1,6 +1,6 @@
 # 0013: Makera Z1 profile values: consensus across Makera's published profiles
 
-**Status:** Proposed (11 Oct 2026). Items 3 to 5 follow the owner's replies of 11 Oct 2026. It amends item 8 of [decision 0011](0011-slice-3-machine-stock-setup.md) (also proposed) and the limits row of [decision 0007](0007-sp-12-z1-conventions.md) (proposed). Nothing here is measured on a Z1. The owner confirmed four fields from use of the machine (11 Oct 2026): the rotary axis, the A direction, the A range and the feed limits, which are marked *confirmed*. The other three stay *unconfirmed*: the rotary reference point (OI-60), the travel frame and the default clearance. The air cut (OI-37) is kept open as a cross check on the direction.
+**Status:** Accepted (11 Oct 2026) by the project owner. Items 3 to 7 follow the owner's replies of 11 Oct 2026. It amends item 8 of [decision 0011](0011-slice-3-machine-stock-setup.md) (also proposed) and the limits row of [decision 0007](0007-sp-12-z1-conventions.md) (proposed). Nothing here is measured on a Z1. The owner confirmed four fields from use of the machine (11 Oct 2026): the rotary axis, the A direction, the A range and the feed limits, which are marked *confirmed*. The other three stay *unconfirmed*: the rotary reference point (OI-60), the travel frame and the default clearance. The air cut (OI-37) is kept open as a cross check on the direction.
 
 ## Context
 

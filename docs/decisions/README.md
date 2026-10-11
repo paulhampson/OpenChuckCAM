@@ -30,6 +30,6 @@ Add a row for each new record. Read the records that touch your task before you 
 | [0008](0008-slice-1-project-model.md) | Slice 1 design refinement: project model, project folder layout, order keys, schema migration and undo | Accepted |
 | [0009](0009-linuxcnc-fixture-checks.md) | LinuxCNC checks of the SP-3 and SP-5 fixtures | Accepted (open items OI-46 and OI-47 in [open-items.md](../open-items.md)) |
 | [0010](0010-slice-2-stl-import.md) | Slice 2 design refinement: STL import, mesh checks, model placement and project schema 2 | Accepted (open items OI-50 to OI-52 in [open-items.md](../open-items.md)) |
-| [0011](0011-slice-3-machine-stock-setup.md) | Slice 3 design refinement: machine profile, stock, setup frames and clearance; project schema 3 | Proposed (built; awaiting the owner's review. Z1 values unconfirmed, OI-37 and OI-39) |
+| [0011](0011-slice-3-machine-stock-setup.md) | Slice 3 design refinement: machine profile, stock, setup frames and clearance; project schema 3 | Accepted (11 Oct 2026; open items OI-37 cross check, OI-53 to OI-55, OI-60) |
 | [0012](0012-sp-13-tool-profiles.md) | SP-13 result, one revolved-profile tool model: monotone profiles, generic drop-cutter | Accepted (the sweep budget waits on SP-6, OI-56) |
-| [0013](0013-z1-profile-consensus.md) | Makera Z1 profile values: consensus across Makera's published profiles (A direction, travel, feeds) | Proposed (amends 0011 item 8; all values unconfirmed, OI-60) |
+| [0013](0013-z1-profile-consensus.md) | Makera Z1 profile values: consensus across Makera's published profiles (A direction, travel, feeds) | Accepted (11 Oct 2026; amends 0011 item 8; OI-37 cross check, OI-60 open) |

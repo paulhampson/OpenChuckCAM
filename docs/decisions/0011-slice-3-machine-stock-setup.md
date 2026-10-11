@@ -1,6 +1,6 @@
 # 0011: Slice 3 design refinement: machine profile, stock, setup frames and clearance
 
-**Status:** Proposed (11 Oct 2026). Built and tested on branch `claude/slice-3-machine-setup`; awaiting the owner's review. Items marked **(owner)** are choices the owner may want to change; the rest follow from the documents. It relies on [decision 0007](0007-sp-12-z1-conventions.md), which is itself proposed (air cut outstanding), for every Makera Z1 value.
+**Status:** Accepted (11 Oct 2026) by the project owner, with [decision 0013](0013-z1-profile-consensus.md), which amends its item 8. Built and tested on branch `claude/slice-3-machine-setup` (pull request 16). Items marked **(owner)** were choices the owner could change; the owner accepted them as written. It relies on [decision 0007](0007-sp-12-z1-conventions.md), which is still proposed (the air cut, OI-37, stays open as a cross check) for the Z1 values it derives.
 
 ## Context
 
@@ -98,9 +98,10 @@ Tracked in [open-items.md](../open-items.md).
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 (OI-43) | How a project refers to its machine. **Settled** by item 7 when this record is accepted. | Slice 3 | Owner review |
-| 2 (OI-40) | Map SET-05 and `rotary_origin` onto the Z1's G54 Y0 Z0 convention. **Settled** by items 1, 2 and 4 when this record is accepted. | Slice 3 | Owner review |
+| 1 (OI-43, closed) | How a project refers to its machine. **Closed** by item 7 on acceptance. | Done | Owner's acceptance |
+| 2 (OI-40, closed) | Map SET-05 and `rotary_origin` onto the Z1's G54 Y0 Z0 convention. **Closed** by items 1, 2 and 4 on acceptance. | Done | Owner's acceptance |
 | 3 (OI-39, closed) | Z1 limits. **Closed** by decision 0013 item 5: stock defaults, and a user who changes them makes their own profile. The axis's machine position is OI-60. | Done | Owner's choice |
 | 4 (OI-53) | A default location for the user's machine library (a platform config folder needs a crate such as `directories`, not in the selection; NFR-14). Until then the CLI takes `--library`. | Slice 8 (the UI needs it) | An NFR-14 record, or a decision to use a folder beside the projects |
 | 5 (OI-54) | Report differences between a project's machine copy and the library profile it came from (as TL-07 does for tools), and offer to update the copy. Needs the copy to record which library profile it came from. | Slice 4 (with the tool snapshot report) or slice 8 | |
 | 6 (OI-55) | The work zero is always on the rotary axis. Add optional Y and Z offsets of the work zero if a controller other than the Z1 needs them. | When a need appears | User feedback |
+| 7 (OI-52) | The STL size check's upper threshold could follow the machine's work envelope (decision 0010 item 4). Slice 3's decide-in is passed: the import dialog does not know the project's machine yet, so it waits for slice 8. | Slice 8 | The import dialog |
