@@ -406,7 +406,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-1 (kernel), SP-9 (exact surfaces).
 
-**Design refinement:** the kernel route chosen in SP-1 (`opencascade`, a thin in-house wrapper, or `cadrum`), the deterministic face and edge numbering, how exact evaluation reaches `openchuck-path` (analytic Rust for simple surface types, kernel-backed or NURBS crate otherwise, per SP-9), and the licence boundary (the LGPL kernel stays in `openchuck-import`).
+**Design refinement:** the kernel route chosen in SP-1 (a thin in-house wrapper over OpenCASCADE with an isolated import process, [decision 0003](decisions/0003-step-kernel-route.md)), the deterministic face and edge numbering, how exact evaluation reaches `openchuck-path` (analytic Rust for simple surface types, kernel-backed or NURBS crate otherwise, per SP-9), and the licence boundary (the LGPL kernel stays in `openchuck-import`).
 
 1. Wrapped C++ kernel inside `openchuck-import` only, behind `ModelImporter`; exceptions converted to errors.
 2. B-rep topology (faces, edges, vertices) with deterministic numbering, so the same file always gives the same IDs.

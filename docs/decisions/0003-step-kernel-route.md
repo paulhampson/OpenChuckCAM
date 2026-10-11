@@ -1,11 +1,11 @@
 # 0003: STEP kernel route (SP-1)
 
-- **Status:** proposed. Needs your decision before slice 11 design starts. Updated 11 Oct 2026 with Linux, macOS and Windows CI results, the option B prototype (`spikes/sp1-shim`) on all three platforms, and the licence acceptance.
+- **Status:** accepted, 11 Oct 2026, by the project owner. Option B, with process isolation, as below. Recorded after Linux, macOS and Windows CI results, the option B prototype (`spikes/sp1-shim`) on all three platforms, and the licence acceptance.
 - **Date:** 11 Oct 2026
 - **Spike code:** branch `spike/sp-1-step-kernel` (throwaway, never merged into `main`)
 - **Context:** requirements IMP-01 to IMP-03, IMP-06, NFR-01, NFR-07, NFR-09, NFR-10, NFR-13, NFR-14, INT-02, INT-09. Architecture sections 3, 4, 7, 12 and 13. Work breakdown spike SP-1 and slices 0, 11. Verification plan, C++ bindings and licence flags.
 
-## Decision requested
+## Decision
 
 Take the first fallback named in SP-1: **a thin in-house wrapper over the OpenCASCADE C++ kernel**, confined to `openchuck-import`, instead of depending on the `opencascade` crate's safe API. Also:
 
@@ -102,7 +102,7 @@ MSVC also warns (C4530) that exception handling is off for parts of the crate's 
 
 ## Consequences if accepted
 
-- **Architecture section 7 and 13** (STEP kernel row and open decision) are updated to name option B, in the same change that accepts this record.
+- **Architecture sections 7, 11, 12 and 13** (STEP kernel row, licence flags, build order, CI note and open decision) and the **work breakdown's slice 11 design refinement** are updated to name option B in the same change that accepts this record.
 - **Slice 11 design refinement** is settled: shim over `occt-sys`'s OpenCASCADE build (or our own CMake), deterministic face and edge numbering from `TopExp_Explorer` order, an `ImportWorker` child process with timeout and a zero-face check.
 - **Windows works for option B.** The `sp1-shim` prototype builds with current MSVC and passes the same closed-form self test as Linux and macOS. Rules for the real wrapper: use `opencascade::handle<T>` only, never `Handle_T`, in anything that crosses the boundary; compile with exceptions on; link `TKernel` first and test a clean process exit on every platform. Do not adopt `opencascade-sys`, not even for its build glue.
 - **Slice 0 CI**: set `CMAKE_POLICY_VERSION_MINIMUM=3.5` on Windows and macOS; cache the OpenCASCADE build per platform; path-filter so only `openchuck-import` rebuilds it. No `-sys` crate may leak into the library family (the xtask rule already forbids it).
