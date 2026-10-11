@@ -67,20 +67,23 @@ fn req_imp_01_add_model_references_the_file_and_can_be_undone() {
     assert!(app.redo().unwrap());
     assert_eq!(app.project().models().len(), 1);
 
-    // A file beside the project folder is referenced with "..".
-    let (id, _) = app.add_model(&corpus("cube_ascii.stl"), None).unwrap();
+    // A file beside the project folder is referenced with "..". It is copied
+    // next to the project, because the corpus can be on another drive than
+    // the temporary folder (as on the Windows CI runner), which cannot be
+    // referenced relatively.
+    let shared = dir.with_file_name(format!(
+        "{}-shared",
+        dir.file_name().unwrap().to_string_lossy()
+    ));
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::copy(corpus("cube_ascii.stl"), shared.join("cube.stl")).unwrap();
+    let (id, _) = app.add_model(&shared.join("cube.stl"), None).unwrap();
     let outside = app.find_model(&id.to_string()).unwrap();
-    assert!(
-        outside.path.as_str().starts_with("../"),
-        "{}",
-        outside.path.as_str()
+    let expected = format!(
+        "../{}/cube.stl",
+        shared.file_name().unwrap().to_string_lossy()
     );
-    assert!(
-        outside
-            .path
-            .as_str()
-            .ends_with("testdata/stl/cube_ascii.stl")
-    );
+    assert_eq!(outside.path.as_str(), expected);
 }
 
 #[test]
