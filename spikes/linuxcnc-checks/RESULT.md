@@ -1,7 +1,7 @@
 # LinuxCNC checks of the SP-3 and SP-5 fixtures
 
 Branch `spike/linuxcnc-fixture-checks`. Throwaway code in `spikes/linuxcnc-checks/`; not for merging into the product.
-Settles OI-01 and OI-31 (docs branch `docs/linuxcnc-checks-oi-01-oi-31`, decision record 0008).
+Settles OI-01 and OI-31 (docs branch `docs/linuxcnc-checks-oi-01-oi-31`, decision record 0009).
 
 LinuxCNC 2.9.10 (tag `2.9`, built from source in the session; `rs274` and the headless trivkins XYZA simulator). Reproduce with `run_checks.sh`.
 
