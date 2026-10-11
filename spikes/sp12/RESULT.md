@@ -1,7 +1,7 @@
 # SP-12 result: Makera Z1 rotary conventions and G93 (desk part)
 
 Branch `spike/sp-12-z1-conventions`. Throwaway work in `spikes/sp12/`; not for merging into the product (spike rules).
-Requirements touched: GC-02, GC-04, GC-09, GC-10, OP-13, OP-15, SET-01, SET-05, SET-06, NFR-12. Decision record 0005 (proposed) carries the decisions; open items OI-03, OI-04 and OI-31 to OI-35.
+Requirements touched: GC-02, GC-04, GC-09, GC-10, OP-13, OP-15, SET-01, SET-05, SET-06, NFR-12. Decision record 0006 (proposed) carries the decisions; open items OI-03, OI-04 and OI-32 to OI-36.
 
 **State: desk part done, machine part outstanding.** The pass criterion asks for each convention to be marked *confirmed*. Nothing below is confirmed on a Z1 yet: values are *derived* from Makera's own profiles and firmware source, and the attended air cut in `AIR-CUT.md` is what confirms or refutes them. It needs you and the machine.
 
@@ -38,7 +38,7 @@ Not reached: `wiki.makera.com` (including its supported-codes page) is blocked b
 | Coolant | `M7` air on, `M9` off | Fusion post (`M400` first), Studio exports | derived |
 | Comments and lines | A `(` or `;` drops **the rest of the line**, so comments go on their own line or at the end; each G or M word starts a new command (`G93 G1 X10 F6` is two commands); no line numbers | Firmware `GcodeDispatch` | derived from source |
 | Number format | 3 decimals for X, Y, Z and A (Makera's Fusion post); the firmware parses single-precision floats, so keep A small by unwinding | `Carvera.cps`; firmware | derived |
-| Limits | Linear 4000 mm/min, A 21600 deg/min (60 rpm), spindle 13000 rpm; travel X -10..200, Y -200..10, Z 0..100 | Fusion Z1 file. FreeCAD differs (X, Y 0..200); a third-party script cites 1200 mm/min "from Studio's machine table" | **sources disagree** (OI-33) |
+| Limits | Linear 4000 mm/min, A 21600 deg/min (60 rpm), spindle 13000 rpm; travel X -10..200, Y -200..10, Z 0..100 | Fusion Z1 file. FreeCAD differs (X, Y 0..200); a third-party script cites 1200 mm/min "from Studio's machine table" | **sources disagree** (OI-34) |
 
 ## The Z1 feed rule
 
@@ -74,7 +74,7 @@ Running too slow is the safe direction for an air cut, but it is a feed error fo
 
 This confirms the LinuxCNC half of OI-04 (how LinuxCNC applies F to mixed XYZ and A moves, and that it accepts G93). The simulator cannot confirm anything about the Z1: trivkins treats A as a plain number, and the Z1's feed rule, direction and `G92.4` are its own.
 
-## Decision (proposed, record 0005)
+## Decision (proposed, record 0006)
 
 1. **Z1 profile values** as in the conventions table, each flagged *derived* until the air cut; the fallback for any value the air cut does not confirm is to keep it flagged in the profile and post (spike fallback).
 2. **G93 is not offered for the Z1.** The Z1 post uses G94 only and never writes `G93`, because the stock firmware would silently misread its F words.

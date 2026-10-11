@@ -40,4 +40,4 @@ Also note: any alarm, warning or message the controller showed, and which line i
 
 ## What happens with the result
 
-Send the filled-in table (a photo is fine). Each convention in `RESULT.md` then moves from *derived* to *confirmed* or *refuted*, the G93 answer is recorded, and the timing results decide the Z1 feed rule for the post (decision record 0005, open items OI-03, OI-04 and OI-31). Times within about 10 % of the Z1 column confirm the firmware rule; acceleration adds a little to the short moves.
+Send the filled-in table (a photo is fine). Each convention in `RESULT.md` then moves from *derived* to *confirmed* or *refuted*, the G93 answer is recorded, and the timing results decide the Z1 feed rule for the post (decision record 0006, open items OI-03, OI-04 and OI-32). Times within about 10 % of the Z1 column confirm the firmware rule; acceleration adds a little to the short moves.
