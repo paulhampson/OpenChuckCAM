@@ -1,0 +1,93 @@
+%
+(OpenChuckCAM spike SP-12: LinuxCNC-dialect twin of z1_conventions_test.cnc)
+(Same moves. Differences: M600 is M0; the Z1-only G92.4 A0 S0 is emulated with G92;)
+(the simulator sets G54 itself so Y0 Z0 is on the rotary axis. Simulator only.)
+G10 L2 P1 X100 Y-100 Z-80 A0
+G92.1
+(Hand-written and checked by hand and in the LinuxCNC simulator. Not post output.)
+(AIR CUT ONLY: no tool in the spindle, no material, spindle off, attended.)
+(Follow spikes/sp12/AIR-CUT.md. Verify this file yourself before running it.)
+(G54 must put Y0 Z0 on the A axis centreline and X0 at least 10 mm clear of the jaws.)
+(The program uses X0 to X60, and Z30 and Z60 above the axis.)
+(Comments sit on their own lines: the firmware drops the rest of a line after a comment.)
+G90 G21 G17 G94
+G54
+M5
+G53 G0 Z-3
+(Step 0: drop whole turns left on A by an earlier job, then go to A0 X0 Y0 Z30)
+(Emulates the Z1's G92.4 A0 S0: keep A's sign, drop whole turns, no motion)
+o100 if [ABS[#5423] GT 360]
+  G92 A[#5423 - 360 * FIX[ABS[#5423] / 360] * [#5423 / ABS[#5423]]]
+o100 endif
+G1 A0 F600
+G1 X0 Y0 F1000
+G1 Z30 F600
+(Step 1: axis letter and direction. Tape mark on top of a jaw. Resume to turn A to +90.)
+M0
+G1 A90 F600
+(Expect DRO A90. Record which way the mark went: toward the front, or toward the back.)
+M0
+G1 A0 F600
+(Step 2: wrap. A370, then G92.4 A0 S0 should change the DRO to A10 without moving.)
+M0
+G1 A370 F1200
+(Emulates the Z1's G92.4 A0 S0: keep A's sign, drop whole turns, no motion)
+o101 if [ABS[#5423] GT 360]
+  G92 A[#5423 - 360 * FIX[ABS[#5423] / 360] * [#5423 / ABS[#5423]]]
+o101 endif
+(Expect DRO A10, no motion. Resume: A should turn 10 degrees back, not 370.)
+M0
+G1 A0 F600
+G1 A-370 F1200
+(Emulates the Z1's G92.4 A0 S0: keep A's sign, drop whole turns, no motion)
+o102 if [ABS[#5423] GT 360]
+  G92 A[#5423 - 360 * FIX[ABS[#5423] / 360] * [#5423 / ABS[#5423]]]
+o102 endif
+(Expect DRO A-10, no motion. Resume: A should turn 10 degrees forward.)
+M0
+G1 A0 F600
+(Step 3: timing at Z30. Start a stopwatch when each move starts and stop it when it ends.)
+(T3a: X only. Expect 12.0 s.)
+M0
+G1 X60 F300
+G1 X0 F1000
+(T3b: A only, 360 degrees at radius 30. Z1 rule 21.8 s, LinuxCNC rule 36.0 s.)
+M0
+G1 A360 F600
+(T3c: X20 and A plus 180 together. Z1 rule 10.9 s, LinuxCNC rule 2.0 s.)
+M0
+G1 X20 A540 F600
+G1 X0 F1000
+(T3d: X60 and A plus 30 together. Expect 12.0 s on either rule.)
+M0
+G1 X60 A570 F300
+G1 X0 F1000
+(Expect DRO A210 after the next line, no motion.)
+(Emulates the Z1's G92.4 A0 S0: keep A's sign, drop whole turns, no motion)
+o103 if [ABS[#5423] GT 360]
+  G92 A[#5423 - 360 * FIX[ABS[#5423] / 360] * [#5423 / ABS[#5423]]]
+o103 endif
+(Step 4: A only at radius 60. Skip to step 5 if Z60 above the axis is not clear.)
+(T4: expect 36.0 s on either rule.)
+G1 Z60 F600
+M0
+G1 A570 F600
+G1 Z30 F600
+(Step 5: G93. T5: 10.0 s if G93 works; 100 s if it is ignored and F6 is read as mm/min.)
+(If X is still crawling after 20 s, feed hold is fine: the answer is already clear.)
+M0
+G93
+G1 X10 F6
+G94
+G1 X0 F1000
+(End: unwind A to zero, retract, go to clearance, end of program.)
+(Emulates the Z1's G92.4 A0 S0: keep A's sign, drop whole turns, no motion)
+o104 if [ABS[#5423] GT 360]
+  G92 A[#5423 - 360 * FIX[ABS[#5423] / 360] * [#5423 / ABS[#5423]]]
+o104 endif
+G1 A0 F600
+G53 G0 Z-3
+M5
+G28
+M2
+%
