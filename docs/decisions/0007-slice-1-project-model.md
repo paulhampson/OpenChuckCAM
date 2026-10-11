@@ -1,6 +1,6 @@
 # 0007: Slice 1 design refinement: project model, project folder and undo
 
-**Status:** Proposed. Items 9 to 13 were chosen by the owner on 11 Oct 2026 and items 14 to 18 were proposed in the same review without objection; items 1 to 8 were proposed earlier and await acceptance with the rest of the record. It builds on [decision 0006](0006-sp-8-project-format.md) (accepted: TOML for the project folder, a per-item order key).
+**Status:** Proposed. Items 9, 11, 12 and 13 were chosen by the owner on 11 Oct 2026 (answers 1 to 4 in the slice 1 design review). Items 10 and 14 to 17 were proposed in the same review and went ahead without objection. Item 18 and items 1 to 8 (proposed before SP-8) await the owner's review. The record is accepted as a whole once those are agreed. It builds on [decision 0006](0006-sp-8-project-format.md) (accepted: TOML for the project folder, a per-item order key).
 
 Numbering: this record was drafted as 0005 with open items OI-31 to OI-33; those numbers were taken on `main` by decisions 0005 (SP-5) and 0006, so it is 0007 with OI-37 to OI-39.
 
