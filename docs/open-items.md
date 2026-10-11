@@ -35,11 +35,14 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-29 | Add the OpenCASCADE licence notice and source offer to the release checklist (LGPL-2.1, statically linked). | Decision 0003, NFR-10 | open | Slice 20 | Release checklist |
 | OI-30 | Examples for the library crates other than `openchuck-types` (slice 0 item 7). Each gets one in the slice that gives it a public API. | 0004, slice close | deferred | Slices 5 (path), 6 (post, gcode), 2 (geom) and later | A public API |
 | OI-31 | Run the SP-5 hand-written file `linuxcnc_post_subset.ngc` through LinuxCNC's own interpreter (`rs274` standalone or the simulator) before it becomes a `testdata/` fixture; it was checked by hand only. The owner runs it separately. | 0005 item 2 | open | Before slice 6 adds the fixture | Project owner, with LinuxCNC 2.9 or later (with OI-01) |
+| OI-35 | Order-key growth under repeated insertion at one spot (about one character per six inserts): an explicit renumber action, or a length-prefixed key scheme. | Decision 0006, item 2 | open | Slice 1 | Slice 1 design refinement |
+| OI-36 | Concurrent edits to the same item conflict in Git (adjacent fields of one operation, additions to one selection set). PRJ-05 is met; a semantic merge driver would belong with in-app version control (P2). | Decision 0006, item 3 | deferred | When VC work starts (P2) | None for P1 |
 
 ## Closed
 
 | ID | Item | Source | Closed | Settled in |
 | --- | --- | --- | --- | --- |
+| OI-34 | Format for the project folder: JSON or TOML. Both passed SP-8. | Decision 0006, item 1 | 11 Oct 2026 | Owner chose TOML; decision 0006 accepted; architecture section 7, crate selection, `docs/dependencies.md` and work breakdown slice 1 item 2 updated |
 | OI-C1 | NFR-14 adoption records for eframe/egui, egui-wgpu, wgpu, parry3d-f64 and bytemuck. | 0002 item 6 | 11 Oct 2026 | `docs/dependencies.md` (parry3d-f64 and bytemuck recorded, not yet declared) |
 | OI-C2 | Add `openchuck-testkit` and `openchuck-benches` to the architecture. | 0004 open item 2 | 11 Oct 2026 | Agreed by the owner; architecture sections 3, 9 and 12 |
 | OI-C3 | `AGPL-3.0-or-later` or `AGPL-3.0-only`. | 0004 open item 3 | 11 Oct 2026 | Owner chose `AGPL-3.0-or-later`; architecture sections 12 and 13 |

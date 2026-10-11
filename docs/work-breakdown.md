@@ -132,7 +132,7 @@ These apply to every slice and are not repeated below.
 **Design refinement:** file layout from architecture 5.6 (project, setups, one file per operation, selection sets, machine), how order keys are stored, schema versioning, the cache location and generated ignore file, and the command pattern for undo.
 
 1. Project model in `openchuck-project`: project, setups, operations, selection sets, machine reference and tool snapshots, with stable unique IDs and explicit order keys (PRJ-05).
-2. Text persistence with stable key ordering and formatting, split into small files (PRJ-01), using the serialisation approach chosen in SP-8.
+2. Text persistence with stable key ordering and formatting, split into small files (PRJ-01), as TOML with per-item order keys, the approach chosen after SP-8 ([decision 0006](decisions/0006-sp-8-project-format.md)).
 3. Model files referenced by relative path with a content hash checked on load (PRJ-02).
 4. No generated data in the project; cache directory with a generated ignore file (PRJ-03).
 5. Schema version in every file and a migration framework with a real fixture migration (PRJ-04).
