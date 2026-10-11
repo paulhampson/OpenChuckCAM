@@ -1,9 +1,9 @@
-# 0008: LinuxCNC checks of the SP-3 and SP-5 fixtures
+# 0009: LinuxCNC checks of the SP-3 and SP-5 fixtures
 
 - **Status:** proposed. The results are measurements and stand on their own; the decisions below (items 2 and 3) wait for agreement, and decision 0001 stays proposed until the owner accepts it.
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/linuxcnc-fixture-checks` (throwaway, never merged; write-up in `spikes/linuxcnc-checks/RESULT.md`, raw output in `spikes/linuxcnc-checks/out/`, reproduced by `run_checks.sh`).
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-01 and OI-31 close here; OI-42 and OI-43 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-01 and OI-31 close here; OI-46 and OI-47 are new.
 
 ## Context
 
@@ -44,7 +44,7 @@ LinuxCNC 2.9.10 (branch `2.9`) was built from source in the session (run-in-plac
 ## Decision (proposed)
 
 1. **SP-3's simulator criterion is met** for the LinuxCNC rule: reached positions match the file, the run completes, and the compensated and inverse-time files run to the IR's cut time within 0.4 %. OI-01 closes. The record 0001 criteria that need the A direction stay with OI-03.
-2. **The corrected arc lines are the ones that go into the fixture.** When slice 6 adds the post-subset file to `testdata/`, it takes `linuxcnc_post_subset_corrected.ngc`, not the SP-5 original (OI-42).
+2. **The corrected arc lines are the ones that go into the fixture.** When slice 6 adds the post-subset file to `testdata/`, it takes `linuxcnc_post_subset_corrected.ngc`, not the SP-5 original (OI-46).
 3. **Fixtures that stand for runnable programs must read in `rs274`**, not only in the reader. The dialect file is an exception by purpose (it holds features the reader refuses); it stays a reader fixture and is not expected to run as a whole. This is a fixture rule for slice 6 to apply; no document changes until then.
 
 ## Alternatives considered
@@ -54,7 +54,7 @@ LinuxCNC 2.9.10 (branch `2.9`) was built from source in the session (run-in-plac
 
 ## Consequences
 
-- Slice 6 design refinement (gate 3's "xtask replay runner", verification plan section 6): the working method is a headless run of a trivkins XYZA configuration with exact stop, sampling the *commanded* position (the actual position lags it by a few servo cycles, which shows as false node errors at high A speed), comparing the elapsed time from the first to the last cut line with the IR. Three practical points for the runner: LinuxCNC's `configure` needs the Python that has `tkinter`; run as root, `rtapi_app` needs an unprivileged `RTAPI_UID`, a socket *file* for `RTAPI_FIFO_PATH`, and a build directory readable by that user and by group root; Ubuntu 24.04's package index in the session has no `linuxcnc` package (OI-43).
+- Slice 6 design refinement (gate 3's "xtask replay runner", verification plan section 6): the working method is a headless run of a trivkins XYZA configuration with exact stop, sampling the *commanded* position (the actual position lags it by a few servo cycles, which shows as false node errors at high A speed), comparing the elapsed time from the first to the last cut line with the IR. Three practical points for the runner: LinuxCNC's `configure` needs the Python that has `tkinter`; run as root, `rtapi_app` needs an unprivileged `RTAPI_UID`, a socket *file* for `RTAPI_FIFO_PATH`, and a build directory readable by that user and by group root; Ubuntu 24.04's package index in the session has no `linuxcnc` package (OI-47).
 - Decisions 0001 and 0005 are not edited. Their open items point here through the register.
 - No change to `requirements.md` or `architecture.md`. No dependency enters the product.
 
@@ -62,5 +62,5 @@ LinuxCNC 2.9.10 (branch `2.9`) was built from source in the session (run-in-plac
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Apply the corrected arc lines when the post-subset file is added to `testdata/`, and add the rule that runnable fixtures read in `rs274`. (OI-42) | Slice 6 | |
-| 2 | Where gate 3's runner gets LinuxCNC on CI and on a workstation: a cached source build (done in the session), the project's own package, or a container. (OI-43) | Slice 6 | A look at CI runners and the `linuxcnc.org` package route |
+| 1 | Apply the corrected arc lines when the post-subset file is added to `testdata/`, and add the rule that runnable fixtures read in `rs274`. (OI-46) | Slice 6 | |
+| 2 | Where gate 3's runner gets LinuxCNC on CI and on a workstation: a cached source build (done in the session), the project's own package, or a container. (OI-47) | Slice 6 | A look at CI runners and the `linuxcnc.org` package route |
