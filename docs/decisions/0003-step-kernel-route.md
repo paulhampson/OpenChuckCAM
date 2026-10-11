@@ -1,6 +1,6 @@
 # 0003: STEP kernel route (SP-1)
 
-- **Status:** proposed. Needs your decision before slice 11 design starts. Updated 11 Oct 2026 with Linux, macOS and Windows CI results.
+- **Status:** proposed. Needs your decision before slice 11 design starts. Updated 11 Oct 2026 with Linux, macOS and Windows CI results, the option B prototype (`spikes/sp1-shim`) on all three platforms, and the licence acceptance.
 - **Date:** 11 Oct 2026
 - **Spike code:** branch `spike/sp-1-step-kernel` (throwaway, never merged into `main`)
 - **Context:** requirements IMP-01 to IMP-03, IMP-06, NFR-01, NFR-07, NFR-09, NFR-10, NFR-13, NFR-14, INT-02, INT-09. Architecture sections 3, 4, 7, 12 and 13. Work breakdown spike SP-1 and slices 0, 11. Verification plan, C++ bindings and licence flags.
@@ -21,7 +21,7 @@ Does the `opencascade` crate build on all three platforms and expose topology, s
 
 | Criterion | Result | Verdict |
 | --- | --- | --- |
-| Builds in CI on Windows, macOS and Linux | Linux: builds and runs (GitHub runner: 32 to 51 min cold). macOS (Apple silicon): builds and runs (8 to 9 min cold). **Windows: the kernel builds (about 48 min), but `opencascade-sys` 0.3.0 does not compile under MSVC 14.51 (Visual Studio 2026).** The errors are `C2440` in the crate's own `include/b_rep.hxx` (lines 16, 21, 30): `cannot convert from 'opencascade::handle<Geom_Surface> *' to 'std::unique_ptr<Handle_Geom_Surface>'` (and the same for `Geom_Curve` and `Poly_Triangulation`). That is a defect in the crate's C++ glue, not in OpenCASCADE. All three platforms first failed on CMake 4 (see Platform notes). | **Not met: the crate does not build on Windows as published.** |
+| Builds in CI on Windows, macOS and Linux | Linux: builds and runs (GitHub runner: 32 to 51 min cold). macOS (Apple silicon): builds and runs (8 to 9 min cold). **Windows: the kernel builds (about 48 min), but `opencascade-sys` 0.3.0 does not compile under MSVC** (seen on 14.51, Visual Studio 2026; the cause applies to every MSVC version, see Windows root cause). The errors are `C2440` in the crate's own `include/b_rep.hxx` (lines 16, 21, 30): `cannot convert from 'opencascade::handle<Geom_Surface> *' to 'std::unique_ptr<Handle_Geom_Surface>'` (and the same for `Geom_Curve` and `Poly_Triangulation`). That is a defect in the crate's C++ glue, not in OpenCASCADE. Patching the 16 header sites only moves the failure to the generated bridge (`b_rep_lib.rs.cc`, below). All three platforms first failed on CMake 4 (see Platform notes). | **Not met: the crate does not build on Windows as published.** |
 | Faces, edges, surface types readable | Edge type: yes (safe API). Face surface type: not in the safe API, but readable from `opencascade-sys` as a class name (`Geom_CylindricalSurface`, and so on). Analytic parameters (radius, axis, cone angle), UV bounds and a `GeomAbs_SurfaceType` are not bound. | **Partly met.** |
 | Tolerance controls triangle count | Yes: cylinder 124 to 396 triangles, sphere 1,504 to 15,018, filleted box 628 to 3,492 as tolerance goes 0.1 to 0.01 mm. Only linear deflection is exposed; angular deflection is fixed at the default. | **Met, with limits.** |
 | Same file gives identical IDs twice | Yes on both Linux and macOS: identical topology digest over 5 separate processes for all 8 fixtures and a 300-solid file, and after a STEP write and re-read. IDs are `TopExp_Explorer` order. **Across platforms** the topology digests match for 8 of 9 files; `rotary_blank_drilled` differs because computed face areas differ in the 7th digit (face 0: 4466.888129 on Linux, 4466.888500 on macOS) while face order, surface types and edges are the same. See "Cross-platform differences". | **Met** per platform. Cross-platform IDs match; cross-platform numbers do not match exactly. |
@@ -51,7 +51,7 @@ All numbers are from one Linux x86-64 container (4 cores) unless stated. Fixture
 
 ### Thin in-house shim (about 100 lines of C++ over the same OpenCASCADE build)
 
-Built and run on Linux. It adds exactly what the safe API lacks:
+First probe, inside the `opencascade-sys` harness, built and run on Linux. It adds exactly what the safe API lacks:
 
 - Surface type and analytic parameters: cylinder radius 10, cone semi-angle 0.2606 rad (matches atan(8/30)) and apex, sphere radius, torus 20 / 10.
 - UV bounds for every face.
@@ -59,6 +59,30 @@ Built and run on Linux. It adds exactly what the safe API lacks:
 - Mesher with linear and angular deflection and a parallel switch. Angular deflection 0.5 to 0.1 on the sphere at 0.1 mm: 1,504 to 8,002 triangles.
 
 This answers the SP-9 input for B-rep faces in principle: exact evaluation is available from the kernel. Closest-point projection (`GeomAPI_ProjectPointOnSurf`) and ray hits (`BRepIntCurveSurface_Inter`) are already bound in `opencascade-sys`.
+
+### Option B prototype: `spikes/sp1-shim` (no `opencascade-sys`)
+
+To test option B as it would actually be built, a second prototype uses only `occt-sys` 7.8.1 (to build the kernel) and `cc` (to compile one C++ file). The C++ side is a plain C ABI (about 180 lines): read STEP, count and describe faces and edges, evaluate a face at (u, v), and mesh with per-face triangles. It uses only `opencascade::handle<T>`, never the `Handle_T` names, so the MSVC handle problem below cannot arise. The kernel's `Standard_Failure` is caught at the boundary and turned into an error string; zero faces is an error. Rust adds three commands: `selftest` (13 closed-form checks), `walk` (topology and geometry digests with signed zeros normalised), and `isolate` (each file in a child process with a 20 s timeout).
+
+| Platform (CI) | Build, cold | Self test (13 checks) | Exit | Isolation (19 files) |
+| --- | --- | --- | --- | --- |
+| Linux x86-64 | 51 min | all pass | clean | 12 crashed, 6 errors, 1 read; parent survives |
+| macOS arm64 | 8 to 9 min | all pass | clean after the link-order fix (below) | same as Linux |
+| Windows x86-64 (MSVC) | 61 to 71 min | all pass | clean after the link-order fix | 18 errors (the 12 crash files are reported as "unknown C++ exception" instead of crashing), 1 read; parent survives |
+
+- **Cross-platform digests.** Topology and geometry digests (face and edge order, surface types and parameters, rounded geometry) are identical on Linux CI, local Linux and macOS for all 8 fixtures. Windows gives the same digests for all 8 fixtures, so face numbering is identical on all three platforms. Triangle counts on Windows equal Linux for every fixture and setting. macOS arm64 differs on two: the B-spline face (164 against 162) and the sphere (1,504 against 1,502) at 0.1 mm, probably from fused multiply-add on arm64. So the face numbering is portable; tessellation is not bit-portable across CPU architectures, as found with the crate.
+- **Exit crash and its cause.** The first macOS run passed every check and then segfaulted when the process exited, inside `Standard_Type`'s registry lookup during static destruction. OpenCASCADE keeps its type registry in a function-local static in `TKernel`; with static libraries, the order in which the linker sees them decides the order of static constructors and destructors. Linking the toolkits first and `TKernel` last (the usual dependency order) let the registry be destroyed before the toolkits' own statics that still use it. Linking `TKernel` first fixes it. A control job relinks with the old order and reproduces the crash (exit 139) on macOS, so the cause is confirmed, not guessed. Windows on the old order showed the same symptom (all checks pass, then exit 139). With `TKernel` linked first, Windows exits cleanly; the control relink in the old order segfaults again (exit 139), so the cause is the same on both. Linux is unaffected because it links the group with `--start-group`.
+- **Crash files on Windows.** OpenCASCADE's Windows build turns access violations into C++ exceptions, which the shim's catch-all reports as an error. The process survived, but its state after an access violation cannot be trusted, so this does not remove the need for the child process; it only changes how the crash shows up.
+- **What this means for slice 11:** the link order is part of the build contract and must be tested (a test that exits the process normally after loading a file). The child-process worker can also end with `_exit` after writing its result, which avoids static destruction entirely; keep the link order right anyway.
+
+### Windows root cause for `opencascade-sys`
+
+Under MSVC (`_MSC_VER >= 1800`), OpenCASCADE's `Standard_Handle.hxx` defines `Handle_T` as a **class derived from** `opencascade::handle<T>`; on every other compiler it is a typedef. The crate's C++ glue and its cxx bridge are written as if `Handle_T` and `opencascade::handle<T>` were the same type, so they break on any MSVC, not only 14.51:
+
+1. `new opencascade::handle<T>(...)` assigned to `std::unique_ptr<Handle_T>` (16 sites in the crate's headers). Patching these to `new Handle_T(...)` (kept in `spikes/vendor/opencascade-sys`, spike only) gets past them.
+2. The next error is in the generated bridge: `b_rep_lib.rs.cc(20): error C2440: cannot convert from 'overloaded-function' to 'void (*)(const TopoDS_Face &, const Handle_Poly_Triangulation &)'`. The bridge declares functions with `Handle_T` parameters, but OpenCASCADE's functions take `opencascade::handle<T>`, and under MSVC those are different types. The crate uses `Handle_` types in 57 bridge declarations across 14 modules, so fixing it means rewriting the bridge, not a patch. This removes any reason to keep `opencascade-sys` for its build glue.
+
+MSVC also warns (C4530) that exception handling is off for parts of the crate's glue (no `/EHsc`); our shim compiles with exceptions on, which it needs to catch `Standard_Failure`.
 
 ### Fallbacks tried
 
@@ -80,24 +104,25 @@ This answers the SP-9 input for B-rep faces in principle: exact evaluation is av
 
 - **Architecture section 7 and 13** (STEP kernel row and open decision) are updated to name option B, in the same change that accepts this record.
 - **Slice 11 design refinement** is settled: shim over `occt-sys`'s OpenCASCADE build (or our own CMake), deterministic face and edge numbering from `TopExp_Explorer` order, an `ImportWorker` child process with timeout and a zero-face check.
-- **Windows is the open risk for option B.** The published crate does not build there, so option B means our own bridge, which must build with current MSVC. That is a reason to prefer B over A, not a reason to expect it to be free. Budget a Windows spike before slice 11 and do not adopt `opencascade-sys` just for its build glue.
+- **Windows works for option B.** The `sp1-shim` prototype builds with current MSVC and passes the same closed-form self test as Linux and macOS. Rules for the real wrapper: use `opencascade::handle<T>` only, never `Handle_T`, in anything that crosses the boundary; compile with exceptions on; link `TKernel` first and test a clean process exit on every platform. Do not adopt `opencascade-sys`, not even for its build glue.
 - **Slice 0 CI**: set `CMAKE_POLICY_VERSION_MINIMUM=3.5` on Windows and macOS; cache the OpenCASCADE build per platform; path-filter so only `openchuck-import` rebuilds it. No `-sys` crate may leak into the library family (the xtask rule already forbids it).
 - **NFR-07** is met for STEP by process isolation, not by trusting the reader. Fuzz the worker in nightly CI with the mutation script from the spike.
 - **IMP-02 conditional waiver:** SP-9 can still decide, but exact evaluation through the shim works for plane, cylinder, cone, sphere, torus and B-spline on this evidence. Do not apply the waiver yet.
-- **NFR-10 / INT-09 licence check, not decided here:** `opencascade`, `opencascade-sys` and `occt-sys` are LGPL-2.1 and OpenCASCADE has an LGPL exception text. Whether static linking into an AGPL application needs anything beyond shipping source is for you to confirm. LGPL-2.1 section 3 names GPL version 2 only, which may matter next to AGPL v3.
+- **NFR-10 / INT-09 licence: accepted** (11 Oct 2026). OpenCASCADE (LGPL-2.1 with its exception) and `occt-sys` (LGPL-2.1, build only) statically linked into the AGPL application are accepted by the project owner. Option B no longer depends on `opencascade` or `opencascade-sys`. Record the licence notice and source offer for OpenCASCADE in the release checklist.
 - **NFR-14 records** (pinned versions, survey scores, justification): `opencascade` / `opencascade-sys` 0.3.0 (66; tried, not adopted), `occt-sys` 7.8.1 (build only), `cadrum` 0.9.0 (63; rejected), `brepkit-io` and companions 4.1.48 (60; watched).
 
 ## Limits of this spike
 
-- No STEP file from another CAD system was available offline, so every fixture came from OpenCASCADE's own writer. Re-reading its own output flatters it. **Before slice 11, collect exports from at least FreeCAD, Fusion and SolidWorks** (small parts with cylinders, cones, B-spline faces and holes) and rerun the walk. This also decides `brepkit-io`.
+- No STEP file from another CAD system was available offline, so every fixture came from OpenCASCADE's own writer. Re-reading its own output flatters it. **Collecting exports from at least FreeCAD, Fusion and SolidWorks** (small parts with cylinders, cones, B-spline faces and holes) is deferred by agreement (11 Oct 2026) to a later date, but must happen before slice 11's import work is accepted; rerun the `sp1-shim` walk and isolation on them. This also decides `brepkit-io`.
 - Unit handling (IMP-03), re-export face matching (IMP-07, PRJ-07) and assemblies with transforms were not tested.
 - The fuzz is random byte mutation, not a coverage-guided fuzzer. It shows the reader is unsafe; it does not bound how many faults exist.
-- Nothing of ours has been built or run on Windows: the crate's bridge fails to compile there (above), so the fixtures, determinism, fuzz and shim results are Linux and macOS only. Before this record is accepted, build our own shim and a minimal reader on Windows (a small Windows build spike). A compiler older than MSVC 14.51 might build the crate as published; that was not tried, and would not fix the other gaps.
-- The shim is shown working on Linux x86-64 (local) only. In CI the shim step failed on Linux and macOS because the second build pass did not recompile the shim (a harness fault: forcing the build script to rerun would fix it); the shim was not verified on macOS or Windows.
+- On Windows only the `sp1-shim` prototype ran; the `opencascade` crate harness (fixtures, determinism through the crate, fuzz) does not build there. The fuzz ran on Linux only; the isolation run covers the crash corpus on all three platforms.
+- The first shim probe's CI step failed on Linux and macOS because of a harness fault: the second build pass did not recompile the shim, since Cargo compares file times and the installed OpenCASCADE headers keep their source times. Watching the installed `TKernel` library fixed it, and the probe then passed on macOS.
 - Performance figures come from one container and the GitHub runners and are not tuned. Cold OpenCASCADE builds on hosted runners took 32 to 51 min (Linux), 8 to 9 min (macOS arm64) and about 48 min or more (Windows) for one crate, so CI needs a build cache from day one.
 
 ## Platform notes from CI
 
 - GitHub's Windows and macOS runners now ship CMake 4.x, which rejects `cmake_minimum_required` below 3.5 in OpenCASCADE 7.8.1. `CMAKE_POLICY_VERSION_MINIMUM=3.5` works around it.
-- The Windows runner uses Visual Studio 18 (MSVC 14.51), a toolchain newer than the one the crates were tested with, and `opencascade-sys` 0.3.0 fails to compile there (error C2440, above).
+- The Windows runner uses Visual Studio 18 (MSVC 14.51). `opencascade-sys` 0.3.0 fails to compile there; the cause is MSVC's `Handle_T` class, not the compiler version (see Windows root cause).
+- Static library link order decides static destruction order on macOS and Windows (see the exit crash above).
 - A build script that needs another crate's output cannot rely on ordering. Build the shim in a separate step after the kernel exists.
