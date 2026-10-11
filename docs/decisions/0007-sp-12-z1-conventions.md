@@ -1,9 +1,9 @@
-# 0006: SP-12 result, Makera Z1 rotary conventions and G93 (desk part)
+# 0007: SP-12 result, Makera Z1 rotary conventions and G93 (desk part)
 
-- **Status:** proposed. The conventions below are *derived* from Makera's profiles and the Z1 firmware source; none is confirmed on a Z1 until the attended air cut (OI-32) is run. The record is accepted, or amended with the measured values, after that.
+- **Status:** proposed. The conventions below are *derived* from Makera's profiles and the Z1 firmware source; none is confirmed on a Z1 until the attended air cut (OI-37) is run. The record is accepted, or amended with the measured values, after that.
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/sp-12-z1-conventions` (throwaway, never merged; full write-up in `spikes/sp12/RESULT.md`, air-cut procedure and record sheet in `spikes/sp12/AIR-CUT.md`).
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-03 and OI-04 (progressed, still open) and OI-32 to OI-36 (new).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-03 and OI-04 (progressed, still open) and OI-37 to OI-41 (new).
 
 ## Context
 
@@ -31,7 +31,7 @@ SP-12 (work breakdown, Spikes; a gating risk in finding 12) asks what rotary con
 | Header, footer | `G90 G21 G17`, `G54`; end with `M5`, `G53 G0 Z-3`, `G28`, `M2` (M30 does not end a program outside grbl mode) |
 | Tool change | `M5`, then `T<n> M6`; no `G43` (the machine measures tool length) |
 | Dialect | A `(` or `;` drops the rest of the line; each G or M word is its own command; no line numbers; 3 decimals |
-| Limits | Fusion: 4000 mm/min linear, 21600 deg/min A, X -10..200, Y -200..10, Z 0..100. Other sources disagree (OI-34). |
+| Limits | Fusion: 4000 mm/min linear, 21600 deg/min A, X -10..200, Y -200..10, Z 0..100. Other sources disagree (OI-39). |
 
 Replayed under the Z1 rule, SP-3's G94 file (compensated for LinuxCNC) takes 142.8 s instead of 44.2 s, and its worst move 164 times too long. The F values the Z1 needs for the same move times range from 100 to 397 mm/min, against 2.4 to 241 in the file: the Z1 rule has no near-zero feeds.
 
@@ -39,7 +39,7 @@ Replayed under the Z1 rule, SP-3's G94 file (compensated for LinuxCNC) takes 142
 
 1. **Z1 profile and post values** as in the findings table, each flagged *derived* until the air cut confirms it. A value the air cut does not confirm stays flagged in the profile and post (the spike's fallback).
 2. **No G93 on the Z1.** The Z1 post definition never writes `G93`. G93 stays an optional post capability for controllers that support it (OP-13), as the LinuxCNC verification post does.
-3. **The post converts feed by a named, per-controller rule** held in the post definition (GC-04, "feed mode for rotary moves"): `linuxcnc` for the verification post and `makera` for the Z1. The IR is unchanged: it keeps contact feed and duration (decision 0001 item 3); only the post's conversion from duration to F differs. Where the rule is computed (template or Rust stage) is open (OI-33).
+3. **The post converts feed by a named, per-controller rule** held in the post definition (GC-04, "feed mode for rotary moves"): `linuxcnc` for the verification post and `makera` for the Z1. The IR is unchanged: it keeps contact feed and duration (decision 0001 item 3); only the post's conversion from duration to F differs. Where the rule is computed (template or Rust stage) is open (OI-38).
 4. **Unwinding on the Z1 uses `G92.4 A0 S0`**, never the `R` form.
 5. **Z1 dialect rules** for the post definition: comments on their own line, no line numbers, `M2` to end, `M5` before `T<n> M6`.
 
@@ -53,7 +53,7 @@ Replayed under the Z1 rule, SP-3's G94 file (compensated for LinuxCNC) takes 142
 
 - No edits to `requirements.md` or `architecture.md`: OP-13 (compensated feed by default, G93 optional), GC-04 (feed mode in the post) and the architecture's G93 assumption all hold. The architecture's description of compensated feed does not say the compensation is controller-specific; whether to add that sentence is for agreement when this record is accepted.
 - Decision 0001 item 3 ("G94 compensated uses XYZ length over duration") describes the `linuxcnc` rule only; when this record is accepted it amends that item for the Z1.
-- Slice 3: the Z1 profile from the findings table, with the work-offset convention (OI-35) and limits (OI-34) settled. Slice 6: the feed rule in the post (OI-33), the Z1 dialect rules, and the air-cut results for the gate 4 band.
+- Slice 3: the Z1 profile from the findings table, with the work-offset convention (OI-40) and limits (OI-39) settled. Slice 6: the feed rule in the post (OI-38), the Z1 dialect rules, and the air-cut results for the gate 4 band.
 - The LinuxCNC half of OI-04 is settled by the simulator run (F applies to XYZ length on mixed moves, degrees per minute on A-only moves; G93 accepted).
 - No dependency enters the product; the spike's Python scripts and LinuxCNC config stay on the spike branch.
 
@@ -61,8 +61,8 @@ Replayed under the Z1 rule, SP-3's G94 file (compensated for LinuxCNC) takes 142
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Run the air cut (`spikes/sp12/AIR-CUT.md`) and record the results: direction, wrap, feed rule, G93. (OI-32) | Before slice 3's Z1 profile is accepted | Project owner and the Z1 |
-| 2 | Where the per-controller feed rule is computed: in the post template (SP-10's engine) or in the neutral machine program stage with the rule named by the post. (OI-33) | Slice 6 (with SP-10) | Air cut T3 and T4 results |
-| 3 | Z1 limits: feeds and travel disagree between Makera's Fusion and FreeCAD files and Studio's table. (OI-34) | Slice 3 | The owner's Z1 and Makera Studio |
-| 4 | Work offset: Z1 programs need G54 Y0 Z0 on the A axis; map SET-05 and the profile's `rotary_origin` onto that. (OI-35) | Slice 3 | |
-| 5 | The tool change is not exercised by the air cut (no tool). (OI-36) | Slice 20 (gate 5), or an attended tool-change test before it | Project owner and the Z1 |
+| 1 | Run the air cut (`spikes/sp12/AIR-CUT.md`) and record the results: direction, wrap, feed rule, G93. (OI-37) | Before slice 3's Z1 profile is accepted | Project owner and the Z1 |
+| 2 | Where the per-controller feed rule is computed: in the post template (SP-10's engine) or in the neutral machine program stage with the rule named by the post. (OI-38) | Slice 6 (with SP-10) | Air cut T3 and T4 results |
+| 3 | Z1 limits: feeds and travel disagree between Makera's Fusion and FreeCAD files and Studio's table. (OI-39) | Slice 3 | The owner's Z1 and Makera Studio |
+| 4 | Work offset: Z1 programs need G54 Y0 Z0 on the A axis; map SET-05 and the profile's `rotary_origin` onto that. (OI-40) | Slice 3 | |
+| 5 | The tool change is not exercised by the air cut (no tool). (OI-41) | Slice 20 (gate 5), or an attended tool-change test before it | Project owner and the Z1 |
