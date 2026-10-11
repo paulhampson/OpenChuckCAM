@@ -5,7 +5,9 @@
 //! millimetres and degrees (NFR-05). The crate holds:
 //!
 //! - unit newtypes ([`units`]) and geometry ([`geometry`]),
-//! - mesh and B-rep data ([`mesh`], [`brep`]), stock ([`stock`]) and tools ([`tool`]),
+//! - length units for imported models ([`units::LengthUnit`]),
+//! - mesh and B-rep data ([`mesh`], [`brep`], [`model`]), model placement
+//!   ([`transform`]), stock ([`stock`]) and tools ([`tool`]),
 //! - the machine profile ([`machine`]) and the one shared forward-kinematics
 //!   implementation ([`kinematics`]),
 //! - the neutral toolpath IR ([`ir`], GC-01),
@@ -37,9 +39,11 @@ pub mod job;
 pub mod kinematics;
 pub mod machine;
 pub mod mesh;
+pub mod model;
 pub mod notice;
 pub mod stock;
 pub mod tool;
+pub mod transform;
 pub mod units;
 
 pub use error::{Error, Result};

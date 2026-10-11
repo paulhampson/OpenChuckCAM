@@ -8,23 +8,29 @@
 //! caller's thread (UI-09, NFR-04).
 //!
 //! Every project edit is a [`Command`] and can be undone and redone (UI-08).
-//! Projects are folders of TOML files (decision records 0006 and 0008). No
-//! strategy exists yet, and regeneration runs the
-//! pipeline over no operations and produces an empty toolpath.
+//! Projects are folders of TOML files (decision records 0006 and 0008).
+//! Models are added, inspected (mesh checks, IMP-04), given units (IMP-03)
+//! and placed (IMP-05) through [`model`] (decision record 0010). No strategy
+//! exists yet, and regeneration runs the pipeline over no operations and
+//! produces an empty toolpath.
 
 #![warn(missing_docs)]
 
 mod command;
 mod error;
 mod jobs;
+pub mod model;
 mod pipeline;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use command::History;
+use model::{LengthUnit, ModelInspection};
 use openchuck_project::id::ModelId;
-use openchuck_project::{ModelCheck, Project};
+use openchuck_project::{
+    ContentHash, Item, ModelCheck, ModelRef, Placement, Project, RelativePath,
+};
 
 pub use command::Command;
 pub use error::AppError;
@@ -38,8 +44,6 @@ pub use pipeline::Regeneration;
 // The application layer maps project data to every engine crate (architecture
 // section 3). Most are still shells; naming them keeps the layering visible.
 use openchuck_gcode as _;
-use openchuck_geom as _;
-use openchuck_import as _;
 use openchuck_path as _;
 use openchuck_post as _;
 use openchuck_sim as _;
@@ -176,6 +180,77 @@ impl Application {
             .collect()
     }
 
+    /// Adds the model file at `file` to the project (IMP-01), read in
+    /// `units` or the file's own unit (IMP-03). The file is imported and
+    /// checked first, so a file that cannot be read is refused; mesh
+    /// problems are reported in the returned inspection, not refused. The
+    /// file is referenced by its path relative to the project folder with its
+    /// content hash (PRJ-02). Undoable like any command.
+    pub fn add_model(
+        &mut self,
+        file: &Path,
+        units: Option<LengthUnit>,
+    ) -> Result<(ModelId, ModelInspection), AppError> {
+        let relative = model::relative_to(&self.document.location, file)?.ok_or_else(|| {
+            AppError::ModelPath {
+                path: file.to_path_buf(),
+                reason: "it is on another drive".to_owned(),
+            }
+        })?;
+        let relative = RelativePath::from_path(&relative)?;
+        let bytes = model::read(file)?;
+        let hash = ContentHash::of_bytes(&bytes);
+        let path = file.to_path_buf();
+        let inspection = self
+            .jobs
+            .submit("import model", self.events_tx.clone(), move |context| {
+                model::inspect_bytes(&path, &bytes, units, &[], context)
+            })
+            .wait()?;
+        let id = ModelId::new();
+        let mut reference = ModelRef::new(id, relative, hash);
+        reference.units = units;
+        self.execute(Command::Add {
+            item: Item::Model(reference),
+            placement: Placement::End,
+        })?;
+        Ok((id, inspection))
+    }
+
+    /// The model whose ID or path (as the project lists it) is `text`.
+    pub fn find_model(&self, text: &str) -> Result<&ModelRef, AppError> {
+        self.document
+            .project
+            .models()
+            .iter()
+            .find(|m| m.id.to_string() == text || m.path.as_str() == text)
+            .ok_or_else(|| AppError::UnknownModel(text.to_owned()))
+    }
+
+    /// Starts importing, placing and checking a model of the project as a
+    /// background job (IMP-04).
+    pub fn start_inspect_model(&self, id: ModelId) -> Result<JobHandle<ModelInspection>, AppError> {
+        let reference = self
+            .document
+            .project
+            .models()
+            .iter()
+            .find(|m| m.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::UnknownModel(id.to_string()))?;
+        let root = self.document.location.clone();
+        Ok(self
+            .jobs
+            .submit("inspect model", self.events_tx.clone(), move |context| {
+                model::inspect_model(&root, &reference, context)
+            }))
+    }
+
+    /// Inspects a model of the project and waits for the result.
+    pub fn inspect_model(&self, id: ModelId) -> Result<ModelInspection, AppError> {
+        self.start_inspect_model(id)?.wait()
+    }
+
     /// Applies a command and records it for undo. On error the project is
     /// unchanged and nothing is recorded.
     pub fn execute(&mut self, command: Command) -> Result<(), AppError> {
@@ -237,6 +312,23 @@ impl Application {
     pub fn regenerate(&self) -> Result<Regeneration, AppError> {
         self.start_regenerate().wait()
     }
+}
+
+/// Imports and checks the model file at `path` outside any project, on a
+/// worker pool of `threads` (IMP-01, IMP-03, IMP-04). `units` overrides the
+/// file's unit.
+pub fn inspect_file(
+    path: &Path,
+    units: Option<LengthUnit>,
+    threads: Threads,
+) -> Result<ModelInspection, AppError> {
+    let jobs = JobManager::new(threads)?;
+    let (events, _ignored) = channel();
+    let path = path.to_path_buf();
+    jobs.submit("inspect model", events, move |context| {
+        model::inspect_file(&path, units, &[], context)
+    })
+    .wait()
 }
 
 /// Fails unless `folder` is an existing folder.

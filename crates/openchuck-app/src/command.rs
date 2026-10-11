@@ -7,10 +7,13 @@
 //! inverse of that for redo. A new command clears the redo list. The history
 //! is linear and unbounded.
 
-use openchuck_project::id::OperationId;
+use openchuck_project::id::{ModelId, OperationId};
 use openchuck_project::{
-    Item, ItemId, ListKind, MachineRef, OldPlace, OrderKey, ParameterValue, Placement, Project,
+    Item, ItemId, ListKind, MachineRef, ModelRef, OldPlace, OrderKey, ParameterValue, Placement,
+    Project,
 };
+use openchuck_types::transform::TransformStep;
+use openchuck_types::units::LengthUnit;
 
 use crate::AppError;
 
@@ -57,6 +60,21 @@ pub enum Command {
         name: String,
         /// The new value.
         value: Option<ParameterValue>,
+    },
+    /// Sets the unit a model file is read in, or `None` to use the file's
+    /// own unit (IMP-03).
+    SetModelUnits {
+        /// The model.
+        model: ModelId,
+        /// The unit.
+        units: Option<LengthUnit>,
+    },
+    /// Replaces a model's placement steps (IMP-05).
+    SetModelTransform {
+        /// The model.
+        model: ModelId,
+        /// The steps, applied first to last.
+        transform: Vec<TransformStep>,
     },
     /// Several commands applied in order as one step; all or none.
     Batch(Vec<Command>),
@@ -116,6 +134,21 @@ impl Command {
                     value: old,
                 }
             }
+            Self::SetModelUnits { model, units } => {
+                let mut edited = model_ref(project, model)?;
+                let old = std::mem::replace(&mut edited.units, units);
+                project.replace(Item::Model(edited))?;
+                Self::SetModelUnits { model, units: old }
+            }
+            Self::SetModelTransform { model, transform } => {
+                let mut edited = model_ref(project, model)?;
+                let old = std::mem::replace(&mut edited.transform, transform);
+                project.replace(Item::Model(edited))?;
+                Self::SetModelTransform {
+                    model,
+                    transform: old,
+                }
+            }
             Self::Batch(commands) => {
                 let mut inverses = Vec::with_capacity(commands.len());
                 for command in commands {
@@ -135,6 +168,22 @@ impl Command {
             }
         })
     }
+}
+
+/// A copy of a model reference, to edit.
+fn model_ref(project: &Project, model: ModelId) -> Result<ModelRef, AppError> {
+    project
+        .models()
+        .iter()
+        .find(|m| m.id == model)
+        .cloned()
+        .ok_or_else(|| {
+            openchuck_project::ProjectError::NotFound {
+                kind: ModelId::KIND,
+                id: model.to_string(),
+            }
+            .into()
+        })
 }
 
 /// The undo and redo lists.

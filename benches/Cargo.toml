@@ -17,10 +17,16 @@ bench = false
 [dev-dependencies]
 openchuck-types.workspace = true
 openchuck-testkit.workspace = true
+openchuck-geom.workspace = true
+openchuck-import.workspace = true
 criterion.workspace = true
 
 [[bench]]
 name = "kinematics"
+harness = false
+
+[[bench]]
+name = "stl"
 harness = false
 
 [lints]

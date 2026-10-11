@@ -29,3 +29,4 @@ Add a row for each new record. Read the records that touch your task before you 
 | [0007](0007-sp-12-z1-conventions.md) | SP-12 result, Makera Z1 rotary conventions and G93 (desk part) | Proposed (air cut outstanding, OI-37) |
 | [0008](0008-slice-1-project-model.md) | Slice 1 design refinement: project model, project folder layout, order keys, schema migration and undo | Accepted |
 | [0009](0009-linuxcnc-fixture-checks.md) | LinuxCNC checks of the SP-3 and SP-5 fixtures | Accepted (open items OI-46 and OI-47 in [open-items.md](../open-items.md)) |
+| [0010](0010-slice-2-stl-import.md) | Slice 2 design refinement: STL import, mesh checks, model placement and project schema 2 | Proposed (built; awaiting the owner's review) |

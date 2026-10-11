@@ -1,0 +1,5 @@
+# Test data is compared byte for byte and by content hash, so Git must never
+# convert its line endings (a Windows checkout with core.autocrlf would).
+testdata/** -text
+# Model files are hashed (PRJ-02) wherever they live, test fixtures included.
+*.stl -text

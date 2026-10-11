@@ -39,7 +39,11 @@ use crate::model::{
 use crate::order::OrderKey;
 
 /// The project folder schema version this build writes and reads.
-pub const SCHEMA: i64 = 1;
+///
+/// - 1: slice 1 (decision record 0008).
+/// - 2: model references gain the optional `units` override (IMP-03) and
+///   `transform` steps (IMP-05) (decision record 0010).
+pub const SCHEMA: i64 = 2;
 
 /// Name of the project file in the project folder.
 pub const PROJECT_FILE: &str = "project.toml";
@@ -49,9 +53,14 @@ pub const PROJECT_FILE: &str = "project.toml";
 pub type Migration = fn(FileKind, &mut toml::Table) -> Result<(), String>;
 
 /// The migrations from each older schema to the next, oldest first. Entry `i`
-/// takes schema `SCHEMA - MIGRATIONS.len() + i` one step forward. Schema 1 is
-/// the first, so there are none yet.
-const MIGRATIONS: &[Migration] = &[];
+/// takes schema `SCHEMA - MIGRATIONS.len() + i` one step forward.
+const MIGRATIONS: &[Migration] = &[schema_1_to_2];
+
+/// Schema 2 only adds optional fields to model references, which a schema 1
+/// file does not have, so a schema 1 file needs no change but its number.
+fn schema_1_to_2(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
 
 /// The kinds of file in a project folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -578,14 +587,14 @@ mod tests {
     fn req_prj_04_newer_schema_is_refused() {
         let err = parse::<ProjectFile>(
             Path::new(PROJECT_FILE),
-            "schema = 2\nname = \"x\"\n",
+            "schema = 3\nname = \"x\"\n",
             FileKind::Project,
             MIGRATIONS,
             SCHEMA,
         )
         .unwrap_err();
         assert!(
-            matches!(err, ProjectError::SchemaTooNew { found: 2, .. }),
+            matches!(err, ProjectError::SchemaTooNew { found: 3, .. }),
             "{err}"
         );
         assert!(err.to_string().contains("newer OpenChuckCAM"), "{err}");
@@ -593,6 +602,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
+        assert_eq!(SCHEMA, 2);
         let mut project = Project::new("p");
         project
             .insert(
@@ -605,7 +615,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 1\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 2\n"), "{path}: {text}");
         }
     }
 

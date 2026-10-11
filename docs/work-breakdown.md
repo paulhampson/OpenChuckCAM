@@ -167,14 +167,16 @@ These apply to every slice and are not repeated below.
 6. CLI `inspect` command printing the model summary and check report.
 7. A clear statement in the report that STL tessellation is fixed by the file and gouge tolerance will be measured against that mesh.
 
-**Review checklist**
+**Progress:** items 1 to 7 are built ([decision 0010](decisions/0010-slice-2-stl-import.md), proposed). Model references gain a units override and placement steps, so the project folder schema is now 2. Open: OI-49 (STL unit convention against real exporters), OI-50 (more placement step kinds, deferred) and OI-51 (the UI shows the statement and report, slice 8).
 
-- [ ] ASCII and binary versions of one part give identical meshes
-- [ ] Truncated and corrupted files give clear errors, never a crash
-- [ ] Known-bad samples report the right counts for each defect type
-- [ ] A mirrored part has outward normals
-- [ ] A unit override survives save and load
-- [ ] The fuzz target runs for 1 minute on pull requests and 1 hour nightly
+**Review checklist** (evidence in decision 0010, "Verification")
+
+- [x] ASCII and binary versions of one part give identical meshes
+- [x] Truncated and corrupted files give clear errors, never a crash
+- [x] Known-bad samples report the right counts for each defect type
+- [x] A mirrored part has outward normals
+- [x] A unit override survives save and load
+- [ ] The fuzz target runs for 1 minute on pull requests and 1 hour nightly (`stl_import` is in both workflows and ran 2 minutes locally without a crash; tick after its first CI runs)
 
 ## Slice 3 – Machine, stock and setup
 

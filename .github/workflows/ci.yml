@@ -69,6 +69,9 @@ jobs:
               - 'fuzz/**'
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-project/**'
+              - 'crates/openchuck-geom/**'
+              - 'crates/openchuck-import/**'
+              - 'testdata/stl/**'
 
   fmt:
     name: rustfmt
@@ -101,7 +104,9 @@ jobs:
       - name: Doctests
         run: cargo test --workspace --doc --locked
       - name: Examples run
-        run: cargo run --locked -p openchuck-types --example kinematics
+        run: |
+          cargo run --locked -p openchuck-types --example kinematics
+          cargo run --locked -p openchuck-geom --example check_and_place
 
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
@@ -232,13 +237,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, toolpath_ir_json, project_files]
+        target: [machine_profile_json, toolpath_ir_json, project_files, stl_import]
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install nightly --profile minimal
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
+      - name: Seed the STL corpus from testdata
+        if: matrix.target == 'stl_import'
+        run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
       - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=60
 
   coverage:

@@ -41,11 +41,12 @@ fn tool() -> Tool {
 }
 
 fn model(id: u128) -> ModelRef {
-    ModelRef {
-        id: ModelId::from_u128(id),
-        path: RelativePath::new("models/part.stl").unwrap(),
-        hash: ContentHash::of_bytes(b"solid part"),
-    }
+    // A STEP path, because the tests select faces (a B-rep selection).
+    ModelRef::new(
+        ModelId::from_u128(id),
+        RelativePath::new("models/part.step").unwrap(),
+        ContentHash::of_bytes(b"solid part"),
+    )
 }
 
 fn operation(id: u128, setup: SetupId) -> Operation {
@@ -259,7 +260,7 @@ fn req_prj_02_model_paths_are_relative_with_forward_slashes() {
 fn req_prj_02_changed_model_is_detected_by_hash() {
     let root = temp_project("hash");
     std::fs::create_dir_all(root.join("models")).unwrap();
-    let file = root.join("models").join("part.stl");
+    let file = root.join("models").join("part.step");
     std::fs::write(&file, b"solid part").unwrap();
 
     let reference = model(1);
