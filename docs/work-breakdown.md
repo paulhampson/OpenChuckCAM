@@ -48,7 +48,7 @@ The crate survey compiled and benchmarked nothing, so each risky layer is proved
 | SP-10 Template engine (2 d) | Can a candidate engine express rotary posts (modal state, A wrap, line numbers, feed mode, conditionals) deterministically? | The SP-3 post as a template, plus a Makera-style variant. | Both render identically on repeat runs. Errors name the line. Fixed-decimal number formatting checked (minijinja reached 3.0 on 8 Oct 2026, so pin the version). NFR-14 assessment recorded. | Second engine, or a minimal in-house template language. | Slice 6 |
 | SP-11 Swarf (3 d) | Can ruled-surface detection and flank tool placement be made robust? | Fit rulings on cylinder, cone, helicoid and a near-ruled spline; place a tapered tool; measure flank deviation. | Deviation within tolerance on ruled surfaces. Non-ruled surfaces refused. | Restrict P1 swarf to analytic ruled surfaces (cylinders and cones). | Slice 17 |
 | SP-12 Z1 conventions and G93 (2 d plus machine time) | What rotary conventions does the Z1 use, and does it accept inverse-time feed? | Inspect existing Makera machine profiles; write a short test program with A moves; check it by hand and in the LinuxCNC simulator, then run it as an attended air cut with no tool and no material (the bring-up exception in verification policy 6; hands-on with you). | Axis letter, direction, wrap, feed mode, header, footer and tool change documented, each marked confirmed. G93 answer recorded. | Keep unconfirmed values flagged in the profile and post. | Slices 3 and 6 |
-| SP-13 Custom-profile tools (3 d) | Can one revolved-profile tool model drive tool-centre solving, the independent gouge checker and the simulator sweep for flat, ball, bull-nose, tapered ball, V-bit, chamfer, drill and custom-profile cutters? | A profile type (ordered line and arc segments revolved about the tool axis); drop-cutter against cylinder, cone and sphere test parts; the same profile swept in the SP-6 candidates. | Flat, ball and V-bit results match closed-form values within tolerance. A custom profile agrees with an equivalent standard tool. Sweep time within the SP-6 budget. Identical results at 1 and N threads. | Limit custom profiles to line and arc segments with a validity check, or exclude them from simultaneous strategies (OP-05) with a clear warning. | Slices 4 and 5 |
+| SP-13 Custom-profile tools (3 d) | Can one revolved-profile tool model drive tool-centre solving, the independent gouge checker and the simulator sweep for flat, ball, bull-nose, tapered ball, V-bit, chamfer, drill and custom-profile cutters? | A profile type (ordered line and arc segments revolved about the tool axis); drop-cutter against cylinder, cone and sphere test parts; the same profile swept in the SP-6 candidates. | Flat, ball and V-bit results match closed-form values within tolerance. A custom profile agrees with an equivalent standard tool. Sweep time within the SP-6 budget. Identical results at 1 and N threads. | Limit custom profiles to line and arc segments with a validity check, or exclude them from simultaneous strategies (OP-05) with a clear warning. | Slices 4 and 5. Done: [decision 0012](decisions/0012-sp-13-tool-profiles.md) (accepted); the sweep-time criterion waits on SP-6 (OI-56) |
 
 Spike rules:
 
@@ -210,13 +210,13 @@ These apply to every slice and are not repeated below.
 
 **Requirements:** TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07
 
-**Spike inputs:** SP-13 (tool profiles).
+**Spike inputs:** SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md), accepted).
 
 **Design refinement:** tool data model in `openchuck-types` (the assembly types for holder and collet exist but are P2), a single revolved-profile description that every tool type maps to, including V-bit, chamfer, drill and custom profiles (SP-13), the separate library store inside `openchuck-project`, how cutting data is keyed by tool and stock material name, and what happens when the library changes after a snapshot.
 
-1. Tool profile in `openchuck-types`: one revolved-profile description (ordered line and arc segments) that every tool type maps to, as proven in SP-13.
+1. Tool profile in `openchuck-types`: one revolved-profile description (ordered line and arc segments) that every tool type maps to, as proven in SP-13. Standard types map by one rule: the cutting end (flat, ball, corner, taper, V or point) runs from the tip to the cutting radius, then a vertical side runs to the flute length; a cutting end taller than the flute length is rejected ([decision 0012](decisions/0012-sp-13-tool-profiles.md) item 3).
 2. Tool types: flat end mill, ball end mill, bull-nose and tapered ball nose (TL-02); V-bit or chamfer, drill, and tools defined by a custom profile (TL-03); with diameter, flute length, overall length, shank diameter, flute count, corner radius, taper angle, tip angle, material and tool number (TL-04).
-3. Custom profile validation (connected, non-self-intersecting, revolvable) and two ways to define a profile: import from a text file, or draw and edit it in the UI (the editor with live preview arrives in slice 8); the profile text parser and the tool library import get corpus tests and fuzz targets (NFR-07).
+3. Custom profile validation by the monotone rule (along the profile neither radius nor height decreases; no zero-length segments; an arc's ends on one circle within 1e-6 mm and within one quarter turn; the first segment leaves the axis; every value finite), which makes a profile connected, non-self-intersecting and revolvable and rejects undercut tools in P1 ([decision 0012](decisions/0012-sp-13-tool-profiles.md) item 2, OI-57 closed), replacing the finiteness check `Tool::validate` makes today. Two ways to define a profile: import from a TOML text file with the `ToolProfile` fields and an arc given by `centre` or by `radius` (decision 0012 item 6, OI-58 closed; slice 4 fixes the field names), or draw and edit it in the UI (the editor with live preview arrives in slice 8); the profile text parser and the tool library import get corpus tests and fuzz targets (NFR-07).
 4. Library stored separately from projects with human-readable import and export (TL-01).
 5. Cutting data per tool and material name: spindle speed, feed per tooth, plunge feed, default stepover and stepdown (TL-05).
 6. Controller mapping: tool number, length offset, diameter offset (TL-06).
@@ -227,7 +227,7 @@ These apply to every slice and are not repeated below.
 
 - [ ] Each tool type validates, and impossible values (corner radius above tool radius, a zero tip angle) are rejected
 - [ ] The profile of every standard type matches its closed-form silhouette for diameter and flute length
-- [ ] A self-intersecting or disconnected custom profile is rejected with a clear message
+- [ ] A self-intersecting, disconnected or undercut custom profile is rejected with a message naming the segment
 - [ ] A project opens correctly with the library absent, and editing the library never silently changes an existing project
 - [ ] Export and re-import of the library is lossless and diffs cleanly
 
@@ -239,7 +239,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-3, SP-4, SP-7, SP-9, SP-13.
 
-**Design refinement:** the public API: `Strategy` trait with self-describing parameter schemas, the ports `SurfaceSource`, `StockModel` and `CollisionOracle`, and the kinematic mapping that takes the rotary axis as a parameter. Fix the `SurfaceSource` design using SP-9 so B-rep faces slot in later. Confirm the feed approach (contact feed plus duration in the IR) with SP-3 and SP-12, and define the tool profile type that every cutter shape maps to, using SP-13.
+**Design refinement:** the public API: `Strategy` trait with self-describing parameter schemas, the ports `SurfaceSource`, `StockModel` and `CollisionOracle`, and the kinematic mapping that takes the rotary axis as a parameter. Fix the `SurfaceSource` design using SP-9 so B-rep faces slot in later. Confirm the feed approach (contact feed plus duration in the IR) with SP-3 and SP-12, and use the tool profile type that every cutter shape maps to, as settled by SP-13 ([decision 0012](decisions/0012-sp-13-tool-profiles.md)). Tool-centre solving is a drop-cutter generic over the profile (vertex, facet and edge tests that need only the profile's lower envelope `h(r)` and its pieces), returning the tip and the contact point; normal-offset solving is a fast path for convex profiles only. Evaluate distances directly (the expanded quadratic loses about 1e-8 mm near the tool axis), and measure deviation along the surface normal, not vertically. The spike's drop took 0.35 to 3.2 ms per position on a 147,000-triangle mesh with a plain grid, so add a bounding structure (SP-4) and cull edges by height before searching.
 
 1. Mesh `SurfaceSource` inside the library using `parry3d-f64` or an own BVH, per SP-4, with point, normal, projection, ray and distance queries.
 2. Ports `StockModel` (with a simple analytic implementation for tests and small hosts) and `CollisionOracle` (default accepts everything and relies on the clearance geometry).
@@ -305,7 +305,7 @@ These apply to every slice and are not repeated below.
 
 **Requirements:** SIM-03, SIM-05, SIM-06, SIM-07
 
-**Spike inputs:** SP-6 (representation), SP-13 (tool profiles).
+**Spike inputs:** SP-6 (representation), SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md)). SP-6 times the profile sweep in its candidates and sets the budget SP-13's sweep-time criterion is judged against (OI-56).
 
 **Design refinement:** the representation chosen in SP-6 behind `StockModel`, resolution settings, checkpoints for jumping to any operation or move, and results returned as plain data.
 
@@ -460,12 +460,12 @@ These apply to every slice and are not repeated below.
 
 **Requirements:** OP-05, OP-06, OP-12
 
-**Spike inputs:** SP-4 (ray-cast sweep), SP-13 (tool profiles).
+**Spike inputs:** SP-4 (ray-cast sweep), SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md)).
 
 **Design refinement:** the tool-axis policy (A can only tilt the tool in the plane perpendicular to the rotation axis), lead and tilt limit semantics, the continuous-family algorithm from SP-4 (sweep A in small steps, query the surface along X, offset for the cutter, link passes), and the gouge-check method.
 
 1. Drive-curve generation on selected surfaces, using the exact `SurfaceSource` where available.
-2. Tool-centre solving for every tool profile (flat, ball, bull-nose, tapered ball, V-bit, chamfer, custom) using surface normals, as proven in SP-13.
+2. Tool-centre solving for every tool profile (flat, ball, bull-nose, tapered ball, V-bit, chamfer, drill, custom) with the generic drop-cutter proven in SP-13, which returns the contact point for any profile and any tool offset from the A axis; normal-offset solving is a fast path for convex profiles only, and a non-convex custom profile always uses the drop. Tool axis variation stays with SP-4 (OI-07).
 3. A chosen to keep the tool as close to the normal as the plane allows, within user lead and tilt limits (OP-06).
 4. Smooth continuous A, with limits respected and reversals minimised (OP-15).
 5. Gouge protection against the model for the cutting tool at the set tolerance, with fix-up or rejection (OP-12; holders are P2). On STL parts, tolerance is measured against the mesh and the UI says so.
