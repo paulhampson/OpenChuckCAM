@@ -218,6 +218,8 @@ Scores for the crates above:
 
 Both leaders are maintained, tested and free of agent-instruction files, but neither is widely depended on (2 and 3 dependent crates), so adoption is their weak point. gcode scores higher on age and tests; g-code scores higher on features because it can emit as well as parse, and it moves ahead if you weight features more heavily. Neither advertises A-axis words, so confirm your chosen emitter can write them before relying on it.
 
+*Update, 11 Oct 2026:* spike SP-5 tested both readers. `gcode` 0.7.0 reads A words but stores numbers as `f32` and drops a code it cannot store without a diagnostic; `g-code` 0.6.0 panics on malformed input and rejects a file ending in `%` and a newline. The project reads G-code with an in-house reader instead ([decision 0005](decisions/0005-sp-5-gcode-reader.md)). The scores above are unchanged.
+
 ivacam ships LinuxCNC, GRBL and HPGL post-processors plus a runtime for Autodesk-style .cps post scripts, but it is a GPL-3 application rather than a library.
 
 ## 2D toolpath geometry
