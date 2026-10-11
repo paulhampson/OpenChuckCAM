@@ -196,13 +196,15 @@ These apply to every slice and are not repeated below.
 6. All edits as undoable commands; CLI `validate` reports setup problems.
 7. Frame conversion tests across part, setup and machine.
 
-**Review checklist**
+**Progress:** items 1 to 7 are built ([decision 0011](decisions/0011-slice-3-machine-stock-setup.md), proposed). The project keeps a copy of its machine profile in `machine.toml` and setups gain part, stock, material, part and work offsets and clearance, so the project folder schema is now 3. Every Makera Z1 value is marked unconfirmed until the air cut (OI-37) and a look at the owner's Z1 (OI-39). Open: OI-53 (default machine library location), OI-54 (machine copy against the library) and OI-55 (work zero off the axis, deferred).
 
-- [ ] The A-axis direction on a deliberately asymmetric part matches the documented convention and the independent kinematic oracle (shown by CLI report now, visually in slice 8)
-- [ ] A kinematic test with the rotary axis set to Y passes at unit level, proving X is a parameter
-- [ ] The clearance cylinder always encloses stock and part, or the app warns
-- [ ] Every Z1 value is marked confirmed or unconfirmed
-- [ ] All three stock types survive save and load
+**Review checklist** (evidence in decision 0011, "Verification"; ticked when the owner reviews it)
+
+- [ ] The A-axis direction on a deliberately asymmetric part matches the documented convention and the independent kinematic oracle (shown by CLI report now, visually in slice 8). Built: `req_set_01_a_direction_on_an_asymmetric_part_matches_the_oracle`; `openchuck-cli machine` and `report` state the direction. The convention itself is unconfirmed until the air cut (OI-03)
+- [ ] A kinematic test with the rotary axis set to Y passes at unit level, proving X is a parameter. Built: `req_set_01_oracle_agrees_with_a_y_rotary_axis`
+- [ ] The clearance cylinder always encloses stock and part, or the app warns. Built: setup checks in `setup`, `validate` and `report`
+- [ ] Every Z1 value is marked confirmed or unconfirmed. Built: all seven marked unconfirmed, with sources
+- [ ] All three stock types survive save and load. Built: `req_set_03_req_set_05_all_three_stock_types_survive_save_and_load`
 
 ## Slice 4 – Tool library
 

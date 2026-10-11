@@ -16,7 +16,12 @@ use openchuck_app::model::{
     Axis, AxisDirection, Degrees, LengthUnit, ModelInspection, TransformStep, UnitConcern,
     UnitQuestion, orient_to_rotary_axis,
 };
-use openchuck_app::project::ModelCheck;
+use openchuck_app::project::id::SetupId;
+use openchuck_app::project::{Item, ModelCheck, Placement, Setup};
+use openchuck_app::setup::{
+    ARange, Aabb, Clearance, Confirmation, MachineProfile, Millimetres, Point3, SetupReport, Stock,
+    WorkOffsetRegister, a_direction, builtin, builtin_keys, list_library, load_profile,
+};
 use openchuck_app::{
     AppError, Application, Command, Query, QueryResult, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
@@ -90,6 +95,69 @@ enum Action {
         /// unit or the part's size is implausible in mm.
         #[arg(long)]
         units: Option<String>,
+    },
+    /// List the built-in machine profiles and those in a library folder
+    /// (SET-01).
+    Machines {
+        /// A folder of machine profile files.
+        #[arg(long)]
+        library: Option<PathBuf>,
+    },
+    /// Show a project's machine profile, or set it from a built-in profile
+    /// (by key or name) or a profile file. The project keeps its own copy
+    /// (SET-01).
+    Machine {
+        /// The project folder.
+        project: PathBuf,
+        /// A built-in profile's key or name (see `machines`), or a profile
+        /// file; omit to show the current one.
+        profile: Option<String>,
+        /// A folder of machine profile files to look in by file stem.
+        #[arg(long)]
+        library: Option<PathBuf>,
+        /// Remove the project's machine profile.
+        #[arg(long, conflicts_with = "profile")]
+        clear: bool,
+    },
+    /// Add or edit a setup: part, stock, material, part and work offsets and
+    /// clearance (SET-03, SET-05, SET-06), then print its checks. Without
+    /// options it only prints them.
+    Setup {
+        /// The project folder.
+        project: PathBuf,
+        /// The setup, by ID or name. Omit with --new.
+        setup: Option<String>,
+        /// Add a new setup with this name.
+        #[arg(long, conflicts_with = "setup")]
+        new: Option<String>,
+        /// Rename the setup.
+        #[arg(long)]
+        name: Option<String>,
+        /// The model machined in this setup, by ID or path, or `none`.
+        #[arg(long)]
+        part: Option<String>,
+        /// `cylinder=DIAMETER,LENGTH,X_START`, `box=X0,Y0,Z0,X1,Y1,Z1`,
+        /// `bbox=OFFSET` (the part's bounding box grown by OFFSET), or `none`.
+        /// Millimetres, in the model frame.
+        #[arg(long)]
+        stock: Option<String>,
+        /// The stock material's name, or `none`.
+        #[arg(long)]
+        material: Option<String>,
+        /// Distance along the rotary axis from the machine's rotary reference
+        /// point to the model origin, in mm.
+        #[arg(long, allow_hyphen_values = true)]
+        part_offset: Option<f64>,
+        /// The work offset register (G54 to G59).
+        #[arg(long)]
+        work_offset: Option<String>,
+        /// Model X of the work zero, which is on the rotary axis, in mm.
+        #[arg(long, allow_hyphen_values = true)]
+        work_x: Option<f64>,
+        /// `RADIUS,SAFE_Z` in mm from the rotary axis, or `machine` to use
+        /// the machine profile's.
+        #[arg(long)]
+        clearance: Option<String>,
     },
     /// Set the unit a project's model is in (IMP-03).
     Units {
@@ -225,6 +293,24 @@ fn run(cli: Cli) -> Result<()> {
             if problems > 0 {
                 anyhow::bail!("{}: {problems} model problem(s)", project.display());
             }
+            // Setup problems are warnings: the user may have reasons (SET-06).
+            if app.project().machine().is_none() && !app.project().setups().is_empty() {
+                eprintln!(
+                    "warning: the project has no machine profile; choose one with `openchuck-cli machine`"
+                );
+            }
+            for report in app.check_setups()? {
+                for warning in &report.warnings {
+                    eprintln!("warning: setup '{}': {warning}", report.name);
+                }
+                for note in report
+                    .notes
+                    .iter()
+                    .filter(|n| !n.contains("no machine profile"))
+                {
+                    eprintln!("warning: setup '{}': {note}", report.name);
+                }
+            }
             app.regenerate()?;
             println!("{}: valid", project.display());
         }
@@ -264,6 +350,17 @@ fn run(cli: Cli) -> Result<()> {
             println!("models:     {}", summary.models);
             println!("setups:     {}", summary.setups);
             println!("operations: {}", summary.operations);
+            match app.project().machine() {
+                Some(profile) => {
+                    println!();
+                    print_machine(profile);
+                }
+                None => println!("machine:    none"),
+            }
+            for report in app.check_setups()? {
+                println!();
+                print_setup(&app, &report);
+            }
         }
         Action::Inspect { path, units } => {
             if path.is_dir() {
@@ -314,6 +411,119 @@ fn run(cli: Cli) -> Result<()> {
             app.save()?;
             print_inspection(&inspection);
         }
+        Action::Machines { library } => {
+            for key in builtin_keys() {
+                let profile = builtin(key)
+                    .transpose()?
+                    .with_context(|| format!("no built-in {key}"))?;
+                println!(
+                    "{key:<16} {} (built in; {} of {} values unconfirmed)",
+                    profile.name,
+                    profile.unconfirmed_fields().len(),
+                    openchuck_app::setup::ProfileField::ALL.len()
+                );
+            }
+            if let Some(dir) = library {
+                for (path, profile) in list_library(&dir)? {
+                    let stem = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    match profile {
+                        Ok(p) => println!("{stem:<16} {} ({})", p.name, path.display()),
+                        Err(e) => eprintln!("warning: {e}"),
+                    }
+                }
+            }
+        }
+        Action::Machine {
+            project,
+            profile,
+            library,
+            clear,
+        } => {
+            let mut app = open_project(&project, threads, create)?;
+            if clear {
+                app.execute(Command::SetMachine(None))?;
+                app.save()?;
+                println!("{}: machine profile removed", project.display());
+            } else if let Some(text) = profile {
+                let profile = find_profile(&text, library.as_deref())?;
+                app.execute(Command::SetMachine(Some(Box::new(profile))))?;
+                app.save()?;
+            }
+            match app.project().machine() {
+                Some(profile) => print_machine(profile),
+                None => println!("{}: no machine profile", project.display()),
+            }
+        }
+        Action::Setup {
+            project,
+            setup,
+            new,
+            name,
+            part,
+            stock,
+            material,
+            part_offset,
+            work_offset,
+            work_x,
+            clearance,
+        } => {
+            let mut app = open_project(&project, threads, create)?;
+            let mut edited = match (&new, &setup) {
+                (Some(name), _) => Setup::new(SetupId::new(), name.clone()),
+                (None, Some(text)) => app.find_setup(text)?.clone(),
+                (None, None) => anyhow::bail!("name a setup, or add one with --new NAME"),
+            };
+            if let Some(name) = name {
+                edited.name = name;
+            }
+            if let Some(part) = part {
+                edited.part = match part.as_str() {
+                    "none" => None,
+                    text => Some(app.find_model(text)?.id),
+                };
+            }
+            if let Some(stock) = stock {
+                edited.stock = parse_stock(&stock)?;
+            }
+            if let Some(material) = material {
+                edited.material = (material != "none").then_some(material);
+            }
+            if let Some(offset) = part_offset {
+                edited.frame.part_offset = Millimetres(offset);
+            }
+            if let Some(register) = work_offset {
+                edited.frame.work_offset.register = WorkOffsetRegister::parse(&register)
+                    .with_context(|| {
+                        format!("'{register}' is not a work offset; use G54 to G59")
+                    })?;
+            }
+            if let Some(x) = work_x {
+                edited.frame.work_offset.x = Millimetres(x);
+            }
+            if let Some(clearance) = clearance {
+                edited.clearance = parse_clearance(&clearance)?;
+            }
+            let id = edited.id;
+            let command = if new.is_some() {
+                Command::Add {
+                    item: Item::Setup(edited),
+                    placement: Placement::End,
+                }
+            } else {
+                Command::Replace(Item::Setup(edited))
+            };
+            app.execute(command)?;
+            app.save()?;
+            let report = app
+                .check_setups()?
+                .into_iter()
+                .find(|r| r.setup == id)
+                .context("the setup is missing after the edit")?;
+            print_setup(&app, &report);
+        }
         Action::Units {
             project,
             model,
@@ -355,6 +565,209 @@ fn run(cli: Cli) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A machine profile by built-in key or name, by file stem in `library`, or
+/// from a profile file.
+fn find_profile(text: &str, library: Option<&Path>) -> Result<MachineProfile> {
+    if let Some(profile) = builtin(text) {
+        return Ok(profile?);
+    }
+    if let Some(dir) = library {
+        let path = dir.join(format!("{text}.toml"));
+        if path.is_file() {
+            return Ok(load_profile(&path)?);
+        }
+    }
+    let path = Path::new(text);
+    if path.is_file() {
+        return Ok(load_profile(path)?);
+    }
+    anyhow::bail!(
+        "'{text}' is not a built-in machine ({}), a profile in the library or a profile file",
+        builtin_keys().join(", ")
+    )
+}
+
+/// Reads the `--stock` option.
+fn parse_stock(text: &str) -> Result<Option<Stock>> {
+    if text == "none" {
+        return Ok(None);
+    }
+    let (kind, values) = text.split_once('=').unwrap_or((text, ""));
+    let numbers = values
+        .split(',')
+        .map(|v| {
+            v.trim()
+                .parse::<f64>()
+                .with_context(|| format!("'{v}' in '{text}' is not a number"))
+        })
+        .collect::<Result<Vec<f64>>>()?;
+    let stock = match (kind, numbers.as_slice()) {
+        ("cylinder", [d, l, x]) => Stock::Cylinder {
+            diameter: Millimetres(*d),
+            length: Millimetres(*l),
+            x_start: Millimetres(*x),
+        },
+        ("box", [x0, y0, z0, x1, y1, z1]) => Stock::Box {
+            bounds: Aabb {
+                min: Point3::new(*x0, *y0, *z0),
+                max: Point3::new(*x1, *y1, *z1),
+            },
+        },
+        ("bbox", [offset]) => Stock::OffsetBoundingBox {
+            offset: Millimetres(*offset),
+        },
+        _ => anyhow::bail!(
+            "'{text}' is not a stock: use cylinder=DIAMETER,LENGTH,X_START, box=X0,Y0,Z0,X1,Y1,Z1, \
+             bbox=OFFSET or none"
+        ),
+    };
+    Ok(Some(stock))
+}
+
+/// Reads the `--clearance` option.
+fn parse_clearance(text: &str) -> Result<Option<Clearance>> {
+    if text == "machine" {
+        return Ok(None);
+    }
+    let parts: Vec<&str> = text.split(',').collect();
+    let [radius, safe_z] = parts.as_slice() else {
+        anyhow::bail!("'{text}': give --clearance RADIUS,SAFE_Z in mm, or `machine`");
+    };
+    let number = |v: &str| {
+        v.trim()
+            .parse::<f64>()
+            .with_context(|| format!("'{v}' in '{text}' is not a number"))
+    };
+    Ok(Some(Clearance {
+        radius: Millimetres(number(radius)?),
+        safe_z: Millimetres(number(safe_z)?),
+    }))
+}
+
+/// Prints a machine profile with where each value came from (SET-01).
+fn print_machine(profile: &MachineProfile) {
+    let p = profile;
+    println!("machine:    {}", p.name);
+    println!(
+        "rotary:     about machine {}; {}",
+        p.rotary_axis.name(),
+        a_direction(p)
+    );
+    let o = p.rotary_origin;
+    println!(
+        "reference:  rotary reference point at machine X {} Y {} Z {}",
+        o.x, o.y, o.z
+    );
+    match p.a_range {
+        ARange::Continuous => println!("A range:    continuous"),
+        ARange::Limited { min, max } => println!("A range:    {} to {} deg", min.0, max.0),
+    }
+    let (lo, hi) = (p.travel.min, p.travel.max);
+    println!(
+        "travel:     X {} to {}, Y {} to {}, Z {} to {} mm",
+        lo.x, hi.x, lo.y, hi.y, lo.z, hi.z
+    );
+    let f = p.max_feeds;
+    println!(
+        "feeds:      {} mm/min, {} deg/min; rapid {} mm/min, {} deg/min",
+        f.linear.0, f.rotary.0, f.rapid_linear.0, f.rapid_rotary.0
+    );
+    println!(
+        "clearance:  safe cylinder radius {} mm, safe Z {} mm above the axis (default)",
+        p.clearance.radius.0, p.clearance.safe_z.0
+    );
+    for field in openchuck_app::setup::ProfileField::ALL {
+        match p.provenance.get(&field) {
+            Some(source) => {
+                let state = match source.state {
+                    Confirmation::Confirmed => "confirmed",
+                    Confirmation::Unconfirmed => "UNCONFIRMED",
+                };
+                println!("  {field:<14} {state}: {}", source.source);
+            }
+            None => println!("  {field:<14} UNCONFIRMED: no source recorded"),
+        }
+    }
+}
+
+/// Prints a setup and its checks (SET-03, SET-05, SET-06).
+fn print_setup(app: &Application, report: &SetupReport) {
+    println!("setup:      {} ({})", report.name, report.setup);
+    let Some(setup) = app.project().setup(report.setup) else {
+        return;
+    };
+    let part = setup
+        .part
+        .and_then(|id| app.project().models().iter().find(|m| m.id == id))
+        .map_or("none".to_owned(), |m| m.path.as_str().to_owned());
+    println!("part:       {part}");
+    let stock = match &setup.stock {
+        None => "none".to_owned(),
+        Some(Stock::Cylinder {
+            diameter,
+            length,
+            x_start,
+        }) => format!(
+            "cylinder, diameter {} mm, length {} mm, from X {}",
+            diameter.0, length.0, x_start.0
+        ),
+        Some(Stock::Box { bounds: b }) => format!(
+            "box, X {} to {}, Y {} to {}, Z {} to {} mm",
+            b.min.x, b.max.x, b.min.y, b.max.y, b.min.z, b.max.z
+        ),
+        Some(Stock::OffsetBoundingBox { offset }) => {
+            format!("the part's bounding box plus {} mm", offset.0)
+        }
+        Some(_) => "imported (not available yet)".to_owned(),
+    };
+    println!("stock:      {stock}");
+    println!(
+        "material:   {}",
+        setup.material.as_deref().unwrap_or("not set")
+    );
+    println!(
+        "position:   part origin {} mm along the rotary axis from the machine's reference point",
+        setup.frame.part_offset.0
+    );
+    let w = setup.frame.work_offset;
+    println!(
+        "work zero:  {} on the rotary axis at model X {} (Y0 Z0 is the axis)",
+        w.register, w.x.0
+    );
+    if let Some(p) = report.expected_work_offset {
+        println!(
+            "            set {} to machine X {:.3} Y {:.3} Z {:.3} at A 0",
+            w.register, p.x, p.y, p.z
+        );
+    }
+    match (setup.clearance, app.project().machine()) {
+        (Some(c), _) => println!(
+            "clearance:  safe cylinder radius {} mm, safe Z {} mm above the axis",
+            c.radius.0, c.safe_z.0
+        ),
+        (None, Some(m)) => println!(
+            "clearance:  the machine's: safe cylinder radius {} mm, safe Z {} mm above the axis",
+            m.clearance.radius.0, m.clearance.safe_z.0
+        ),
+        (None, None) => println!("clearance:  the machine's (no machine chosen)"),
+    }
+    if let Some(e) = report.part {
+        println!(
+            "part size:  radius {:.3} mm about the rotary axis, X {} to {}",
+            e.radius.0, e.bounds.min.x, e.bounds.max.x
+        );
+    }
+    if report.warnings.is_empty() && report.notes.is_empty() {
+        println!("checks:     no problems found");
+    }
+    for warning in &report.warnings {
+        println!("  - {warning}");
+    }
+    for note in &report.notes {
+        println!("note:       {note}");
+    }
 }
 
 /// Asks on the terminal which unit a model is in. Enter converts from a

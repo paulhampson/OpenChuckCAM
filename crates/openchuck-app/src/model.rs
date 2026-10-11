@@ -26,6 +26,7 @@ pub use openchuck_import::{
     UnitSource, Units,
 };
 pub use openchuck_types::model::{ModelFormat, ModelKind};
+pub use openchuck_types::setup::PartExtent;
 pub use openchuck_types::transform::{Axis, TransformStep};
 pub use openchuck_types::units::{Degrees, LengthUnit};
 
@@ -48,6 +49,9 @@ pub struct ModelInspection {
     pub transform: Vec<TransformStep>,
     /// Counts, bounds and area after placement, in millimetres.
     pub summary: MeshSummary,
+    /// Bounds and largest radius about the rotary axis after placement, for
+    /// the setup checks (SET-06); `None` for a mesh with no triangles.
+    pub extent: Option<PartExtent>,
     /// The mesh checks.
     pub report: MeshReport,
     /// Notes from the import and the application, such as the STL
@@ -88,6 +92,7 @@ pub(crate) fn inspect_bytes(
         unit_question: model.unit_question,
         transform: transform.to_vec(),
         summary: openchuck_geom::summary(&placed),
+        extent: openchuck_geom::part_extent(&placed),
         report,
         notes: model.notes,
     })

@@ -69,15 +69,8 @@ fn sample() -> Project {
     let set = SelectionSetId::from_u128(30);
     let mut p = Project::new("sample");
     p.insert(Item::Model(model(1)), Placement::End).unwrap();
-    p.insert(
-        Item::Setup(Setup {
-            id: setup,
-            order: OrderKey::default(),
-            name: "Setup 1".into(),
-        }),
-        Placement::End,
-    )
-    .unwrap();
+    p.insert(Item::Setup(Setup::new(setup, "Setup 1")), Placement::End)
+        .unwrap();
     p.insert(
         Item::Tool(ToolSnapshot {
             id: tool_id,
@@ -129,11 +122,7 @@ fn req_prj_05_ids_are_unique_and_references_must_exist() {
     let mut p = sample();
     let setup = SetupId::from_u128(10);
 
-    let duplicate = Item::Setup(Setup {
-        id: setup,
-        order: OrderKey::default(),
-        name: "again".into(),
-    });
+    let duplicate = Item::Setup(Setup::new(setup, "again"));
     assert!(matches!(
         p.insert(duplicate, Placement::End),
         Err(ProjectError::DuplicateId { .. })

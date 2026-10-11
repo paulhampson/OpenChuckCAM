@@ -16,7 +16,7 @@
 //!
 //! let mut project = Project::new("bracket");
 //! let setup = SetupId::new();
-//! let new_setup = Setup { id: setup, order: OrderKey::default(), name: "Setup 1".into() };
+//! let new_setup = Setup::new(setup, "Setup 1");
 //! project.insert(Item::Setup(new_setup), Placement::End)?;
 //! project.insert(
 //!     Item::Operation(Operation {
@@ -46,14 +46,15 @@ mod error;
 pub mod file;
 mod hash;
 pub mod id;
+pub mod machines;
 mod model;
 pub mod order;
 
 pub use error::ProjectError;
 pub use hash::ContentHash;
 pub use model::{
-    Descriptor, Item, ItemId, ListKind, MachineRef, ModelCheck, ModelRef, OldKeys, OldPlace,
-    Operation, ParameterValue, Placement, Project, RelativePath, SelectionSet, SelectionTarget,
-    Setup, ToolSnapshot,
+    Descriptor, Item, ItemId, ListKind, ModelCheck, ModelRef, OldKeys, OldPlace, Operation,
+    ParameterValue, Placement, Project, RelativePath, SelectionSet, SelectionTarget, Setup,
+    ToolSnapshot,
 };
 pub use order::OrderKey;

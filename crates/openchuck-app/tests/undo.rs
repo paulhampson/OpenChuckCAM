@@ -14,9 +14,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use openchuck_app::model::{Axis, Degrees, LengthUnit, TransformStep};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{
-    ContentHash, Item, ItemId, ListKind, MachineRef, ModelRef, Operation, OrderKey, ParameterValue,
-    Placement, Project, RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot, file,
+    ContentHash, Item, ItemId, ListKind, ModelRef, Operation, OrderKey, ParameterValue, Placement,
+    Project, RelativePath, SelectionSet, SelectionTarget, Setup, ToolSnapshot, file,
 };
+use openchuck_app::setup::{Clearance, MachineProfile, Stock, WorkOffsetRegister};
 use openchuck_app::{AppError, Application, Command, Threads};
 use openchuck_types::brep::FaceId;
 use openchuck_types::tool::{Tool, ToolShape};
@@ -78,6 +79,13 @@ enum Edit {
         pick: usize,
         name: String,
     },
+    ChangeSetup {
+        pick: usize,
+        part: Option<usize>,
+        stock: Option<f64>,
+        offset: f64,
+        clearance: Option<f64>,
+    },
     SetModelUnits {
         pick: usize,
         unit: Option<usize>,
@@ -115,6 +123,20 @@ fn edit() -> impl Strategy<Value = Edit> {
             .prop_map(|(pick, tool)| Edit::SetTool { pick, tool }),
         (any::<usize>(), "[A-Z][a-z]{0,6}")
             .prop_map(|(pick, name)| Edit::RenameSetup { pick, name }),
+        (
+            any::<usize>(),
+            proptest::option::of(any::<usize>()),
+            proptest::option::of(1.0f64..80.0),
+            -50.0f64..50.0,
+            proptest::option::of(1.0f64..80.0),
+        )
+            .prop_map(|(pick, part, stock, offset, clearance)| Edit::ChangeSetup {
+                pick,
+                part,
+                stock,
+                offset,
+                clearance
+            }),
         (0usize..5).prop_map(Edit::Renumber),
         (any::<usize>(), proptest::option::of(0usize..4))
             .prop_map(|(pick, unit)| Edit::SetModelUnits { pick, unit }),
@@ -163,13 +185,13 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
     let id = *next;
     Some(match edit {
         Edit::Rename(name) => Command::RenameProject(name),
-        Edit::Machine(name) => Command::SetMachine(name.map(|name| MachineRef { name })),
+        Edit::Machine(name) => Command::SetMachine(name.map(|name| {
+            let mut profile = MachineProfile::example_x_rotary();
+            profile.name = name;
+            Box::new(profile)
+        })),
         Edit::AddSetup(index) => Command::Add {
-            item: Item::Setup(Setup {
-                id: SetupId::from_u128(id),
-                order: OrderKey::default(),
-                name: format!("Setup {id}"),
-            }),
+            item: Item::Setup(Setup::new(SetupId::from_u128(id), format!("Setup {id}"))),
             placement: placement(index),
         },
         Edit::AddTool(diameter) => Command::Add {
@@ -261,6 +283,33 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
         Edit::RenameSetup { pick: n, name } => {
             let mut setup = pick(p.setups(), n)?.clone();
             setup.name = name;
+            Command::Replace(Item::Setup(setup))
+        }
+        Edit::ChangeSetup {
+            pick: n,
+            part,
+            stock,
+            offset,
+            clearance,
+        } => {
+            let mut setup = pick(p.setups(), n)?.clone();
+            setup.part = match part {
+                Some(m) => Some(pick(p.models(), m)?.id),
+                None => None,
+            };
+            setup.stock = stock.map(|d| Stock::Cylinder {
+                diameter: Millimetres(d),
+                length: Millimetres(2.0 * d),
+                x_start: Millimetres(offset),
+            });
+            setup.material = stock.map(|d| format!("material {d}"));
+            setup.frame.part_offset = Millimetres(offset);
+            setup.frame.work_offset.x = Millimetres(-offset);
+            setup.frame.work_offset.register = WorkOffsetRegister::ALL[n % 6];
+            setup.clearance = clearance.map(|r| Clearance {
+                radius: Millimetres(r),
+                safe_z: Millimetres(r + 10.0),
+            });
             Command::Replace(Item::Setup(setup))
         }
         Edit::SetModelUnits { pick: n, unit } => Command::SetModelUnits {
@@ -355,11 +404,7 @@ fn req_ui_08_new_command_clears_redo_and_failed_command_is_not_recorded() {
 
     let setup = SetupId::from_u128(1);
     app.execute(Command::Add {
-        item: Item::Setup(Setup {
-            id: setup,
-            order: OrderKey::default(),
-            name: "Setup 1".into(),
-        }),
+        item: Item::Setup(Setup::new(setup, "Setup 1")),
         placement: Placement::End,
     })
     .unwrap();

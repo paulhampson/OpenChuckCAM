@@ -32,6 +32,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "machine_profile_toml"
+path = "fuzz_targets/machine_profile_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "toolpath_ir_json"
 path = "fuzz_targets/toolpath_ir_json.rs"
 test = false

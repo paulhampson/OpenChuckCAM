@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, toolpath_ir_json, project_files, stl_import]
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import]
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install nightly --profile minimal
@@ -34,6 +34,9 @@ jobs:
       - name: Seed the STL corpus from testdata
         if: matrix.target == 'stl_import'
         run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
+      - name: Seed the machine profile corpus from the built-in profiles
+        if: matrix.target == 'machine_profile_toml'
+        run: mkdir -p fuzz/corpus/machine_profile_toml && cp crates/openchuck-project/machines/*.toml fuzz/corpus/machine_profile_toml/
       - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=3600
       - uses: actions/upload-artifact@v7
         if: failure()

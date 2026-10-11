@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# A project folder as slice 2 wrote it (schema 2, decision record 0010), with
+# the placeholder machine reference no front end could set. Schema 3 drops
+# the name and keeps the machine in machine.toml (PRJ-04, decision record 0011).
+schema = 2
+name = "Schema 2 fixture"
+
+[machine]
+name = "Makera Z1"

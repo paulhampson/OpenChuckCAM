@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Makera Z1 with its 4th-axis module (decision records 0007 and 0011).
+# Every value is derived from Makera's own profiles and the Z1 firmware
+# source, not measured on a Z1: each stays unconfirmed until the SP-12 air
+# cut (OI-37) and a check of the machine's limits (OI-39).
+schema = 1
+
+[machine]
+name = "Makera Z1"
+rotary_axis = "x"
+a_sense = "positive"
+
+[machine.rotary_origin]
+x = 0.0
+y = 0.0
+z = 0.0
+
+[machine.a_range]
+type = "continuous"
+
+[machine.travel.min]
+x = -10.0
+y = -200.0
+z = 0.0
+
+[machine.travel.max]
+x = 200.0
+y = 10.0
+z = 100.0
+
+[machine.max_feeds]
+linear = 4000.0
+rotary = 21600.0
+rapid_linear = 4000.0
+rapid_rotary = 21600.0
+
+[machine.clearance]
+radius = 45.0
+safe_z = 60.0
+
+[machine.provenance.rotary_axis]
+state = "unconfirmed"
+source = "Makera's Fusion and FreeCAD Z1 machines: A parallel to machine X, on the Y table (decision 0007)"
+
+[machine.provenance.a_sense]
+state = "unconfirmed"
+source = "Makera's Fusion Z1 machine: right-handed, not reversed; the firmware's direction is factory configuration (decision 0007, OI-03, air cut step 1)"
+
+[machine.provenance.rotary_origin]
+state = "unconfirmed"
+source = "placeholder: Makera's Fusion machine frame appears to have its origin on the A axis; measure the A axis and chuck face in machine coordinates (OI-39)"
+
+[machine.provenance.a_range]
+state = "unconfirmed"
+source = "Z1 firmware 1.1.2 source: no A soft limit (decision 0007)"
+
+[machine.provenance.travel]
+state = "unconfirmed"
+source = "Makera's Fusion Z1 machine; its FreeCAD machine says X and Y 0 to 200 (OI-39)"
+
+[machine.provenance.max_feeds]
+state = "unconfirmed"
+source = "Makera's Fusion Z1 machine (4000 mm/min, 21600 deg/min); Makera Studio's table is reported as 1200 mm/min; rapids not stated, so the feed limits are used (OI-39)"
+
+[machine.provenance.clearance]
+state = "unconfirmed"
+source = "OpenChuckCAM default, not a machine value; set a clearance on each setup to suit its stock"
