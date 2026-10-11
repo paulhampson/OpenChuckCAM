@@ -6,8 +6,9 @@
 //! Slice 1 so far provides the in-memory document ([`Project`]) with stable IDs
 //! ([`id`]), model content hashes ([`ContentHash`], PRJ-02), selection sets with
 //! reserved descriptor fields (PRJ-06, PRJ-07) and the cache folder for
-//! generated data ([`cache`], PRJ-03). The file format, order keys, schema
-//! versions and migration wait for spike SP-8 (decision record 0005).
+//! generated data ([`cache`], PRJ-03). Saving to TOML with per-item order keys
+//! (decision record 0006), schema versions and migration are still to build
+//! (decision record 0007, OI-37).
 //!
 //! ```
 //! use openchuck_project::id::{OperationId, SetupId};

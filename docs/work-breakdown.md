@@ -132,7 +132,7 @@ These apply to every slice and are not repeated below.
 **Design refinement:** file layout from architecture 5.6 (project, setups, one file per operation, selection sets, machine), how order keys are stored, schema versioning, the cache location and generated ignore file, and the command pattern for undo.
 
 1. Project model in `openchuck-project`: project, setups, operations, selection sets, machine reference and tool snapshots, with stable unique IDs and explicit order keys (PRJ-05).
-2. Text persistence with stable key ordering and formatting, split into small files (PRJ-01), using the serialisation approach chosen in SP-8.
+2. Text persistence with stable key ordering and formatting, split into small files (PRJ-01), as TOML with per-item order keys, the approach chosen after SP-8 ([decision 0006](decisions/0006-sp-8-project-format.md)).
 3. Model files referenced by relative path with a content hash checked on load (PRJ-02).
 4. No generated data in the project; cache directory with a generated ignore file (PRJ-03).
 5. Schema version in every file and a migration framework with a real fixture migration (PRJ-04).
@@ -140,7 +140,7 @@ These apply to every slice and are not repeated below.
 7. Reserve descriptor fields (position, normal, area) in the selection schema so P2 matching needs no format change; not implemented.
 8. CLI commands to validate a project and to load and save it; a fuzz target for the project loader (NFR-07).
 
-**Progress:** items 3, 4, 6 and 7 and the model and IDs of item 1 are built ([decision 0005](decisions/0005-slice-1-project-model.md), proposed). Items 2, 5 and 8, the order keys of item 1 and the byte-for-byte undo check wait for SP-8 (OI-31).
+**Progress:** items 3, 4, 6 and 7 and the model and IDs of item 1 are built ([decision 0007](decisions/0007-slice-1-project-model.md), proposed). SP-8 is decided ([decision 0006](decisions/0006-sp-8-project-format.md)); items 2, 5 and 8, the order keys of item 1 and the byte-for-byte undo check follow the remaining design refinement decisions (OI-37).
 
 **Review checklist**
 
@@ -279,7 +279,7 @@ These apply to every slice and are not repeated below.
 4. Post options: units, A letter, direction and wrap, header and footer, tool change, coolant, work offsets, line numbers, precision, maximum feed, feed mode (GC-04). Compensated feed in units per minute by default; inverse-time as an optional capability.
 5. Makera Z1 post definition (GC-09) and LinuxCNC verification post definition (GC-10).
 6. Byte-identical output through fixed number formatting (GC-07).
-7. `openchuck-gcode`: reader and replay for the codes our posts emit, comparing positions, A travel, feeds and limits with the IR.
+7. `openchuck-gcode`: reader and replay for the codes our posts emit, comparing positions, A travel, feeds and limits with the IR. The reader is in-house (SP-5, [decision 0005](decisions/0005-sp-5-gcode-reader.md)): f64 values from the source text, errors naming line and column, a known-code list kept in step with the posts, and a fuzz target. Its fixtures come from SP-5 once LinuxCNC has read them (OI-31).
 8. Golden files on small hand-reviewed parts (NFR-08).
 9. LinuxCNC simulator replay: documented configuration and a script that compares reached positions and limit faults with the expected toolpath.
 10. CLI: regenerate G-code from a project file without the UI, with a report (GC-11); this is also the end-to-end test harness.

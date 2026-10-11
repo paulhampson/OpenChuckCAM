@@ -8,8 +8,9 @@
 //! caller's thread (UI-09, NFR-04).
 //!
 //! Every project edit is a [`Command`] and can be undone and redone (UI-08).
-//! The project file format waits for spike SP-8 (decision record 0005), so an
-//! existing folder still opens as an empty project, and regeneration runs the
+//! Saving and loading the project folder (TOML, decision record 0006) is not
+//! built yet (decision record 0007, OI-37), so an existing folder still opens
+//! as an empty project, and regeneration runs the
 //! pipeline over no operations and produces an empty toolpath.
 
 #![warn(missing_docs)]
@@ -119,7 +120,7 @@ pub struct Application {
 impl Application {
     /// Opens the project in `folder` with a worker pool of `threads`.
     ///
-    /// Until the project file format exists (SP-8, decision record 0005) an
+    /// Until project loading is built (decision record 0007, OI-37) an
     /// existing folder opens as an empty project named after the folder. A
     /// missing path or a path to a file is an error.
     pub fn open(folder: &Path, threads: Threads) -> Result<Self, AppError> {

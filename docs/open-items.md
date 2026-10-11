@@ -14,7 +14,6 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-02 | No golden file with A words yet. | 0001 item 2 | open | Slice 6 | OI-01, OI-03 |
 | OI-03 | A sign and rotary offset convention for the Z1 (the spike used +1 as a placeholder). | 0001 item 3 | open | SP-12, slice 3 | Machine profiles and the air cut |
 | OI-04 | LinuxCNC feed rule on mixed XYZ and A moves; whether the Z1 accepts G93; per-move feed strategy near zero linear step. | 0001 item 4 | open | SP-12, slice 6 | OI-01 and a Z1 test |
-| OI-05 | G-code reader: `gcode` 0.7.0 with an f64 layer, or an in-house reader. | 0001 item 5 | open | Slice 6 (SP-5) | SP-5 |
 | OI-06 | A limits and unwinding policy (range limits, when and which way to unwind). | 0001 item 6 | open | Slice 5 (OP-15) | A range in the machine profile |
 | OI-07 | Off-top contact and tilted tools (tool axis variation, cutter shape). | 0001 item 7 | open | Slices 5 and 13 | SP-4, SP-13 |
 | OI-08 | Chord tolerance factor, 0.4 or 0.5 of the toolpath tolerance. | 0001 item 8 | open | Slice 5 | Measurement on the first strategy |
@@ -35,14 +34,18 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-28 | Golden tests that depend on kernel tessellation or kernel-computed numbers need a tolerance on non-analytic faces, or per-platform golden files (verification plan section 2, policy 7): tessellation differs between x86-64 and arm64. | Decision 0003, cross-platform differences | open | Slice 11 | Agreement on the verification approach |
 | OI-29 | Add the OpenCASCADE licence notice and source offer to the release checklist (LGPL-2.1, statically linked). | Decision 0003, NFR-10 | open | Slice 20 | Release checklist |
 | OI-30 | Examples for the library crates other than `openchuck-types` (slice 0 item 7). Each gets one in the slice that gives it a public API. | 0004, slice close | deferred | Slices 5 (path), 6 (post, gcode), 2 (geom) and later | A public API |
-| OI-31 | Apply SP-8's result to slice 1: file format and layout, order keys, schema version and migration with a real fixture, CLI load, save and validate, the loader fuzz target, the byte-for-byte undo check and the four checklist items that need a saved form. | 0005 item 1 | open | Slice 1, after SP-8 | SP-8 decision record |
-| OI-32 | `MachineRef` is a placeholder (a profile name): how a project refers to or stores its machine profile. | 0005 item 2 | open | Slice 3 | SET-01 design |
-| OI-33 | Triangle selections apply to mesh models only, but `ModelRef` does not yet record the model kind, so the rule is not enforced. | 0005 item 3 | open | Slices 2 and 10 | Model kind from import |
+| OI-31 | Run the SP-5 hand-written file `linuxcnc_post_subset.ngc` through LinuxCNC's own interpreter (`rs274` standalone or the simulator) before it becomes a `testdata/` fixture; it was checked by hand only. The owner runs it separately. | 0005 item 2 | open | Before slice 6 adds the fixture | Project owner, with LinuxCNC 2.9 or later (with OI-01) |
+| OI-35 | Order-key growth under repeated insertion at one spot (about one character per six inserts): an explicit renumber action, or a length-prefixed key scheme. | Decision 0006, item 2 | open | Slice 1 | Slice 1 design refinement |
+| OI-36 | Concurrent edits to the same item conflict in Git (adjacent fields of one operation, additions to one selection set). PRJ-05 is met; a semantic merge driver would belong with in-app version control (P2). | Decision 0006, item 3 | deferred | When VC work starts (P2) | None for P1 |
+| OI-37 | Build slice 1 persistence on decision 0006 (TOML, per-item order keys): file layout, order keys on items, schema version and migration with a real fixture, CLI load, save and validate, the loader fuzz target, the byte-for-byte undo check and the four checklist items that need a saved form. Waits on the slice 1 design refinement decisions (decision 0007). | 0007 item 1 | open | Slice 1 | Design refinement agreement |
+| OI-38 | `MachineRef` is a placeholder (a profile name): how a project refers to or stores its machine profile. | 0007 item 2 | open | Slice 3 | SET-01 design |
+| OI-39 | Triangle selections apply to mesh models only, but `ModelRef` does not yet record the model kind, so the rule is not enforced. | 0007 item 3 | open | Slices 2 and 10 | Model kind from import |
 
 ## Closed
 
 | ID | Item | Source | Closed | Settled in |
 | --- | --- | --- | --- | --- |
+| OI-34 | Format for the project folder: JSON or TOML. Both passed SP-8. | Decision 0006, item 1 | 11 Oct 2026 | Owner chose TOML; decision 0006 accepted; architecture section 7, crate selection, `docs/dependencies.md` and work breakdown slice 1 item 2 updated |
 | OI-C1 | NFR-14 adoption records for eframe/egui, egui-wgpu, wgpu, parry3d-f64 and bytemuck. | 0002 item 6 | 11 Oct 2026 | `docs/dependencies.md` (parry3d-f64 and bytemuck recorded, not yet declared) |
 | OI-C2 | Add `openchuck-testkit` and `openchuck-benches` to the architecture. | 0004 open item 2 | 11 Oct 2026 | Agreed by the owner; architecture sections 3, 9 and 12 |
 | OI-C3 | `AGPL-3.0-or-later` or `AGPL-3.0-only`. | 0004 open item 3 | 11 Oct 2026 | Owner chose `AGPL-3.0-or-later`; architecture sections 12 and 13 |
@@ -52,3 +55,4 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-22 | How CLA signatures are collected. | Contributor agreement | 11 Oct 2026 | Owner chose CLA Assistant Lite (`.github/workflows/cla.yml`); signatures on the `cla-signatures` branch. Follow-up OI-24 |
 | OI-10 | Builds on Windows and macOS (NFR-02). | 0002 item 2; 0004 open item 10 | 11 Oct 2026 | PR #3 CI at `44ed463`: build, clippy, tests and each library alone pass on Windows, macOS and Linux. The NFR-03 frame-rate measurement stays open (OI-09) |
 | OI-16 | Reserve the `openchuck-*` crate names on crates.io. | 0004 open item 5 | 11 Oct 2026 | The owner publishes six `0.0.0` placeholders (`openchuck`, `openchuckcam`, `openchuck-types`, `-path`, `-post`, `-gcode`) and treats them as claimed; application crates are not reserved |
+| OI-05 | G-code reader: `gcode` 0.7.0 with an f64 layer, or an in-house reader. | 0001 item 5; 0005 item 1 | 11 Oct 2026 | Owner accepted [decision 0005](decisions/0005-sp-5-gcode-reader.md): an in-house reader in `openchuck-gcode`; architecture section 7 updated |

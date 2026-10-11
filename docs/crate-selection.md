@@ -24,7 +24,7 @@ Supporting layers added after the architecture review (judgment from the scores,
 
 | Need | First pick (score) | Fallback (score) | Why |
 | --- | --- | --- | --- |
-| Project files | serde (93) with serde\_json (97); toml\_edit (93) for hand-edited files | toml (92), ron (85) | Stable, ordered output under our control; serde\_yaml is archived |
+| Project files | serde (93) with toml (92); toml\_edit (93) for hand-edited files (decision 0006) | serde\_json (97), ron (85) | Stable, ordered output under our control; serde\_yaml is archived |
 | IDs and content hashes | uuid (99), blake3 (93) | sha2 (85) | Order keys: write them in-house; fractional\_index (64) is the only crate and is a reference |
 | Post templates | minijinja (94) | handlebars (93), tera (90) | Runtime templates users can edit; askama (85) compiles them in |
 | Post scripting (P2) | Spike rhai (90) | starlark (84), mlua (94) | Fit over rank: rhai is pure Rust, starlark is built to be deterministic, mlua needs a C compiler |
@@ -218,6 +218,8 @@ Scores for the crates above:
 
 Both leaders are maintained, tested and free of agent-instruction files, but neither is widely depended on (2 and 3 dependent crates), so adoption is their weak point. gcode scores higher on age and tests; g-code scores higher on features because it can emit as well as parse, and it moves ahead if you weight features more heavily. Neither advertises A-axis words, so confirm your chosen emitter can write them before relying on it.
 
+*Update, 11 Oct 2026:* spike SP-5 tested both readers. `gcode` 0.7.0 reads A words but stores numbers as `f32` and drops a code it cannot store without a diagnostic; `g-code` 0.6.0 panics on malformed input and rejects a file ending in `%` and a newline. The project reads G-code with an in-house reader instead ([decision 0005](decisions/0005-sp-5-gcode-reader.md)). The scores above are unchanged.
+
 ivacam ships LinuxCNC, GRBL and HPGL post-processors plus a runtime for Autodesk-style .cps post scripts, but it is a GPL-3 application rather than a library.
 
 ## 2D toolpath geometry
@@ -342,7 +344,7 @@ Scores for the crates above:
 | serde\_yaml | 1 | 5 | 2 | 4 | 5 | 5 | **68** |
 | json5 | 3 | 5 | 2 | 2.3 | 4.5 | 5 | **68** |
 
-serde with serde\_json (93 and 97) is the safe default for the project folder: both are as widely used as any crates get, and output order is under our control. Struct fields are written in declaration order, and maps should be `BTreeMap` or sorted before writing, which is what the "save twice gives identical bytes" test in the architecture checks. `toml` (92) and `toml_edit` (93) suit the human-edited files, the tool and material libraries and the post definitions (TL-01, GC-03), where preserving a user's comments matters more than nesting depth. `serde_yaml` is archived and should not be used; `ron`, `kdl` and `json5` work but few tools outside Rust read them, which would make them a poor fit for outside hosts. `schemars` (90) and `jsonschema` (89) are optional extras for publishing and checking the schema.
+serde with toml (93 and 92) is the choice for the project folder, made by the owner after spike SP-8 (decision 0006): in the spike both toml and serde\_json gave byte-identical re-saves, exact doubles and clean Git merges, and toml gave files about 27% smaller and easier to review. serde\_json (97) stays the safe default for the shared plain-data form and tests, and is the recorded alternative. Output order is under our control. Struct fields are written in declaration order, and maps should be `BTreeMap` or sorted before writing, which is what the "save twice gives identical bytes" test in the architecture checks. `toml_edit` (93) suits the human-edited files, the tool and material libraries and the post definitions (TL-01, GC-03), where preserving a user's comments matters more than nesting depth. `serde_yaml` is archived and should not be used; `ron`, `kdl` and `json5` work but few tools outside Rust read them, which would make them a poor fit for outside hosts. `schemars` (90) and `jsonschema` (89) are optional extras for publishing and checking the schema.
 
 ### Identifiers, order keys and hashing
 

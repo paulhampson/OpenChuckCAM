@@ -3,9 +3,9 @@
 //!
 //! A project holds models, setups, tool snapshots, selection sets and
 //! operations, each with a stable unique ID (PRJ-05), plus a machine reference.
-//! Items are kept in their user-visible order. How that order is written to
-//! disk (the order-key scheme) and the file format itself are decided by spike
-//! SP-8, so this module has no persistence yet.
+//! Items are kept in their user-visible order. Spike SP-8 chose TOML files with
+//! a per-item order key (decision record 0006); persistence and order keys are
+//! not built yet (decision record 0007, OI-37).
 //!
 //! Every change goes through an edit method that keeps the document valid: IDs
 //! stay unique, references point at items that exist, and an item in use cannot
@@ -30,7 +30,7 @@ use crate::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 /// The machine a project is set up for.
 ///
 /// A placeholder until slice 3 settles how a project refers to its machine
-/// profile (SET-01, open item OI-32).
+/// profile (SET-01, open item OI-38).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MachineRef {

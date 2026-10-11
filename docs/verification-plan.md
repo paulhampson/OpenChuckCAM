@@ -168,7 +168,7 @@ The architecture splits the system into library crates behind two equal front en
 | openchuck-types | Serialisation round trips of the IR, machine profile, tool and stock types; unit newtype tests; double-precision audit | GC-01, INT-02, NFR-05 |
 | openchuck-path | Analytic oracles, property tests, the independent gouge and coverage checker, A-axis limit tests, strategy parameter schema tests. Runs against the analytic StockModel and the accept-all CollisionOracle, so no simulator is needed | OP-01 to OP-17, INT-01 to INT-04 |
 | openchuck-post | Golden files for the Z1 and LinuxCNC post definitions, feed-mode tests, determinism, post definitions edited without recompiling | GC-02 to GC-10, GC-13, INT-03 |
-| openchuck-gcode | A-word and dialect parsing (confirmed first by a spike), seeded-fault tests, replay against the IR, fuzzing of the reader | GC-08, SIM-09 |
+| openchuck-gcode | A-word and dialect parsing (in-house reader chosen by SP-5, decision 0005), seeded-fault tests, replay against the IR, fuzzing of the reader | GC-08, SIM-09 |
 | openchuck-geom | Meshes with known defects, transform tests, selection and BVH ray-cast picking, all without a window | IMP-04, IMP-05, UI-04 |
 | openchuck-import | Corpus tests and fuzzing for STL, STEP, DXF and SVG; unit conversion; deterministic face and edge IDs; tessellation tolerance; C++ kernel boundary tests | IMP-01 to IMP-03, IMP-06, IMP-08, NFR-13 |
 | openchuck-sim | Deviation on analytic parts, playback jumps from checkpoints, timing against hand calculation, collision scenarios, conformance to the StockModel and CollisionOracle ports | SIM-01 to SIM-10, COL-01 to COL-08 |
