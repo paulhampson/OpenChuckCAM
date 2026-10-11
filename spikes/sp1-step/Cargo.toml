@@ -8,3 +8,6 @@ cxx = "1"
 glam = "0.24"
 opencascade = "0.3.0"
 opencascade-sys = "0.3.0"
+
+[build-dependencies]
+cc = "1.7.0"

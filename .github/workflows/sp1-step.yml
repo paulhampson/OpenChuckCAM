@@ -1,0 +1,91 @@
+# SP-1 spike CI: does the `opencascade` crate build on Windows, macOS and Linux, and do the
+# harness checks pass? Spike branch only; never merged into main (work breakdown, spike rules).
+name: sp1-step
+on:
+  push:
+    branches: [spike/sp-1-step-kernel]
+  workflow_dispatch:
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+        working-directory: spikes/sp1-step
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain versions
+        run: |
+          rustc --version; cargo --version; cmake --version | head -1
+          (c++ --version || true) | head -1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            spikes/sp1-step/target
+            ~/.cargo/registry
+          key: sp1-${{ matrix.os }}-${{ hashFiles('spikes/sp1-step/Cargo.lock') }}
+      - name: Build (includes compiling OpenCASCADE from source)
+        run: |
+          start=$(date +%s)
+          cargo build --release 2>&1 | tail -40
+          echo "BUILD_SECONDS=$(( $(date +%s) - start ))" | tee build_time.txt
+      - name: Generate fixtures
+        run: ./target/release/sp1-step gen fixtures > /dev/null 2>&1; ls -la fixtures
+      - name: Walk, tessellate, digest
+        run: |
+          mkdir -p results
+          for f in fixtures/*.step; do
+            n=$(basename $f .step)
+            ./target/release/sp1-step walk $f --tess 2>&1 | grep -a "^face\|^  edge\|^topology-digest\|^tess\|^root\|^solids\|^ERR" > results/walk_$n.txt
+            echo "$n $(grep -a topology-digest results/walk_$n.txt)"
+          done | tee results/digests.txt
+      - name: Determinism (5 processes) and STEP round trip
+        run: |
+          for f in fixtures/*.step; do
+            n=$(basename $f .step)
+            d=$(for i in 1 2 3 4 5; do ./target/release/sp1-step walk $f 2>/dev/null | grep -a topology-digest; done | sort -u | wc -l)
+            echo "$n distinct digests over 5 runs: $d"
+            ./target/release/sp1-step roundtrip $f rt_$n.step 2>/dev/null | grep -a "^roundtrip"
+          done | tee results/determinism.txt
+      - name: Malformed input (clean error expected, exit code 2)
+        run: |
+          mkdir -p fixtures/bad
+          : > fixtures/bad/empty.step
+          printf 'this is not a STEP file\n' > fixtures/bad/garbage.step
+          head -c 3000 fixtures/filleted_box.step > fixtures/bad/truncated.step
+          for f in fixtures/bad/*.step /nonexistent.step; do
+            ./target/release/sp1-step walk $f > /tmp/out.txt 2>&1; rc=$?
+            echo "$f exit=$rc $(grep -a '^ERR' /tmp/out.txt | head -1)"
+          done | tee results/malformed.txt
+      - name: Shim (analytic surface data) and mesh controls
+        run: |
+          for n in cylinder cone sphere torus bspline_face; do ./target/release/sp1-step shim fixtures/$n.step | grep -a '^face'; done | tee results/shim.txt
+          for n in cylinder sphere; do ./target/release/sp1-step shimmesh fixtures/$n.step | grep -a '^lin'; done | tee -a results/shim.txt
+      - name: Mutation fuzz (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: python3 -I fuzz_mutate.py | tee results/fuzz.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sp1-results-${{ matrix.os }}
+          path: |
+            spikes/sp1-step/results/*.txt
+            spikes/sp1-step/build_time.txt
+  compare:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Cross-platform digest comparison
+        run: |
+          ls -R art | head -40
+          for f in art/sp1-results-ubuntu-latest/digests.txt art/sp1-results-windows-latest/digests.txt art/sp1-results-macos-latest/digests.txt; do echo "== $f"; cat $f; done
+          diff art/sp1-results-ubuntu-latest/digests.txt art/sp1-results-windows-latest/digests.txt && echo "linux == windows"
+          diff art/sp1-results-ubuntu-latest/digests.txt art/sp1-results-macos-latest/digests.txt && echo "linux == macos"

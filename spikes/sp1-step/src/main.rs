@@ -15,6 +15,12 @@ use opencascade_sys as ffi;
 use std::fmt::Write as _;
 use std::process::ExitCode;
 
+unsafe extern "C" {
+    fn shim_face_info(face: *const std::ffi::c_void, out: *mut f64, uv: *mut f64) -> i32;
+    fn shim_face_eval(face: *const std::ffi::c_void, u: f64, v: f64, pt: *mut f64, n: *mut f64) -> i32;
+    fn shim_mesh(shape: *mut std::ffi::c_void, lin: f64, ang: f64, parallel: i32, nodes: *mut i32, tris: *mut i32) -> i32;
+}
+
 type Shp = cxx::UniquePtr<ffi::topo_ds::TopoDS_Shape>;
 
 fn load(path: &str) -> Result<Shp, String> {
@@ -228,6 +234,65 @@ fn cmd_roundtrip(path: &str, tmp: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Fallback probe: what a thin in-house shim adds. Compared against closed forms.
+fn cmd_shim(path: &str) -> Result<(), String> {
+    use ffi::top_abs::TopAbs_ShapeEnum as S;
+    let shape = load(path)?;
+    for (i, f) in collect(&shape, S::TopAbs_FACE).iter().enumerate() {
+        let (mut p, mut uv) = ([0f64; 12], [0f64; 4]);
+        let ty = unsafe { shim_face_info(&**f as *const _ as *const _, p.as_mut_ptr(), uv.as_mut_ptr()) };
+        let (um, uM, vm, vM) = (uv[0], uv[1], uv[2], uv[3]);
+        let (u, v) = ((um + uM) / 2.0, (vm + vM) / 2.0);
+        let (mut pt, mut n) = ([0f64; 3], [0f64; 3]);
+        let rc = unsafe { shim_face_eval(&**f as *const _ as *const _, u, v, pt.as_mut_ptr(), n.as_mut_ptr()) };
+        println!("face {i} type={ty} params={:?} uv=[{:.4},{:.4}]x[{:.4},{:.4}] eval rc={rc} pt=({:.4},{:.4},{:.4}) n=({:.4},{:.4},{:.4})",
+            &p[..8].iter().map(|x| (x * 1e4).round() / 1e4).collect::<Vec<_>>(), um, uM, vm, vM, pt[0], pt[1], pt[2], n[0], n[1], n[2]);
+    }
+    Ok(())
+}
+
+fn cmd_shimmesh(path: &str) -> Result<(), String> {
+    for (lin, ang, par) in [(0.1, 0.5, 0), (0.1, 0.1, 0), (0.01, 0.5, 0), (0.01, 0.1, 0), (0.01, 0.5, 1)] {
+        let mut shape = load(path)?;
+        let (mut n, mut t) = (0i32, 0i32);
+        let rc = unsafe { shim_mesh(&*shape as *const _ as *mut _, lin, ang, par, &mut n, &mut t) };
+        println!("lin={lin} ang={ang} parallel={par}: rc={rc} nodes={n} tris={t}");
+    }
+    Ok(())
+}
+
+/// Chord error of the default (linear-deflection-only) tessellation against the exact surface.
+fn cmd_chord(path: &str, kind: &str, r: f64) -> Result<(), String> {
+    use ffi::top_abs::TopAbs_ShapeEnum as S;
+    for tol in [0.1, 0.01] {
+        let shape = load(path)?;
+        let _m = ffi::b_rep_mesh::IncrementalMesh_new(&shape, tol);
+        let mut worst = 0f64;
+        for f in collect(&shape, S::TopAbs_FACE) {
+            let face = ffi::topo_ds::TopoDS::Face(&f);
+            let mut loc = ffi::top_loc::Location_new();
+            let h = ffi::b_rep::BRep_Tool_Triangulation(face, loc.pin_mut());
+            let Ok(t) = ffi::poly::Handle_Poly_Triangulation_Get(&h) else { continue };
+            let node = |i: i32| { let p = ffi::poly::Poly_Triangulation_Node(t, i); [p.X(), p.Y(), p.Z()] };
+            for k in 1..=t.NbTriangles() {
+                let tri = t.Triangle(k);
+                let (a, b, c) = (node(tri.Value(1)), node(tri.Value(2)), node(tri.Value(3)));
+                let m = [(a[0]+b[0]+c[0])/3.0, (a[1]+b[1]+c[1])/3.0, (a[2]+b[2]+c[2])/3.0];
+                let d = match kind {
+                    "cyl" => ((m[0]*m[0] + m[1]*m[1]).sqrt() - r).abs(),
+                    "sph" => ((m[0]*m[0] + m[1]*m[1] + m[2]*m[2]).sqrt() - r).abs(),
+                    _ => return Err("kind".into()),
+                };
+                // planar end caps of the cylinder are exact; only count curved-face triangles
+                let on_curved = match kind { "cyl" => (m[0]*m[0]+m[1]*m[1]).sqrt() > r*0.5 && m[2] > 1e-9 && m[2] < 49.999, _ => true };
+                if on_curved { worst = worst.max(d); }
+            }
+        }
+        println!("{kind} tol={tol}: worst triangle-centroid deviation from exact surface = {worst:.5} mm");
+    }
+    Ok(())
+}
+
 fn cmd_gen(dir: &str) -> Result<(), String> {
     use glam::DVec3;
     use opencascade::primitives::Face;
@@ -254,6 +319,12 @@ fn cmd_gen(dir: &str) -> Result<(), String> {
     ]);
     let face = Face::from_surface(&surf);
     w("bspline_face", &Shape::from(face))?;
+    // scale test: 300 filleted boxes (7800 faces) in one STEP file
+    let base = Shape::box_with_dimensions(10.0, 10.0, 10.0).fillet(1.0);
+    let many: Vec<Shape> = (0..300)
+        .map(|i| base.translated(DVec3::new((i % 20) as f64 * 15.0, (i / 20) as f64 * 15.0, 0.0)))
+        .collect();
+    Shape::write_all_step(many.iter(), format!("{dir}/big_300_filleted_boxes.step")).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -262,6 +333,10 @@ fn main() -> ExitCode {
     let r = match a.get(1).map(String::as_str) {
         Some("gen") => cmd_gen(&a[2]),
         Some("walk") => cmd_walk(&a[2], a.iter().any(|x| x == "--tess")),
+        Some("read") => load(&a[2]).map(|s| println!("read ok, root {}", shape_name(&s.ShapeType()))),
+        Some("shim") => cmd_shim(&a[2]),
+        Some("shimmesh") => cmd_shimmesh(&a[2]),
+        Some("chord") => cmd_chord(&a[2], &a[3], a[4].parse().unwrap()),
         Some("safe") => cmd_safe(&a[2]),
         Some("roundtrip") => cmd_roundtrip(&a[2], &a[3]),
         _ => Err("usage: gen|walk|safe|roundtrip".into()),
