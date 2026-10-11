@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# SP-8 spike (work breakdown, Spikes): project format and order keys with real
+# Git merges. Throwaway code under the spike rules: never a workspace member and
+# never a product dependency. The empty [workspace] keeps it out of the root
+# workspace.
+
+[package]
+name = "sp8-project-format"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.152", features = ["float_roundtrip"] }
+toml = "=1.1.8"
+toml_edit = "=0.25.17"
+anyhow = "=1.0.104"
