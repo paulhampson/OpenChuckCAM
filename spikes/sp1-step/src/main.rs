@@ -15,6 +15,7 @@ use opencascade_sys as ffi;
 use std::fmt::Write as _;
 use std::process::ExitCode;
 
+#[cfg(has_shim)]
 unsafe extern "C" {
     fn shim_face_info(face: *const std::ffi::c_void, out: *mut f64, uv: *mut f64) -> i32;
     fn shim_face_eval(face: *const std::ffi::c_void, u: f64, v: f64, pt: *mut f64, n: *mut f64) -> i32;
@@ -235,6 +236,12 @@ fn cmd_roundtrip(path: &str, tmp: &str) -> Result<(), String> {
 }
 
 /// Fallback probe: what a thin in-house shim adds. Compared against closed forms.
+#[cfg(not(has_shim))]
+fn cmd_shim(_p: &str) -> Result<(), String> { Err("shim not built".into()) }
+#[cfg(not(has_shim))]
+fn cmd_shimmesh(_p: &str) -> Result<(), String> { Err("shim not built".into()) }
+
+#[cfg(has_shim)]
 fn cmd_shim(path: &str) -> Result<(), String> {
     use ffi::top_abs::TopAbs_ShapeEnum as S;
     let shape = load(path)?;
@@ -251,6 +258,7 @@ fn cmd_shim(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(has_shim)]
 fn cmd_shimmesh(path: &str) -> Result<(), String> {
     for (lin, ang, par) in [(0.1, 0.5, 0), (0.1, 0.1, 0), (0.01, 0.5, 0), (0.01, 0.1, 0), (0.01, 0.5, 1)] {
         let mut shape = load(path)?;

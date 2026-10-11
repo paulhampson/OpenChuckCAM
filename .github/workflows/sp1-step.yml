@@ -36,7 +36,8 @@ jobs:
       - name: Build (includes compiling OpenCASCADE from source)
         run: |
           start=$(date +%s)
-          cargo build --release 2>&1 | tail -40
+          cargo build --release 2>&1 | tail -15
+          cargo build --release 2>&1 | tail -5   # second pass builds the shim once OCCT headers exist
           echo "BUILD_SECONDS=$(( $(date +%s) - start ))" | tee build_time.txt
       - name: Generate fixtures
         run: ./target/release/sp1-step gen fixtures > /dev/null 2>&1; ls -la fixtures
