@@ -10,5 +10,6 @@
 - Check `docs/open-items.md` before planning, and keep it current: add each open item you raise, and close the ones your change settles.
 - Use the work breakdown to find the next task and its exit criteria. If a task there conflicts with the architecture or the requirements, flag the conflict instead of picking a side.
 - Before finishing, check that your change matches the documents and that any document it affects is updated in the same change.
+- For a spike, follow the two-branch rule in `AGENTS.md` (code on `spike/...`, never merged; record and registers on `docs/decision-...`). If the session assigns a branch name that does not fit it, say so and ask before pushing elsewhere.
 - Before committing, check `git config user.name` and `user.email` against the commit-author rule in `AGENTS.md`; a default agent identity makes the CLA check fail.
 - Do not edit `docs/requirements.md` or `docs/architecture.md` to make a change fit. Propose the document change and wait for agreement, then record it (a decision record under `docs/decisions/` where one is needed).

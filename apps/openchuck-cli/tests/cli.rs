@@ -570,7 +570,7 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
         "{}",
         out.stdout
     );
-    // The Z1 profile has no machine Z for the axis (OI-57), so the safe Z
+    // The Z1 profile has no machine Z for the axis (OI-60), so the safe Z
     // cannot be checked against the travel: the only warning says so, and
     // names the unconfirmed values it used.
     let warnings: Vec<&str> = out

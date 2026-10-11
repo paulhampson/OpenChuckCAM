@@ -92,7 +92,7 @@ pub enum ARange {
 pub struct MaxFeeds {
     /// The X and Y axes.
     pub linear: FeedRate,
-    /// The Z axis, which many machines limit below X and Y (OI-56).
+    /// The Z axis, which many machines limit below X and Y (OI-59).
     pub z: FeedRate,
     /// Rotary axis.
     pub rotary: RotaryFeedRate,

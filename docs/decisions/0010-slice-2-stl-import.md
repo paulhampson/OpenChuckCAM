@@ -1,6 +1,6 @@
 # 0010: Slice 2 design refinement: STL import, mesh checks and model placement
 
-**Status:** Proposed (11 Oct 2026). Built and tested on this branch; awaiting the owner's review. Item 4 (units) was chosen by the owner on 11 Oct 2026. Items marked **(owner)** are choices the owner may want to change; the rest follow from the documents.
+**Status:** Accepted (11 Oct 2026). Built and merged in pull request #12. Item 4 (units) was chosen by the owner after a look at OrcaSlicer, Cura and FreeCAD; the owner accepted the rest of the record, including the items marked **(owner)**, when closing the slice. The waiver of the first nightly fuzz run is recorded under "Slice close".
 
 
 Numbering: drafted as 0009 with open items OI-46 to OI-49, renumbered to 0010 with OI-49 to OI-52 when `main` took 0009 (LinuxCNC fixture checks) and OI-46 to OI-48.
@@ -83,13 +83,20 @@ Tests named after the requirement IDs (decision 0004 item 14):
 - `fuzz/` gains `stl_import`; `ci.yml` and `nightly.yml` run it, and the fuzz path filter includes `openchuck-geom`, `openchuck-import` and `testdata/stl/`.
 - `benches/` gains the STL import and check benchmark.
 
+## Slice close, 11 Oct 2026
+
+- **Record accepted** as a whole by the project owner, including the items marked **(owner)** (placement stored as intent, axis rotations and uniform scale only).
+- **Nightly fuzz waived:** the owner waived waiting for the first 1-hour nightly run of `stl_import`. A nightly failure is addressed when it occurs, and the failing input is kept as a regression test.
+- **Slice 2 is closed** in `xtask/traceability.toml`, so CI now fails if IMP-01, IMP-03, IMP-04 or IMP-05 loses its tests. IMP-02 and IMP-06 close with slice 11.
+- **OI-44 closed.** OI-50, OI-51 and OI-52 stay open or deferred (see below).
+
 ## Open items
 
 Tracked in [open-items.md](../open-items.md).
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 (OI-44) | Selections must match the model kind. **Settled** by item 8 when this record is accepted. | Slice 2 | Owner review |
+| 1 (OI-44) | Selections must match the model kind. **Closed** by item 8 on acceptance. | Slice 2 | Done |
 | 2 (OI-49) | The STL header unit convention (item 4) is a guess at what exporters write. **Closed** by the owner's choice in item 4: the header's unit is only a hint the user confirms, so a wrong guess costs a question, not a wrong part. | Slice 2 | Done |
 | 3 (OI-50) | Placement has axis rotations and uniform scale only. Add an arbitrary-axis rotation, alignment of a picked face or edge to the rotary axis, or non-uniform scale if users need them; each is a new step kind, a compatible schema addition. | When a need appears (slice 10 picking makes face alignment possible) | User feedback |
 | 4 (OI-51) | The UI must show the STL tessellation statement, the check report and the unit question (item 4, as a dialog at import), with the listed triangles and edges highlighted (architecture section 5.4, verification plan section 5). | Slice 8 | The UI shell |

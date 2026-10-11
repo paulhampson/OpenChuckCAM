@@ -150,7 +150,7 @@ mod tests {
             assert!(z1.provenance.contains_key(&field), "{field} is not marked");
         }
         // The owner confirmed the axis, direction, range and feed limits from
-        // use of the machine. The reference point (OI-57), the travel frame
+        // use of the machine. The reference point (OI-60), the travel frame
         // and the default clearance are not machine-checked values.
         assert_eq!(
             z1.unconfirmed_fields(),
