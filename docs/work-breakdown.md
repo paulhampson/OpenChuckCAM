@@ -198,13 +198,13 @@ These apply to every slice and are not repeated below.
 
 **Progress:** items 1 to 7 are built ([decision 0011](decisions/0011-slice-3-machine-stock-setup.md), proposed). The project keeps a copy of its machine profile in `machine.toml` and setups gain part, stock, material, part and work offsets and clearance, so the project folder schema is now 3. The Makera Z1's rotary axis, A direction, A range and feed limits are confirmed by the owner; the reference point, travel and clearance stay unconfirmed (OI-57), and the air cut (OI-37) stays open as a cross check. Feed limits are per axis and the Z1 defaults follow [decision 0013](decisions/0013-z1-profile-consensus.md). Open: OI-53 (default machine library location), OI-54 (machine copy against the library), OI-55 (work zero off the axis, deferred) and OI-57.
 
-**Review checklist** (evidence in decision 0011, "Verification"; ticked when the owner reviews it)
+**Review checklist** (evidence in decision 0011, "Verification", and decision 0013)
 
-- [ ] The A-axis direction on a deliberately asymmetric part matches the documented convention and the independent kinematic oracle (shown by CLI report now, visually in slice 8). Built: `req_set_01_a_direction_on_an_asymmetric_part_matches_the_oracle`; `openchuck-cli machine` and `report` state the direction. The convention itself is unconfirmed until the air cut (OI-03)
-- [ ] A kinematic test with the rotary axis set to Y passes at unit level, proving X is a parameter. Built: `req_set_01_oracle_agrees_with_a_y_rotary_axis`
-- [ ] The clearance cylinder always encloses stock and part, or the app warns. Built: setup checks in `setup`, `validate` and `report`
-- [ ] Every Z1 value is marked confirmed or unconfirmed. Built: all seven marked, with sources; four confirmed by the owner, three unconfirmed
-- [ ] All three stock types survive save and load. Built: `req_set_03_req_set_05_all_three_stock_types_survive_save_and_load`
+- [x] The A-axis direction on a deliberately asymmetric part matches the documented convention and the independent kinematic oracle (shown by CLI report now, visually in slice 8). `req_set_01_a_direction_on_an_asymmetric_part_matches_the_oracle`; `openchuck-cli machine` and `report` state the direction. The owner confirmed the convention from use of the machine on 11 Oct 2026; the air cut (OI-37) stays open as a cross check
+- [x] A kinematic test with the rotary axis set to Y passes at unit level, proving X is a parameter (`req_set_01_oracle_agrees_with_a_y_rotary_axis`)
+- [x] The clearance cylinder always encloses stock and part, or the app warns (setup checks in `setup`, `validate` and `report`)
+- [x] Every Z1 value is marked confirmed or unconfirmed (all seven marked, with sources; the rotary axis, A direction, A range and feed limits confirmed by the owner, the reference point, travel frame and clearance unconfirmed)
+- [x] All three stock types survive save and load (`req_set_03_req_set_05_all_three_stock_types_survive_save_and_load`)
 
 ## Slice 4 – Tool library
 
