@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-import"
+description = "Model and curve readers behind a ModelImporter trait: STL, STEP (the C++ kernel is wrapped here and nowhere else)."
+readme = "README.md"
+categories = ["science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+openchuck-geom.workspace = true
+
+[lints]
+workspace = true

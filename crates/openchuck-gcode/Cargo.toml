@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-gcode"
+description = "G-code reader and interpreter: parses G-code with A words back into motion for replay and checks."
+readme = "README.md"
+categories = ["science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+
+[lints]
+workspace = true

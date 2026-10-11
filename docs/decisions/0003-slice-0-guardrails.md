@@ -1,0 +1,79 @@
+# 0003: Slice 0 design refinement, guardrails and shared data
+
+- **Status:** proposed. The choices below are what slice 0 builds on. Items marked *needs agreement* change or add to `architecture.md` and are not applied to it until agreed.
+- **Date:** 11 Oct 2026.
+
+## Context
+
+Work breakdown slice 0 (guardrails and shared data) asks its design refinement to confirm the monorepo and crate layout, fix the IR fields after SP-3, and define the job context, error model and dependency policy. Requirements: NFR-01, NFR-02, NFR-05, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10, NFR-14 and GC-01. Architecture sections 3, 4, 5.1, 5.7, 7, 8, 9 and 12. Verification plan sections 4.1, 7 and 8.
+
+Spike inputs, used as the project owner asked even though they are not accepted:
+
+- **0001 (SP-3, proposed):** IR fields (item 1), A sign and rotary offset as profile data (item 2), feed intent (item 3) and the oracle design (item 6). Its open items stay open; in particular the simulator run (item 1) and the Z1 conventions (item 3) are not resolved here, so the IR is **not frozen** by this record.
+- **0002 (SP-2, proposed):** egui, eframe and wgpu versions (item 6), the three-platform build (item 2), and keeping `parry3d-f64` types behind `openchuck-geom`.
+- **SP-1 (STEP kernel) is still in progress.** `openchuck-import` links no STEP kernel, the B-rep data in `openchuck-types` is minimal, and no CI job builds C++ yet.
+
+## Decision
+
+1. **Layout.** The monorepo follows architecture section 12: `crates/`, `apps/`, `posts/`, `testdata/`, `fuzz/`, `benches/`, `xtask/`, with every crate in section 3 except `openchuck-vcs` (P2). Library crates other than `openchuck-types` and `openchuck-app` are shells.
+2. **Two crates not in architecture section 3** (*needs agreement*):
+   - `openchuck-testkit` (`publish = false`) holds the independent kinematic oracle, the determinism harness, golden-file comparison and the analytic parts. The oracle and harness are used by several crates' tests (slices 3, 5, 6 and 13), which a module inside one crate cannot serve. `cargo xtask deps` fails if any crate takes it as a normal dependency. It depends only on `openchuck-types`, so the library family can keep it as a dev-dependency after a split, or a split can copy it.
+   - `openchuck-benches` is the package behind `benches/` (cross-crate benchmarks).
+   If agreed, add both to architecture section 3 and the section 12 layout table.
+3. **IR (GC-01), from 0001 item 1.** `Toolpath` is a list of `ToolpathGroup`s in machining order. A group carries the tags (operation, setup, tool, as opaque strings the application maps to its stable IDs), a start pose and its segments; segments inherit the group's tags rather than repeating them. Each segment carries the end pose (tool tip and unit tool axis in the model frame, unwrapped A in degrees), the move kind (rapid, linking, cutting, plunge, lead-in, lead-out), the contact feed (required for fed moves, absent for rapids), the duration in seconds and the contact path length. Validation rejects non-finite values, negative durations and lengths, a fed move without a feed and a rapid with one. Deserialising rejects unknown fields and a tool axis whose length is not one.
+4. **Machine profile (SET-01, SET-06), from 0001 item 2.** Rotary axis as an enum (X only; Y under SET-02), the A sense (`positive` or `negative`), the rotary origin (machine coordinates of the model origin at A = 0; its Y and Z are the rotary axis offset), the A range (continuous or limited), linear travel limits, maximum feeds including rapids, and a clearance cylinder. `MachineProfile::example_x_rotary` is for tests and describes no real machine.
+5. **Kinematic conventions.** The model frame's X axis is the rotary axis and its origin lies on it. `machine_xyz = rotary_origin + R(sign * A) * tip` and `tip = R(-sign * A) * (machine_xyz - rotary_origin)`, with `R` the right-handed rotation about the rotary axis. The tool axis is machine +Z. These live once in `openchuck_types::kinematics`.
+6. **Oracle (architecture section 9, 0001 item 6).** Polar form in `openchuck-testkit::oracle`, reading only plain numbers from the profile. Its tests cover 19 A angles from -1080 to 1234.5 degrees including the 0/360 seam, a zero offset, a flipped A sign (more than 1 mm error) and a wrong offset, at the 1e-6 mm limit of verification plan section 4.1.
+7. **Error model.** Libraries return typed `thiserror` errors whose messages name the field path and the problem (`invalid groups[0].segments[2].contact_feed: a fed move needs a contact feed`). Applications use `anyhow`. Clippy denies `unwrap`, `expect`, `panic`, `todo` and unchecked indexing outside tests; `unsafe_code` is denied. The job manager catches a panic in a job and reports it as an error, because rayon aborts the process on a panic in a spawned task.
+8. **Job context (INT-04, UI-09).** `CancelToken` (cooperative, shared by clones), `ProgressSink` and `JobContext` live in `openchuck-types`. The `openchuck-app` job manager owns one rayon pool sized by `Threads`, reports start, progress and finish on the event stream, and is the only place threads are created.
+9. **Determinism (NFR-06, GC-07).** Clippy denies `HashMap` and `HashSet` (a non-output use may be allowed locally with a reason). The harness runs a job at 1, 2 and N threads (N is the larger of the core count and 4) and twice at N, comparing BLAKE3 hashes. `serde_json` is built with `float_roundtrip`: the IR round-trip property test showed a double does not always survive a JSON save and load without it.
+10. **Dependency policy (NFR-14).** Exact `=` pins declared once in `[workspace.dependencies]`; a register in `docs/dependencies.md` with score, licence and justification; monthly review and within a week of an advisory; fast-moving crates upgraded one family per pull request. `cargo xtask records` enforces pins, single declaration and register rows. `predicates` was left out because the survey did not cover it.
+11. **Licence identifier** (*needs agreement*). Every crate and file uses the SPDX expression `AGPL-3.0-or-later`. The requirements say "AGPL" without a version clause; `AGPL-3.0-only` is the alternative.
+12. **Docs location.** Recorded as decided in architecture section 13: the authoritative documents are in `docs/`.
+13. **Test-data size policy.** No file in `testdata/` above 1 MiB and at most 20 MiB in total, checked by `cargo xtask testdata`. Analytic parts and the 1M-triangle benchmark model are generated by `openchuck-testkit::parts`.
+14. **Traceability.** Tests are named `req_<id>_..._<what>`, for example `req_op_05_op_06_gc_09_oracle_agrees_with_shared_model`. `cargo xtask trace` reads requirement IDs and priorities from `docs/requirements.md` (section 6 `SUG-` rows excluded), slices from the work breakdown traceability table, and closed slices and late-closing requirements from `xtask/traceability.toml`. It fails on an unknown ID, a P1 requirement no slice covers, or a P1 requirement with no test once its last slice is closed. No slice is closed yet.
+15. **Project placeholder.** Until slice 1 defines the project format (SP-8), a project is a folder and an existing folder opens as an empty project. The CLI's `validate`, `regenerate` and `report` run end to end on it and print the NFR-12 notice on `regenerate`.
+16. **Platform builds (0002 item 2).** `openchuck-ui` is a shell that opens an eframe window with the wgpu backend, and `openchuck-viewport` links wgpu, so the three-platform CI builds the SP-2 stack from slice 0.
+
+## Alternatives considered
+
+- **Oracle and harness as modules inside `openchuck-types`, behind a feature.** Rejected: test code would ship in the published library and a feature could be enabled by accident. A module in one crate's `tests/` cannot be shared.
+- **Tags on every segment.** Rejected for size: the work breakdown asks for tags to operation, tool and setup, and a group supplies them to every segment it holds.
+- **Contact feed as a plain number with zero for rapids.** Rejected: an absent feed on a fed move must be an error, not a zero.
+- **`insta` for golden G-code.** Kept for serialised data snapshots; golden G-code uses plain files through `openchuck-testkit::golden` so reviews show plain diffs (architecture section 12).
+
+## Consequences
+
+- New: `docs/dependencies.md` (register), a row for it in `docs/README.md`, and this record in the index.
+- If item 2 is agreed: edit architecture sections 3 and 12. If item 11 changes: replace the SPDX expression across the repository (one `sed`; the xtask check uses a single constant).
+- No rule exception and no `xtask` allow-list entry. `deny.toml` carries one crate-scoped licence exception (open item 1).
+
+## Open items
+
+| # | Item | Decide in | Needs |
+| --- | --- | --- | --- |
+| 1 | **egui's bundled fonts.** `epaint_default_fonts` (pulled in by eframe's `default_fonts`) is `(MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0`. `deny.toml` allows OFL-1.1 and Ubuntu-font-1.0 for that crate only, pending review. Options: accept (fonts are data shipped alongside, not linked code), or drop `default_fonts` and bundle a font under a licence already allowed. | Before the first binary release; slice 8 at latest | Project owner's licence decision |
+| 2 | Add `openchuck-testkit` and `openchuck-benches` to the architecture (decision item 2). | Review of this record | Agreement |
+| 3 | `AGPL-3.0-or-later` or `AGPL-3.0-only` (decision item 11). | Review of this record | Project owner |
+| 4 | **Contributor agreement** allowing a later licence exception or dual licence (INT-09; work breakdown slice 0 item 14). Not decided here. A DCO alone would not give the project the right to relicense; a CLA or a copyright assignment would. | Before outside contributions | Project owner |
+| 5 | **Reserve the `openchuck-*` names on crates.io** (slice 0 item 7). This publishes placeholder crates, so it is the owner's action. | Slice 0 close | Project owner |
+| 6 | **Benchmark regression flag at 10%** needs a dedicated runner (verification plan section 4.1). The criterion baseline exists (`benches/`), but no workflow runs it yet. | Slice 0 close or when a runner exists | A self-hosted runner |
+| 7 | **Scheduled dependency activity check** (verification plan section 7): no tool chosen. Candidates: a small xtask over the crates.io index, or a scheduled `cargo outdated` report. | Slice 0 close | Choice of tool (NFR-14 record) |
+| 8 | **Miri and sanitizers** have nothing to check: `unsafe_code` is denied and there is no FFI. Add the job with the first `unsafe` or FFI code (the STEP kernel, slice 11 after SP-1). | Slice 11 | SP-1 result |
+| 9 | **STEP kernel CI job**, path-filtered so a change to `docs/` or `posts/` does not rebuild it (slice 0 checklist). The `changes` job in `ci.yml` has the filter structure; the job is added with the kernel. | After SP-1 | SP-1 result |
+| 10 | **Three-platform CI has not run yet.** Everything was built and tested on Linux only. The first pull request runs Windows and macOS (0002 outstanding item 2). | First pull request | CI run |
+| 11 | **IR not frozen.** 0001 open items 1 (simulator run), 3 (Z1 A sign and offset), 4 (feed rule on mixed moves) and 7 (tilted tools, off-top contact) may still change the IR or profile fields. | Slices 3, 5 and 6 | 0001 open items |
+
+## Slice 0 review checklist status
+
+| Checklist item | State |
+| --- | --- |
+| Each dependency rule, including the library-family rule, fails CI when deliberately broken | Done: xtask unit tests break each rule on a synthetic graph; `cargo xtask deps` passes on the real workspace |
+| Each library builds and tests alone with no C++ toolchain; a change to `docs/` or `posts/` does not rebuild the STEP kernel | Library part done (`libraries-alone` CI job). No kernel yet (open item 9) |
+| The IR carries every field listed and round-trips through serde | Done, including a property test that doubles survive exactly |
+| The CLI runs on an empty project and gives clear errors for bad input | Done (`apps/openchuck-cli/tests/cli.rs`) |
+| The determinism harness catches a deliberately scheduling-dependent test | Done: thread-dependent chunking and shared push order are both caught |
+| Every dependency has a record, a pinned version and one workspace declaration; the licence list is generated and the SPDX check passes | Done; `cargo about` generates the notices in CI. Open item 1 |
+| The licence, contributor agreement and docs-location decisions are written down | Licence and docs location here; contributor agreement open (item 4) |
+| The kinematic oracle agrees with the shared model over A angles including negatives and the 0/360 seam, and fails when the A sign is flipped | Done |
+| The traceability report flags a seeded gap in a closed slice and fails CI | Done (xtask unit test); the real report passes with no slice closed |

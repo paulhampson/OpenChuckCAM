@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-project"
+description = "Project document model, text persistence, stable IDs and order keys, selection sets and content hashes."
+readme = "README.md"
+categories = ["science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+openchuck-types.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Traceability configuration for `cargo xtask trace`.
+#
+# A P1 requirement with no test fails CI once the last slice that touches it
+# has closed (work breakdown, "Traceability: P1 requirement to slice").
+# Add a slice here when its review checklist is complete.
+closed_slices = []
+
+# Requirements that close later than the last slice listing them in the work
+# breakdown table ("Requirements that span slices").
+[close_at]
+"TL-03" = 8
+"UI-04" = 11
+"PRJ-06" = 11
+"OP-02" = 14
+"OP-11" = 14
+"OP-13" = 13
+"OP-15" = 13
+"OP-14" = 14
+"NFR-02" = 8
+"NFR-03" = 20
+"NFR-04" = 20
+"NFR-06" = 20
+"NFR-07" = 20
+"NFR-08" = 20
+"NFR-09" = 20
+"NFR-10" = 20
+"NFR-14" = 20
