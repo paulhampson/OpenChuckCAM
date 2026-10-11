@@ -2092,7 +2092,7 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "openchuck-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-gcode",
  "openchuck-geom",
@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-benches"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "openchuck-geom",
@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2131,14 +2131,14 @@ dependencies = [
 
 [[package]]
 name = "openchuck-gcode"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-types",
 ]
 
 [[package]]
 name = "openchuck-geom"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-testkit",
  "openchuck-types",
@@ -2147,7 +2147,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-import"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-geom",
  "openchuck-testkit",
@@ -2159,21 +2159,21 @@ dependencies = [
 
 [[package]]
 name = "openchuck-path"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-types",
 ]
 
 [[package]]
 name = "openchuck-post"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-types",
 ]
 
 [[package]]
 name = "openchuck-project"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-sim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-path",
  "openchuck-types",
@@ -2195,7 +2195,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-testkit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -2205,7 +2205,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "insta",
  "proptest",
@@ -2216,7 +2216,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "openchuck-app",
@@ -2225,7 +2225,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-viewport"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "openchuck-types",
  "wgpu",
@@ -4155,7 +4155,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "cargo_metadata",

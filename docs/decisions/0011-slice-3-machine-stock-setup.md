@@ -88,6 +88,7 @@ Tests named after the requirement IDs (decision 0004 item 14):
 
 - No new dependency. No change to `requirements.md` or `architecture.md`. When this record is accepted it amends decision 0004 item 4 (`rotary_origin` is the rotary reference point, `Clearance` is a safe cylinder and a safe Z, `provenance` added) and item 5 (the base rotation `B` for a Y rotary axis), and settles OI-43 and OI-40.
 - `openchuck-types`: `kinematics::RotaryFrame`, `setup` module, `machine` changes. `openchuck-geom`: `part_extent`. `openchuck-project`: `machines` module and built-in Z1 profile, setup fields, `machine.toml`, schema 3. `openchuck-app`: `setup` module, `check_setups`, `find_setup`. CLI: `machines`, `machine`, `setup`.
+- The `openchuck-types` public API breaks (`Clearance` becomes a struct; `MachineProfile` gains `provenance`), so the workspace version goes from 0.1.0 to 0.2.0 and the change is recorded in the crate's changelog; `cargo semver-checks` against `main` reports exactly these two (INT-07).
 - `fuzz/` gains `machine_profile_toml`; `ci.yml` and `nightly.yml` run it.
 - The work breakdown's slice 3 checklist line "Every Z1 value is marked confirmed or unconfirmed" is met with every value unconfirmed; confirming them needs the air cut (OI-37) and a look at the owner's Z1 (OI-39).
 
