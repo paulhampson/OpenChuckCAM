@@ -55,7 +55,7 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 
 | ID | Item | Source | Closed | Settled in |
 | --- | --- | --- | --- | --- |
-| OI-39 | Z1 limits disagree between sources. | Decision 0007 item 3 | 11 Oct 2026 | Owner chose the stock defaults: decision 0012 sets them by consensus across Makera's profiles and the Z1 firmware (spans 200 x 200 x 100 mm, 1200 mm/min on X and Y, 600 on Z, 3600 deg/min on A). A user who changes them makes their own machine profile. The values still carry the unconfirmed mark until checked on a machine |
+| OI-39 | Z1 limits disagree between sources. | Decision 0007 item 3 | 11 Oct 2026 | Owner chose the stock defaults: decision 0012 sets them by consensus across Makera's profiles and the Z1 firmware (spans 200 x 200 x 100 mm, 1200 mm/min on X and Y, 600 on Z, 3600 deg/min on A). A user who changes them makes their own machine profile. The feed limits were then confirmed by the owner from use of the machine and marked confirmed; the other profile fields stay unconfirmed |
 | OI-56 | Per-axis feed limits. | Decision 0012 item 3 | 11 Oct 2026 | Owner's experience of the Z1 agrees. `MaxFeeds` gained `z` and `rapid_z`, and the Z1 profile holds 600 mm/min for Z |
 | OI-49 | The STL header unit convention is unproven against real exporters. | Decision 0010 item 2 | 11 Oct 2026 | Owner chose to read millimetres by default and treat a header's unit as a hint the user confirms, with a size check, after a look at OrcaSlicer, Cura and FreeCAD (decision 0010 item 4) |
 | OI-35 | Order-key growth under repeated insertion at one spot. | Decision 0006, item 2 | 11 Oct 2026 | Owner chose an explicit renumber command and a warning for keys over 32 characters (decision 0008 item 11) |

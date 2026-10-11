@@ -531,15 +531,15 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     );
 
     let out = run(&args(&["machines"]));
-    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("7 of 7 values unconfirmed"));
+    assert!(out.stdout.contains("makera-z1") && out.stdout.contains("6 of 7 values unconfirmed"));
     let out = run(&args(&["machine", p, "makera-z1"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     // The A direction is stated from the shared kinematics, and every Z1
-    // value is shown as unconfirmed.
+    // value is shown as confirmed or unconfirmed (the feed limits are confirmed).
     assert!(out.stdout.contains("faces -Y at A 90"), "{}", out.stdout);
     assert_eq!(
         out.stdout.matches("UNCONFIRMED").count(),
-        7,
+        6,
         "{}",
         out.stdout
     );

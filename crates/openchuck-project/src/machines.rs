@@ -145,12 +145,16 @@ mod tests {
         assert_eq!(z1.name, "Makera Z1");
         assert_eq!(z1.rotary_axis, RotaryAxis::X);
         assert_eq!(z1.a_sense, ASense::Positive);
-        // Every field says where it came from, and none is confirmed until
-        // the air cut (OI-37) and the limits check (OI-39).
+        // Every field says where it came from.
         for field in ProfileField::ALL {
             assert!(z1.provenance.contains_key(&field), "{field} is not marked");
         }
-        assert_eq!(z1.unconfirmed_fields(), ProfileField::ALL.to_vec());
+        // The owner confirmed the feed limits from use of the machine; the rest
+        // waits for the air cut (OI-37) and a measurement of the axis (OI-57).
+        let mut expected = ProfileField::ALL.to_vec();
+        expected.retain(|f| *f != ProfileField::MaxFeeds);
+        assert_eq!(z1.unconfirmed_fields(), expected);
+        assert!(z1.is_confirmed(ProfileField::MaxFeeds));
         assert_eq!(builtin("makera z1").unwrap().unwrap(), z1);
         assert!(builtin("no such machine").is_none());
     }

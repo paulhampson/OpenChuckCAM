@@ -70,8 +70,8 @@ state = "unconfirmed"
 source = "spans 200 x 200 x 100 mm: FreeCAD Z1 exactly, Fusion Z1 with 10 mm extra on X and Y, firmware soft limits -206/-206/-102 (disabled by default). Frame is the firmware's G53 with home at 0; with the rotary module and soft limits on, the firmware holds Y above -160. Stock defaults: a user who changes them makes their own profile (decision 0012)"
 
 [machine.provenance.max_feeds]
-state = "unconfirmed"
-source = "A 3600 deg/min (10 RPM): Makera's published figure and the Z1 and Z1 Pro firmware delta_max_rate agree. X and Y 1200 mm/min and Z 600 mm/min from the same firmware config (Carvera and Air differ), matching the 1200 reported from Makera Studio. Fusion (4000, 21600), FreeCAD (6000, 4000), Mastercam and NX figures are identical across Makera's machines, so they carry no Z1 information (decision 0012)"
+state = "confirmed"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 1200 mm/min, Z 600 mm/min, A 3600 deg/min (10 RPM). Consistent with Makera's published A rate, the Z1 and Z1 Pro firmware default config (Carvera and Air differ) and the 1200 reported from Makera Studio; the CAM profiles' figures are template values and were not used (decision 0012)"
 
 [machine.provenance.clearance]
 state = "unconfirmed"

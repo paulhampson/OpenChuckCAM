@@ -1,6 +1,6 @@
 # 0012: Makera Z1 profile values: consensus across Makera's published profiles
 
-**Status:** Proposed (11 Oct 2026). Items 3 to 5 follow the owner's replies of 11 Oct 2026. It amends item 8 of [decision 0011](0011-slice-3-machine-stock-setup.md) (also proposed) and the limits row of [decision 0007](0007-sp-12-z1-conventions.md) (proposed). Nothing here is measured on a Z1; every value stays *unconfirmed* in the profile until the air cut (OI-37) and a measurement of the axis (OI-57).
+**Status:** Proposed (11 Oct 2026). Items 3 to 5 follow the owner's replies of 11 Oct 2026. It amends item 8 of [decision 0011](0011-slice-3-machine-stock-setup.md) (also proposed) and the limits row of [decision 0007](0007-sp-12-z1-conventions.md) (proposed). Nothing here is measured on a Z1. The owner confirmed the feed limits from use of the machine (11 Oct 2026), so that field is marked *confirmed*; the other six stay *unconfirmed* until the air cut (OI-37) and a measurement of the axis (OI-57).
 
 ## Context
 
@@ -92,12 +92,13 @@ The firmware enforces these rates per axis when it plans a move (`Robot.cpp`, ra
 
 ## Decision
 
-1. **Z1 profile values** (amends decision 0011 item 8): rotary axis X; `positive` A sense; continuous A; travel X -200 to 0, Y -200 to 0, Z -100 to 0 in the firmware's machine frame; rotary reference point X -180.4, Y -108.8; max feeds 1200 mm/min linear, 3600 deg/min rotary, rapids equal. The default clearance stays an OpenChuckCAM default (radius 45 mm, safe Z 60 mm). The profile file records each value's evidence and stays *unconfirmed* in all seven fields.
+1. **Z1 profile values** (amends decision 0011 item 8): rotary axis X; `positive` A sense; continuous A; travel X -200 to 0, Y -200 to 0, Z -100 to 0 in the firmware's machine frame; rotary reference point X -180.4, Y -108.8; max feeds 1200 mm/min linear, 3600 deg/min rotary, rapids equal. The default clearance stays an OpenChuckCAM default (radius 45 mm, safe Z 60 mm). The profile file records each value's evidence. The feed limits are *confirmed* by the owner; the other six fields are *unconfirmed*.
 2. **The machine Z of the axis is unknown (OI-57).** The profile keeps a placeholder of 0, which puts every Z1 setup's safe Z outside the Z travel, so the setup checks warn that the safe Z cannot be verified, naming `rotary_origin` as unconfirmed. This is deliberate: a silent pass on an invented number would be worse. The owner can measure the value (see below) and the warning goes away.
 3. **Per-axis feed limits (OI-56, owner agreed).** `MaxFeeds` gains `z` and `rapid_z`; `linear` and `rapid_linear` are X and Y. The Z1 holds 1200 mm/min on X and Y, 600 on Z and 3600 deg/min on A, so a Z move is no longer planned faster than the machine will run it. This is a breaking change to `openchuck-types` already covered by the 0.2.0 version bump.
 4. **The A direction stays as decision 0007 has it**, now with a stated consensus. No change to `ASense::Positive`, the oracle tests or the post conventions.
-5. **Stock defaults (OI-39, owner's choice).** The built-in Z1 profile carries the stock values above. A user who changes the machine's limits creates their own profile; nothing reads the machine's `config.txt`. The values keep the unconfirmed mark until checked on a machine.
+5. **Stock defaults (OI-39, owner's choice).** The built-in Z1 profile carries the stock values above. A user who changes the machine's limits creates their own profile; nothing reads the machine's `config.txt`. The feed limits are marked confirmed (item 7); the others keep the unconfirmed mark until checked on a machine.
 6. **Default work Z0 (owner's experience).** On a Z1 the default work Z0 is the chuck centre, which is how the work frame already places it (decision 0011 item 1). It is a work coordinate: it does not give the machine Z of the axis (OI-57), so the placeholder and its warning stay.
+7. **Feed limits confirmed (owner, 11 Oct 2026).** The owner confirmed X and Y 1200 mm/min, Z 600 mm/min and A 3600 deg/min from use of the machine, so `max_feeds` is marked `confirmed` in the profile. The safe-Z check against the travel is kept, and the machine Z of the axis stays unconfirmed (OI-57).
 
 ## Alternatives considered
 
