@@ -1,6 +1,6 @@
 # 0009: LinuxCNC checks of the SP-3 and SP-5 fixtures
 
-- **Status:** proposed. The results are measurements and stand on their own; the decisions below (items 2 and 3) wait for agreement, and the owner accepted decision 0001 on the strength of these results.
+- **Status:** accepted by the project owner on 11 Oct 2026, including the two fixture decisions (items 2 and 3 below). The owner also accepted decision 0001 on the strength of these results.
 - **Date:** 11 Oct 2026.
 - **Spike branch:** `spike/linuxcnc-fixture-checks` (throwaway, never merged; write-up in `spikes/linuxcnc-checks/RESULT.md`, raw output in `spikes/linuxcnc-checks/out/`, reproduced by `run_checks.sh`).
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-01 and OI-31 close here; OI-46 and OI-47 are new.
@@ -41,7 +41,7 @@ LinuxCNC 2.9.10 (branch `2.9`) was built from source in the session (run-in-plac
 - **`linuxcnc_post_subset.ngc` is rejected as written.** At N160 LinuxCNC reports "Radius to end of arc differs from radius to start" (r1 = 5.0, r2 = 14.76), and the other three arcs (N170, N180, N190) have the same defect: their end points are not on the circle the centre and start point define. The SP-5 reader reads the file because it checks syntax, not geometry, so its tests passed. Only the four arc lines need changing; with them corrected (`spikes/linuxcnc-checks/fixtures/linuxcnc_post_subset_corrected.ngc`) the whole file reads without error, including N numbers, `%`, both comment forms, `(MSG,...)`, A alone, A down to -12345.6789, G93 and G94, G43 H, M0 to M9 and M30. `T2 M6` needs tool 2 in the tool table, which is a machine-configuration matter.
 - **`linuxcnc_dialect_extra.ngc` fails as a whole file**, because its `o100 sub` has no `endsub`. Statement by statement, LinuxCNC evaluates `#` parameters and `[...]` expressions, reads lowercase and spaces inside words (`G 1 X 1 . 5 A 2 0` is `G1 X1.5 A20`), executes a `/` line when block delete is off, and accepts `G38.2`, `G33.1` (spindle running), `G10 L2` and `M30`. This matches the SP-5 reader's behaviour: it reads lowercase, spacing and block delete, and refuses `#`, `[...]` and O-words with an error that names the feature.
 
-## Decision (proposed)
+## Decision
 
 1. **SP-3's simulator criterion is met** for the LinuxCNC rule: reached positions match the file, the run completes, and the compensated and inverse-time files run to the IR's cut time within 0.4 %. OI-01 closes. The record 0001 criteria that need the A direction stay with OI-03.
 2. **The corrected arc lines are the ones that go into the fixture.** When slice 6 adds the post-subset file to `testdata/`, it takes `linuxcnc_post_subset_corrected.ngc`, not the SP-5 original (OI-46).
