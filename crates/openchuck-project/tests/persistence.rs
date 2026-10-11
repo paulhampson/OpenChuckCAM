@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The project folder on disk (work breakdown slice 1 items 2 and 5; decision
-//! records 0006 and 0007). The Git merge scenarios S1 to S6 follow SP-8.
+//! records 0006 and 0008). The Git merge scenarios S1 to S6 follow SP-8.
 
 // Test code may unwrap, index and panic (NFR-07 applies to library code).
 #![allow(
@@ -461,7 +461,7 @@ fn req_prj_05_git_merges_of_different_items_are_clean() {
 
 #[test]
 fn req_prj_05_conflicting_model_additions_are_reported_clearly() {
-    // Model references share project.toml (decision record 0007), so adding
+    // Model references share project.toml (decision record 0008), so adding
     // one on each branch conflicts. Loading names the file and line.
     let (clean, dir) = merge(
         "models",

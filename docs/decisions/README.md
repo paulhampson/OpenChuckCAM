@@ -26,4 +26,5 @@ Add a row for each new record. Read the records that touch your task before you 
 | [0004](0004-slice-0-guardrails.md) | Slice 0 design refinement, guardrails and shared data | Accepted (IR not frozen until a later slice). Open items in [open-items.md](../open-items.md) |
 | [0005](0005-sp-5-gcode-reader.md) | SP-5 result, G-code reader: in-house reader | Accepted (LinuxCNC check of the fixture outstanding, OI-31) |
 | [0006](0006-sp-8-project-format.md) | SP-8 result, project format and order keys: per-item order keys; TOML for the project folder | Accepted |
-| [0007](0007-slice-1-project-model.md) | Slice 1 design refinement: project model, project folder layout, order keys, schema migration and undo | Accepted |
+| [0007](0007-sp-12-z1-conventions.md) | SP-12 result, Makera Z1 rotary conventions and G93 (desk part) | Proposed (air cut outstanding, OI-37) |
+| [0008](0008-slice-1-project-model.md) | Slice 1 design refinement: project model, project folder layout, order keys, schema migration and undo | Accepted |

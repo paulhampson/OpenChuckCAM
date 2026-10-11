@@ -77,7 +77,7 @@ fn main() -> ExitCode {
 /// Opens the project in `folder`. A folder with no project gives a warning
 /// and an offer to create one: `--create` accepts it, a terminal is asked, and
 /// anything else stops with an error so a script never carries on by accident
-/// (decision record 0007 item 8).
+/// (decision record 0008 item 8).
 fn open_project(folder: &Path, threads: Threads, create: bool) -> Result<Application> {
     match Application::open(folder, threads) {
         Err(AppError::NoProject(path)) => {

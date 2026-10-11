@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # A project folder in a made-up schema 0, in which the project name was
 # called `title`. It exercises the migration framework (PRJ-04, decision
-# record 0007); schema 1 is the first real version.
+# record 0008); schema 1 is the first real version.
 schema = 0
 title = "Schema 0 fixture"

@@ -6,7 +6,7 @@
 //! Setups, tool snapshots, selection sets and operations each carry an order
 //! key (decision record 0006) and are kept sorted by `(key, id)`. Model
 //! references have no key: they are listed in `project.toml` in order
-//! (decision record 0007).
+//! (decision record 0008).
 //!
 //! Every change goes through an edit method that keeps the document valid: IDs
 //! stay unique, references point at items that exist, and an item in use cannot
@@ -32,7 +32,7 @@ use crate::order::{self, OrderKey};
 /// The machine a project is set up for.
 ///
 /// A placeholder until slice 3 settles how a project refers to its machine
-/// profile (SET-01, open item OI-38).
+/// profile (SET-01, open item OI-43).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MachineRef {

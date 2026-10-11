@@ -8,7 +8,7 @@
 //! PRJ-02), selection sets with reserved descriptor fields (PRJ-06, PRJ-07),
 //! the project folder as TOML files with schema versions and migration
 //! ([`file`](mod@file), PRJ-01, PRJ-04) and the cache folder for generated data
-//! ([`cache`], PRJ-03). Decision records 0006 and 0007.
+//! ([`cache`], PRJ-03). Decision records 0006 and 0008.
 //!
 //! ```
 //! use openchuck_project::id::{OperationId, SetupId};

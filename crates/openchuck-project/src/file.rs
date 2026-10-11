@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The project folder on disk (PRJ-01, PRJ-04; decision records 0006 and 0007).
+//! The project folder on disk (PRJ-01, PRJ-04; decision records 0006 and 0008).
 //!
 //! ```text
 //! project.toml            schema, name, machine reference, model references
@@ -548,7 +548,7 @@ mod tests {
 
     /// A test-only step from schema 0, where the project name was called
     /// `title`, to schema 1. The real list is empty because schema 1 is the
-    /// first (decision record 0007).
+    /// first (decision record 0008).
     fn rename_title(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
         if kind == FileKind::Project {
             let title = table

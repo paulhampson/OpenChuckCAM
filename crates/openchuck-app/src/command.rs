@@ -17,7 +17,7 @@ use crate::AppError;
 /// A change to the project. Every command is undoable (UI-08).
 ///
 /// Undo restores order keys exactly, never by computing new ones, so a saved
-/// project is byte for byte what it was (decision record 0007).
+/// project is byte for byte what it was (decision record 0008).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Command {

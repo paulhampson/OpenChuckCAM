@@ -140,14 +140,14 @@ These apply to every slice and are not repeated below.
 7. Reserve descriptor fields (position, normal, area) in the selection schema so P2 matching needs no format change; not implemented.
 8. CLI commands to validate a project and to load and save it; a fuzz target for the project loader (NFR-07).
 
-**Progress:** items 1 to 8 are built ([decision 0007](decisions/0007-slice-1-project-model.md), accepted, on [decision 0006](decisions/0006-sp-8-project-format.md)). The checklist below is ticked from local runs; the slice closes when CI is green on all three platforms.
+**Progress:** items 1 to 8 are built ([decision 0008](decisions/0008-slice-1-project-model.md), accepted, on [decision 0006](decisions/0006-sp-8-project-format.md)). The checklist below is ticked from local runs; the slice closes when CI is green on all three platforms.
 
 **Review checklist**
 
 - [x] Saving twice gives byte-identical files, and load then save is a no-op
 - [x] A one-parameter edit changes one line in a plain diff; a reorder touches one item
 - [x] The real Git merge test passes: two branches editing different operations merge without conflict
-- [x] A fixture for every older schema version migrates (none exists before schema 1; the framework is proven on a test-only schema 0 fixture, decision 0007 item 12)
+- [x] A fixture for every older schema version migrates (none exists before schema 1; the framework is proven on a test-only schema 0 fixture, decision 0008 item 12)
 - [x] A changed model file is detected by its hash on load
 - [x] Undo then redo restores the exact prior project
 

@@ -1,8 +1,8 @@
-# 0007: Slice 1 design refinement: project model, project folder and undo
+# 0008: Slice 1 design refinement: project model, project folder and undo
 
 **Status:** Accepted (11 Oct 2026). Items 9, 11, 12 and 13 were chosen by the owner in the slice 1 design review. The owner accepted items 1 to 7 as proposed and amended item 8 (a folder with no project is a warning with an offer to create one, not an error). Items 10 and 14 to 17 were proposed in the same review and went ahead without objection, and item 18, never put to the owner separately, is accepted with the record as a whole. It builds on [decision 0006](0006-sp-8-project-format.md) (accepted: TOML for the project folder, a per-item order key).
 
-Numbering: this record was drafted as 0005 with open items OI-31 to OI-33; those numbers were taken on `main` by decisions 0005 (SP-5) and 0006, so it is 0007 with OI-37 to OI-39.
+Numbering: this record was drafted as 0005 with open items OI-31 to OI-33, renumbered to 0007 with OI-37 to OI-39 when `main` took 0005 (SP-5) and 0006 (SP-8), and renumbered again to 0008 with OI-42 to OI-45 when the SP-12 record merged first as 0007 (open items OI-37 to OI-41). Decision 0004 item 15 and the SP-8 record's open items OI-35 and OI-36 keep their numbers.
 
 ## Context
 
@@ -88,7 +88,7 @@ Tests named after the requirement IDs (decision 0004 item 14):
 
 - New dependency `uuid` 1.28.0 (`v4`), recorded in `docs/dependencies.md`. `blake3` and `toml` are now also used by `openchuck-project`. All are in the architecture's selection (section 7).
 - `fuzz/` gains the `project_files` target and a path dependency on `openchuck-project`; `ci.yml` and `nightly.yml` run it.
-- No change to `requirements.md` or `architecture.md`. Section 5.6 lists the project folder's files as "project, setups, one file per operation, selection sets, machine"; this record adds `tools/` for the TL-07 snapshots and leaves the machine file to slice 3 (OI-38).
+- No change to `requirements.md` or `architecture.md`. Section 5.6 lists the project folder's files as "project, setups, one file per operation, selection sets, machine"; this record adds `tools/` for the TL-07 snapshots and leaves the machine file to slice 3 (OI-43).
 - Decision 0004 item 15 (any folder opens as an empty project) no longer applies.
 
 ## Open items
@@ -97,7 +97,7 @@ Tracked in [open-items.md](../open-items.md).
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 (OI-37) | Build slice 1 persistence on decision 0006. **Closed** by items 9 to 17. | Slice 1 | Done |
-| 2 (OI-38) | `MachineRef` is a placeholder (a profile name). How a project refers to or stores its machine profile (the "machine" file in architecture section 5.6). | Slice 3 | SET-01 design |
-| 3 (OI-39) | Triangle selections must apply to mesh models only (architecture section 5.6). `ModelRef` does not yet record whether a model is a mesh or a B-rep, so the rule is not enforced. | Slices 2 and 10 | Model kind from import |
-| 4 (OI-40) | The UI should check model hashes when it opens a project (`Application::check_models`) and tell the user which models changed or are missing (PRJ-02). The CLI already does so in `validate`. | Slice 8 | The application shell |
+| 1 (OI-42) | Build slice 1 persistence on decision 0006. **Closed** by items 9 to 17. | Slice 1 | Done |
+| 2 (OI-43) | `MachineRef` is a placeholder (a profile name). How a project refers to or stores its machine profile (the "machine" file in architecture section 5.6). | Slice 3 | SET-01 design |
+| 3 (OI-44) | Triangle selections must apply to mesh models only (architecture section 5.6). `ModelRef` does not yet record whether a model is a mesh or a B-rep, so the rule is not enforced. | Slices 2 and 10 | Model kind from import |
+| 4 (OI-45) | The UI should check model hashes when it opens a project (`Application::check_models`) and tell the user which models changed or are missing (PRJ-02). The CLI already does so in `validate`. | Slice 8 | The application shell |

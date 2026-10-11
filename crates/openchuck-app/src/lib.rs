@@ -8,7 +8,7 @@
 //! caller's thread (UI-09, NFR-04).
 //!
 //! Every project edit is a [`Command`] and can be undone and redone (UI-08).
-//! Projects are folders of TOML files (decision records 0006 and 0007). No
+//! Projects are folders of TOML files (decision records 0006 and 0008). No
 //! strategy exists yet, and regeneration runs the
 //! pipeline over no operations and produces an empty toolpath.
 
@@ -123,7 +123,7 @@ impl Application {
     /// A missing path, a path to a file and a damaged project are errors with
     /// a message for the user (NFR-07). A folder with no `project.toml` gives
     /// [`AppError::NoProject`], which a front end shows as a warning and
-    /// answers by offering [`Application::create`] (decision record 0007
+    /// answers by offering [`Application::create`] (decision record 0008
     /// item 8).
     pub fn open(folder: &Path, threads: Threads) -> Result<Self, AppError> {
         check_folder(folder)?;
