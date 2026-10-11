@@ -1,6 +1,6 @@
 # OpenChuckCAM: High-Level Architecture
 
-Revision 3, 11 Oct 2026. Rebuilt against the requirements doc *OpenChuckCAM - Initial Requirements* (IDs such as OP-05 and NFR-01 refer to it) and the crate survey *Rust crates for a CAM / 4th-axis project* (scores out of 100 are that survey's, as of 10 Oct 2026). Section 13 lists what changed from the first draft.
+Revision 4, 11 Oct 2026. Rebuilt against the requirements doc *OpenChuckCAM - Initial Requirements* (IDs such as OP-05 and NFR-01 refer to it) and the crate survey *Rust crates for a CAM / 4th-axis project* (scores out of 100 are that survey's, as of 10 Oct 2026). Section 13 lists what changed from the first draft.
 
 ## 1. Scope and architectural drivers
 
@@ -55,6 +55,10 @@ The requirements that shape the structure most:
 Later, outside the core release: `openchuck-path-py` (Python bindings, INT-05), `openchuck-path-capi` (C interface, INT-06, P3) and an example host program (INT-08). All three depend only on the libraries.
 
 Tool and material libraries and the setup sheet start as modules (in `openchuck-project` and `openchuck-app`) and become crates only if a second consumer appears.
+
+**Figure 1: static structure.** The crates grouped by the layers in section 4. A solid arrow points from a crate to a crate it depends on. A dashed arrow is a test-only dev-dependency, and a dashed box is planned and not yet in the tree. To keep the layers readable, the figure omits the arrows to `openchuck-types` (every crate that holds plain data depends on it) and from `openchuck-app` to `openchuck-path`, `-post` and `-gcode`. The table above is the complete list.
+
+![Figure 1: static structure of the crates, grouped by layer. Front ends sit above the application, which depends on the services and libraries. The libraries and services depend on openchuck-types. Test-only crates and the planned openchuck-vcs are drawn with dashed outlines.](diagrams/static-structure.svg)
 
 ## 4. Dependency rules
 
@@ -166,6 +170,10 @@ Built as if it already belonged to another project (INT-01): small public API, p
 5. **Generate** runs the strategy as a background job. Inputs for operation N include the stock left by operations before it, supplied through `StockModel`.
 6. **Simulate** applies the toolpath to the stock, produces deviation and engagement, and hands the updated stock to operation N+1 (SIM-06).
 7. **Post** converts all operations to G-code through the selected post (GC-02).
+
+**Figure 2: dataflow.** The pipeline above as data moves through it. Setup, selection and operation are user edits, stored in the project folder. Import, generate, simulate and post are engine stages. Generate and simulate write to the cache, which is regenerated and never stored in the project (PRJ-03). The simulated stock returns to Generate for the next operation through the `StockModel` port (SIM-06). The G-code replay checks the output against the IR (GC-08).
+
+![Figure 2: dataflow from import through setup, selection and operation to generate, simulate and post, then G-code. The stock from simulation feeds the next operation's generation. User edits go to the project folder; generated results go to the cache; the G-code file is replayed for checking.](diagrams/dataflow.svg)
 
 Operations form a dependency chain, so editing operation N invalidates the cached results of N and everything after it, and nothing before it. Caches are keyed by a hash of the operation's inputs and the engine version, which also makes regeneration after load cheap when nothing changed.
 
@@ -394,3 +402,4 @@ This follows the requirement priorities and the survey's advice to spike each la
 - SP-3 (decision record 0001, accepted): section 5.1's IR field list gains the contact path length, which slice 0 built as `contact_length`.
 - Slice 0 (decision record 0004): added the test-only `openchuck-testkit` and the `openchuck-benches` package to sections 3 and 12, fixed the licence identifier as `AGPL-3.0-or-later`, and recorded the contributor licence agreement.
 - Verification review: added an independent kinematic oracle to the verification table (it covers the case where the path library, post and G-code reader share one wrong machine model), the acceptance limits and reference hardware from the verification plan to the simulation and performance rows, and the requirement-ID test convention and traceability report to the repository section.
+- Revision 4 (diagrams only, no design change): added Figure 1, the static structure of the crates (section 3), and Figure 2, the dataflow of the operation pipeline (section 6). Both are SVG files in `docs/diagrams/`, drawn from sections 3, 4 and 6, and follow the viewer's light or dark setting.
