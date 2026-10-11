@@ -26,6 +26,7 @@ thiserror.workspace = true
 [dev-dependencies]
 openchuck-testkit.workspace = true
 rayon.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

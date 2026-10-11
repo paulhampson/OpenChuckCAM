@@ -68,6 +68,7 @@ jobs:
             fuzz:
               - 'fuzz/**'
               - 'crates/openchuck-types/**'
+              - 'crates/openchuck-project/**'
 
   fmt:
     name: rustfmt
@@ -231,7 +232,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, toolpath_ir_json]
+        target: [machine_profile_json, toolpath_ir_json, project_files]
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install nightly --profile minimal

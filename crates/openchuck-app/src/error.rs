@@ -11,6 +11,10 @@ pub enum AppError {
     /// The path exists but is not a folder.
     #[error("'{}' is not a project folder", .0.display())]
     NotAProjectFolder(PathBuf),
+    /// The folder exists but holds no project (no `project.toml`). Front ends
+    /// offer to create one with [`Application::create`](crate::Application::create).
+    #[error("'{}' has no project.toml, so it is not a project yet", .0.display())]
+    NoProject(PathBuf),
     /// A file could not be read or written.
     #[error("cannot access '{}': {source}", path.display())]
     Io {
@@ -22,6 +26,9 @@ pub enum AppError {
     /// The worker pool could not be started.
     #[error("cannot start the worker pool: {0}")]
     WorkerPool(String),
+    /// A project edit or check failed.
+    #[error(transparent)]
+    Project(#[from] openchuck_project::ProjectError),
     /// An engine library reported an error.
     #[error(transparent)]
     Engine(#[from] openchuck_types::Error),
