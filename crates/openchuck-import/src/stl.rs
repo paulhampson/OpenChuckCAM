@@ -15,10 +15,13 @@
 //! `openchuck-geom` see the file as it is. The same part written as ASCII and
 //! as binary gives the same mesh, because both hold single-precision values.
 //!
-//! **Units (IMP-03).** STL has no unit field. Some exporters write one into
-//! the header (binary) or the `solid` line (ASCII) as `units=in` or
-//! `UNITS: mm`; that is read when present. Otherwise millimetres are assumed
-//! and the user can override.
+//! **Units (IMP-03).** STL has no unit field, so a file is read in
+//! millimetres unless the user chose a unit for it. Some exporters may write
+//! one into the header (binary) or the `solid` line (ASCII) as `units=in` or
+//! `UNITS: mm`; that is read as a hint and, if it is not millimetres, raises
+//! a [`UnitQuestion`](crate::UnitQuestion), as does a part whose size is
+//! implausible in millimetres. OrcaSlicer, Cura and FreeCAD all read STL as
+//! millimetres; OrcaSlicer also asks when a part looks too small.
 
 use std::collections::BTreeMap;
 use std::io::Cursor;
@@ -30,7 +33,8 @@ use openchuck_types::model::{ModelFormat, ModelGeometry};
 use openchuck_types::units::LengthUnit;
 
 use crate::{
-    ImportError, ImportOptions, ImportedModel, ModelImporter, STL_TESSELLATION_NOTICE, Units,
+    ImportError, ImportOptions, ImportedModel, ModelImporter, STL_TESSELLATION_NOTICE,
+    UnitQuestion, Units,
 };
 
 /// Size of a binary STL header plus its triangle count.
@@ -117,15 +121,20 @@ pub fn read(
     let (file_unit, unknown) = unit_in_header(&header);
     if let Some(word) = unknown {
         notes.push(format!(
-            "the file names the unit '{word}', which is not one OpenChuckCAM knows (mm, cm, m, in)"
+            "the file names the unit '{word}', which is not one OpenChuckCAM knows (um, mm, cm, m, in)"
         ));
     }
     let units = Units::choose(file_unit, options.units);
     let (mesh, stated_normals) = build_mesh(&facets, units.applied.millimetres(), context)?;
+    let unit_question = match options.units {
+        Some(_) => None,
+        None => UnitQuestion::ask(file_unit, largest_size(&mesh)),
+    };
     let model = ImportedModel {
         format: ModelFormat::Stl,
         geometry: ModelGeometry::Mesh(mesh),
         units,
+        unit_question,
         stated_normals: Some(stated_normals),
         notes,
     };
@@ -358,6 +367,24 @@ fn build_mesh(
         },
         normals,
     ))
+}
+
+/// The largest side of the mesh's bounding box, in millimetres.
+fn largest_size(mesh: &TriangleMesh) -> f64 {
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
+    for p in &mesh.vertices {
+        for (k, c) in [p.x, p.y, p.z].into_iter().enumerate() {
+            if let (Some(lo), Some(hi)) = (min.get_mut(k), max.get_mut(k)) {
+                *lo = lo.min(c);
+                *hi = hi.max(c);
+            }
+        }
+    }
+    min.iter()
+        .zip(&max)
+        .map(|(lo, hi)| hi - lo)
+        .fold(0.0, f64::max)
 }
 
 fn check_in(

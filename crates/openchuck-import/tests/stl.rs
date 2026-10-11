@@ -17,8 +17,8 @@ use openchuck_geom::check::check_mesh;
 use openchuck_geom::summary;
 use openchuck_import::stl::{StlEncoding, read, unit_in_header};
 use openchuck_import::{
-    ImportError, ImportOptions, ImportedModel, STL_TESSELLATION_NOTICE, UnitSource, import_bytes,
-    import_file,
+    ImportError, ImportOptions, ImportedModel, LARGE_PART_MM, SMALL_PART_MM,
+    STL_TESSELLATION_NOTICE, UnitConcern, UnitQuestion, UnitSource, import_bytes, import_file,
 };
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::mesh::TriangleMesh;
@@ -96,8 +96,9 @@ fn req_imp_01_corpus_counts_and_bounds_match_references() {
     let cases: [Case; 6] = [
         ("cube_ascii.stl", 12, 8, [0.0; 3], [10.0; 3]),
         ("cube_binary.stl", 12, 8, [0.0; 3], [10.0; 3]),
-        ("cube_inch.stl", 12, 8, [0.0; 3], [25.4; 3]),
-        ("cube_metre_binary.stl", 12, 8, [0.0; 3], [500.0; 3]),
+        // Read in millimetres until the user confirms the unit the file names.
+        ("cube_inch.stl", 12, 8, [0.0; 3], [1.0; 3]),
+        ("cube_metre_binary.stl", 12, 8, [0.0; 3], [0.5; 3]),
         ("two_cubes.stl", 24, 16, [0.0; 3], [30.0, 10.0, 10.0]),
         (
             "defect_non_manifold.stl",
@@ -140,38 +141,97 @@ fn req_imp_01_every_stl_says_its_tessellation_is_fixed() {
 }
 
 #[test]
-fn req_imp_03_units_from_the_file_and_override() {
-    let inch = import("cube_inch.stl");
-    assert_eq!(inch.units.file, Some(LengthUnit::Inch));
-    assert_eq!(inch.units.applied, LengthUnit::Inch);
-    assert_eq!(inch.units.source, UnitSource::File);
-    assert_eq!(mesh(&inch).vertices[1].x, 25.4);
-
-    let metre = import("cube_metre_binary.stl");
-    assert_eq!(metre.units.applied, LengthUnit::Metre);
-    assert_eq!(summary(mesh(&metre)).bounds.unwrap().max.z, 500.0);
-
-    // No unit in the file: millimetres are assumed, and the report says so.
+fn req_imp_03_millimetres_by_default_and_the_users_unit_when_chosen() {
+    // No unit chosen: millimetres, whatever the file says, and nothing to ask
+    // for a plausibly sized part.
     let mm = import("cube_ascii.stl");
     assert_eq!(mm.units.file, None);
     assert_eq!(mm.units.applied, LengthUnit::Millimetre);
-    assert_eq!(mm.units.source, UnitSource::Assumed);
-    assert!(mm.units.describe().contains("assumed"));
+    assert_eq!(mm.units.source, UnitSource::Default);
+    assert_eq!(mm.unit_question, None);
+    assert_eq!(mm.units.describe(), "mm, the default");
 
-    // The user's choice wins over the file's.
-    let overridden = import_with("cube_inch.stl", Some(LengthUnit::Millimetre)).unwrap();
-    assert_eq!(overridden.units.source, UnitSource::Override);
-    assert_eq!(summary(mesh(&overridden)).bounds.unwrap().max.x, 1.0);
-    assert!(overridden.units.describe().contains("the file states in"));
-    let scaled = import_with("cube_ascii.stl", Some(LengthUnit::Inch)).unwrap();
-    assert_eq!(summary(mesh(&scaled)).bounds.unwrap().max.x, 254.0);
-    let cm = import_with("cube_ascii.stl", Some(LengthUnit::Centimetre)).unwrap();
-    assert_eq!(summary(mesh(&cm)).bounds.unwrap().max.x, 100.0);
+    // The user's unit converts to millimetres, and nothing is asked.
+    let inch = import_with("cube_inch.stl", Some(LengthUnit::Inch)).unwrap();
+    assert_eq!(inch.units.source, UnitSource::User);
+    assert_eq!(inch.unit_question, None);
+    assert_eq!(mesh(&inch).vertices[1].x, 25.4);
+    for (unit, size) in [
+        (LengthUnit::Micrometre, 0.01),
+        (LengthUnit::Millimetre, 10.0),
+        (LengthUnit::Centimetre, 100.0),
+        (LengthUnit::Metre, 10_000.0),
+        (LengthUnit::Inch, 254.0),
+    ] {
+        let model = import_with("cube_ascii.stl", Some(unit)).unwrap();
+        assert_eq!(summary(mesh(&model)).bounds.unwrap().max.x, size, "{unit}");
+        assert_eq!(model.unit_question, None, "{unit}");
+    }
+    // Keeping millimetres against the file's word is the user's choice too.
+    let kept = import_with("cube_inch.stl", Some(LengthUnit::Millimetre)).unwrap();
+    assert_eq!(kept.unit_question, None);
+    assert_eq!(
+        kept.units.describe(),
+        "mm, set by the user (the file names in)"
+    );
+}
 
-    // An unknown unit word is reported and millimetres are assumed.
+#[test]
+fn req_imp_03_a_unit_the_file_names_is_asked_not_applied() {
+    let inch = import("cube_inch.stl");
+    assert_eq!(inch.units.file, Some(LengthUnit::Inch));
+    assert_eq!(inch.units.applied, LengthUnit::Millimetre);
+    let question = inch.unit_question.unwrap();
+    assert_eq!(question.concern, UnitConcern::FileNames(LengthUnit::Inch));
+    assert_eq!(question.suggestions, [LengthUnit::Inch]);
+    assert!(
+        question.message().contains("convert it from in?"),
+        "{}",
+        question.message()
+    );
+
+    let metre = import("cube_metre_binary.stl");
+    let question = metre.unit_question.unwrap();
+    assert_eq!(question.concern, UnitConcern::FileNames(LengthUnit::Metre));
+
+    // A file that names millimetres raises nothing; an unknown word is noted.
     let unknown = import("cube_unknown_unit.stl");
-    assert_eq!(unknown.units.source, UnitSource::Assumed);
+    assert_eq!(unknown.unit_question, None);
     assert!(unknown.notes.iter().any(|n| n.contains("'furlong'")));
+}
+
+#[test]
+fn req_imp_03_an_implausible_size_asks_for_the_unit() {
+    let small = import("cube_small.stl");
+    let question = small.unit_question.unwrap();
+    assert_eq!(question.concern, UnitConcern::TooSmall { size: 1.0 });
+    assert_eq!(
+        question.suggestions,
+        [LengthUnit::Inch, LengthUnit::Centimetre, LengthUnit::Metre]
+    );
+    assert!(
+        question.message().contains("only 1.000 mm across"),
+        "{}",
+        question.message()
+    );
+
+    let speck = import("cube_speck_binary.stl");
+    let question = speck.unit_question.unwrap();
+    assert!(matches!(question.concern, UnitConcern::TooSmall { .. }));
+    assert_eq!(question.suggestions.first(), Some(&LengthUnit::Metre));
+
+    let huge = import("cube_huge.stl");
+    let question = huge.unit_question.clone().unwrap();
+    assert_eq!(question.concern, UnitConcern::TooLarge { size: 5000.0 });
+    assert_eq!(question.suggestions, [LengthUnit::Micrometre]);
+    assert_eq!(summary(mesh(&huge)).bounds.unwrap().max.x, 5000.0);
+
+    // The thresholds, and a named unit taking precedence over size.
+    assert_eq!(UnitQuestion::ask(None, SMALL_PART_MM), None);
+    assert_eq!(UnitQuestion::ask(None, LARGE_PART_MM), None);
+    assert_eq!(UnitQuestion::ask(Some(LengthUnit::Millimetre), 50.0), None);
+    let both = UnitQuestion::ask(Some(LengthUnit::Inch), 0.5).unwrap();
+    assert_eq!(both.concern, UnitConcern::FileNames(LengthUnit::Inch));
 }
 
 #[test]

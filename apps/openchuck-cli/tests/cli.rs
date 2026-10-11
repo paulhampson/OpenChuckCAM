@@ -251,26 +251,48 @@ fn req_imp_01_imp_04_cli_inspect_prints_the_summary_and_report() {
 }
 
 #[test]
-fn req_imp_03_cli_inspect_reads_and_overrides_units() {
+fn req_imp_03_cli_inspect_reads_mm_and_asks_about_units() {
+    // The header's unit is reported as a question; the part stays in mm.
     let out = run(&["inspect".as_ref(), corpus("cube_inch.stl").as_os_str()]);
     assert!(
-        out.stdout.contains("units:     in, as the file states"),
+        out.stdout.contains("units:     mm, the default"),
         "{}",
         out.stdout
     );
-    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
-    let out = run(&[
-        "inspect".as_ref(),
-        corpus("cube_inch.stl").as_os_str(),
-        "--units".as_ref(),
-        "mm".as_ref(),
-    ]);
     assert!(
-        out.stdout.contains("set by the user (the file states in)"),
+        out.stdout
+            .contains("unit?      the file says its unit is in, but it was read in mm"),
         "{}",
         out.stdout
     );
     assert!(out.stdout.contains("X 0 to 1,"), "{}", out.stdout);
+
+    // A part too small or too large in mm is asked about too.
+    let out = run(&["inspect".as_ref(), corpus("cube_small.stl").as_os_str()]);
+    assert!(
+        out.stdout.contains("may be in in or cm or m"),
+        "{}",
+        out.stdout
+    );
+    let out = run(&["inspect".as_ref(), corpus("cube_huge.stl").as_os_str()]);
+    assert!(out.stdout.contains("may be in um"), "{}", out.stdout);
+    let out = run(&["inspect".as_ref(), corpus("cube_ascii.stl").as_os_str()]);
+    assert!(!out.stdout.contains("unit?"), "{}", out.stdout);
+
+    // --units answers it.
+    let out = run(&[
+        "inspect".as_ref(),
+        corpus("cube_inch.stl").as_os_str(),
+        "--units".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert!(
+        out.stdout.contains("units:     in, set by the user"),
+        "{}",
+        out.stdout
+    );
+    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
+    assert!(!out.stdout.contains("unit?"), "{}", out.stdout);
     let out = run(&[
         "inspect".as_ref(),
         corpus("cube_inch.stl").as_os_str(),
@@ -279,6 +301,68 @@ fn req_imp_03_cli_inspect_reads_and_overrides_units() {
     ]);
     assert_eq!(out.code, Some(1));
     assert!(out.stderr.contains("not a length unit"), "{}", out.stderr);
+}
+
+#[test]
+fn req_imp_03_cli_import_asks_and_stores_the_answer() {
+    // Not on a terminal: the model is added in mm, unanswered, with a warning
+    // that says how to answer.
+    let project = empty_project("unit-question");
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let file = project.join("models/inch.stl");
+    std::fs::copy(corpus("cube_inch.stl"), &file).unwrap();
+    let p = project.as_os_str();
+    let out = run(&["import".as_ref(), p, file.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stderr.contains("warning: the file says its unit is in"),
+        "{}",
+        out.stderr
+    );
+    assert!(out.stderr.contains("openchuck-cli units"), "{}", out.stderr);
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(!text.contains("units"), "{text}");
+    let out = run(&["validate".as_ref(), p]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stderr.contains("its unit is in"), "{}", out.stderr);
+
+    // The answer is stored on the model and the question is settled.
+    let out = run(&[
+        "units".as_ref(),
+        p,
+        "models/inch.stl".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(text.contains("units = \"in\"\n"), "{text}");
+    let out = run(&["validate".as_ref(), p]);
+    assert!(!out.stderr.contains("its unit is in"), "{}", out.stderr);
+
+    // --units on import answers it up front: stored, nothing asked.
+    let small = project.join("models/small.stl");
+    std::fs::copy(corpus("cube_small.stl"), &small).unwrap();
+    let out = run(&[
+        "import".as_ref(),
+        p,
+        small.as_os_str(),
+        "--units".as_ref(),
+        "in".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(!out.stderr.contains("warning"), "{}", out.stderr);
+    assert!(out.stdout.contains("X 0 to 25.4"), "{}", out.stdout);
+
+    // `default` unsets it again.
+    let out = run(&[
+        "units".as_ref(),
+        p,
+        "models/inch.stl".as_ref(),
+        "default".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("unit?"), "{}", out.stdout);
 }
 
 #[test]
@@ -353,7 +437,7 @@ fn req_imp_03_imp_05_cli_import_units_and_transform_survive_save_and_load() {
         "units".as_ref(),
         p,
         "models/cube.stl".as_ref(),
-        "file".as_ref(),
+        "default".as_ref(),
     ]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let out = run(&[

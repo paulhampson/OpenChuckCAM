@@ -145,6 +145,9 @@ impl From<Tolerance> for Millimetres {
 /// (`mm`, `cm`, `m`, `in`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum LengthUnit {
+    /// Micrometres (some scanners and 3MF files use them).
+    #[serde(rename = "um")]
+    Micrometre,
     /// Millimetres, the internal unit.
     #[serde(rename = "mm")]
     Millimetre,
@@ -161,11 +164,18 @@ pub enum LengthUnit {
 
 impl LengthUnit {
     /// Every unit, in a fixed order.
-    pub const ALL: [Self; 4] = [Self::Millimetre, Self::Centimetre, Self::Metre, Self::Inch];
+    pub const ALL: [Self; 5] = [
+        Self::Micrometre,
+        Self::Millimetre,
+        Self::Centimetre,
+        Self::Metre,
+        Self::Inch,
+    ];
 
     /// Millimetres per one of this unit.
     pub const fn millimetres(self) -> f64 {
         match self {
+            Self::Micrometre => 0.001,
             Self::Millimetre => 1.0,
             Self::Centimetre => 10.0,
             Self::Metre => 1000.0,
@@ -176,6 +186,7 @@ impl LengthUnit {
     /// The short name used in project files and on the command line.
     pub const fn short_name(self) -> &'static str {
         match self {
+            Self::Micrometre => "um",
             Self::Millimetre => "mm",
             Self::Centimetre => "cm",
             Self::Metre => "m",
@@ -183,11 +194,14 @@ impl LengthUnit {
         }
     }
 
-    /// Reads a unit name, ignoring case: the short name, or the singular or
-    /// plural word in British or American spelling (`inch`, `millimeters`).
+    /// Reads a unit name, ignoring case: the short name (`µm` too), or the
+    /// singular or plural word in British or American spelling (`inch`,
+    /// `millimeters`, `micron`).
     pub fn parse(text: &str) -> Option<Self> {
         let lower = text.trim().to_ascii_lowercase();
         let unit = match lower.as_str() {
+            "um" | "µm" | "micron" | "microns" | "micrometre" | "micrometres" | "micrometer"
+            | "micrometers" => Self::Micrometre,
             "mm" | "millimetre" | "millimetres" | "millimeter" | "millimeters" => Self::Millimetre,
             "cm" | "centimetre" | "centimetres" | "centimeter" | "centimeters" => Self::Centimetre,
             "m" | "metre" | "metres" | "meter" | "meters" => Self::Metre,
@@ -211,7 +225,7 @@ impl std::str::FromStr for LengthUnit {
         Self::parse(text).ok_or_else(|| {
             crate::Error::invalid(
                 "unit",
-                format!("'{text}' is not a length unit (use mm, cm, m or in)"),
+                format!("'{text}' is not a length unit (use um, mm, cm, m or in)"),
             )
         })
     }

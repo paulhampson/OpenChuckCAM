@@ -181,7 +181,10 @@ impl Application {
     }
 
     /// Adds the model file at `file` to the project (IMP-01), read in
-    /// `units` or the file's own unit (IMP-03). The file is imported and
+    /// `units`, or in millimetres when `None` (IMP-03). If the returned
+    /// inspection has a [`unit_question`](ModelInspection::unit_question),
+    /// the front end asks it and stores the answer with
+    /// [`Command::SetModelUnits`]. The file is imported and
     /// checked first, so a file that cannot be read is refused; mesh
     /// problems are reported in the returned inspection, not refused. The
     /// file is referenced by its path relative to the project folder with its

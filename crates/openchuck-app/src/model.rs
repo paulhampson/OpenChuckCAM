@@ -21,7 +21,10 @@ use crate::AppError;
 pub use openchuck_geom::MeshSummary;
 pub use openchuck_geom::check::{Hole, MeshReport};
 pub use openchuck_geom::transform::{AxisDirection, orient_to_rotary_axis};
-pub use openchuck_import::{ImportError, STL_TESSELLATION_NOTICE, UnitSource, Units};
+pub use openchuck_import::{
+    ImportError, LARGE_PART_MM, SMALL_PART_MM, STL_TESSELLATION_NOTICE, UnitConcern, UnitQuestion,
+    UnitSource, Units,
+};
 pub use openchuck_types::model::{ModelFormat, ModelKind};
 pub use openchuck_types::transform::{Axis, TransformStep};
 pub use openchuck_types::units::{Degrees, LengthUnit};
@@ -36,6 +39,11 @@ pub struct ModelInspection {
     pub format: ModelFormat,
     /// The units it was read in.
     pub units: Units,
+    /// A question for the user about the unit, raised when no unit is set
+    /// for the model and the file names another unit or the part's size is
+    /// implausible in millimetres (IMP-03). A front end asks it and stores
+    /// the answer with [`Command::SetModelUnits`](crate::Command::SetModelUnits).
+    pub unit_question: Option<UnitQuestion>,
     /// The placement applied (IMP-05).
     pub transform: Vec<TransformStep>,
     /// Counts, bounds and area after placement, in millimetres.
@@ -77,6 +85,7 @@ pub(crate) fn inspect_bytes(
         path: path.to_path_buf(),
         format: model.format,
         units: model.units,
+        unit_question: model.unit_question,
         transform: transform.to_vec(),
         summary: openchuck_geom::summary(&placed),
         report,

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use openchuck_app::model::Axis;
 use openchuck_app::model::{
-    AxisDirection, LengthUnit, STL_TESSELLATION_NOTICE, TransformStep, UnitSource,
+    AxisDirection, LengthUnit, STL_TESSELLATION_NOTICE, TransformStep, UnitConcern, UnitSource,
     orient_to_rotary_axis,
 };
 use openchuck_app::project::file;
@@ -107,31 +107,43 @@ fn req_imp_03_unit_override_survives_save_and_load() {
     let (id, inspection) = app
         .add_model(&dir.join("models/cube_inch.stl"), None)
         .unwrap();
-    assert_eq!(inspection.units.source, UnitSource::File);
+    // Read in millimetres; the file's "units=in" is a question, not a conversion.
+    assert_eq!(inspection.units.source, UnitSource::Default);
+    assert_eq!(inspection.summary.bounds.unwrap().max.x, 1.0);
+    let question = inspection.unit_question.unwrap();
+    assert_eq!(question.concern, UnitConcern::FileNames(LengthUnit::Inch));
+    assert_eq!(app.project().models()[0].units, None);
+
+    // The user confirms inches: stored on the model, and nothing is asked again.
+    app.execute(Command::SetModelUnits {
+        model: id,
+        units: Some(LengthUnit::Inch),
+    })
+    .unwrap();
+    app.save().unwrap();
+    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert_eq!(reopened.project().models()[0].units, Some(LengthUnit::Inch));
+    let inspection = reopened.inspect_model(id).unwrap();
+    assert_eq!(inspection.units.source, UnitSource::User);
+    assert_eq!(inspection.unit_question, None);
     assert_eq!(inspection.summary.bounds.unwrap().max.x, 25.4);
 
+    // Undo goes back to the default, and the question returns.
+    assert!(app.undo().unwrap());
+    assert_eq!(app.project().models()[0].units, None);
+    let inspection = app.inspect_model(id).unwrap();
+    assert_eq!(inspection.summary.bounds.unwrap().max.x, 1.0);
+    assert!(inspection.unit_question.is_some());
+
+    // Answering "keep millimetres" is stored too, so it is not asked again.
     app.execute(Command::SetModelUnits {
         model: id,
         units: Some(LengthUnit::Millimetre),
     })
     .unwrap();
-    app.save().unwrap();
-    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
-    assert_eq!(
-        reopened.project().models()[0].units,
-        Some(LengthUnit::Millimetre)
-    );
-    let inspection = reopened.inspect_model(id).unwrap();
-    assert_eq!(inspection.units.source, UnitSource::Override);
+    let inspection = app.inspect_model(id).unwrap();
+    assert_eq!(inspection.unit_question, None);
     assert_eq!(inspection.summary.bounds.unwrap().max.x, 1.0);
-
-    // Undo goes back to the file's own unit.
-    assert!(app.undo().unwrap());
-    assert_eq!(app.project().models()[0].units, None);
-    assert_eq!(
-        app.inspect_model(id).unwrap().summary.bounds.unwrap().max.x,
-        25.4
-    );
 
     // Added with an override from the start.
     let (cm, _) = app
@@ -229,7 +241,18 @@ fn req_imp_04_inspection_reports_known_defects_and_changes() {
 fn req_imp_01_inspect_a_file_without_a_project() {
     let inspection =
         inspect_file(&corpus("cube_metre_binary.stl"), None, Threads::Exactly(1)).unwrap();
-    assert_eq!(inspection.units.applied, LengthUnit::Metre);
+    assert_eq!(inspection.units.applied, LengthUnit::Millimetre);
+    assert_eq!(inspection.summary.bounds.unwrap().max.x, 0.5);
+    assert_eq!(
+        inspection.unit_question.unwrap().concern,
+        UnitConcern::FileNames(LengthUnit::Metre)
+    );
+    let inspection = inspect_file(
+        &corpus("cube_metre_binary.stl"),
+        Some(LengthUnit::Metre),
+        Threads::Exactly(1),
+    )
+    .unwrap();
     assert_eq!(inspection.summary.bounds.unwrap().max.x, 500.0);
     let err = inspect_file(&corpus("broken_empty.stl"), None, Threads::Exactly(1)).unwrap_err();
     assert!(err.to_string().contains("the file is empty"), "{err}");

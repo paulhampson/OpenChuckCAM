@@ -5,9 +5,11 @@
 //!
 //! Every importer turns a file's bytes into [`ImportedModel`]: geometry in
 //! millimetres with stable numbering, the units used, and notes for the user.
-//! This is the unit boundary (IMP-03): a file's unit is read where the file
-//! states one, a user override wins over it, millimetres are assumed
-//! otherwise, and nothing past this crate sees any other unit.
+//! This is the unit boundary (IMP-03): coordinates are read in the user's
+//! unit for the model, or in millimetres by default, and nothing past this
+//! crate sees any other unit. A unit the file names, or a part whose size
+//! is implausible in millimetres, raises a [`UnitQuestion`] for the user to
+//! answer; nothing is converted without that answer (decision record 0010).
 //!
 //! Damaged input gives an [`ImportError`] that says what is wrong, never a
 //! panic (NFR-07). STL is read now (slice 2); STEP arrives with the
@@ -31,8 +33,13 @@
 //! ";
 //! let (cancel, progress) = (CancelToken::new(), NoProgress);
 //! let context = JobContext::new(&cancel, &progress);
+//! // Read in millimetres; the header's unit is a question, not a conversion.
 //! let model = import_bytes("tri.stl", text.as_bytes(), &ImportOptions::default(), &context)?;
-//! assert_eq!(model.units.applied, LengthUnit::Inch);
+//! assert_eq!(model.units.applied, LengthUnit::Millimetre);
+//! assert_eq!(model.unit_question.unwrap().suggestions, [LengthUnit::Inch]);
+//! // The user confirms inches.
+//! let options = ImportOptions { units: Some(LengthUnit::Inch) };
+//! let model = import_bytes("tri.stl", text.as_bytes(), &options, &context)?;
 //! let ModelGeometry::Mesh(mesh) = &model.geometry else { unreachable!() };
 //! assert_eq!(mesh.vertices[1].x, 25.4);
 //! # Ok::<(), openchuck_import::ImportError>(())
@@ -62,25 +69,35 @@ original surface.";
 /// Choices the user makes for an import.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ImportOptions {
-    /// The unit the file is in, overriding any unit the file states (IMP-03).
+    /// The unit the file is in (IMP-03). `None` reads it in millimetres and
+    /// raises a [`UnitQuestion`] when the file suggests otherwise.
     pub units: Option<LengthUnit>,
 }
 
 /// Where the unit used for an import came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitSource {
-    /// The file states it.
-    File,
     /// The user chose it.
-    Override,
-    /// Neither: millimetres were assumed.
-    Assumed,
+    User,
+    /// Nobody chose: millimetres, the default.
+    Default,
 }
 
-/// The units of an import (IMP-03).
+/// Smallest bounding-box size, in millimetres, that a part read in
+/// millimetres is taken to be at: below it the file may be in inches,
+/// centimetres or metres.
+pub const SMALL_PART_MM: f64 = 2.0;
+
+/// Largest bounding-box size, in millimetres, that a part read in
+/// millimetres is taken to be at: above it the file may be in micrometres.
+pub const LARGE_PART_MM: f64 = 2000.0;
+
+/// The units of an import (IMP-03). Coordinates are converted from
+/// `applied` to millimetres; nothing past the importer sees another unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Units {
-    /// The unit the file states, if any.
+    /// A unit the file names (an STL header's `units=in`), if any. It is a
+    /// hint only: it is never applied without the user's confirmation.
     pub file: Option<LengthUnit>,
     /// The unit the coordinates were read in and converted from.
     pub applied: LengthUnit,
@@ -89,31 +106,109 @@ pub struct Units {
 }
 
 impl Units {
-    /// Picks the unit: the override, else the file's, else millimetres.
+    /// The user's unit if they chose one, else millimetres.
     pub fn choose(file: Option<LengthUnit>, user: Option<LengthUnit>) -> Self {
-        let (applied, source) = match (user, file) {
-            (Some(unit), _) => (unit, UnitSource::Override),
-            (None, Some(unit)) => (unit, UnitSource::File),
-            (None, None) => (LengthUnit::Millimetre, UnitSource::Assumed),
-        };
         Self {
             file,
-            applied,
-            source,
+            applied: user.unwrap_or(LengthUnit::Millimetre),
+            source: if user.is_some() {
+                UnitSource::User
+            } else {
+                UnitSource::Default
+            },
         }
     }
 
-    /// Which unit was used and why, for the user: `in, as the file states`.
+    /// Which unit was used and why, for the user: `in, set by the user`.
     pub fn describe(&self) -> String {
         let applied = self.applied;
         match (self.source, self.file) {
-            (UnitSource::File, _) => format!("{applied}, as the file states"),
-            (UnitSource::Override, Some(file)) if file != applied => {
-                format!("{applied}, set by the user (the file states {file})")
+            (UnitSource::User, Some(file)) if file != applied => {
+                format!("{applied}, set by the user (the file names {file})")
             }
-            (UnitSource::Override, _) => format!("{applied}, set by the user"),
-            (UnitSource::Assumed, _) => format!(
-                "{applied}, assumed because the file states none; set the model's units if this is wrong"
+            (UnitSource::User, _) => format!("{applied}, set by the user"),
+            (UnitSource::Default, _) => format!("{applied}, the default"),
+        }
+    }
+}
+
+/// Why the unit of an import needs the user's confirmation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnitConcern {
+    /// The file names a unit other than millimetres.
+    FileNames(LengthUnit),
+    /// Read in millimetres, the part's largest bounding-box size is below
+    /// [`SMALL_PART_MM`].
+    TooSmall {
+        /// The largest size, in millimetres.
+        size: f64,
+    },
+    /// Read in millimetres, the part's largest bounding-box size is above
+    /// [`LARGE_PART_MM`].
+    TooLarge {
+        /// The largest size, in millimetres.
+        size: f64,
+    },
+}
+
+/// A question for the user about the unit of a file read in millimetres by
+/// default (IMP-03). A front end shows it and stores the answer as the
+/// model's unit; nothing is converted until the user answers. Raised only
+/// when the user has not chosen a unit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnitQuestion {
+    /// Why it is asked.
+    pub concern: UnitConcern,
+    /// Likely units, most likely first. Millimetres stays a valid answer.
+    pub suggestions: Vec<LengthUnit>,
+}
+
+impl UnitQuestion {
+    /// The question to ask about a file read in millimetres whose part is
+    /// `size` millimetres across at its largest and which names `file`, or
+    /// `None` when nothing is in doubt. A unit the file names comes first.
+    pub fn ask(file: Option<LengthUnit>, size: f64) -> Option<Self> {
+        if let Some(unit) = file.filter(|u| *u != LengthUnit::Millimetre) {
+            return Some(Self {
+                concern: UnitConcern::FileNames(unit),
+                suggestions: vec![unit],
+            });
+        }
+        if size < SMALL_PART_MM {
+            // Below a fifth of a millimetre, metres are likelier than inches
+            // (OrcaSlicer draws the same line, by volume).
+            let suggestions = if size < SMALL_PART_MM / 10.0 {
+                vec![LengthUnit::Metre, LengthUnit::Inch, LengthUnit::Centimetre]
+            } else {
+                vec![LengthUnit::Inch, LengthUnit::Centimetre, LengthUnit::Metre]
+            };
+            Some(Self {
+                concern: UnitConcern::TooSmall { size },
+                suggestions,
+            })
+        } else if size > LARGE_PART_MM {
+            Some(Self {
+                concern: UnitConcern::TooLarge { size },
+                suggestions: vec![LengthUnit::Micrometre],
+            })
+        } else {
+            None
+        }
+    }
+
+    /// The question in words, for the user.
+    pub fn message(&self) -> String {
+        let choices: Vec<&str> = self.suggestions.iter().map(|u| u.short_name()).collect();
+        let choices = choices.join(" or ");
+        match self.concern {
+            UnitConcern::FileNames(unit) => format!(
+                "the file says its unit is {unit}, but it was read in mm; convert it from {unit}?"
+            ),
+            UnitConcern::TooSmall { size } => format!(
+                "read in mm the part is only {size:.3} mm across, so it may be in {choices}; choose its unit"
+            ),
+            UnitConcern::TooLarge { size } => format!(
+                "read in mm the part is {size:.0} mm across, so it may be in {choices}; choose its unit"
             ),
         }
     }
@@ -128,6 +223,9 @@ pub struct ImportedModel {
     pub geometry: ModelGeometry,
     /// The units used.
     pub units: Units,
+    /// A question for the user about the unit, when the file suggests the
+    /// default was wrong.
+    pub unit_question: Option<UnitQuestion>,
     /// For a mesh, the normal each triangle states in the file (zero where
     /// none is stated), for the normal check in `openchuck-geom`.
     pub stated_normals: Option<Vec<Vec3>>,

@@ -13,7 +13,8 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use openchuck_app::model::{
-    Axis, AxisDirection, Degrees, LengthUnit, ModelInspection, TransformStep, orient_to_rotary_axis,
+    Axis, AxisDirection, Degrees, LengthUnit, ModelInspection, TransformStep, UnitConcern,
+    UnitQuestion, orient_to_rotary_axis,
 };
 use openchuck_app::project::ModelCheck;
 use openchuck_app::{
@@ -72,8 +73,8 @@ enum Action {
     Inspect {
         /// A model file, or a project folder.
         path: PathBuf,
-        /// The unit a model file is in (mm, cm, m or in), overriding the
-        /// file's own. Not used for a project, whose models keep their units.
+        /// The unit a model file is in (um, mm, cm, m or in); millimetres if
+        /// not given. Not used for a project, whose models keep their units.
         #[arg(long)]
         units: Option<String>,
     },
@@ -84,7 +85,9 @@ enum Action {
         /// The model file. It is referenced by its path relative to the
         /// project folder, so keep it inside or beside the project.
         file: PathBuf,
-        /// The unit the file is in (mm, cm, m or in), overriding the file's own.
+        /// The unit the file is in (um, mm, cm, m or in). Without it the file
+        /// is read in mm, and a terminal is asked if the file names another
+        /// unit or the part's size is implausible in mm.
         #[arg(long)]
         units: Option<String>,
     },
@@ -94,7 +97,8 @@ enum Action {
         project: PathBuf,
         /// The model, by ID or by its path in the project.
         model: String,
-        /// mm, cm, m or in; or `file` to use the file's own unit.
+        /// um, mm, cm, m or in; or `default` to unset it (read in mm, and
+        /// asked again if the file suggests another unit).
         unit: String,
     },
     /// Add placement steps to a project's model, applied in the order given
@@ -188,6 +192,9 @@ fn run(cli: Cli) -> Result<()> {
                     ModelCheck::Unchanged => match app.inspect_model(id) {
                         // Mesh problems are the user's to judge: warn only.
                         Ok(inspection) => {
+                            if let Some(question) = &inspection.unit_question {
+                                eprintln!("warning: model '{path}': {}", question.message());
+                            }
                             for problem in inspection.report.problems() {
                                 eprintln!("warning: model '{path}': {problem}");
                             }
@@ -284,9 +291,27 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             let units = units.as_deref().map(parse_unit).transpose()?;
             let mut app = open_project(&project, threads, create)?;
-            let (id, inspection) = app.add_model(&file, units)?;
-            app.save()?;
+            let (id, mut inspection) = app.add_model(&file, units)?;
             println!("{}: added model {id}", project.display());
+            // The file names another unit, or its size is implausible in mm:
+            // ask on a terminal; otherwise leave it unanswered and say how.
+            if let Some(question) = &inspection.unit_question {
+                if std::io::stdin().is_terminal() {
+                    let answer = ask_unit(question);
+                    app.execute(Command::SetModelUnits {
+                        model: id,
+                        units: Some(answer),
+                    })?;
+                    inspection = app.inspect_model(id)?;
+                } else {
+                    eprintln!("warning: {}", question.message());
+                    eprintln!(
+                        "  set it with `openchuck-cli units {} {id} <unit>`, or `mm` to keep millimetres",
+                        project.display()
+                    );
+                }
+            }
+            app.save()?;
             print_inspection(&inspection);
         }
         Action::Units {
@@ -295,7 +320,7 @@ fn run(cli: Cli) -> Result<()> {
             unit,
         } => {
             let units = match unit.as_str() {
-                "file" | "auto" => None,
+                "default" => None,
                 other => Some(parse_unit(other)?),
             };
             let mut app = open_project(&project, threads, create)?;
@@ -330,6 +355,51 @@ fn run(cli: Cli) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Asks on the terminal which unit a model is in. Enter converts from a
+/// unit the file names, and keeps millimetres for a size question; a unit
+/// may also be typed; anything else asks again.
+fn ask_unit(question: &UnitQuestion) -> LengthUnit {
+    let named = match question.concern {
+        UnitConcern::FileNames(unit) => Some(unit),
+        _ => None,
+    };
+    loop {
+        match named {
+            Some(unit) => eprint!("{}\nConvert from {unit} to mm? [Y/n] ", question.message()),
+            None => {
+                let choices: Vec<&str> = question
+                    .suggestions
+                    .iter()
+                    .map(|u| u.short_name())
+                    .collect();
+                eprint!(
+                    "{}\nUnit [{}/mm, Enter keeps mm]: ",
+                    question.message(),
+                    choices.join("/")
+                );
+            }
+        }
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_err() {
+            return LengthUnit::Millimetre;
+        }
+        if let Some(unit) = read_answer(named, &answer) {
+            return unit;
+        }
+    }
+}
+
+/// Reads an answer to [`ask_unit`]; `None` asks again.
+fn read_answer(named: Option<LengthUnit>, answer: &str) -> Option<LengthUnit> {
+    let answer = answer.trim().to_ascii_lowercase();
+    match (named, answer.as_str()) {
+        (Some(unit), "" | "y" | "yes") => Some(unit),
+        (Some(_), "n" | "no") | (None, "") => Some(LengthUnit::Millimetre),
+        // A unit typed in full answers either question.
+        (_, text) => LengthUnit::parse(text),
+    }
 }
 
 fn parse_unit(text: &str) -> Result<LengthUnit> {
@@ -413,6 +483,9 @@ fn print_inspection(inspection: &ModelInspection) {
         inspection.format.name()
     );
     println!("units:     {}", inspection.units.describe());
+    if let Some(question) = &inspection.unit_question {
+        println!("unit?      {}", question.message());
+    }
     if inspection.transform.is_empty() {
         println!("placement: none");
     } else {
@@ -476,5 +549,23 @@ fn print_inspection(inspection: &ModelInspection) {
     }
     for note in &inspection.notes {
         println!("note:      {note}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_imp_03_terminal_answers_to_the_unit_question() {
+        let inch = Some(LengthUnit::Inch);
+        assert_eq!(read_answer(inch, "\n"), inch);
+        assert_eq!(read_answer(inch, "Y\n"), inch);
+        assert_eq!(read_answer(inch, "no\n"), Some(LengthUnit::Millimetre));
+        assert_eq!(read_answer(inch, "cm\n"), Some(LengthUnit::Centimetre));
+        assert_eq!(read_answer(inch, "maybe\n"), None);
+        assert_eq!(read_answer(None, "\n"), Some(LengthUnit::Millimetre));
+        assert_eq!(read_answer(None, " M \n"), Some(LengthUnit::Metre));
+        assert_eq!(read_answer(None, "y\n"), None);
     }
 }
