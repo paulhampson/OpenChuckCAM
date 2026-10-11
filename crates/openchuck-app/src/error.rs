@@ -22,6 +22,9 @@ pub enum AppError {
     /// The worker pool could not be started.
     #[error("cannot start the worker pool: {0}")]
     WorkerPool(String),
+    /// A project edit or check failed.
+    #[error(transparent)]
+    Project(#[from] openchuck_project::ProjectError),
     /// An engine library reported an error.
     #[error(transparent)]
     Engine(#[from] openchuck_types::Error),

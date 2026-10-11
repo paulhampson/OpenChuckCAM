@@ -1,0 +1,161 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! Commands and the undo and redo history (UI-08, architecture section 5.7).
+//!
+//! Every change to the project is a [`Command`]. Applying one returns its
+//! inverse, the command that puts the project back exactly as it was, and the
+//! history keeps those inverses. Undo applies the latest inverse and keeps the
+//! inverse of that for redo. A new command clears the redo list. The history
+//! is linear and unbounded.
+
+use openchuck_project::id::OperationId;
+use openchuck_project::{Item, ItemId, MachineRef, ParameterValue, Project};
+
+use crate::AppError;
+
+/// A change to the project. Every command is undoable (UI-08).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum Command {
+    /// Renames the project.
+    RenameProject(String),
+    /// Sets or clears the machine reference.
+    SetMachine(Option<MachineRef>),
+    /// Adds an item at a position in its list, or at the end for `None`.
+    Add {
+        /// The new item, with a fresh ID.
+        item: Item,
+        /// Where it goes.
+        index: Option<usize>,
+    },
+    /// Removes an item that nothing uses.
+    Remove(ItemId),
+    /// Replaces an item with a new version that has the same ID.
+    Replace(Item),
+    /// Moves an item to a position in its list.
+    Move {
+        /// The item.
+        id: ItemId,
+        /// Its new position.
+        index: usize,
+    },
+    /// Sets an operation parameter, or removes it for `None`.
+    SetParameter {
+        /// The operation.
+        operation: OperationId,
+        /// The parameter's name.
+        name: String,
+        /// The new value.
+        value: Option<ParameterValue>,
+    },
+}
+
+impl Command {
+    /// Applies the command and returns its inverse. On error the project is
+    /// unchanged.
+    pub(crate) fn apply(self, project: &mut Project) -> Result<Command, AppError> {
+        Ok(match self {
+            Self::RenameProject(name) => Self::RenameProject(project.set_name(name)),
+            Self::SetMachine(machine) => Self::SetMachine(project.set_machine(machine)),
+            Self::Add { item, index } => {
+                let id = item.id();
+                project.insert(item, index)?;
+                Self::Remove(id)
+            }
+            Self::Remove(id) => {
+                let (index, item) = project.remove(id)?;
+                Self::Add {
+                    item,
+                    index: Some(index),
+                }
+            }
+            Self::Replace(item) => Self::Replace(project.replace(item)?),
+            Self::Move { id, index } => {
+                let from = project.move_item(id, index)?;
+                Self::Move { id, index: from }
+            }
+            Self::SetParameter {
+                operation,
+                name,
+                value,
+            } => {
+                let mut edited = project.operation(operation).cloned().ok_or_else(|| {
+                    openchuck_project::ProjectError::NotFound {
+                        kind: OperationId::KIND,
+                        id: operation.to_string(),
+                    }
+                })?;
+                let old = match value {
+                    Some(value) => edited.parameters.insert(name.clone(), value),
+                    None => edited.parameters.remove(&name),
+                };
+                project.replace(Item::Operation(edited))?;
+                Self::SetParameter {
+                    operation,
+                    name,
+                    value: old,
+                }
+            }
+        })
+    }
+}
+
+/// The undo and redo lists.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct History {
+    undo: Vec<Command>,
+    redo: Vec<Command>,
+}
+
+impl History {
+    /// Applies a new command and records its inverse.
+    pub(crate) fn execute(
+        &mut self,
+        project: &mut Project,
+        command: Command,
+    ) -> Result<(), AppError> {
+        let inverse = command.apply(project)?;
+        self.undo.push(inverse);
+        self.redo.clear();
+        Ok(())
+    }
+
+    /// Undoes the latest command. Returns false when there is nothing to undo.
+    pub(crate) fn undo(&mut self, project: &mut Project) -> Result<bool, AppError> {
+        Self::step(project, &mut self.undo, &mut self.redo)
+    }
+
+    /// Redoes the latest undone command. Returns false when there is nothing to redo.
+    pub(crate) fn redo(&mut self, project: &mut Project) -> Result<bool, AppError> {
+        Self::step(project, &mut self.redo, &mut self.undo)
+    }
+
+    pub(crate) fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub(crate) fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    fn step(
+        project: &mut Project,
+        from: &mut Vec<Command>,
+        to: &mut Vec<Command>,
+    ) -> Result<bool, AppError> {
+        let Some(command) = from.pop() else {
+            return Ok(false);
+        };
+        // An inverse always applies to the state it was recorded against. If it
+        // ever fails, keep it so the history stays consistent with the project.
+        match command.clone().apply(project) {
+            Ok(inverse) => {
+                to.push(inverse);
+                Ok(true)
+            }
+            Err(e) => {
+                from.push(command);
+                Err(e)
+            }
+        }
+    }
+}

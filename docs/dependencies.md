@@ -21,7 +21,8 @@ The NFR-14 record for every third-party crate the workspace declares. Each row g
 | `thiserror` | 2.0.21 | 94 | MIT OR Apache-2.0 | Libraries and `openchuck-app` | Typed errors in libraries (architecture section 7, errors and logging). |
 | `anyhow` | 1.0.104 | 96 | MIT OR Apache-2.0 | `openchuck-cli`, `xtask` | Error reporting in applications only. |
 | `rayon` | 1.12.0 | 96 | MIT OR Apache-2.0 | `openchuck-app` job manager, `openchuck-testkit` | Worker pool under the determinism rules (architecture section 8). |
-| `blake3` | 1.8.7 | 93 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | `openchuck-testkit` now; `openchuck-project` content hashes later | Output hashes in the determinism harness. CC0-1.0 is allowed on purpose (architecture section 7). |
+| `blake3` | 1.8.7 | 93 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | `openchuck-testkit`, `openchuck-project` | Output hashes in the determinism harness, and model content hashes (PRJ-02, slice 1). CC0-1.0 is allowed on purpose (architecture section 7). |
+| `uuid` | 1.28.0 | 99 | Apache-2.0 OR MIT | `openchuck-project` | Stable unique IDs for project items (PRJ-05), built with `v4` (random). IDs are made when the user adds an item, never during pathing, so randomness does not affect repeatable output (NFR-06). Kept behind our own ID types (decision record 0005). Already in the tree through egui's `accesskit`. |
 | `clap` | 4.6.7 | 97 | MIT OR Apache-2.0 | `openchuck-cli`, `xtask` | Command-line parsing. |
 | `cargo_metadata` | 0.23.1 | 89 | MIT | `xtask` | Reads the dependency graph for the dependency-rule check (architecture section 12). |
 | `toml` | 1.1.8 | 92 | MIT OR Apache-2.0 | `xtask` | Reads manifests and the xtask configuration. `toml_edit` (93) stays the choice for hand-edited project files (SP-8). |

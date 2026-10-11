@@ -35,6 +35,9 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-28 | Golden tests that depend on kernel tessellation or kernel-computed numbers need a tolerance on non-analytic faces, or per-platform golden files (verification plan section 2, policy 7): tessellation differs between x86-64 and arm64. | Decision 0003, cross-platform differences | open | Slice 11 | Agreement on the verification approach |
 | OI-29 | Add the OpenCASCADE licence notice and source offer to the release checklist (LGPL-2.1, statically linked). | Decision 0003, NFR-10 | open | Slice 20 | Release checklist |
 | OI-30 | Examples for the library crates other than `openchuck-types` (slice 0 item 7). Each gets one in the slice that gives it a public API. | 0004, slice close | deferred | Slices 5 (path), 6 (post, gcode), 2 (geom) and later | A public API |
+| OI-31 | Apply SP-8's result to slice 1: file format and layout, order keys, schema version and migration with a real fixture, CLI load, save and validate, the loader fuzz target, the byte-for-byte undo check and the four checklist items that need a saved form. | 0005 item 1 | open | Slice 1, after SP-8 | SP-8 decision record |
+| OI-32 | `MachineRef` is a placeholder (a profile name): how a project refers to or stores its machine profile. | 0005 item 2 | open | Slice 3 | SET-01 design |
+| OI-33 | Triangle selections apply to mesh models only, but `ModelRef` does not yet record the model kind, so the rule is not enforced. | 0005 item 3 | open | Slices 2 and 10 | Model kind from import |
 
 ## Closed
 

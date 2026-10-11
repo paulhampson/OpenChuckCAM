@@ -140,6 +140,8 @@ These apply to every slice and are not repeated below.
 7. Reserve descriptor fields (position, normal, area) in the selection schema so P2 matching needs no format change; not implemented.
 8. CLI commands to validate a project and to load and save it; a fuzz target for the project loader (NFR-07).
 
+**Progress:** items 3, 4, 6 and 7 and the model and IDs of item 1 are built ([decision 0005](decisions/0005-slice-1-project-model.md), proposed). Items 2, 5 and 8, the order keys of item 1 and the byte-for-byte undo check wait for SP-8 (OI-31).
+
 **Review checklist**
 
 - [ ] Saving twice gives byte-identical files, and load then save is a no-op

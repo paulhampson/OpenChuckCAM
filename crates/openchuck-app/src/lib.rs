@@ -7,12 +7,14 @@
 //! directly. Long work runs on the [`JobManager`]'s worker pool, never on the
 //! caller's thread (UI-09, NFR-04).
 //!
-//! Work breakdown slice 0 builds the skeleton: the project document is empty
-//! until slice 1 defines the project format, so regeneration runs the pipeline
-//! over no operations and produces an empty toolpath.
+//! Every project edit is a [`Command`] and can be undone and redone (UI-08).
+//! The project file format waits for spike SP-8 (decision record 0005), so an
+//! existing folder still opens as an empty project, and regeneration runs the
+//! pipeline over no operations and produces an empty toolpath.
 
 #![warn(missing_docs)]
 
+mod command;
 mod error;
 mod jobs;
 mod pipeline;
@@ -20,8 +22,15 @@ mod pipeline;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use command::History;
+use openchuck_project::Project;
+
+pub use command::Command;
 pub use error::AppError;
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
+/// The project model that commands carry, re-exported so front ends need no
+/// engine crate of their own (architecture section 5.8).
+pub use openchuck_project as project;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use pipeline::Regeneration;
 
@@ -32,13 +41,7 @@ use openchuck_geom as _;
 use openchuck_import as _;
 use openchuck_path as _;
 use openchuck_post as _;
-use openchuck_project as _;
 use openchuck_sim as _;
-
-/// A change to the project. Every command will be undoable (UI-08, slice 1).
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum Command {}
 
 /// A request for view data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,16 +99,18 @@ pub enum Event {
     },
 }
 
-/// The in-memory project document. Empty until slice 1 defines its contents.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The open project and where it lives.
+#[derive(Debug, Clone, PartialEq)]
 struct Document {
     location: PathBuf,
+    project: Project,
 }
 
 /// An open project and the services that work on it.
 #[derive(Debug)]
 pub struct Application {
     document: Document,
+    history: History,
     jobs: JobManager,
     events_tx: Sender<Event>,
     events_rx: Receiver<Event>,
@@ -114,8 +119,9 @@ pub struct Application {
 impl Application {
     /// Opens the project in `folder` with a worker pool of `threads`.
     ///
-    /// Until slice 1 a project is a folder, and an existing folder opens as an
-    /// empty project. A missing path or a path to a file is an error.
+    /// Until the project file format exists (SP-8, decision record 0005) an
+    /// existing folder opens as an empty project named after the folder. A
+    /// missing path or a path to a file is an error.
     pub fn open(folder: &Path, threads: Threads) -> Result<Self, AppError> {
         let metadata = std::fs::metadata(folder).map_err(|source| {
             if source.kind() == std::io::ErrorKind::NotFound {
@@ -131,19 +137,51 @@ impl Application {
             return Err(AppError::NotAProjectFolder(folder.to_path_buf()));
         }
         let (events_tx, events_rx) = channel();
+        let name = folder
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         Ok(Self {
             document: Document {
                 location: folder.to_path_buf(),
+                project: Project::new(name),
             },
+            history: History::default(),
             jobs: JobManager::new(threads)?,
             events_tx,
             events_rx,
         })
     }
 
-    /// Applies a command.
+    /// Applies a command and records it for undo. On error the project is
+    /// unchanged and nothing is recorded.
     pub fn execute(&mut self, command: Command) -> Result<(), AppError> {
-        match command {}
+        self.history.execute(&mut self.document.project, command)
+    }
+
+    /// Undoes the latest command. Returns false when there is nothing to undo.
+    pub fn undo(&mut self) -> Result<bool, AppError> {
+        self.history.undo(&mut self.document.project)
+    }
+
+    /// Redoes the latest undone command. Returns false when there is nothing to redo.
+    pub fn redo(&mut self) -> Result<bool, AppError> {
+        self.history.redo(&mut self.document.project)
+    }
+
+    /// Whether there is a command to undo.
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    /// Whether there is an undone command to redo.
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
+    }
+
+    /// The project document, read-only. Change it with [`Application::execute`].
+    pub fn project(&self) -> &Project {
+        &self.document.project
     }
 
     /// Answers a query.
@@ -151,9 +189,9 @@ impl Application {
         match query {
             Query::Summary => QueryResult::Summary(ProjectSummary {
                 location: self.document.location.clone(),
-                setups: 0,
-                operations: 0,
-                models: 0,
+                setups: self.document.project.setups().len(),
+                operations: self.document.project.operations().len(),
+                models: self.document.project.models().len(),
             }),
         }
     }
