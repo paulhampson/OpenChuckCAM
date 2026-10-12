@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# SP-7 spike (work breakdown, Spikes): 2D offsets and booleans on an unrolled
+# cylinder with cavalier_contours and i_overlay, arcs surviving back to A
+# angles and G2 or G3. Throwaway code under the spike rules: never a workspace
+# member and never a product dependency. The empty [workspace] keeps it out of
+# the root workspace.
+
+[package]
+name = "sp7-2d-offsets"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+cavalier_contours = "=0.9.0"
+i_overlay = "=9.0.1"
+
+[profile.test]
+opt-level = 3
