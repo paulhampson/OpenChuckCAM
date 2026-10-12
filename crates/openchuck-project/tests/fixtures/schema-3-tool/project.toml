@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# A slice 3 (schema 3) project holding a tool snapshot written by hand: no
+# front end could add tools before slice 4. Schema 4 refuses it with what to
+# do (decision record 0014).
+schema = 3
+name = "Schema 3 tool fixture"

@@ -78,6 +78,11 @@ unit!(
     "deg/min"
 );
 unit!(
+    /// A spindle speed in revolutions per minute (TL-05).
+    SpindleSpeed,
+    "rpm"
+);
+unit!(
     /// A duration in seconds.
     Seconds,
     "s"

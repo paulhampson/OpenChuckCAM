@@ -97,8 +97,10 @@ fn req_nfr_07_bad_tools_and_stock_give_errors() {
         },
         diameter: Millimetres(6.0),
         flute_length: Millimetres(12.0),
+        overall_length: Millimetres(20.0),
         shank_diameter: Millimetres(6.0),
-        stickout: Millimetres(20.0),
+        flute_count: 2,
+        material: None,
     };
     assert!(
         tool.validate()

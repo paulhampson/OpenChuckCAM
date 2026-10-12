@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Sample library tool (TL-01; decision record 0014). Cutting data, where
+# given, are plausible corpus values, not recommendations.
+schema = 1
+id = "0d6b8a5e-3c1f-4e2a-9b7d-000000000004"
+name = "Tapered ball r0.5 5 deg"
+
+[tool]
+diameter = 3.175
+flute_length = 20.0
+overall_length = 50.0
+shank_diameter = 3.175
+flute_count = 2
+
+[tool.shape]
+type = "tapered_ball"
+tip_radius = 0.5
+taper_half_angle = 5.0
