@@ -96,7 +96,7 @@ impl Nurbs {
     /// Closest point on the untrimmed patch: Gauss-Newton on the stationarity conditions from a seed grid.
     pub fn project(&self, q: V3) -> (f64, f64, V3) {
         let (u0, u1) = self.u_domain(); let (v0, v1) = self.v_domain();
-        let g = 8;
+        let g = 16;
         let mut best = (0.0, 0.0, f64::MAX);
         for i in 0..=g { for j in 0..=g {
             let (u, v) = (u0 + (u1 - u0) * i as f64 / g as f64, v0 + (v1 - v0) * j as f64 / g as f64);

@@ -45,7 +45,8 @@ fn cell<'a>(t: &'a mut Table, ty: &str, op: &str, method: &str) -> &'a mut Acc {
     t.entry((ty.to_string(), op.to_string(), method.to_string())).or_default()
 }
 
-fn build_exact(m: &Model, i: usize, ty: i32, rev: bool) -> (Exact, Option<BSplineData>) {
+fn build_exact(m: &Model, i: usize, ty: i32, rev: bool, force: bool) -> (Exact, Option<BSplineData>) {
+    let ty = if force && ty <= 4 { 6 } else { ty };
     match ty {
         0..=4 => {
             let (f, _) = m.frame(i);
@@ -62,6 +63,11 @@ fn build_exact(m: &Model, i: usize, ty: i32, rev: bool) -> (Exact, Option<BSplin
         },
         _ => (Exact::None, None),
     }
+}
+
+/// Run a curvo call, turning a panic into None (NFR-07: invalid input must not crash).
+fn guard<T>(f: impl FnOnce() -> T) -> Option<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).ok()
 }
 
 fn curvo_surface(b: &BSplineData) -> NurbsSurface3D<f64> {
@@ -87,7 +93,47 @@ fn in_trims(loops: &[Vec<[f64; 2]>], u: f64, v: f64, period: Option<f64>) -> boo
     inside
 }
 
-fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(), String> {
+/// Rational NURBS check, parameter-free: the kernel converts an analytic face to a B-spline (rational for
+/// spheres and tori), and the reference is our own analytic code (already matched to the kernel at 1e-14).
+fn converted_face(m: &Model, i: usize, an: &Analytic, uv: &[f64; 4], tyname: &str, t: &mut Table) {
+    let Some(b) = m.bspline(i) else { return };
+    let ours = Nurbs { pu: b.pu, pv: b.pv, uk: b.uk.clone(), vk: b.vk.clone(), nu: b.nu, nv: b.nv, poles: b.poles.clone(), w: b.w.clone(), flip: false };
+    let cs = curvo_surface(&b);
+    let g = 12;
+    for iu in 0..g { for iv in 0..g {
+        let (fu, fv) = (0.05 + 0.9 * (iu as f64 + 0.31) / g as f64, 0.05 + 0.9 * (iv as f64 + 0.57) / g as f64);
+        // Shape of the conversion: points of the NURBS lie on the analytic surface.
+        let (ud, vd) = (ours.u_domain(), ours.v_domain());
+        let (u, v) = (ud.0 + (ud.1 - ud.0) * fu, vd.0 + (vd.1 - vd.0) * fv);
+        let p = ours.d1(u, v).0;
+        let (_, _, q) = an.project(p);
+        cell(t, tyname, "conversion: distance of NURBS point to exact surface (mm)", "rust").add(dist(p, q));
+        if let Some(c) = guard(|| { let c = cs.point_at(u, v); [c.x, c.y, c.z] }) { cell(t, tyname, "conversion: distance of NURBS point to exact surface (mm)", "curvo").add(dist(c, an.project(c).2)); cell(t, tyname, "evaluator agreement, rust vs curvo (mm)", "curvo").add(dist(c, p)); }
+        else { cell(t, tyname, "conversion: distance of NURBS point to exact surface (mm)", "curvo").bad += 1; }
+        // Projection and rays from points near the exact surface.
+        let (ue, ve) = (uv[0] + (uv[1] - uv[0]) * fu, uv[2] + (uv[3] - uv[2]) * fv);
+        let (ep, en) = an.eval(ue, ve);
+        for delta in [0.25, -0.25] {
+            let qq = add(ep, mul(en, delta));
+            let (_, _, rq) = an.project(qq);
+            let (_, _, nq) = ours.project(qq);
+            cell(t, tyname, "project point (mm)", "rust").add(dist(nq, rq));
+            let c = guard(|| cs.find_closest_parameter(&Point3::new(qq[0], qq[1], qq[2]), None).map(|(a, b2)| { let x = cs.point_at(a, b2); [x.x, x.y, x.z] })).and_then(|r| r.ok());
+            match c { Some(cp) => cell(t, tyname, "project point (mm)", "curvo").add(dist(cp, rq)), None => cell(t, tyname, "project point (mm)", "curvo").bad += 1 }
+        }
+        let tan = norm(if en[0].abs() < 0.9 { cross(en, [1.0, 0.0, 0.0]) } else { cross(en, [0.0, 1.0, 0.0]) });
+        let d = norm(add(mul(en, -1.0), mul(tan, 0.15)));
+        let o = add(ep, mul(en, 3.0));
+        // Untrimmed first hit, bounded to the patch's own domain on both sides (the analytic face is the same surface).
+        let first = |h: Vec<(f64, f64, f64)>| h.first().map(|x| x.0);
+        let a_hit = an.ray(o, d, 20.0).first().map(|x| x.0);
+        let n_hit = first(ours.ray(o, d, 20.0));
+        let a = cell(t, tyname, "ray first hit (mm)", "rust");
+        match (a_hit, n_hit) { (Some(x), Some(y)) => a.add((x - y).abs()), (None, None) => a.add(0.0), _ => a.bad += 1 }
+    } }
+}
+
+fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>, force: bool) -> Result<(), String> {
     let m = Model::read(path)?;
     let name = path.rsplit('/').next().unwrap().trim_end_matches(".step").to_string();
     let levels: [(f64, f64, &str); 2] = [(0.1, 0.5, "mesh 0.1"), (0.01, 0.1, "mesh 0.01")];
@@ -98,8 +144,14 @@ fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(),
     }
     for i in 0..m.faces() {
         let info = m.info(i);
-        let tyname = TYPE_NAMES.get(info.ty as usize).copied().unwrap_or("other").to_string();
-        let (exact, bs) = build_exact(&m, i, info.ty, info.reversed);
+        let mut tyname = TYPE_NAMES.get(info.ty as usize).copied().unwrap_or("other").to_string();
+        if force { if info.ty > 4 { continue; } tyname.push_str(" as NURBS"); }
+        if force {
+            if let Exact::An(an) = build_exact(&m, i, info.ty, info.reversed, false).0 { converted_face(&m, i, &an, &info.uv, &tyname, t); }
+            continue;
+        }
+        let (exact, bs) = build_exact(&m, i, info.ty, info.reversed, force);
+        if let Some(b) = &bs { notes.push(format!("{name} face {i} {tyname}: NURBS degree {}x{}, {}x{} poles, rational {}", b.pu, b.pv, b.nu, b.nv, b.rational)); }
         let curvo = bs.as_ref().map(curvo_surface);
         let [u0, u1, v0, v1] = info.uv;
         let (u0, u1, v0, v1) = match &exact { Exact::Nu(n) => { let (a, b) = n.u_domain(); let (c, d) = n.v_domain(); (u0.max(a), u1.min(b), v0.max(c), v1.min(d)) } _ => (u0, u1, v0, v1) };
@@ -126,11 +178,16 @@ fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(),
                 }
                 let t0 = Instant::now(); let _ = m.eval(i, u, v); cell(t, &tyname, "eval", "kernel").time(t0.elapsed());
                 if let Some(cs) = &curvo {
-                    let t0 = Instant::now(); let cp = cs.point_at(u, v); cell(t, &tyname, "eval", "curvo").time(t0.elapsed());
-                    let cn = cs.normal_at(u, v);
-                    let (cp, cn) = ([cp.x, cp.y, cp.z], [cn.x, cn.y, cn.z]);
-                    cell(t, &tyname, "eval point (mm)", "curvo").add(dist(cp, kp));
-                    cell(t, &tyname, "eval normal (deg)", "curvo").add(angle_deg(cn, kn).min(180.0 - angle_deg(cn, kn)));
+                    let t0 = Instant::now();
+                    let ce = guard(|| { let cp = cs.point_at(u, v); let cn = cs.normal_at(u, v); ([cp.x, cp.y, cp.z], [cn.x, cn.y, cn.z]) });
+                    cell(t, &tyname, "eval", "curvo").time(t0.elapsed());
+                    match ce {
+                        Some((cp, cn)) => {
+                            cell(t, &tyname, "eval point (mm)", "curvo").add(dist(cp, kp));
+                            cell(t, &tyname, "eval normal (deg)", "curvo").add(angle_deg(cn, kn).min(180.0 - angle_deg(cn, kn)));
+                        }
+                        None => { cell(t, &tyname, "eval point (mm)", "curvo").bad += 1; }
+                    }
                 }
                 for (k, (_, _, label)) in levels.iter().enumerate() {
                     if let Some((q, fnrm, d)) = meshes[k][i].closest(kp) {
@@ -152,13 +209,13 @@ fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(),
                     }
                     if let Some(cs) = &curvo {
                         let t0 = Instant::now();
-                        let cr = cs.find_closest_parameter(&Point3::new(q[0], q[1], q[2]), None);
+                        let cr = guard(|| cs.find_closest_parameter(&Point3::new(q[0], q[1], q[2]), None).map(|(cu, cv)| { let p = cs.point_at(cu, cv); [p.x, p.y, p.z] }));
                         cell(t, &tyname, "project", "curvo").time(t0.elapsed());
-                        match cr {
-                            Ok((cu, cv)) => { let cp = cs.point_at(cu, cv); let cp = [cp.x, cp.y, cp.z];
+                        match cr.and_then(|r| r.ok()) {
+                            Some(cp) => {
                                 cell(t, &tyname, "project point (mm)", "curvo").add(dist(cp, kq));
                                 cell(t, &tyname, "project distance (mm)", "curvo").add((dist(cp, q) - kd).abs()); }
-                            Err(_) => cell(t, &tyname, "project point (mm)", "curvo").bad += 1,
+                            None => cell(t, &tyname, "project point (mm)", "curvo").bad += 1,
                         }
                     }
                     let t0 = Instant::now(); let kdr = m.distance(i, q); cell(t, &tyname, "distance to trimmed face", "kernel").time(t0.elapsed());
@@ -180,12 +237,18 @@ fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(),
             let kfirst = kh.first().map(|h| h.0);
             let t0 = Instant::now(); let rh = exact.ray(o, d, tmax); cell(t, &tyname, "ray", "rust").time(t0.elapsed());
             let period = if periodic { Some(2.0 * std::f64::consts::PI) } else { None };
+            let tau = 2.0 * std::f64::consts::PI;
+            let wrap = |h: &(f64, f64, f64)| -> (f64, f64) {
+                let u = match period { Some(p) => info.uv[0] + (h.1 - info.uv[0]).rem_euclid(p), None => h.1 };
+                let v = if tyname.starts_with("torus") { info.uv[2] + (h.2 - info.uv[2]).rem_euclid(tau) } else { h.2 };
+                (u, v)
+            };
             let in_box = |h: &(f64, f64, f64)| {
-                let u = match period { Some(p) => u0 + (h.1 - u0).rem_euclid(p), None => h.1 };
-                u >= info.uv[0] - 1e-9 && u <= info.uv[1] + 1e-9 && h.2 >= info.uv[2] - 1e-9 && h.2 <= info.uv[3] + 1e-9
+                let (u, v) = wrap(h);
+                u >= info.uv[0] - 1e-9 && u <= info.uv[1] + 1e-9 && v >= info.uv[2] - 1e-9 && v <= info.uv[3] + 1e-9
             };
             let first_box = rh.iter().find(|h| in_box(h)).map(|h| h.0);
-            let first_poly = rh.iter().find(|h| in_box(h) && !trims.is_empty() && in_trims(&trims, h.1, h.2, period)).map(|h| h.0);
+            let first_poly = rh.iter().find(|h| in_box(h) && !trims.is_empty() && { let (wu, wv) = wrap(h); in_trims(&trims, wu, wv, period) }).map(|h| h.0);
             for (label, f) in [("rust, UV box only", first_box), ("rust, UV box + trim loops", first_poly)] {
                 let a = cell(t, &tyname, "ray first hit (mm)", label);
                 match (kfirst, f) {
@@ -197,8 +260,8 @@ fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(),
             if let Some(cs) = &curvo {
                 let end = add(o, mul(d, tmax));
                 let line = NurbsCurve3D::polyline(&[Point3::new(o[0], o[1], o[2]), Point3::new(end[0], end[1], end[2])], false);
-                let t0 = Instant::now(); let r = cs.find_intersection(&line, None); cell(t, &tyname, "ray", "curvo").time(t0.elapsed());
-                let first = r.ok().and_then(|v| {
+                let t0 = Instant::now(); let r = guard(|| cs.find_intersection(&line, None)).and_then(|r| r.ok()); cell(t, &tyname, "ray", "curvo").time(t0.elapsed());
+                let first = r.and_then(|v| {
                     let mut ts: Vec<f64> = v.into_iter().map(|x| x.as_tuple().1 .1).collect();
                     ts.sort_by(|a, b| a.partial_cmp(b).unwrap()); ts.first().copied()
                 });
@@ -223,14 +286,16 @@ fn run_fixture(path: &str, t: &mut Table, notes: &mut Vec<String>) -> Result<(),
 
 fn main() {
     ffi::quiet();
+    std::panic::set_hook(Box::new(|_| {}));
     let args: Vec<String> = std::env::args().collect();
     let dir = args.get(1).map(String::as_str).unwrap_or("fixtures");
     let mut files: Vec<String> = std::fs::read_dir(dir).expect("fixtures dir").filter_map(|e| e.ok())
         .map(|e| e.path().to_string_lossy().to_string()).filter(|p| p.ends_with(".step")).collect();
     files.sort();
     let mut table = Table::new(); let mut notes = Vec::new();
+    let force = args.get(2).map(String::as_str) == Some("nurbs");
     for f in &files {
-        if let Err(e) = run_fixture(f, &mut table, &mut notes) { eprintln!("{f}: {e}"); }
+        if let Err(e) = run_fixture(f, &mut table, &mut notes, force) { eprintln!("{f}: {e}"); }
     }
     println!("| Surface | Operation | Method | Samples | Max | Mean | Failures |");
     println!("| --- | --- | --- | --- | --- | --- | --- |");
