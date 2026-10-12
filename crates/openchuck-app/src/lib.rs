@@ -12,7 +12,8 @@
 //! Models are added, inspected (mesh checks, IMP-04), given units (IMP-03)
 //! and placed (IMP-05) through [`model`] (decision record 0010). The project's
 //! machine profile and its setups' stock, positions and clearance are checked
-//! through [`setup`] (decision record 0011). No strategy
+//! through [`setup`] (decision record 0011). Tool snapshots, the tool
+//! library and their checks are in [`tools`] (decision record 0014). No strategy
 //! exists yet, and regeneration runs the pipeline over no operations and
 //! produces an empty toolpath.
 
@@ -24,6 +25,7 @@ mod jobs;
 pub mod model;
 mod pipeline;
 pub mod setup;
+pub mod tools;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};

@@ -19,7 +19,7 @@ use openchuck_project::{
     ToolSnapshot, cache,
 };
 use openchuck_types::brep::FaceId;
-use openchuck_types::tool::{Tool, ToolShape};
+use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
 use openchuck_types::units::Millimetres;
 use proptest::prelude::*;
 
@@ -35,8 +35,10 @@ fn tool() -> Tool {
         shape: ToolShape::BallEnd,
         diameter: Millimetres(6.0),
         flute_length: Millimetres(20.0),
+        overall_length: Millimetres(30.0),
         shank_diameter: Millimetres(6.0),
-        stickout: Millimetres(30.0),
+        flute_count: 2,
+        material: None,
     }
 }
 
@@ -77,6 +79,8 @@ fn sample() -> Project {
             order: OrderKey::default(),
             name: "6 mm ball".into(),
             tool: tool(),
+            controller: ControllerMapping::numbered(1),
+            cutting_data: Default::default(),
         }),
         Placement::End,
     )
@@ -204,6 +208,8 @@ fn req_nfr_07_bad_values_are_errors() {
                 order: OrderKey::default(),
                 name: "bad".into(),
                 tool: bad_tool,
+                controller: ControllerMapping::numbered(1),
+                cutting_data: Default::default(),
             }),
             Placement::End,
         )

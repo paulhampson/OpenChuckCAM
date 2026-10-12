@@ -214,6 +214,8 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md), accepted).
 
+**Status:** in progress. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md) (proposed), built on branch `claude/slice-4-tool-library`; checklist not yet reviewed. New open items OI-61 to OI-63.
+
 **Design refinement:** tool data model in `openchuck-types` (the assembly types for holder and collet exist but are P2), a single revolved-profile description that every tool type maps to, including V-bit, chamfer, drill and custom profiles (SP-13), the separate library store inside `openchuck-project`, how cutting data is keyed by tool and stock material name, and what happens when the library changes after a snapshot.
 
 1. Tool profile in `openchuck-types`: one revolved-profile description (ordered line and arc segments) that every tool type maps to, as proven in SP-13. Standard types map by one rule: the cutting end (flat, ball, corner, taper, V or point) runs from the tip to the cutting radius, then a vertical side runs to the flute length; a cutting end taller than the flute length is rejected ([decision 0012](decisions/0012-sp-13-tool-profiles.md) item 3).

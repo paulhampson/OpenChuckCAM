@@ -4,6 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Slice 4 (decision 0014): tool snapshots gain the controller mapping and cutting data; project folder schema 4 (a schema 3 tool snapshot is refused with what to do); new `tools` module: the tool library file (one TOML file, its own schema, import, export, `find`), custom profile text files (arcs by centre or by radius and curve) and `compare_snapshot` (TL-07).
 - Slice 3 (decision 0011): the project keeps a copy of its machine profile in `machine.toml` (replacing the `MachineRef` placeholder, OI-43); setups gain part, stock, material, part and work offsets and clearance; project folder schema 3, migrated from 2; new `machines` module (profile files with their own schema, the built-in Makera Z1 profile, library folders).
 - Model references gain `units` and `transform`; the project folder schema is 2, migrated from 1; selections must match the model's kind (slice 2, decision 0010, OI-44).
 - Project document model: models, setups, tool snapshots, selection sets and operations with stable IDs, edits that keep the document valid, and whole-document validation (slice 1, PRJ-05).

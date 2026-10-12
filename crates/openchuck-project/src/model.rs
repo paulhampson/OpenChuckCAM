@@ -26,7 +26,7 @@ use openchuck_types::machine::{Clearance, MachineProfile};
 use openchuck_types::model::{ModelFormat, ModelKind};
 use openchuck_types::setup::{SetupFrame, validate_setup};
 use openchuck_types::stock::Stock;
-use openchuck_types::tool::Tool;
+use openchuck_types::tool::{ControllerMapping, CuttingTable, Tool};
 use openchuck_types::transform::TransformStep;
 use openchuck_types::units::LengthUnit;
 use serde::{Deserialize, Serialize};
@@ -256,8 +256,12 @@ pub struct ToolSnapshot {
     pub order: OrderKey,
     /// Name shown to the user.
     pub name: String,
-    /// The tool's geometry.
+    /// The tool's geometry and physical parameters (TL-02 to TL-04).
     pub tool: Tool,
+    /// Controller values for the post (TL-06).
+    pub controller: ControllerMapping,
+    /// Cutting data by stock material name (TL-05).
+    pub cutting_data: CuttingTable,
 }
 
 /// What a selection set selects on its model (PRJ-06).
@@ -1071,7 +1075,11 @@ impl Project {
                     &format!("setup {}", s.id),
                 )?)
             }
-            Item::Tool(t) => Ok(t.tool.validate()?),
+            Item::Tool(t) => Ok(openchuck_types::tool::validate_entry(
+                &t.tool,
+                &t.controller,
+                &t.cutting_data,
+            )?),
             Item::SelectionSet(s) => {
                 require(ItemId::Model(s.model))?;
                 let kind = self

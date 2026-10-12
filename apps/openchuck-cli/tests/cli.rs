@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 3\n"), "{text}");
+    assert!(text.starts_with("schema = 4\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -621,4 +621,87 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     let out = run(&args(&["machine", p, "--clear"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(!project.join("machine.toml").exists());
+}
+
+#[test]
+fn req_tl_01_req_tl_07_cli_tool_library_and_snapshots() {
+    let project = empty_project("tools");
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/tools");
+    let library = project.with_extension("library.toml");
+    let _ = std::fs::remove_file(&library);
+    let lib = library.as_os_str();
+
+    let out = run(&[
+        "library".as_ref(),
+        lib,
+        "import".as_ref(),
+        corpus.join("library.toml").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("8 added"), "{}", out.stdout);
+
+    let out = run(&[
+        "tool".as_ref(),
+        project.as_os_str(),
+        "T3".as_ref(),
+        "--add".as_ref(),
+        "--library".as_ref(),
+        lib,
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("controller: T3 H13 D3"),
+        "{}",
+        out.stdout
+    );
+
+    // Edit the library: the project keeps its copy, and the difference is reported.
+    let text = std::fs::read_to_string(&library)
+        .unwrap()
+        .replace("corner_radius = 1.0", "corner_radius = 0.5");
+    std::fs::write(&library, text).unwrap();
+    let out = run(&[
+        "tools".as_ref(),
+        project.as_os_str(),
+        "--library".as_ref(),
+        lib,
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("bull-nose r1,"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("differs in tool.shape.corner_radius"),
+        "{}",
+        out.stdout
+    );
+
+    // With the library gone the project still validates and reports.
+    std::fs::remove_file(&library).unwrap();
+    let out = run(&["validate".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["report".as_ref(), project.as_os_str()]);
+    assert!(out.stdout.contains("6 mm bull-nose r1"), "{}", out.stdout);
+
+    // A bad profile file is refused, naming the segment (on a copy, so a
+    // regression cannot change the corpus).
+    let copy = project.with_extension("copy.toml");
+    std::fs::copy(corpus.join("library.toml"), &copy).unwrap();
+    let out = run(&[
+        "library".as_ref(),
+        copy.as_os_str(),
+        "profile".as_ref(),
+        "T1".as_ref(),
+        corpus.join("profiles/broken_undercut.toml").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("segment 2"), "{}", out.stderr);
+
+    let out = run(&[
+        "tool".as_ref(),
+        project.as_os_str(),
+        "T3".as_ref(),
+        "--remove".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["tools".as_ref(), project.as_os_str()]);
+    assert!(out.stdout.contains("no tools"), "{}", out.stdout);
 }

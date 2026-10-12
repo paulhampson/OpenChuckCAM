@@ -41,6 +41,7 @@ use crate::order::OrderKey;
 use openchuck_types::machine::{Clearance, MachineProfile};
 use openchuck_types::setup::{SetupFrame, WorkOffset};
 use openchuck_types::stock::Stock;
+use openchuck_types::tool::{ControllerMapping, CuttingTable};
 use openchuck_types::units::Millimetres;
 
 /// The project folder schema version this build writes and reads.
@@ -51,7 +52,10 @@ use openchuck_types::units::Millimetres;
 /// - 3: the machine profile is copied into `machine.toml` instead of being
 ///   named in `project.toml`; setups gain part, stock, material, part and
 ///   work offsets and clearance (decision record 0011).
-pub const SCHEMA: i64 = 3;
+/// - 4: tool snapshots gain the TL-04 parameters (overall length in place of
+///   stickout, flute count, tool material), the controller mapping (TL-06)
+///   and cutting data by stock material (TL-05) (decision record 0014).
+pub const SCHEMA: i64 = 4;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -65,7 +69,7 @@ pub type Migration = fn(FileKind, &mut toml::Table) -> Result<(), String>;
 
 /// The migrations from each older schema to the next, oldest first. Entry `i`
 /// takes schema `SCHEMA - MIGRATIONS.len() + i` one step forward.
-const MIGRATIONS: &[Migration] = &[schema_1_to_2, schema_2_to_3];
+const MIGRATIONS: &[Migration] = &[schema_1_to_2, schema_2_to_3, schema_3_to_4];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
 /// file does not have, so a schema 1 file needs no change but its number.
@@ -81,6 +85,27 @@ fn schema_1_to_2(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
 fn schema_2_to_3(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     if kind == FileKind::Project {
         table.remove("machine");
+    }
+    Ok(())
+}
+
+/// Schema 4 tool snapshots need a flute count and a tool number that a
+/// schema 3 snapshot does not hold, and replace the stickout (a holder
+/// value) with the overall length. None can be inferred safely, so a schema 3
+/// tool file is refused with what to do; no front end could write one
+/// (decision record 0014). Other files need no change.
+fn schema_3_to_4(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Tool {
+        let name = table
+            .get("name")
+            .and_then(toml::Value::as_str)
+            .unwrap_or("unnamed");
+        return Err(format!(
+            "tool snapshot \"{name}\" was written before tools had an overall length, flute count \
+             and tool number (schema 3); add the tool again, or edit the file to schema 4 \
+             with `overall_length` in place of `stickout`, `flute_count` under [tool] and \
+             a [controller] number"
+        ));
     }
     Ok(())
 }
@@ -162,6 +187,9 @@ struct ToolFile {
     order: OrderKey,
     name: String,
     tool: openchuck_types::tool::Tool,
+    controller: ControllerMapping,
+    #[serde(default, skip_serializing_if = "CuttingTable::is_empty")]
+    cutting_data: CuttingTable,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -234,6 +262,8 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             order: t.order.clone(),
             name: t.name.clone(),
             tool: t.tool.clone(),
+            controller: t.controller,
+            cutting_data: t.cutting_data.clone(),
         };
         files.insert(item_path(FileKind::Tool, &t.id), to_text(&file)?);
     }
@@ -342,8 +372,13 @@ pub fn parse_file(kind: FileKind, text: &str) -> Result<(), ProjectError> {
         FileKind::Machine => parse::<MachineFile>(path, text, kind, MIGRATIONS, SCHEMA)
             .and_then(|f| Ok(f.machine.validate()?)),
         FileKind::Setup => parse::<SetupFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop),
-        FileKind::Tool => parse::<ToolFile>(path, text, kind, MIGRATIONS, SCHEMA)
-            .and_then(|f| Ok(f.tool.validate()?)),
+        FileKind::Tool => parse::<ToolFile>(path, text, kind, MIGRATIONS, SCHEMA).and_then(|f| {
+            Ok(openchuck_types::tool::validate_entry(
+                &f.tool,
+                &f.controller,
+                &f.cutting_data,
+            )?)
+        }),
         FileKind::SelectionSet => {
             parse::<SelectionFile>(path, text, kind, MIGRATIONS, SCHEMA).map(drop)
         }
@@ -402,6 +437,8 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                 order: f.order,
                 name: f.name,
                 tool: f.tool,
+                controller: f.controller,
+                cutting_data: f.cutting_data,
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -673,14 +710,14 @@ mod tests {
     fn req_prj_04_newer_schema_is_refused() {
         let err = parse::<ProjectFile>(
             Path::new(PROJECT_FILE),
-            "schema = 4\nname = \"x\"\n",
+            "schema = 5\nname = \"x\"\n",
             FileKind::Project,
             MIGRATIONS,
             SCHEMA,
         )
         .unwrap_err();
         assert!(
-            matches!(err, ProjectError::SchemaTooNew { found: 4, .. }),
+            matches!(err, ProjectError::SchemaTooNew { found: 5, .. }),
             "{err}"
         );
         assert!(err.to_string().contains("newer OpenChuckCAM"), "{err}");
@@ -688,7 +725,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 3);
+        assert_eq!(SCHEMA, 4);
         let mut project = Project::new("p");
         project
             .insert(
@@ -697,7 +734,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 3\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 4\n"), "{path}: {text}");
         }
     }
 
