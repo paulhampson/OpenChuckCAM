@@ -33,3 +33,4 @@ Add a row for each new record. Read the records that touch your task before you 
 | [0011](0011-slice-3-machine-stock-setup.md) | Slice 3 design refinement: machine profile, stock, setup frames and clearance; project schema 3 | Accepted (11 Oct 2026; open items OI-37 cross check, OI-53 to OI-55, OI-60) |
 | [0012](0012-sp-13-tool-profiles.md) | SP-13 result, one revolved-profile tool model: monotone profiles, generic drop-cutter | Accepted (the sweep budget waits on SP-6, OI-56) |
 | [0013](0013-z1-profile-consensus.md) | Makera Z1 profile values: consensus across Makera's published profiles (A direction, travel, feeds) | Accepted (11 Oct 2026; amends 0011 item 8; OI-37 cross check, OI-60 open) |
+| [0014](0014-sp-4-ray-cast-sweep.md) | SP-4 result, ray-cast sweep around the A axis with parry3d-f64: climb method, tool axis from the in-plane normal | Proposed (12 Oct 2026; OI-07 closes on acceptance; OI-61 to OI-64 open) |
