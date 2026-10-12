@@ -5,7 +5,7 @@
 - **Spike branch:** `spike/sp-4-ray-cast-sweep` (throwaway, never merged). The code is in `spikes/sp-4-ray-cast-sweep/`, a separate Cargo project whose only dependency is `parry3d-f64 =0.31.1`, never a workspace member; the write-up is `spikes/sp-4-ray-cast-sweep/RESULT.md` and the full report `spikes/sp-4-ray-cast-sweep/out/report.md`, both on that branch.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-07 closed on acceptance; OI-64 to OI-67 are new.
 
-Numbering: records 0001 to 0013 and OI-01 to OI-60 are on `main`. The unmerged branch `claude/slice-4-tool-library` claims record 0014 (`0014-slice-4-tool-library.md`) and OI-61 to OI-63, so this record takes 0015 and OI-64 to OI-67. The unmerged branch `claude/sp-13-slice-4-dh7j4e` carries an older copy of the slice 4 work (its `0011-sp-13-tool-profiles.md` repeats a number `main` gives to slice 3, and its OI-53 to OI-55 are already on `main`); it claims nothing new.
+Numbering: records 0001 to 0013 and OI-01 to OI-60 are on `main`. Slice 4 (`0014-slice-4-tool-library.md`, OI-61 to OI-63) was claimed on its branch `claude/slice-4-tool-library` and is now on `main` (PR #19), so this record takes 0015 and OI-64 to OI-67. The unmerged branch `claude/sp-13-slice-4-dh7j4e` carries an older copy of the slice 4 work (its `0011-sp-13-tool-profiles.md` repeats a number `main` gives to slice 3, and its OI-53 to OI-55 are already on `main`); it claims nothing new.
 
 ## Context
 
