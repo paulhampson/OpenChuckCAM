@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Self-describing parameter schemas (OP-16, UI-07) and the common operation
-//! parameters (OP-11 core; decision record 0016 item 7).
+//! parameters (OP-11 core; decision record 0018 item 7).
 //!
 //! A strategy publishes a [`ParameterSchema`]: each parameter's name, label,
 //! unit, range, default and choices. The parameter panel is generated from it

@@ -15,7 +15,7 @@
 //! through [`setup`] (decision record 0011). Tool snapshots, the tool
 //! library and their checks are in [`tools`] (decision record 0014).
 //! Operations are mapped to the pathing library's plain data and generated
-//! in [`operation`] (decision record 0016); regeneration runs every operation
+//! in [`operation`] (decision record 0018); regeneration runs every operation
 //! in machining order through the strategies in the application's registry.
 //! The library ships no strategy yet (its first, helical finishing, waits on
 //! SP-7), so a host or test registers its own with

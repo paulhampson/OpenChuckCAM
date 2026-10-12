@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The shared services that turn a strategy's passes into IR (architecture
-//! section 5.2; decision record 0016 items 4, 5, 8 and 9).
+//! section 5.2; decision record 0018 items 4, 5, 8 and 9).
 //!
 //! 1. **A-axis management (OP-15).** Within a pass A is made continuous: each
 //!    angle is the equivalent nearest the one before, so no step turns more

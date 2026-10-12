@@ -3,7 +3,7 @@
 //! management, linking, gouge protection and feed intent.
 //!
 //! Architecture section 5.2; requirements OP-01 to OP-17, INT-01 to INT-04;
-//! design in decision record 0016 (work breakdown slice 5).
+//! design in decision record 0018 (work breakdown slice 5).
 //!
 //! The library is built as if it belonged to another project (INT-01): plain
 //! data in ([`openchuck_types`]), the neutral toolpath IR out, and three

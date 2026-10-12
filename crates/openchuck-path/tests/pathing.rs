@@ -301,7 +301,7 @@ fn req_op_13_contact_feed_is_correct_on_simultaneous_moves() {
     // The contact found on a mesh shifts with the facets' orientation
     // (decision record 0015), which shows in the contact length even where
     // the mesh's own error is tiny; this band of the part is meshed at 0.025
-    // mm along X and 0.25 degrees around (decision record 0016, OI-68).
+    // mm along X and 0.25 degrees around (decision record 0018, OI-77).
     let part = HelicalGroove {
         radius: 15.0,
         length: 6.0,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The rotary kinematic mapping and A-axis management (OP-15; work breakdown
-//! slice 5 item 3; decision record 0016 items 4 and 5).
+//! slice 5 item 3; decision record 0018 items 4 and 5).
 //!
 //! [`RotaryMapping`] takes the rotary axis as a parameter and never assumes
 //! X: it maps a tool tip and an A angle in the model frame to coordinates
@@ -230,7 +230,7 @@ pub fn reversals(angles: &[Degrees], dead_band: f64) -> usize {
 }
 
 /// Whole turns that bring `a` into `(-180, 180]`: the unwind at the end of a
-/// toolpath group (decision record 0016 item 5).
+/// toolpath group (decision record 0018 item 5).
 pub fn unwind_turns(a: Degrees) -> f64 {
     let wrapped = a.0 - TURN * ((a.0 + 180.0) / TURN).floor();
     // `wrapped` is in [-180, 180); keep +180 rather than -180.

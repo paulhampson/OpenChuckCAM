@@ -12,7 +12,7 @@
 //!
 //! A host with its own geometry kernel can implement the trait directly for
 //! exact evaluation. How B-rep faces implement it inside the library is
-//! settled by SP-9, which has not run (decision record 0016 item 3).
+//! settled by SP-9, which has not run (decision record 0018 item 3).
 
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::mesh::TriangleMesh;

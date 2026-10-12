@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The `Strategy` interface and registry (OP-16; architecture section 5.2;
-//! decision record 0016 item 6).
+//! decision record 0018 item 6).
 //!
 //! A strategy turns its inputs into **passes**: ordered cut points, each a
 //! tool tip, an A angle and the cutter contact point. Everything a pass needs
@@ -132,7 +132,7 @@ impl Registry {
     }
 
     /// The strategies this library provides. The first, helical finishing,
-    /// waits on SP-7 (decision record 0016), so the list is empty for now.
+    /// waits on SP-7 (decision record 0018), so the list is empty for now.
     pub fn builtin() -> Self {
         Self::new()
     }

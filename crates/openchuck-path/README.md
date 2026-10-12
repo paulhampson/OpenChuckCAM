@@ -4,7 +4,7 @@ Reusable 4-axis pathing library: strategies, tool-axis control, A-axis managemen
 
 Part of [OpenChuckCAM](../../README.md). Architecture section 5.2; requirements OP-01 to OP-17, INT-01 to INT-04.
 
-**Status:** the pathing core (work breakdown slice 5, first step; decision record 0016, proposed). It has:
+**Status:** the pathing core (work breakdown slice 5, first step; decision record 0018, proposed). It has:
 
 - the ports `SurfaceSource` (with `MeshSurface` on a `parry3d-f64` bounding volume hierarchy), `StockModel` (with `AnalyticStock`) and `CollisionOracle` (with `AcceptAll`);
 - tool-centre solving: the drop-cutter generic over the tool profile (decision record 0012);

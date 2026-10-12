@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Operations through the application: mapping the project to the pathing
 //! library, regeneration and its errors (OP-01, OP-11, OP-16; decision
-//! record 0016 items 7 and 10).
+//! record 0018 items 7 and 10).
 
 // Test code may unwrap, index and panic (NFR-07 applies to library code).
 #![allow(

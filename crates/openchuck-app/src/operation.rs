@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Operations: mapping project objects to the pathing library's plain data
 //! and generating their toolpaths (OP-01, OP-11; work breakdown slice 5
-//! items 8 and 10; decision record 0016 items 7 and 10).
+//! items 8 and 10; decision record 0018 items 7 and 10).
 //!
 //! The library never sees the project file (INT-01): this module reads the
 //! operation's setup, machine, tool snapshot and part, and hands
@@ -39,7 +39,7 @@ pub struct ResolvedValues {
     /// The values, including any filled from the tool's cutting data.
     pub values: BTreeMap<String, ParameterValue>,
     /// Notes for the user, in parameter order: where the operation's own value
-    /// overrides the material's cutting data (decision record 0016 item 7).
+    /// overrides the material's cutting data (decision record 0018 item 7).
     pub notes: Vec<String>,
 }
 

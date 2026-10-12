@@ -93,7 +93,7 @@ float_cmp = "warn"
 
 # The pathing tests drop tools and check gouges on meshes of a few hundred
 # thousand triangles; unoptimised they take minutes. Optimise the crates on
-# that path in test and debug builds (decision record 0016).
+# that path in test and debug builds (decision record 0018).
 [profile.dev.package.openchuck-path]
 opt-level = 3
 [profile.dev.package.openchuck-testkit]
