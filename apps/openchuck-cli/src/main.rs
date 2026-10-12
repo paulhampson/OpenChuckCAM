@@ -424,7 +424,9 @@ fn run(cli: Cli) -> Result<()> {
                     eprintln!("warning: tool '{}': {warning}", report.name);
                 }
             }
-            app.regenerate()?;
+            for note in app.regenerate()?.notes {
+                eprintln!("warning: {note}");
+            }
             println!("{}: valid", project.display());
         }
         Action::Resave { project } => {
@@ -435,6 +437,9 @@ fn run(cli: Cli) -> Result<()> {
         Action::Regenerate { project, out } => {
             let app = open_project(&project, threads, create)?;
             let result = app.regenerate()?;
+            for note in &result.notes {
+                eprintln!("warning: {note}");
+            }
             if let Some(out) = &out {
                 std::fs::create_dir_all(out)
                     .with_context(|| format!("cannot create output folder '{}'", out.display()))?;

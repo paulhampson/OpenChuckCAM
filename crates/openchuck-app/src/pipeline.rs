@@ -45,10 +45,9 @@ pub(crate) fn regenerate(
             context,
         )?;
         for note in path.notes {
-            regeneration.notes.push(format!(
-                "operation '{}', move {}: {}",
-                operation.name, note.segment, note.message
-            ));
+            regeneration
+                .notes
+                .push(format!("operation '{}': {note}", operation.name));
         }
         regeneration.toolpath.groups.push(path.group);
         context.report("regenerate", i as u64 + 1, Some(total));

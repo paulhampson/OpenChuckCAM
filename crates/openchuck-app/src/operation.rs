@@ -15,8 +15,8 @@ use std::path::Path;
 
 use openchuck_path::params::{ParameterKind, names};
 use openchuck_path::{
-    AcceptAll, AnalyticStock, GeneratedPath, MeshSurface, ParameterValue, Registry, RotaryMapping,
-    StrategyInput, SurfaceSource, generate,
+    AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StrategyInput,
+    SurfaceSource, generate,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -32,14 +32,32 @@ fn missing(operation: &Operation, what: &str) -> AppError {
     }
 }
 
+/// An operation's parameter values in the library's form, and what the
+/// application did to get them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedValues {
+    /// The values, including any filled from the tool's cutting data.
+    pub values: BTreeMap<String, ParameterValue>,
+    /// Notes for the user, in parameter order: where the operation's own value
+    /// overrides the material's cutting data (decision record 0016 item 7).
+    pub notes: Vec<String>,
+}
+
 /// The operation's parameter values in the library's form, with the feed,
-/// plunge feed and stepover filled from the tool's cutting data for
-/// `material` where the operation leaves them out and the strategy has them.
+/// plunge feed and stepover filled from the tool's cutting data for the
+/// setup's stock material where the operation leaves them out and the
+/// strategy has them (TL-05).
+///
+/// A value the operation sets wins over the cutting data, and a note says so
+/// when the two differ. When a value is required, the operation does not set
+/// it and the cutting data cannot give it, the error names the material and
+/// the tool, so the user knows whether to set the value or to add cutting
+/// data for the material (names match exactly; OI-61).
 pub fn parameter_values(
     project: &Project,
     operation: &Operation,
     registry: &Registry,
-) -> Result<BTreeMap<String, ParameterValue>, AppError> {
+) -> Result<ResolvedValues, AppError> {
     let strategy = registry.get(&operation.strategy)?;
     let schema = strategy.schema();
     let mut values: BTreeMap<String, ParameterValue> = operation
@@ -61,25 +79,94 @@ pub fn parameter_values(
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
-    if let (Some(material), Some(snapshot)) = (material, snapshot)
-        && let Some(data) = snapshot.cutting_data.get(material)
-    {
-        let defaults = [
+    let data = match (material, snapshot) {
+        (Some(material), Some(snapshot)) => snapshot
+            .cutting_data
+            .get(material)
+            .map(|data| (material, snapshot, data)),
+        _ => None,
+    };
+    let mut notes = Vec::new();
+    if let Some((material, snapshot, data)) = data {
+        let from_data = [
             (names::FEED, data.cutting_feed(&snapshot.tool).0),
             (names::PLUNGE_FEED, data.plunge_feed.0),
             (names::STEPOVER, data.stepover.0),
         ];
-        for (name, value) in defaults {
+        for (name, value) in from_data {
             let numeric = matches!(
                 schema.get(name).map(|p| &p.kind),
                 Some(ParameterKind::Number { .. })
             );
-            if numeric && !values.contains_key(name) {
-                values.insert(name.to_owned(), ParameterValue::Number(value));
+            if !numeric {
+                continue;
+            }
+            match values.get(name) {
+                None => {
+                    values.insert(name.to_owned(), ParameterValue::Number(value));
+                }
+                Some(own) => {
+                    let own = match own {
+                        ParameterValue::Number(n) => Some(*n),
+                        #[allow(clippy::cast_precision_loss)]
+                        ParameterValue::Integer(i) => Some(*i as f64),
+                        _ => None,
+                    };
+                    if let Some(own) = own
+                        && (own - value).abs() > 1e-9 * value.abs().max(1.0)
+                    {
+                        notes.push(format!(
+                            "{name} {own} set on the operation overrides {value} from the cutting \
+                             data of '{}' for '{material}'",
+                            snapshot.name
+                        ));
+                    }
+                }
             }
         }
     }
-    Ok(values)
+    // A required value that neither the operation nor the cutting data gives.
+    let missing: Vec<&str> = [names::FEED, names::PLUNGE_FEED, names::STEPOVER]
+        .into_iter()
+        .filter(|name| {
+            !values.contains_key(*name)
+                && matches!(
+                    schema.get(name).map(|p| &p.kind),
+                    Some(ParameterKind::Number { default: None, .. })
+                )
+        })
+        .collect();
+    if !missing.is_empty() {
+        let why = match (material, snapshot) {
+            (None, _) => "its setup has no stock material, so no cutting data applies".to_owned(),
+            (Some(material), Some(snapshot)) => format!(
+                "tool '{}' has no cutting data for the material '{material}' \
+                 (names must match exactly)",
+                snapshot.name
+            ),
+            (Some(_), None) => "it has no tool, so no cutting data applies".to_owned(),
+        };
+        return Err(AppError::Operation {
+            name: operation.name.clone(),
+            reason: format!(
+                "{} {} required: set {} on the operation, or fix the cause: {why}",
+                missing.join(", "),
+                if missing.len() == 1 { "is" } else { "are" },
+                if missing.len() == 1 { "it" } else { "them" },
+            ),
+        });
+    }
+    Ok(ResolvedValues { values, notes })
+}
+
+/// An operation's toolpath group and notes about it for the user.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationPath {
+    /// The moves.
+    pub group: openchuck_types::ir::ToolpathGroup,
+    /// Notes: where the operation's values override the material's cutting
+    /// data, then moves the machine's feed limits slow down.
+    pub notes: Vec<String>,
 }
 
 /// Generates the toolpath of operation `id` of the project in `root`.
@@ -94,7 +181,7 @@ pub fn generate_operation(
     id: OperationId,
     registry: &Registry,
     context: &JobContext<'_>,
-) -> Result<GeneratedPath, AppError> {
+) -> Result<OperationPath, AppError> {
     let operation = project
         .operation(id)
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
@@ -153,6 +240,17 @@ pub fn generate_operation(
         max_feeds: machine.max_feeds,
         tags: &tags,
     };
-    let values = parameter_values(project, operation, registry)?;
-    Ok(generate(strategy, &input, &values, context)?)
+    let resolved = parameter_values(project, operation, registry)?;
+    let path = generate(strategy, &input, &resolved.values, context)?;
+    // Notes about the values come first, then the notes about moves.
+    let mut notes = resolved.notes;
+    notes.extend(
+        path.notes
+            .iter()
+            .map(|n| format!("move {}: {}", n.segment, n.message)),
+    );
+    Ok(OperationPath {
+        group: path.group,
+        notes,
+    })
 }

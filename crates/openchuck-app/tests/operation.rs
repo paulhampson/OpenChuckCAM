@@ -199,7 +199,9 @@ fn req_op_11_feeds_and_stepover_default_from_the_tool_cutting_data() {
     let (dir, mut app, op) = project("defaults");
     app.register_strategy(Arc::new(OneRing)).unwrap();
     let operation = app.project().operation(op).unwrap().clone();
-    let values = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    let resolved = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    let values = resolved.values;
+    assert!(resolved.notes.is_empty(), "{:?}", resolved.notes);
     // 10000 rpm x 2 flutes x 0.02 mm.
     assert_eq!(
         values[names::FEED],
@@ -236,6 +238,20 @@ fn req_op_11_feeds_and_stepover_default_from_the_tool_cutting_data() {
         .find(|s| s.kind == MoveKind::Cutting)
         .unwrap();
     assert_eq!(cut.contact_feed.unwrap().0, 250.0);
+    // The override is reported, naming the value, the material and the tool;
+    // an operation value equal to the material's says nothing.
+    let notes = app.regenerate().unwrap().notes;
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    for part in ["'Ring'", "feed 250", "400", "'4 mm ball'", "'oak'"] {
+        assert!(notes[0].contains(part), "{part}: {}", notes[0]);
+    }
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: names::FEED.into(),
+        value: Some(ParameterValue::Number(400.0)),
+    })
+    .unwrap();
+    assert!(app.regenerate().unwrap().notes.is_empty());
     app.execute(Command::SetParameter {
         operation: op,
         name: names::TOLERANCE.into(),
@@ -261,5 +277,103 @@ fn req_op_01_missing_pieces_are_named() {
         e.to_string().contains("'Ring'") && e.to_string().contains("no tool"),
         "{e}"
     );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The first cutting move's contact feed after regenerating.
+fn first_cut_feed(app: &Application) -> f64 {
+    let regeneration = app.regenerate().unwrap();
+    regeneration.toolpath.groups[0]
+        .segments
+        .iter()
+        .find(|s| s.kind == MoveKind::Cutting)
+        .unwrap()
+        .contact_feed
+        .unwrap()
+        .0
+}
+
+fn set_material(app: &mut Application, material: Option<&str>) {
+    let mut setup = app.find_setup("Setup 1").unwrap().clone();
+    setup.material = material.map(str::to_owned);
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+}
+
+#[test]
+fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_named() {
+    let (dir, mut app, op) = project("materials");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    // Give the tool a second material with different cutting data.
+    let mut snapshot = app.project().tools()[0].clone();
+    snapshot.cutting_data.insert(
+        "steel".into(),
+        CuttingData {
+            spindle_speed: SpindleSpeed(6000.0),
+            feed_per_tooth: Millimetres(0.01),
+            plunge_feed: FeedRate(60.0),
+            stepover: Millimetres(0.3),
+            stepdown: Millimetres(0.5),
+        },
+    );
+    app.execute(Command::Replace(Item::Tool(snapshot))).unwrap();
+
+    // 10000 x 2 x 0.02 for oak, 6000 x 2 x 0.01 for steel.
+    assert_eq!(first_cut_feed(&app), 400.0);
+    set_material(&mut app, Some("steel"));
+    assert_eq!(first_cut_feed(&app), 120.0);
+    let operation = app.project().operation(op).unwrap().clone();
+    let values = parameter_values(app.project(), &operation, app.strategies())
+        .unwrap()
+        .values;
+    assert_eq!(
+        values[names::PLUNGE_FEED],
+        openchuck_path::ParameterValue::Number(60.0)
+    );
+    assert_eq!(
+        values[names::STEPOVER],
+        openchuck_path::ParameterValue::Number(0.3)
+    );
+
+    // A material the tool has no data for is named, with the tool, and
+    // names must match exactly.
+    for material in ["pine", "Steel"] {
+        set_material(&mut app, Some(material));
+        let e = app.regenerate().unwrap_err();
+        assert!(matches!(e, AppError::Operation { .. }), "{e}");
+        let text = e.to_string();
+        for part in [
+            "'Ring'",
+            "feed",
+            "plunge_feed",
+            "stepover",
+            &format!("'{material}'"),
+            "'4 mm ball'",
+            "exactly",
+        ] {
+            assert!(text.contains(part), "{part}: {text}");
+        }
+    }
+
+    // No material on the setup says so.
+    set_material(&mut app, None);
+    let text = app.regenerate().unwrap_err().to_string();
+    assert!(text.contains("no stock material"), "{text}");
+
+    // Setting the three values on the operation is the way out, and no note
+    // is raised because no cutting data is overridden.
+    for (name, value) in [
+        (names::FEED, 200.0),
+        (names::PLUNGE_FEED, 50.0),
+        (names::STEPOVER, 0.5),
+    ] {
+        app.execute(Command::SetParameter {
+            operation: op,
+            name: name.into(),
+            value: Some(ParameterValue::Number(value)),
+        })
+        .unwrap();
+    }
+    assert_eq!(first_cut_feed(&app), 200.0);
+    assert!(app.regenerate().unwrap().notes.is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
 }
