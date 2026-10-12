@@ -8,48 +8,48 @@ Lobed part, 2000 through-axis rays. Error = mesh hit radius minus exact radius (
 
 | Chord tol | Triangles | Build (ms) | Mesh error min | Max ray time (us) |
 | --- | --- | --- | --- | --- |
-| 0.004 | 37392 | 26 | -0.01045 | 0.94 |
-| 0.002 | 74472 | 53 | -0.00540 | 1.24 |
-| 0.001 | 148470 | 87 | -0.00246 | 1.72 |
-| 0.0005 | 296176 | 189 | -0.00129 | 1.93 |
-| 0.00015 | 984060 | 673 | -0.00040 | 2.53 |
+| 0.004 | 37392 | 24 | -0.01045 | 1.19 |
+| 0.002 | 74472 | 48 | -0.00540 | 1.54 |
+| 0.001 | 148470 | 100 | -0.00246 | 1.78 |
+| 0.0005 | 296176 | 205 | -0.00129 | 2.27 |
+| 0.00015 | 984060 | 727 | -0.00040 | 2.73 |
 
 ## 2. Accuracy against the exact surface (mesh chord tol 0.001)
 
-Error = tip height from the mesh method minus the exact drop on the analytic surface along the same line (negative = the tool sits deeper than the exact surface, a gouge). Stencil rings at 0.75 mm; refinement is a pattern search down to 0.02 mm.
+For `NormalOffset` the error is instead the distance from the ball centre to the exact surface minus the radius (negative = gouge), because that centre is not on the tool-axis line. Otherwise error = tip height from the mesh method minus the exact drop on the analytic surface along the same line (negative = the tool sits deeper than the exact surface, a gouge). Stencil rings at 0.75 mm; refinement is a pattern search down to 0.02 mm.
 
 | Part | Tool | Mode | Method | Poses | Err min | Err max | Mean rays | us per pose (1 thread) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| vase | ball | through-axis | StencilCoarse | 1000 | -0.05368 | -0.00104 | 66 | 53 |
-| vase | ball | through-axis | StencilRefined | 1000 | -0.00195 | 0.00077 | 130 | 97 |
-| vase | ball | through-axis | Climb | 1000 | -0.00195 | 0.00077 | 91 | 68 |
-| vase | ball | through-axis | Distance | 1000 | -0.00195 | 0.00088 | 53 | 155 |
-| vase | ball | normal-following | NormalOffset | 1000 | -0.60034 | -0.01285 | 2 | 4 |
-| vase | ball | normal-following | StencilCoarse | 1000 | -0.05322 | -0.00116 | 67 | 67 |
-| vase | ball | normal-following | StencilRefined | 1000 | -0.00196 | 0.00066 | 129 | 88 |
-| vase | ball | normal-following | Climb | 1000 | -0.00196 | 0.00066 | 90 | 58 |
-| vase | ball | normal-following | Distance | 1000 | -0.00195 | 0.00067 | 54 | 119 |
-| vase | flat | through-axis | StencilCoarse | 1000 | -0.00931 | 0.00088 | 66 | 51 |
-| vase | flat | through-axis | StencilRefined | 1000 | -0.00178 | 0.00102 | 214 | 173 |
-| vase | flat | through-axis | Climb | 1000 | -0.00178 | 0.00102 | 180 | 102 |
-| vase | flat | normal-following | StencilCoarse | 1000 | -0.00881 | 0.00040 | 67 | 54 |
-| vase | flat | normal-following | StencilRefined | 1000 | -0.00199 | 0.00040 | 109 | 84 |
-| vase | flat | normal-following | Climb | 1000 | -0.00199 | 0.00040 | 75 | 56 |
-| lobed | ball | through-axis | StencilCoarse | 1000 | -0.05501 | -0.00089 | 66 | 53 |
-| lobed | ball | through-axis | StencilRefined | 1000 | -0.00267 | 0.00107 | 136 | 87 |
-| lobed | ball | through-axis | Climb | 1000 | -0.00267 | 0.00107 | 100 | 81 |
-| lobed | ball | through-axis | Distance | 1000 | -0.00267 | 0.00108 | 53 | 127 |
-| lobed | ball | normal-following | NormalOffset | 1000 | -0.60079 | -0.01184 | 2 | 3 |
-| lobed | ball | normal-following | StencilCoarse | 1000 | -0.05397 | -0.00083 | 67 | 49 |
-| lobed | ball | normal-following | StencilRefined | 1000 | -0.00250 | 0.00109 | 133 | 120 |
-| lobed | ball | normal-following | Climb | 1000 | -0.00250 | 0.00109 | 91 | 59 |
-| lobed | ball | normal-following | Distance | 1000 | -0.00250 | 0.00109 | 54 | 128 |
-| lobed | flat | through-axis | StencilCoarse | 1000 | -0.01826 | 0.00079 | 66 | 58 |
-| lobed | flat | through-axis | StencilRefined | 1000 | -0.00256 | 0.00112 | 137 | 93 |
-| lobed | flat | through-axis | Climb | 1000 | -0.00256 | 0.00115 | 109 | 74 |
-| lobed | flat | normal-following | StencilCoarse | 1000 | -0.01025 | 0.00136 | 67 | 52 |
-| lobed | flat | normal-following | StencilRefined | 1000 | -0.00271 | 0.00136 | 189 | 115 |
-| lobed | flat | normal-following | Climb | 1000 | -0.00271 | 0.00136 | 155 | 108 |
+| vase | ball | through-axis | StencilCoarse | 1000 | -0.05368 | -0.00104 | 66 | 80 |
+| vase | ball | through-axis | StencilRefined | 1000 | -0.00195 | 0.00077 | 130 | 82 |
+| vase | ball | through-axis | Climb | 1000 | -0.00195 | 0.00077 | 91 | 63 |
+| vase | ball | through-axis | Distance | 1000 | -0.00195 | 0.00088 | 53 | 138 |
+| vase | ball | normal-following | NormalOffset | 1000 | -0.00168 | 0.00071 | 2 | 3 |
+| vase | ball | normal-following | StencilCoarse | 1000 | -0.05322 | -0.00116 | 67 | 56 |
+| vase | ball | normal-following | StencilRefined | 1000 | -0.00196 | 0.00066 | 129 | 84 |
+| vase | ball | normal-following | Climb | 1000 | -0.00196 | 0.00066 | 90 | 61 |
+| vase | ball | normal-following | Distance | 1000 | -0.00195 | 0.00067 | 54 | 120 |
+| vase | flat | through-axis | StencilCoarse | 1000 | -0.00931 | 0.00088 | 66 | 85 |
+| vase | flat | through-axis | StencilRefined | 1000 | -0.00178 | 0.00102 | 214 | 130 |
+| vase | flat | through-axis | Climb | 1000 | -0.00178 | 0.00102 | 180 | 104 |
+| vase | flat | normal-following | StencilCoarse | 1000 | -0.00881 | 0.00040 | 67 | 52 |
+| vase | flat | normal-following | StencilRefined | 1000 | -0.00199 | 0.00040 | 109 | 99 |
+| vase | flat | normal-following | Climb | 1000 | -0.00199 | 0.00040 | 75 | 49 |
+| lobed | ball | through-axis | StencilCoarse | 1000 | -0.05501 | -0.00089 | 66 | 51 |
+| lobed | ball | through-axis | StencilRefined | 1000 | -0.00267 | 0.00107 | 136 | 90 |
+| lobed | ball | through-axis | Climb | 1000 | -0.00267 | 0.00107 | 100 | 82 |
+| lobed | ball | through-axis | Distance | 1000 | -0.00267 | 0.00108 | 53 | 168 |
+| lobed | ball | normal-following | NormalOffset | 1000 | -0.00220 | 0.00113 | 2 | 4 |
+| lobed | ball | normal-following | StencilCoarse | 1000 | -0.05397 | -0.00083 | 67 | 51 |
+| lobed | ball | normal-following | StencilRefined | 1000 | -0.00250 | 0.00109 | 133 | 131 |
+| lobed | ball | normal-following | Climb | 1000 | -0.00250 | 0.00109 | 91 | 77 |
+| lobed | ball | normal-following | Distance | 1000 | -0.00250 | 0.00109 | 54 | 127 |
+| lobed | flat | through-axis | StencilCoarse | 1000 | -0.01826 | 0.00079 | 66 | 81 |
+| lobed | flat | through-axis | StencilRefined | 1000 | -0.00256 | 0.00112 | 137 | 152 |
+| lobed | flat | through-axis | Climb | 1000 | -0.00256 | 0.00115 | 109 | 85 |
+| lobed | flat | normal-following | StencilCoarse | 1000 | -0.01025 | 0.00136 | 67 | 61 |
+| lobed | flat | normal-following | StencilRefined | 1000 | -0.00271 | 0.00136 | 189 | 125 |
+| lobed | flat | normal-following | Climb | 1000 | -0.00271 | 0.00136 | 155 | 101 |
 
 ## 3. Tool angle (normal-following, lobed part)
 
@@ -65,13 +65,13 @@ Machine frame check at one pose: tool direction after A = psi is (0.0e0, 0.0e0, 
 
 | Mesh tol | Triangles | Tool | Mode | Method | Poses | 1 thread (s) | 4 threads (s) | Mean rays |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0.001 | 148470 | ball | through-axis | StencilRefined | 576000 | 47.1 | 12.1 | 136 |
-| 0.001 | 148470 | ball | through-axis | Climb | 573075 | 34.4 | 9.8 | 99 |
-| 0.001 | 148470 | ball | through-axis | Distance | 573075 | 68.1 | 20.0 | 53 |
-| 0.001 | 148470 | flat | through-axis | Climb | 573075 | 36.0 | 10.1 | 108 |
-| 0.001 | 148470 | flat | normal-following | StencilRefined | 573075 | 64.5 | 18.5 | 196 |
-| 0.00015 | 984060 | ball | through-axis | Climb | 573068 | 39.8 | 11.9 | 99 |
-| 0.00015 | 984060 | flat | through-axis | Climb | 573068 | 44.1 | 11.7 | 110 |
+| 0.001 | 148470 | ball | through-axis | StencilRefined | 576000 | 47.9 | 13.8 | 136 |
+| 0.001 | 148470 | ball | through-axis | Climb | 573075 | 33.6 | 9.5 | 99 |
+| 0.001 | 148470 | ball | through-axis | Distance | 573075 | 67.0 | 20.0 | 53 |
+| 0.001 | 148470 | flat | through-axis | Climb | 573075 | 36.7 | 10.0 | 108 |
+| 0.001 | 148470 | flat | normal-following | StencilRefined | 573075 | 66.2 | 18.6 | 196 |
+| 0.00015 | 984060 | ball | through-axis | Climb | 573068 | 39.4 | 10.8 | 99 |
+| 0.00015 | 984060 | flat | through-axis | Climb | 573068 | 42.9 | 12.3 | 110 |
 
 ## 5. Determinism
 
