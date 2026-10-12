@@ -26,7 +26,7 @@ Findings, after reconciling with the architecture:
 | 14 | Section 13 now records the application crates as AGPL and the authoritative docs as living in the repository under docs/. Still open: whether test data needs Git LFS, and the packaging route for binaries. | Slice 0 records the decisions already taken (AGPL, docs in the repository) and a test-data size policy; the LFS question is revisited if the corpus grows; slice 20 decides the packaging route. |
 | 15 | The survey now scores the release tools (cargo-release 79, release-plz 73, cargo-dist 70, git-cliff 80 for changelogs), but the architecture still asks for an NFR-14 justification before the first release and leaves the packaging route open. | Justified in slice 20 using those scores, with a release gate in xtask that blocks a tag when checks fail. |
 | 16 | The path library, the post and the G-code reader share one machine model, so a replay could agree with a wrong A direction or offset. The architecture and verification plan add a test-only closed-form kinematic oracle, needed before any G-code with A words becomes a golden file. | Built in slice 0, written separately from the shared model. SP-3 is checked against it, and slices 3, 5, 6 and 13 use it. No golden file with A words is accepted before it exists. |
-| 17 | Requirement IDs must appear in test names or attributes, and an xtask traceability report fails CI when a P1 requirement has no test. Switched on from slice 0 it would fail every early build. | Slice 0 builds the convention and the report. The fail rule applies to a P1 requirement when the last slice that touches it closes (see the note under the traceability table), and to all 79 at slice 20. |
+| 17 | Requirement IDs must appear in test names or attributes, and an xtask traceability report fails CI when a P1 requirement has no test. Switched on from slice 0 it would fail every early build. | Slice 0 builds the convention and the report. The fail rule applies to a P1 requirement when the last slice that touches it closes (see the note under the traceability table), and to all 81 at slice 20. |
 | 18 | The verification plan defines five G-code gates: static, replay and LinuxCNC simulator in CI, then an air cut and a first cut on the Z1. The reference job set for gates 4 and 5 and the safe-practice checklist for first machine trials are not yet chosen or written. | Slice 6 builds gates 1 to 3 and chooses the reference job set. Slice 20 runs gates 4 and 5 (your hands-on step), records the G93 result, and includes the safe-practice checklist reviewed by whoever operates the Z1. |
 | 19 | The plan sets acceptance limits (section 4.1) and reference hardware for the frame-rate check (section 4.2) as starting values, to be revised after the first measurements. | The limits are the pass criteria in the slice checklists. Slices 5, 7 and 8 and the 3-axis test cut revise them, and each change is recorded in the plan. |
 
@@ -210,20 +210,20 @@ These apply to every slice and are not repeated below.
 
 **Goal:** define cutters and have each project carry its own copy of the tools it uses.
 
-**Requirements:** TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07
+**Requirements:** TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07, TL-11
 
 **Spike inputs:** SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md), accepted).
 
-**Status:** in progress. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md) (proposed), built on branch `claude/slice-4-tool-library`; checklist not yet reviewed. New open items OI-61 to OI-63.
+**Status:** in progress. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md) (proposed), built on branch `claude/slice-4-tool-library`; checklist not yet reviewed. The owner accepted items 2, 5 and 10 and changed items 4, 7 and 8 on 12 Oct 2026 (tool numbers belong to the project, machine tool sets under the new TL-11, a library folder), and agreed GC-14 for slice 6. New open items OI-61 to OI-63.
 
 **Design refinement:** tool data model in `openchuck-types` (the assembly types for holder and collet exist but are P2), a single revolved-profile description that every tool type maps to, including V-bit, chamfer, drill and custom profiles (SP-13), the separate library store inside `openchuck-project`, how cutting data is keyed by tool and stock material name, and what happens when the library changes after a snapshot.
 
 1. Tool profile in `openchuck-types`: one revolved-profile description (ordered line and arc segments) that every tool type maps to, as proven in SP-13. Standard types map by one rule: the cutting end (flat, ball, corner, taper, V or point) runs from the tip to the cutting radius, then a vertical side runs to the flute length; a cutting end taller than the flute length is rejected ([decision 0012](decisions/0012-sp-13-tool-profiles.md) item 3).
 2. Tool types: flat end mill, ball end mill, bull-nose and tapered ball nose (TL-02); V-bit or chamfer, drill, and tools defined by a custom profile (TL-03); with diameter, flute length, overall length, shank diameter, flute count, corner radius, taper angle, tip angle, material and tool number (TL-04).
 3. Custom profile validation by the monotone rule (along the profile neither radius nor height decreases; no zero-length segments; an arc's ends on one circle within 1e-6 mm and within one quarter turn; the first segment leaves the axis; every value finite), which makes a profile connected, non-self-intersecting and revolvable and rejects undercut tools in P1 ([decision 0012](decisions/0012-sp-13-tool-profiles.md) item 2, OI-57 closed), replacing the finiteness check `Tool::validate` makes today. Two ways to define a profile: import from a TOML text file with the `ToolProfile` fields and an arc given by `centre` or by `radius` (decision 0012 item 6, OI-58 closed; slice 4 fixes the field names), or draw and edit it in the UI (the editor with live preview arrives in slice 8); the profile text parser and the tool library import get corpus tests and fuzz targets (NFR-07).
-4. Library stored separately from projects with human-readable import and export (TL-01).
+4. Library stored separately from projects as a folder with one human-readable file per tool, with import and export (TL-01).
 5. Cutting data per tool and material name: spindle speed, feed per tooth, plunge feed, default stepover and stepdown (TL-05).
-6. Controller mapping: tool number, length offset, diameter offset (TL-06).
+6. Controller mapping: tool number, length offset, diameter offset (TL-06), held by the project's snapshot, not the library tool. A machine's default tool set in the library gives the number when a tool is added to a project for that machine; otherwise the next free number (TL-11).
 7. Project snapshot of every tool in use; the snapshot wins on load and differences from the library are reported (TL-07).
 8. Tool shape data in the form `openchuck-path` consumes; commands and CLI listing.
 
@@ -234,6 +234,7 @@ These apply to every slice and are not repeated below.
 - [ ] A self-intersecting, disconnected or undercut custom profile is rejected with a message naming the segment
 - [ ] A project opens correctly with the library absent, and editing the library never silently changes an existing project
 - [ ] Export and re-import of the library is lossless and diffs cleanly
+- [ ] A tool added to a project for a machine takes its number from that machine's tool set, or the next free number the set does not keep for another tool
 
 ## Slice 5 – First strategy and the pathing core
 
@@ -273,7 +274,7 @@ These apply to every slice and are not repeated below.
 
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
-**Requirements:** GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11 (GC-01 proven end to end; NFR-08 golden files)
+**Requirements:** GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14 (GC-01 proven end to end; NFR-08 golden files)
 
 **Spike inputs:** SP-3, SP-5, SP-10, SP-12.
 
@@ -291,6 +292,7 @@ These apply to every slice and are not repeated below.
 10. CLI: regenerate G-code from a project file without the UI, with a report (GC-11); this is also the end-to-end test harness.
 11. G-code verification gates 1 to 3 for the reference jobs in CI: gate 1 static checks (syntax, modal state, units, axis limits, feed on every cutting move, safe retract and tool change) as test code in openchuck-gcode; gate 2 replay within G-code rounding only (0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting); gate 3 the LinuxCNC simulator through the xtask replay runner. Any change to kinematics, a post or a strategy reruns all three.
 12. Choose the reference job set (parts, stock, tools) for gates 4 and 5 and write its Z1 programs.
+13. Tool numbers before posting (GC-14): the application lists the numbers the program will use and the user confirms them, renumbers automatically in order of first use by the operations, or renumbers by hand; duplicates are refused and the choice is saved in the project as undoable commands. The CLI asks on a terminal and takes an option otherwise; the UI dialog comes with export in the UI (slice 19). The post checks numbers against the machine's range (OI-62).
 
 **Review checklist**
 
@@ -302,6 +304,7 @@ These apply to every slice and are not repeated below.
 - [ ] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (hands-on step for you)
 - [ ] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees
 - [ ] The reference job set is chosen and its Z1 programs pass gates 1 to 3
+- [ ] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code
 
 ## Slice 7 – Material removal simulation (headless)
 
@@ -599,14 +602,14 @@ These apply to every slice and are not repeated below.
 
 **Goal:** export G-code in the groupings a shop uses, and a printable job summary.
 
-**Requirements:** GC-05, GC-06, GC-12
+**Requirements:** GC-05, GC-06, GC-12 (GC-14 in the UI)
 
 **Design refinement:** file naming and grouping rules, comment content, the setup sheet layout, and the HTML and PDF generation approach, assessed under NFR-14 because the architecture does not score it. Decide whether IR-duration totals appear (finding 6); otherwise times are left out until SIM-08.
 
 1. Output as one file for the project, or one per setup, operation or tool (GC-05).
 2. Comments naming the operation and tool (GC-06).
 3. Setup sheet as HTML and PDF listing tools, operations and stock, built as a module in `openchuck-app` (GC-12).
-4. Export UI and CLI options.
+4. Export UI and CLI options, including the tool-number dialog (GC-14; the application side is built in slice 6).
 5. Golden files for each grouping and a snapshot of the setup sheet content.
 
 **Review checklist**
@@ -660,9 +663,9 @@ These apply to every slice and are not repeated below.
 | 1 | PRJ-01, PRJ-02, PRJ-03, PRJ-04, PRJ-05, UI-08 | SP-8 |
 | 2 | IMP-01, IMP-03, IMP-04, IMP-05 | – |
 | 3 | SET-01, SET-03, SET-05, SET-06 | SP-12, SP-3 |
-| 4 | TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07 | SP-13 |
+| 4 | TL-01, TL-02, TL-03, TL-04, TL-05, TL-06, TL-07, TL-11 | SP-13 |
 | 5 | OP-01, OP-11, OP-13, OP-14, OP-15, OP-16 | SP-3, SP-4, SP-7, SP-9, SP-13 |
-| 6 | GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11 | SP-3, SP-5, SP-10, SP-12 |
+| 6 | GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14 | SP-3, SP-5, SP-10, SP-12 |
 | 7 | SIM-03, SIM-05, SIM-06, SIM-07 | SP-6, SP-13 |
 | 8 | UI-01, UI-02, UI-03, UI-06, UI-07, NFR-02, NFR-03 | SP-2 |
 | 9 | SIM-01, SIM-02, SIM-04, UI-09, NFR-04 | – |
@@ -678,4 +681,4 @@ These apply to every slice and are not repeated below.
 | 19 | GC-05, GC-06, GC-12 | – |
 | 20 | NFR-12 | – |
 
-**Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14) and NFR-02 (0, 8). The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
+**Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19) and NFR-02 (0, 8). The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.

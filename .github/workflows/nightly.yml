@@ -39,7 +39,7 @@ jobs:
         run: mkdir -p fuzz/corpus/machine_profile_toml && cp crates/openchuck-project/machines/*.toml fuzz/corpus/machine_profile_toml/
       - name: Seed the tool library corpus
         if: matrix.target == 'tool_library_toml'
-        run: mkdir -p fuzz/corpus/tool_library_toml && cp testdata/tools/*.toml fuzz/corpus/tool_library_toml/
+        run: mkdir -p fuzz/corpus/tool_library_toml && cp testdata/tools/library/*.toml testdata/tools/library/tool-sets/*.toml testdata/tools/broken/*.toml fuzz/corpus/tool_library_toml/
       - name: Seed the tool profile corpus
         if: matrix.target == 'tool_profile_toml'
         run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/

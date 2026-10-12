@@ -11,6 +11,7 @@ closed_slices = [0, 1, 2, 3]
 # breakdown table ("Requirements that span slices").
 [close_at]
 "TL-03" = 8
+"GC-14" = 19
 "UI-04" = 11
 "PRJ-06" = 11
 "OP-02" = 14

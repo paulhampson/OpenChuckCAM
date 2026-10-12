@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Tools: the library, the project's tool snapshots and their checks (TL-01
-//! to TL-07; work breakdown slice 4, decision record 0014).
+//! Tools: the library, machine tool sets, the project's tool snapshots and
+//! their checks (TL-01 to TL-07, TL-11; work breakdown slice 4, decision
+//! record 0014).
 //!
-//! A project carries a snapshot of every tool it uses; the snapshot always
-//! wins, and [`check_tools`] only reports how it differs from a library
-//! (TL-07). Adding, updating and removing a snapshot are ordinary
+//! A project carries a snapshot of every tool it uses, with the tool number
+//! it uses on this project's machine; the snapshot always wins, and
+//! [`check_tools`] only reports how it differs from a library (TL-07). A new
+//! snapshot takes its number from the machine's tool set in the library, or
+//! the next free number ([`default_controller`], TL-11). Adding, updating and removing a snapshot are ordinary
 //! [`Command`](crate::Command)s (`Add`, `Replace`, `Remove`), so they undo.
 //!
 //! The types a front end needs are re-exported here, so it needs no engine
@@ -17,8 +20,9 @@ use openchuck_project::{Project, ToolSnapshot};
 
 pub use openchuck_project::tools::{
     ArcCurve, ImportReport, LIBRARY_SCHEMA, LibraryTool, PROFILE_SCHEMA, SnapshotStatus,
-    ToolLibrary, compare_snapshot, load_library, load_profile, parse_library, parse_profile,
-    render_library, render_profile, save_library,
+    TOOL_SETS_FOLDER, ToolLibrary, ToolSet, ToolSetEntry, compare_snapshot, load_profile,
+    parse_profile, parse_tool_file, parse_tool_set, render_profile, render_tool_file,
+    render_tool_set,
 };
 pub use openchuck_types::tool::{
     ControllerMapping, CuttingData, CuttingTable, ProfilePoint, ProfileSegment, RevolvedProfile,
@@ -92,6 +96,18 @@ pub fn check_tools(project: &Project, library: Option<&ToolLibrary>) -> Vec<Tool
                     "no cutting data for stock material \"{material}\", which an operation using this tool cuts"
                 ));
             }
+            let machine = project.machine().map(|m| m.name.as_str());
+            if let Some(set) = machine.and_then(|m| library.and_then(|l| l.tool_set(m)))
+                && let Some(mapping) = set.mapping_for(t.id)
+                && mapping != t.controller
+            {
+                warnings.push(format!(
+                    "the {} tool set in the library gives this tool {}; the project uses {}",
+                    set.machine,
+                    describe_controller(&mapping),
+                    describe_controller(&t.controller)
+                ));
+            }
             ToolReport {
                 tool: t.id,
                 name: t.name.clone(),
@@ -100,6 +116,58 @@ pub fn check_tools(project: &Project, library: Option<&ToolLibrary>) -> Vec<Tool
             }
         })
         .collect()
+}
+
+/// Where [`default_controller`] took a tool's number from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NumberSource {
+    /// The project machine's tool set in the library.
+    ToolSet,
+    /// The tool set gives `wanted`, but another tool in the project already
+    /// uses it, so the next free number was taken.
+    ToolSetTaken {
+        /// The number the tool set gives.
+        wanted: u32,
+    },
+    /// No tool set covers the tool: the lowest number that no project tool
+    /// uses and the tool set does not keep for another tool.
+    NextFree,
+}
+
+/// The controller values for adding library tool `tool` to `project`
+/// (TL-06, TL-11): the number the project machine's tool set gives it, unless
+/// another project tool already uses that number; otherwise the lowest free
+/// number, skipping numbers the tool set keeps for other tools. The user can
+/// change it afterwards.
+pub fn default_controller(
+    project: &Project,
+    library: Option<&ToolLibrary>,
+    tool: ToolId,
+) -> (ControllerMapping, NumberSource) {
+    let set = project
+        .machine()
+        .and_then(|m| library.and_then(|l| l.tool_set(&m.name)));
+    let used: std::collections::BTreeSet<u32> = project
+        .tools()
+        .iter()
+        .filter(|t| t.id != tool)
+        .map(|t| t.controller.number)
+        .collect();
+    let wanted = set.and_then(|s| s.mapping_for(tool));
+    if let Some(mapping) = wanted
+        && !used.contains(&mapping.number)
+    {
+        return (mapping, NumberSource::ToolSet);
+    }
+    let reserved = |n: u32| set.is_some_and(|s| s.tool_for(n).is_some_and(|t| t != tool));
+    let number = (1..=u32::MAX)
+        .find(|n| !used.contains(n) && !reserved(*n))
+        .unwrap_or(u32::MAX);
+    let source = match wanted {
+        Some(m) => NumberSource::ToolSetTaken { wanted: m.number },
+        None => NumberSource::NextFree,
+    };
+    (ControllerMapping::numbered(number), source)
 }
 
 /// The snapshot in `project` named by `text`: its ID, its name (ignoring
@@ -252,5 +320,64 @@ mod tests {
         assert_eq!(find_tool(&p, "T4").unwrap().name, "c");
         assert!(find_tool(&p, "T3").is_none());
         assert_eq!(find_tool(&p, "B").unwrap().controller.number, 3);
+    }
+
+    #[test]
+    fn req_tl_11_numbers_come_from_the_machine_tool_set_or_the_next_free() {
+        let dir = std::env::temp_dir().join(format!("openchuck-app-set-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut lib = ToolLibrary::open(&dir).unwrap();
+        for id in [10, 11, 12] {
+            let s = snapshot(id, &format!("tool {id}"), 1);
+            lib.save_tool(LibraryTool::from_snapshot(&s)).unwrap();
+        }
+        let mut set = ToolSet {
+            machine: "Makera Z1".into(),
+            entries: Vec::new(),
+        };
+        set.assign(ToolId::from_u128(10), ControllerMapping::numbered(1));
+        set.assign(ToolId::from_u128(11), ControllerMapping::numbered(2));
+        lib.save_tool_set(set).unwrap();
+
+        let mut p = Project::new("p");
+        let id = |n| ToolId::from_u128(n);
+        // No machine: the next free number.
+        assert_eq!(
+            default_controller(&p, Some(&lib), id(11)),
+            (ControllerMapping::numbered(1), NumberSource::NextFree)
+        );
+        let z1 = openchuck_project::machines::builtin(openchuck_project::machines::MAKERA_Z1)
+            .unwrap()
+            .unwrap();
+        p.set_machine(Some(z1)).unwrap();
+        assert_eq!(
+            default_controller(&p, Some(&lib), id(11)),
+            (ControllerMapping::numbered(2), NumberSource::ToolSet)
+        );
+        // A tool outside the set skips the numbers the set keeps.
+        assert_eq!(
+            default_controller(&p, Some(&lib), id(12)),
+            (ControllerMapping::numbered(3), NumberSource::NextFree)
+        );
+        // The set's number is taken by another project tool.
+        p.insert(Item::Tool(snapshot(20, "other", 2)), Placement::End)
+            .unwrap();
+        assert_eq!(
+            default_controller(&p, Some(&lib), id(11)),
+            (
+                ControllerMapping::numbered(3),
+                NumberSource::ToolSetTaken { wanted: 2 }
+            )
+        );
+        // A project tool numbered differently from the set is reported.
+        p.insert(Item::Tool(snapshot(10, "tool 10", 5)), Placement::End)
+            .unwrap();
+        let report = check_tools(&p, Some(&lib));
+        let warned = &report[1].warnings;
+        assert!(
+            warned[0].contains("gives this tool T1 H1 D1; the project uses T5"),
+            "{warned:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

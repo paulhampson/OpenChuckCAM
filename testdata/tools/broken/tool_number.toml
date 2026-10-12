@@ -1,12 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Cut off mid-table.
+# A tool number in a library tool: numbers belong to the project and to tool sets.
 schema = 1
-
-[[tools]]
 id = "0d6b8a5e-3c1f-4e2a-9b7d-000000000001"
 name = "6 mm flat"
 
-[tools.tool]
+[tool]
 diameter = 6.0
 flute_length = 20.0
 overall_length = 50.0
@@ -14,33 +12,22 @@ shank_diameter = 6.0
 flute_count = 2
 material = "carbide"
 
-[tools.tool.shape]
+[tool.shape]
 type = "flat_end"
 
-[tools.controller]
-number = 1
-
-[tools.cutting_data.oak]
+[cutting_data.oak]
 spindle_speed = 18000.0
 feed_per_tooth = 0.03
 plunge_feed = 300.0
 stepover = 2.4
 stepdown = 1.5
 
-[tools.cutting_data."6061 aluminium"]
+[cutting_data."6061 aluminium"]
 spindle_speed = 16000.0
 feed_per_tooth = 0.02
 plunge_feed = 150.0
 stepover = 1.8
 stepdown = 0.5
 
-[[tools]]
-id = "0d6b8a5e-3c1f-4e2a-9b7d-000000000002"
-name = "3 mm ball"
-
-[tools.tool]
-diameter = 3.0
-flute_length = 12.0
-overall_length = 38.0
-shank_diameter = 3.175
-flu
+[controller]
+number = 3

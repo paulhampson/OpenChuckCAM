@@ -650,7 +650,7 @@ pub(crate) fn parse<T: DeserializeOwned>(
 
 /// Writes `text` unless the file already holds it (line endings aside, so a
 /// checkout with Windows line endings is not rewritten).
-fn write_if_changed(path: &Path, text: &str) -> Result<(), ProjectError> {
+pub(crate) fn write_if_changed(path: &Path, text: &str) -> Result<(), ProjectError> {
     match std::fs::read_to_string(path) {
         Ok(current) if current.replace("\r\n", "\n") == text => return Ok(()),
         Ok(_) => {}

@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Sample default tool set for the Makera Z1 (TL-11; decision record 0014):
+# the numbers a project for this machine gives these tools. The numbers are
+# illustrative, not the machine's tool changer layout.
+schema = 1
+machine = "Makera Z1"
+
+# 6 mm flat
+[[tools]]
+number = 1
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000001"
+
+# 3 mm ball
+[[tools]]
+number = 2
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000002"
+
+# 6 mm bull-nose r1
+[[tools]]
+number = 3
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000003"
+length_offset = 13
+
+# Tapered ball r0.5 5 deg
+[[tools]]
+number = 4
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000004"
+
+# 60 degree V
+[[tools]]
+number = 5
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000005"
+
+# 90 degree chamfer
+[[tools]]
+number = 6
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000006"

@@ -33,4 +33,4 @@ Add a row for each new record. Read the records that touch your task before you 
 | [0011](0011-slice-3-machine-stock-setup.md) | Slice 3 design refinement: machine profile, stock, setup frames and clearance; project schema 3 | Accepted (11 Oct 2026; open items OI-37 cross check, OI-53 to OI-55, OI-60) |
 | [0012](0012-sp-13-tool-profiles.md) | SP-13 result, one revolved-profile tool model: monotone profiles, generic drop-cutter | Accepted (the sweep budget waits on SP-6, OI-56) |
 | [0013](0013-z1-profile-consensus.md) | Makera Z1 profile values: consensus across Makera's published profiles (A direction, travel, feeds) | Accepted (11 Oct 2026; amends 0011 item 8; OI-37 cross check, OI-60 open) |
-| [0014](0014-slice-4-tool-library.md) | Slice 4 design refinement: tool data, profile validation, the tool library and snapshots; project schema 4 | Proposed (12 Oct 2026; open items OI-61 to OI-63) |
+| [0014](0014-slice-4-tool-library.md) | Slice 4 design refinement: tool data, profile validation, the tool library folder, machine tool sets (TL-11) and snapshots; project schema 4; GC-14 agreed | Proposed, partly agreed (12 Oct 2026; open items OI-61 to OI-63) |

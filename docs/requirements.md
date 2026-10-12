@@ -116,6 +116,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | TL-08 | Define holder and collet geometry as part of a tool assembly (needed for collision checking in section 4). | P2 |
 | TL-09 | A material library holding cutting data per material and tool, used to pre-fill the values in TL-05. | P2 |
 | TL-10 | Import tool tables from other systems (for example LinuxCNC tool tables). | P3 |
+| TL-11 | A default tool set per machine profile: the tools the machine normally holds and their tool numbers, kept with the tool library and used to number a tool when it is added to a project for that machine. Tool numbers belong to the project, not to the library tool. | P1 |
 
 ### 3.5 Machining strategies and toolpath generation
 
@@ -174,6 +175,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | GC-11 | A command-line mode that regenerates G-code from a project file without the UI. | P1 |
 | GC-12 | Export a setup sheet (tools, operations, stock and estimated times) as HTML or PDF; times appear once SIM-08 is available. | P1 |
 | GC-13 | An embedded scripting language for post-processors, for logic that text templates cannot express. | P2 |
+| GC-14 | Before G-code is written, show the tool numbers the program will use and let the user confirm them, renumber automatically in operation order, or renumber by hand. The chosen numbers are saved in the project, so the next post gives the same output. | P1 |
 
 ### 3.8 Project files
 

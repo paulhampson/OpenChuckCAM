@@ -23,8 +23,9 @@ use openchuck_app::setup::{
     WorkOffsetRegister, a_direction, builtin, builtin_keys, list_library, load_profile,
 };
 use openchuck_app::tools::{
-    SnapshotStatus, ToolLibrary, ToolReport, check_tools, describe, describe_controller, find_tool,
-    load_library, load_profile as load_tool_profile, save_library, with_custom_profile,
+    ControllerMapping, LibraryTool, NumberSource, SnapshotStatus, ToolLibrary, ToolReport, ToolSet,
+    check_tools, default_controller, describe, describe_controller, find_tool,
+    load_profile as load_tool_profile, with_custom_profile,
 };
 use openchuck_app::{
     AppError, Application, Command, Query, QueryResult, Threads, VERIFY_GCODE_NOTICE, inspect_file,
@@ -164,38 +165,55 @@ enum Action {
         clearance: Option<String>,
     },
     /// List a project's tool snapshots with their checks, and compare them
-    /// with a tool library (TL-07). The snapshots always win; differences
-    /// are only reported.
+    /// with a tool library folder (TL-07). The snapshots always win;
+    /// differences are only reported.
     Tools {
         /// The project folder.
         project: PathBuf,
-        /// A tool library file to compare with.
+        /// A tool library folder to compare with.
         #[arg(long)]
         library: Option<PathBuf>,
     },
-    /// Show a project's tool, add one from a tool library, update a snapshot
-    /// from the library, or remove it (TL-07). The project keeps its own copy.
+    /// Show a project's tool; add one from a tool library; update a snapshot
+    /// from the library; set its tool number and offsets; or remove it
+    /// (TL-06, TL-07, TL-11). The project keeps its own copy.
     Tool {
         /// The project folder.
         project: PathBuf,
-        /// The tool, by ID, name or `T<number>`.
+        /// The tool: by ID, name or `T<number>` in the project, or with
+        /// --add by ID or name in the library (or `T<number>` in the project
+        /// machine's tool set).
         tool: String,
-        /// Copy the tool from this library file into the project.
+        /// Copy the tool from the library into the project. Its number comes
+        /// from the machine's tool set, or is the next free one, unless
+        /// --number is given.
         #[arg(long)]
         add: bool,
-        /// Replace the project's snapshot with the library's version.
+        /// Replace the project's snapshot with the library's version, keeping
+        /// the project's tool number.
         #[arg(long, conflicts_with = "add")]
         update: bool,
-        /// The tool library file for --add and --update.
+        /// The tool library folder for --add and --update.
         #[arg(long)]
         library: Option<PathBuf>,
+        /// Set the tool number (T).
+        #[arg(long)]
+        number: Option<u32>,
+        /// Set the length offset register (H), or 0 to follow the tool number.
+        #[arg(long)]
+        length_offset: Option<u32>,
+        /// Set the diameter offset register (D), or 0 to follow the tool number.
+        #[arg(long)]
+        diameter_offset: Option<u32>,
         /// Remove the tool from the project.
         #[arg(long, conflicts_with_all = ["add", "update"])]
         remove: bool,
     },
-    /// Work with a tool library file, stored separately from projects (TL-01).
+    /// Work with a tool library: a folder with one file per tool and machine
+    /// tool sets in `tool-sets/`, stored separately from projects (TL-01,
+    /// TL-11).
     Library {
-        /// The tool library file (created by `import` if missing).
+        /// The tool library folder (created when first written).
         library: PathBuf,
         #[command(subcommand)]
         action: LibraryAction,
@@ -230,36 +248,50 @@ enum Action {
 
 #[derive(Debug, Subcommand)]
 enum LibraryAction {
-    /// List the library's tools.
+    /// List the library's tools, tool sets and unreadable files.
     List,
-    /// Merge a library file into this one: new tools are added at the end,
-    /// and a tool with the same ID replaces the library's entry.
+    /// Copy tools from another library folder or a single tool file: new
+    /// tools get new files, a tool with the same ID replaces the library's.
     Import {
-        /// The library file to read.
+        /// The library folder or tool file to read.
         from: PathBuf,
     },
-    /// Write some or all of the library's tools to another library file.
+    /// Write some or all of the library's tools into another folder.
     Export {
-        /// The file to write.
+        /// The folder to write into.
         to: PathBuf,
-        /// The tools, by ID, name or `T<number>` (default: all).
+        /// The tools, by ID or name (default: all).
         tools: Vec<String>,
     },
     /// Give a library tool the custom profile in a profile text file
     /// (TL-03); its diameter becomes the profile's end radius doubled.
     Profile {
-        /// The tool, by ID, name or `T<number>`.
+        /// The tool, by ID or name.
         tool: String,
         /// The custom profile file.
         file: PathBuf,
     },
     /// Copy a project's tool snapshot into the library, replacing the
-    /// library tool with the same ID.
+    /// library tool with the same ID. The project's tool number stays in the
+    /// project.
     Store {
         /// The project folder.
         project: PathBuf,
-        /// The tool, by ID, name or `T<number>`.
+        /// The tool, by ID, name or `T<number>` in the project.
         tool: String,
+    },
+    /// Show or edit a machine's default tool set (TL-11): the tool numbers a
+    /// project for that machine gives library tools.
+    ToolSet {
+        /// The machine profile's name, for example "Makera Z1".
+        machine: String,
+        /// `NUMBER=TOOL` (tool by ID or name): give the tool this number,
+        /// replacing whatever had the number or the tool before.
+        #[arg(long = "set")]
+        set: Vec<String>,
+        /// Remove the tool with this number from the set.
+        #[arg(long = "unset")]
+        unset: Vec<u32>,
     },
 }
 
@@ -611,7 +643,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Action::Tools { project, library } => {
             let app = open_project(&project, threads, create)?;
-            let library = library.as_deref().map(load_library).transpose()?;
+            let library = open_library(library.as_deref())?;
             if app.project().tools().is_empty() {
                 println!("{}: no tools", project.display());
             }
@@ -631,66 +663,95 @@ fn run(cli: Cli) -> Result<()> {
             add,
             update,
             library,
+            number,
+            length_offset,
+            diameter_offset,
             remove,
         } => {
             let mut app = open_project(&project, threads, create)?;
-            let library = library.as_deref().map(load_library).transpose()?;
+            let library = open_library(library.as_deref())?;
             let need_library = || {
                 library
                     .as_ref()
-                    .context("--add and --update need --library FILE")
+                    .context("--add and --update need --library FOLDER")
             };
-            if add {
-                let entry = need_library()?.find(&tool).map_err(anyhow::Error::msg)?;
+            let id = if add {
+                let entry = find_library_tool(need_library()?, app.project(), &tool)?;
                 if app.project().tools().iter().any(|t| t.id == entry.id) {
                     anyhow::bail!(
                         "the project already has \"{}\"; use --update to refresh it from the library",
                         entry.name
                     );
                 }
+                let (controller, source) =
+                    default_controller(app.project(), library.as_ref(), entry.id);
                 app.execute(Command::Add {
-                    item: Item::Tool(entry.snapshot()),
+                    item: Item::Tool(entry.snapshot(controller)),
                     placement: Placement::End,
                 })?;
-                app.save()?;
-                println!("{}: added tool \"{}\"", project.display(), entry.name);
-            } else if update || remove {
-                let snapshot = find_tool(app.project(), &tool)
+                let how = match source {
+                    NumberSource::ToolSet => "from the machine's tool set".to_owned(),
+                    NumberSource::ToolSetTaken { wanted } => format!(
+                        "the next free number; the machine's tool set gives T{wanted}, which another tool here uses"
+                    ),
+                    NumberSource::NextFree => "the next free number".to_owned(),
+                };
+                println!(
+                    "{}: added tool \"{}\" as T{} ({how})",
+                    project.display(),
+                    entry.name,
+                    controller.number
+                );
+                entry.id
+            } else {
+                find_tool(app.project(), &tool)
                     .with_context(|| format!("the project has no single tool named \"{tool}\""))?
-                    .clone();
-                if remove {
-                    app.execute(Command::Remove(openchuck_app::project::ItemId::Tool(
-                        snapshot.id,
-                    )))?;
-                    app.save()?;
-                    println!("{}: removed tool \"{}\"", project.display(), snapshot.name);
-                    return Ok(());
-                }
-                let entry = need_library()?.get(snapshot.id).with_context(|| {
+                    .id
+            };
+            let snapshot = app
+                .project()
+                .tools()
+                .iter()
+                .find(|t| t.id == id)
+                .context("the tool is missing from the project")?
+                .clone();
+            if remove {
+                app.execute(Command::Remove(openchuck_app::project::ItemId::Tool(id)))?;
+                app.save()?;
+                println!("{}: removed tool \"{}\"", project.display(), snapshot.name);
+                return Ok(());
+            }
+            let mut edited = snapshot.clone();
+            if update {
+                let entry = need_library()?.get(id).with_context(|| {
                     format!(
                         "the library has no tool with the ID of \"{}\"",
                         snapshot.name
                     )
                 })?;
-                let mut fresh = entry.snapshot();
-                fresh.order = snapshot.order;
-                app.execute(Command::Replace(Item::Tool(fresh)))?;
-                app.save()?;
-                println!(
-                    "{}: updated tool \"{}\" from the library",
-                    project.display(),
-                    entry.name
-                );
+                edited = entry.snapshot(snapshot.controller);
+                edited.order = snapshot.order.clone();
             }
-            let id = match find_tool(app.project(), &tool) {
-                Some(t) => t.id,
-                None => library
-                    .as_ref()
-                    .and_then(|l| l.find(&tool).ok())
-                    .map(|t| t.id)
-                    .filter(|id| app.project().tools().iter().any(|t| t.id == *id))
-                    .with_context(|| format!("the project has no single tool named \"{tool}\""))?,
-            };
+            if let Some(n) = number {
+                edited.controller.number = n;
+            }
+            if let Some(h) = length_offset {
+                edited.controller.length_offset = (h != 0).then_some(h);
+            }
+            if let Some(d) = diameter_offset {
+                edited.controller.diameter_offset = (d != 0).then_some(d);
+            }
+            if edited != snapshot {
+                app.execute(Command::Replace(Item::Tool(edited)))?;
+                if update {
+                    println!(
+                        "{}: updated tool \"{}\" from the library",
+                        project.display(),
+                        snapshot.name
+                    );
+                }
+            }
+            app.save()?;
             let report = check_tools(app.project(), library.as_ref())
                 .into_iter()
                 .find(|r| r.tool == id)
@@ -741,36 +802,76 @@ fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-/// Runs a `library` subcommand on the tool library file at `path` (TL-01).
+/// Opens the tool library folder `path`, if given, and warns about files it
+/// skipped.
+fn open_library(path: Option<&Path>) -> Result<Option<ToolLibrary>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let library = ToolLibrary::open(path)?;
+    for problem in library.problems() {
+        eprintln!("warning: {problem}");
+    }
+    Ok(Some(library))
+}
+
+/// A library tool by ID or name, or `T<number>` in the tool set of the
+/// project's machine.
+fn find_library_tool<'a>(
+    library: &'a ToolLibrary,
+    project: &openchuck_app::project::Project,
+    text: &str,
+) -> Result<&'a LibraryTool> {
+    let number = text
+        .trim()
+        .strip_prefix(['T', 't'])
+        .and_then(|n| n.parse::<u32>().ok());
+    if let Some(n) = number {
+        let machine = project
+            .machine()
+            .map(|m| m.name.as_str())
+            .unwrap_or_default();
+        let set = library.tool_set(machine).with_context(|| {
+            format!("T{n} needs a tool set for the project's machine; name the tool instead")
+        })?;
+        let id = set
+            .tool_for(n)
+            .with_context(|| format!("the {} tool set has no T{n}", set.machine))?;
+        return library
+            .get(id)
+            .with_context(|| format!("the {} tool set's T{n} is not in the library", set.machine));
+    }
+    library.find(text).map_err(anyhow::Error::msg)
+}
+
+/// Runs a `library` subcommand on the tool library folder at `path` (TL-01,
+/// TL-11).
 fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: bool) -> Result<()> {
-    let read = || -> Result<ToolLibrary> { Ok(load_library(path)?) };
+    let mut library = open_library(Some(path))?.context("no library")?;
     match action {
         LibraryAction::List => {
-            let library = read()?;
-            if library.tools().is_empty() {
+            if library.tools().next().is_none() {
                 println!("{}: no tools", path.display());
             }
             for t in library.tools() {
-                println!(
-                    "{:<6} {} ({})",
-                    format!("T{}", t.controller.number),
-                    t.name,
-                    t.id
-                );
-                println!("       {}", describe(&t.tool));
+                let file = library
+                    .path_of(t.id)
+                    .and_then(Path::file_name)
+                    .map(|f| f.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                println!("{} ({}, {file})", t.name, t.id);
+                println!("    {}", describe(&t.tool));
                 for material in t.cutting_data.keys() {
-                    println!("       cutting data: {material}");
+                    println!("    cutting data: {material}");
                 }
+            }
+            for set in library.tool_sets() {
+                println!();
+                print_tool_set(&library, set);
             }
         }
         LibraryAction::Import { from } => {
-            let mut library = if path.exists() {
-                read()?
-            } else {
-                ToolLibrary::default()
-            };
-            let report = library.import(&load_library(&from)?);
-            save_library(&library, path)?;
+            let report = library.import(&from)?;
             println!(
                 "{}: {} added, {} replaced, {} unchanged",
                 path.display(),
@@ -780,50 +881,83 @@ fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: boo
             );
         }
         LibraryAction::Export { to, tools } => {
-            let library = read()?;
-            let ids = if tools.is_empty() {
-                library.tools().iter().map(|t| t.id).collect()
-            } else {
-                tools
-                    .iter()
-                    .map(|text| library.find(text).map(|t| t.id))
-                    .collect::<std::result::Result<Vec<_>, String>>()
-                    .map_err(anyhow::Error::msg)?
-            };
-            let exported = library.export(&ids)?;
-            save_library(&exported, &to)?;
-            println!("{}: {} tools written", to.display(), exported.tools().len());
+            let ids = tools
+                .iter()
+                .map(|text| library.find(text).map(|t| t.id))
+                .collect::<std::result::Result<Vec<_>, String>>()
+                .map_err(anyhow::Error::msg)?;
+            let written = library.export(&ids, &to)?;
+            println!("{}: {} tools written", to.display(), written.len());
         }
         LibraryAction::Profile { tool, file } => {
-            let mut library = read()?;
             let profile = load_tool_profile(&file)?;
             let mut entry = library.find(&tool).map_err(anyhow::Error::msg)?.clone();
             entry.tool = with_custom_profile(&entry.tool, profile);
-            library.upsert(entry.clone())?;
-            save_library(&library, path)?;
+            let written = library.save_tool(entry.clone())?;
             println!(
                 "{}: \"{}\" now has the profile from {}",
-                path.display(),
+                written.display(),
                 entry.name,
                 file.display()
             );
-            println!("       {}", describe(&entry.tool));
+            println!("    {}", describe(&entry.tool));
         }
         LibraryAction::Store { project, tool } => {
             let app = open_project(&project, threads, create)?;
             let snapshot = find_tool(app.project(), &tool)
                 .with_context(|| format!("the project has no single tool named \"{tool}\""))?;
-            let mut library = if path.exists() {
-                read()?
-            } else {
-                ToolLibrary::default()
-            };
-            library.upsert(openchuck_app::tools::LibraryTool::from_snapshot(snapshot))?;
-            save_library(&library, path)?;
-            println!("{}: stored \"{}\"", path.display(), snapshot.name);
+            let written = library.save_tool(LibraryTool::from_snapshot(snapshot))?;
+            println!("{}: stored \"{}\"", written.display(), snapshot.name);
+        }
+        LibraryAction::ToolSet {
+            machine,
+            set: assignments,
+            unset,
+        } => {
+            let mut set = library.tool_set(&machine).cloned().unwrap_or(ToolSet {
+                machine: machine.trim().to_owned(),
+                entries: Vec::new(),
+            });
+            for n in unset {
+                if !set.unassign(n) {
+                    anyhow::bail!("the {} tool set has no T{n}", set.machine);
+                }
+            }
+            for text in &assignments {
+                let (number, tool) = text
+                    .split_once('=')
+                    .with_context(|| format!("'{text}': give --set NUMBER=TOOL"))?;
+                let number: u32 = number
+                    .trim()
+                    .trim_start_matches(['T', 't'])
+                    .parse()
+                    .with_context(|| format!("'{number}' is not a tool number"))?;
+                let id = library.find(tool).map_err(anyhow::Error::msg)?.id;
+                set.assign(id, ControllerMapping::numbered(number));
+            }
+            let existing = library.tool_set(&machine);
+            // Showing a set that does not exist yet writes nothing.
+            if existing != Some(&set) && (existing.is_some() || !set.entries.is_empty()) {
+                library.save_tool_set(set.clone())?;
+            }
+            print_tool_set(&library, &set);
         }
     }
     Ok(())
+}
+
+/// Prints a machine's tool set (TL-11).
+fn print_tool_set(library: &ToolLibrary, set: &ToolSet) {
+    println!("tool set:   {}", set.machine);
+    if set.entries.is_empty() {
+        println!("            empty");
+    }
+    for e in &set.entries {
+        let name = library
+            .get(e.tool)
+            .map_or_else(|| format!("missing tool {}", e.tool), |t| t.name.clone());
+        println!("  {:<8} {name}", describe_controller(&e.controller));
+    }
 }
 
 /// Prints a project tool, its controller values, cutting data and checks
