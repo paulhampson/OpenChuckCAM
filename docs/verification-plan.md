@@ -82,6 +82,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | TL-02 | P1 | T | Unit | Flat, ball, bull-nose and tapered ball tools give the expected profile geometry |
 | TL-03 | P1 | T | Unit, integration | V-bit, chamfer, drill and custom-profile tools give the expected revolved profile; a custom profile imported from a text file or drawn in the UI is validated and invalid profiles are rejected; the same profile drives tool-centre solving, the independent gouge checker and the simulation sweep and agrees with an equivalent standard tool (SP-13) |
 | TL-07 | P1 | T | Integration | A project opens with the tool library absent and still generates identical output |
+| TL-11 | P1 | T | Unit, integration | A tool added to a project for a machine takes the number the machine's tool set gives it, or the lowest number no project tool uses and the set does not keep for another tool; tool set files round-trip and invalid sets (a number or tool listed twice, number 0) are rejected |
 | TL-08, TL-09 | P2 | T | Unit | Holder and collet assembly, and material library pre-fill tested when built |
 | TL-10 | P3 | T | Unit | LinuxCNC tool table import on sample tables, when built |
 | OP-01, OP-02 | P1 | T | Integration | An operation regenerates identically; toolpath stays within selected faces, containment boundary and avoid or check surfaces |
@@ -107,6 +108,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | GC-07, NFR-06 | P1 | T | System | Same project and post-processor give byte-identical G-code and toolpaths on repeat runs and with 1, 2 and many threads on each platform; the golden files are compared on all three platforms |
 | GC-09 | P1 | T, D | Integration, acceptance | Golden-file tests, simulator pass, then the gated trial on the Makera Z1 (section 6) |
 | GC-10 | P1 | T | Integration | Verification post-processor output runs to completion in the LinuxCNC simulator; end position and A angle match the plan |
+| GC-14 | P1 | T | Integration | Confirming keeps the project's numbers; automatic renumbering gives T1, T2 and so on in order of first use by the operations; manual renumbering refuses a number used twice; the chosen numbers are saved and a second post gives byte-identical G-code |
 | GC-08, GC-13 | P2 | T | Integration | Limit, feed and number checks fire on seeded faults; scripting hook gives output templates cannot |
 | PRJ-01, PRJ-03, PRJ-05 | P1 | T | Unit, integration | Saving twice is byte-identical; a small edit gives a small diff; no generated data in the file; two branches editing different items merge cleanly |
 | PRJ-02, PRJ-06 | P1 | T | Integration | Model files stay separate with relative paths; a changed model is detected by hash; selections survive save and load |
@@ -172,7 +174,7 @@ The architecture splits the system into library crates behind two equal front en
 | openchuck-geom | Meshes with known defects, transform tests, selection and BVH ray-cast picking, all without a window | IMP-04, IMP-05, UI-04 |
 | openchuck-import | Corpus tests and fuzzing for STL, STEP, DXF and SVG; unit conversion; deterministic face and edge IDs; tessellation tolerance; C++ kernel boundary tests | IMP-01 to IMP-03, IMP-06, IMP-08, NFR-13 |
 | openchuck-sim | Deviation on analytic parts, playback jumps from checkpoints, timing against hand calculation, collision scenarios, conformance to the StockModel and CollisionOracle ports | SIM-01 to SIM-10, COL-01 to COL-08 |
-| openchuck-project | Save twice gives identical bytes, load then save is a no-op, schema migration fixtures, order-key merge test with a real Git merge, model hash change detection, library snapshots | PRJ-01 to PRJ-08, TL-01 to TL-10, UI-05, VC-03 |
+| openchuck-project | Save twice gives identical bytes, load then save is a no-op, schema migration fixtures, order-key merge test with a real Git merge, model hash change detection, library snapshots | PRJ-01 to PRJ-08, TL-01 to TL-11, UI-05, VC-03 |
 | openchuck-vcs | Temporary-repository tests for commit, history, restore, branch and merge, built without network features | VC-01 to VC-06 |
 | openchuck-app | Command and query tests, undo and redo property tests, job manager cancellation and progress, pipeline cache invalidation | UI-06 to UI-09, GC-05, GC-12, NFR-04 |
 | openchuck-cli | End-to-end scenarios with assert\_cmd: project in, G-code and report out, including the NFR-12 notice | GC-11, NFR-08 |

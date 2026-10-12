@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# A corner-rounding cutter's end: a flat to radius 1, then a concave arc of
+# radius 2 out to radius 3 (TL-03; decision record 0014).
+schema = 1
+
+[[segments]]
+type = "line"
+to = { radius = 1.0, height = 0.0 }
+
+[[segments]]
+type = "arc"
+to = { radius = 3.0, height = 2.0 }
+radius = 2.0
+curve = "concave"

@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# A tool set using tool number 0.
+schema = 1
+machine = "Makera Z1"
+
+# 6 mm flat
+[[tools]]
+number = 0
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000001"
+
+# 3 mm ball
+[[tools]]
+number = 2
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000002"
+
+# 6 mm bull-nose r1
+[[tools]]
+number = 3
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000003"
+length_offset = 13
+
+# Tapered ball r0.5 5 deg
+[[tools]]
+number = 4
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000004"
+
+# 60 degree V
+[[tools]]
+number = 5
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000005"
+
+# 90 degree chamfer
+[[tools]]
+number = 6
+tool = "0d6b8a5e-3c1f-4e2a-9b7d-000000000006"

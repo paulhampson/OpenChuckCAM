@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+schema = 1
+
+[[segments]]
+type = "line"
+to = { radius = 3.0, height = nan }

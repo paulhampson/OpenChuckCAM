@@ -20,7 +20,7 @@ use openchuck_app::project::{
 use openchuck_app::setup::{Clearance, MachineProfile, Stock, WorkOffsetRegister};
 use openchuck_app::{AppError, Application, Command, Threads};
 use openchuck_types::brep::FaceId;
-use openchuck_types::tool::{Tool, ToolShape};
+use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
 use openchuck_types::units::Millimetres;
 use proptest::prelude::*;
 
@@ -35,8 +35,10 @@ fn tool(diameter: f64) -> Tool {
         shape: ToolShape::FlatEnd,
         diameter: Millimetres(diameter),
         flute_length: Millimetres(10.0),
+        overall_length: Millimetres(25.0),
         shank_diameter: Millimetres(6.0),
-        stickout: Millimetres(25.0),
+        flute_count: 2,
+        material: None,
     }
 }
 
@@ -200,6 +202,8 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                 order: OrderKey::default(),
                 name: format!("{diameter} mm"),
                 tool: tool(diameter),
+                controller: ControllerMapping::numbered(1),
+                cutting_data: Default::default(),
             }),
             placement: Placement::End,
         },

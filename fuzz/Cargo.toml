@@ -58,3 +58,17 @@ path = "fuzz_targets/stl_import.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "tool_library_toml"
+path = "fuzz_targets/tool_library_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tool_profile_toml"
+path = "fuzz_targets/tool_profile_toml.rs"
+test = false
+doc = false
+bench = false

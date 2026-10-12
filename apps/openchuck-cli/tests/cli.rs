@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 3\n"), "{text}");
+    assert!(text.starts_with("schema = 4\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -621,4 +621,131 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     let out = run(&args(&["machine", p, "--clear"]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(!project.join("machine.toml").exists());
+}
+
+#[test]
+fn req_tl_01_req_tl_07_req_tl_11_cli_tool_library_and_snapshots() {
+    let project = empty_project("tools");
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/tools");
+    let library = project.with_extension("library");
+    let _ = std::fs::remove_dir_all(&library);
+    let lib = library.as_os_str();
+    let p = project.as_os_str();
+
+    let out = run(&[
+        "library".as_ref(),
+        lib,
+        "import".as_ref(),
+        corpus.join("library").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("8 added"), "{}", out.stdout);
+    assert!(library.join("6-mm-bull-nose-r1.toml").is_file());
+
+    // A tool set for the project's machine gives the number (TL-11).
+    let out = run(&["machine".as_ref(), p, "makera-z1".as_ref()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&[
+        "library".as_ref(),
+        lib,
+        "tool-set".as_ref(),
+        "Makera Z1".as_ref(),
+        "--set".as_ref(),
+        "4=6 mm bull-nose r1".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(library.join("tool-sets/makera-z1.toml").is_file());
+    let out = run(&[
+        "tool".as_ref(),
+        p,
+        "T4".as_ref(),
+        "--add".as_ref(),
+        "--library".as_ref(),
+        lib,
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("as T4 (from the machine's tool set)"),
+        "{}",
+        out.stdout
+    );
+    let out = run(&[
+        "tool".as_ref(),
+        p,
+        "3 mm ball".as_ref(),
+        "--add".as_ref(),
+        "--library".as_ref(),
+        lib,
+    ]);
+    assert!(
+        out.stdout.contains("as T1 (the next free number)"),
+        "{}",
+        out.stdout
+    );
+
+    // The number is the project's to change.
+    let out = run(&[
+        "tool".as_ref(),
+        p,
+        "T1".as_ref(),
+        "--number".as_ref(),
+        "7".as_ref(),
+        "--length-offset".as_ref(),
+        "17".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("controller: T7 H17 D7"),
+        "{}",
+        out.stdout
+    );
+
+    // Edit the library: the project keeps its copy, and the difference is reported.
+    let file = library.join("6-mm-bull-nose-r1.toml");
+    let text = std::fs::read_to_string(&file)
+        .unwrap()
+        .replace("corner_radius = 1.0", "corner_radius = 0.5");
+    std::fs::write(&file, text).unwrap();
+    let out = run(&["tools".as_ref(), p, "--library".as_ref(), lib]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("bull-nose r1,"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("differs in tool.shape.corner_radius"),
+        "{}",
+        out.stdout
+    );
+
+    // With the library gone the project still validates and reports.
+    std::fs::remove_dir_all(&library).unwrap();
+    let out = run(&["validate".as_ref(), p]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["report".as_ref(), p]);
+    assert!(out.stdout.contains("6 mm bull-nose r1"), "{}", out.stdout);
+
+    // A bad profile file is refused, naming the segment (in a fresh copy of
+    // the sample library, so a regression cannot change the corpus).
+    let out = run(&[
+        "library".as_ref(),
+        lib,
+        "import".as_ref(),
+        corpus.join("library").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&[
+        "library".as_ref(),
+        lib,
+        "profile".as_ref(),
+        "6 mm flat".as_ref(),
+        corpus.join("profiles/broken_undercut.toml").as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.stderr.contains("segment 2"), "{}", out.stderr);
+
+    let out = run(&["tool".as_ref(), p, "T4".as_ref(), "--remove".as_ref()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["tool".as_ref(), p, "T7".as_ref(), "--remove".as_ref()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&["tools".as_ref(), p]);
+    assert!(out.stdout.contains("no tools"), "{}", out.stdout);
+    std::fs::remove_dir_all(&library).ok();
 }

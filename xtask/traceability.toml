@@ -5,12 +5,13 @@
 # A P1 requirement with no test fails CI once the last slice that touches it
 # has closed (work breakdown, "Traceability: P1 requirement to slice").
 # Add a slice here when its review checklist is complete.
-closed_slices = [0, 1, 2, 3]
+closed_slices = [0, 1, 2, 3, 4]
 
 # Requirements that close later than the last slice listing them in the work
 # breakdown table ("Requirements that span slices").
 [close_at]
 "TL-03" = 8
+"GC-14" = 19
 "UI-04" = 11
 "PRJ-06" = 11
 "OP-02" = 14

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# An arc of half a turn, beyond the quarter turn the rule allows (segment 2).
+schema = 1
+
+[[segments]]
+type = "line"
+to = { radius = 1.0, height = 0.0 }
+
+[[segments]]
+type = "arc"
+to = { radius = 1.0, height = 2.0 }
+centre = { radius = 1.0, height = 1.0 }
