@@ -1,0 +1,20 @@
+# SP-9 exact surfaces: throwaway spike code; never merged into the product.
+[workspace]
+
+[package]
+name = "sp9-exact"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+curvo = "=0.3.2"
+nalgebra = "=0.35.0"
+
+[build-dependencies]
+cc = "=1.7.0"
+occt-sys = "=7.8.1"
+
+[profile.release]
+debug = "line-tables-only"
