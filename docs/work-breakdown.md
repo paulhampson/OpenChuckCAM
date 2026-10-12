@@ -214,7 +214,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md), accepted).
 
-**Status:** in progress. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md) (proposed), built on branch `claude/slice-4-tool-library`; checklist not yet reviewed. The owner accepted items 2, 5 and 10 and changed items 4, 7 and 8 on 12 Oct 2026 (tool numbers belong to the project, machine tool sets under the new TL-11, a library folder), and agreed GC-14 for slice 6; it then accepted the remaining choices (overall length in place of stickout, arcs by radius and curve, snapshots matched by ID). Waiting: the OI-54 deferral and the checklist review. New open items OI-61 to OI-63.
+**Status:** closed 12 Oct 2026. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md), accepted 12 Oct 2026 (tool numbers belong to the project; machine tool sets under the new TL-11; the library is a folder; GC-14 agreed for slice 6). Items 1 to 8 are built, except drawing a profile in the UI (slice 8, where TL-03 closes). New open items OI-61 to OI-63; OI-54 moved to slice 8.
 
 **Design refinement:** tool data model in `openchuck-types` (the assembly types for holder and collet exist but are P2), a single revolved-profile description that every tool type maps to, including V-bit, chamfer, drill and custom profiles (SP-13), the separate library store inside `openchuck-project`, how cutting data is keyed by tool and stock material name, and what happens when the library changes after a snapshot.
 
@@ -227,14 +227,14 @@ These apply to every slice and are not repeated below.
 7. Project snapshot of every tool in use; the snapshot wins on load and differences from the library are reported (TL-07).
 8. Tool shape data in the form `openchuck-path` consumes; commands and CLI listing.
 
-**Review checklist**
+**Review checklist** (evidence in decision 0014, "Verification"; ticked, slice closed 12 Oct 2026)
 
-- [ ] Each tool type validates, and impossible values (corner radius above tool radius, a zero tip angle) are rejected
-- [ ] The profile of every standard type matches its closed-form silhouette for diameter and flute length
-- [ ] A self-intersecting, disconnected or undercut custom profile is rejected with a message naming the segment
-- [ ] A project opens correctly with the library absent, and editing the library never silently changes an existing project
-- [ ] Export and re-import of the library is lossless and diffs cleanly
-- [ ] A tool added to a project for a machine takes its number from that machine's tool set, or the next free number the set does not keep for another tool
+- [x] Each tool type validates, and impossible values (corner radius above tool radius, a zero tip angle) are rejected (`req_tl_04_every_type_validates_and_carries_its_parameters`, `req_tl_02_req_tl_03_impossible_values_are_rejected`)
+- [x] The profile of every standard type matches its closed-form silhouette for diameter and flute length (`req_tl_02_req_tl_03_standard_profiles_match_their_closed_form_silhouettes`, within 1e-12 mm at 301 radii)
+- [x] A self-intersecting, disconnected or undercut custom profile is rejected with a message naming the segment (`req_tl_03_bad_custom_profiles_are_rejected_naming_the_segment`; in profile files, `req_tl_03_req_nfr_07_bad_profile_files_name_the_segment` and the profile corpus)
+- [x] A project opens correctly with the library absent, and editing the library never silently changes an existing project (`req_tl_07_project_opens_with_the_library_absent`, `req_tl_07_editing_the_library_never_changes_a_project`, and the CLI scenario)
+- [x] Export and re-import of the library is lossless and diffs cleanly (`req_tl_01_export_then_import_is_lossless`; one file per tool, a one-value edit changes one line of one file, `req_tl_01_library_folder_holds_one_file_per_tool`)
+- [x] A tool added to a project for a machine takes its number from that machine's tool set, or the next free number the set does not keep for another tool (`req_tl_11_numbers_come_from_the_machine_tool_set_or_the_next_free`, and the CLI scenario adding `T4` through the Z1 tool set)
 
 ## Slice 5 – First strategy and the pathing core
 
