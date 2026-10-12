@@ -1,6 +1,6 @@
 # SP-4 result: ray-cast sweep around the A axis
 
-Throwaway spike code (work breakdown, Spikes; spike rules). The decision record is `docs/decisions/0015-sp-4-ray-cast-sweep.md` on branch `docs/decision-0015-sp-4-ray-cast-sweep` (open items OI-4 to OI-7; OI-07 progresses). This file is the write-up and [`out/report.md`](out/report.md) is the full report.
+Throwaway spike code (work breakdown, Spikes; spike rules). The decision record is `docs/decisions/0015-sp-4-ray-cast-sweep.md` on branch `docs/decision-0015-sp-4-ray-cast-sweep` (open items OI-64 to OI-67; OI-07 closed on acceptance). This file is the write-up and [`out/report.md`](out/report.md) is the full report.
 
 ## Question
 
