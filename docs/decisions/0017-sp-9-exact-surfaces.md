@@ -1,6 +1,6 @@
 # 0017: SP-9 result, exact surfaces: plain data in, pure-Rust evaluation in the library, the waiver not applied
 
-- **Status:** proposed (12 Oct 2026), awaiting the project owner. Until it is accepted this is guidance, not authority.
+- **Status:** accepted by the project owner (12 Oct 2026), including the edits to the architecture, the crate selection, the verification plan and the work breakdown listed under Consequences. OI-72 to OI-76 stay open as the items the record names for later slices.
 - **Date:** 12 Oct 2026.
 - **Spike branch:** `spike/sp-9-exact-surfaces` (throwaway, never merged). Code in `spikes/sp9-exact/` (a separate Cargo project with an empty `[workspace]`); the write-up is `spikes/sp9-exact/RESULT.md` and the raw tables are `spikes/sp9-exact/reports/` on that branch.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-72 to OI-76 are new.
@@ -24,7 +24,7 @@ The spike compared, against OpenCASCADE as the reference, our own analytic Rust 
 | Trims | A UV bounding box accepts false hits (103 of 3,528 plane rays, 2 of 2,940 cylinder rays). UV trim loops sampled from the p-curves fix all but one boundary sample; they classify like the kernel on 196 of 196 samples on 34 of 45 faces and on 195 of 196 on the six end discs. |
 | Dependency assessment | `curvo` 0.3.2: MIT, 95 crates in its tree, young (2.5 years, two dependents), ray intersection "experimental" and untrimmed, panics on a periodic B-spline input (NFR-07). |
 
-## Decision (proposed)
+## Decision
 
 1. **Apply no waiver.** IMP-02's conditional waiver is not triggered: exact evaluation of NURBS faces is usable and small (about 200 lines of evaluation). The first release evaluates all faces on exact data, and the tessellation remains the display, mesh-check and fallback form.
 2. **Exact faces reach `openchuck-path` as plain data**, not as a kernel handle. The face record (in `openchuck-types`, built by `openchuck-import` from the kernel through the shim) holds: the surface (a plane, cylinder, cone, sphere or torus with its frame and size, or a clamped, unwrapped rational B-spline patch with knots, poles and weights), the face orientation, the UV bounds, the trim loops as UV polylines, and the tessellation with a face index per triangle. The shim converts every other kernel surface (revolution, extrusion, offset, Bezier) to the B-spline form. This keeps the kernel inside `openchuck-import` and the pathing library free of it (architecture section 12).
@@ -43,8 +43,8 @@ The spike compared, against OpenCASCADE as the reference, our own analytic Rust 
 ## Consequences
 
 - **Work breakdown:** the SP-9 Status cell is updated in this change. Slice 5 designs the `SurfaceSource` port for the five queries; slice 11 builds the shim additions (`occ_face_frame`, B-spline unwrapping, trim sampling), the face record and the Rust implementations, and keeps the SP-9 comparison as a regression test against the kernel.
-- **Architecture** (sections 4, 5 and 13: "needs a decision after the STEP spike") and **crate selection** (NURBS section) should be edited to match once this record is accepted. Not edited here, per the repository rule.
-- **`openchuck-types::brep`:** its documentation says surface parameters stay out of the shared types until SP-9 decides (decision 0004). The face record of item 2 is the proposal; it is not added until this record is accepted.
+- **Architecture** (sections 4, 7 and 13) and **crate selection** (summary row, NURBS section and thin-spots note) are edited in the same change that accepts this record, as are the verification plan (IMP-02 row, STEP checks and risk row), the work breakdown (slices 5 and 11 design refinements, SP-9 status) and the `openchuck-types::brep` module documentation. `docs/requirements.md` is not edited: IMP-02's waiver is conditional on a finding that SP-9 did not make, so it is simply not triggered.
+- **`openchuck-types::brep`:** its documentation says surface parameters stay out of the shared types until SP-9 decides (decision 0004). The face record of item 2 is the accepted shape; it is built in slice 11.
 - **Verification plan:** add the exact-versus-kernel comparison of the spike (analytic, rational and B-spline faces, trims) to the STEP checks (OI-28 covers tolerance on golden tests).
 - **Dependencies:** `docs/dependencies.md` gains a `curvo` row (tried, not adopted). No dependency is added to the workspace.
 
