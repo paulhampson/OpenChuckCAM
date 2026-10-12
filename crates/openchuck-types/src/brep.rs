@@ -9,8 +9,11 @@
 //! tessellation and kernel-computed numbers are not bit-identical across CPU
 //! architectures, so no ID is derived from them.
 //!
-//! Only the surface kind and a tessellation are carried for now. How exact
-//! surface evaluation reaches the pathing library is decided by SP-9.
+//! Only the surface kind and a tessellation are carried for now. SP-9
+//! (decision 0017) decided how exact surface evaluation reaches the pathing
+//! library: the face record will also carry the analytic frame and size or a
+//! clamped rational B-spline patch, the UV bounds and the trim loops, and the
+//! library evaluates them in pure Rust. That data is added in slice 11.
 
 use serde::{Deserialize, Serialize};
 
