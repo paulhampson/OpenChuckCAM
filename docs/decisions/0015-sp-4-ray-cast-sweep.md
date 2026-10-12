@@ -1,6 +1,6 @@
 # 0015: SP-4 result, ray-cast sweep around the A axis with parry3d-f64
 
-- **Status:** proposed. The spike met all three pass criteria on the parts it covered; the project owner has not yet reviewed it. Until accepted, slices 5 and 13 may rely on it as guidance only.
+- **Status:** accepted by the project owner (12 Oct 2026). OI-07 is closed; OI-64 to OI-67 stay open as the items the record names for later slices.
 - **Date:** 12 Oct 2026.
 - **Spike branch:** `spike/sp-4-ray-cast-sweep` (throwaway, never merged). The code is in `spikes/sp-4-ray-cast-sweep/`, a separate Cargo project whose only dependency is `parry3d-f64 =0.31.1`, never a workspace member; the write-up is `spikes/sp-4-ray-cast-sweep/RESULT.md` and the full report `spikes/sp-4-ray-cast-sweep/out/report.md`, both on that branch.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-07 progressed; OI-4 to OI-7 are new.
@@ -62,7 +62,7 @@ Findings:
 - No change to `requirements.md` or `architecture.md`: section 5.2 and the crate selection already name parry3d-f64 for geometry queries, behind our interface.
 - **Slice 5**: mesh `SurfaceSource` on a parry `TriMesh` (point, normal, ray, distance); the drop-cutter of decision 0012 uses `climb` for the generic case; tessellation error measured, not assumed (OI-5).
 - **Slice 13**: items 2 and 3 use decision items 2 and 3; smoothed normals for the tool angle (OI-7); a corpus with concave features and tools offset from the A axis before the slice is accepted (OI-6).
-- **OI-07** progresses: the cutter-shape half was answered by SP-13 (decision 0012); this record answers the tool-axis half. It closes when the owner accepts this record.
+- **OI-07** closes: SP-13 (decision 0012) answered the cutter-shape half and this record answers the tool-axis half, accepted 12 Oct 2026.
 - `docs/dependencies.md`: the `parry3d-f64` row notes SP-4's use and the feature set tried.
 - Cross-platform bit-identity of parry's results was not tested (OI-4).
 
