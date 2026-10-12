@@ -214,7 +214,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md), accepted).
 
-**Status:** in progress. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md) (proposed), built on branch `claude/slice-4-tool-library`; checklist not yet reviewed. The owner accepted items 2, 5 and 10 and changed items 4, 7 and 8 on 12 Oct 2026 (tool numbers belong to the project, machine tool sets under the new TL-11, a library folder), and agreed GC-14 for slice 6. New open items OI-61 to OI-63.
+**Status:** in progress. Design refinement in [decision 0014](decisions/0014-slice-4-tool-library.md) (proposed), built on branch `claude/slice-4-tool-library`; checklist not yet reviewed. The owner accepted items 2, 5 and 10 and changed items 4, 7 and 8 on 12 Oct 2026 (tool numbers belong to the project, machine tool sets under the new TL-11, a library folder), and agreed GC-14 for slice 6; it then accepted the remaining choices (overall length in place of stickout, arcs by radius and curve, snapshots matched by ID). Waiting: the OI-54 deferral and the checklist review. New open items OI-61 to OI-63.
 
 **Design refinement:** tool data model in `openchuck-types` (the assembly types for holder and collet exist but are P2), a single revolved-profile description that every tool type maps to, including V-bit, chamfer, drill and custom profiles (SP-13), the separate library store inside `openchuck-project`, how cutting data is keyed by tool and stock material name, and what happens when the library changes after a snapshot.
 
