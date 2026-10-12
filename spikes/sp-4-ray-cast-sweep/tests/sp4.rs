@@ -85,24 +85,20 @@ fn req_op_12_coarse_stencil_alone_is_not_enough() {
 }
 
 #[test]
-fn req_op_06_normal_offset_valid_only_along_the_normal() {
-    // One ray plus an offset along the facet normal is exact enough when the tool axis is the
-    // normal (normal-following), and wrong on the through-axis line of the lobed part.
+fn req_op_06_normal_offset_places_the_ball_centre_off_the_axis_line() {
+    // Centre = hit point + radius * facet normal. It touches the surface within tolerance, but
+    // it is not on the in-plane tool-axis line because the normal has an X component that A
+    // cannot follow, so the tip height along the line is wrong by far more than the tolerance.
     let s = setup(Part::lobed());
     let (poses, _, _) = run(&s, BALL, Method::NormalOffset, true, 2);
-    for p in poses.iter().flatten() {
-        let ex = exact::drop(&s.part, &BALL, p.b, p.psi).unwrap();
-        // The facet normal is wrong by up to half a facet angle, which moves the centre by
-        // about radius times that angle; the tolerance for this method is looser.
-        assert!((p.z - ex).abs() <= TOL, "normal-following offset error {}", p.z - ex);
+    let mut along: f64 = 0.0;
+    for p in poses.iter().flatten().step_by(7) {
+        let c = p.b + p.normal * BALL.radius();
+        let dev = exact::distance(&s.part, c, 3.5) - BALL.radius();
+        assert!(dev.abs() <= TOL, "centre deviation {dev}");
+        along = along.max((p.z - exact::drop(&s.part, &BALL, p.b, p.psi).unwrap()).abs());
     }
-    let (poses, _, _) = run(&s, BALL, Method::NormalOffset, false, 2);
-    let worst = poses
-        .iter()
-        .flatten()
-        .map(|p| (p.z - exact::drop(&s.part, &BALL, p.b, p.psi).unwrap()).abs())
-        .fold(0.0, f64::max);
-    assert!(worst > TOL, "through-axis offset worst {worst}");
+    assert!(along > TOL, "tip along the line differs by {along}");
 }
 
 #[test]

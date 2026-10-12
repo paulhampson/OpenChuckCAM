@@ -221,6 +221,8 @@ pub struct Pose {
     pub psi_n: f64,
     /// Rays and distance queries' worth of work for this pose (one distance query counts as 1).
     pub rays: usize,
+    /// Normal-following only: the facet normal (3D) at the first hit; zero otherwise.
+    pub normal: Vector,
 }
 
 impl Pose {
@@ -246,7 +248,7 @@ pub fn sweep_through_axis(
         let (x, th) = (xs[k / ths.len()], ths[k % ths.len()]);
         let b = Vector::new(x, 0.0, 0.0);
         solve(c, tool, method, coarse, refined, b, th)
-            .map(|d| Pose { b, psi: th, z: d.z, th, psi_n: th, rays: d.rays })
+            .map(|d| Pose { b, psi: th, z: d.z, th, psi_n: th, rays: d.rays, normal: Vector::ZERO })
     })
 }
 
@@ -271,6 +273,6 @@ pub fn sweep_normal_following(
         let hit = c.cast(b0, th, 0.0, 0.0)?;
         let psi_n = hit.normal.y.atan2(hit.normal.z);
         let d = solve(c, tool, method, coarse, refined, hit.point, psi_n)?;
-        Some(Pose { b: hit.point, psi: psi_n, z: d.z, th, psi_n, rays: d.rays + 1 })
+        Some(Pose { b: hit.point, psi: psi_n, z: d.z, th, psi_n, rays: d.rays + 1, normal: hit.normal })
     })
 }

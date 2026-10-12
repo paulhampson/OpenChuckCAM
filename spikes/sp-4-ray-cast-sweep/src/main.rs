@@ -96,7 +96,7 @@ fn main() {
     // 2. Accuracy of the methods against the exact surface.
     let tol = 0.001;
     writeln!(out, "\n## 2. Accuracy against the exact surface (mesh chord tol {tol})\n").unwrap();
-    writeln!(out, "Error = tip height from the mesh method minus the exact drop on the analytic surface along the same line (negative = the tool sits deeper than the exact surface, a gouge). Stencil rings at 0.75 mm; refinement is a pattern search down to 0.02 mm.\n").unwrap();
+    writeln!(out, "For `NormalOffset` the error is instead the distance from the ball centre to the exact surface minus the radius (negative = gouge), because that centre is not on the tool-axis line. Otherwise error = tip height from the mesh method minus the exact drop on the analytic surface along the same line (negative = the tool sits deeper than the exact surface, a gouge). Stencil rings at 0.75 mm; refinement is a pattern search down to 0.02 mm.\n").unwrap();
     writeln!(out, "| Part | Tool | Mode | Method | Poses | Err min | Err max | Mean rays | us per pose (1 thread) |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |").unwrap();
     for (pname, part) in [("vase", Part::vase()), ("lobed", Part::lobed())] {
         let (nx, nth) = mesh::steps(&part, tol);
@@ -127,7 +127,14 @@ fn main() {
                     let mut rays = 0usize;
                     for (p, r) in poses.iter().zip(&refs) {
                         if let (Some(p), Some(r)) = (p, r) {
-                            st.add(p.z - r);
+                            if method == Method::NormalOffset {
+                                // The centre is off the tool-axis line, so judge it by its
+                                // distance from the exact surface: radius minus distance.
+                                let c = p.b + p.normal * tool.radius();
+                                st.add(exact::distance(&part, c, tool.radius() + 0.5) - tool.radius());
+                            } else {
+                                st.add(p.z - r);
+                            }
                             rays += p.rays;
                         }
                     }

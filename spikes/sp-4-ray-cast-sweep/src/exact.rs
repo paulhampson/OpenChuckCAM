@@ -77,3 +77,38 @@ pub fn drop(part: &Part, tool: &Tool, b: Vector, psi: f64) -> Option<f64> {
     }
     Some(z)
 }
+
+/// Distance from point `c` to the exact surface, by a coarse search around the point's own
+/// `(x, th)` and a 0.002 mm refinement. Used to judge ball centres: a ball of radius `rt`
+/// whose centre is at distance `rt` touches the surface without gouging it.
+pub fn distance(part: &Part, c: Vector, reach: f64) -> f64 {
+    let th_c = c.y.atan2(c.z);
+    let rmin = part.r_min();
+    let (x0, x1) = ((c.x - reach).max(0.0), (c.x + reach).min(part.length));
+    let wth = reach / rmin;
+    let step = 0.05;
+    let nx = (((x1 - x0) / step).ceil() as usize).max(1);
+    let nth = ((2.0 * wth * rmin / step).ceil() as usize).max(2);
+    let mut best = (f64::MAX, 0.0, 0.0);
+    for i in 0..=nx {
+        let x = x0 + (x1 - x0) * i as f64 / nx as f64;
+        for j in 0..=nth {
+            let th = th_c - wth + 2.0 * wth * j as f64 / nth as f64;
+            let d = (part.point(x, th) - c).length();
+            if d < best.0 {
+                best = (d, x, th);
+            }
+        }
+    }
+    let fs = 0.002;
+    let n = 40;
+    let (mut dmin, bx, bth) = best;
+    for i in -n..=n {
+        for j in -n..=n {
+            let x = (bx + i as f64 * fs).clamp(0.0, part.length);
+            let th = bth + j as f64 * fs / rmin;
+            dmin = dmin.min((part.point(x, th) - c).length());
+        }
+    }
+    dmin
+}
