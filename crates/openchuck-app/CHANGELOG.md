@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Slice 5, first step (decision 0016): the `operation` module maps an operation to the pathing library (`generate_operation`, `parameter_values` with feed, plunge feed and stepover from the tool's cutting data); regeneration runs every operation in machining order and `Regeneration` gains `notes`; `Application::strategies` and `register_strategy`; errors `UnknownOperation`, `Operation` and `Path`; `Registry` and `Strategy` re-exported.
 - Slice 4 (decision 0014): the `tools` module: `check_tools` (shared tool numbers, missing cutting data, library and tool set differences), `default_controller` and `NumberSource` (TL-11), `find_tool`, `describe`, `describe_controller` and `with_custom_profile`, and re-exports of the tool and library types a front end needs.
 - Slice 3 (decision 0011): `Command::SetMachine` takes a machine profile; `Application::check_setups` and `find_setup`; `ModelInspection::extent`; the `setup` module re-exports what a front end needs and states the A direction in words.
 - `Application::add_model`, `find_model`, `inspect_model` and `inspect_file` as jobs; commands `SetModelUnits` and `SetModelTransform`; the `model` module re-exports the model types a front end needs (slice 2, decision 0010).

@@ -61,6 +61,9 @@ clap = { version = "=4.6.7", features = ["derive"] }
 cargo_metadata = "=0.23.1"
 toml = "=1.1.8"
 stl_io = "=0.11.0"
+# Geometry queries behind our own types (decision records 0002 and 0015); no
+# `spade` (triangulation), which the pathing core does not use.
+parry3d-f64 = { version = "=0.31.1", default-features = false, features = ["std", "alloc", "dim3", "f64"] }
 eframe = { version = "=0.36.2", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
 wgpu = "=30.0.1"
 
@@ -87,6 +90,18 @@ dbg_macro = "deny"
 print_stdout = "warn"
 print_stderr = "warn"
 float_cmp = "warn"
+
+# The pathing tests drop tools and check gouges on meshes of a few hundred
+# thousand triangles; unoptimised they take minutes. Optimise the crates on
+# that path in test and debug builds (decision record 0016).
+[profile.dev.package.openchuck-path]
+opt-level = 3
+[profile.dev.package.openchuck-testkit]
+opt-level = 3
+[profile.dev.package.parry3d-f64]
+opt-level = 3
+[profile.dev.package.glamx]
+opt-level = 3
 
 [profile.release]
 debug = "line-tables-only"

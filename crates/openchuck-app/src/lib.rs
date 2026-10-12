@@ -13,9 +13,13 @@
 //! and placed (IMP-05) through [`model`] (decision record 0010). The project's
 //! machine profile and its setups' stock, positions and clearance are checked
 //! through [`setup`] (decision record 0011). Tool snapshots, the tool
-//! library and their checks are in [`tools`] (decision record 0014). No strategy
-//! exists yet, and regeneration runs the pipeline over no operations and
-//! produces an empty toolpath.
+//! library and their checks are in [`tools`] (decision record 0014).
+//! Operations are mapped to the pathing library's plain data and generated
+//! in [`operation`] (decision record 0016); regeneration runs every operation
+//! in machining order through the strategies in the application's registry.
+//! The library ships no strategy yet (its first, helical finishing, waits on
+//! SP-7), so a host or test registers its own with
+//! [`Application::register_strategy`].
 
 #![warn(missing_docs)]
 
@@ -23,6 +27,7 @@ mod command;
 mod error;
 mod jobs;
 pub mod model;
+pub mod operation;
 mod pipeline;
 pub mod setup;
 pub mod tools;
@@ -41,6 +46,7 @@ use setup::{PartExtent, SetupReport};
 pub use command::Command;
 pub use error::AppError;
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
+pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
 pub use openchuck_project as project;
@@ -50,7 +56,6 @@ pub use pipeline::Regeneration;
 // The application layer maps project data to every engine crate (architecture
 // section 3). Most are still shells; naming them keeps the layering visible.
 use openchuck_gcode as _;
-use openchuck_path as _;
 use openchuck_post as _;
 use openchuck_sim as _;
 
@@ -123,6 +128,7 @@ pub struct Application {
     document: Document,
     history: History,
     jobs: JobManager,
+    strategies: Registry,
     events_tx: Sender<Event>,
     events_rx: Receiver<Event>,
 }
@@ -162,6 +168,7 @@ impl Application {
             },
             history: History::default(),
             jobs: JobManager::new(threads)?,
+            strategies: Registry::builtin(),
             events_tx,
             events_rx,
         })
@@ -384,10 +391,25 @@ impl Application {
     /// Starts regenerating every operation's toolpath and G-code as a background job.
     pub fn start_regenerate(&self) -> JobHandle<Regeneration> {
         let document = self.document.clone();
+        let strategies = self.strategies.clone();
         self.jobs
             .submit("regenerate", self.events_tx.clone(), move |context| {
-                pipeline::regenerate(&document.location, context)
+                pipeline::regenerate(&document.location, &document.project, &strategies, context)
             })
+    }
+
+    /// The strategies operations can use (OP-16).
+    pub fn strategies(&self) -> &Registry {
+        &self.strategies
+    }
+
+    /// Adds a strategy to the application's registry, for a host that brings
+    /// its own (OP-16). Fails if one of that name is registered.
+    pub fn register_strategy(
+        &mut self,
+        strategy: std::sync::Arc<dyn Strategy>,
+    ) -> Result<(), AppError> {
+        Ok(self.strategies.register(strategy)?)
     }
 
     /// Regenerates and waits for the result.

@@ -13,6 +13,14 @@ authors.workspace = true
 
 [dependencies]
 openchuck-types.workspace = true
+parry3d-f64.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
+proptest.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

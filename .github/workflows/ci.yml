@@ -107,6 +107,7 @@ jobs:
         run: |
           cargo run --locked -p openchuck-types --example kinematics
           cargo run --locked -p openchuck-geom --example check_and_place
+          cargo run --locked -p openchuck-path --example host
 
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
