@@ -93,6 +93,19 @@ enum Action {
         #[arg(long, value_enum)]
         tool_numbers: Option<NumberChoice>,
     },
+    /// Compare a LinuxCNC simulator report with the replay of the G-code file
+    /// it ran (gate 3): every move must reach its position, LinuxCNC must
+    /// report no fault, and the program must end where the replay says.
+    GcodeSim {
+        /// The G-code file the simulator ran (LinuxCNC dialect).
+        program: PathBuf,
+        /// The simulator driver's JSON report.
+        report: PathBuf,
+        /// Largest allowed difference in mm or degrees (the driver samples
+        /// about once a millisecond).
+        #[arg(long, default_value_t = 0.01)]
+        tolerance: f64,
+    },
     /// Show the tool numbers the program will use, or change them (GC-14).
     /// The choice is saved in the project.
     ToolNumbers {
@@ -532,6 +545,37 @@ fn run(cli: Cli) -> Result<()> {
             if unclean > 0 {
                 anyhow::bail!("{unclean} G-code file(s) failed the checks above");
             }
+        }
+        Action::GcodeSim {
+            program,
+            report,
+            tolerance,
+        } => {
+            use openchuck_app::gcode::{
+                Dialect, compare_simulator, parse_sim_report, read, replay,
+            };
+            let text = std::fs::read_to_string(&program)
+                .with_context(|| format!("cannot read '{}'", program.display()))?;
+            let read = read(&text).map_err(|errors| {
+                anyhow::anyhow!(
+                    "{}: {}",
+                    program.display(),
+                    errors.first().map_or_else(String::new, ToString::to_string)
+                )
+            })?;
+            let replayed = replay(&read, Dialect::Linuxcnc)
+                .map_err(|e| anyhow::anyhow!("{}: {e}", program.display()))?;
+            let text = std::fs::read_to_string(&report)
+                .with_context(|| format!("cannot read '{}'", report.display()))?;
+            let sim = parse_sim_report(&text)?;
+            let found = compare_simulator(&replayed, &sim, tolerance)?;
+            println!(
+                "{}: the simulator reached all {} moves (largest difference {:.4}, {:.1} s of motion) and reported no fault",
+                program.display(),
+                found.moves,
+                found.max_error,
+                found.seconds
+            );
         }
         Action::ToolNumbers {
             project,

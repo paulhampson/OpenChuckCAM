@@ -40,6 +40,9 @@ pub type Axes = [f64; 4];
 pub struct Move {
     /// One-based source line.
     pub line: usize,
+    /// The `N` word of the block, which LinuxCNC reports in place of the line
+    /// number when a program has them.
+    pub sequence: Option<usize>,
     /// How it travels.
     pub motion: Motion,
     /// Where it started (work coordinates).
@@ -391,6 +394,11 @@ fn replay_block(
     }
     out.steps.push(Step::Move(Move {
         line: first.map_or(block.line, |w| w.line),
+        sequence: block
+            .words
+            .iter()
+            .find(|w| w.letter == 'N' && w.value >= 0.0 && w.value.fract() == 0.0)
+            .map(|w| w.value as usize),
         motion,
         from,
         to,

@@ -46,6 +46,9 @@ use setup::{PartExtent, SetupReport};
 pub use command::Command;
 pub use error::AppError;
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
+/// The G-code reader and replay, re-exported so front ends need no engine
+/// crate of their own (architecture section 5.8).
+pub use openchuck_gcode as gcode;
 pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
@@ -56,7 +59,6 @@ pub use posting::{GcodeComparison, GcodeReport, PostSelection};
 
 // The application layer maps project data to every engine crate (architecture
 // section 3). Most are still shells; naming them keeps the layering visible.
-use openchuck_gcode as _;
 use openchuck_post as _;
 use openchuck_sim as _;
 

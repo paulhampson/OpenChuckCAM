@@ -2246,6 +2246,8 @@ name = "openchuck-gcode"
 version = "0.3.0"
 dependencies = [
  "openchuck-types",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

@@ -50,6 +50,9 @@ jobs:
               - 'xtask/**'
               - 'benches/**'
               - 'fuzz/**'
+              - 'posts/**'
+              - 'testdata/**'
+              - 'tools/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -238,7 +241,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml]
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install nightly --profile minimal
@@ -257,6 +260,14 @@ jobs:
       - name: Seed the tool profile corpus
         if: matrix.target == 'tool_profile_toml'
         run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
+      - name: Seed the G-code corpus
+        if: matrix.target == 'gcode_reader'
+        run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
+      - name: Seed the post definition corpus
+        if: matrix.target == 'post_definition'
+        run: |
+          mkdir -p fuzz/corpus/post_definition
+          for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
       - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=60
 
   coverage:

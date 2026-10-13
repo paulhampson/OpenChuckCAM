@@ -274,7 +274,7 @@ These apply to every slice and are not repeated below.
 
 ## Slice 6 – Post-processing and G-code round trip
 
-**Status:** started 13 Oct 2026. Item 1 (IR to neutral machine program) and the feed rules of [decision 0019](decisions/0019-sp-10-template-engine.md) item 5 are built in `openchuck-post` (`to_machine_program`, `FeedRule`; tests `req_gc_*` in `crates/openchuck-post/tests/machine_program.rs`). Next: the template engine, post loader and option schema (items 2 to 4, OI-84 to OI-86), then the Z1 and LinuxCNC posts, the reader and replay in `openchuck-gcode`, and the gates.
+**Status:** built 13 Oct 2026 except what needs LinuxCNC or the Z1; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 8, 10, 11 (gates 1 and 2), 12 and 13 are built. Item 9 and gate 3 have the configuration, driver, runner script and comparison (`tools/linuxcnc/`, `openchuck-cli gcode-sim`) but **have not been run against LinuxCNC and are not in CI** (OI-47). The review checklist is ticked where tests show it; the rest waits on you (golden file review, the air-cut plan review) or on LinuxCNC. Open items: OI-47, OI-62, OI-83, OI-84, OI-85, OI-88 to OI-93.
 
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
@@ -300,15 +300,15 @@ These apply to every slice and are not repeated below.
 
 **Review checklist**
 
-- [ ] Re-running gives byte-identical G-code at any thread count
-- [ ] You have reviewed the golden files line by line
-- [ ] The `openchuck-gcode` round trip matches the IR on positions, A travel and feeds
-- [ ] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults
-- [ ] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line
-- [ ] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (hands-on step for you)
-- [ ] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees
-- [ ] The reference job set is chosen and its Z1 programs pass gates 1 to 3
-- [ ] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code
+- [x] Re-running gives byte-identical G-code at any thread count (`req_gc_07_*` in `posts.rs`, `posting.rs` and `reference_jobs.rs`: repeats, four threads, and projects reopened at 1, 3 and 4 threads)
+- [ ] You have reviewed the golden files line by line (for you: `testdata/golden/post_*_small_part.ngc` first, then `golden/reference/`; I checked the small part's numbers by hand, see decision 0020 item 5)
+- [x] The `openchuck-gcode` round trip matches the IR on positions, A travel and feeds (`round_trip.rs`; the three reference jobs and the posted projects: tip within 0.00064 mm, A exact, cut time within 1 %)
+- [ ] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults (**not run**: `tools/linuxcnc/run_replay.sh testdata/golden/reference/groove_linuxcnc.ngc` on a machine with LinuxCNC; OI-47)
+- [x] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line (`req_gc_03_*` in `posts.rs`)
+- [ ] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (hands-on step for you; the output follows the findings table, `req_gc_09_z1_output_follows_the_sp_12_conventions`, and the plan is drafted in [reference-jobs.md](reference-jobs.md))
+- [ ] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees (gate 1 does, with more faults than named; gate 2 agrees to 0.00064 mm at the tip and 0 degrees, over 0.0005 because three axes' rounding combine: confirm the reading, OI-91)
+- [ ] The reference job set is chosen and its Z1 programs pass gates 1 to 3 (chosen, [reference-jobs.md](reference-jobs.md); gates 1 and 2 pass in `reference_jobs.rs`; gate 3 not run, OI-47)
+- [x] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code (`req_gc_14_*` in `posting.rs`)
 
 ## Slice 7 – Material removal simulation (headless)
 
