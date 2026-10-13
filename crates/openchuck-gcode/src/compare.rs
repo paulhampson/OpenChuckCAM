@@ -133,7 +133,8 @@ fn gcode_seconds(m: &Move, rule: TimingRule, axis: [f64; 3]) -> Option<f64> {
                 + (m.to[1] - along * axis[1]).powi(2)
                 + (m.to[2] - along * axis[2]).powi(2))
             .sqrt();
-            let p = 2.0 * std::f64::consts::PI * r + 30.0;
+            // The firmware counts a radius of 1 mm or less as 1 mm (decision 0007).
+            let p = 2.0 * std::f64::consts::PI * r.max(1.0) + 30.0;
             if length > 1e-9 {
                 length.max(da * p / 360.0)
             } else {

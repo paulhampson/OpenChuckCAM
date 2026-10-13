@@ -97,7 +97,8 @@ impl FeedRule {
             Self::InverseTime => FeedWord::InverseTime(60.0 / m.duration),
             Self::Linuxcnc => per_minute(if moves_xyz { m.length } else { m.delta_a }),
             Self::Makera => {
-                let p = 2.0 * std::f64::consts::PI * m.end_radius + 30.0;
+                // The firmware counts a radius of 1 mm or less as 1 mm (decision 0007).
+                let p = 2.0 * std::f64::consts::PI * m.end_radius.max(1.0) + 30.0;
                 per_minute(if moves_xyz {
                     m.length.max(m.delta_a * p / 360.0)
                 } else {
