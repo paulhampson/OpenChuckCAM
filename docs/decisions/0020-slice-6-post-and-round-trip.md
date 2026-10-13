@@ -40,6 +40,16 @@ Work breakdown slice 6 (GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14; 
 
 13. **LinuxCNC in CI (OI-47).** `docker/linuxcnc/Dockerfile` builds LinuxCNC 2.9.10 from source (Ubuntu 24.04 has no package), run in place, as the unprivileged user `cnc`; `.github/workflows/linuxcnc-image.yml` builds it (pushing to `ghcr.io/<owner>/openchuckcam-linuxcnc:2.9.10` on main, monthly and by hand) and the `gate3` job of `ci.yml` runs `cargo xtask replay --docker` on every change to what the golden programs depend on, pulling the image or building it when the Dockerfile changed. Any later CI task that needs LinuxCNC uses the same image. The manual pages are not built (`make -k`); the Dockerfile checks the files the simulator needs exist.
 
+14. **Golden file audit (review checklist; `cargo xtask golden`).** So that no one has to read the golden files by hand, `crates/openchuck-app/tests/golden_audit.rs` (it also runs with the ordinary tests, so CI runs it on three platforms) reads every committed program and checks it against things that do not come from the post or the path library:
+    - the post conventions (exact start and end sequences, `G61` only in the LinuxCNC post, `G92.4 A0 S0` once in the Z1 post and never in LinuxCNC's, no `G93` or `G43`, no line numbers, ASCII, no `-0` or `NaN`, comments alone on their line);
+    - gate 1 against the Z1 profile's limits in work coordinates;
+    - for the reference jobs, the geometry: each position goes back to the tool through the independent kinematic oracle, the deepest cut into the exact analytic part is under 0.02 mm (measured 0.0005 to 0.0019 mm), the ball rides on the surface (median clearance within 0.02 mm; measured 0.0001 to 0.0019), and A never steps more than 10 degrees or reverses;
+    - the contact feed: the speed of the exact contact point over the exact surface, from the file's own F words under the controller's rule, is 480 mm/min (12000 rpm x 2 flutes x 0.02 mm) within 2 % in the middle of the part (median under 0.8 %, worst 1.98 %), judged 4 mm from the ends as the pathing tests do (OI-77). A move slower than programmed is accepted only if its time is exactly what the profile's rotary limit (3600 deg/min) allows (the path library's lengthening, decision 0018 item 8);
+    - agreement: the Z1 and LinuxCNC programs of a job reach the same contact points to 0.005 mm;
+    - for the small part, its closed forms: X = 0.25 per move, A = 45 per move, the tip on the top of the 10 mm radius, and every move taking 1 s under the controller's rule.
+
+    **What the audit found.** The reference jobs at 10 degree steps had a median contact feed error of 3.1 to 3.4 % (the five-point contact smoothing spans 40 degrees of A on a radius of 10 to 12 mm). The jobs now use 5 degree steps (the strategy's default), which gives the figures above; the golden files doubled to about 1,100 lines (cone, groove) and 740 (sphere). **What it does not cover:** the A direction, the axis height, `G92.4` and the Makera feed rule on the real controller (gate 4), and anything in the first and last 4 mm of a part, where the contact slides round the rim or the pole and the feed is not what OP-13 defines.
+
 ## Alternatives considered
 
 - **Feed rule in the template:** decision 0019 item 5 chose Rust.

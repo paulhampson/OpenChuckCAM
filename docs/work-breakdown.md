@@ -274,7 +274,7 @@ These apply to every slice and are not repeated below.
 
 ## Slice 6 – Post-processing and G-code round trip
 
-**Status:** built 13 Oct 2026; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 13 are built. Gates 1 and 2 pass on the posted projects and the reference jobs, and **gate 3 passes in LinuxCNC 2.9.10** for the small part and the three LinuxCNC reference programs (decision 0020 item 10); the CI job for it (`gate3`, with the image of `docker/linuxcnc`) is written but has not run on GitHub (OI-47). Waiting on you: the golden file review and the air-cut plan review. Open items: OI-47, OI-60, OI-83, OI-89, OI-92.
+**Status:** built 13 Oct 2026; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 13 are built. Gates 1 and 2 pass on the posted projects and the reference jobs, and **gate 3 passes in LinuxCNC 2.9.10** for the small part and the three LinuxCNC reference programs (decision 0020 item 10); the CI job for it (`gate3`, with the image of `docker/linuxcnc`) is written but has not run on GitHub (OI-47). Waiting on you: the air-cut plan review. Open items: OI-47, OI-60, OI-83, OI-89, OI-92.
 
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
@@ -301,7 +301,7 @@ These apply to every slice and are not repeated below.
 **Review checklist**
 
 - [x] Re-running gives byte-identical G-code at any thread count (`req_gc_07_*` in `posts.rs`, `posting.rs` and `reference_jobs.rs`: repeats, four threads, and projects reopened at 1, 3 and 4 threads)
-- [ ] You have reviewed the golden files line by line (for you: `testdata/golden/post_*_small_part.ngc` first, then `golden/reference/`; I checked the small part's numbers by hand, see decision 0020 item 5)
+- [x] You have reviewed the golden files line by line (replaced, at your request, by an automated audit: `cargo xtask golden`, `crates/openchuck-app/tests/golden_audit.rs`, decision 0020 item 14: conventions, gate 1, the exact parts through the independent oracle, the contact feed under the controller's rule, and agreement between the posts)
 - [x] The `openchuck-gcode` round trip matches the IR on positions, A travel and feeds (`round_trip.rs`; the three reference jobs and the posted projects: tip within 0.00064 mm, A exact, cut time within 1 %)
 - [x] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults (`cargo xtask replay testdata/golden/reference/groove_linuxcnc.ngc`: all 640 moves reached, ended at the program's end, no fault; also the small part, cone and sphere; decision 0020 item 10)
 - [x] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line (`req_gc_03_*` in `posts.rs`)
