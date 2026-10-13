@@ -14,12 +14,13 @@ a_sense = "positive"
 
 # Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
 # anchor1_y + rotation_offset_y from the firmware's Z1 config (-192.4 + 12.0,
-# -194.3 + 85.5). No Makera source gives the machine Z of the axis, so Z is a
-# placeholder (OI-60).
+# -194.3 + 85.5). Z is from the owner: the chuck centre is 45 mm above the bed
+# (13 Oct 2026), taken with the bed at the bottom of the Z travel, -100, so the
+# axis is at machine Z -55 (OI-60).
 [machine.rotary_origin]
 x = -180.4
 y = -108.8
-z = 0.0
+z = -55.0
 
 [machine.a_range]
 type = "continuous"
@@ -47,7 +48,7 @@ rapid_rotary = 3600.0
 
 [machine.clearance]
 radius = 45.0
-safe_z = 60.0
+safe_z = 50.0
 
 [machine.provenance.rotary_axis]
 state = "confirmed"
@@ -59,7 +60,7 @@ source = "confirmed by the owner from use of the machine (11 Oct 2026): positive
 
 [machine.provenance.rotary_origin]
 state = "unconfirmed"
-source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is a placeholder: the default work Z0 is the chuck centre (owner's experience of the machine), but no Makera source gives its machine Z (decision 0013, OI-60)"
+source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation offsets; the X datum, chuck face or module reference, is not stated); Z is the owner's measurement, the chuck centre 45 mm above the bed (13 Oct 2026), turned into machine Z -55 by taking the bed at the bottom of the Z travel (-100), which is itself unconfirmed (decision 0013, OI-60)"
 
 [machine.provenance.a_range]
 state = "confirmed"

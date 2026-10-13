@@ -100,11 +100,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
     let mesh = job.part.mesh(121, 144);
     write_stl(&mesh, &dir.join("models/part.stl"));
     let (model, _) = app.add_model(&dir.join("models/part.stl"), None).unwrap();
-    // The profile's axis height is a placeholder (OI-60). The jobs assume the axis 60 mm below the
-    // top of Z travel, which puts the safe Z (60 above the axis) at the top; measure it on the Z1
-    // before gates 4 and 5.
-    let mut machine = builtin("makera-z1").unwrap().unwrap();
-    machine.rotary_origin.z = -60.0;
+    let machine = builtin("makera-z1").unwrap().unwrap();
     app.execute(Command::SetMachine(Some(Box::new(machine))))
         .unwrap();
     let setup_id = SetupId::new();
