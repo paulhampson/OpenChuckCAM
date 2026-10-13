@@ -95,7 +95,7 @@ fn req_op_13_the_naive_contact_feed_is_caught_by_the_time_check() {
 }
 
 #[test]
-fn req_gc_08_gate_2_catches_a_flipped_a_sign_and_a_wrong_frame() {
+fn req_gc_08_replay_comparison_catches_a_flipped_a_sign_and_a_wrong_frame() {
     let text = builtin_post("linuxcnc")
         .post(&small_part(), &job())
         .unwrap()
@@ -118,7 +118,7 @@ fn req_gc_08_gate_2_catches_a_flipped_a_sign_and_a_wrong_frame() {
 }
 
 #[test]
-fn req_gc_08_gate_2_catches_a_changed_position_and_a_dropped_move() {
+fn req_gc_08_replay_comparison_catches_a_changed_position_and_a_dropped_move() {
     let text = builtin_post("linuxcnc")
         .post(&small_part(), &job())
         .unwrap()
@@ -144,7 +144,7 @@ fn req_gc_08_gate_2_catches_a_changed_position_and_a_dropped_move() {
 }
 
 #[test]
-fn req_gc_08_gate_1_passes_both_posts_and_fails_seeded_faults() {
+fn req_gc_08_static_checks_passes_both_posts_and_fails_seeded_faults() {
     let c = config();
     for (id, dialect) in [
         ("linuxcnc", Dialect::Linuxcnc),

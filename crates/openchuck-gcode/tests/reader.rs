@@ -179,12 +179,12 @@ fn findings(source: &str, config: &CheckConfig) -> Vec<FindingKind> {
 }
 
 #[test]
-fn req_gc_08_gate_1_passes_a_good_program() {
+fn req_gc_08_static_checks_passes_a_good_program() {
     assert_eq!(findings(GOOD, &config()), []);
 }
 
 #[test]
-fn req_gc_08_gate_1_fails_on_seeded_faults() {
+fn req_gc_08_static_checks_fails_on_seeded_faults() {
     let c = config();
     // Missing feed.
     let no_feed = GOOD.replace("G1 Z10 F100", "G1 Z10");
