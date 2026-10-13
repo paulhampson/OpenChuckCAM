@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The `Strategy` interface and registry (OP-16; architecture section 5.2;
+//! decision record 0018 item 6).
+//!
+//! A strategy turns its inputs into **passes**: ordered cut points, each a
+//! tool tip, an A angle and the cutter contact point. Everything a pass needs
+//! after that is a shared service every strategy gets the same way
+//! ([`crate::assemble`]): A-axis management (OP-15), linking and retracts
+//! through the clearance geometry (OP-14), and the contact feed and segment
+//! durations written into the IR (OP-13). A new strategy implements
+//! [`Strategy`] and is added to a [`Registry`]; nothing else changes.
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use openchuck_types::geometry::Point3;
+use openchuck_types::ir::PathTags;
+use openchuck_types::job::JobContext;
+use openchuck_types::machine::{Clearance, MaxFeeds};
+use openchuck_types::tool::profile::RevolvedProfile;
+use openchuck_types::units::Degrees;
+
+use crate::assemble::{GeneratedPath, assemble};
+use crate::error::{PathError, Result};
+use crate::params::{CommonParameters, ParameterSchema, ParameterValue, Parameters};
+use crate::rotary::RotaryMapping;
+use crate::stock::{CollisionOracle, StockModel};
+use crate::surface::SurfaceSource;
+
+/// One point of a pass, in the model frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CutPoint {
+    /// The tool tip.
+    pub tip: Point3,
+    /// The rotary angle. Any equivalent by whole turns will do: the assembly
+    /// makes A continuous and fits it to the machine's range (OP-15).
+    pub a: Degrees,
+    /// The cutter contact point, where the feed applies (OP-13).
+    pub contact: Point3,
+}
+
+/// A run of cut points cut without lifting the tool.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Pass {
+    /// The points, in cutting order.
+    pub points: Vec<CutPoint>,
+}
+
+/// Everything a strategy is given, as plain data and ports (INT-02).
+#[derive(Clone, Copy)]
+pub struct StrategyInput<'a> {
+    /// The surfaces to machine.
+    pub surface: &'a dyn SurfaceSource,
+    /// The material still to be cut.
+    pub stock: &'a dyn StockModel,
+    /// Collision queries for links.
+    pub collision: &'a dyn CollisionOracle,
+    /// The tool's profile (decision record 0012).
+    pub tool: &'a RevolvedProfile,
+    /// The rotary axis.
+    pub rotary: RotaryMapping,
+    /// The setup's clearance geometry (SET-06).
+    pub clearance: Clearance,
+    /// The machine's feed limits.
+    pub max_feeds: MaxFeeds,
+    /// Tags for the toolpath group.
+    pub tags: &'a PathTags,
+}
+
+impl std::fmt::Debug for StrategyInput<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StrategyInput")
+            .field("surface", &self.surface)
+            .field("stock", &self.stock)
+            .field("rotary", &self.rotary)
+            .field("clearance", &self.clearance)
+            .field("tags", self.tags)
+            .finish_non_exhaustive()
+    }
+}
+
+/// A machining strategy (OP-16).
+pub trait Strategy: Send + Sync + std::fmt::Debug {
+    /// The registry name an operation stores (`helical_finishing`). Stable:
+    /// renaming it breaks saved projects.
+    fn name(&self) -> &str;
+
+    /// The name shown to the user.
+    fn label(&self) -> &str;
+
+    /// The parameters, including the common ones
+    /// ([`ParameterSchema::with_common`]).
+    fn schema(&self) -> ParameterSchema;
+
+    /// The passes for `input` and the resolved `parameters`. Long work
+    /// checks `context` for cancellation and reports progress through it.
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>>;
+}
+
+/// Runs `strategy` and assembles its passes into a toolpath group: checks
+/// the parameter values against its schema, makes the passes, then applies
+/// the shared services (A-axis management, linking, timing).
+pub fn generate(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
+    let parameters = strategy.schema().resolve(values)?;
+    let common = CommonParameters::read(&parameters)?;
+    context.check_cancelled()?;
+    let passes = strategy.passes(input, &parameters, context)?;
+    context.check_cancelled()?;
+    assemble(&passes, input, &common, context)
+}
+
+/// The strategies a host offers, by name.
+#[derive(Debug, Clone, Default)]
+pub struct Registry {
+    strategies: BTreeMap<String, Arc<dyn Strategy>>,
+}
+
+impl Registry {
+    /// An empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The strategies this library provides: helical finishing (OP-04).
+    pub fn builtin() -> Self {
+        let mut registry = Self::new();
+        // The name is fixed and the registry is empty, so this cannot fail.
+        let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
+        registry
+    }
+
+    /// Adds `strategy`. Fails if a strategy of the same name is registered.
+    pub fn register(&mut self, strategy: Arc<dyn Strategy>) -> Result<()> {
+        let name = strategy.name().to_owned();
+        if name.trim().is_empty() {
+            return Err(PathError::Strategy("a strategy needs a name".to_owned()));
+        }
+        if self.strategies.contains_key(&name) {
+            return Err(PathError::Strategy(format!(
+                "a strategy named \"{name}\" is already registered"
+            )));
+        }
+        self.strategies.insert(name, strategy);
+        Ok(())
+    }
+
+    /// The strategy called `name`.
+    pub fn get(&self, name: &str) -> Result<&dyn Strategy> {
+        self.strategies
+            .get(name)
+            .map(|s| s.as_ref())
+            .ok_or_else(|| PathError::UnknownStrategy(name.to_owned()))
+    }
+
+    /// Every registered strategy, in name order.
+    pub fn iter(&self) -> impl Iterator<Item = &dyn Strategy> {
+        self.strategies.values().map(|s| s.as_ref())
+    }
+}

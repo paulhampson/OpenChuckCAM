@@ -129,6 +129,34 @@ pub(crate) fn inspect_model(
     Ok(inspection)
 }
 
+/// Imports a project's model and places it in the model frame, for the
+/// pathing library (work breakdown slice 5 item 10). Only meshes are read
+/// so far: STEP waits for slice 11.
+pub(crate) fn placed_mesh(
+    project_root: &Path,
+    model: &ModelRef,
+    context: &JobContext<'_>,
+) -> Result<openchuck_types::mesh::TriangleMesh, AppError> {
+    let path = model.path.resolve(project_root);
+    let bytes = read(&path)?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let imported = import_bytes(
+        &name,
+        &bytes,
+        &ImportOptions { units: model.units },
+        context,
+    )?;
+    let mesh = match &imported.geometry {
+        ModelGeometry::Mesh(mesh) => mesh,
+        ModelGeometry::Brep(_) => return Err(ImportError::NotSupported("STEP").into()),
+    };
+    let map = placement(mesh, &model.transform)?;
+    Ok(transform_mesh(mesh, &map))
+}
+
 pub(crate) fn read(path: &Path) -> Result<Vec<u8>, AppError> {
     std::fs::read(path).map_err(|source| AppError::Io {
         path: path.to_path_buf(),

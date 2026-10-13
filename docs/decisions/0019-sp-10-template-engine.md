@@ -1,9 +1,9 @@
-# 0018: SP-10 result, template engine for posts: minijinja 3.0.0
+# 0019: SP-10 result, template engine for posts: minijinja 3.0.0
 
-- **Status:** accepted by the project owner (13 Oct 2026), including items 1 to 10. The spike met its pass criteria for `minijinja`. Item 5 settles OI-38. OI-77 to OI-81 stay open.
+- **Status:** accepted by the project owner (13 Oct 2026), including items 1 to 10. The spike met its pass criteria for `minijinja`. Item 5 settles OI-38. OI-83 to OI-87 stay open.
 - **Date:** 13 Oct 2026.
 - **Spike branch:** `spike/sp-10-template-engine` (throwaway, never merged). Code in `spikes/sp-10-template-engine/`, a separate Cargo project with an empty `[workspace]`; the write-up is `spikes/sp-10-template-engine/RESULT.md` on that branch.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-77 to OI-81 are new; OI-38 is closed by item 5.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-83 to OI-87 are new; OI-38 is closed by item 5.
 
 ## Context
 
@@ -30,13 +30,13 @@ Requirements: GC-01 to GC-04, GC-07, GC-09, GC-10, OP-13, NFR-05 to NFR-07, NFR-
 1. **`minijinja =3.0.0` is the post template engine** (GC-03), in `openchuck-post` only, behind the `PostProcessor` trait. Features `builtins macros multi_template debug fuel serde`, default features off (`fuel` does not build without `multi_template` in 3.0.0). No fallback engine is adopted.
 2. **The engine's numeric surface is IEEE-exact only.** The engine registers `fixed` (ties to even on the exact value, no `-0`, errors on NaN and infinity), `rounded`, `sqrt`, `floor`, `trunc` and `pi`, and nothing that calls the platform maths library (no `hypot`, `sin`, `cos`), so templates give the same bytes on all three platforms (NFR-06). Transcendental work stays in Rust.
 3. **Environment settings:** strict undefined, no auto-escaping, `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline`, debug on, recursion limit 64, fuel set per render in proportion to the program (about 400 per move plus a constant), no loader.
-4. **The post definition is validated before render.** Every option key must be present (`null` for unset) and typed, because strict undefined does not catch a mistyped name under `is none` or `is defined` (OI-79). Comments written from project text have parentheses replaced.
+4. **The post definition is validated before render.** Every option key must be present (`null` for unset) and typed, because strict undefined does not catch a mistyped name under `is none` or `is defined` (OI-85). Comments written from project text have parentheses replaced.
 5. **Where the per-controller feed rule lives (OI-38, settled):** in Rust, as a small closed set of named rules (`linuxcnc`, `makera`, `inverse_time`, `contact`) selected by the post definition, applied in the neutral machine program stage, with modal suppression kept in the template. Reasons: the template can carry the rule (shown above) but about 90 % of the render time is that logic; the rule gets Rust unit tests and the oracle; a user cannot silently change a safety-relevant formula by editing a template. Cost: a user-written post cannot invent a new rule without Rust (GC-13 scripting, P2, would cover it). The template version is the alternative and works.
-6. **Template loading normalises newlines to LF** before compile, and `posts/**` is marked `-text` or `eol=lf` in `.gitattributes` (OI-78).
+6. **Template loading normalises newlines to LF** before compile, and `posts/**` is marked `-text` or `eol=lf` in `.gitattributes` (OI-84).
 7. **Dependency (NFR-14):** `minijinja` 3.0.0, survey 94, Apache-2.0, one dependency already in the workspace, no build script, 751 dependents, 19 releases in 12 months, 3.0.0 released 8 Oct 2026 after four alphas. Pinned exactly, upgraded deliberately with the spike tests re-run. Recorded in `docs/dependencies.md` as tried and not yet declared; slice 6 declares it.
 8. **Spike fixtures kept for slice 6:** the three SP-3 outputs, the integer oracle for `fixed`, the independent Makera implementation and the replay check.
-9. **Community posts are plain folders, loaded at run time (GC-03, NFR-09).** A post is a folder with `post.toml` (name, schema version, options, the named feed rule from item 5) and its template files. Built-in posts ship in `posts/`; user and community posts sit in a user library folder, like machine profiles and tool libraries. The project keeps a copy of the post it used (as decision 0011 item 7 does for the machine profile), so a later change to the library post cannot change the project's G-code (GC-07, GC-14). Adding a post needs no rebuild. The spike shows one template serving both the LinuxCNC and Makera posts by options alone. The exact file layout stays with OI-79.
-10. **Sharing and trust.** Posts are shared as folders (for example a Git repository); there is no installer or registry. A shared post should carry golden G-code files and the reader and replay checks that cover it. A template cannot read files, reach the network or run code (spike, NFR-09), and fuel and recursion limits stop a runaway one (NFR-07). It can still write wrong G-code, so NFR-12 applies, and the app marks a post as unverified until its golden files pass. Signing or a trust model for downloaded posts is not proposed; it needs your decision (OI-81). A scripting hook for logic templates cannot express is GC-13 (P2) and stays out of P1.
+9. **Community posts are plain folders, loaded at run time (GC-03, NFR-09).** A post is a folder with `post.toml` (name, schema version, options, the named feed rule from item 5) and its template files. Built-in posts ship in `posts/`; user and community posts sit in a user library folder, like machine profiles and tool libraries. The project keeps a copy of the post it used (as decision 0011 item 7 does for the machine profile), so a later change to the library post cannot change the project's G-code (GC-07, GC-14). Adding a post needs no rebuild. The spike shows one template serving both the LinuxCNC and Makera posts by options alone. The exact file layout stays with OI-85.
+10. **Sharing and trust.** Posts are shared as folders (for example a Git repository); there is no installer or registry. A shared post should carry golden G-code files and the reader and replay checks that cover it. A template cannot read files, reach the network or run code (spike, NFR-09), and fuel and recursion limits stop a runaway one (NFR-07). It can still write wrong G-code, so NFR-12 applies, and the app marks a post as unverified until its golden files pass. Signing or a trust model for downloaded posts is not proposed; it needs your decision (OI-87). A scripting hook for logic templates cannot express is GC-13 (P2) and stays out of P1.
 
 ## Alternatives considered
 
@@ -52,8 +52,8 @@ Requirements: GC-01 to GC-04, GC-07, GC-09, GC-10, OP-13, NFR-05 to NFR-07, NFR-
 
 ## Open items
 
-- **OI-77**: byte-identical template output on Windows, macOS and arm64 (the spike ran on Linux x86-64 only). Slice 6 CI.
-- **OI-78**: loader rules: newline normalisation, `.gitattributes` for `posts/`, comment sanitising and non-ASCII text.
-- **OI-79**: the post option schema and its validation before render, and the post file layout.
-- **OI-81**: trust model for community posts: whether to sign or checksum them, what the app shows for an unverified post, and whether a shared post may name a feed rule or only built-in ones. Decide before posts are shared publicly (after slice 6).
-- **OI-80**: render limits: the fuel budget per move, error text size, and whether a time budget for large programs is wanted (21 µs per move in the template, 22 s for 1,000,000 moves).
+- **OI-83**: byte-identical template output on Windows, macOS and arm64 (the spike ran on Linux x86-64 only). Slice 6 CI.
+- **OI-84**: loader rules: newline normalisation, `.gitattributes` for `posts/`, comment sanitising and non-ASCII text.
+- **OI-85**: the post option schema and its validation before render, and the post file layout.
+- **OI-87**: trust model for community posts: whether to sign or checksum them, what the app shows for an unverified post, and whether a shared post may name a feed rule or only built-in ones. Decide before posts are shared publicly (after slice 6).
+- **OI-86**: render limits: the fuel budget per move, error text size, and whether a time budget for large programs is wanted (21 µs per move in the template, 22 s for 1,000,000 moves).
