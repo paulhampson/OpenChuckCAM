@@ -26,9 +26,13 @@
 //!    before offsetting (straight runs only; arcs are kept as they are).
 //! 4. **Every result is checked**: each result vertex and arc midpoint must be
 //!    at the offset distance from the region that was offset, within
-//!    [`OffsetOptions::check_tolerance`], found through a spatial index. A
-//!    silent wrong answer (the library returned loops 35 mm off for a jagged
-//!    50,000-vertex loop) becomes an error.
+//!    [`OffsetOptions::check_tolerance`], found through a spatial index. This
+//!    catches a result whose points are off the offset curve. **It does not
+//!    catch a result made of the right pieces of curve put together wrongly**
+//!    (extra or missing loops): for very dense, noisy loops (vertices a few
+//!    to a few tens of micrometres apart with noise of that size, which no
+//!    mesh section has) the library does that without an error, and the check
+//!    passes it (OI-82).
 //! 5. **Arcs are kept through the 2D stage and cut into chords when converted
 //!    to (X, A)** ([`chord_points`]), with a sagitta of at most the chord
 //!    tolerance, because LinuxCNC's G2 and G3 lie in the XY, XZ or YZ plane
