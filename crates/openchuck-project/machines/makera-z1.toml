@@ -11,6 +11,9 @@ schema = 1
 name = "Makera Z1"
 rotary_axis = "x"
 a_sense = "positive"
+# The Z1's tool number range is effectively unlimited; the probe uses a high number
+# (unconfirmed). 1000 is the owner's choice for now (13 Oct 2026, OI-62).
+max_tool_number = 1000
 
 # Rotary reference point: X is anchor1_x + rotation_offset_x and Y is
 # anchor1_y + rotation_offset_y from the firmware's Z1 config (-192.4 + 12.0,

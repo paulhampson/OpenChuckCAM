@@ -269,6 +269,13 @@ pub(crate) fn post_toolpath(
                     snapshot.name
                 ))
             })?;
+            let number = snapshot.controller.number;
+            if number < 1 || number > machine.max_tool_number {
+                return Err(AppError::Post(format!(
+                    "tool '{}' has the number T{number}, outside the machine's range 1 to {} (renumber it with tool-numbers)",
+                    snapshot.name, machine.max_tool_number
+                )));
+            }
             tools.insert(
                 tag.clone(),
                 ToolSetting {

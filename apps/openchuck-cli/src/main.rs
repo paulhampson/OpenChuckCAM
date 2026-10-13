@@ -120,7 +120,7 @@ enum Action {
         /// or `T<n>`). Repeat for more tools.
         #[arg(long = "set", value_name = "TOOL=NUMBER")]
         set: Vec<String>,
-        /// The machine's largest tool number, if it has a limit.
+        /// The largest tool number to allow (default: the machine profile's).
         #[arg(long)]
         max: Option<u32>,
     },
@@ -609,6 +609,7 @@ fn run(cli: Cli) -> Result<()> {
                     }
                     ToolNumbering::Manual(pairs)
                 };
+                let max = max.or_else(|| app.project().machine().map(|m| m.max_tool_number));
                 match tool_numbering_command(app.project(), &numbering, max)? {
                     Some(command) => {
                         app.execute(command)?;
@@ -1600,7 +1601,8 @@ fn confirm_tool_numbers(app: &mut Application, choice: Option<NumberChoice>) -> 
         NumberChoice::Auto => ToolNumbering::InOrderOfUse { first: 1 },
     };
     // `Keep` still checks for duplicates, so a clash is refused here.
-    if let Some(command) = tool_numbering_command(app.project(), &numbering, None)? {
+    let max = app.project().machine().map(|m| m.max_tool_number);
+    if let Some(command) = tool_numbering_command(app.project(), &numbering, max)? {
         app.execute(command)?;
         app.save()?;
         eprintln!("Tool numbers changed and saved in the project:");

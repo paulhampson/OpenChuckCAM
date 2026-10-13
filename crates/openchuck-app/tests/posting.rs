@@ -353,3 +353,21 @@ fn req_gc_14_req_gc_07_a_second_post_after_renumbering_is_byte_identical() {
     assert_eq!(again.regenerate().unwrap().gcode, first);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_gc_14_a_tool_number_outside_the_machines_range_is_refused_when_posting() {
+    let (dir, mut app, _) = project("tn-range");
+    // The Z1 allows 1 to 1000 (OI-62).
+    assert_eq!(app.project().machine().unwrap().max_tool_number, 1000);
+    let mut tool = app.project().tools()[0].clone();
+    tool.controller.number = 1001;
+    app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    app.set_post(Some(PostSelection::Builtin("linuxcnc".into())));
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("T1001") && e.contains("1 to 1000"), "{e}");
+    let command = tool_numbering_command(app.project(), &ToolNumbering::Keep, Some(1000))
+        .unwrap_err()
+        .to_string();
+    assert!(command.contains("largest tool number 1000"), "{command}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
