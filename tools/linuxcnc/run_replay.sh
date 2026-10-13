@@ -18,6 +18,9 @@
 # gcode-sim` then fails the run if a move did not reach its position, if LinuxCNC
 # reported a fault (a limit included), or if the program ended elsewhere.
 #
+# Run it on an otherwise idle machine: the driver samples every millisecond in real time, and a
+# busy machine can leave gaps. Set REPLAY_KEEP_REPORTS to a folder to keep the JSON reports.
+#
 # The simulator uses trivkins, which treats A as a plain number: this proves the
 # dialect, the reached values and the absence of faults, not the A direction.
 set -euo pipefail
@@ -48,6 +51,7 @@ for program in "$@"; do
     status=1
     continue
   fi
+  if [ -n "${REPLAY_KEEP_REPORTS:-}" ]; then mkdir -p "$REPLAY_KEEP_REPORTS" && cp "$report" "$REPLAY_KEEP_REPORTS/"; fi
   "$cli" gcode-sim "$abs" "$report" || status=1
 done
 exit $status

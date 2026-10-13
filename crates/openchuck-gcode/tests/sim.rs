@@ -135,11 +135,19 @@ fn req_gc_10_the_sampled_path_must_visit_every_target_in_order() {
     let r = replayed(PROGRAM);
     let good = with_path(&r);
     compare_simulator(&r, &good, 0.05).unwrap();
-    // A node never visited.
-    let mut missing = good.clone();
-    missing
+    // A pause in sampling that hides a node the machine passed through is fine.
+    let mut paused = good.clone();
+    paused
         .path
         .retain(|p| (p[0] - 5.0).abs() > 0.2 || (p[3] - 90.0).abs() > 1.0);
+    compare_simulator(&r, &paused, 0.05).unwrap();
+    // A node the machine never reached: everything from X 5 on is half a millimetre off.
+    let mut missing = good.clone();
+    for p in &mut missing.path {
+        if p[0] >= 4.9 {
+            p[0] += 0.5;
+        }
+    }
     assert!(
         matches!(compare_simulator(&r, &missing, 0.05), Err(SimError::Mismatch(m)) if m.contains("never reached"))
     );

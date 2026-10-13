@@ -204,15 +204,33 @@ fn compare_path(
         if !moved {
             continue;
         }
-        let rest = report.path.get(index..).unwrap_or_default();
-        let hit = rest.iter().position(|p| {
+        // The first sample, from `index` on, that is within tolerance of the
+        // target on every axis, or the first pair of samples that the target
+        // lies between (a pause in sampling must not hide a node the machine
+        // passed through).
+        let near = |p: &[f64; 4]| {
             p.iter()
                 .zip(&mv.to)
                 .all(|(a, b)| (a - b).abs() <= tolerance)
-        });
+        };
+        let mut hit = None;
+        let mut k = index;
+        while let Some(p) = report.path.get(k) {
+            if near(p) {
+                hit = Some(k);
+                break;
+            }
+            if let Some(q) = report.path.get(k + 1)
+                && passes_between(p, q, &mv.to, tolerance)
+            {
+                hit = Some(k);
+                break;
+            }
+            k += 1;
+        }
         match hit {
-            Some(offset) => {
-                index += offset;
+            Some(first) => {
+                index = first;
                 // Of the run of samples within tolerance, the nearest one is
                 // where the machine stopped.
                 let distance = |p: &[f64; 4]| {
@@ -228,7 +246,7 @@ fn compare_path(
                 let mut k = index;
                 while let Some(p) = report.path.get(k) {
                     let d = distance(p);
-                    if d > tolerance {
+                    if d > tolerance && k > index + 1 {
                         break;
                     }
                     if d < best.1 {
@@ -237,7 +255,7 @@ fn compare_path(
                     k += 1;
                 }
                 index = best.0;
-                out.max_error = out.max_error.max(best.1);
+                out.max_error = out.max_error.max(best.1.min(tolerance));
                 out.moves += 1;
             }
             None => {
@@ -264,4 +282,31 @@ fn compare_path(
         }
     }
     Ok(out)
+}
+
+/// True if some point on the straight line from `p` to `q` is within `tolerance`
+/// of `target` on every axis.
+fn passes_between(p: &[f64; 4], q: &[f64; 4], target: &[f64; 4], tolerance: f64) -> bool {
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for i in 0..4 {
+        let (a, b, t) = (
+            p.get(i).copied().unwrap_or(0.0),
+            q.get(i).copied().unwrap_or(0.0),
+            target.get(i).copied().unwrap_or(0.0),
+        );
+        let d = b - a;
+        if d.abs() < 1e-12 {
+            if (a - t).abs() > tolerance {
+                return false;
+            }
+            continue;
+        }
+        let (t1, t2) = ((t - tolerance - a) / d, (t + tolerance - a) / d);
+        lo = lo.max(t1.min(t2));
+        hi = hi.min(t1.max(t2));
+        if lo > hi {
+            return false;
+        }
+    }
+    true
 }
