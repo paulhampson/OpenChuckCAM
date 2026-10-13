@@ -2246,6 +2246,7 @@ name = "openchuck-gcode"
 version = "0.3.0"
 dependencies = [
  "openchuck-types",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

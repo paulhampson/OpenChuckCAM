@@ -20,6 +20,8 @@ openchuck-types = { path = "../crates/openchuck-types" }
 openchuck-project = { path = "../crates/openchuck-project" }
 openchuck-geom = { path = "../crates/openchuck-geom" }
 openchuck-import = { path = "../crates/openchuck-import" }
+openchuck-gcode = { path = "../crates/openchuck-gcode" }
+openchuck-post = { path = "../crates/openchuck-post" }
 
 [workspace]
 members = ["."]
@@ -69,6 +71,20 @@ bench = false
 [[bin]]
 name = "tool_profile_toml"
 path = "fuzz_targets/tool_profile_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gcode_reader"
+path = "fuzz_targets/gcode_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "post_definition"
+path = "fuzz_targets/post_definition.rs"
 test = false
 doc = false
 bench = false
