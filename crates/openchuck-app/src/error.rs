@@ -46,6 +46,20 @@ pub enum AppError {
     /// No setup has this ID or name.
     #[error("the project has no setup '{0}' (give its ID or its name)")]
     UnknownSetup(String),
+    /// No operation has this ID.
+    #[error("the project has no operation '{0}'")]
+    UnknownOperation(String),
+    /// An operation cannot be generated as it stands.
+    #[error("operation '{name}' cannot be generated: {reason}")]
+    Operation {
+        /// The operation's name.
+        name: String,
+        /// Why not.
+        reason: String,
+    },
+    /// The pathing library reported an error.
+    #[error(transparent)]
+    Path(#[from] openchuck_path::PathError),
     /// An engine library reported an error.
     #[error(transparent)]
     Engine(#[from] openchuck_types::Error),

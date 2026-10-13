@@ -244,31 +244,33 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-3, SP-4, SP-7, SP-9, SP-13.
 
+**Status:** closed 13 Oct 2026. Design refinement in [decision 0018](decisions/0018-slice-5-pathing-core.md), accepted 13 Oct 2026; the review checklist is ticked. All ten items are built: the SP-7 inputs as the `unroll` module and helical finishing, and the SP-9 result as the shape of the `SurfaceSource` port (the exact evaluators, the face record and exact tool drop are slice 11's, OI-81). OP-11's stepdown, lead-in and lead-out, ramping and per-selection stock to leave stay with slices 12 and 14, and helical entry has no slice yet (OI-80). OI-06, OI-08, OI-63, OI-78 and OI-79 are agreed and closed; the stronger offset result check (OI-82) is deferred to slice 12. `i_overlay` is not declared yet (nothing in the slice calls a boolean; decision 0018 item 14 raises the deviation from [decision 0016](decisions/0016-sp-7-2d-offsets.md) item 8).
+
 **Design refinement:** the public API: `Strategy` trait with self-describing parameter schemas, the ports `SurfaceSource`, `StockModel` and `CollisionOracle`, and the kinematic mapping that takes the rotary axis as a parameter. Design the `SurfaceSource` port for the five queries of [decision 0017](decisions/0017-sp-9-exact-surfaces.md) (point and unit normal at (u, v); closest point with (u, v) and distance; trimmed ray hits; a trim test in (u, v); the tessellation), so B-rep faces slot in later as plain data evaluated in pure Rust. Confirm the feed approach (contact feed plus duration in the IR) with SP-3 and SP-12, and use the tool profile type that every cutter shape maps to, as settled by SP-13 ([decision 0012](decisions/0012-sp-13-tool-profiles.md)). Tool-centre solving is a drop-cutter generic over the profile (vertex, facet and edge tests that need only the profile's lower envelope `h(r)` and its pieces), returning the tip and the contact point; normal-offset solving is a fast path for convex profiles only. Evaluate distances directly (the expanded quadratic loses about 1e-8 mm near the tool axis), and measure deviation along the surface normal, not vertically. The spike's drop took 0.35 to 3.2 ms per position on a 147,000-triangle mesh with a plain grid, so add a bounding structure (SP-4) and cull edges by height before searching.
 
 1. Mesh `SurfaceSource` inside the library using `parry3d-f64` or an own BVH, per SP-4, with point, normal, projection, ray and distance queries.
 2. Ports `StockModel` (with a simple analytic implementation for tests and small hosts) and `CollisionOracle` (default accepts everything and relies on the clearance geometry).
 3. Rotary kinematic mapping to X, Y, Z and A with wrap, continuity, limits and unwinding (OP-15); the rotary axis is a parameter.
 4. `Strategy` trait and registry with parameter schemas covering names, units, ranges, defaults and validation (OP-16).
-5. Helical finishing on the whole model as the first wrap-family strategy (completed in slice 12), using the offset approach proven in SP-7.
+5. Helical finishing on the whole model as the first wrap-family strategy (built in slice 5; any follow-up is in slice 12), using the offset approach proven in SP-7.
 6. Contact-point feed intent and segment duration written into the IR; compensated feed per minute derived by the post (OP-13).
 7. Linking moves and retracts through the clearance geometry (OP-14).
 8. Operation model in `openchuck-project`: strategy, tool, setup, selection, parameters, regenerate at any time (OP-01), and the core of OP-11 (tolerance, stepover, stock to leave, feeds, retract).
 9. The independent gouge and coverage checker, used only in tests and written separately from the strategies, plus analytic-oracle tests on the fixture parts.
 10. Mapping in `openchuck-app` from project objects to the library's plain data; the library never sees the project file.
 
-**Review checklist**
+**Review checklist** (evidence in decision 0018; ticked 13 Oct 2026; accepted with that record)
 
-- [ ] On a cylinder, helix pitch and A rotation per unit of X match the analytic values within tolerance
-- [ ] A never jumps beyond the wrap rules, and no output contains NaN
-- [ ] Contact-point feed matches an analytic check, with the formula documented
-- [ ] Links stay inside the clearance geometry and never cross stock
-- [ ] The independent checker reports zero gouge and full coverage on the oracle parts, and fails on a seeded fault
-- [ ] Forward kinematics of every XYZA point returns the intended tool tip within 1e-6 mm and 1e-6 degrees, checked against the independent oracle
-- [ ] Toolpath deviation stays within 0.01 mm (about 0.005 mm tessellation and 0.005 mm path fitting)
-- [ ] On simultaneous moves the effective feed at the cutter contact is within ±2% of programmed
-- [ ] Identical output at 1, 2 and N threads
-- [ ] The library builds and runs in a small host program using only its public API
+- [x] On a cylinder, helix pitch and A rotation per unit of X match the analytic values within tolerance (`req_op_04_helix_pitch_and_a_per_x_match_the_analytic_values_on_a_cylinder`: 1e-6 degrees at three pitches, both rotations)
+- [x] A never jumps beyond the wrap rules, and no output contains NaN (`req_op_15_*` and the helical tests: continuity, no step over half a turn, no reversals, no NaN)
+- [x] Contact-point feed matches an analytic check, with the formula documented (`req_op_04_req_op_13_contact_feed_is_the_programmed_feed_on_every_cut`; `t = 60 L / f` in decision 0018 item 8 and `assemble.rs`)
+- [x] Links stay inside the clearance geometry and never cross stock (`req_op_14_links_stay_outside_the_clearance_and_never_cross_the_stock`)
+- [x] The independent checker reports zero gouge and full coverage on the oracle parts, and fails on a seeded fault (`req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts`: cylinder, cone, sphere, helical groove, ruled hyperboloid)
+- [x] Forward kinematics of every XYZA point returns the intended tool tip within 1e-6 mm and 1e-6 degrees, checked against the independent oracle (`req_op_05_req_op_06_every_helical_pose_round_trips_through_the_independent_oracle`, both A senses)
+- [x] Toolpath deviation stays within 0.01 mm (about 0.005 mm tessellation and 0.005 mm path fitting) (`req_op_04_req_nfr_05_path_fitting_stays_inside_its_budget_on_a_sphere`: 0.0003 mm at the default steps; 0.00405 mm fit error with long moves at the default tolerance; the factor is 0.4, OI-08)
+- [x] On simultaneous moves the effective feed at the cutter contact is within ±2% of programmed (`req_op_13_feed_at_the_contact_is_within_two_percent_on_a_grooved_part`: worst 1.03 % away from the part's ends; near a rim 2.06 %, kept open as OI-77)
+- [x] Identical output at 1, 2 and N threads (`req_nfr_06_*` for the rings stub, helical finishing and the offset passes)
+- [x] The library builds and runs in a small host program using only its public API (`crates/openchuck-path/examples/host.rs`, run in CI)
 
 ## Slice 6 – Post-processing and G-code round trip
 

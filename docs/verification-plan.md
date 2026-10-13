@@ -141,7 +141,7 @@ These are starting values, chosen before there is anything to measure. They are 
 
 | Check | Requirement | Limit |
 | --- | --- | --- |
-| Toolpath deviation | NFR-05, OP-01, OP-02 | 0.01 mm, split as an error budget: about 0.005 mm tessellation (IMP-06) and 0.005 mm path fitting |
+| Toolpath deviation | NFR-05, OP-01, OP-02 | 0.01 mm, split as an error budget: about 0.005 mm tessellation (IMP-06) and 0.005 mm path fitting. Path fitting by bisection uses 0.4 times the tolerance as its chord limit (decision 0018 item 12; the measured fit error is 1.01 times the limit), measured along the surface normal |
 | Kinematic round trip | OP-05, OP-06 | 1e-6 mm and 1e-6 degrees (double-precision arithmetic only) |
 | G-code replay (gate 2) | GC-09, GC-10 | G-code rounding only, because replay compares the G-code with the same toolpath in the IR: 0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting |
 | Gouge | OP-12 | Zero overcut beyond the tolerance |

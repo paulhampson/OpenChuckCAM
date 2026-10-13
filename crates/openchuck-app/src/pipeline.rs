@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The operation pipeline (architecture section 6). Slice 0 runs it over an
-//! empty project; the stages fill in from slice 1 onwards.
+//! The operation pipeline (architecture section 6). Slice 5 generates each
+//! operation's toolpath in machining order (OP-01); simulation and posting
+//! fill in from slices 6 and 7.
 
 use std::path::Path;
 
+use openchuck_path::Registry;
+use openchuck_project::Project;
 use openchuck_types::ir::Toolpath;
 use openchuck_types::job::JobContext;
 
@@ -16,17 +19,39 @@ pub struct Regeneration {
     pub toolpath: Toolpath,
     /// Generated G-code files as (file name, contents), in output order.
     pub gcode: Vec<(String, String)>,
+    /// Notes about the toolpaths, each naming its operation, in order.
+    pub notes: Vec<String>,
 }
 
-/// Regenerates every operation of the project at `_location`.
+/// Regenerates every operation of `project` (in the folder `location`) in
+/// machining order. The first operation that cannot be generated stops the
+/// run with its error: nothing is left out silently (verification policy 8).
 pub(crate) fn regenerate(
-    _location: &Path,
+    location: &Path,
+    project: &Project,
+    registry: &Registry,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
-    context.report("regenerate", 0, Some(0));
-    let regeneration = Regeneration::default();
+    let total = project.operations().len() as u64;
+    context.report("regenerate", 0, Some(total));
+    let mut regeneration = Regeneration::default();
+    for (i, operation) in project.operations().iter().enumerate() {
+        let path = crate::operation::generate_operation(
+            location,
+            project,
+            operation.id,
+            registry,
+            context,
+        )?;
+        for note in path.notes {
+            regeneration
+                .notes
+                .push(format!("operation '{}': {note}", operation.name));
+        }
+        regeneration.toolpath.groups.push(path.group);
+        context.report("regenerate", i as u64 + 1, Some(total));
+    }
     regeneration.toolpath.validate()?;
-    context.report("regenerate", 0, Some(0));
     Ok(regeneration)
 }
