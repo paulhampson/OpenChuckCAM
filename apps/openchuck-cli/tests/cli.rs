@@ -749,3 +749,44 @@ fn req_tl_01_req_tl_07_req_tl_11_cli_tool_library_and_snapshots() {
     assert!(out.stdout.contains("no tools"), "{}", out.stdout);
     std::fs::remove_dir_all(&library).ok();
 }
+
+#[test]
+fn req_gc_14_gc_11_cli_asks_for_the_tool_numbers_before_writing_g_code() {
+    let project = empty_project("tool-numbers");
+    let out = run(&["tool-numbers".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("no operation uses a tool"),
+        "{}",
+        out.stdout
+    );
+    // Not on a terminal and no option: the numbers are shown and the run stops.
+    let out = run(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--post".as_ref(),
+        "linuxcnc".as_ref(),
+    ]);
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("--tool-numbers keep"), "{}", out.stderr);
+    // With the option it goes on, and the notice is printed (NFR-12).
+    let out = run(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--post".as_ref(),
+        "linuxcnc".as_ref(),
+        "--tool-numbers".as_ref(),
+        "keep".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("0 G-code files"), "{}", out.stdout);
+    // G-code without a post is refused rather than guessed.
+    let out = run(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--out".as_ref(),
+        "x".as_ref(),
+    ]);
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("--post"), "{}", out.stderr);
+}

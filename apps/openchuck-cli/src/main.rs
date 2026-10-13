@@ -23,14 +23,24 @@ use openchuck_app::setup::{
     WorkOffsetRegister, a_direction, builtin, builtin_keys, list_library, load_profile,
 };
 use openchuck_app::tools::{
-    ControllerMapping, LibraryTool, NumberSource, SnapshotStatus, ToolLibrary, ToolReport, ToolSet,
-    check_tools, default_controller, describe, describe_controller, find_tool,
-    load_profile as load_tool_profile, with_custom_profile,
+    ControllerMapping, LibraryTool, NumberSource, SnapshotStatus, ToolLibrary, ToolNumbering,
+    ToolReport, ToolSet, check_tools, default_controller, describe, describe_controller, find_tool,
+    load_profile as load_tool_profile, tool_number_plan, tool_numbering_command,
+    with_custom_profile,
 };
 use openchuck_app::{
     AppError, Application, Command, PostSelection, Query, QueryResult, Threads,
     VERIFY_GCODE_NOTICE, inspect_file,
 };
+
+/// What to do with the tool numbers when G-code is written.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum NumberChoice {
+    /// Confirm the numbers as they are.
+    Keep,
+    /// Renumber in order of first use.
+    Auto,
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "openchuck-cli", version, about = "OpenChuckCAM without the UI")]
@@ -77,6 +87,27 @@ enum Action {
         /// Without one only toolpaths are generated.
         #[arg(long)]
         post: Option<String>,
+        /// Tool numbers for the G-code (GC-14): `keep` confirms the numbers
+        /// shown, `auto` renumbers in order of first use. On a terminal the
+        /// numbers are shown and you are asked; otherwise this is required.
+        #[arg(long, value_enum)]
+        tool_numbers: Option<NumberChoice>,
+    },
+    /// Show the tool numbers the program will use, or change them (GC-14).
+    /// The choice is saved in the project.
+    ToolNumbers {
+        /// The project folder.
+        project: PathBuf,
+        /// Renumber in order of first use, from 1.
+        #[arg(long)]
+        auto: bool,
+        /// Give a tool a number by hand: `TOOL=NUMBER` (the tool by name, ID
+        /// or `T<n>`). Repeat for more tools.
+        #[arg(long = "set", value_name = "TOOL=NUMBER")]
+        set: Vec<String>,
+        /// The machine's largest tool number, if it has a limit.
+        #[arg(long)]
+        max: Option<u32>,
     },
     /// Print a summary of a project.
     Report {
@@ -439,10 +470,18 @@ fn run(cli: Cli) -> Result<()> {
             app.save()?;
             println!("{}: saved", project.display());
         }
-        Action::Regenerate { project, out, post } => {
+        Action::Regenerate {
+            project,
+            out,
+            post,
+            tool_numbers,
+        } => {
             let mut app = open_project(&project, threads, create)?;
             if out.is_some() && post.is_none() {
                 anyhow::bail!("--out needs --post: say which post to write the G-code with");
+            }
+            if post.is_some() {
+                confirm_tool_numbers(&mut app, tool_numbers)?;
             }
             app.set_post(post.as_deref().map(PostSelection::parse));
             let result = app.regenerate()?;
@@ -492,6 +531,47 @@ fn run(cli: Cli) -> Result<()> {
             println!("{VERIFY_GCODE_NOTICE}");
             if unclean > 0 {
                 anyhow::bail!("{unclean} G-code file(s) failed the checks above");
+            }
+        }
+        Action::ToolNumbers {
+            project,
+            auto,
+            set,
+            max,
+        } => {
+            let mut app = open_project(&project, threads, create)?;
+            print_tool_numbers(&app);
+            if auto || !set.is_empty() {
+                let numbering = if auto {
+                    if !set.is_empty() {
+                        anyhow::bail!("use --auto or --set, not both");
+                    }
+                    ToolNumbering::InOrderOfUse { first: 1 }
+                } else {
+                    let mut pairs = Vec::new();
+                    for item in &set {
+                        let (tool, number) = item
+                            .split_once('=')
+                            .with_context(|| format!("--set '{item}': write TOOL=NUMBER"))?;
+                        let number: u32 = number.trim().parse().with_context(|| {
+                            format!("--set '{item}': '{number}' is not a tool number")
+                        })?;
+                        let found = find_tool(app.project(), tool).with_context(|| {
+                            format!("--set '{item}': no single tool matches '{tool}'")
+                        })?;
+                        pairs.push((found.id, number));
+                    }
+                    ToolNumbering::Manual(pairs)
+                };
+                match tool_numbering_command(app.project(), &numbering, max)? {
+                    Some(command) => {
+                        app.execute(command)?;
+                        app.save()?;
+                        println!("tool numbers changed and saved:");
+                        print_tool_numbers(&app);
+                    }
+                    None => println!("tool numbers unchanged"),
+                }
             }
         }
         Action::Report { project } => {
@@ -1434,6 +1514,55 @@ fn print_inspection(inspection: &ModelInspection) {
     for note in &inspection.notes {
         println!("note:      {note}");
     }
+}
+
+fn print_tool_numbers(app: &Application) {
+    let plan = tool_number_plan(app.project());
+    if plan.is_empty() {
+        println!("no operation uses a tool, so the program has no tool numbers");
+    }
+    for row in plan {
+        println!("T{:<3} {}", row.number, row.name);
+    }
+}
+
+/// GC-14: show the numbers the program will use and settle them before the
+/// G-code is written. A terminal is asked; otherwise an option is required.
+fn confirm_tool_numbers(app: &mut Application, choice: Option<NumberChoice>) -> Result<()> {
+    eprintln!("The program will use these tool numbers, in order of first use:");
+    for row in tool_number_plan(app.project()) {
+        eprintln!("  T{:<3} {}", row.number, row.name);
+    }
+    let choice = match choice {
+        Some(choice) => choice,
+        None if std::io::stdin().is_terminal() => {
+            eprint!("Keep these numbers (k), or renumber in order of use (a)? [k/a] ");
+            let mut answer = String::new();
+            std::io::stdin().read_line(&mut answer)?;
+            if answer.trim().eq_ignore_ascii_case("a") {
+                NumberChoice::Auto
+            } else {
+                NumberChoice::Keep
+            }
+        }
+        None => anyhow::bail!(
+            "confirm the tool numbers shown above with --tool-numbers keep, or renumber them with --tool-numbers auto"
+        ),
+    };
+    let numbering = match choice {
+        NumberChoice::Keep => ToolNumbering::Keep,
+        NumberChoice::Auto => ToolNumbering::InOrderOfUse { first: 1 },
+    };
+    // `Keep` still checks for duplicates, so a clash is refused here.
+    if let Some(command) = tool_numbering_command(app.project(), &numbering, None)? {
+        app.execute(command)?;
+        app.save()?;
+        eprintln!("Tool numbers changed and saved in the project:");
+        for row in tool_number_plan(app.project()) {
+            eprintln!("  T{:<3} {}", row.number, row.name);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

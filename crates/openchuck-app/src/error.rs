@@ -57,6 +57,9 @@ pub enum AppError {
         /// Why not.
         reason: String,
     },
+    /// The tool numbers cannot be used as asked (GC-14).
+    #[error("tool numbers: {0}")]
+    ToolNumbers(String),
     /// The toolpath could not be posted to G-code.
     #[error("cannot post the G-code: {0}")]
     Post(String),

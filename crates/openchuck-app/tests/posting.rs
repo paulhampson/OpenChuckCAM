@@ -18,6 +18,7 @@ use openchuck_app::model::TransformStep;
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::project::{Item, Operation, OrderKey, Placement, Setup, ToolSnapshot};
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+use openchuck_app::tools::{ToolNumbering, tool_number_plan, tool_numbering_command};
 use openchuck_app::{Application, Command, PostSelection, Threads};
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
@@ -183,5 +184,172 @@ fn req_gc_02_an_unknown_post_is_refused_naming_the_choices() {
     );
     app.set_post(Some(PostSelection::Folder(dir.join("missing-post"))));
     assert!(app.regenerate().is_err());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Adds a second tool and a second operation that uses it, after the first.
+fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (ToolId, ToolId) {
+    let first = app.project().tools()[0].clone();
+    let mut changed = first.clone();
+    changed.controller.number = first_number;
+    app.execute(Command::Replace(Item::Tool(changed))).unwrap();
+    let second_id = ToolId::new();
+    let mut second = first.clone();
+    second.id = second_id;
+    second.name = "6 mm ball".into();
+    second.controller.number = second_number;
+    app.execute(Command::Add {
+        item: Item::Tool(second),
+        placement: Placement::End,
+    })
+    .unwrap();
+    let setup = app.project().setups()[0].id;
+    let op = Operation {
+        id: OperationId::new(),
+        order: OrderKey::default(),
+        name: "Second".into(),
+        setup,
+        strategy: "helical_finishing".into(),
+        tool: Some(second_id),
+        selections: Vec::new(),
+        parameters: BTreeMap::new(),
+    };
+    app.execute(Command::Add {
+        item: Item::Operation(op),
+        placement: Placement::End,
+    })
+    .unwrap();
+    (first.id, second_id)
+}
+
+fn numbers(app: &Application) -> Vec<(String, u32)> {
+    tool_number_plan(app.project())
+        .into_iter()
+        .map(|r| (r.name, r.number))
+        .collect()
+}
+
+#[test]
+fn req_gc_14_the_plan_lists_the_tools_in_order_of_first_use() {
+    let (dir, mut app, _) = project("tn-plan");
+    two_tools(&mut app, 5, 2);
+    assert_eq!(
+        numbers(&app),
+        [("4 mm ball".to_string(), 5), ("6 mm ball".to_string(), 2)]
+    );
+    // A tool no operation uses is not in the program.
+    let mut spare = app.project().tools()[0].clone();
+    spare.id = ToolId::new();
+    spare.name = "spare".into();
+    spare.controller.number = 9;
+    app.execute(Command::Add {
+        item: Item::Tool(spare),
+        placement: Placement::End,
+    })
+    .unwrap();
+    assert_eq!(numbers(&app).len(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_14_confirming_keeps_the_numbers_and_auto_follows_operation_order_in_one_undo_step() {
+    let (dir, mut app, _) = project("tn-auto");
+    two_tools(&mut app, 5, 2);
+    assert!(
+        tool_numbering_command(app.project(), &ToolNumbering::Keep, None)
+            .unwrap()
+            .is_none()
+    );
+    let command = tool_numbering_command(
+        app.project(),
+        &ToolNumbering::InOrderOfUse { first: 1 },
+        None,
+    )
+    .unwrap()
+    .unwrap();
+    app.execute(command).unwrap();
+    assert_eq!(
+        numbers(&app),
+        [("4 mm ball".to_string(), 1), ("6 mm ball".to_string(), 2)]
+    );
+    assert!(app.undo().unwrap());
+    assert_eq!(
+        numbers(&app),
+        [("4 mm ball".to_string(), 5), ("6 mm ball".to_string(), 2)]
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_14_a_number_used_twice_or_out_of_range_is_refused_and_a_swap_is_allowed() {
+    let (dir, mut app, _) = project("tn-refuse");
+    let (a, b) = two_tools(&mut app, 1, 2);
+    let manual = |pairs: Vec<(ToolId, u32)>, max| {
+        tool_numbering_command(app.project(), &ToolNumbering::Manual(pairs), max)
+    };
+    let e = manual(vec![(b, 1)], None).unwrap_err().to_string();
+    assert!(
+        e.contains("T1") && e.contains("4 mm ball") && e.contains("6 mm ball"),
+        "{e}"
+    );
+    assert!(
+        manual(vec![(a, 0)], None)
+            .unwrap_err()
+            .to_string()
+            .contains("start at 1")
+    );
+    assert!(
+        manual(vec![(a, 30)], Some(20))
+            .unwrap_err()
+            .to_string()
+            .contains("largest tool number 20")
+    );
+    // A swap goes through, as one command.
+    let swap = manual(vec![(a, 2), (b, 1)], None).unwrap().unwrap();
+    app.execute(swap).unwrap();
+    assert_eq!(
+        numbers(&app),
+        [("4 mm ball".to_string(), 2), ("6 mm ball".to_string(), 1)]
+    );
+    // An unused tool holding a number a used tool would take is refused.
+    let mut spare = app.project().tools()[0].clone();
+    spare.id = ToolId::new();
+    spare.name = "spare".into();
+    spare.controller.number = 7;
+    app.execute(Command::Add {
+        item: Item::Tool(spare),
+        placement: Placement::End,
+    })
+    .unwrap();
+    let e = tool_numbering_command(app.project(), &ToolNumbering::Manual(vec![(a, 7)]), None)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("T7") && e.contains("spare"), "{e}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_14_req_gc_07_a_second_post_after_renumbering_is_byte_identical() {
+    let (dir, mut app, _) = project("tn-twice");
+    two_tools(&mut app, 5, 2);
+    let command = tool_numbering_command(
+        app.project(),
+        &ToolNumbering::InOrderOfUse { first: 1 },
+        None,
+    )
+    .unwrap()
+    .unwrap();
+    app.execute(command).unwrap();
+    app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    let first = app.regenerate().unwrap().gcode;
+    assert!(
+        first[0].1.contains("T1 M6") && first[0].1.contains("T2 M6"),
+        "{}",
+        first[0].1
+    );
+    app.save().unwrap();
+    let mut again = Application::open(&dir, Threads::Exactly(3)).unwrap();
+    again.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    assert_eq!(again.regenerate().unwrap().gcode, first);
     std::fs::remove_dir_all(dir).unwrap();
 }

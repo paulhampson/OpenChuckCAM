@@ -214,6 +214,9 @@ pub(crate) fn post_toolpath(
     selection: &PostSelection,
 ) -> Result<(Vec<(String, String)>, Vec<GcodeReport>, Vec<String>), AppError> {
     let post = TemplatePost::new(selection.load()?);
+    if toolpath.groups.is_empty() {
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
+    }
     let extension = post.definition().options.file_extension.clone();
     let machine = project
         .machine()

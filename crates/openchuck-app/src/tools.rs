@@ -381,3 +381,145 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 }
+
+/// One tool the program will use and the number it will have (GC-14).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolNumberRow {
+    /// The snapshot.
+    pub tool: ToolId,
+    /// Its name.
+    pub name: String,
+    /// The number it has now.
+    pub number: u32,
+}
+
+/// The tools the program will use, in order of first use by the operations in
+/// machining order, with their current numbers (GC-14). A tool no operation
+/// uses is not listed: it does not appear in the program.
+pub fn tool_number_plan(project: &Project) -> Vec<ToolNumberRow> {
+    let mut rows: Vec<ToolNumberRow> = Vec::new();
+    for operation in project.operations() {
+        let Some(id) = operation.tool else { continue };
+        if rows.iter().any(|r| r.tool == id) {
+            continue;
+        }
+        if let Some(tool) = project.tools().iter().find(|t| t.id == id) {
+            rows.push(ToolNumberRow {
+                tool: id,
+                name: tool.name.clone(),
+                number: tool.controller.number,
+            });
+        }
+    }
+    rows
+}
+
+/// How the numbers of the tools in use are chosen (GC-14).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolNumbering {
+    /// The user confirms the numbers as they are; nothing changes.
+    Keep,
+    /// Renumber in order of first use, counting up from `first`.
+    InOrderOfUse {
+        /// The number of the first tool used (at least 1).
+        first: u32,
+    },
+    /// The user gives numbers by hand for some or all of the tools in use.
+    Manual(Vec<(ToolId, u32)>),
+}
+
+/// The command that gives the tools in use their numbers, or an error that
+/// names the problem: a number below 1, above `max_number` (the machine's
+/// range, OI-62), used twice, or a tool the program does not use. The
+/// command is one undo step; a tool whose number does not change is not
+/// replaced. `Ok(None)` means nothing changes.
+pub fn tool_numbering_command(
+    project: &Project,
+    numbering: &ToolNumbering,
+    max_number: Option<u32>,
+) -> Result<Option<crate::Command>, crate::AppError> {
+    let plan = tool_number_plan(project);
+    let refuse = crate::AppError::ToolNumbers;
+    let mut wanted: BTreeMap<ToolId, u32> = plan.iter().map(|r| (r.tool, r.number)).collect();
+    match numbering {
+        ToolNumbering::Keep => {}
+        ToolNumbering::InOrderOfUse { first } => {
+            if *first < 1 {
+                return Err(refuse("the first tool number must be at least 1".into()));
+            }
+            for (i, row) in plan.iter().enumerate() {
+                let n = u32::try_from(i)
+                    .ok()
+                    .and_then(|i| first.checked_add(i))
+                    .ok_or_else(|| refuse("the tool numbers run past the largest number".into()))?;
+                wanted.insert(row.tool, n);
+            }
+        }
+        ToolNumbering::Manual(pairs) => {
+            for (id, number) in pairs {
+                if !wanted.contains_key(id) {
+                    return Err(refuse(format!(
+                        "tool {id} is not used by any operation, so it has no number in the program"
+                    )));
+                }
+                wanted.insert(*id, *number);
+            }
+        }
+    }
+    let mut seen: BTreeMap<u32, &str> = BTreeMap::new();
+    for row in &plan {
+        let number = wanted.get(&row.tool).copied().unwrap_or(row.number);
+        if number < 1 {
+            return Err(refuse(format!(
+                "'{}' would get T{number}; tool numbers start at 1",
+                row.name
+            )));
+        }
+        if let Some(max) = max_number
+            && number > max
+        {
+            return Err(refuse(format!(
+                "'{}' would get T{number}, above the machine's largest tool number {max}",
+                row.name
+            )));
+        }
+        if let Some(other) = seen.insert(number, &row.name) {
+            return Err(refuse(format!(
+                "T{number} would be used by both '{other}' and '{}'; a number can belong to one tool",
+                row.name
+            )));
+        }
+    }
+    // A tool the program does not use may still hold a number a used tool
+    // would take; the machine could not tell them apart if it is ever used.
+    for tool in project.tools() {
+        if wanted.contains_key(&tool.id) {
+            continue;
+        }
+        if let Some(other) = seen.get(&tool.controller.number) {
+            return Err(refuse(format!(
+                "T{} would be used by '{other}', but '{}' also holds it and no operation uses it; give one of them another number",
+                tool.controller.number, tool.name
+            )));
+        }
+    }
+    let mut commands = Vec::new();
+    for row in &plan {
+        let number = wanted.get(&row.tool).copied().unwrap_or(row.number);
+        if number == row.number {
+            continue;
+        }
+        if let Some(snapshot) = project.tools().iter().find(|t| t.id == row.tool) {
+            let mut changed = snapshot.clone();
+            changed.controller.number = number;
+            commands.push(crate::Command::Replace(openchuck_project::Item::Tool(
+                changed,
+            )));
+        }
+    }
+    Ok(match commands.len() {
+        0 => None,
+        1 => commands.pop(),
+        _ => Some(crate::Command::Batch(commands)),
+    })
+}
