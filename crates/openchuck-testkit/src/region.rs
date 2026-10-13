@@ -201,6 +201,11 @@ fn dist_arc(p: Pt, a: Pt, b: Pt, bg: f64) -> f64 {
     }
 }
 
+/// Bulges this small have a sagitta far below the oracle's resolution, and the
+/// arc formulas lose precision for them (radius is about chord / bulge), so
+/// they are treated as lines.
+const LINE_BULGE: f64 = 1e-8;
+
 /// Exact distance from `p` to the boundary of loop `l`.
 pub fn dist_loop(p: Pt, l: &Loop) -> f64 {
     let n = l.len();
@@ -208,7 +213,7 @@ pub fn dist_loop(p: Pt, l: &Loop) -> f64 {
     for i in 0..n {
         let (a, b) = (l[i], l[(i + 1) % n]);
         let (a2, b2) = ([a[0], a[1]], [b[0], b[1]]);
-        let d = if a[2] == 0.0 {
+        let d = if a[2].abs() < LINE_BULGE {
             dist_seg(p, a2, b2)
         } else {
             dist_arc(p, a2, b2, a[2])
@@ -230,7 +235,7 @@ pub fn flatten(l: &Loop, tol: f64) -> Vec<Pt> {
     for i in 0..n {
         let (a, b) = (l[i], l[(i + 1) % n]);
         out.push([a[0], a[1]]);
-        if a[2] != 0.0 {
+        if a[2].abs() >= LINE_BULGE {
             let (c, r, a0, sweep) = arc_params([a[0], a[1]], [b[0], b[1]], a[2]);
             let step = 2.0 * (1.0 - (tol / r).min(1.0)).acos();
             let k = if step > 0.0 {

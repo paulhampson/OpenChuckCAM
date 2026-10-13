@@ -775,20 +775,28 @@ impl PeriodicBand {
                 "the band needs finite x_min below x_max".into(),
             ));
         }
-        // Wide enough that no tiled island touches the artificial ends.
+        // Wide enough that no tiled island touches the artificial ends: each
+        // island is first shifted to start in [-P/2, P/2), is under a period
+        // wide, and is tiled one period either side.
         let outer = vec![
-            Vertex::new(self.x_min, -2.5 * period, 0.0),
-            Vertex::new(self.x_max, -2.5 * period, 0.0),
-            Vertex::new(self.x_max, 2.5 * period, 0.0),
-            Vertex::new(self.x_min, 2.5 * period, 0.0),
+            Vertex::new(self.x_min, -3.5 * period, 0.0),
+            Vertex::new(self.x_max, -3.5 * period, 0.0),
+            Vertex::new(self.x_max, 3.5 * period, 0.0),
+            Vertex::new(self.x_min, 3.5 * period, 0.0),
         ];
         let mut holes = Vec::new();
         for island in &self.islands {
+            let lo = island.iter().map(|v| v.s).fold(f64::INFINITY, f64::min);
+            let base = if lo.is_finite() {
+                -((lo + 0.5 * period) / period).floor() * period
+            } else {
+                0.0
+            };
             for k in [-1.0, 0.0, 1.0] {
                 holes.push(
                     island
                         .iter()
-                        .map(|v| Vertex::new(v.x, v.s + k * period, v.bulge))
+                        .map(|v| Vertex::new(v.x, v.s + base + k * period, v.bulge))
                         .collect::<Loop>(),
                 );
             }

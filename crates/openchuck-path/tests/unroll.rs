@@ -489,7 +489,7 @@ fn req_op_04_islands_that_grow_into_a_ring_are_refused() {
         band.offset_islands(dev, 1.0, &OffsetOptions::default())
             .is_ok()
     );
-    // Grown by 2 mm the discs (4 + 2 = 6 radius, 13.1 mm apart) touch and
+    // Grown by 3 mm the discs (4 + 3 = 7 radius, 13.1 mm apart) overlap and
     // close into a ring.
     let e = band
         .offset_islands(dev, 3.0, &OffsetOptions::default())

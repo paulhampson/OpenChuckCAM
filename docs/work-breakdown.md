@@ -252,7 +252,7 @@ These apply to every slice and are not repeated below.
 2. Ports `StockModel` (with a simple analytic implementation for tests and small hosts) and `CollisionOracle` (default accepts everything and relies on the clearance geometry).
 3. Rotary kinematic mapping to X, Y, Z and A with wrap, continuity, limits and unwinding (OP-15); the rotary axis is a parameter.
 4. `Strategy` trait and registry with parameter schemas covering names, units, ranges, defaults and validation (OP-16).
-5. Helical finishing on the whole model as the first wrap-family strategy (completed in slice 12), using the offset approach proven in SP-7.
+5. Helical finishing on the whole model as the first wrap-family strategy (built in slice 5; any follow-up is in slice 12), using the offset approach proven in SP-7.
 6. Contact-point feed intent and segment duration written into the IR; compensated feed per minute derived by the post (OP-13).
 7. Linking moves and retracts through the clearance geometry (OP-14).
 8. Operation model in `openchuck-project`: strategy, tool, setup, selection, parameters, regenerate at any time (OP-01), and the core of OP-11 (tolerance, stepover, stock to leave, feeds, retract).
