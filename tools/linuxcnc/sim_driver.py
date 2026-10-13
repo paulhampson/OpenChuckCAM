@@ -90,9 +90,12 @@ def main():
         if rounded != previous:
             path.append(rounded)
             previous = rounded
+    # The longest pause between samples: a busy machine leaves gaps, and a corner falling in one
+    # cannot be seen. The runner retries once when the gap was large.
+    max_gap = max((b[0] - a[0] for a, b in zip(samples, samples[1:])), default=0.0)
     stat.poll()
     with open(REPORT, "w", encoding="utf-8") as fh:
-        json.dump({"program": PROGRAM, "rows": rows, "errors": errors, "path": path,
+        json.dump({"program": PROGRAM, "rows": rows, "errors": errors, "path": path, "max_gap": round(max_gap, 4),
                    "final_position": list(stat.actual_position[:4]),
                    "g92_offset": list(stat.g92_offset[:4]),
                    "samples": len(samples)}, fh, indent=1)

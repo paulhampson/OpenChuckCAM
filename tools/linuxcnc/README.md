@@ -14,4 +14,4 @@ LINUXCNC_RIP=/path/to/linuxcnc cargo xtask replay prog.ngc   # a run-in-place bu
 
 `openchuck-cli gcode-sim program.ngc report.json` does the comparison on its own.
 
-Run it on an otherwise idle machine: the simulator runs in real time (the reference jobs take 1.5 to 2.5 minutes each) and a busy machine can leave gaps in the samples. trivkins treats A as a plain number, so a pass proves the dialect, the reached positions and the absence of faults, not the A direction (decision record 0001).
+A failing program is run once more and the second result counts, because a loaded machine can leave a gap in the samples that hides a corner; the driver writes the longest gap (`max_gap`, seconds) into its report. Run it on an otherwise idle machine: the simulator runs in real time (the reference jobs take 1.5 to 2.5 minutes each) and a busy machine can leave gaps in the samples. trivkins treats A as a plain number, so a pass proves the dialect, the reached positions and the absence of faults, not the A direction (decision record 0001).

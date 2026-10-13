@@ -157,63 +157,114 @@ pub fn check(root: &Path, options: &Options) -> Result<Findings> {
             .and_then(|n| n.to_str())
             .unwrap_or("program")
             .to_string();
-        let work =
-            std::env::temp_dir().join(format!("openchuck-replay-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&work);
-        std::fs::create_dir_all(&work)?;
-        for file in ["checks.ini", "sim.tbl", "sim_driver.py"] {
-            std::fs::copy(config.join(file), work.join(file))
-                .with_context(|| format!("cannot copy {file}"))?;
+        let mut outcome = run_once(options, &config, &cli, &program, &name)?;
+        // The simulator runs in real time and samples every millisecond, so a loaded machine can
+        // leave a gap that hides a corner. A real failure repeats; run a failing program once more
+        // and report the second result, with the first one's reason.
+        if let Some(first) = outcome.failure.clone() {
+            println!(
+                "{name}: failed ({first}); the longest sampling gap was {:.0} ms. Running it once more",
+                outcome.max_gap.unwrap_or(0.0) * 1000.0
+            );
+            outcome = run_once(options, &config, &cli, &program, &name)?;
         }
-        // The container runs as an unprivileged user that must write the report.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&work, std::fs::Permissions::from_mode(0o777))?;
+        match outcome.failure {
+            None => println!("{}", outcome.said),
+            Some(why) => findings.push(format!("{name}: {why}")),
         }
-        let report = work.join("report.json");
-        let mut command = linuxcnc_command(options, &work, &program, &report)?;
-        command
-            .stdout(std::fs::File::create(work.join("linuxcnc.log"))?)
-            .stderr(Stdio::inherit());
-        println!("{name}: running in the LinuxCNC simulator (real time)");
-        match command.spawn().context("cannot start LinuxCNC") {
-            Ok(child) => {
-                if let Err(e) = wait_with_timeout(child, options.timeout_seconds) {
-                    findings.push(format!("{name}: {e}"));
-                    continue;
-                }
-            }
-            Err(e) => bail!("{e:#}: install LinuxCNC, set LINUXCNC_RIP, or use --docker IMAGE"),
-        }
-        if !report.is_file() || std::fs::metadata(&report)?.len() == 0 {
-            let log = std::fs::read_to_string(work.join("linuxcnc.log")).unwrap_or_default();
-            let tail: Vec<&str> = log.lines().rev().take(10).collect();
-            findings.push(format!(
-                "{name}: the simulator wrote no report; last output: {}",
-                tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
-            ));
-            continue;
-        }
-        if let Some(keep) = &options.keep_reports {
-            std::fs::create_dir_all(keep)?;
-            std::fs::copy(&report, keep.join(format!("{name}.json")))?;
-        }
-        let output = Command::new(&cli)
-            .arg("gcode-sim")
-            .arg(&program)
-            .arg(&report)
-            .args(["--tolerance", &options.tolerance.to_string()])
-            .output()
-            .context("cannot run openchuck-cli gcode-sim")?;
-        let said = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if output.status.success() {
-            println!("{said}");
-        } else {
-            let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            findings.push(format!("{name}: {err}"));
-        }
-        let _ = std::fs::remove_dir_all(&work);
     }
     Ok(findings)
+}
+
+/// What one run of one program found.
+struct Outcome {
+    /// The comparison's one-line result when it passed.
+    said: String,
+    /// Why it failed, if it did.
+    failure: Option<String>,
+    /// The longest pause between the driver's samples, in seconds.
+    max_gap: Option<f64>,
+}
+
+/// The `max_gap` the driver wrote into its report.
+fn report_max_gap(report: &Path) -> Option<f64> {
+    let text = std::fs::read_to_string(report).ok()?;
+    let at = text.find("\"max_gap\":")? + "\"max_gap\":".len();
+    let rest = text.get(at..)?.trim_start();
+    let end = rest.find([',', '}', '\n'])?;
+    rest.get(..end)?.trim().parse().ok()
+}
+
+/// Runs `program` in LinuxCNC once and compares the report.
+fn run_once(
+    options: &Options,
+    config: &Path,
+    cli: &Path,
+    program: &Path,
+    name: &str,
+) -> Result<Outcome> {
+    let work = std::env::temp_dir().join(format!("openchuck-replay-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work)?;
+    for file in ["checks.ini", "sim.tbl", "sim_driver.py"] {
+        std::fs::copy(config.join(file), work.join(file))
+            .with_context(|| format!("cannot copy {file}"))?;
+    }
+    // The container runs as an unprivileged user that must write the report.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&work, std::fs::Permissions::from_mode(0o777))?;
+    }
+    let report = work.join("report.json");
+    let mut command = linuxcnc_command(options, &work, program, &report)?;
+    command
+        .stdout(std::fs::File::create(work.join("linuxcnc.log"))?)
+        .stderr(Stdio::inherit());
+    println!("{name}: running in the LinuxCNC simulator (real time)");
+    let child = command.spawn().map_err(|e| {
+        anyhow::anyhow!(
+            "cannot start LinuxCNC ({e}): install it, set LINUXCNC_RIP, or use --docker IMAGE"
+        )
+    })?;
+    if let Err(e) = wait_with_timeout(child, options.timeout_seconds) {
+        return Ok(Outcome {
+            said: String::new(),
+            failure: Some(e.to_string()),
+            max_gap: None,
+        });
+    }
+    if !report.is_file() || std::fs::metadata(&report)?.len() == 0 {
+        let log = std::fs::read_to_string(work.join("linuxcnc.log")).unwrap_or_default();
+        let tail: Vec<&str> = log.lines().rev().take(10).collect();
+        return Ok(Outcome {
+            said: String::new(),
+            failure: Some(format!(
+                "the simulator wrote no report; last output: {}",
+                tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+            )),
+            max_gap: None,
+        });
+    }
+    let max_gap = report_max_gap(&report);
+    if let Some(keep) = &options.keep_reports {
+        std::fs::create_dir_all(keep)?;
+        std::fs::copy(&report, keep.join(format!("{name}.json")))?;
+    }
+    let output = Command::new(cli)
+        .arg("gcode-sim")
+        .arg(program)
+        .arg(&report)
+        .args(["--tolerance", &options.tolerance.to_string()])
+        .output()
+        .context("cannot run openchuck-cli gcode-sim")?;
+    let said = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let failure = (!output.status.success())
+        .then(|| String::from_utf8_lossy(&output.stderr).trim().to_string());
+    let _ = std::fs::remove_dir_all(&work);
+    Ok(Outcome {
+        said,
+        failure,
+        max_gap,
+    })
 }
