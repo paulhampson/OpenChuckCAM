@@ -274,7 +274,7 @@ These apply to every slice and are not repeated below.
 
 ## Slice 6 – Post-processing and G-code round trip
 
-**Status:** built 13 Oct 2026; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 13 are built. Gates 1 and 2 pass on the posted projects and the reference jobs, and **gate 3 passes in LinuxCNC 2.9.10** for the small part and the three LinuxCNC reference programs (decision 0020 item 10); the CI job for it (`gate3`, with the image of `docker/linuxcnc`) is written but has not run on GitHub (OI-47). Waiting on you: the golden file review, the air-cut plan review, and OI-91 (the gate 2 tolerance). Open items: OI-47, OI-60, OI-83, OI-84, OI-85, OI-88 to OI-92.
+**Status:** built 13 Oct 2026; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 13 are built. Gates 1 and 2 pass on the posted projects and the reference jobs, and **gate 3 passes in LinuxCNC 2.9.10** for the small part and the three LinuxCNC reference programs (decision 0020 item 10); the CI job for it (`gate3`, with the image of `docker/linuxcnc`) is written but has not run on GitHub (OI-47). Waiting on you: the golden file review and the air-cut plan review. Open items: OI-47, OI-60, OI-83, OI-89, OI-92.
 
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
@@ -306,7 +306,7 @@ These apply to every slice and are not repeated below.
 - [x] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults (`cargo xtask replay testdata/golden/reference/groove_linuxcnc.ngc`: all 640 moves reached, ended at the program's end, no fault; also the small part, cone and sphere; decision 0020 item 10)
 - [x] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line (`req_gc_03_*` in `posts.rs`)
 - [ ] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (hands-on step for you; the output follows the findings table, `req_gc_09_z1_output_follows_the_sp_12_conventions`, and the plan is drafted in [reference-jobs.md](reference-jobs.md))
-- [ ] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees (gate 1 does, with more faults than named; gate 2 agrees to 0.00064 mm at the tip and 0 degrees, over 0.0005 because three axes' rounding combine: confirm the reading, OI-91)
+- [x] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees (gate 1 does, with more faults than named; gate 2 agrees to 0.00064 mm at the tip and 0 degrees, per axis within 0.0005; the owner confirmed on 13 Oct 2026 that the figures are per axis, so the tip may differ by 0.00087 mm, OI-91)
 - [x] The reference job set is chosen and its Z1 programs pass gates 1 to 3 ([reference-jobs.md](reference-jobs.md); gates 1 and 2 pass for the Z1 and LinuxCNC programs in `reference_jobs.rs`; gate 3 passes for the LinuxCNC programs, which share the toolpath and the kinematics with the Z1 programs; the Z1 post's own text, `G92.4` and the Makera feed rule, cannot run in LinuxCNC)
 - [x] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code (`req_gc_14_*` in `posting.rs`)
 

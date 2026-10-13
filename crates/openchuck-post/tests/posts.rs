@@ -149,7 +149,11 @@ fn req_gc_04_req_nfr_07_bad_options_are_refused_naming_the_option() {
         ("a_letter = \"A\"", "a_letter = \"Q\"", "a_letter"),
         ("pos = 3", "pos = 12", "decimals.pos"),
         ("step = 10", "step = 0", "line_numbers.step"),
-        ("max_feed = 4000.0", "max_feed = -1.0", "max_feed"),
+        (
+            "comments = true",
+            "comments = true\nmax_feed = -1.0",
+            "max_feed",
+        ),
         (
             "work_offset = \"G54\"",
             "work_offset = \"G60\"",

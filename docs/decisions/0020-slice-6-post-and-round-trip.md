@@ -1,6 +1,6 @@
 # 0020: Slice 6 design refinement: posts, G-code reader and round trip
 
-- **Status:** proposed. Built on branch `claude/nice-fermi-lyjx5n` as the slice progresses; this record grows with each step and is accepted at slice close. It relies on accepted records 0001, 0005, 0007, 0009 and 0019. The Z1 conventions stay derived and unconfirmed until the air cut (OI-37).
+- **Status:** proposed; the owner accepted open items 1, 2 and 3, settled 5 (the post copy of the maximum feed is dropped) and confirmed the reading in 6 on 13 Oct 2026 (below); 4 and 7 to 9 stay open. The rest is accepted at slice close. Built on branch `claude/nice-fermi-lyjx5n` as the slice progresses; this record grows with each step and is accepted at slice close. It relies on accepted records 0001, 0005, 0007, 0009 and 0019. The Z1 conventions stay derived and unconfirmed until the air cut (OI-37).
 - **Date:** 13 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-84 and OI-85 progress, OI-88 to OI-93 are new, OI-02, OI-46 and OI-83 progress, OI-47 progresses (the runner and image exist, the CI job has not run on GitHub), OI-60 progresses (the owner gave the chuck height) and OI-62 and OI-93 are closed.
 
@@ -54,12 +54,12 @@ Work breakdown slice 6 (GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14; 
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Non-ASCII in comments becomes `?`; a transliteration is the alternative. (OI-84) | Owner's review | |
-| 2 | Agree the post layout and option names. (OI-85) | Owner's review | |
-| 3 | Post per machine profile. (OI-88) | Slice 6 | Owner's choice |
+| 1 | Non-ASCII in comments becomes `?`; a transliteration is the alternative. (OI-84) | **Accepted 13 Oct 2026** | |
+| 2 | Agree the post layout and option names. (OI-85) | **Accepted 13 Oct 2026** | |
+| 3 | Post per machine profile. (OI-88) | **Accepted 13 Oct 2026 as built:** the post is chosen when posting (`Application::set_post`, `--post`), not stored in the machine profile; a profile field stays possible later | |
 | 4 | Inches and wrapped A. (OI-89) | When a machine needs them | |
-| 5 | Post `max_feed` duplicates the profile's. (OI-90) | Slice 6 | OI-39 |
-| 6 | Gate 2's combined tip tolerance (0.00087 mm at three decimals) against the plan's 0.0005 mm, which reads as per axis. Confirm the reading, or change the plan's wording. (OI-91) | Owner's review | |
+| 5 | Post `max_feed` duplicates the profile's. (OI-90) | **Settled 13 Oct 2026: the shipped posts no longer set it** (the option stays, GC-04 lists it; the profile's limits govern every move; the golden files did not change) | |
+| 6 | Gate 2's combined tip tolerance (0.00087 mm at three decimals) against the plan's 0.0005 mm, which reads as per axis. Confirm the reading, or change the plan's wording. (OI-91) | **Reading confirmed 13 Oct 2026:** 0.0005 mm and 0.001 degrees are per axis; the tip check allows 0.00087 mm at three decimals. The verification plan row says so | |
 | 7 | Gate 3 runs against LinuxCNC (table in item 10) and CI is wired to it with the image of item 13, but the CI job and the image push have not run on GitHub. (OI-47) | Slice 6 close | A green `gate3` job |
 | 8 | GC-05 file splits other than per setup. (OI-92) | Slice 19 (export in the UI) | |
 | 9 | The axis height (OI-60): measure it, and the bed-at-travel-bottom assumption. The tool number range (OI-62) is settled at 1000. | Slice 20 | Z1 facts |

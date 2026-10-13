@@ -21,7 +21,7 @@ header = ["G90 G21 G17"]
 footer = ["M5", "G53 G0 Z-3", "G28", "M2"]
 work_offset = "G54"
 coolant = "off"
-max_feed = 1200.0
+# max_feed is left unset: the machine profile's feed limits already govern every move (decision 0020 item 5).
 feed_mode = "g94"
 comments = true
 file_extension = "nc"
