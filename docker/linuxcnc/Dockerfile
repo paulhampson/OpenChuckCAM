@@ -45,7 +45,7 @@ RUN git clone --depth 1 --branch "${LINUXCNC_REF}" https://github.com/LinuxCNC/l
 COPY linuxcnc-rip /usr/local/bin/linuxcnc
 RUN chmod 0755 /usr/local/bin/linuxcnc \
     && for tool in rs274 halcmd; do ln -s /usr/local/bin/linuxcnc /usr/local/bin/$tool; done \
-    && useradd --create-home --uid 1000 cnc
+    && useradd --create-home cnc
 
 ENV LINUXCNC_RIP=/opt/linuxcnc
 USER cnc
