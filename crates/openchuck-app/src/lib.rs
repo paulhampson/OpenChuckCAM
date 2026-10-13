@@ -28,6 +28,7 @@ mod jobs;
 pub mod model;
 pub mod operation;
 mod pipeline;
+mod posting;
 pub mod setup;
 pub mod tools;
 
@@ -51,6 +52,7 @@ pub use openchuck_path::{Registry, Strategy};
 pub use openchuck_project as project;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use pipeline::Regeneration;
+pub use posting::{GcodeComparison, GcodeReport, PostSelection};
 
 // The application layer maps project data to every engine crate (architecture
 // section 3). Most are still shells; naming them keeps the layering visible.
@@ -128,6 +130,7 @@ pub struct Application {
     history: History,
     jobs: JobManager,
     strategies: Registry,
+    post: Option<PostSelection>,
     events_tx: Sender<Event>,
     events_rx: Receiver<Event>,
 }
@@ -168,6 +171,7 @@ impl Application {
             history: History::default(),
             jobs: JobManager::new(threads)?,
             strategies: Registry::builtin(),
+            post: None,
             events_tx,
             events_rx,
         })
@@ -391,10 +395,23 @@ impl Application {
     pub fn start_regenerate(&self) -> JobHandle<Regeneration> {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
+        let post = self.post.clone();
         self.jobs
             .submit("regenerate", self.events_tx.clone(), move |context| {
-                pipeline::regenerate(&document.location, &document.project, &strategies, context)
+                pipeline::regenerate(
+                    &document.location,
+                    &document.project,
+                    &strategies,
+                    post.as_ref(),
+                    context,
+                )
             })
+    }
+
+    /// Chooses the post that turns toolpaths into G-code (GC-02, OI-88).
+    /// Without one, regeneration produces toolpaths only.
+    pub fn set_post(&mut self, post: Option<PostSelection>) {
+        self.post = post;
     }
 
     /// The strategies operations can use (OP-16).

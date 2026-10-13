@@ -35,6 +35,20 @@ pub struct ConvertOptions<F> {
     pub max_feed: Option<f64>,
     /// Tool settings keyed by the IR's tool tag.
     pub tools: BTreeMap<String, ToolSetting>,
+    /// Decimal places of the written positions (X, Y, Z) and of A. The
+    /// controller times a move from the positions as written, so lengths and
+    /// feeds are worked out from positions rounded this way, and a move that
+    /// rounds to no motion is dropped. `None` keeps full precision.
+    pub decimals: Option<(u32, u32)>,
+}
+
+/// `value` rounded to `decimals` places as the post writes it (ties to even
+/// on the exact binary value, never negative zero).
+pub fn round_written(value: f64, decimals: u32) -> f64 {
+    let places = usize::try_from(decimals).unwrap_or(9).min(9);
+    crate::engine::fixed_str(value, places)
+        .parse()
+        .unwrap_or(value)
 }
 
 /// Converts a toolpath to the neutral machine program.
@@ -55,11 +69,19 @@ pub fn to_machine_program<F: AsRotaryFrame>(
     let axis = axis_direction(frame.axis);
     let target_of = |tip: Point3, a: Degrees| {
         let p = machine_xyz(&frame, tip, a);
-        Target {
-            x: p.x,
-            y: p.y,
-            z: p.z,
-            a: a.0,
+        match options.decimals {
+            Some((pos, rot)) => Target {
+                x: round_written(p.x, pos),
+                y: round_written(p.y, pos),
+                z: round_written(p.z, pos),
+                a: round_written(a.0, rot),
+            },
+            None => Target {
+                x: p.x,
+                y: p.y,
+                z: p.z,
+                a: a.0,
+            },
         }
     };
     let radius_of = |t: &Target| {

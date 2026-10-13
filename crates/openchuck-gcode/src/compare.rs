@@ -38,6 +38,10 @@ pub struct Tolerances {
     pub a_deg: f64,
     /// Largest relative error of a move's time.
     pub time_relative: f64,
+    /// Decimal places of the written X, Y and Z.
+    pub pos_decimals: u32,
+    /// Decimal places of the written A.
+    pub a_decimals: u32,
 }
 
 impl Tolerances {
@@ -50,6 +54,8 @@ impl Tolerances {
             position_mm: half(pos) * 3f64.sqrt() * 1.001,
             a_deg: half(a) * 2.0,
             time_relative: 0.01,
+            pos_decimals: pos,
+            a_decimals: a,
         }
     }
 }
@@ -73,6 +79,8 @@ pub struct Comparison {
     pub gcode_cut_seconds: f64,
     /// Largest relative error of a fed move's time.
     pub max_time_error: f64,
+    /// The source line of the move with the largest time error.
+    pub worst_time_line: usize,
 }
 
 /// Why a comparison could not be made or failed.
@@ -147,9 +155,22 @@ pub fn compare(
     let frame = frame.rotary_frame();
     let axis = axis_direction(frame.axis);
     let axis = [axis.x, axis.y, axis.z];
+    // Positions as the post writes them: the controller moves between these,
+    // and a pose that rounds onto the one before it writes no line.
+    let written = |v: f64, decimals: u32| {
+        let places = usize::try_from(decimals).unwrap_or(9).min(9);
+        let text = format!("{v:.places$}");
+        text.parse::<f64>()
+            .map_or(v, |x| if x == 0.0 { 0.0 } else { x })
+    };
     let machine_of = |tip: Point3, a: f64| {
         let p = machine_xyz(&frame, tip, Degrees(a));
-        [p.x, p.y, p.z, a]
+        [
+            written(p.x, tolerances.pos_decimals),
+            written(p.y, tolerances.pos_decimals),
+            written(p.z, tolerances.pos_decimals),
+            written(a, tolerances.a_decimals),
+        ]
     };
 
     // The poses the program must reach, in order, with whether each is an
@@ -259,9 +280,11 @@ pub fn compare(
             out.ir_cut_seconds += ir_seconds;
             out.gcode_cut_seconds += seconds;
             if ir_seconds > 0.0 {
-                out.max_time_error = out
-                    .max_time_error
-                    .max(((seconds - ir_seconds) / ir_seconds).abs());
+                let error = ((seconds - ir_seconds) / ir_seconds).abs();
+                if error > out.max_time_error {
+                    out.max_time_error = error;
+                    out.worst_time_line = mv.line;
+                }
             }
         } else if e.fed.is_some() {
             return Err(CompareError::Structure(format!(
@@ -296,7 +319,8 @@ pub fn compare(
     }
     if out.max_time_error > tolerances.time_relative {
         return Err(CompareError::Tolerance(format!(
-            "a move's time is {:.2} % off the IR's (limit {:.2} %)",
+            "line {}: the move's time is {:.2} % off the IR's (limit {:.2} %)",
+            out.worst_time_line,
             out.max_time_error * 100.0,
             tolerances.time_relative * 100.0
         )));

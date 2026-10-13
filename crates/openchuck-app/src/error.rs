@@ -57,6 +57,9 @@ pub enum AppError {
         /// Why not.
         reason: String,
     },
+    /// The toolpath could not be posted to G-code.
+    #[error("cannot post the G-code: {0}")]
+    Post(String),
     /// The pathing library reported an error.
     #[error(transparent)]
     Path(#[from] openchuck_path::PathError),

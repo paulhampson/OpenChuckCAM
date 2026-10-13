@@ -18,6 +18,7 @@ coolant = "off"
 max_feed = 4000.0
 feed_mode = "g94"
 comments = true
+file_extension = "ngc"
 
 [options.tool_change]
 stop_spindle_first = true

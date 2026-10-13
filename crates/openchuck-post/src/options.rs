@@ -132,6 +132,8 @@ pub struct PostOptions {
     pub feed_mode: FeedMode,
     /// Write comments.
     pub comments: bool,
+    /// The extension of program files, without the dot (`ngc`, `nc`).
+    pub file_extension: String,
 }
 
 fn bad(name: &str, reason: impl Into<String>) -> PostError {
@@ -200,6 +202,18 @@ impl PostOptions {
             if value > 9 {
                 return Err(bad(name, format!("{value} is outside 0 to 9")));
             }
+        }
+        let ext_ok = !self.file_extension.is_empty()
+            && self.file_extension.len() <= 8
+            && self
+                .file_extension
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+        if !ext_ok {
+            return Err(bad(
+                "file_extension",
+                "must be 1 to 8 lower-case letters or digits, without a dot",
+            ));
         }
         if let Some(max) = self.max_feed
             && !(max.is_finite() && max > 0.0)

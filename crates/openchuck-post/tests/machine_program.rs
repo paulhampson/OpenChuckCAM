@@ -66,6 +66,7 @@ fn options(rule: FeedRule) -> ConvertOptions<MachineProfile> {
         feed_rule: rule,
         max_feed: None,
         tools,
+        decimals: None,
     }
 }
 

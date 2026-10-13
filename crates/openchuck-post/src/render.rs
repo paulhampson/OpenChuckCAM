@@ -28,6 +28,9 @@ pub struct PostJob {
     pub title: String,
     /// A revision identifier for the header, when supplied (VC-06).
     pub revision: Option<String>,
+    /// The setup's work offset register (`G54` to `G59`), which replaces the
+    /// post's own `work_offset` when given (SET-05).
+    pub work_offset: Option<String>,
 }
 
 /// The result of posting.
@@ -162,6 +165,7 @@ impl PostProcessor for TemplatePost {
             feed_rule: d.feed_rule,
             max_feed: d.options.max_feed,
             tools: job.tools.clone(),
+            decimals: Some((d.options.decimals.pos, d.options.decimals.a)),
         };
         let mut program = to_machine_program(toolpath, &convert)?;
         for step in &mut program.steps {
@@ -171,11 +175,16 @@ impl PostProcessor for TemplatePost {
                 _ => {}
             }
         }
-        let steps = apply_a_conventions(&program, &d.options);
+        let mut options = d.options.clone();
+        if let Some(offset) = &job.work_offset {
+            options.work_offset = Some(offset.clone());
+            options.validate()?;
+        }
+        let steps = apply_a_conventions(&program, &options);
         let context = Context {
             title: sanitise_comment(&job.title),
             revision: job.revision.as_deref().map(sanitise_comment),
-            opt: &d.options,
+            opt: &options,
             steps: &steps,
         };
         let mut env = engine::environment(steps.len())?;

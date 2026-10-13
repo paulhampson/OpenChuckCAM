@@ -94,6 +94,7 @@ pub fn job() -> PostJob {
         tools,
         title: "Small part".into(),
         revision: Some("abc1234".into()),
+        work_offset: None,
     }
 }
 

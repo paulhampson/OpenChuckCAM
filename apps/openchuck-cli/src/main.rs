@@ -28,7 +28,8 @@ use openchuck_app::tools::{
     load_profile as load_tool_profile, with_custom_profile,
 };
 use openchuck_app::{
-    AppError, Application, Command, Query, QueryResult, Threads, VERIFY_GCODE_NOTICE, inspect_file,
+    AppError, Application, Command, PostSelection, Query, QueryResult, Threads,
+    VERIFY_GCODE_NOTICE, inspect_file,
 };
 
 #[derive(Debug, Parser)]
@@ -72,6 +73,10 @@ enum Action {
         /// Folder to write G-code files into (default: print a summary only).
         #[arg(long)]
         out: Option<PathBuf>,
+        /// The post: a built-in id (`makera-z1`, `linuxcnc`) or a post folder.
+        /// Without one only toolpaths are generated.
+        #[arg(long)]
+        post: Option<String>,
     },
     /// Print a summary of a project.
     Report {
@@ -434,8 +439,12 @@ fn run(cli: Cli) -> Result<()> {
             app.save()?;
             println!("{}: saved", project.display());
         }
-        Action::Regenerate { project, out } => {
-            let app = open_project(&project, threads, create)?;
+        Action::Regenerate { project, out, post } => {
+            let mut app = open_project(&project, threads, create)?;
+            if out.is_some() && post.is_none() {
+                anyhow::bail!("--out needs --post: say which post to write the G-code with");
+            }
+            app.set_post(post.as_deref().map(PostSelection::parse));
             let result = app.regenerate()?;
             for note in &result.notes {
                 eprintln!("warning: {note}");
@@ -455,8 +464,35 @@ fn run(cli: Cli) -> Result<()> {
                 result.toolpath.groups.len(),
                 result.gcode.len()
             );
+            let mut unclean = 0;
+            for report in &result.reports {
+                match &report.comparison {
+                    Ok(c) => println!(
+                        "  {}: {} moves; replay matches the toolpath (tip {:.4} mm, A {:.4} deg; cut {:.1} s, toolpath {:.1} s)",
+                        report.file,
+                        report.moves,
+                        c.max_position_error,
+                        c.max_a_error,
+                        c.gcode_cut_seconds,
+                        c.ir_cut_seconds
+                    ),
+                    Err(why) => println!(
+                        "  {}: replay does not match the toolpath: {why}",
+                        report.file
+                    ),
+                }
+                for finding in &report.findings {
+                    println!("  {}: check: {finding}", report.file);
+                }
+                if !report.is_clean() {
+                    unclean += 1;
+                }
+            }
             // NFR-12: always printed when G-code is generated.
             println!("{VERIFY_GCODE_NOTICE}");
+            if unclean > 0 {
+                anyhow::bail!("{unclean} G-code file(s) failed the checks above");
+            }
         }
         Action::Report { project } => {
             let app = open_project(&project, threads, create)?;
