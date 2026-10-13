@@ -31,6 +31,7 @@ Start at [docs/README.md](docs/README.md) for the precedence order. In short: re
 - **Author commits as the human you work for, not as the agent.** Set the git author and committer to the person whose account runs the session, using an email linked to their GitHub account (the `<id>+<login>@users.noreply.github.com` address works, and the GitHub integration's `get_me` gives the id and login), and keep the `Co-Authored-By` line for the agent. The CLA check (`.github/workflows/cla.yml`) looks at commit authors, not at who opens the pull request, and an author with no linked GitHub account, such as the default agent identity, is treated as an unsigned contributor. The person signs off on the work as their own; the agent is credited as co-author. If the session has no human account to author as, say so and ask before committing.
 - Geometry and toolpaths use double precision and millimetres internally (NFR-05). Invalid input gives a clear error, never a crash (NFR-07).
 - Generated G-code is the user's to verify before running on a machine (NFR-12). Do not add wording or behaviour that implies otherwise.
+- **Documentation is not reviewed by CodeRabbit.** `.coderabbit.yaml` excludes `docs/` and Markdown files from review, so docs-only pull requests (the `docs/decision-...` branches) are skipped. Keep those exclusions in place, and do not request a CodeRabbit review on a docs-only pull request.
 
 ## Repository layout
 
