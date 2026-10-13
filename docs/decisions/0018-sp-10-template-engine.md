@@ -1,9 +1,9 @@
 # 0018: SP-10 result, template engine for posts: minijinja 3.0.0
 
-- **Status:** proposed. The spike met its pass criteria for `minijinja`; items 1 to 8 need the project owner's agreement. Until then this record is guidance, not authority. Item 5 also answers OI-38 as a recommendation.
+- **Status:** proposed. The spike met its pass criteria for `minijinja`; items 1 to 10 need the project owner's agreement. Until then this record is guidance, not authority. Item 5 also answers OI-38 as a recommendation.
 - **Date:** 13 Oct 2026.
 - **Spike branch:** `spike/sp-10-template-engine` (throwaway, never merged). Code in `spikes/sp-10-template-engine/`, a separate Cargo project with an empty `[workspace]`; the write-up is `spikes/sp-10-template-engine/RESULT.md` on that branch.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-77 to OI-80 are new; OI-38 has a recommendation.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-77 to OI-81 are new; OI-38 has a recommendation.
 
 ## Context
 
@@ -35,6 +35,8 @@ Requirements: GC-01 to GC-04, GC-07, GC-09, GC-10, OP-13, NFR-05 to NFR-07, NFR-
 6. **Template loading normalises newlines to LF** before compile, and `posts/**` is marked `-text` or `eol=lf` in `.gitattributes` (OI-78).
 7. **Dependency (NFR-14):** `minijinja` 3.0.0, survey 94, Apache-2.0, one dependency already in the workspace, no build script, 751 dependents, 19 releases in 12 months, 3.0.0 released 8 Oct 2026 after four alphas. Pinned exactly, upgraded deliberately with the spike tests re-run. Recorded in `docs/dependencies.md` as tried and not yet declared; slice 6 declares it.
 8. **Spike fixtures kept for slice 6:** the three SP-3 outputs, the integer oracle for `fixed`, the independent Makera implementation and the replay check.
+9. **Community posts are plain folders, loaded at run time (GC-03, NFR-09).** A post is a folder with `post.toml` (name, schema version, options, the named feed rule from item 5) and its template files. Built-in posts ship in `posts/`; user and community posts sit in a user library folder, like machine profiles and tool libraries. The project keeps a copy of the post it used (as decision 0011 item 7 does for the machine profile), so a later change to the library post cannot change the project's G-code (GC-07, GC-14). Adding a post needs no rebuild. The spike shows one template serving both the LinuxCNC and Makera posts by options alone. The exact file layout stays with OI-79.
+10. **Sharing and trust.** Posts are shared as folders (for example a Git repository); there is no installer or registry. A shared post should carry golden G-code files and the reader and replay checks that cover it. A template cannot read files, reach the network or run code (spike, NFR-09), and fuel and recursion limits stop a runaway one (NFR-07). It can still write wrong G-code, so NFR-12 applies, and the app marks a post as unverified until its golden files pass. Signing or a trust model for downloaded posts is not proposed; it needs your decision (OI-81). A scripting hook for logic templates cannot express is GC-13 (P2) and stays out of P1.
 
 ## Alternatives considered
 
@@ -53,4 +55,5 @@ Requirements: GC-01 to GC-04, GC-07, GC-09, GC-10, OP-13, NFR-05 to NFR-07, NFR-
 - **OI-77**: byte-identical template output on Windows, macOS and arm64 (the spike ran on Linux x86-64 only). Slice 6 CI.
 - **OI-78**: loader rules: newline normalisation, `.gitattributes` for `posts/`, comment sanitising and non-ASCII text.
 - **OI-79**: the post option schema and its validation before render, and the post file layout.
+- **OI-81**: trust model for community posts: whether to sign or checksum them, what the app shows for an unverified post, and whether a shared post may name a feed rule or only built-in ones. Decide before posts are shared publicly (after slice 6).
 - **OI-80**: render limits: the fuel budget per move, error text size, and whether a time budget for large programs is wanted (21 µs per move in the template, 22 s for 1,000,000 moves).

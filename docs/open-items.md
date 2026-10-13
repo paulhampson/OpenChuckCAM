@@ -64,8 +64,9 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-76 | Mesh queries on B-rep faces use facet normals that are off by up to 2.2 degrees at 0.01 mm deflection, and the mesh deviation (0.011 mm worst) exceeds 0.005 mm. Choose the tessellation setting for B-rep faces from the measured deviation, and decide whether exact normals replace facet normals wherever the exact face is known. | Decision 0017 item 6 | open | Slice 11 (with OI-28, OI-65, OI-67) | A measurement on the first strategy |
 | OI-77 | Template output is byte-identical on Linux x86-64 only (SP-10). Check the golden posts on Windows, macOS and arm64; the engine's numeric surface is IEEE-exact on purpose (decision 0018 item 2). | Decision 0018 | open | Slice 6 | Three-platform CI |
 | OI-78 | Post loader rules: normalise template newlines to LF (a CRLF checkout changes the output), mark `posts/**` in `.gitattributes`, replace parentheses in comments from project text, decide on non-ASCII text. | Decision 0018 item 6 | open | Slice 6 | |
-| OI-79 | Post option schema: every key present and typed before render, because `is none` and `is defined` hide a mistyped name under strict undefined; and the post file layout (template plus options). | Decision 0018 item 4 | open | Slice 6 | |
+| OI-79 | Post option schema: every key present and typed before render, because `is none` and `is defined` hide a mistyped name under strict undefined; and the post file layout (template plus options, folder form in decision 0018 item 9). | Decision 0018 item 4 | open | Slice 6 | |
 | OI-80 | Render limits: fuel scaled to program size (about 323 per move measured), debug error text size, and whether a time budget is wanted (21 µs per move in the template, 22 s for 1,000,000 moves; NFR-04 keeps it off the UI thread). | Decision 0018 item 3 | open | Slice 6 | OI-38 outcome |
+| OI-81 | Trust model for community posts: sign or checksum them, what the app shows for an unverified post, and whether a shared post may name a feed rule or only built-in ones. | Decision 0018 item 10 | open | After slice 6, before posts are shared publicly | Owner decision |
 
 ## Closed
 
