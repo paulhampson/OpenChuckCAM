@@ -145,7 +145,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
         cutting_data,
     };
     let mut parameters = BTreeMap::new();
-    parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(10.0));
+    parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(5.0));
     for item in [
         Item::Setup(setup),
         Item::Tool(snapshot),

@@ -11,6 +11,7 @@
 //! - `testdata`: the test-data size policy.
 //! - `all`: every check above.
 //!
+//! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
 //! - `replay`: gate 3, LinuxCNC programs in the headless simulator (needs LinuxCNC; not part of `all`).
 //!
 //! The release gate is added in slice 20.
@@ -18,6 +19,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod deps;
+mod golden;
 mod licences;
 mod records;
 mod replay;
@@ -56,6 +58,9 @@ enum Check {
     },
     /// Test-data size policy.
     Testdata,
+    /// Audit the golden G-code files against the exact parts, the post conventions and the
+    /// controller's feed rule, so they need no reading by hand.
+    Golden,
     /// Gate 3: run LinuxCNC programs in the simulator and compare with the replay.
     /// With no program, every LinuxCNC golden program is run. Needs LinuxCNC:
     /// `--docker IMAGE`, `LINUXCNC_RIP`, or `linuxcnc` on the PATH.
@@ -107,6 +112,7 @@ fn run() -> Result<bool> {
             )]
         }
         Check::Testdata => vec![("testdata", testdata::check(&root)?)],
+        Check::Golden => vec![("golden", golden::check(&root)?)],
         Check::Replay {
             programs,
             docker,
