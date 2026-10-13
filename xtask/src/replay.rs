@@ -77,7 +77,7 @@ fn linuxcnc_command(
         // The container sees the work folder as /work; the program is copied in.
         let mut command = Command::new("docker");
         command
-            .args(["run", "--rm", "-v"])
+            .args(["run", "--rm", "--name", &container_name(work), "-v"])
             .arg(format!("{}:/work", work.display()))
             .args([
                 "-w",
@@ -111,8 +111,30 @@ fn linuxcnc_command(
     Ok(command)
 }
 
-/// Waits for `child`, killing it after `seconds`.
-fn wait_with_timeout(mut child: std::process::Child, seconds: u64) -> Result<()> {
+/// The container's name for a run: the work folder's name is unique per process and program.
+fn container_name(work: &Path) -> String {
+    let leaf = work.file_name().and_then(|n| n.to_str()).unwrap_or("run");
+    let safe: String = leaf
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("openchuck-{safe}")
+}
+
+/// Waits for `child`, killing it after `seconds`. Killing the `docker run` client does not stop
+/// the container, so a Docker run's container is removed by name too: otherwise it would go on
+/// using the CPU the retry needs.
+fn wait_with_timeout(
+    mut child: std::process::Child,
+    seconds: u64,
+    container: Option<&str>,
+) -> Result<()> {
     let start = Instant::now();
     loop {
         if child.try_wait()?.is_some() {
@@ -121,6 +143,12 @@ fn wait_with_timeout(mut child: std::process::Child, seconds: u64) -> Result<()>
         if start.elapsed() > Duration::from_secs(seconds) {
             child.kill().ok();
             child.wait().ok();
+            if let Some(name) = container {
+                Command::new("docker")
+                    .args(["rm", "-f", name])
+                    .output()
+                    .ok();
+            }
             bail!("LinuxCNC did not finish within {seconds} s");
         }
         std::thread::sleep(Duration::from_millis(200));
@@ -227,7 +255,8 @@ fn run_once(
             "cannot start LinuxCNC ({e}): install it, set LINUXCNC_RIP, or use --docker IMAGE"
         )
     })?;
-    if let Err(e) = wait_with_timeout(child, options.timeout_seconds) {
+    let container = options.docker.as_ref().map(|_| container_name(&work));
+    if let Err(e) = wait_with_timeout(child, options.timeout_seconds, container.as_deref()) {
         return Ok(Outcome {
             said: String::new(),
             failure: Some(e.to_string()),

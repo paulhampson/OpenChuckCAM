@@ -149,7 +149,8 @@ fn check_file(
             );
         }
     };
-    let replay = match openchuck_gcode::replay(&program, dialect) {
+    let a_letter = options.a_letter.chars().next().unwrap_or('A');
+    let mut replay = match openchuck_gcode::replay_axis(&program, dialect, a_letter) {
         Ok(r) => r,
         Err(e) => return fail(e.to_string()),
     };
@@ -167,7 +168,11 @@ fn check_file(
     let config = CheckConfig {
         travel,
         a_range,
-        max_feed: machine.max_feeds.linear.0.max(machine.max_feeds.rotary.0),
+        max_feed: openchuck_gcode::FeedLimits {
+            linear: machine.max_feeds.linear.0,
+            z: machine.max_feeds.z.0,
+            rotary: machine.max_feeds.rotary.0,
+        },
         safe_z: setup.clearance.unwrap_or(machine.clearance).safe_z.0,
         spindle_off_at_tool_change: options.tool_change.stop_spindle_first,
         require_work_offset: true,
@@ -183,6 +188,27 @@ fn check_file(
             }
         })
         .collect();
+    // A reversed post writes the opposite sign; the comparison works in the profile's sense, so the
+    // replay is turned back after the checks that look at the A values as written.
+    if options.a_direction == openchuck_post::ADirection::Reversed {
+        for step in &mut replay.steps {
+            match step {
+                openchuck_gcode::Step::Move(m) => {
+                    m.from[3] = -m.from[3];
+                    m.to[3] = -m.to[3];
+                }
+                openchuck_gcode::Step::Event(openchuck_gcode::Event::DropTurns {
+                    from,
+                    to,
+                    ..
+                }) => {
+                    *from = -*from;
+                    *to = -*to;
+                }
+                openchuck_gcode::Step::Event(_) => {}
+            }
+        }
+    }
     let mut tolerances = Tolerances::for_decimals(options.decimals.pos, options.decimals.a);
     if clamped > 0 {
         // Lowered feeds make moves longer than the IR says, on purpose.

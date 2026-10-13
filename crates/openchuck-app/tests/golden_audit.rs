@@ -32,7 +32,9 @@
 
 use std::path::{Path, PathBuf};
 
-use openchuck_app::gcode::{CheckConfig, Dialect, Motion, Move, read, replay, static_check};
+use openchuck_app::gcode::{
+    CheckConfig, Dialect, FeedLimits, Motion, Move, read, replay, static_check,
+};
 use openchuck_app::setup::{ARange, builtin};
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge, min_clearance};
 use openchuck_testkit::oracle::{OracleMachine, model_tip};
@@ -148,7 +150,11 @@ fn z1_check_config() -> CheckConfig {
             ARange::Continuous => None,
             ARange::Limited { min, max } => Some((min.0, max.0)),
         },
-        max_feed: machine.max_feeds.linear.0.max(machine.max_feeds.rotary.0),
+        max_feed: FeedLimits {
+            linear: machine.max_feeds.linear.0,
+            z: machine.max_feeds.z.0,
+            rotary: machine.max_feeds.rotary.0,
+        },
         safe_z: machine.clearance.safe_z.0,
         spindle_off_at_tool_change: true,
         require_work_offset: true,
@@ -318,12 +324,13 @@ fn audit_geometry(
         "{name}: only {} cutting moves",
         cuts.len()
     );
-    // A is continuous: no step over the 10 degrees the job asks for, never reversing.
+    // A is continuous: no step over the 5 degrees the job asks for, never reversing.
+    const MAX_A_STEP: f64 = 5.0;
     let mut direction = 0.0_f64;
     for m in &cuts {
         let da = m.to[3] - m.from[3];
         assert!(
-            da.abs() <= 10.0 + 1e-6,
+            da.abs() <= MAX_A_STEP + 1e-6,
             "{name} line {}: A steps {da}",
             m.line
         );

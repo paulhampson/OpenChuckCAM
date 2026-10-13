@@ -40,6 +40,7 @@ jobs:
       records: ${{ steps.filter.outputs.records }}
       fuzz: ${{ steps.filter.outputs.fuzz }}
       gate3: ${{ steps.filter.outputs.gate3 }}
+      linuxcnc_image: ${{ steps.filter.outputs.linuxcnc_image }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -83,8 +84,13 @@ jobs:
               - 'xtask/**'
               - 'Cargo.lock'
               - '.github/workflows/ci.yml'
+            linuxcnc_image:
+              - 'docker/linuxcnc/**'
             fuzz:
               - 'fuzz/**'
+              - 'crates/openchuck-gcode/**'
+              - 'crates/openchuck-post/**'
+              - 'posts/**'
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-project/**'
               - 'crates/openchuck-geom/**'
@@ -108,8 +114,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - name: Get the LinuxCNC image
+        env:
+          IMAGE_CHANGED: ${{ needs.changes.outputs.linuxcnc_image }}
         run: |
-          if git diff --name-only "${{ github.event.pull_request.base.sha || 'HEAD~1' }}" HEAD -- docker/linuxcnc | grep -q .; then
+          if [ "$IMAGE_CHANGED" = "true" ]; then
             docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc
           else
             docker pull "$LINUXCNC_IMAGE" || docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc

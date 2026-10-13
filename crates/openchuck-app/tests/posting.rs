@@ -371,3 +371,35 @@ fn req_gc_14_a_tool_number_outside_the_machines_range_is_refused_when_posting() 
     assert!(command.contains("largest tool number 1000"), "{command}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_gc_04_a_post_with_a_reversed_b_axis_still_passes_the_gate_checks() {
+    // A user post that writes the rotary axis as B with the opposite sign (GC-04): the replay
+    // follows the letter and turns the sign back before comparing with the toolpath.
+    let (dir, mut app, _) = project("post-reversed");
+    let post_dir = dir.join("my-post");
+    std::fs::create_dir_all(&post_dir).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../posts/linuxcnc");
+    let manifest = std::fs::read_to_string(source.join("post.toml"))
+        .unwrap()
+        .replace("a_letter = \"A\"", "a_letter = \"B\"")
+        .replace("a_direction = \"same\"", "a_direction = \"reversed\"");
+    std::fs::write(post_dir.join("post.toml"), manifest).unwrap();
+    std::fs::copy(source.join("main.post"), post_dir.join("main.post")).unwrap();
+    app.set_post(Some(PostSelection::Folder(post_dir)));
+    let result = app.regenerate().unwrap();
+    let (_, text) = &result.gcode[0];
+    assert!(
+        text.contains(" B-"),
+        "the rotary axis is written as B with the reversed sign"
+    );
+    assert!(!text.contains(" A"), "no A word is written");
+    let report = &result.reports[0];
+    assert!(
+        report.is_clean(),
+        "{:?} {:?}",
+        report.findings.first(),
+        report.comparison
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

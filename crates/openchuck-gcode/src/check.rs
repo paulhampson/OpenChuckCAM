@@ -9,6 +9,34 @@
 
 use crate::interp::{Axes, Event, Motion, Replay, Step};
 
+/// The highest F allowed for each kind of move, in units per minute.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FeedLimits {
+    /// A move that changes X or Y (mm/min).
+    pub linear: f64,
+    /// A move that changes only Z, or Z and A (mm/min).
+    pub z: f64,
+    /// A move that changes only A (degrees/min).
+    pub rotary: f64,
+}
+
+impl FeedLimits {
+    /// The limit that applies to a move, by the axes it changes.
+    fn for_move(&self, m: &crate::interp::Move) -> f64 {
+        let moved = |i: usize| {
+            (m.to.get(i).copied().unwrap_or(0.0) - m.from.get(i).copied().unwrap_or(0.0)).abs()
+                > 1e-9
+        };
+        if moved(0) || moved(1) {
+            self.linear
+        } else if moved(2) {
+            self.z
+        } else {
+            self.rotary
+        }
+    }
+}
+
 /// Limits and rules a program is checked against.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckConfig {
@@ -17,7 +45,7 @@ pub struct CheckConfig {
     /// Allowed range of A, or `None` for continuous.
     pub a_range: Option<(f64, f64)>,
     /// The highest F allowed, in units per minute (G94 moves only).
-    pub max_feed: f64,
+    pub max_feed: FeedLimits,
     /// A tool change happens at or above this Z.
     pub safe_z: f64,
     /// The spindle must be off at a tool change.
@@ -172,14 +200,15 @@ pub fn static_check(replay: &Replay, config: &CheckConfig) -> Vec<Finding> {
                                 .into(),
                         });
                     }
-                    if !m.inverse_time && m.feed.is_some_and(|f| f > config.max_feed) {
+                    let limit = config.max_feed.for_move(m);
+                    if !m.inverse_time && m.feed.is_some_and(|f| f > limit) {
                         findings.push(Finding {
                             kind: FindingKind::FeedTooHigh,
                             line: m.line,
                             message: format!(
                                 "F{} is above the limit {}",
                                 m.feed.unwrap_or(0.0),
-                                config.max_feed
+                                limit
                             ),
                         });
                     }

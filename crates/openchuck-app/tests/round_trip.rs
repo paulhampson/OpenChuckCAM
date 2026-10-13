@@ -12,7 +12,8 @@
 mod support;
 
 use openchuck_gcode::{
-    CheckConfig, CompareError, Dialect, TimingRule, Tolerances, compare, read, replay, static_check,
+    CheckConfig, CompareError, Dialect, FeedLimits, TimingRule, Tolerances, compare, read, replay,
+    static_check,
 };
 use openchuck_post::{PostDefinition, PostProcessor, TemplatePost};
 use openchuck_types::geometry::Point3;
@@ -24,7 +25,11 @@ fn config() -> CheckConfig {
     CheckConfig {
         travel: [(-10.0, 200.0), (-200.0, 200.0), (-200.0, 100.0)],
         a_range: None,
-        max_feed: 1200.0,
+        max_feed: FeedLimits {
+            linear: 1200.0,
+            z: 600.0,
+            rotary: 3600.0,
+        },
         safe_z: 12.0,
         spindle_off_at_tool_change: true,
         require_work_offset: true,

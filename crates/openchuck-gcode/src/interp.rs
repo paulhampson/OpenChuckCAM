@@ -192,8 +192,19 @@ fn err(word: &Word, message: impl Into<String>) -> ReplayError {
     }
 }
 
-/// Replays a program.
+/// Replays a program whose rotary axis is written with the letter `A`.
 pub fn replay(program: &Program, dialect: Dialect) -> Result<Replay, ReplayError> {
+    replay_axis(program, dialect, 'A')
+}
+
+/// Replays a program whose rotary axis is written with `a_letter` (`A`, `B`
+/// or `C`; a post chooses it, GC-04). The other two letters are then not in the
+/// subset and are refused by name.
+pub fn replay_axis(
+    program: &Program,
+    dialect: Dialect,
+    a_letter: char,
+) -> Result<Replay, ReplayError> {
     let mut s = State {
         pos: [0.0; 4],
         motion: Motion::Rapid,
@@ -206,6 +217,7 @@ pub fn replay(program: &Program, dialect: Dialect) -> Result<Replay, ReplayError
         rpm: 0.0,
         spindle_on: false,
     };
+    let context = Context { dialect, a_letter };
     let mut out = Replay::default();
     let mut work_offset = false;
     let mut units = false;
@@ -216,7 +228,7 @@ pub fn replay(program: &Program, dialect: Dialect) -> Result<Replay, ReplayError
         }
         replay_block(
             block,
-            dialect,
+            &context,
             &mut s,
             &mut out,
             &mut work_offset,
@@ -227,15 +239,23 @@ pub fn replay(program: &Program, dialect: Dialect) -> Result<Replay, ReplayError
     Ok(out)
 }
 
+/// What a replay was asked for, which does not change from block to block.
+#[derive(Clone, Copy)]
+struct Context {
+    dialect: Dialect,
+    a_letter: char,
+}
+
 fn replay_block(
     block: &Block,
-    dialect: Dialect,
+    context: &Context,
     s: &mut State,
     out: &mut Replay,
     work_offset: &mut bool,
     units: &mut bool,
     moved: &mut bool,
 ) -> Result<(), ReplayError> {
+    let Context { dialect, a_letter } = *context;
     let mut target: [Option<f64>; 4] = [None; 4];
     let mut skip_motion = false;
     let mut machine = false;
@@ -295,7 +315,7 @@ fn replay_block(
             'X' => target[0] = Some(w.value),
             'Y' => target[1] = Some(w.value),
             'Z' => target[2] = Some(w.value),
-            'A' => target[3] = Some(w.value),
+            letter if letter == a_letter => target[3] = Some(w.value),
             'F' => {
                 s.feed = Some(w.value);
                 feed_in_block = true;

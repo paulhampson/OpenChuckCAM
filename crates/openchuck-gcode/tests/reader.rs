@@ -10,7 +10,7 @@
 use std::path::Path;
 
 use openchuck_gcode::{
-    CheckConfig, Dialect, Event, FindingKind, Motion, Step, read, replay, static_check,
+    CheckConfig, Dialect, Event, FeedLimits, FindingKind, Motion, Step, read, replay, static_check,
 };
 
 fn fixture(name: &str) -> String {
@@ -24,7 +24,11 @@ fn config() -> CheckConfig {
     CheckConfig {
         travel: [(-10.0, 200.0), (-200.0, 10.0), (-50.0, 100.0)],
         a_range: None,
-        max_feed: 1200.0,
+        max_feed: FeedLimits {
+            linear: 1200.0,
+            z: 600.0,
+            rotary: 3600.0,
+        },
         safe_z: 20.0,
         spindle_off_at_tool_change: true,
         require_work_offset: true,
@@ -249,4 +253,27 @@ fn req_gc_09_the_z1_drop_turns_command_changes_a_without_motion() {
     // Only the exact form is read.
     let bad = read("G92.4 A5 S0\n").unwrap();
     assert!(openchuck_gcode::replay(&bad, Dialect::MakeraZ1).is_err());
+}
+
+#[test]
+fn req_gc_08_feed_limits_apply_by_the_axes_a_move_changes() {
+    let c = config();
+    // 3000 mm/min on an XY move is over the 1200 linear limit.
+    let fast = GOOD.replace("X5 Y-3 Z8 A45 F300", "X5 Y-3 Z8 A45 F3000");
+    assert!(findings(&fast, &c).contains(&FindingKind::FeedTooHigh));
+    // 700 on a Z-only move is over the 600 Z limit, and fine on an XY move.
+    let z_fast = GOOD.replace("G1 Z10 F100", "G1 Z10 F700");
+    assert!(findings(&z_fast, &c).contains(&FindingKind::FeedTooHigh));
+    // An A-only move may run at the rotary limit, which is higher.
+    let rotary = GOOD.replace("G0 Z30\nM5", "G1 A90 F3000\nG0 Z30\nM5");
+    assert!(!findings(&rotary, &c).contains(&FindingKind::FeedTooHigh));
+    // And a program written with another rotary letter replays with it.
+    let b = read("G90 G21\nG54\nG1 X1 B45 F100\n").unwrap();
+    assert!(openchuck_gcode::replay_axis(&b, Dialect::Linuxcnc, 'B').is_ok());
+    assert!(
+        openchuck_gcode::replay(&b, Dialect::Linuxcnc)
+            .unwrap_err()
+            .message
+            .contains("`B`")
+    );
 }

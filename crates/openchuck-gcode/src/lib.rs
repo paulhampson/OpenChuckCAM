@@ -15,10 +15,11 @@ mod interp;
 mod reader;
 mod sim;
 
-pub use check::{CheckConfig, Finding, FindingKind, static_check};
+pub use check::{CheckConfig, FeedLimits, Finding, FindingKind, static_check};
 pub use compare::{CompareError, Comparison, TimingRule, Tolerances, compare};
 pub use interp::{
     Axes, Dialect, Event, KNOWN_G, KNOWN_M, Motion, Move, Replay, ReplayError, Step, Z1_G, replay,
+    replay_axis,
 };
 pub use reader::{Block, MAX_LINE_CHARS, Program, ReadError, Word, read};
 pub use sim::{SimComparison, SimError, SimReport, SimRow, compare_simulator, parse_sim_report};
