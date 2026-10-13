@@ -1,0 +1,15 @@
+[package]
+name = "sp-10-template-engine"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "AGPL-3.0-or-later"
+description = "SP-10 throwaway spike: can minijinja express rotary posts deterministically?"
+
+# Never a workspace member (AGENTS.md, spike rule).
+[workspace]
+
+[dependencies]
+minijinja = { version = "=3.0.0", default-features = false, features = ["builtins", "macros", "multi_template", "debug", "fuel", "serde"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.152"

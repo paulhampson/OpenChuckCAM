@@ -1,0 +1,96 @@
+{#- SP-10 spike: one post template for a rotary (XYZA) controller. The controller differences
+    (LinuxCNC verification post, Makera Z1 style) are all in `opt`, which is post-definition
+    data; the template only reads it. -#}
+{% set st = namespace(motion="", have=false, x="", y="", z="", a="", rx=0.0, ry=0.0, rz=0.0, ra=0.0, f="", n=opt.line_numbers.start) %}
+{% macro line(text) %}{% if opt.line_numbers.enabled %}N{{ st.n }} {% set st.n = st.n + opt.line_numbers.step %}{% endif %}{{ text }}{% endmacro %}
+{% if opt.comments %}
+{{ line("(" ~ program.title|replace("(", "[")|replace(")", "]") ~ ")") }}
+{% endif %}
+{% for h in opt.header %}
+{{ line(h) }}
+{% endfor %}
+{% if opt.feed_mode == "g93" %}
+{{ line("G93") }}
+{% endif %}
+{% if opt.tool_change.stop_spindle_first %}
+{{ line("M5") }}
+{% endif %}
+{{ line("T" ~ program.tool.number ~ " M6" ~ (" G43 H" ~ program.tool.number if opt.tool_change.length_offset else "")) }}
+{{ line("S" ~ program.spindle_rpm ~ " M3") }}
+{% for it in program.items %}
+{% set av = it.a * opt.a_direction %}
+{% if opt.wrap == "modulo360" %}
+{% set av = av - 360 * (av / 360)|floor %}
+{% endif %}
+{% if it.kind == "unwind" and opt.unwind == "g92_4" %}
+{# Whole turns are dropped by the controller with no motion; model what it leaves in A. #}
+{{ line("G92.4 A0 S0") }}
+{% set rem = st.ra - 360 * (st.ra / 360)|trunc %}
+{% set st.ra = rem %}
+{% set st.a = rem|fixed(opt.decimals.a) %}
+{% endif %}
+{% set rapid = it.kind != "feed" %}
+{% set want = "G0" if rapid else "G1" %}
+{% set x = it.x|fixed(opt.decimals.pos) %}
+{% set y = it.y|fixed(opt.decimals.pos) %}
+{% set z = it.z|fixed(opt.decimals.pos) %}
+{% set a = av|fixed(opt.decimals.a) %}
+{% set w = [] %}
+{% if not st.have or x != st.x %}{% set w = w + ["X" ~ x] %}{% endif %}
+{% if not st.have or y != st.y %}{% set w = w + ["Y" ~ y] %}{% endif %}
+{% if not st.have or z != st.z %}{% set w = w + ["Z" ~ z] %}{% endif %}
+{% if not st.have or a != st.a %}{% set w = w + ["A" ~ a] %}{% endif %}
+{% set rx = it.x|rounded(opt.decimals.pos) %}
+{% set ry = it.y|rounded(opt.decimals.pos) %}
+{% set rz = it.z|rounded(opt.decimals.pos) %}
+{% set ra = av|rounded(opt.decimals.a) %}
+{% if not rapid %}
+{% set t = it.duration_s %}
+{% if opt.feed_mode == "g93" %}
+{% set f = 60.0 / t %}
+{% elif opt.feed_mode == "naive" %}
+{% set f = it.contact_feed %}
+{% else %}
+{% set dx = rx - (st.rx if st.have else rx) %}
+{% set dy = ry - (st.ry if st.have else ry) %}
+{% set dz = rz - (st.rz if st.have else rz) %}
+{% set da = (ra - (st.ra if st.have else ra))|abs %}
+{% set d = (dx * dx + dy * dy + dz * dz)|sqrt %}
+{% if opt.feed_mode == "g94_linuxcnc" %}
+{% set f = d / t * 60.0 if d > 0.000000001 else da / t * 60.0 %}
+{% else %}
+{# g94_makera (derived in decision 0007, unconfirmed on a Z1): the Z1 firmware times a move as
+   max(L, dA*P/360)/F with P = 2*pi*r + 30 and r the end point's distance from the rotary axis;
+   an A-only move takes dA*min(P, 360)/360/F. #}
+{% set p = 2 * pi * (ry * ry + rz * rz)|sqrt + 30.0 %}
+{% if d > 0.000000001 %}
+{% set f = [d, da * p / 360.0]|max / t * 60.0 %}
+{% else %}
+{% set f = da * [p, 360.0]|min / 360.0 / t * 60.0 %}
+{% endif %}
+{% endif %}
+{% endif %}
+{% if opt.max_feed is not none %}
+{% set f = [f, opt.max_feed]|min %}
+{% endif %}
+{% set fs = f|fixed(opt.decimals.f) %}
+{% if opt.feed_mode == "g93" or fs != st.f %}
+{% set w = w + ["F" ~ fs] %}
+{% set st.f = fs %}
+{% endif %}
+{% endif %}
+{% set st.x = x %}{% set st.y = y %}{% set st.z = z %}{% set st.a = a %}
+{% set st.rx = rx %}{% set st.ry = ry %}{% set st.rz = rz %}{% set st.ra = ra %}
+{% set st.have = true %}
+{% if w %}
+{# The motion code is written only when it changes, and never alone (nothing moved after an unwind). #}
+{% if want != st.motion %}
+{% set w = [want] + w %}
+{% set st.motion = want %}
+{% endif %}
+{{ line(w|join(" ")) }}
+{% endif %}
+{% endfor %}
+{% for f in opt.footer %}
+{{ line(f) }}
+{% endfor %}
