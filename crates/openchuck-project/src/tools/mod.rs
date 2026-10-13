@@ -263,6 +263,17 @@ mod tests {
     }
 
     #[test]
+    fn req_nfr_07_tool_set_with_marker_like_machine_name_round_trips() {
+        // The input the nightly fuzzer found (tool_library_toml): a machine
+        // name with control characters and a line starting `|||||||`.
+        let path = Path::new("fuzz.toml");
+        let text = "schema = 1\nmachine = \"av M\\n|||||||ee\\ema3\"\n";
+        let set = parse_tool_set(path, text).unwrap();
+        let written = render_tool_set(&set).unwrap();
+        assert_eq!(parse_tool_set(path, &written).unwrap(), set);
+    }
+
+    #[test]
     fn req_tl_11_tool_set_file_round_trips_and_validates() {
         let dir = temp_dir("sets");
         let mut lib = ToolLibrary::open(&dir).unwrap();

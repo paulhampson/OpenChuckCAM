@@ -613,15 +613,22 @@ pub(crate) fn parse<T: DeserializeOwned>(
         path: path.to_path_buf(),
         reason,
     };
-    if let Some(line) = conflict_line(text) {
-        return Err(ProjectError::MergeConflict {
-            path: path.to_path_buf(),
-            line,
-        });
-    }
-    let mut table: toml::Table = text
-        .parse()
-        .map_err(|e: toml::de::Error| bad(e.to_string()))?;
+    // Conflict markers are not valid TOML, so look for them only once the
+    // text fails to parse. A string value written over several lines can
+    // legitimately have a line that starts like a marker, and this file's
+    // own writer can produce one (found by the nightly fuzzer).
+    let mut table: toml::Table = match text.parse() {
+        Ok(table) => table,
+        Err(e) => {
+            return Err(match conflict_line(text) {
+                Some(line) => ProjectError::MergeConflict {
+                    path: path.to_path_buf(),
+                    line,
+                },
+                None => bad(e.to_string()),
+            });
+        }
+    };
     let schema = table
         .get("schema")
         .and_then(toml::Value::as_integer)
@@ -743,5 +750,34 @@ mod tests {
         let text = "schema = 1\n<<<<<<< HEAD\nname = \"a\"\n=======\nname = \"b\"\n>>>>>>> other\n";
         assert_eq!(conflict_line(text), Some(2));
         assert_eq!(conflict_line("name = \"=======\"\n"), None);
+    }
+
+    #[test]
+    fn req_nfr_07_marker_like_line_inside_a_string_is_not_a_conflict() {
+        // Regression from the nightly fuzzer (tool_library_toml): a value with
+        // a newline is written as a multi-line string, and a line of it that
+        // starts like a marker made the file unreadable.
+        for marker in ["|||||||", "<<<<<<< x", ">>>>>>> x", "======="] {
+            let text = format!("schema = 1\nname = \"\"\"\na\n{marker}\n\"\"\"\n");
+            let table = parse::<toml::Table>(Path::new("x.toml"), &text, FileKind::Project, &[], 1)
+                .unwrap();
+            assert_eq!(
+                table["name"].as_str(),
+                Some(format!("a\n{marker}\n").as_str())
+            );
+        }
+        // A real conflict still names its line.
+        let err = parse::<toml::Table>(
+            Path::new("x.toml"),
+            "schema = 1\n<<<<<<< HEAD\nname = \"a\"\n=======\n>>>>>>> o\n",
+            FileKind::Project,
+            &[],
+            1,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, ProjectError::MergeConflict { line: 2, .. }),
+            "{err}"
+        );
     }
 }
