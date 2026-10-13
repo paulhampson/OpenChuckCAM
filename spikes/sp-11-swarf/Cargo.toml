@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# SP-11 spike (work breakdown, Spikes): ruled-surface detection and flank tool
+# placement for swarf (OP-07). Throwaway code under the spike rules: never a
+# workspace member and never a product dependency. The empty [workspace] keeps
+# it out of the root workspace. No third-party dependencies.
+
+[package]
+name = "sp11-swarf"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+
+[profile.test]
+opt-level = 3
+
+[profile.release]
+debug = "line-tables-only"
