@@ -264,6 +264,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    env:
+      # The repository tooling (xtask) is not product code; keep it out of every report.
+      COV_IGNORE: 'xtask/'
     steps:
       - uses: actions/checkout@v7
       - run: rustup component add llvm-tools-preview
@@ -275,9 +278,9 @@ jobs:
       - name: Run tests with coverage instrumentation
         run: cargo llvm-cov --workspace --locked --no-report
       - name: HTML report (browsable, per file and per line)
-        run: cargo llvm-cov report --html --output-dir target/coverage
+        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
       - name: lcov data (trend tracking)
-        run: cargo llvm-cov report --lcov --output-path lcov.info
+        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --lcov --output-path lcov.info
       - name: Summary on the run page
         shell: bash
         run: |
@@ -285,7 +288,7 @@ jobs:
             echo '## Coverage'
             echo
             echo '```text'
-            cargo llvm-cov report
+            cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE"
             echo '```'
             echo
             echo 'The full per-line HTML report is in the `coverage-html` artifact (open `html/index.html`).'
