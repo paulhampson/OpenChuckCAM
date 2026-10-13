@@ -31,6 +31,17 @@ pub enum PostError {
         /// What is wrong.
         reason: String,
     },
+    /// A post definition could not be read or is not valid (GC-03).
+    #[error("post definition {source_name}: {reason}")]
+    Definition {
+        /// The file or folder the definition came from.
+        source_name: String,
+        /// What is wrong, naming the key or line.
+        reason: String,
+    },
+    /// The template failed to compile or render; the message names the line.
+    #[error("{0}")]
+    Template(String),
     /// A setting of the conversion is not usable.
     #[error("{name}: {reason}")]
     Setting {

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# LinuxCNC verification post (GC-10): run in the LinuxCNC simulator to confirm the
+# toolpaths and the post-processing. Generated G-code is the user's to verify (NFR-12).
+schema = 1
+name = "LinuxCNC verification"
+template = "main.post"
+feed_rule = "linuxcnc"
+
+[options]
+units = "mm"
+a_letter = "A"
+a_direction = "same"
+unwind = "rotate"
+header = ["G90 G21 G17"]
+footer = ["M5", "M30"]
+work_offset = "G54"
+coolant = "off"
+max_feed = 4000.0
+feed_mode = "g94"
+comments = true
+
+[options.tool_change]
+stop_spindle_first = true
+length_offset = false
+
+[options.line_numbers]
+enabled = false
+start = 10
+step = 10
+
+[options.decimals]
+pos = 3
+a = 3
+f = 1

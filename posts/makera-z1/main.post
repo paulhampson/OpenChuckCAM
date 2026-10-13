@@ -1,0 +1,75 @@
+{#- SPDX-License-Identifier: AGPL-3.0-or-later
+    Rotary (XYZA) post template (decision record 0019). Every controller difference is in `opt`;
+    A direction, unwinding and the feed word are settled before the template runs, so it only
+    writes what it is given. -#}
+{% set st = namespace(motion="", have=false, x="", y="", z="", a="", f="", n=opt.line_numbers.start) %}
+{% macro line(text) %}{% if opt.line_numbers.enabled %}N{{ st.n }} {% set st.n = st.n + opt.line_numbers.step %}{% endif %}{{ text }}{% endmacro %}
+{% if opt.comments %}
+{{ line("(" ~ title ~ ")") }}
+{% if revision is not none %}
+{{ line("(revision " ~ revision ~ ")") }}
+{% endif %}
+{% endif %}
+{% for h in opt.header %}
+{{ line(h) }}
+{% endfor %}
+{% if opt.work_offset is not none %}
+{{ line(opt.work_offset) }}
+{% endif %}
+{% if opt.feed_mode == "g93" %}
+{{ line("G93") }}
+{% endif %}
+{% for it in steps %}
+{% if it.step == "comment" %}
+{% if opt.comments %}
+{{ line("(" ~ it.text ~ ")") }}
+{% endif %}
+{% elif it.step == "tool_change" %}
+{% if opt.tool_change.stop_spindle_first %}
+{{ line("M5") }}
+{% endif %}
+{{ line("T" ~ it.number ~ " M6" ~ (" G43 H" ~ it.number if opt.tool_change.length_offset else "")) }}
+{% elif it.step == "spindle_on" %}
+{{ line("S" ~ it.rpm|fixed(0) ~ " M3") }}
+{% if opt.coolant == "flood" %}
+{{ line("M8") }}
+{% elif opt.coolant == "mist" %}
+{{ line("M7") }}
+{% endif %}
+{% elif it.step == "unwind" %}
+{# The controller drops whole turns with no motion and keeps the remainder in `it.to`. #}
+{{ line(opt.unwind_command) }}
+{% set st.a = it.to|fixed(opt.decimals.a) %}
+{% else %}
+{% set t = it.target %}
+{% set want = "G1" if it.step == "feed" else "G0" %}
+{% set x = t.x|fixed(opt.decimals.pos) %}
+{% set y = t.y|fixed(opt.decimals.pos) %}
+{% set z = t.z|fixed(opt.decimals.pos) %}
+{% set a = t.a|fixed(opt.decimals.a) %}
+{% set w = [] %}
+{% if not st.have or x != st.x %}{% set w = w + ["X" ~ x] %}{% endif %}
+{% if not st.have or y != st.y %}{% set w = w + ["Y" ~ y] %}{% endif %}
+{% if not st.have or z != st.z %}{% set w = w + ["Z" ~ z] %}{% endif %}
+{% if not st.have or a != st.a %}{% set w = w + [opt.a_letter ~ a] %}{% endif %}
+{% if it.step == "feed" %}
+{% set fs = it.feed.value|fixed(opt.decimals.f) %}
+{% if opt.feed_mode == "g93" or fs != st.f %}
+{% set w = w + ["F" ~ fs] %}
+{% set st.f = fs %}
+{% endif %}
+{% endif %}
+{% set st.x = x %}{% set st.y = y %}{% set st.z = z %}{% set st.a = a %}{% set st.have = true %}
+{% if w %}
+{# The motion code is written only when it changes, and never alone. #}
+{% if want != st.motion %}
+{% set w = [want] + w %}
+{% set st.motion = want %}
+{% endif %}
+{{ line(w|join(" ")) }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for f in opt.footer %}
+{{ line(f) }}
+{% endfor %}

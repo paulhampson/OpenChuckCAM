@@ -10,12 +10,25 @@
 
 #![warn(missing_docs)]
 
+mod builtin;
 mod convert;
+mod definition;
+mod engine;
 mod error;
 mod feed;
+mod options;
 mod program;
+mod render;
 
+pub use builtin::{builtin, builtin_ids};
 pub use convert::{ConvertOptions, ToolSetting, to_machine_program};
+pub use definition::{MAX_FILE_BYTES, PostDefinition, SCHEMA};
+pub use engine::fixed_str;
 pub use error::{PostError, Result};
 pub use feed::{FeedRule, FeedWord, MoveMetrics, NO_MOTION};
+pub use options::{
+    ADirection, Coolant, Decimals, FeedMode, LineNumbers, PostOptions, ToolChange, Units,
+    UnwindMode,
+};
 pub use program::{MachineProgram, Step, Target};
+pub use render::{PostJob, PostOutput, PostProcessor, TemplatePost, sanitise_comment};
