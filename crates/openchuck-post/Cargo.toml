@@ -13,6 +13,8 @@ authors.workspace = true
 
 [dependencies]
 openchuck-types.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

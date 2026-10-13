@@ -2279,6 +2279,8 @@ name = "openchuck-post"
 version = "0.3.0"
 dependencies = [
  "openchuck-types",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

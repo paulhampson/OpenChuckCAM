@@ -274,6 +274,8 @@ These apply to every slice and are not repeated below.
 
 ## Slice 6 – Post-processing and G-code round trip
 
+**Status:** started 13 Oct 2026. Item 1 (IR to neutral machine program) and the feed rules of [decision 0019](decisions/0019-sp-10-template-engine.md) item 5 are built in `openchuck-post` (`to_machine_program`, `FeedRule`; tests `req_gc_*` in `crates/openchuck-post/tests/machine_program.rs`). Next: the template engine, post loader and option schema (items 2 to 4, OI-84 to OI-86), then the Z1 and LinuxCNC posts, the reader and replay in `openchuck-gcode`, and the gates.
+
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
 **Requirements:** GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14 (GC-01 proven end to end; NFR-08 golden files)
