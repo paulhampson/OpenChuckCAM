@@ -26,7 +26,12 @@ pub struct SimRow {
     /// Seconds the line moved for.
     #[serde(default)]
     pub seconds: f64,
-    /// Where it ended: X, Y, Z, A.
+    /// Where it first was seen: X, Y, Z, A.
+    #[serde(default)]
+    pub first: Option<[f64; 4]>,
+    /// The last position sampled during the line: X, Y, Z, A. A line that
+    /// finishes between two samples ends up to one sampling step short of its
+    /// target, so the next row's first position is what shows it was passed.
     pub end: [f64; 4],
 }
 
@@ -40,6 +45,11 @@ pub struct SimReport {
     pub errors: Vec<String>,
     /// Position when the program ended.
     pub final_position: [f64; 4],
+    /// Every distinct position sampled during the run, in order. When it is
+    /// there, the comparison follows it instead of the per-line rows, because
+    /// LinuxCNC's reported line number lags the motion.
+    #[serde(default)]
+    pub path: Vec<[f64; 4]>,
 }
 
 /// Why the simulator run does not match.
@@ -67,13 +77,19 @@ pub struct SimComparison {
     pub seconds: f64,
 }
 
+/// How far the final position may be from the replay's: the machine is at
+/// rest then, so sampling plays no part.
+pub const FINAL_TOLERANCE: f64 = 1e-3;
+
 /// Reads the driver's JSON report.
 pub fn parse_sim_report(text: &str) -> Result<SimReport, SimError> {
     serde_json::from_str(text).map_err(|e| SimError::Report(e.to_string()))
 }
 
 /// Compares a simulator report with the replay of the same program. `tolerance`
-/// allows for the sampling step of the driver (about 1 ms of motion).
+/// allows for the sampling step of the driver (about 1 ms of motion) and for
+/// the program line that LinuxCNC reports lagging the motion by a sample or
+/// two; the final position is held to [`FINAL_TOLERANCE`].
 pub fn compare_simulator(
     replay: &Replay,
     report: &SimReport,
@@ -82,8 +98,20 @@ pub fn compare_simulator(
     if !report.errors.is_empty() {
         return Err(SimError::Faults(report.errors.join("; ")));
     }
+    if !report.path.is_empty() {
+        return compare_path(replay, report, tolerance);
+    }
     let mut out = SimComparison::default();
     let mut last: Option<[f64; 4]> = None;
+    // The window a line's target must lie in, per axis: from the last sample
+    // of the line to the first sample of the next (or the final position).
+    let window_end = |index: usize| -> [f64; 4] {
+        report
+            .rows
+            .get(index + 1)
+            .and_then(|next| next.first)
+            .unwrap_or(report.final_position)
+    };
     for mv in replay.moves() {
         if mv.machine {
             continue;
@@ -95,14 +123,25 @@ pub fn compare_simulator(
             .zip(&mv.to)
             .any(|(a, b)| (a - b).abs() > tolerance);
         let key = mv.sequence.unwrap_or(mv.line);
-        let row = report.rows.iter().find(|r| r.line == key);
+        let found = report.rows.iter().position(|r| r.line == key);
+        let row = found.and_then(|i| report.rows.get(i));
         match (row, moved) {
             (Some(row), _) => {
-                let error = row
-                    .end
-                    .iter()
-                    .zip(&mv.to)
-                    .map(|(a, b)| (a - b).abs())
+                let beyond = found.map_or(row.end, window_end);
+                let error = (0..4)
+                    .map(|i| {
+                        let a = row.end.get(i).copied().unwrap_or(0.0);
+                        let b = beyond.get(i).copied().unwrap_or(a);
+                        let t = mv.to.get(i).copied().unwrap_or(0.0);
+                        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+                        if t < lo {
+                            lo - t
+                        } else if t > hi {
+                            t - hi
+                        } else {
+                            0.0
+                        }
+                    })
                     .fold(0.0, f64::max);
                 if error > tolerance {
                     return Err(SimError::Mismatch(format!(
@@ -130,13 +169,99 @@ pub fn compare_simulator(
             .zip(&last)
             .map(|(a, b)| (a - b).abs())
             .fold(0.0, f64::max);
-        if error > tolerance {
+        if error > FINAL_TOLERANCE {
             return Err(SimError::Mismatch(format!(
                 "the program ended at {:?} but the simulator stopped at {:?}",
                 last, report.final_position
             )));
         }
         out.max_error = out.max_error.max(error);
+    }
+    Ok(out)
+}
+
+/// Follows the sampled path: each target must be visited, in program order,
+/// to within `tolerance` on every axis. With exact stop the machine slows to
+/// a halt at every node, so the samples are dense there.
+fn compare_path(
+    replay: &Replay,
+    report: &SimReport,
+    tolerance: f64,
+) -> Result<SimComparison, SimError> {
+    let mut out = SimComparison::default();
+    let mut index = 0usize;
+    let mut last: Option<[f64; 4]> = None;
+    for mv in replay.moves() {
+        if mv.machine {
+            continue;
+        }
+        last = Some(mv.to);
+        let moved = mv
+            .from
+            .iter()
+            .zip(&mv.to)
+            .any(|(a, b)| (a - b).abs() > tolerance);
+        if !moved {
+            continue;
+        }
+        let rest = report.path.get(index..).unwrap_or_default();
+        let hit = rest.iter().position(|p| {
+            p.iter()
+                .zip(&mv.to)
+                .all(|(a, b)| (a - b).abs() <= tolerance)
+        });
+        match hit {
+            Some(offset) => {
+                index += offset;
+                // Of the run of samples within tolerance, the nearest one is
+                // where the machine stopped.
+                let distance = |p: &[f64; 4]| {
+                    p.iter()
+                        .zip(&mv.to)
+                        .map(|(a, b)| (a - b).abs())
+                        .fold(0.0, f64::max)
+                };
+                let mut best = (
+                    index,
+                    report.path.get(index).map_or(f64::INFINITY, distance),
+                );
+                let mut k = index;
+                while let Some(p) = report.path.get(k) {
+                    let d = distance(p);
+                    if d > tolerance {
+                        break;
+                    }
+                    if d < best.1 {
+                        best = (k, d);
+                    }
+                    k += 1;
+                }
+                index = best.0;
+                out.max_error = out.max_error.max(best.1);
+                out.moves += 1;
+            }
+            None => {
+                return Err(SimError::Mismatch(format!(
+                    "line {}: the simulator never reached {:?} after the previous move",
+                    mv.line, mv.to
+                )));
+            }
+        }
+    }
+    out.seconds = report.rows.iter().map(|r| r.seconds).sum();
+    if let Some(last) = last {
+        let error = report
+            .final_position
+            .iter()
+            .zip(&last)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        if error > FINAL_TOLERANCE {
+            return Err(SimError::Mismatch(format!(
+                "the program ended at {last:?} but the simulator stopped at {:?}",
+                report.final_position
+            )));
+        }
     }
     Ok(out)
 }

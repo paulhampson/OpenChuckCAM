@@ -1,5 +1,6 @@
 (cone - Setup 1)
 G90 G21 G17
+G61
 G54
 (operation <id>)
 M5

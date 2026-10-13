@@ -26,7 +26,9 @@ root="$(cd "$here/../.." && pwd)"
 [ "$#" -ge 1 ] || { echo "usage: $0 program.ngc [more.ngc ...]" >&2; exit 2; }
 if [ -n "${LINUXCNC_RIP:-}" ]; then
   # shellcheck disable=SC1091
+  set +u
   . "$LINUXCNC_RIP/scripts/rip-environment"
+  set -u
 fi
 command -v linuxcnc >/dev/null || { echo "linuxcnc is not available (set LINUXCNC_RIP or install it)" >&2; exit 3; }
 cli="${OPENCHUCK_CLI:-$root/target/debug/openchuck-cli}"

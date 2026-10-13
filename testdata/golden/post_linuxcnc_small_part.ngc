@@ -1,6 +1,7 @@
 (Small part)
 (revision abc1234)
 G90 G21 G17
+G61
 G54
 (operation groove [finish] tool 4 mm ball about 26 s)
 M5

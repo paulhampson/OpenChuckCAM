@@ -101,9 +101,11 @@ enum Action {
         program: PathBuf,
         /// The simulator driver's JSON report.
         report: PathBuf,
-        /// Largest allowed difference in mm or degrees (the driver samples
-        /// about once a millisecond).
-        #[arg(long, default_value_t = 0.01)]
+        /// Largest allowed difference per line in mm or degrees. The driver
+        /// samples about once a millisecond and LinuxCNC's line number lags
+        /// the motion, so a line can seem to end 0.05 degrees short at
+        /// 45 degrees a second; the final position is held to 0.001.
+        #[arg(long, default_value_t = 0.1)]
         tolerance: f64,
     },
     /// Show the tool numbers the program will use, or change them (GC-14).

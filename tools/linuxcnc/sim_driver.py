@@ -82,9 +82,17 @@ def main():
         start = moved[0]
         end = next(t for t, p in run if p == last)
         rows.append({"line": line, "seconds": round(end - start, 3), "t0": round(start, 4), "t1": round(end, 4), "first": [round(v, 4) for v in first], "end": [round(v, 4) for v in last]})
+    # Every distinct position sampled, in order: LinuxCNC's reported line number
+    # lags the motion, so the comparison follows the path instead of the rows.
+    path, previous = [], None
+    for _, _, pos in samples:
+        rounded = [round(v, 4) for v in pos]
+        if rounded != previous:
+            path.append(rounded)
+            previous = rounded
     stat.poll()
     with open(REPORT, "w", encoding="utf-8") as fh:
-        json.dump({"program": PROGRAM, "rows": rows, "errors": errors,
+        json.dump({"program": PROGRAM, "rows": rows, "errors": errors, "path": path,
                    "final_position": list(stat.actual_position[:4]),
                    "g92_offset": list(stat.g92_offset[:4]),
                    "samples": len(samples)}, fh, indent=1)

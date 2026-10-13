@@ -30,6 +30,7 @@ fn faithful(replay: &Replay) -> SimReport {
         .map(|m| SimRow {
             line: m.sequence.unwrap_or(m.line),
             seconds: 1.0,
+            first: Some(m.from),
             end: m.to,
         })
         .collect();
@@ -37,6 +38,7 @@ fn faithful(replay: &Replay) -> SimReport {
         rows,
         errors: Vec::new(),
         final_position: replay.moves().last().unwrap().to,
+        path: Vec::new(),
     }
 }
 
@@ -57,6 +59,10 @@ fn req_gc_10_a_wrong_end_a_missing_line_a_fault_and_a_wrong_stop_are_caught() {
 
     let mut wrong = good.clone();
     wrong.rows[2].end[0] += 0.5;
+    wrong.rows[3].first = wrong.rows[3].first.map(|mut f| {
+        f[0] += 0.5;
+        f
+    });
     assert!(
         matches!(compare_simulator(&r, &wrong, 0.01), Err(SimError::Mismatch(m)) if m.contains("line 5"))
     );
@@ -88,4 +94,64 @@ fn req_gc_10_the_driver_report_format_is_read() {
     assert_eq!(report.rows[0].line, 3);
     assert!(parse_sim_report("{").is_err());
     assert!(parse_sim_report(r#"{"rows":[]}"#).is_err());
+}
+
+#[test]
+fn req_gc_10_a_line_that_ends_one_sample_short_is_accepted_if_the_next_line_starts_past_it() {
+    let r = replayed(PROGRAM);
+    let mut report = faithful(&r);
+    // Line 5 (X5) ends 0.04 short of its target; the next line's first sample is past it.
+    report.rows[2].end[0] = 4.96;
+    report.rows[3].first = Some([5.01, 0.0, 10.0, 90.0]);
+    compare_simulator(&r, &report, 0.005).unwrap();
+    // Not past it: a real shortfall.
+    let mut short = faithful(&r);
+    short.rows[1].end[0] -= 0.5;
+    short.rows[2].first = short.rows[2].first.map(|mut f| {
+        f[0] -= 0.5;
+        f
+    });
+    assert!(compare_simulator(&r, &short, 0.005).is_err());
+}
+
+/// A path as the driver would sample it: the nodes, with a few points between.
+fn with_path(replay: &Replay) -> SimReport {
+    let mut report = faithful(replay);
+    let mut path = vec![replay.moves().next().unwrap().from];
+    for m in replay.moves().filter(|m| m.from != m.to) {
+        for k in 1..=4 {
+            let t = f64::from(k) / 4.0;
+            path.push(std::array::from_fn(|i| {
+                m.from[i] + (m.to[i] - m.from[i]) * t
+            }));
+        }
+    }
+    report.path = path;
+    report
+}
+
+#[test]
+fn req_gc_10_the_sampled_path_must_visit_every_target_in_order() {
+    let r = replayed(PROGRAM);
+    let good = with_path(&r);
+    compare_simulator(&r, &good, 0.05).unwrap();
+    // A node never visited.
+    let mut missing = good.clone();
+    missing
+        .path
+        .retain(|p| (p[0] - 5.0).abs() > 0.2 || (p[3] - 90.0).abs() > 1.0);
+    assert!(
+        matches!(compare_simulator(&r, &missing, 0.05), Err(SimError::Mismatch(m)) if m.contains("never reached"))
+    );
+    // Visited, but in the wrong order.
+    let mut reversed = good.clone();
+    reversed.path.reverse();
+    assert!(compare_simulator(&r, &reversed, 0.05).is_err());
+    // A fault still fails first.
+    let mut fault = good;
+    fault.errors.push("joint 0 on hard max limit".into());
+    assert!(matches!(
+        compare_simulator(&r, &fault, 0.05),
+        Err(SimError::Faults(_))
+    ));
 }
