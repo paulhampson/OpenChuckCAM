@@ -20,8 +20,10 @@
 //! parameters against its schema and hands the passes to the shared services
 //! in [`assemble`]: A-axis management (OP-15), linking (OP-14) and contact
 //! feed with segment durations (OP-13). Strategies are found by name in a
-//! [`Registry`] (OP-16). Tool-centre solving is the drop-cutter of
-//! [`cutter`], generic over the tool profile (decision record 0012).
+//! [`Registry`] (OP-16); the library's own is [`HelicalFinishing`]. Tool-centre
+//! solving is the drop-cutter of [`cutter`], generic over the tool profile
+//! (decision record 0012). Regions on the unrolled cylinder and their offsets
+//! are in [`unroll`].
 //!
 //! ```
 //! use openchuck_path::{MeshSurface, SurfaceSource, RotaryMapping};
@@ -64,16 +66,19 @@
 pub mod assemble;
 pub mod cutter;
 mod error;
+pub mod helical;
 pub mod parallel;
 pub mod params;
 pub mod rotary;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
+pub mod unroll;
 
 pub use assemble::{GeneratedPath, PathNote};
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
+pub use helical::HelicalFinishing;
 pub use params::{
     CommonParameters, ParameterKind, ParameterSchema, ParameterSpec, ParameterValue, Parameters,
     Unit,
@@ -81,4 +86,6 @@ pub use params::{
 pub use rotary::RotaryMapping;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{CutPoint, Pass, Registry, Strategy, StrategyInput, generate};
-pub use surface::{MeshSurface, RayHit, SurfacePoint, SurfaceSource};
+pub use surface::{
+    FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
+};

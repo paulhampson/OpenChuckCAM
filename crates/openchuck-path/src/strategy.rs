@@ -131,10 +131,12 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides. The first, helical finishing,
-    /// waits on SP-7 (decision record 0018), so the list is empty for now.
+    /// The strategies this library provides: helical finishing (OP-04).
     pub fn builtin() -> Self {
-        Self::new()
+        let mut registry = Self::new();
+        // The name is fixed and the registry is empty, so this cannot fail.
+        let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
+        registry
     }
 
     /// Adds `strategy`. Fails if a strategy of the same name is registered.

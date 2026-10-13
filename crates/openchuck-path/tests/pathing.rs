@@ -70,9 +70,17 @@ fn req_op_16_stub_strategy_plugs_in_through_the_registry() {
     let found = registry.get("test_rings").unwrap();
     assert_eq!(found.label(), "Rings (test)");
     assert!(matches!(
-        registry.get("helical_finishing"),
+        registry.get("no_such_strategy"),
         Err(PathError::UnknownStrategy(_))
     ));
+    // The library's own strategy is there before anything is registered.
+    assert_eq!(
+        Registry::builtin()
+            .get("helical_finishing")
+            .unwrap()
+            .label(),
+        "Helical finishing"
+    );
     // Its schema carries the common parameters first, then its own, each
     // with a unit and a default or a requirement, enough to draw a form.
     let schema = found.schema();

@@ -299,6 +299,26 @@ pub fn max_gouge<P: RadialPart + ?Sized>(
     worst
 }
 
+/// The smallest signed clearance between the tool at `pose` and the exact
+/// surface of `part`, sampled at about `step` mm: positive when the tool is
+/// clear of the surface everywhere, negative by the deepest gouge. A tool
+/// that touches the surface (a drop) reads about zero, and one that leaves
+/// stock `s` reads about `s`.
+pub fn min_clearance<P: RadialPart + ?Sized>(
+    outline: &Outline,
+    part: &P,
+    pose: &Pose,
+    step: f64,
+) -> f64 {
+    samples_near(part, pose, outline.radius() + 1.0, step)
+        .into_iter()
+        .map(|p| {
+            let (r, z) = in_tool_frame(pose, p);
+            outline.clearance(r, z)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
 /// The result of a coverage check.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Coverage {

@@ -17,9 +17,8 @@
 //! Operations are mapped to the pathing library's plain data and generated
 //! in [`operation`] (decision record 0018); regeneration runs every operation
 //! in machining order through the strategies in the application's registry.
-//! The library ships no strategy yet (its first, helical finishing, waits on
-//! SP-7), so a host or test registers its own with
-//! [`Application::register_strategy`].
+//! The library's own strategy, helical finishing, is registered from the start;
+//! a host or test can add more with [`Application::register_strategy`].
 
 #![warn(missing_docs)]
 

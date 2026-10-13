@@ -128,22 +128,44 @@ pub(crate) fn drop_on_mesh(
     profile: &RevolvedProfile,
     line: &ToolLine,
 ) -> Option<Contact> {
-    let radius = profile.cutting_radius();
     let frame = Frame::new(line);
+    // A tip height the answer cannot be below: the tool's tip rests on the
+    // highest surface point of the axis line (h(0) = 0).
+    let floor = mesh.highest_on_line(line);
+    // Each candidate gets an upper bound on the tip height it can give: its
+    // highest vertex, less the lowest the tool gets at the nearest the
+    // triangle comes to the axis (h(r) never decreases with r). Triangles
+    // are visited from the highest bound down, and the search stops once none
+    // can beat the best so far, which skips most of a dense mesh.
     let mut order: Vec<(f64, u32, [Local; 3])> = mesh
-        .triangles_near_line(line, radius)
+        .triangles_for_drop(line, profile, floor)
         .into_iter()
         .filter_map(|i| {
-            let [a, b, c] = *mesh.triangle(i)?;
+            let [a, b, c] = mesh.triangle(i)?;
             let tri = [frame.local(a), frame.local(b), frame.local(c)];
             let top = tri.iter().map(|v| v.z).fold(f64::NEG_INFINITY, f64::max);
-            Some((top, i, tri))
+            let (lo_x, hi_x) = tri
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+                    (lo.min(v.x), hi.max(v.x))
+                });
+            let (lo_y, hi_y) = tri
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+                    (lo.min(v.y), hi.max(v.y))
+                });
+            // Distance from the axis to the triangle's box in the plane.
+            let near_x = lo_x.max(0.0).max(-hi_x);
+            let near_y = lo_y.max(0.0).max(-hi_y);
+            let nearest = radial(near_x, near_y);
+            let bound = top - profile.height_at(nearest)?;
+            Some((bound, i, tri))
         })
         .collect();
     order.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     let mut best: Option<Best> = None;
-    for (top, _, tri) in &order {
-        if best.is_some_and(|b| *top <= b.tip_z) {
+    for (bound, _, tri) in &order {
+        if best.is_some_and(|b| *bound <= b.tip_z) {
             break;
         }
         let [a, b, c] = *tri;
@@ -372,4 +394,200 @@ fn sampled_max(f: &impl Fn(f64) -> f64, a: f64, b: f64, n: u32) -> f64 {
     let lo = a + step * f64::from(best_i.saturating_sub(1));
     let hi = (a + step * f64::from(best_i + 1)).min(b);
     golden_max(f, lo, hi)
+}
+
+// ---- stock to leave -----------------------------------------------------------
+
+use openchuck_types::tool::profile::{ProfilePoint, ProfileSegment, ToolProfile};
+
+use crate::error::{PathError, Result};
+
+fn pp(r: f64, z: f64) -> ProfilePoint {
+    ProfilePoint::new(r, z)
+}
+
+fn r_of(p: ProfilePoint) -> f64 {
+    p.radius.0
+}
+
+fn z_of(p: ProfilePoint) -> f64 {
+    p.height.0
+}
+
+/// The outward unit normal of a convex profile piece at `p`, as (radius,
+/// height) components: for a line, perpendicular to its direction; for a
+/// convex arc, away from its centre.
+fn piece_normal(piece: &ProfilePiece, p: ProfilePoint) -> (f64, f64) {
+    match *piece {
+        ProfilePiece::Line { start, end } => {
+            let (dr, dz) = (r_of(end) - r_of(start), z_of(end) - z_of(start));
+            let len = dr.hypot(dz);
+            if len <= f64::MIN_POSITIVE {
+                (0.0, -1.0)
+            } else {
+                (dz / len, -dr / len)
+            }
+        }
+        ProfilePiece::Arc { centre, radius, .. } => (
+            (r_of(p) - r_of(centre)) / radius,
+            (z_of(p) - z_of(centre)) / radius,
+        ),
+    }
+}
+
+/// The tool grown by `offset` in every direction (the Minkowski sum of the
+/// revolved tool and a ball of that radius), for stock to leave: a drop with
+/// the grown tool leaves `offset` of material on the surface (OP-11).
+///
+/// The result is a profile of its own, measured from its own tip, which lies
+/// `offset` below the original tip: a tool tip found with the grown tool is
+/// `offset` below the original tool's tip along the axis, so add `offset`
+/// along the axis to get the original tip. Only convex profiles can be
+/// grown in closed form (every standard tool is convex); a concave custom
+/// profile is refused with a message rather than approximated.
+pub fn grow_profile(profile: &RevolvedProfile, offset: f64) -> Result<RevolvedProfile> {
+    if !(offset.is_finite() && offset >= 0.0) {
+        return Err(PathError::Strategy(format!(
+            "the stock to leave {offset} mm must be finite and not negative"
+        )));
+    }
+    if offset == 0.0 {
+        return Ok(profile.clone());
+    }
+    if !profile.is_convex() {
+        return Err(PathError::Strategy(
+            "stock to leave is not supported for this tool: its profile is not convex \
+             (a concave custom profile); set the stock to leave to 0 or use a convex tool"
+                .to_owned(),
+        ));
+    }
+    let s = offset;
+    // Work in the original frame, then lift by `s` so the grown tip is the origin.
+    let mut segments: Vec<ProfileSegment> = Vec::new();
+    let lift = |r: f64, z: f64| pp(r, z + s);
+    let eps = 1e-12;
+    let mut previous_normal = (0.0, -1.0);
+    for piece in profile.pieces() {
+        let start = piece.start();
+        let end = piece.end();
+        let n_start = piece_normal(piece, start);
+        // A join about the vertex where the normal turns.
+        let turn = n_start.0 * previous_normal.1 - n_start.1 * previous_normal.0;
+        let from = pp(
+            r_of(start) + previous_normal.0 * s,
+            z_of(start) + previous_normal.1 * s,
+        );
+        let to = pp(r_of(start) + n_start.0 * s, z_of(start) + n_start.1 * s);
+        if from.distance(to) > eps && turn.abs() > eps {
+            segments.push(ProfileSegment::Arc {
+                to: lift(r_of(to), z_of(to)),
+                centre: lift(r_of(start), z_of(start)),
+            });
+        }
+        let n_end = piece_normal(piece, end);
+        let new_end = pp(r_of(end) + n_end.0 * s, z_of(end) + n_end.1 * s);
+        match *piece {
+            ProfilePiece::Line { .. } => segments.push(ProfileSegment::Line {
+                to: lift(r_of(new_end), z_of(new_end)),
+            }),
+            ProfilePiece::Arc { centre, .. } => segments.push(ProfileSegment::Arc {
+                to: lift(r_of(new_end), z_of(new_end)),
+                centre: lift(r_of(centre), z_of(centre)),
+            }),
+        }
+        previous_normal = n_end;
+    }
+    // The first segment must leave the axis at the grown tip: a line that
+    // starts at the original tip's offset needs no extra move because the
+    // lifted start is (0, 0) when the first normal points straight down; a
+    // first join arc starts there too.
+    ToolProfile { segments }.validate().map_err(PathError::from)
+}
+
+/// The point of `profile` (in tool coordinates: radius, height) nearest to
+/// (`r`, `z`).
+fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
+    let mut best = (f64::INFINITY, (0.0, 0.0));
+    for piece in profile.pieces() {
+        let cand = match *piece {
+            ProfilePiece::Line { start, end } => {
+                let (dr, dz) = (r_of(end) - r_of(start), z_of(end) - z_of(start));
+                let l2 = dr * dr + dz * dz;
+                let t = if l2 <= f64::MIN_POSITIVE {
+                    0.0
+                } else {
+                    (((r - r_of(start)) * dr + (z - z_of(start)) * dz) / l2).clamp(0.0, 1.0)
+                };
+                (r_of(start) + t * dr, z_of(start) + t * dz)
+            }
+            ProfilePiece::Arc {
+                start,
+                end,
+                centre,
+                radius,
+                ..
+            } => {
+                let (vr, vz) = (r - r_of(centre), z - z_of(centre));
+                let len = vr.hypot(vz);
+                let on_circle = if len <= f64::MIN_POSITIVE {
+                    (r_of(start), z_of(start))
+                } else {
+                    (
+                        r_of(centre) + radius * vr / len,
+                        z_of(centre) + radius * vz / len,
+                    )
+                };
+                // Within the arc's angular range?
+                let ang = |p: (f64, f64)| (p.1 - z_of(centre)).atan2(p.0 - r_of(centre));
+                let (a0, a1, aq) = (
+                    ang((r_of(start), z_of(start))),
+                    ang((r_of(end), z_of(end))),
+                    ang(on_circle),
+                );
+                let (lo, hi) = (a0.min(a1), a0.max(a1));
+                if aq >= lo - 1e-12 && aq <= hi + 1e-12 {
+                    on_circle
+                } else {
+                    let ds = (r - r_of(start)).hypot(z - z_of(start));
+                    let de = (r - r_of(end)).hypot(z - z_of(end));
+                    if ds <= de {
+                        (r_of(start), z_of(start))
+                    } else {
+                        (r_of(end), z_of(end))
+                    }
+                }
+            }
+        };
+        let d = (r - cand.0).hypot(z - cand.1);
+        if d < best.0 {
+            best = (d, cand);
+        }
+    }
+    best.1
+}
+
+/// Where the original tool, with its tip at `tip` and axis `axis`, comes
+/// closest to the surface point `contact`: the cutter contact point of a
+/// pass that leaves stock (it lies on the left-over surface, `offset` from
+/// `contact`). For no stock it is `contact` itself.
+pub fn cutter_contact(
+    profile: &RevolvedProfile,
+    tip: Point3,
+    axis: UnitVec3,
+    contact: Point3,
+) -> Point3 {
+    let e3 = axis.get();
+    let w = contact - tip;
+    let z = w.dot(e3);
+    let radial = w - e3 * z;
+    let r = radial.length();
+    let (rq, zq) = nearest_on_profile(profile, r, z);
+    let dir = if r > 1e-12 {
+        radial * (1.0 / r)
+    } else {
+        // On the axis the radial direction is arbitrary and the profile
+        // point has radius zero.
+        Vec3::ZERO
+    };
+    tip + e3 * zq + dir * rq
 }

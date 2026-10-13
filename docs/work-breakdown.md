@@ -244,7 +244,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-3, SP-4, SP-7, SP-9, SP-13.
 
-**Status:** in progress. First step (everything that does not depend on SP-7) built on `claude/slice-5-pathing-core`, design in [decision 0018](decisions/0018-slice-5-pathing-core.md) (proposed 12 Oct 2026): items 1 to 4 and 6 to 10, except applying stock to leave. Item 5 (helical finishing) and the review items that need it wait on SP-7; the B-rep half of item 1, the `SurfaceSource` trait's final shape and the slice's design-refinement closure wait on SP-9 (decision 0018, "What depends on SP-9"; OI-69). OI-06 and OI-63 proposed; new open items OI-68 to OI-71. OP-11's stepdown, lead-in and lead-out, ramping and per-selection stock to leave stay with slices 12 and 14, and helical entry has no slice yet (OI-71). The review checklist is not ticked.
+**Status:** built; the review checklist is ticked on the evidence in [decision 0018](decisions/0018-slice-5-pathing-core.md) (proposed 13 Oct 2026), and the slice closes when the owner accepts that record. All ten items are built: the SP-7 inputs as the `unroll` module and helical finishing, and the SP-9 result as the shape of the `SurfaceSource` port (the exact evaluators, the face record and exact tool drop are slice 11's, OI-81). OP-11's stepdown, lead-in and lead-out, ramping and per-selection stock to leave stay with slices 12 and 14, and helical entry has no slice yet (OI-80). Proposed for agreement: OI-06, OI-08, OI-63, OI-78 and OI-79. `i_overlay` is not declared yet (nothing in the slice calls a boolean; decision 0018 item 14 raises the deviation from [decision 0016](decisions/0016-sp-7-2d-offsets.md) item 8).
 
 **Design refinement:** the public API: `Strategy` trait with self-describing parameter schemas, the ports `SurfaceSource`, `StockModel` and `CollisionOracle`, and the kinematic mapping that takes the rotary axis as a parameter. Design the `SurfaceSource` port for the five queries of [decision 0017](decisions/0017-sp-9-exact-surfaces.md) (point and unit normal at (u, v); closest point with (u, v) and distance; trimmed ray hits; a trim test in (u, v); the tessellation), so B-rep faces slot in later as plain data evaluated in pure Rust. Confirm the feed approach (contact feed plus duration in the IR) with SP-3 and SP-12, and use the tool profile type that every cutter shape maps to, as settled by SP-13 ([decision 0012](decisions/0012-sp-13-tool-profiles.md)). Tool-centre solving is a drop-cutter generic over the profile (vertex, facet and edge tests that need only the profile's lower envelope `h(r)` and its pieces), returning the tip and the contact point; normal-offset solving is a fast path for convex profiles only. Evaluate distances directly (the expanded quadratic loses about 1e-8 mm near the tool axis), and measure deviation along the surface normal, not vertically. The spike's drop took 0.35 to 3.2 ms per position on a 147,000-triangle mesh with a plain grid, so add a bounding structure (SP-4) and cull edges by height before searching.
 
@@ -259,18 +259,18 @@ These apply to every slice and are not repeated below.
 9. The independent gouge and coverage checker, used only in tests and written separately from the strategies, plus analytic-oracle tests on the fixture parts.
 10. Mapping in `openchuck-app` from project objects to the library's plain data; the library never sees the project file.
 
-**Review checklist**
+**Review checklist** (evidence in decision 0018; ticked 13 Oct 2026, the slice closes on the owner's acceptance of that record)
 
-- [ ] On a cylinder, helix pitch and A rotation per unit of X match the analytic values within tolerance
-- [ ] A never jumps beyond the wrap rules, and no output contains NaN
-- [ ] Contact-point feed matches an analytic check, with the formula documented
-- [ ] Links stay inside the clearance geometry and never cross stock
-- [ ] The independent checker reports zero gouge and full coverage on the oracle parts, and fails on a seeded fault
-- [ ] Forward kinematics of every XYZA point returns the intended tool tip within 1e-6 mm and 1e-6 degrees, checked against the independent oracle
-- [ ] Toolpath deviation stays within 0.01 mm (about 0.005 mm tessellation and 0.005 mm path fitting)
-- [ ] On simultaneous moves the effective feed at the cutter contact is within ±2% of programmed
-- [ ] Identical output at 1, 2 and N threads
-- [ ] The library builds and runs in a small host program using only its public API
+- [x] On a cylinder, helix pitch and A rotation per unit of X match the analytic values within tolerance (`req_op_04_helix_pitch_and_a_per_x_match_the_analytic_values_on_a_cylinder`: 1e-6 degrees at three pitches, both rotations)
+- [x] A never jumps beyond the wrap rules, and no output contains NaN (`req_op_15_*` and the helical tests: continuity, no step over half a turn, no reversals, no NaN)
+- [x] Contact-point feed matches an analytic check, with the formula documented (`req_op_04_req_op_13_contact_feed_is_the_programmed_feed_on_every_cut`; `t = 60 L / f` in decision 0018 item 8 and `assemble.rs`)
+- [x] Links stay inside the clearance geometry and never cross stock (`req_op_14_links_stay_outside_the_clearance_and_never_cross_the_stock`)
+- [x] The independent checker reports zero gouge and full coverage on the oracle parts, and fails on a seeded fault (`req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts`: cylinder, cone, sphere, helical groove, ruled hyperboloid)
+- [x] Forward kinematics of every XYZA point returns the intended tool tip within 1e-6 mm and 1e-6 degrees, checked against the independent oracle (`req_op_05_req_op_06_every_helical_pose_round_trips_through_the_independent_oracle`, both A senses)
+- [x] Toolpath deviation stays within 0.01 mm (about 0.005 mm tessellation and 0.005 mm path fitting) (`req_op_04_req_nfr_05_path_fitting_stays_inside_its_budget_on_a_sphere`: 0.0003 mm at the default steps; 0.00405 mm fit error with long moves at the default tolerance; the factor is 0.4, OI-08)
+- [x] On simultaneous moves the effective feed at the cutter contact is within ±2% of programmed (`req_op_13_feed_at_the_contact_is_within_two_percent_on_a_grooved_part`: worst 1.03 % away from the part's ends; near a rim 2.06 %, kept open as OI-77)
+- [x] Identical output at 1, 2 and N threads (`req_nfr_06_*` for the rings stub, helical finishing and the offset passes)
+- [x] The library builds and runs in a small host program using only its public API (`crates/openchuck-path/examples/host.rs`, run in CI)
 
 ## Slice 6 – Post-processing and G-code round trip
 

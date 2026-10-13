@@ -10,6 +10,8 @@
 //! - [`determinism`]: the 1, 2 and N thread harness (NFR-06, GC-07).
 //! - [`gouge`]: the independent gouge and coverage checker (OP-12,
 //!   architecture section 9), which samples exact analytic surfaces.
+//! - [`region`]: the independent oracle for 2D offsets on an unrolled
+//!   cylinder, and the corpus of awkward regions (OP-04, from spike SP-7).
 //! - [`golden`]: plain-text golden-file comparison (NFR-08).
 //! - [`parts`]: procedurally generated analytic test parts and the
 //!   1M-triangle benchmark model (NFR-08, NFR-03).
@@ -21,3 +23,4 @@ pub mod golden;
 pub mod gouge;
 pub mod oracle;
 pub mod parts;
+pub mod region;

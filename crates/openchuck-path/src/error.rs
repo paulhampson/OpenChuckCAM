@@ -24,6 +24,10 @@ pub enum PathError {
     /// The surface cannot be used (for example an empty mesh).
     #[error("surface: {0}")]
     Surface(String),
+    /// A region on the unrolled development is invalid or cannot be offset
+    /// (decision record 0016, SP-7): the message names the loop and the fault.
+    #[error("region: {0}")]
+    Region(String),
     /// The rotary axis cannot follow the toolpath within its limits (OP-15).
     #[error("A axis: {0}")]
     RotaryLimit(String),

@@ -10,9 +10,25 @@
 //! `parry3d-f64` bounding volume hierarchy (decision record 0015 item 1); no
 //! parry type appears in this crate's public API.
 //!
-//! A host with its own geometry kernel can implement the trait directly for
-//! exact evaluation. How B-rep faces implement it inside the library is
-//! settled by SP-9, which has not run (decision record 0018 item 3).
+//! # B-rep faces (spike SP-9, decision record 0017)
+//!
+//! Exact faces reach the library as plain data and are evaluated in pure Rust
+//! (slice 11 builds the face record in `openchuck-types` and the evaluators).
+//! A B-rep `SurfaceSource` holds its faces as [`ParametricFace`]s, answers
+//! [`SurfaceSource::project`] and [`SurfaceSource::cast_ray`] by taking the
+//! nearest point and the first trimmed hit over its faces (each answer
+//! carries the face and its (u, v) in [`FacePosition`]), and offers its
+//! tessellation through [`SurfaceSource::tessellation`] for display, mesh
+//! checks and fallback. The five queries of decision record 0017 item 3 are
+//! these: point and normal at (u, v) ([`ParametricFace::point_normal`]),
+//! closest point ([`ParametricFace::closest`]), trimmed ray hits
+//! ([`ParametricFace::ray_hits`]), the trim test
+//! ([`ParametricFace::contains`]) and the tessellation. Tool-centre solving
+//! on exact faces ([`SurfaceSource::drop_tool`]) is not settled by SP-9 and
+//! stays open (OI-81); [`MeshSurface`] answers it on triangles.
+//!
+//! A host with its own geometry kernel can implement either trait directly
+//! for exact evaluation.
 
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
@@ -25,6 +41,26 @@ use parry3d_f64::shape::TriMesh;
 use crate::cutter::{self, Contact, ToolLine};
 use crate::error::{PathError, Result};
 
+/// A position in a face's parameter space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Uv {
+    /// First surface parameter.
+    pub u: f64,
+    /// Second surface parameter.
+    pub v: f64,
+}
+
+/// Where on an exact surface an answer lies: the face, by its index in the
+/// source, and the parameters on it. Meshes carry none.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FacePosition {
+    /// The face's index in the source (the deterministic face number of the
+    /// import, decision record 0003).
+    pub face: u32,
+    /// The parameters on that face.
+    pub uv: Uv,
+}
+
 /// A point on the surface with the outward normal there.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SurfacePoint {
@@ -32,6 +68,8 @@ pub struct SurfacePoint {
     pub point: Point3,
     /// The outward unit normal at the point.
     pub normal: UnitVec3,
+    /// The face and parameters, for exact surfaces; `None` for a mesh.
+    pub position: Option<FacePosition>,
 }
 
 /// Where a ray first meets the surface.
@@ -43,6 +81,42 @@ pub struct RayHit {
     pub point: Point3,
     /// The outward unit normal there.
     pub normal: UnitVec3,
+    /// The face and parameters, for exact surfaces; `None` for a mesh.
+    pub position: Option<FacePosition>,
+}
+
+/// The closest point of one face to a point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FaceClosest {
+    /// The parameters of the closest point.
+    pub uv: Uv,
+    /// The closest point and its normal (the face's orientation applied).
+    pub point: SurfacePoint,
+    /// The distance to it.
+    pub distance: f64,
+}
+
+/// One trimmed face of an exact surface (spike SP-9, decision record 0017
+/// item 3). Everything is in the model frame; the normal has the face's
+/// orientation applied, so it points out of the material.
+pub trait ParametricFace: Send + Sync + std::fmt::Debug {
+    /// The parameter box `(min, max)` the face's surface is defined on.
+    fn uv_bounds(&self) -> (Uv, Uv);
+
+    /// The point and unit normal at `uv`; `None` outside the parameter box
+    /// or where the normal is undefined (a singular point).
+    fn point_normal(&self, uv: Uv) -> Option<SurfacePoint>;
+
+    /// The closest point of the trimmed face to `point`.
+    fn closest(&self, point: Point3) -> Option<FaceClosest>;
+
+    /// Every hit of the ray with the trimmed face no further than
+    /// `max_distance`, nearest first.
+    fn ray_hits(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Vec<RayHit>;
+
+    /// The trim test: whether `uv` lies on the face, inside its boundary
+    /// loops.
+    fn contains(&self, uv: Uv) -> bool;
 }
 
 /// The selected surfaces of a part, as the strategies see them.
@@ -67,6 +141,10 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
     /// no further than `max_distance`.
     fn cast_ray(&self, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit>;
 
+    /// The surface as triangles: the whole surface for a mesh, the display
+    /// and fallback form for exact faces.
+    fn tessellation(&self) -> &TriangleMesh;
+
     /// Drops the tool described by `profile` along `line` from the spindle
     /// side, and returns where it first touches: the tip and the contact
     /// point. `None` when the tool would not touch the surface anywhere on
@@ -82,7 +160,7 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
 /// here; it is the import's or the user's (decision record 0015 item 5).
 pub struct MeshSurface {
     bvh: TriMesh,
-    triangles: Vec<[Point3; 3]>,
+    mesh: TriangleMesh,
     normals: Vec<Option<UnitVec3>>,
     bounds: Aabb,
 }
@@ -90,7 +168,7 @@ pub struct MeshSurface {
 impl std::fmt::Debug for MeshSurface {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MeshSurface")
-            .field("triangles", &self.triangles.len())
+            .field("triangles", &self.mesh.triangles.len())
             .field("bounds", &self.bounds)
             .finish_non_exhaustive()
     }
@@ -130,7 +208,7 @@ impl MeshSurface {
         }
         Ok(Self {
             bvh,
-            triangles,
+            mesh: mesh.clone(),
             normals,
             bounds: Aabb { min, max },
         })
@@ -138,13 +216,22 @@ impl MeshSurface {
 
     /// Number of triangles.
     pub fn triangle_count(&self) -> usize {
-        self.triangles.len()
+        self.mesh.triangles.len()
     }
 
-    /// The triangles whose bounding boxes come within `radius` of the
-    /// infinite line, in index order. Conservative: it may return triangles
-    /// that are further away, never fewer.
-    pub(crate) fn triangles_near_line(&self, line: &ToolLine, radius: f64) -> Vec<u32> {
+    /// The triangles that could lift a tool dropped along `line` above
+    /// `floor` (a tip height along the line that is certainly reached, or
+    /// `None`): those whose bounding box comes within the tool's cutting
+    /// radius of the line and whose best possible tip, the box's highest
+    /// point less the lowest the profile gets at the box's nearest distance
+    /// from the axis, is not below the floor. Conservative: it may return
+    /// triangles that cannot lift the tool, never fewer. Index order.
+    pub(crate) fn triangles_for_drop(
+        &self,
+        line: &ToolLine,
+        profile: &RevolvedProfile,
+        floor: Option<f64>,
+    ) -> Vec<u32> {
         let origin = line.origin;
         let axis = line.axis.get();
         let near = |node: &BvhNode| {
@@ -161,16 +248,34 @@ impl MeshSurface {
             );
             let w = centre - origin;
             let off = w - axis * w.dot(axis);
-            off.length() <= radius + half.length()
+            let nearest = (off.length() - half.length()).max(0.0);
+            let Some(lowest) = profile.height_at(nearest) else {
+                return false; // beyond the cutting radius
+            };
+            let reach = axis.x.abs() * half.x + axis.y.abs() * half.y + axis.z.abs() * half.z;
+            let top = w.dot(axis) + reach;
+            // Slightly below the floor is kept, so ties are decided as before.
+            floor.is_none_or(|f| top - lowest >= f - 1e-9)
         };
         let mut found: Vec<u32> = self.bvh.bvh().leaves(near).collect();
         found.sort_unstable();
         found
     }
 
+    /// The highest point of the surface on the infinite line, as a position
+    /// along the line from its origin; `None` when the line misses the surface.
+    pub(crate) fn highest_on_line(&self, line: &ToolLine) -> Option<f64> {
+        let b = self.bounds;
+        let size = (b.max - b.min).length() + (line.origin - b.min).length() + 1.0;
+        let from = line.origin + line.axis.get() * size;
+        let down = UnitVec3::new(-line.axis.get()).ok()?;
+        let hit = self.cast_ray(from, down, 2.0 * size)?;
+        Some((hit.point - line.origin).dot(line.axis.get()))
+    }
+
     /// Triangle `i` and its normal, if `i` is in range.
-    pub(crate) fn triangle(&self, i: u32) -> Option<&[Point3; 3]> {
-        self.triangles.get(i as usize)
+    pub(crate) fn triangle(&self, i: u32) -> Option<[Point3; 3]> {
+        self.mesh.triangle(i as usize)
     }
 
     fn normal(&self, i: u32, fallback: Vec3) -> UnitVec3 {
@@ -194,14 +299,15 @@ impl SurfaceSource for MeshSurface {
             f64::MAX,
             |node: &BvhNode, _| node.aabb().distance_to_local_point(query, true),
             |i, _| {
-                let tri = self.triangles.get(i as usize)?;
-                let q = closest_on_triangle(point, tri);
+                let tri = self.triangle(i)?;
+                let q = closest_on_triangle(point, &tri);
                 Some((q.distance(point), q))
             },
         )?;
         Some(SurfacePoint {
             point: closest,
             normal: self.normal(i, point - closest),
+            position: None,
         })
     }
 
@@ -209,14 +315,19 @@ impl SurfaceSource for MeshSurface {
         let d = direction.get();
         let ray = Ray::new(to_vector(origin), Vector::new(d.x, d.y, d.z));
         let (i, t) = self.bvh.bvh().cast_ray(&ray, max_distance, |i, best| {
-            let tri = self.triangles.get(i as usize)?;
-            ray_triangle(origin, d, tri).filter(|t| *t <= best)
+            let tri = self.triangle(i)?;
+            ray_triangle(origin, d, &tri).filter(|t| *t <= best)
         })?;
         Some(RayHit {
             distance: t,
             point: origin + d * t,
             normal: self.normal(i, -d),
+            position: None,
         })
+    }
+
+    fn tessellation(&self) -> &TriangleMesh {
+        &self.mesh
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {

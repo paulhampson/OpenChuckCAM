@@ -255,3 +255,119 @@ fn req_nfr_07_degenerate_triangles_do_not_break_queries() {
     assert!(c.tip.is_finite());
     assert!(surface.project(Point3::new(1.5, -1.0, 3.0)).is_some());
 }
+
+/// Points along the profile of a tool, one every `step` mm of length.
+fn profile_points(profile: &openchuck_types::tool::RevolvedProfile, step: f64) -> Vec<(f64, f64)> {
+    use openchuck_types::tool::profile::ProfilePiece;
+    let mut out = Vec::new();
+    for piece in profile.pieces() {
+        match *piece {
+            ProfilePiece::Line { start, end } => {
+                let (r0, z0, r1, z1) = (start.radius.0, start.height.0, end.radius.0, end.height.0);
+                let n = ((r1 - r0).hypot(z1 - z0) / step).ceil().max(1.0) as u32;
+                for i in 0..=n {
+                    let t = f64::from(i) / f64::from(n);
+                    out.push((r0 + t * (r1 - r0), z0 + t * (z1 - z0)));
+                }
+            }
+            ProfilePiece::Arc {
+                start,
+                end,
+                centre,
+                radius,
+                ..
+            } => {
+                let a0 = (start.height.0 - centre.height.0).atan2(start.radius.0 - centre.radius.0);
+                let a1 = (end.height.0 - centre.height.0).atan2(end.radius.0 - centre.radius.0);
+                let n = ((a1 - a0).abs() * radius / step).ceil().max(1.0) as u32;
+                for i in 0..=n {
+                    let a = a0 + (a1 - a0) * f64::from(i) / f64::from(n);
+                    out.push((
+                        centre.radius.0 + radius * a.cos(),
+                        centre.height.0 + radius * a.sin(),
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn req_op_11_the_grown_tool_is_the_tool_plus_a_ball() {
+    // The lower envelope of the tool grown by s is, at each radius, the
+    // lowest point of the union of balls of radius s centred on the tool's
+    // outline. Checked against that definition by brute force for every
+    // standard shape; the grown tool's tip is s below the original tip.
+    let s = 0.4;
+    let shapes = [
+        ToolShape::BallEnd,
+        ToolShape::FlatEnd,
+        ToolShape::BullNose {
+            corner_radius: Millimetres(1.0),
+        },
+        ToolShape::TaperedBall {
+            tip_radius: Millimetres(1.0),
+            taper_half_angle: Degrees(15.0),
+        },
+        ToolShape::VBit {
+            included_angle: Degrees(60.0),
+            tip_diameter: Millimetres(0.0),
+        },
+        ToolShape::VBit {
+            included_angle: Degrees(90.0),
+            tip_diameter: Millimetres(1.0),
+        },
+        ToolShape::Drill {
+            point_angle: Degrees(118.0),
+        },
+    ];
+    for shape in shapes {
+        let t = tool(shape.clone(), 6.0);
+        let original = t.profile().unwrap();
+        let grown = openchuck_path::cutter::grow_profile(&original, s).unwrap();
+        assert!((grown.cutting_radius() - (original.cutting_radius() + s)).abs() < 1e-9);
+        let pts = profile_points(&original, 2e-4);
+        let mut worst = 0.0_f64;
+        for i in 0..=400 {
+            let r = (original.cutting_radius() + s) * f64::from(i) / 400.0;
+            let brute = pts
+                .iter()
+                .filter(|(rp, _)| (r - rp).abs() <= s)
+                .map(|(rp, zp)| zp - (s * s - (r - rp).powi(2)).sqrt())
+                .fold(f64::INFINITY, f64::min);
+            let got = grown.height_at(r).unwrap() - s;
+            worst = worst.max((brute - got).abs());
+        }
+        assert!(worst < 2e-4, "{shape:?}: {worst}");
+        assert_eq!(grown.height_at(0.0).unwrap(), 0.0);
+        // Zero stock is the tool itself.
+        assert_eq!(
+            openchuck_path::cutter::grow_profile(&original, 0.0).unwrap(),
+            original
+        );
+    }
+}
+
+#[test]
+fn req_op_11_the_cutter_contact_is_on_the_tool_stock_away_from_the_surface_point() {
+    use openchuck_path::cutter::cutter_contact;
+    let rho = 3.0;
+    let s = 0.3;
+    let ball = ball(2.0 * rho).profile().unwrap();
+    let tip = Point3::ORIGIN;
+    // Straight below the tip: the contact is the tip.
+    let c = cutter_contact(&ball, tip, UnitVec3::Z, Point3::new(0.0, 0.0, -s));
+    assert!(c.distance(tip) < 1e-12);
+    // To the side and below: on the ball, in line with the ball's centre.
+    let dir = UnitVec3::new(Vec3::new(1.0, 0.0, -1.0)).unwrap().get();
+    let centre = Point3::new(0.0, 0.0, rho);
+    let surface_point = centre + dir * (rho + s);
+    let c = cutter_contact(&ball, tip, UnitVec3::Z, surface_point);
+    assert!(c.distance(centre + dir * rho) < 1e-9, "{c:?}");
+    assert!((c.distance(surface_point) - s).abs() < 1e-9);
+    // Tilted tool: the same, in the tool's own frame.
+    let axis = UnitVec3::new(Vec3::new(0.3, 0.2, 0.9)).unwrap();
+    let c = cutter_contact(&ball, tip, axis, tip + axis.get() * rho + dir * (rho + s));
+    assert!((c.distance(tip + axis.get() * rho) - rho).abs() < 1e-9);
+}

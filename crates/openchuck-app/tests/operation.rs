@@ -377,3 +377,63 @@ fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_nam
     assert!(app.regenerate().unwrap().notes.is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_strategy() {
+    let (dir, mut app, op) = project("helical");
+    // The library's own strategy needs no registration.
+    assert!(app.strategies().get("helical_finishing").is_ok());
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "helical_finishing".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let first = app.regenerate().unwrap();
+    let group = &first.toolpath.groups[0];
+    // The tool's default stepover for oak (0.8 mm) is the pitch: the cube is
+    // 10 mm long, so A turns 360 * 10 / 0.8 = 4500 degrees along it.
+    let cutting: Vec<_> = group
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .collect();
+    assert!(cutting.len() > 500, "{}", cutting.len());
+    let span = cutting.last().unwrap().end.a.0 - group.start.a.0;
+    assert!((span - 4500.0).abs() < 1e-6, "{span}");
+    assert!(cutting.iter().all(|s| s.contact_feed.unwrap().0 == 400.0));
+    assert!(group.segments.iter().all(|s| s.end.tip.is_finite()));
+
+    // Stock to leave raises the tip off the cube's faces by that much.
+    let flat_tip = cutting
+        .iter()
+        .map(|s| s.end.tip.y.hypot(s.end.tip.z))
+        .fold(f64::INFINITY, f64::min);
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: names::STOCK_TO_LEAVE.into(),
+        value: Some(ParameterValue::Number(0.5)),
+    })
+    .unwrap();
+    let left = app.regenerate().unwrap();
+    let left_tip = left.toolpath.groups[0]
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .map(|s| s.end.tip.y.hypot(s.end.tip.z))
+        .fold(f64::INFINITY, f64::min);
+    assert!(
+        (left_tip - flat_tip - 0.5).abs() < 0.02,
+        "{flat_tip} {left_tip}"
+    );
+
+    // A saved and reopened project regenerates the same path at any pool size.
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: names::STOCK_TO_LEAVE.into(),
+        value: None,
+    })
+    .unwrap();
+    app.save().unwrap();
+    let again = Application::open(&dir, Threads::Exactly(3)).unwrap();
+    assert_eq!(again.regenerate().unwrap().toolpath, first.toolpath);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
