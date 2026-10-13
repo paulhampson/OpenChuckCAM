@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Makera Z1 post (GC-09). Every convention is derived from Makera's profiles and the Z1
-# firmware source (decision 0007) and is unconfirmed until the attended air cut (OI-37):
+# Makera Z1 post (GC-09). The conventions are derived from Makera's profiles and the Z1
+# firmware source (decision 0007) and are unconfirmed until the attended air cut (OI-37),
+# except the A direction, which was checked on the machine on 13 Oct 2026 (OI-03):
 # right-handed A about +X, programs in G54 with Y0 Z0 on the A axis, no G93 (the stock
 # firmware ignores it), the Makera feed rule, whole turns dropped with G92.4 A0 S0,
 # no line numbers, comments on their own line, three decimals.

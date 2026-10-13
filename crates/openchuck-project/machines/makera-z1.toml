@@ -59,7 +59,7 @@ source = "confirmed by the owner from use of the machine (11 Oct 2026): the rota
 
 [machine.provenance.a_sense]
 state = "confirmed"
-source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The air cut (OI-37, step 1) is kept open as a cross check (decision 0013)"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Checked again on the machine on 13 Oct 2026 by sending an A+ command: a camera behind the chuck, looking toward home, sees the top of the chuck turn toward the front of the machine (away from home, -Y): clockwise from that view, counter-clockwise looking at the chuck from +X. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The air cut (OI-37, step 1) is kept open as a cross check (decision 0013)"
 
 [machine.provenance.rotary_origin]
 state = "unconfirmed"

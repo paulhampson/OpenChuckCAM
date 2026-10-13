@@ -18,7 +18,7 @@ All three use the same tool, material and strategy: a 3 mm ball end mill (2 flut
 
 - **Axis height.** The owner gave the chuck centre as 45 mm above the bed (13 Oct 2026). The Z1 profile takes the bed at the bottom of the Z travel (-100), so the axis is at machine Z -55, and the safe Z is 50 mm above the axis (5 mm below the top of the travel). That reading of "the bed" is an assumption (OI-60). **Measure the axis height on the machine and rerun the jobs before any trial.** A wrong value moves every Z.
 - **Work zero.** Programs run in G54 with Y0 Z0 on the A axis and X0 at the part's model origin (OI-40). The operator sets X0 by hand.
-- **Direction, wrap, feed rule, unwind** are the derived SP-12 conventions, unconfirmed until the air cut (OI-37).
+- **A direction** was checked on the machine (13 Oct 2026): A+ turns the top of the chuck toward the front (-Y), as the profile says (OI-03). **Wrap, feed rule and unwind** (`G92.4 A0 S0`) are the derived SP-12 conventions, unconfirmed until the air cut (OI-37).
 - **No tool changer test.** One tool, `T1 M6` at the start; the tool change is exercised in a separate attended test (OI-41).
 
 ## Gate 3
@@ -37,8 +37,8 @@ The simulator cannot confirm the A direction, or the Z1 post's `G92.4` and feed 
 
 For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
 
-1. Check the profile values the programs depend on: axis height (OI-60), A direction (OI-37), travel (OI-39). Regenerate the Z1 programs and compare with the golden files.
-2. Run SP-12's conventions program first (`spikes/sp12/AIR-CUT.md` on the SP-12 branch) and record the results in decision 0007's open items (direction, wrap, feed rule, G93).
+1. Check the profile values the programs depend on: axis height (OI-60), travel (OI-39). The A direction is already confirmed. Regenerate the Z1 programs and compare with the golden files.
+2. Run SP-12's conventions program first (`spikes/sp12/AIR-CUT.md` on the SP-12 branch) and record the results in decision 0007's open items (wrap, feed rule, G93; the direction is confirmed).
 3. Run `sphere_makera-z1.nc` with feed override at 10 %: the shortest program and the smallest envelope. Watch the first 20 lines; stop on anything unexpected.
 4. Time one simultaneous XYZA move and compare with the IR's predicted time (the program comment states the total).
 5. Run `groove_makera-z1.nc` and `cone_makera-z1.nc` the same way; watch the unwind at the end (`G92.4 A0 S0`: A must not move).
