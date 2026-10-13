@@ -274,7 +274,7 @@ These apply to every slice and are not repeated below.
 
 ## Slice 6 – Post-processing and G-code round trip
 
-**Status:** built 13 Oct 2026 except what needs LinuxCNC or the Z1; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 8, 10, 11 (gates 1 and 2), 12 and 13 are built. Item 9 and gate 3 have the configuration, driver, runner script and comparison (`tools/linuxcnc/`, `openchuck-cli gcode-sim`) but **have not been run against LinuxCNC and are not in CI** (OI-47). The review checklist is ticked where tests show it; the rest waits on you (golden file review, the air-cut plan review) or on LinuxCNC. Open items: OI-47, OI-62, OI-83, OI-84, OI-85, OI-88 to OI-93.
+**Status:** built 13 Oct 2026; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md) (proposed). Items 1 to 13 are built. Gates 1 and 2 pass on the posted projects and the reference jobs, and **gate 3 passes in LinuxCNC 2.9.10** for the small part and the three LinuxCNC reference programs (decision 0020 item 10); the CI job for it (`gate3`, with the image of `docker/linuxcnc`) is written but has not run on GitHub (OI-47). Waiting on you: the golden file review, the air-cut plan review, and OI-91 (the gate 2 tolerance). Open items: OI-47, OI-60, OI-83, OI-84, OI-85, OI-88 to OI-92.
 
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
@@ -292,7 +292,7 @@ These apply to every slice and are not repeated below.
 6. Byte-identical output through fixed number formatting (GC-07).
 7. `openchuck-gcode`: reader and replay for the codes our posts emit, comparing positions, A travel, feeds and limits with the IR. The reader is in-house (SP-5, [decision 0005](decisions/0005-sp-5-gcode-reader.md)): f64 values from the source text, errors naming line and column, a known-code list kept in step with the posts, and a fuzz target. Its fixtures come from SP-5; LinuxCNC has read them ([decision 0009](decisions/0009-linuxcnc-fixture-checks.md)), and the post-subset file takes four corrected arc lines (OI-46).
 8. Golden files on small hand-reviewed parts (NFR-08).
-9. LinuxCNC simulator replay: documented configuration and a script that compares reached positions and limit faults with the expected toolpath.
+9. LinuxCNC simulator replay: documented configuration and a script that compares reached positions and limit faults with the expected toolpath (`cargo xtask replay`, `tools/linuxcnc/`, a Docker image for CI).
 10. CLI: regenerate G-code from a project file without the UI, with a report (GC-11); this is also the end-to-end test harness.
 11. G-code verification gates 1 to 3 for the reference jobs in CI: gate 1 static checks (syntax, modal state, units, axis limits, feed on every cutting move, safe retract and tool change) as test code in openchuck-gcode; gate 2 replay within G-code rounding only (0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting); gate 3 the LinuxCNC simulator through the xtask replay runner. Any change to kinematics, a post or a strategy reruns all three.
 12. Choose the reference job set (parts, stock, tools) for gates 4 and 5 and write its Z1 programs.
@@ -303,11 +303,11 @@ These apply to every slice and are not repeated below.
 - [x] Re-running gives byte-identical G-code at any thread count (`req_gc_07_*` in `posts.rs`, `posting.rs` and `reference_jobs.rs`: repeats, four threads, and projects reopened at 1, 3 and 4 threads)
 - [ ] You have reviewed the golden files line by line (for you: `testdata/golden/post_*_small_part.ngc` first, then `golden/reference/`; I checked the small part's numbers by hand, see decision 0020 item 5)
 - [x] The `openchuck-gcode` round trip matches the IR on positions, A travel and feeds (`round_trip.rs`; the three reference jobs and the posted projects: tip within 0.00064 mm, A exact, cut time within 1 %)
-- [ ] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults (**not run**: `tools/linuxcnc/run_replay.sh testdata/golden/reference/groove_linuxcnc.ngc` on a machine with LinuxCNC; OI-47)
+- [x] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults (`cargo xtask replay testdata/golden/reference/groove_linuxcnc.ngc`: all 640 moves reached, ended at the program's end, no fault; also the small part, cone and sphere; decision 0020 item 10)
 - [x] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line (`req_gc_03_*` in `posts.rs`)
 - [ ] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (hands-on step for you; the output follows the findings table, `req_gc_09_z1_output_follows_the_sp_12_conventions`, and the plan is drafted in [reference-jobs.md](reference-jobs.md))
 - [ ] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees (gate 1 does, with more faults than named; gate 2 agrees to 0.00064 mm at the tip and 0 degrees, over 0.0005 because three axes' rounding combine: confirm the reading, OI-91)
-- [ ] The reference job set is chosen and its Z1 programs pass gates 1 to 3 (chosen, [reference-jobs.md](reference-jobs.md); gates 1 and 2 pass in `reference_jobs.rs`; gate 3 not run, OI-47)
+- [x] The reference job set is chosen and its Z1 programs pass gates 1 to 3 ([reference-jobs.md](reference-jobs.md); gates 1 and 2 pass for the Z1 and LinuxCNC programs in `reference_jobs.rs`; gate 3 passes for the LinuxCNC programs, which share the toolpath and the kinematics with the Z1 programs; the Z1 post's own text, `G92.4` and the Makera feed rule, cannot run in LinuxCNC)
 - [x] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code (`req_gc_14_*` in `posting.rs`)
 
 ## Slice 7 – Material removal simulation (headless)

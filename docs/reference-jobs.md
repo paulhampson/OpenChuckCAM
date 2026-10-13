@@ -16,14 +16,22 @@ All three use the same tool, material and strategy: a 3 mm ball end mill (2 flut
 
 ## Assumptions to settle before gates 4 and 5
 
-- **Axis height.** The Z1 profile's rotary axis Z is a placeholder (OI-60). The jobs assume the axis 60 mm below the top of Z travel (machine Z -60), so the safe Z (60 mm above the axis) is at the top of travel. **Measure it on the machine and rerun the jobs before any trial.** A wrong value moves every Z.
+- **Axis height.** The owner gave the chuck centre as 45 mm above the bed (13 Oct 2026). The Z1 profile takes the bed at the bottom of the Z travel (-100), so the axis is at machine Z -55, and the safe Z is 50 mm above the axis (5 mm below the top of the travel). That reading of "the bed" is an assumption (OI-60). **Measure the axis height on the machine and rerun the jobs before any trial.** A wrong value moves every Z.
 - **Work zero.** Programs run in G54 with Y0 Z0 on the A axis and X0 at the part's model origin (OI-40). The operator sets X0 by hand.
 - **Direction, wrap, feed rule, unwind** are the derived SP-12 conventions, unconfirmed until the air cut (OI-37).
 - **No tool changer test.** One tool, `T1 M6` at the start; the tool change is exercised in a separate attended test (OI-41).
 
 ## Gate 3
 
-`tools/linuxcnc/run_replay.sh testdata/golden/reference/*.ngc` runs each LinuxCNC program in the headless simulator and compares it with the replay (`openchuck-cli gcode-sim`). It needs LinuxCNC 2.9 or later; it has **not been run** (no LinuxCNC in the session that wrote it, OI-47). Pass criterion: every move reached, no fault, the program ends where the replay says. The simulator cannot confirm the A direction.
+`cargo xtask replay` runs each LinuxCNC program (`testdata/golden/reference/*_linuxcnc.ngc` and the small part) in LinuxCNC's headless simulator and compares what it reached with the replay (`openchuck-cli gcode-sim`). Pass criterion: every move reached in order, no fault, the program ends where the replay says. **Result, LinuxCNC 2.9.10, 13 Oct 2026:**
+
+| Program | Moves reached | Largest difference | Simulated motion | Faults |
+| --- | --- | --- | --- | --- |
+| `sphere_linuxcnc.ngc` | 366 | 0.0667 | 86.0 s | none |
+| `cone_linuxcnc.ngc` | 546 | 0.0513 | 115.8 s | none |
+| `groove_linuxcnc.ngc` | 640 | 0.0472 | 149.2 s | none |
+
+The simulator cannot confirm the A direction, or the Z1 post's `G92.4` and feed rule: the Z1 programs share the toolpath and the kinematics with these, and gate 4 checks the rest on the machine. See [tools/linuxcnc/README.md](../tools/linuxcnc/README.md) for how to run it and [docker/linuxcnc](../docker/linuxcnc/Dockerfile) for the image CI uses.
 
 ## Air-cut plan (gate 4) for the operator
 

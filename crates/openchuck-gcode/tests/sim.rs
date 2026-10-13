@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Gate 3: the simulator report against the replay (work breakdown slice 6
 //! items 9 and 11). The report is built from the replay itself, so these
-//! tests prove the comparison, not LinuxCNC; `tools/linuxcnc/run_replay.sh`
+//! tests prove the comparison, not LinuxCNC; `cargo xtask replay`
 //! produces the real one.
 #![allow(
     clippy::unwrap_used,
