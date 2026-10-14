@@ -4,7 +4,7 @@
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
 - **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered when `main` took 0023 to 0025 and OI-103 to OI-116.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-53, OI-54, OI-117 and OI-118 are closed (items 4, 10, 13, 15 and 16), OI-52 is proposed (item 13), OI-119 is open, and OI-14 is deferred to slice 11 (item 1).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-117 and OI-118 are closed (items 4, 10, 13, 15 and 16), OI-119 is open, and OI-14 is deferred to slice 11 (item 1).
 
 ## Context
 
@@ -112,7 +112,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
       - Apply (`Application::set_tool_profile`) is the only step that changes the project, and it is one undoable step; the diameter follows the profile's end.
     - **TL-03.** This completes TL-03's UI half. Drawing and editing a profile was the part left from slice 4.
 
-13. **Import dialog and model controls (item 6; IMP-03, IMP-04, IMP-05; OI-45, OI-51 closed, OI-52 proposed).**
+13. **Import dialog and model controls (item 6; IMP-03, IMP-04, IMP-05; OI-45, OI-51 and OI-52 closed).**
     - **Preview job.** `Application::start_import_preview(path, units, steps)` reads, places and checks a file that is not yet in the project. It returns the inspection and a scene of the placed model: the part with its feature edges, the triangles the checks list (flipped, degenerate, normal mismatches) as a `Problem` mesh, the open and non-manifold edges as `Problem` lines, and the rotary axis.
     - **Adding.** `Application::add_model_with` adds the model with its unit and placement as one undoable step.
     - **The dialog.** File > Import model takes a typed path (OI-117) and opens a non-modal dialog. Changing the unit or the placement re-runs the check. The dialog shows:
@@ -128,7 +128,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
       - its placement steps, which can be added (centre, orient, translate, rotate, scale, mirror) or removed (`SetModelTransform`), each undoable;
       - its check, re-run when the unit or placement changes, with the note when the file has changed.
     - **Changed files (OI-45).** `Application::model_file_warnings` names each changed or missing file, and the UI lists them in a dialog when a project opens.
-    - **OI-52 (proposed).** Keep the fixed unit-size thresholds. A model is checked at import, before any setup uses it, and the setup checks (SET-06) compare the part with the machine's travel once one does.
+    - **OI-52 (accepted by the owner, 14 Oct 2026).** Keep the fixed unit-size thresholds. A model is checked at import, before any setup uses it, and the setup checks (SET-06) compare the part with the machine's travel once one does.
 
 14. **CI smoke test (item 7; UI-01, NFR-02; OI-119).** A `ui-smoke` job in `ci.yml` runs on Linux, Windows and macOS. It runs `openchuck-viewport`'s offscreen render tests, then launches the real binary with `--bench testdata/stl/cube_ascii.stl --seconds 3`, which opens a window, draws the scripted path and exits by itself. Exit 0 (pass) or 2 (frame-time fail) both mean the window opened, drew and closed.
     - **Linux.** Installs Mesa's lavapipe and Xvfb and requires an adapter (`OPENCHUCK_REQUIRE_ADAPTER=1`), so it cannot pass by skipping.
