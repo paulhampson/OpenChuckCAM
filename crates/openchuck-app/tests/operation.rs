@@ -147,6 +147,9 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             strategy: "one_ring".into(),
             tool: Some(tool_id),
             selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
             parameters: BTreeMap::new(),
         }),
     ] {

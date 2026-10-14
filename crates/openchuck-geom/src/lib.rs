@@ -8,10 +8,11 @@
 //!   triangles, reported for the user (IMP-04).
 //! - [`transform`]: translate, rotate, scale and mirror with the winding kept
 //!   outward, and orientation to the rotary axis (IMP-05).
+//! - [`select`]: flood fill, select-by-angle and select-by-direction on
+//!   triangles (UI-04). Ray-cast picking follows in slice 10 item 1.
 //!
-//! Selection and picking arrive in slice 10. Everything here is format
-//! independent and single-threaded, so results are the same on every run
-//! (NFR-06).
+//! Everything here is format independent and single-threaded, so results are
+//! the same on every run (NFR-06).
 //!
 //! ```
 //! use openchuck_geom::check::check_mesh;
@@ -42,6 +43,7 @@
 
 pub mod check;
 pub mod edges;
+pub mod select;
 pub mod transform;
 
 use openchuck_types::geometry::Aabb;

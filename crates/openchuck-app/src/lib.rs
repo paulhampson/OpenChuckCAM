@@ -17,7 +17,8 @@
 //! Operations are mapped to the pathing library's plain data and generated
 //! in [`operation`] (decision record 0018); regeneration runs every operation
 //! in machining order through the strategies in the application's registry.
-//! The library's own strategy, helical finishing, is registered from the start;
+//! Triangle selections, named sets and limiting an operation to them are in
+//! [`selection`] (UI-04, UI-05, PRJ-06, OP-02). The library's own strategy, helical finishing, is registered from the start;
 //! a host or test can add more with [`Application::register_strategy`].
 
 #![warn(missing_docs)]
@@ -29,6 +30,7 @@ pub mod model;
 pub mod operation;
 mod pipeline;
 mod posting;
+pub mod selection;
 pub mod setup;
 pub mod simulation;
 pub mod tools;
@@ -58,6 +60,7 @@ pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use pipeline::Regeneration;
 pub use posting::{GcodeComparison, GcodeReport, PostSelection};
+pub use selection::{RegionRequest, SelectionEdit};
 pub use simulation::{OperationSimulation, SetupSimulation, SimulationReport};
 
 // The application layer maps project data to every engine crate (architecture

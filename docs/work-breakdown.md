@@ -147,7 +147,7 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | Schema | Lane | Change | Status |
 | --- | --- | --- | --- |
 | 5 | Slice 7 | Simulation settings in `project.toml` | Merged |
-| 6 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Expected, not yet claimed |
+| 6 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0027](decisions/0027-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields; the selection kind per model was already in schema 1 (decision 0010). Unmerged |
 | 7 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
 | 8 | F or S (slice 19) | Export grouping and the confirmed tool numbers' presentation, if they are stored in the project (GC-05, GC-14) | Expected only if stored; decide in design refinement |
 
@@ -155,7 +155,7 @@ The lanes not listed (A, B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8's branch already holds a record numbered 0024, which `main` also has; it renumbers when it merges. Next free: record 0027, `OI-118`.
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8's branch already holds a record numbered 0024, which `main` also has; it renumbers when it merges. Next free: record 0028, `OI-123` (decision 0027 and OI-118 to OI-122 are on the unmerged slice 10 branch).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -474,6 +474,8 @@ The lanes not listed (A, B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected
 ## Slice 10 – Geometry selection on meshes
 
 **Goal:** pick geometry on a mesh, save it as named sets, and make an operation cut only there.
+
+**Status:** in progress. Items 2 to 5 are built headless on branch `claude/slice-10-mesh-selection` (lane C; project schema 6); design in [decision 0027](decisions/0027-slice-10-mesh-selection.md), proposed (OI-118 to OI-122). Items 1 (picking, which also needs OI-12, the pick budget) and 6 (the selection panel) wait on the viewport (slice 8). Review checklist, headless: the third and fourth boxes are met by the tests named in the record; the first is met without the highlight (the same set comes back with its model hash) and the second as a query and a hash, not a cache (OI-122); the fifth (picking time) and sixth (the visible warning, OI-120) need items 1 and 6. No box is ticked yet.
 
 **Requirements:** UI-04 (mesh), UI-05, PRJ-06 (mesh), OP-02
 

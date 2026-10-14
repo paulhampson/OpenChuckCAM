@@ -137,8 +137,20 @@ pub(crate) fn placed_mesh(
     model: &ModelRef,
     context: &JobContext<'_>,
 ) -> Result<openchuck_types::mesh::TriangleMesh, AppError> {
+    placed_mesh_hashed(project_root, model, context).map(|(mesh, _)| mesh)
+}
+
+/// As [`placed_mesh`], with the hash of the file as read now, which selection
+/// sets are checked against (PRJ-06). Triangle `i` of the result is facet `i`
+/// of the file: placement keeps the order.
+pub(crate) fn placed_mesh_hashed(
+    project_root: &Path,
+    model: &ModelRef,
+    context: &JobContext<'_>,
+) -> Result<(openchuck_types::mesh::TriangleMesh, ContentHash), AppError> {
     let path = model.path.resolve(project_root);
     let bytes = read(&path)?;
+    let hash = ContentHash::of_bytes(&bytes);
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -154,7 +166,7 @@ pub(crate) fn placed_mesh(
         ModelGeometry::Brep(_) => return Err(ImportError::NotSupported("STEP").into()),
     };
     let map = placement(mesh, &model.transform)?;
-    Ok(transform_mesh(mesh, &map))
+    Ok((transform_mesh(mesh, &map), hash))
 }
 
 pub(crate) fn read(path: &Path) -> Result<Vec<u8>, AppError> {

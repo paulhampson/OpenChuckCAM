@@ -139,6 +139,9 @@ fn project(name: &str, ops: usize, threads: usize) -> (PathBuf, Application) {
             strategy: "fine_ring".into(),
             tool: Some(tool_id),
             selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
             parameters: BTreeMap::new(),
         }));
     }

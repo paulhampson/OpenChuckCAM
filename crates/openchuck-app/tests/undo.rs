@@ -247,6 +247,9 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                         .map(|s| s.id)
                         .into_iter()
                         .collect(),
+                    boundary: None,
+                    avoid: Vec::new(),
+                    check: Vec::new(),
                     parameters: BTreeMap::new(),
                 }),
                 placement: placement(index),

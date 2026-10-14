@@ -4,6 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Slice 10 (decision 0027): operations gain `boundary`, `avoid` and `check` selection set references (`Operation::selection_refs`), `Project::operations_using` and `file::selection_inputs_hash`; project folder schema 6, migrated from 5 (a number only).
 - Slice 7 (decision 0025): the project holds `SimulationSettings` (`simulation`, `set_simulation`), written to `project.toml` as `[simulation]` only when not the default; project folder schema 5, migrated from 4.
 - Slice 4 (decision 0014): tool snapshots gain the controller mapping and cutting data; project folder schema 4 (a schema 3 tool snapshot is refused with what to do); new `tools` module: the tool library folder (`ToolLibrary`, one TOML file per tool, import, export, `find`), machine tool sets in `tool-sets/` (`ToolSet`, TL-11), custom profile text files (arcs by centre or by radius and curve) and `compare_snapshot` (TL-07). `file::write_if_changed` is shared within the crate.
 - Slice 3 (decision 0011): the project keeps a copy of its machine profile in `machine.toml` (replacing the `MachineRef` placeholder, OI-43); setups gain part, stock, material, part and work offsets and clearance; project folder schema 3, migrated from 2; new `machines` module (profile files with their own schema, the built-in Makera Z1 profile, library folders).
