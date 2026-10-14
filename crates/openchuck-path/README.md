@@ -14,7 +14,7 @@ Part of [OpenChuckCAM](../../README.md). Architecture section 5.2; requirements 
 
 - helical finishing of the whole model (OP-04) with stock to leave, path fitting by bisection and the registry entry `helical_finishing`;
 - regions on the unrolled development and their offsets (`unroll`, spike SP-7): direct offsets, refusal of touching input, a result check, chording to (X, A), and tiling at the seam;
-- the `SurfaceSource` port shaped for exact faces (`ParametricFace`, spike SP-9); the exact evaluators arrive in slice 11.
+- the `SurfaceSource` port shaped for exact faces (`ParametricFace`, spike SP-9), with the exact evaluators in `brep` (`ExactFace`, `BrepSurface`; slice 11).
 
 `examples/host.rs` is a small host that brings its own strategy and uses only the public API (`cargo run -p openchuck-path --example host`).
 

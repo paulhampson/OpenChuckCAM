@@ -71,7 +71,15 @@ pub(crate) fn inspect_bytes(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let model = import_bytes(&name, bytes, &ImportOptions { units }, context)?;
+    let model = import_bytes(
+        &name,
+        bytes,
+        &ImportOptions {
+            units,
+            ..ImportOptions::default()
+        },
+        context,
+    )?;
     let mesh = match &model.geometry {
         ModelGeometry::Mesh(mesh) => mesh,
         ModelGeometry::Brep(_) => return Err(ImportError::NotSupported("STEP").into()),
@@ -146,7 +154,10 @@ pub(crate) fn placed_mesh(
     let imported = import_bytes(
         &name,
         &bytes,
-        &ImportOptions { units: model.units },
+        &ImportOptions {
+            units: model.units,
+            ..ImportOptions::default()
+        },
         context,
     )?;
     let mesh = match &imported.geometry {

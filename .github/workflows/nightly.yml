@@ -50,6 +50,29 @@ jobs:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts
 
+  # NFR-07 for STEP (decision 0003, OI-27): the OpenCASCADE reader segfaults on damaged files, so the
+  # importer runs it in a child process. This mutates the corpus and imports every mutant through the
+  # importer; the application process must never crash, hang or panic. The kernel build is cached.
+  step-mutations:
+    name: STEP mutation run through the importer
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel
+          cache-on-failure: true
+      - name: Build the kernel and the worker
+        run: cargo build --locked --release -p openchuck-import --features kernel --bins
+      - name: Mutate and import 3000 files
+        run: cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 3000
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: step-mutation-failures
+          path: target/step-mutations
+
   beta:
     name: Beta toolchain (${{ matrix.os }})
     strategy:

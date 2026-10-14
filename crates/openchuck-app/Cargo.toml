@@ -11,6 +11,11 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# Tests that compare the library's exact evaluators with OpenCASCADE itself (decision 0017, 0026).
+# They need the C++ kernel, so they are off by default.
+kernel-tests = ["openchuck-import/kernel"]
+
 [dependencies]
 openchuck-types.workspace = true
 openchuck-path.workspace = true

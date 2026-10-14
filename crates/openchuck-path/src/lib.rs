@@ -64,6 +64,7 @@
 #![warn(missing_docs)]
 
 pub mod assemble;
+pub mod brep;
 pub mod cutter;
 mod error;
 pub mod helical;
@@ -76,6 +77,7 @@ pub mod surface;
 pub mod unroll;
 
 pub use assemble::{GeneratedPath, PathNote};
+pub use brep::{BrepSurface, ExactFace};
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
 pub use helical::HelicalFinishing;

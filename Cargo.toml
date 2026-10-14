@@ -63,6 +63,10 @@ toml = "=1.1.8"
 # Post templates (decision record 0019); `openchuck-post` only. `fuel` needs `multi_template`.
 minijinja = { version = "=3.0.0", default-features = false, features = ["builtins", "macros", "multi_template", "debug", "fuel", "serde"] }
 stl_io = "=0.11.0"
+# The STEP kernel (decision record 0003): occt-sys builds OpenCASCADE 7.8.1 (build
+# dependency of openchuck-import only, feature `kernel`); cc compiles our C ABI wrapper.
+occt-sys = "=7.8.1"
+cc = "=1.7.0"
 # 2D offsets on the unrolled development (decision record 0016; i_overlay is
 # declared with its first use, slice 12).
 cavalier_contours = "=0.9.0"
