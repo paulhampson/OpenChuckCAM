@@ -35,6 +35,7 @@ mod posting;
 pub mod scene;
 pub mod setup;
 pub mod simulation;
+pub mod tool_edit;
 pub mod tools;
 
 use std::path::{Path, PathBuf};
@@ -428,6 +429,52 @@ impl Application {
             name: name.to_owned(),
             value,
         })
+    }
+
+    /// Sets one field of a project tool (UI-07), after checking the whole
+    /// tool. An invalid value is an error naming the field, and the project
+    /// is left unchanged.
+    pub fn set_tool_field(
+        &mut self,
+        tool: openchuck_project::id::ToolId,
+        name: &str,
+        value: &openchuck_project::ParameterValue,
+    ) -> Result<(), AppError> {
+        let mut snapshot = self.tool_snapshot(tool)?;
+        snapshot.tool = tool_edit::set_tool_field(&snapshot.tool, name, value)?;
+        self.execute(Command::Replace(Item::Tool(snapshot)))
+    }
+
+    /// Gives a project tool a custom profile (TL-03), after the same checks
+    /// as importing one from a file. An invalid profile is an error naming
+    /// the segment, and the project is left unchanged.
+    pub fn set_tool_profile(
+        &mut self,
+        tool: openchuck_project::id::ToolId,
+        profile: tools::ToolProfile,
+    ) -> Result<(), AppError> {
+        let mut snapshot = self.tool_snapshot(tool)?;
+        snapshot.tool = tool_edit::set_tool_profile(&snapshot.tool, profile)?;
+        self.execute(Command::Replace(Item::Tool(snapshot)))
+    }
+
+    fn tool_snapshot(
+        &self,
+        tool: openchuck_project::id::ToolId,
+    ) -> Result<openchuck_project::ToolSnapshot, AppError> {
+        self.document
+            .project
+            .tools()
+            .iter()
+            .find(|t| t.id == tool)
+            .cloned()
+            .ok_or_else(|| {
+                openchuck_project::ProjectError::NotFound {
+                    kind: openchuck_project::id::ToolId::KIND,
+                    id: tool.to_string(),
+                }
+                .into()
+            })
     }
 
     /// Whether there is a command to undo.

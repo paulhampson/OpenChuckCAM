@@ -98,11 +98,24 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
       - "Reset" clears a value the operation sets.
     - **Units.** Values are shown and entered in the units the schema states (millimetres, degrees, mm/min), which are the internal units (NFR-05). Inch display is not part of P1.
 
+12. **Tool forms and the custom-profile editor (item 5, tools; UI-07, TL-03).**
+    - **Tool form.** `openchuck_app::tool_edit::tool_form` lists a tool's dimensions as the same `Field` view model as an operation's parameters:
+      - diameter, flute length, overall length, shank diameter, flutes;
+      - then the fields its shape needs: corner radius; tip radius and taper half angle; included angle and tip diameter; or point angle.
+
+      A custom-profile tool has no diameter field, because the profile's end sets it. `Application::set_tool_field` sets one field, checks the whole tool (`Tool::validate`), and refuses an invalid value naming the field, with the project unchanged.
+    - **Profile editor.** The UI holds a draft `ToolProfile`:
+      - it starts from the tool's own outline (`starting_profile`), so converting a standard tool keeps its shape;
+      - segments can be added, deleted, turned into a line or a convex quarter-turn arc, and their end and centre points moved;
+      - `check_profile` gives the verdict live, and the file import gives the same verdict, because both end in `ToolProfile::validate` under the monotone rule (decision 0012 item 2);
+      - the preview (`profile_outline`) draws the revolved silhouette to scale on both sides of the axis, in green when valid and in red with the reason (naming the segment) when not;
+      - Apply (`Application::set_tool_profile`) is the only step that changes the project, and it is one undoable step; the diameter follows the profile's end.
+    - **TL-03.** This completes TL-03's UI half. Drawing and editing a profile was the part left from slice 4.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
 | --- | --- | --- |
-| 5 (UI-07, TL-03) | Tool parameter forms; the custom-profile editor with live preview (TL-03 closes here). Operation forms are built (item 11) | |
 | 6 | Import dialog with the check report, the tessellation statement and the unit question (OI-51, OI-52); model transform and orientation controls | |
 | 7 (NFR-02) | The CI software-rendered smoke run (OI-119). The benchmark is built (item 9); its run on the reference hardware is the owner's | |
 | — | OI-53 (default library location) and OI-54 (machine copy against the library) | Both were placed in slice 8 |
@@ -121,6 +134,13 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 - **End-to-end benchmark run in the cloud container (not reference hardware, so not a 4.2 result).** llvmpipe (CPU), 1,002,000 triangles, 2,000 feature edges, viewport 1751 by 1003 pixels, 10 s path: 107 frames, p50 93.5 ms, p95 102.1 ms, FAIL (exit code 2), as a CPU renderer should. This shows the harness works end to end. For comparison, SP-2 measured p95 256 ms on llvmpipe with its polyline layer.
 - Tree commands (item 10): `openchuck-app` `tests/operation.rs` gains `req_ui_06_duplicate_and_reorder_are_undoable` and `req_ui_06_disabled_operations_are_skipped_and_saved`. The second checks that a disabled operation is left out of regeneration, saved as `enabled = false`, reloaded, and that undo removes the line again. Tests that state the current schema were moved to 6, and the newer-schema test now uses `SCHEMA + 1`.
 - Parameter forms (item 11): `req_ui_07_form_shows_units_defaults_and_sources` and `req_ui_07_invalid_parameter_is_refused_and_leaves_the_project_unchanged` (`openchuck-app` `tests/operation.rs`; six refused values, each naming the parameter, with the project and the undo history unchanged); UI unit tests for reading typed text and keeping a refusal's reason.
+- Tool forms and the profile editor (item 12): `openchuck-app` `tests/tool_edit.rs` has four tests.
+  - `req_ui_07_tool_form_lists_the_fields_each_shape_needs`.
+  - `req_ui_07_invalid_tool_values_are_refused_and_leave_the_project_unchanged`: six refusals, each naming the field.
+  - `req_tl_03_profile_editor_checks_like_the_file_import`: an undercut is refused as "segment 3" both by the editor and by the real profile file parser; a valid V profile reads back through that parser unchanged, applies as one undoable step and sets the diameter.
+  - `req_tl_03_profile_editor_adds_moves_and_deletes_segments`.
+
+  The binary launched with a project and ran until stopped with no error.
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
 ## Alternatives considered

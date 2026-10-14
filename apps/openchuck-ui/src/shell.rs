@@ -11,13 +11,16 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::project::ItemId;
-use openchuck_app::project::id::{OperationId, SetupId};
+use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::scene::SceneView;
+use openchuck_app::tool_edit;
+use openchuck_app::tools::{self, ToolProfile};
 use openchuck_app::{AppError, Application, Command, JobHandle, Threads};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::bench;
 use crate::form_panel::{self, FormState};
+use crate::tool_panel;
 use crate::viewport::Viewport;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
@@ -66,8 +69,10 @@ pub struct Shell {
     quitting: bool,
     /// A frame-time benchmark run (`--bench`).
     bench: Option<bench::Run>,
-    /// The operation whose parameters are shown.
-    selected: Option<OperationId>,
+    /// The operation or tool shown in the properties panel.
+    selected: Option<Selection>,
+    /// A custom profile being edited, for this tool (TL-03).
+    profile_draft: Option<(ToolId, ToolProfile)>,
     /// Typed text and refused values in the parameter form.
     form: FormState,
 }
@@ -86,6 +91,7 @@ impl Shell {
             quitting: false,
             bench: None,
             selected: None,
+            profile_draft: None,
             form: FormState::default(),
         };
         if let Some(folder) = folder {
@@ -158,6 +164,7 @@ impl Shell {
         }
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
+        self.profile_draft = None;
         self.form.clear();
         self.app = Some(app);
         self.rebuild_scene(true);
@@ -373,9 +380,13 @@ impl Shell {
                 .show(ui, |ui| {
                     let count = project.operations().len();
                     for (index, o) in project.operations().iter().enumerate() {
-                        if let Some(c) =
-                            operation_row(ui, index, count, o, self.selected == Some(o.id))
-                        {
+                        if let Some(c) = operation_row(
+                            ui,
+                            index,
+                            count,
+                            o,
+                            self.selected == Some(Selection::Operation(o.id)),
+                        ) {
                             command = Some(c);
                         }
                     }
@@ -384,7 +395,10 @@ impl Shell {
                 .default_open(false)
                 .show(ui, |ui| {
                     for t in project.tools() {
-                        ui.label(&t.name);
+                        let selected = self.selected == Some(Selection::Tool(t.id));
+                        if ui.selectable_label(selected, &t.name).clicked() {
+                            command = Some(TreeAction::SelectTool(t.id));
+                        }
                     }
                 });
         });
@@ -404,10 +418,11 @@ impl Shell {
         let Some(app) = &mut self.app else { return };
         let command = match action {
             TreeAction::Select(id) => {
-                if self.selected != Some(id) {
-                    self.selected = Some(id);
-                    self.form.clear();
-                }
+                self.select(Selection::Operation(id));
+                return;
+            }
+            TreeAction::SelectTool(id) => {
+                self.select(Selection::Tool(id));
                 return;
             }
             TreeAction::Command(c) => Ok(*c),
@@ -418,11 +433,87 @@ impl Shell {
         }
     }
 
-    /// The chosen operation's parameter form (UI-07).
+    fn select(&mut self, selection: Selection) {
+        if self.selected != Some(selection) {
+            self.selected = Some(selection);
+            self.form.clear();
+        }
+    }
+
+    /// The chosen operation's parameters or tool's dimensions (UI-07).
     fn properties(&mut self, ui: &mut egui::Ui) {
-        let (Some(app), Some(id)) = (&mut self.app, self.selected) else {
+        match self.selected {
+            Some(Selection::Operation(id)) => self.operation_properties(ui, id),
+            Some(Selection::Tool(id)) => self.tool_properties(ui, id),
+            None => {}
+        }
+    }
+
+    /// A tool's dimensions and its profile editor (UI-07, TL-03).
+    fn tool_properties(&mut self, ui: &mut egui::Ui, id: ToolId) {
+        let Some(app) = &mut self.app else { return };
+        let Some(snapshot) = app.project().tools().iter().find(|t| t.id == id).cloned() else {
+            self.selected = None;
             return;
         };
+        ui.heading(&snapshot.name);
+        ui.weak(tools::describe(&snapshot.tool));
+        ui.separator();
+        let fields = tool_edit::tool_form(&snapshot.tool);
+        let edit = egui::ScrollArea::vertical()
+            .show(ui, |ui| {
+                let edit =
+                    form_panel::show_fields(ui, "tool form", &fields, &[], false, &mut self.form);
+                ui.separator();
+                ui.strong("Profile");
+                let mut action = tool_panel::ProfileAction::None;
+                match &mut self.profile_draft {
+                    Some((tool, draft)) if *tool == id => {
+                        action = tool_panel::editor(ui, &snapshot.tool, draft);
+                    }
+                    _ => {
+                        let label =
+                            if matches!(snapshot.tool.shape, tools::ToolShape::Custom { .. }) {
+                                "Edit the custom profile…"
+                            } else {
+                                "Make a custom profile from this shape…"
+                            };
+                        if ui.button(label).clicked()
+                            && let Some(p) = tool_edit::starting_profile(&snapshot.tool)
+                        {
+                            self.profile_draft = Some((id, p));
+                        }
+                    }
+                }
+                (edit, action)
+            })
+            .inner;
+        let (edit, action) = edit;
+        if let Some(edit) = edit
+            && let Some(value) = edit.value
+        {
+            let result = app
+                .set_tool_field(id, &edit.name, &value)
+                .map_err(|e| e.to_string());
+            self.form.result(&edit.name, result);
+        }
+        match action {
+            tool_panel::ProfileAction::Apply => {
+                if let Some((_, draft)) = self.profile_draft.take()
+                    && let Err(e) = app.set_tool_profile(id, draft.clone())
+                {
+                    self.profile_draft = Some((id, draft));
+                    self.dialog = Some(Dialog::Error(e.to_string()));
+                }
+            }
+            tool_panel::ProfileAction::Cancel => self.profile_draft = None,
+            tool_panel::ProfileAction::None => {}
+        }
+    }
+
+    /// An operation's parameter form (UI-07).
+    fn operation_properties(&mut self, ui: &mut egui::Ui, id: OperationId) {
+        let Some(app) = &mut self.app else { return };
         let Some(operation) = app.project().operation(id) else {
             self.selected = None;
             return;
@@ -596,6 +687,15 @@ enum TreeAction {
     Duplicate(OperationId),
     /// Show this operation's parameters.
     Select(OperationId),
+    /// Show this tool's dimensions and profile.
+    SelectTool(ToolId),
+}
+
+/// What the properties panel shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Selection {
+    Operation(OperationId),
+    Tool(ToolId),
 }
 
 /// One operation in the tree: enable box, name, and move up, move down and

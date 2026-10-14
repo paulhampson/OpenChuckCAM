@@ -118,15 +118,30 @@ fn source_text(source: Source) -> &'static str {
     }
 }
 
-/// Draws the form. Returns the edit the user committed this frame, if any.
+/// Draws an operation's form. Returns the edit the user committed this
+/// frame, if any.
 pub fn show(ui: &mut egui::Ui, form: &ParameterForm, state: &mut FormState) -> Option<Edit> {
+    show_fields(ui, "parameter form", &form.fields, &form.notes, true, state)
+}
+
+/// Draws a list of fields (an operation's parameters or a tool's
+/// dimensions) with `notes` under them. With `reset`, a value that is set
+/// can be cleared so the default applies.
+pub fn show_fields(
+    ui: &mut egui::Ui,
+    id: &str,
+    fields: &[Field],
+    notes: &[String],
+    reset: bool,
+    state: &mut FormState,
+) -> Option<Edit> {
     let mut edit = None;
-    egui::Grid::new("parameter form")
+    egui::Grid::new(id)
         .num_columns(3)
         .striped(true)
         .show(ui, |ui| {
-            for field in &form.fields {
-                if let Some(e) = row(ui, field, state) {
+            for field in fields {
+                if let Some(e) = row(ui, field, reset, state) {
                     edit = Some(e);
                 }
                 ui.end_row();
@@ -137,13 +152,13 @@ pub fn show(ui: &mut egui::Ui, form: &ParameterForm, state: &mut FormState) -> O
                 }
             }
         });
-    for note in &form.notes {
+    for note in notes {
         ui.small(note);
     }
     edit
 }
 
-fn row(ui: &mut egui::Ui, field: &Field, state: &mut FormState) -> Option<Edit> {
+fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> Option<Edit> {
     let mut edit = None;
     let mut tip = field.description.clone();
     if let Some(r) = range(&field.kind) {
@@ -194,7 +209,8 @@ fn row(ui: &mut egui::Ui, field: &Field, state: &mut FormState) -> Option<Edit> 
         } else if !note.is_empty() {
             ui.weak(note);
         }
-        if field.set.is_some()
+        if reset
+            && field.set.is_some()
             && ui
                 .small_button("Reset")
                 .on_hover_text("Clear the value: the default or the tool's cutting data applies")

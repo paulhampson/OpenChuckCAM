@@ -19,6 +19,7 @@ use std::sync::{Arc, OnceLock};
 mod bench;
 mod form_panel;
 mod shell;
+mod tool_panel;
 mod viewport;
 
 fn main() -> ExitCode {
