@@ -110,7 +110,7 @@ Built as if it already belonged to another project (INT-01): small public API, p
 - *Continuous family*: simultaneous 4-axis finishing and swarf (OP-05, OP-07) with tool-axis control (OP-06). Sweep A in small steps, query the surface along X, then offset for the cutter, link passes and check gouging.
 - *Support*: rest and pencil clean-up (OP-09), radial drilling at indexed A (OP-10), adaptive roughing (OP-17, P2).
 
-**Shared services used by every strategy.** Gouge protection against the model and holder (OP-12), linking and retracts through the clearance geometry (OP-14), A-axis management: range limits, reversal minimising, wrap-around and unwinding (OP-15), common parameters (OP-11).
+**Shared services used by every strategy.** Gouge protection against the model and holder (OP-12), linking and retracts through the clearance geometry (OP-14), entry and exit moves (plunge, lead, ramp, helix; OP-11, [decision 0026](decisions/0026-entry-moves.md)), A-axis management: range limits, reversal minimising, wrap-around and unwinding (OP-15), common parameters (OP-11).
 
 **Library rules.** Pure functions over immutable inputs; no globals, filesystem or logging side effects beyond a diagnostics sink; semver-stable API with a changelog (INT-07); documented with a small example host (INT-08); optional Python and C adapter crates later (INT-05, INT-06).
 
