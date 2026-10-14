@@ -22,6 +22,7 @@
 //! project.insert(Item::Setup(new_setup), Placement::End)?;
 //! project.insert(
 //!     Item::Operation(Operation {
+//!         enabled: true,
 //!         id: OperationId::new(),
 //!         order: OrderKey::default(),
 //!         name: "Rough".into(),

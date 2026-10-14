@@ -140,6 +140,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
         Item::Setup(setup),
         Item::Tool(snapshot),
         Item::Operation(Operation {
+            enabled: true,
             id: op,
             order: OrderKey::default(),
             name: "Ring".into(),
@@ -435,5 +436,179 @@ fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_st
     app.save().unwrap();
     let again = Application::open(&dir, Threads::Exactly(3)).unwrap();
     assert_eq!(again.regenerate().unwrap().toolpath, first.toolpath);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_06_duplicate_and_reorder_are_undoable() {
+    let (dir, mut app, op) = project("tree");
+    let command = openchuck_app::duplicate_operation(app.project(), op).unwrap();
+    app.execute(command).unwrap();
+    let names: Vec<_> = app
+        .project()
+        .operations()
+        .iter()
+        .map(|o| o.name.clone())
+        .collect();
+    assert_eq!(names, ["Ring", "Ring (copy)"]);
+    let (original, copy) = (
+        &app.project().operations()[0],
+        &app.project().operations()[1],
+    );
+    assert_ne!(copy.id, original.id);
+    assert_eq!(
+        (&copy.strategy, copy.tool, copy.setup, &copy.parameters),
+        (
+            &original.strategy,
+            original.tool,
+            original.setup,
+            &original.parameters
+        )
+    );
+    let copy_id = copy.id;
+
+    // Reorder: the copy moves first.
+    app.execute(Command::Move {
+        id: openchuck_app::project::ItemId::Operation(copy_id),
+        index: 0,
+    })
+    .unwrap();
+    assert_eq!(app.project().operations()[0].id, copy_id);
+    // Undo the move, then the duplicate.
+    app.undo().unwrap();
+    assert_eq!(app.project().operations()[1].id, copy_id);
+    app.undo().unwrap();
+    assert_eq!(app.project().operations().len(), 1);
+    assert!(openchuck_app::duplicate_operation(app.project(), OperationId::new()).is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_06_disabled_operations_are_skipped_and_saved() {
+    let (dir, mut app, op) = project("enable");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    app.execute(openchuck_app::duplicate_operation(app.project(), op).unwrap())
+        .unwrap();
+    assert_eq!(app.regenerate().unwrap().toolpath.groups.len(), 2);
+
+    // Disabled: left out of regeneration (and so of simulation and posting).
+    app.execute(Command::SetOperationEnabled {
+        operation: op,
+        enabled: false,
+    })
+    .unwrap();
+    let regeneration = app.regenerate().unwrap();
+    assert_eq!(regeneration.toolpath.groups.len(), 1);
+    assert_ne!(
+        regeneration.toolpath.groups[0].tags.operation,
+        op.to_string()
+    );
+
+    // Saved as one line, written only while disabled.
+    app.save().unwrap();
+    let file = dir.join(format!("operations/{op}.toml"));
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("enabled = false"), "{text}");
+    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert!(!reopened.project().operation(op).unwrap().enabled);
+
+    // Undo enables it again, and the line goes.
+    app.undo().unwrap();
+    assert!(app.project().operation(op).unwrap().enabled);
+    app.save().unwrap();
+    assert!(!std::fs::read_to_string(&file).unwrap().contains("enabled"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_07_form_shows_units_defaults_and_sources() {
+    use openchuck_app::form::{FieldKind, Source};
+    use openchuck_app::project::ParameterValue;
+    let (dir, mut app, op) = project("form");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let form = app.parameter_form(op).unwrap();
+    assert_eq!(form.strategy, "one_ring");
+    let field = |name: &str| form.fields.iter().find(|f| f.name == name).unwrap().clone();
+
+    // Tolerance: millimetres, above zero, the strategy's default.
+    let tolerance = field(names::TOLERANCE);
+    assert!(matches!(
+        tolerance.kind,
+        FieldKind::Number {
+            unit: "mm",
+            min: Some(0.0),
+            min_exclusive: true,
+            ..
+        }
+    ));
+    assert_eq!(tolerance.source, Source::Default);
+    assert_eq!(tolerance.set, None);
+    // Feed: from the tool's cutting data for oak, in mm/min.
+    let feed = field(names::FEED);
+    assert_eq!(feed.source, Source::CuttingData);
+    assert!(matches!(
+        feed.kind,
+        FieldKind::Number { unit: "mm/min", .. }
+    ));
+    assert!(matches!(feed.value, Some(ParameterValue::Number(v)) if v > 0.0));
+    // Retract: a choice with its default.
+    let retract = field(names::RETRACT);
+    assert!(matches!(&retract.kind, FieldKind::Choice { options } if options.len() == 2));
+    assert_eq!(
+        retract.value,
+        Some(ParameterValue::Text("clearance".into()))
+    );
+
+    // A value the operation sets shows as its own.
+    app.set_parameter(op, names::STEPOVER, Some(ParameterValue::Number(0.5)))
+        .unwrap();
+    let form = app.parameter_form(op).unwrap();
+    let stepover = form
+        .fields
+        .iter()
+        .find(|f| f.name == names::STEPOVER)
+        .unwrap();
+    assert_eq!(stepover.source, Source::Operation);
+    assert_eq!(stepover.set, Some(ParameterValue::Number(0.5)));
+    assert!(
+        form.notes.iter().any(|n| n.contains("overrides")),
+        "{:?}",
+        form.notes
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_07_invalid_parameter_is_refused_and_leaves_the_project_unchanged() {
+    use openchuck_app::project::ParameterValue;
+    let (dir, mut app, op) = project("invalid");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let before = app.project().clone();
+    let undo_before = app.can_undo();
+    for (name, value) in [
+        (names::TOLERANCE, ParameterValue::Number(0.0)), // must be above zero
+        (names::TOLERANCE, ParameterValue::Number(f64::NAN)),
+        (names::STOCK_TO_LEAVE, ParameterValue::Number(-1.0)),
+        (names::RETRACT, ParameterValue::Text("sideways".into())),
+        (names::FEED, ParameterValue::Flag(true)),
+        ("no_such_parameter", ParameterValue::Number(1.0)),
+    ] {
+        let e = app
+            .set_parameter(op, name, Some(value))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(name), "{name}: {e}");
+        assert_eq!(app.project(), &before, "{name}");
+        assert_eq!(app.can_undo(), undo_before);
+    }
+    // A valid value is applied as one undoable step; clearing it is allowed.
+    app.set_parameter(op, names::TOLERANCE, Some(ParameterValue::Number(0.02)))
+        .unwrap();
+    assert_ne!(app.project(), &before);
+    app.set_parameter(op, names::TOLERANCE, None).unwrap();
+    app.undo().unwrap();
+    app.undo().unwrap();
+    assert_eq!(app.project(), &before);
+    assert!(app.parameter_form(OperationId::new()).is_err());
     std::fs::remove_dir_all(&dir).unwrap();
 }

@@ -178,3 +178,116 @@ fn req_set_01_a_direction_on_an_asymmetric_part_matches_the_oracle() {
     }
     assert!(a_direction(&z1).ends_with("faces -Y at A 90"));
 }
+
+#[test]
+fn req_set_01_machine_copy_is_compared_with_its_source() {
+    use openchuck_app::setup::{
+        MachineSource, ProfileEntry, available_machines, builtin_entry, compare_machine,
+        new_machine_id, save_profile_entry,
+    };
+    let (dir, mut app, _) = project("compare");
+    let library = dir.join("machine-library");
+    std::fs::create_dir_all(&library).unwrap();
+    let compare = |app: &Application, available: &[openchuck_app::setup::AvailableMachine]| {
+        compare_machine(
+            app.project().machine(),
+            app.project().machine_id(),
+            available,
+        )
+    };
+
+    // No machine; then the example profile, which records no source.
+    let available = available_machines(Some(&library));
+    assert!(available.iter().any(|a| a.source == "built-in makera-z1"));
+    assert_eq!(compare(&app, &available), MachineSource::NoMachine);
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    assert_eq!(compare(&app, &available), MachineSource::Unrecorded);
+
+    // The built-in Z1 with its ID: the copy matches its source.
+    let z1 = builtin_entry(MAKERA_Z1).unwrap().unwrap();
+    app.execute(Command::SetMachineFrom {
+        machine: Some(Box::new(z1.profile.clone())),
+        id: z1.id.clone(),
+    })
+    .unwrap();
+    assert_eq!(app.project().machine_id(), z1.id.as_deref());
+    assert_eq!(
+        compare(&app, &available),
+        MachineSource::Same {
+            source: "built-in makera-z1".into()
+        }
+    );
+
+    // A library profile derived from it, keeping its ID, with a faster feed:
+    // the library one is the source, and the feed is named as different.
+    let mut tuned = z1.clone();
+    tuned.profile.max_feeds.linear.0 = 1500.0;
+    save_profile_entry(&tuned, &library.join("z1-tuned.toml")).unwrap();
+    let available = available_machines(Some(&library));
+    let MachineSource::Differs {
+        source,
+        id,
+        profile,
+        fields,
+    } = compare(&app, &available)
+    else {
+        panic!("expected a difference");
+    };
+    assert!(source.ends_with("z1-tuned.toml"), "{source}");
+    assert_eq!(fields, ["max_feeds"]);
+
+    // Updating the copy is one undoable step, and keeps the ID.
+    app.execute(Command::SetMachineFrom {
+        machine: Some(profile),
+        id: Some(id),
+    })
+    .unwrap();
+    assert!(matches!(
+        compare(&app, &available),
+        MachineSource::Same { .. }
+    ));
+    app.undo().unwrap();
+    assert!(matches!(
+        compare(&app, &available),
+        MachineSource::Differs { .. }
+    ));
+    assert_eq!(app.project().machine_id(), z1.id.as_deref());
+
+    // Saved and reopened, the copy keeps its ID.
+    app.save().unwrap();
+    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert_eq!(reopened.project().machine_id(), z1.id.as_deref());
+
+    // A plain SetMachine records no source; undo restores the ID.
+    app.execute(Command::SetMachine(Some(Box::new(z1.profile.clone()))))
+        .unwrap();
+    assert_eq!(app.project().machine_id(), None);
+    app.undo().unwrap();
+    assert_eq!(app.project().machine_id(), z1.id.as_deref());
+
+    // A copy whose source is gone, and a bad ID refused.
+    let orphan = ProfileEntry {
+        id: Some(new_machine_id()),
+        profile: z1.profile.clone(),
+    };
+    app.execute(Command::SetMachineFrom {
+        machine: Some(Box::new(orphan.profile)),
+        id: orphan.id,
+    })
+    .unwrap();
+    assert!(matches!(
+        compare(&app, &available),
+        MachineSource::NotFound { .. }
+    ));
+    assert!(
+        app.execute(Command::SetMachineFrom {
+            machine: Some(Box::new(z1.profile)),
+            id: Some(" padded ".into()),
+        })
+        .is_err()
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

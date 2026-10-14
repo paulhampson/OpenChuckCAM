@@ -59,9 +59,12 @@ pub struct Regeneration {
     pub simulation: Option<crate::simulation::SimulationReport>,
 }
 
-/// Regenerates every operation of `project` (in the folder `location`) in
-/// machining order. The first operation that cannot be generated stops the
-/// run with its error: nothing is left out silently (verification policy 8).
+/// Regenerates every enabled operation of `project` (in the folder
+/// `location`) in machining order. The first operation that cannot be
+/// generated stops the run with its error: nothing is left out silently
+/// (verification policy 8). A disabled operation is skipped as if it were
+/// absent: no toolpath, no stock removal, no G-code (UI-06; decision record
+/// 0029 item 10).
 pub(crate) fn regenerate(
     location: &Path,
     project: &Project,
@@ -71,12 +74,13 @@ pub(crate) fn regenerate(
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
-    let total = project.operations().len() as u64;
+    let operations: Vec<&openchuck_project::Operation> =
+        project.operations().iter().filter(|o| o.enabled).collect();
+    let total = operations.len() as u64;
     context.report("regenerate", 0, Some(total));
     let settings = project.simulation();
     let mut regeneration = Regeneration::default();
     let mut setups: Vec<SetupState> = Vec::new();
-    let operations = project.operations();
     for (i, operation) in operations.iter().enumerate() {
         let carried = setups
             .iter()

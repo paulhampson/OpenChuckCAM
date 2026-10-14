@@ -294,6 +294,7 @@ mod tests {
         }
         p.insert(
             Item::Operation(Operation {
+                enabled: true,
                 id: OperationId::from_u128(5),
                 order: OrderKey::default(),
                 name: "op".into(),
@@ -394,11 +395,11 @@ pub struct ToolNumberRow {
 }
 
 /// The tools the program will use, in order of first use by the operations in
-/// machining order, with their current numbers (GC-14). A tool no operation
-/// uses is not listed: it does not appear in the program.
+/// machining order, with their current numbers (GC-14). A tool no enabled
+/// operation uses is not listed: it does not appear in the program.
 pub fn tool_number_plan(project: &Project) -> Vec<ToolNumberRow> {
     let mut rows: Vec<ToolNumberRow> = Vec::new();
-    for operation in project.operations() {
+    for operation in project.operations().iter().filter(|o| o.enabled) {
         let Some(id) = operation.tool else { continue };
         if rows.iter().any(|r| r.tool == id) {
             continue;
