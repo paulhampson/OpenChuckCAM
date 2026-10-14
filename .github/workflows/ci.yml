@@ -341,10 +341,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
-      # Run the tests once, then render each report format from that run.
+          tool: cargo-llvm-cov,cargo-nextest
+      # Run the tests once, then render each report format from that run. nextest
+      # schedules tests from every binary in parallel, one process each; plain
+      # `cargo test` ran the binaries one after another, and the two heavy path
+      # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
+      # Doctests are not part of this run (llvm-cov nextest does not run them).
       - name: Run tests with coverage instrumentation
-        run: cargo llvm-cov --workspace --locked --no-report
+        run: cargo llvm-cov nextest --workspace --locked --no-report
       - name: HTML report (browsable, per file and per line)
         run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
       - name: lcov data (trend tracking)
