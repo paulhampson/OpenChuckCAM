@@ -101,6 +101,9 @@ float_cmp = "warn"
 # that path in test and debug builds (decision record 0018).
 [profile.dev.package.openchuck-path]
 opt-level = 3
+# The simulation sweeps millions of column-tool spans (decision record 0023).
+[profile.dev.package.openchuck-sim]
+opt-level = 3
 [profile.dev.package.openchuck-testkit]
 opt-level = 3
 [profile.dev.package.parry3d-f64]
