@@ -112,11 +112,15 @@ fn main() -> ExitCode {
             Ok(Ok(_)) => "read",
             Ok(Err(ImportError::Invalid { .. })) => "clean error",
             Ok(Err(ImportError::Worker(reason))) => {
-                if reason.contains("did not finish") {
-                    save(&out_dir, name, i, &mutant);
+                save(&out_dir, name, i, &mutant);
+                if reason.contains("inconsistent model") {
+                    // The kernel wrapper emitted a damaged model that validation caught: a bug of ours.
+                    eprintln!("INVALID MODEL from mutant {i} of {name}: {reason}");
+                    failed = true;
+                    "inconsistent model"
+                } else if reason.contains("did not finish") {
                     "worker timed out"
                 } else {
-                    save(&out_dir, name, i, &mutant);
                     "worker crashed"
                 }
             }

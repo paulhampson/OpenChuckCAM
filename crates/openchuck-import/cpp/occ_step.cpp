@@ -195,7 +195,10 @@ void bspline_patch(Json& j, const TopoDS_Face& f, double uv[4], double shift[2],
   double u1, u2, v1, v2;
   bs->Bounds(u1, u2, v1, v2);
   const bool up = bs->IsUPeriodic(), vp = bs->IsVPeriodic();
-  if (up || vp) {
+  // A converted patch keeps no parameters from the original surface, so cutting it open at the face's
+  // original range would be wrong; its trims are mapped by projection instead (remap_to_patch) and it is
+  // only unwrapped below. Only a native B-spline is cut open at the face's range, which can shift parameters.
+  if ((up || vp) && !*converted) {
     // Segment cuts a periodic direction open at [su1, su2]; the other direction keeps its full range.
     double su1 = up ? uv[0] : u1, su2 = up ? uv[1] : u2;
     double sv1 = vp ? uv[2] : v1, sv2 = vp ? uv[3] : v2;
