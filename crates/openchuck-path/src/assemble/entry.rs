@@ -294,7 +294,7 @@ impl Entry {
             return Err(PathError::Strategy(format!(
                 "pass {}: the ramp starts {run:.3} mm back from the first cut point, where the \
                  stock is {:.3} mm higher than the {top:.3} mm the rapid stops at; use a \
-                 shallower angle, another entry style or a larger approach distance",
+                 steeper angle, another entry style or a larger approach distance",
                 pass + 1,
                 travel - hit
             )));
@@ -399,7 +399,14 @@ impl Entry {
         let axis = b.rotary.tool_axis(a);
         let stride = positions.len().div_ceil(MAX_CHECKS).max(1);
         let mut worst: Option<(f64, usize)> = None;
-        for (i, pos) in positions.iter().enumerate().step_by(stride) {
+        // Every stride-th position, and always the last: it is the deepest of a
+        // helix and the one beside the first cut point of a lead.
+        let last = positions.len().saturating_sub(1);
+        for (i, pos) in positions
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| i % stride == 0 || *i == last)
+        {
             let line = ToolLine {
                 origin: b.rotary.to_model(*pos, a),
                 axis,
