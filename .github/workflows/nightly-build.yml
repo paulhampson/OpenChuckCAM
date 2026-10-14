@@ -3,9 +3,10 @@
 # Nightly development builds (decision record 0023). Each night, if `main` has
 # moved since the last successful nightly build, build `openchuck-cli` and
 # `openchuck-ui` in release mode for Linux, Windows and macOS and upload one
-# archive per platform as a workflow artifact. These are development builds,
-# not releases: the release route (tags, packaging, installers) is decided in
-# work breakdown slice 20 (architecture section 12).
+# archive per platform as a workflow artifact. A build of `main` also replaces
+# the rolling `nightly` pre-release with those archives. These are development
+# builds, not releases: the release route (tags, packaging, installers) is
+# decided in work breakdown slice 20 (architecture section 12).
 #
 # A manual run always builds, from whichever branch it is started on.
 name: Nightly build
@@ -118,7 +119,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build the binaries (release)
         run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-cli -p openchuck-ui
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: nightly-notices
       # The posts and the built-in machine profile are compiled into the
@@ -190,3 +191,53 @@ jobs:
           archive: false
           retention-days: 30
           if-no-files-found: error
+
+  # The rolling `nightly` pre-release: deleted and created again on each
+  # build, so it always holds one complete set of archives from one commit.
+  # Only `main` publishes it, and only when every platform built.
+  publish:
+    name: Publish the nightly pre-release
+    needs: [changes, build]
+    if: needs.changes.outputs.build == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      # The archives were uploaded unzipped; skip-decompress keeps the Windows
+      # .zip as it is.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: openchuckcam-nightly-*
+          merge-multiple: true
+          skip-decompress: true
+          path: dist
+      - name: Replace the nightly pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          DATE: ${{ needs.changes.outputs.date }}
+          SHORT: ${{ needs.changes.outputs.short }}
+        run: |
+          ls -l dist
+          count=$(find dist -maxdepth 1 -type f -name 'openchuckcam-nightly-*' | wc -l)
+          [ "$count" -eq 3 ] || { echo "expected 3 archives, found $count"; exit 1; }
+          notice=$(perl -0777 -ne 'if (/VERIFY_GCODE_NOTICE: &str = "(.*?)";/s) { $s = $1; $s =~ s/\\\n\s*//g; print $s }' crates/openchuck-types/src/notice.rs)
+          [ -n "$notice" ] || { echo "could not read the G-code notice"; exit 1; }
+          {
+            echo "Automatic development build of \`main\` at $SHA, built $DATE."
+            echo
+            echo "**This is not a release.** It passed no release gate and may be incomplete or broken. It is replaced by the next nightly build."
+            echo
+            echo "**$notice**"
+            echo
+            echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the licence, the third-party notices and a README. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
+          } > notes.md
+          if gh release view nightly -R "$REPO" > /dev/null 2>&1; then
+            gh release delete nightly -R "$REPO" --cleanup-tag --yes
+          fi
+          gh release create nightly dist/openchuckcam-nightly-* -R "$REPO" \
+            --target "$SHA" --prerelease --latest=false \
+            --title "Nightly build $DATE ($SHORT)" --notes-file notes.md
+          echo "Published the nightly pre-release for $SHA." >> "$GITHUB_STEP_SUMMARY"
