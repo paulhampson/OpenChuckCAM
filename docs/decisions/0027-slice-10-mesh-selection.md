@@ -1,8 +1,8 @@
 # 0027: Slice 10 design refinement: mesh selection and region constraints (headless items 2 to 5)
 
-- **Status:** proposed. Guidance, not authority, until the project owner accepts it. It relies on accepted records [0008](0008-slice-1-project-model.md) (selection sets, schema), [0010](0010-slice-2-stl-import.md) (triangle numbering; the model kind) and [0018](0018-slice-5-pathing-core.md) (the strategy interface; helical finishing). Built on branch `claude/slice-10-mesh-selection` (lane C of the work breakdown's parallel work).
+- **Status:** accepted by the project owner (14 Oct 2026), items 1 to 8 as written, including the proposed meanings of avoid surface, check surface and containment boundary. OI-118 is closed. It relies on accepted records [0008](0008-slice-1-project-model.md) (selection sets, schema), [0010](0010-slice-2-stl-import.md) (triangle numbering; the model kind) and [0018](0018-slice-5-pathing-core.md) (the strategy interface; helical finishing). Built on branch `claude/slice-10-mesh-selection` (lane C of the work breakdown's parallel work).
 - **Date:** 14 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-118 to OI-122 are new; OI-12 (pick budget) is still open and belongs to item 1, which this record does not cover.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-118 is closed with this record, OI-119 to OI-122 are new and open or deferred; OI-12 (pick budget) is still open and belongs to item 1, which this record does not cover.
 
 Numbering: `main` holds records to 0026 (entry moves) and OI-117, so this record takes 0027 and OI-118 to OI-122 (it was first numbered 0026 and OI-117 to OI-121 and renumbered when `main` was merged).
 
@@ -12,7 +12,7 @@ Work breakdown slice 10, items 2 to 5 (UI-04 on meshes, UI-05, PRJ-06 on meshes,
 
 Most of items 3 and 4 existed from slice 1: selection sets are project items with stable IDs and order keys, one file each, with a model hash and a `Triangles` target (decision 0008). What was missing was any way to make a set, any use of one, and any check of it.
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **Selection algorithms (item 2; UI-04).** `openchuck_geom::select`: `flood_fill` (every triangle connected through shared edges), `flood_fill_by_angle` (a step across an edge is taken when the two normals differ by at most an angle, which gives a smooth patch such as one face of a block), and `select_by_direction` (every triangle whose normal is within an angle of a direction; a cone test, not connected). Each returns a sorted `TriangleSet` and a bad seed, angle or direction is an error. Degenerate triangles have no normal and are never crossed or picked by angle. `submesh` builds the part of a mesh a set names. "Select by angle" is read as both of the first two; the requirement does not say which.
 2. **Sets and their edits (item 3; UI-05).** Sets are made and changed through `Application::save_selection` and `edit_selection` (add, remove, replace, rename), each one undoable command through the existing `Add` and `Replace`. A set keeps the model hash it was made against; editing does not make it current. `edit_selection` returns the operations that use the set. `Project::operations_using` and `file::selection_inputs_hash` give the same answer to a front end or a cache: the hash covers the roles, and for each set its model, model hash and triangles, so it changes for exactly the operations that use an edited set, not for a rename. The pipeline has no cache yet (it regenerates everything), so "marks for regeneration" is this query and this hash, which slice 9's cache key combines with the operation's other inputs (architecture section 6).
@@ -45,7 +45,7 @@ None to the requirements or the architecture. The work breakdown status line for
 
 ## Open items
 
-- **OI-118:** the meaning of select by angle is read as flood fill by angle and select by direction; confirm, or name another.
+- **OI-118 (closed):** select by angle is read as flood fill by angle and select by direction; the owner accepted that reading.
 - **OI-119:** the containment boundary is a bounding window (X interval and angular arc) in this slice; a boundary drawn as a curve on the unrolled surface, and an offset boundary, wait for slice 12.
 - **OI-120:** a region constraint is only seen where the tool is dropped: features of a selection narrower than 0.1 mm of path may be missed. Decide whether 0.1 mm is right once slice 12 builds region offsets, which do not sample.
 - **OI-121:** the warning for a reference that cannot be resolved is an error from generation; slice 10 item 6 and the UI show it beside the set and the operation, and may offer to re-select.
