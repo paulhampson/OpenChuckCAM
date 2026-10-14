@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use openchuck_types::units::{FeedRate, Millimetres, Tolerance};
+use openchuck_types::units::{Degrees, FeedRate, Millimetres, Tolerance};
 
 use crate::error::{PathError, Result};
 
@@ -296,6 +296,14 @@ pub mod names {
     pub const RETRACT: &str = "retract";
     /// How far above the stock a rapid approach stops.
     pub const APPROACH_DISTANCE: &str = "approach_distance";
+    /// The entry style (decision record 0026).
+    pub const ENTRY: &str = "entry";
+    /// The descent angle of a ramp or helix entry.
+    pub const RAMP_ANGLE: &str = "ramp_angle";
+    /// The helix entry's circle, as a fraction of the tool diameter.
+    pub const HELIX_DIAMETER: &str = "helix_diameter";
+    /// The radius of a lead-in or lead-out arc; zero means the tool radius.
+    pub const LEAD_RADIUS: &str = "lead_radius";
 }
 
 fn number(
@@ -392,7 +400,112 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
             false,
             Some(1.0),
         ),
+        ParameterSpec {
+            name: ENTRY.to_owned(),
+            label: "Entry".to_owned(),
+            description: "How the tool enters the cut: a straight plunge, a tangent arc (lead), \
+                          a straight ramp, or a descending helix (decision record 0026)."
+                .to_owned(),
+            kind: ParameterKind::Choice {
+                options: EntryStyle::ALL
+                    .iter()
+                    .map(|s| s.name().to_owned())
+                    .collect(),
+                default: EntryStyle::Plunge.name().to_owned(),
+            },
+        },
+        ParameterSpec {
+            name: RAMP_ANGLE.to_owned(),
+            label: "Ramp angle".to_owned(),
+            description: "Angle of descent to the horizontal for ramp and helix entry.".to_owned(),
+            kind: ParameterKind::Number {
+                unit: Unit::Degrees,
+                min: Some(0.0),
+                min_exclusive: true,
+                max: Some(89.0),
+                default: Some(DEFAULT_RAMP_ANGLE),
+            },
+        },
+        number(
+            HELIX_DIAMETER,
+            "Helix diameter",
+            "Diameter of the circle the tool centre follows in helix entry, as a fraction of the \
+             tool diameter.",
+            Unit::None,
+            0.0,
+            true,
+            Some(DEFAULT_HELIX_DIAMETER),
+        ),
+        number(
+            LEAD_RADIUS,
+            "Lead radius",
+            "Radius of the lead-in and lead-out arcs; 0 means the tool radius.",
+            Unit::Millimetres,
+            0.0,
+            false,
+            Some(0.0),
+        ),
     ]
+}
+
+/// The default ramp and helix descent angle, in degrees (decision record
+/// 0026 item 6: a starting value, not verified on a machine).
+pub const DEFAULT_RAMP_ANGLE: f64 = 3.0;
+
+/// The default helix circle, as a fraction of the tool diameter (decision
+/// record 0026 item 6: a starting value, not verified on a machine).
+pub const DEFAULT_HELIX_DIAMETER: f64 = 0.75;
+
+/// How the tool enters the first cut point of a pass (OP-11; decision record
+/// 0026).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryStyle {
+    /// A rapid to the approach distance above the stock, then a straight
+    /// plunge at the plunge feed.
+    Plunge,
+    /// Down beside the cut, then a quarter-circle arc tangent to the cut,
+    /// with a matching arc out at the end of the pass.
+    Lead,
+    /// A straight descent at the ramp angle along the line of the cut.
+    Ramp,
+    /// A circle the tool centre follows downwards, leaving tangent to the
+    /// cut.
+    Helix,
+}
+
+impl EntryStyle {
+    /// Every style, in the order the form offers them.
+    pub const ALL: [Self; 4] = [Self::Plunge, Self::Lead, Self::Ramp, Self::Helix];
+
+    /// The name an operation stores.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Plunge => "plunge",
+            Self::Lead => "lead",
+            Self::Ramp => "ramp",
+            Self::Helix => "helix",
+        }
+    }
+
+    fn parse(name: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|s| s.name() == name)
+            .unwrap_or(Self::Plunge)
+    }
+}
+
+/// The entry parameters, read from resolved values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EntryParameters {
+    /// The style.
+    pub style: EntryStyle,
+    /// Descent angle of a ramp or helix.
+    pub ramp_angle: Degrees,
+    /// The helix circle as a fraction of the tool diameter.
+    pub helix_diameter: f64,
+    /// Radius of the lead arcs, or zero for the tool radius.
+    pub lead_radius: Millimetres,
 }
 
 /// Where links between passes go (OP-14).
@@ -421,6 +534,8 @@ pub struct CommonParameters {
     pub retract: Retract,
     /// How far above the stock a rapid approach stops.
     pub approach_distance: Millimetres,
+    /// How the tool enters and leaves a cut.
+    pub entry: EntryParameters,
 }
 
 impl CommonParameters {
@@ -439,6 +554,12 @@ impl CommonParameters {
                 _ => Retract::Clearance,
             },
             approach_distance: Millimetres(p.number(APPROACH_DISTANCE)?),
+            entry: EntryParameters {
+                style: EntryStyle::parse(p.text(ENTRY)?),
+                ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
+                helix_diameter: p.number(HELIX_DIAMETER)?,
+                lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
+            },
         })
     }
 }
