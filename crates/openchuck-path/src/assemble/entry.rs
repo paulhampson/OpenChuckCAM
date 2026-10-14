@@ -35,6 +35,7 @@ use super::{Builder, EPS};
 use crate::cutter::{self, ToolLine};
 use crate::error::{PathError, Result};
 use crate::helical::CHORD_FACTOR;
+use crate::parallel;
 use crate::params::{CommonParameters, EntryParameters, EntryStyle};
 use crate::rotary::AxisPosition;
 use crate::strategy::{CutPoint, StrategyInput};
@@ -42,8 +43,9 @@ use crate::strategy::{CutPoint, StrategyInput};
 /// The most segments one entry may take.
 const MAX_SEGMENTS: usize = 100_000;
 
-/// The most positions checked against the surface for one entry.
-const MAX_CHECKS: usize = 400;
+/// The most positions checked along a ramp, which is one straight move: they
+/// are at most a quarter of the tool radius apart until this many.
+const MAX_RAMP_CHECKS: usize = 20_000;
 
 /// A horizontal direction in the fixed frame: (along, across).
 type Dir = (f64, f64);
@@ -396,26 +398,25 @@ impl Entry {
         positions: &[AxisPosition],
     ) -> Option<(f64, usize)> {
         let grown = self.grown.as_ref()?;
-        let axis = b.rotary.tool_axis(a);
-        let stride = positions.len().div_ceil(MAX_CHECKS).max(1);
-        let mut worst: Option<(f64, usize)> = None;
-        // Every stride-th position, and always the last: it is the deepest of a
-        // helix and the one beside the first cut point of a lead.
-        let last = positions.len().saturating_sub(1);
-        for (i, pos) in positions
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| i % stride == 0 || *i == last)
-        {
+        let rotary = b.rotary;
+        let axis = rotary.tool_axis(a);
+        let (surface, leave) = (input.surface, self.leave);
+        // Every position the tool will be sent to, in parallel and in order
+        // (NFR-06); the depth of each below the finished surface.
+        let depths: Vec<Option<f64>> = parallel::map_in_order(positions, |pos| {
             let line = ToolLine {
-                origin: b.rotary.to_model(*pos, a),
+                origin: rotary.to_model(*pos, a),
                 axis,
             };
-            if let Some(c) = input.surface.drop_tool(grown, &line) {
-                let depth = c.offset + self.leave;
-                if depth > self.tolerance && worst.is_none_or(|(w, _)| depth > w) {
-                    worst = Some((depth, i));
-                }
+            surface.drop_tool(grown, &line).map(|c| c.offset + leave)
+        });
+        let mut worst: Option<(f64, usize)> = None;
+        for (i, depth) in depths.into_iter().enumerate() {
+            if let Some(d) = depth
+                && d > self.tolerance
+                && worst.is_none_or(|(w, _)| d > w)
+            {
+                worst = Some((d, i));
             }
         }
         worst
@@ -521,7 +522,7 @@ fn unit(v: Dir) -> Option<Dir> {
 
 /// Positions evenly spaced from `from` to `to`, `count` steps (at least 2).
 fn lerp_positions(from: AxisPosition, to: AxisPosition, count: f64) -> Vec<AxisPosition> {
-    let n = count.ceil().clamp(2.0, MAX_CHECKS as f64) as usize;
+    let n = count.ceil().clamp(2.0, MAX_RAMP_CHECKS as f64) as usize;
     (0..=n)
         .map(|i| {
             let t = i as f64 / n as f64;
