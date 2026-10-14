@@ -19,6 +19,8 @@
 //! in machining order through the strategies in the application's registry.
 //! The library's own strategy, helical finishing, is registered from the start;
 //! a host or test can add more with [`Application::register_strategy`].
+//! What the viewport draws for a setup comes from [`scene`] as plain data
+//! (decision record 0024).
 
 #![warn(missing_docs)]
 
@@ -29,6 +31,7 @@ pub mod model;
 pub mod operation;
 mod pipeline;
 mod posting;
+pub mod scene;
 pub mod setup;
 pub mod tools;
 
@@ -130,6 +133,9 @@ struct Document {
 pub struct Application {
     document: Document,
     history: History,
+    /// The project as last opened, created or saved, for
+    /// [`Application::is_modified`]. Behind a lock so `save` can stay `&self`.
+    saved: std::sync::Mutex<Project>,
     jobs: JobManager,
     strategies: Registry,
     post: Option<PostSelection>,
@@ -166,6 +172,7 @@ impl Application {
     fn with_project(folder: &Path, project: Project, threads: Threads) -> Result<Self, AppError> {
         let (events_tx, events_rx) = channel();
         Ok(Self {
+            saved: std::sync::Mutex::new(project.clone()),
             document: Document {
                 location: folder.to_path_buf(),
                 project,
@@ -182,10 +189,40 @@ impl Application {
     /// Saves the project to its folder. Only changed files are written
     /// (PRJ-01).
     pub fn save(&self) -> Result<(), AppError> {
-        Ok(openchuck_project::file::save(
-            &self.document.project,
-            &self.document.location,
-        )?)
+        openchuck_project::file::save(&self.document.project, &self.document.location)?;
+        if let Ok(mut saved) = self.saved.lock() {
+            saved.clone_from(&self.document.project);
+        }
+        Ok(())
+    }
+
+    /// Whether the project differs from what was last opened, created or
+    /// saved, so a front end can ask before discarding changes. Undoing back
+    /// to the saved state makes it unmodified again.
+    pub fn is_modified(&self) -> bool {
+        self.saved
+            .lock()
+            .map_or(true, |saved| *saved != self.document.project)
+    }
+
+    /// The project folder.
+    pub fn location(&self) -> &Path {
+        &self.document.location
+    }
+
+    /// Starts building the scene the viewport draws for `setup` (or the first
+    /// setup, or every model when there is none) as a background job: the
+    /// models are read and placed, which takes time on large meshes (UI-09,
+    /// NFR-04; decision record 0002, "Findings for later slices").
+    pub fn start_scene(
+        &self,
+        setup: Option<openchuck_project::id::SetupId>,
+    ) -> JobHandle<scene::SceneView> {
+        let document = self.document.clone();
+        self.jobs
+            .submit("build scene", self.events_tx.clone(), move |context| {
+                scene::build_scene(&document.location, &document.project, setup, context)
+            })
     }
 
     /// Checks every model file against its recorded content hash (PRJ-02).

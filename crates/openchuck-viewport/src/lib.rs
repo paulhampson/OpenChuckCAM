@@ -3,12 +3,30 @@
 //!
 //! Architecture section 5.8; requirements UI-02, UI-03, SIM-01, SIM-02, NFR-03.
 //!
-//! This crate is a shell created in work breakdown slice 0. The renderer arrives in slice 8 (see decision record 0002). Slice 0 links wgpu so the three-platform CI proves it builds (NFR-02).
+//! - [`camera`]: orbit, pan, zoom, standard views, perspective and
+//!   orthographic projection, all testable without a GPU.
+//! - [`scene`]: what is drawn, as plain data: meshes with feature edges, and
+//!   lines.
+//! - [`renderer`]: uploads a scene and draws it into a wgpu render pass.
+//!
+//! The crate does not depend on egui or any window toolkit: the front end
+//! hands it a device, a queue and a render pass (decision record 0024). No
+//! wgpu type is stored in a public field; wgpu appears only in the
+//! renderer's method signatures, which the front end needs to call it.
+//!
+//! The stack (egui, `egui_wgpu`, wgpu) is used provisionally: the NFR-03
+//! frame-rate measurement on the reference hardware is outstanding (decision
+//! record 0002, OI-09 and OI-11).
 
 #![warn(missing_docs)]
 
-use openchuck_types as _;
+pub mod camera;
+pub mod renderer;
+pub mod scene;
 
-// wgpu is linked from slice 0 so the platform CI builds it (NFR-02, decision
-// record 0002 outstanding item 2). No wgpu type is part of the public API.
-use wgpu as _;
+pub use camera::{Camera, Projection, StandardView};
+pub use renderer::{Frame, Renderer};
+pub use scene::{Colour, DisplayMode, LineItem, MeshItem, Scene};
+/// The wgpu version the renderer is built against, for front ends that hand
+/// it a device.
+pub use wgpu;

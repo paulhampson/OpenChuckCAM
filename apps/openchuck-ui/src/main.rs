@@ -1,30 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! `openchuck-ui`: the egui front end (architecture section 5.8).
 //!
-//! Slice 0 shell: it opens an empty window so the three-platform CI proves
-//! that eframe with the wgpu backend builds (NFR-02, decision record 0002).
-//! Panels, the project tree and the viewport arrive in slice 8.
+//! A window with menus, the project tree and the 3D viewport (work breakdown
+//! slice 8; decision record 0024). It talks only to `openchuck-app` and
+//! `openchuck-viewport`. Run `openchuck-ui [PROJECT_FOLDER]`.
+//!
+//! The egui, `egui_wgpu` and wgpu stack is used provisionally: the frame-rate
+//! measurement on the reference hardware (NFR-03, OI-09) and the decision to
+//! keep it (OI-11) are outstanding (decision record 0002).
 
 #![allow(clippy::print_stderr)]
 
-use openchuck_viewport as _;
-
-struct Shell;
-
-impl eframe::App for Shell {
-    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
-        ui.heading("OpenChuckCAM");
-        ui.label("Development shell: no project features yet.");
-        ui.label(openchuck_app::VERIFY_GCODE_NOTICE);
-    }
-}
+mod shell;
+mod viewport;
 
 fn main() -> std::process::ExitCode {
+    let folder = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,
+        depth_buffer: 32,
+        multisampling: 0,
         ..Default::default()
     };
-    match eframe::run_native("OpenChuckCAM", options, Box::new(|_cc| Ok(Box::new(Shell)))) {
+    let result = eframe::run_native(
+        "OpenChuckCAM",
+        options,
+        Box::new(move |cc| {
+            let available = viewport::install(cc);
+            Ok(Box::new(shell::Shell::new(available, folder)))
+        }),
+    );
+    match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");
