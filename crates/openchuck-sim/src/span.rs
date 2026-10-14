@@ -27,7 +27,12 @@ const MAX_ITERATIONS: u32 = 80;
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Piece {
     /// `h = z0 + (r - r0) * slope` up to `r_end`.
-    Line { r0: f64, z0: f64, slope: f64, r_end: f64 },
+    Line {
+        r0: f64,
+        z0: f64,
+        slope: f64,
+        r_end: f64,
+    },
     /// A circular arc about (`cr`, `cz`) up to `r_end`; below the centre when
     /// `convex` (like a ball), above it otherwise.
     Arc {
@@ -131,9 +136,7 @@ impl ToolSolid {
                 return p.height_at(r);
             }
         }
-        self.pieces
-            .last()
-            .map_or(0.0, |p| p.height_at(p.r_end()))
+        self.pieces.last().map_or(0.0, |p| p.height_at(p.r_end()))
     }
 
     /// True when a point in the tool frame (`r` from the axis, `w` above the
@@ -187,7 +190,14 @@ impl Spans {
 /// roots. Other profiles are marched at the smaller of `R / 8` and `march`
 /// (the caller passes the simulation cell) and refined by bisection, so a
 /// span missed there is shorter than one cell (OI-102).
-pub fn cut_spans(tool: &ToolSolid, o: [f64; 3], d: [f64; 3], s0: f64, s1: f64, march: f64) -> Spans {
+pub fn cut_spans(
+    tool: &ToolSolid,
+    o: [f64; 3],
+    d: [f64; 3],
+    s0: f64,
+    s1: f64,
+    march: f64,
+) -> Spans {
     let big_r = tool.radius;
     let top = tool.top;
     let (mut a, mut b) = (s0, s1);
@@ -256,14 +266,26 @@ pub fn cut_spans(tool: &ToolSolid, o: [f64; 3], d: [f64; 3], s0: f64, s1: f64, m
         }
     } else {
         let sh = (hh - o[2]) / d[2];
-        if d[2] > 0.0 { (a.max(sh), b) } else { (a, b.min(sh)) }
+        if d[2] > 0.0 {
+            (a.max(sh), b)
+        } else {
+            (a, b.min(sh))
+        }
     };
     if ua <= ub {
         if tool.convex {
             // f is concave and f >= 0 on [ua, ub], so the span is one interval
             // containing it, found by one root on the low side.
-            let lo = if ua > a && f(a) < 0.0 { root(&f, a, ua) } else { a.min(ua) };
-            let hi = if ub < b && f(b) < 0.0 { root(&f, b, ub) } else { b.max(ub) };
+            let lo = if ua > a && f(a) < 0.0 {
+                root(&f, a, ua)
+            } else {
+                a.min(ua)
+            };
+            let hi = if ub < b && f(b) < 0.0 {
+                root(&f, b, ub)
+            } else {
+                b.max(ub)
+            };
             out.push(lo, hi);
             return out;
         }
@@ -462,7 +484,14 @@ mod tests {
     fn req_sim_03_vertical_line_through_a_ball_starts_on_the_sphere() {
         let ball = tool(ToolShape::BallEnd);
         // A line along the axis offset by 2 mm: enters at 3 - sqrt(9 - 4).
-        let spans = cut_spans(&ball, [2.0, 0.0, -10.0], [0.0, 0.0, 1.0], -100.0, 100.0, 0.1);
+        let spans = cut_spans(
+            &ball,
+            [2.0, 0.0, -10.0],
+            [0.0, 0.0, 1.0],
+            -100.0,
+            100.0,
+            0.1,
+        );
         let s = spans.as_slice();
         assert_eq!(s.len(), 1);
         assert!((s[0].0 - (10.0 + 3.0 - 5f64.sqrt())).abs() < 1e-6);
@@ -487,7 +516,11 @@ mod tests {
     #[test]
     fn req_sim_03_subtract_keeps_the_outside_pieces() {
         let mut out = Vec::new();
-        subtract(&[[0.0, 10.0], [12.0, 20.0]], &[(2.0, 3.0), (9.0, 13.0)], &mut out);
+        subtract(
+            &[[0.0, 10.0], [12.0, 20.0]],
+            &[(2.0, 3.0), (9.0, 13.0)],
+            &mut out,
+        );
         assert_eq!(out, vec![[0.0, 2.0], [3.0, 9.0], [13.0, 20.0]]);
     }
 }

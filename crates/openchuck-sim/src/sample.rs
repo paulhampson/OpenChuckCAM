@@ -11,8 +11,7 @@
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, ToolPose};
 use openchuck_types::kinematics::{
-    AsRotaryFrame, MachinePosition, RotaryFrame, machine_xyz, tool_axis_in_model,
-    tool_tip_in_model,
+    AsRotaryFrame, MachinePosition, RotaryFrame, machine_xyz, tool_axis_in_model, tool_tip_in_model,
 };
 use openchuck_types::units::Degrees;
 

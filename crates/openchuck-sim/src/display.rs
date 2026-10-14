@@ -30,8 +30,20 @@ pub fn stock_mesh(stock: &DexelStock) -> TriangleMesh {
             for iv in col {
                 let (lo, hi) = (iv[0], iv[1]);
                 // Top, facing +Z, and bottom, facing -Z.
-                quad(&mut mesh, [x0, y0, hi], [x1, y0, hi], [x1, y1, hi], [x0, y1, hi]);
-                quad(&mut mesh, [x0, y0, lo], [x0, y1, lo], [x1, y1, lo], [x1, y0, lo]);
+                quad(
+                    &mut mesh,
+                    [x0, y0, hi],
+                    [x1, y0, hi],
+                    [x1, y1, hi],
+                    [x0, y1, hi],
+                );
+                quad(
+                    &mut mesh,
+                    [x0, y0, lo],
+                    [x0, y1, lo],
+                    [x1, y1, lo],
+                    [x1, y0, lo],
+                );
             }
             // Walls where the neighbour holds no material.
             let neighbours: [(Option<(usize, usize)>, u8); 4] = [
@@ -48,10 +60,34 @@ pub fn stock_mesh(stock: &DexelStock) -> TriangleMesh {
                 for g in &gaps {
                     let (lo, hi) = (g[0], g[1]);
                     match side {
-                        0 => quad(&mut mesh, [x0, y0, lo], [x0, y0, hi], [x0, y1, hi], [x0, y1, lo]),
-                        1 => quad(&mut mesh, [x1, y0, lo], [x1, y1, lo], [x1, y1, hi], [x1, y0, hi]),
-                        2 => quad(&mut mesh, [x0, y0, lo], [x1, y0, lo], [x1, y0, hi], [x0, y0, hi]),
-                        _ => quad(&mut mesh, [x0, y1, lo], [x0, y1, hi], [x1, y1, hi], [x1, y1, lo]),
+                        0 => quad(
+                            &mut mesh,
+                            [x0, y0, lo],
+                            [x0, y0, hi],
+                            [x0, y1, hi],
+                            [x0, y1, lo],
+                        ),
+                        1 => quad(
+                            &mut mesh,
+                            [x1, y0, lo],
+                            [x1, y1, lo],
+                            [x1, y1, hi],
+                            [x1, y0, hi],
+                        ),
+                        2 => quad(
+                            &mut mesh,
+                            [x0, y0, lo],
+                            [x1, y0, lo],
+                            [x1, y0, hi],
+                            [x0, y0, hi],
+                        ),
+                        _ => quad(
+                            &mut mesh,
+                            [x0, y1, lo],
+                            [x0, y1, hi],
+                            [x1, y1, hi],
+                            [x1, y1, lo],
+                        ),
                     }
                 }
             }

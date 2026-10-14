@@ -160,19 +160,14 @@ impl DexelStock {
                 x_start,
             } => {
                 let r = 0.5 * diameter.0;
-                Self::grid(
-                    (x_start.0, x_start.0 + length.0),
-                    (-r, r),
-                    cell,
-                    |_, y| {
-                        if y.abs() < r {
-                            let z = (r * r - y * y).sqrt();
-                            vec![[-z, z]]
-                        } else {
-                            Vec::new()
-                        }
-                    },
-                )
+                Self::grid((x_start.0, x_start.0 + length.0), (-r, r), cell, |_, y| {
+                    if y.abs() < r {
+                        let z = (r * r - y * y).sqrt();
+                        vec![[-z, z]]
+                    } else {
+                        Vec::new()
+                    }
+                })
             }
             Stock::Box { bounds } => Self::of_box(*bounds, cell),
             Stock::OffsetBoundingBox { offset } => {
@@ -229,7 +224,10 @@ impl DexelStock {
             ));
         }
         let (cx, cy) = ((xb - xa) / nx as f64, (yb - ya) / ny as f64);
-        let (cx, cy) = (if cx > 0.0 { cx } else { cell }, if cy > 0.0 { cy } else { cell });
+        let (cx, cy) = (
+            if cx > 0.0 { cx } else { cell },
+            if cy > 0.0 { cy } else { cell },
+        );
         let mut cols = Vec::with_capacity(nx * ny);
         for i in 0..nx {
             let x = xa + (i as f64 + 0.5) * cx;
@@ -281,9 +279,7 @@ impl DexelStock {
         if i >= self.nx || j >= self.ny {
             return &[];
         }
-        self.cols
-            .get(i * self.ny + j)
-            .map_or(&[], |c| c.as_slice())
+        self.cols.get(i * self.ny + j).map_or(&[], |c| c.as_slice())
     }
 
     /// The column whose cell holds (x, y), if any.
@@ -473,8 +469,11 @@ impl DexelStock {
 
     /// True when the model-frame point lies in material.
     pub fn contains_point(&self, p: Point3) -> bool {
-        self.column_at(p.x, p.y)
-            .is_some_and(|(i, j)| self.column(i, j).iter().any(|iv| p.z >= iv[0] && p.z <= iv[1]))
+        self.column_at(p.x, p.y).is_some_and(|(i, j)| {
+            self.column(i, j)
+                .iter()
+                .any(|iv| p.z >= iv[0] && p.z <= iv[1])
+        })
     }
 
     /// The distance from `p` to the nearest material (`material` true) or to
@@ -490,7 +489,10 @@ impl DexelStock {
         if !material {
             let inside_grid = p.x >= self.x0 && p.x <= gx1 && p.y >= self.y0 && p.y <= gy1;
             best = if inside_grid {
-                (p.x - self.x0).min(gx1 - p.x).min(p.y - self.y0).min(gy1 - p.y)
+                (p.x - self.x0)
+                    .min(gx1 - p.x)
+                    .min(p.y - self.y0)
+                    .min(gy1 - p.y)
             } else {
                 0.0
             };
@@ -555,7 +557,12 @@ impl DexelStock {
     /// Distance along the ray `origin + t direction` to the first material,
     /// no further than `max_distance`. Exact along Z; otherwise the ray is
     /// marched at a quarter cell and the crossing bisected.
-    pub fn first_material(&self, origin: Point3, direction: Vec3, max_distance: f64) -> Option<f64> {
+    pub fn first_material(
+        &self,
+        origin: Point3,
+        direction: Vec3,
+        max_distance: f64,
+    ) -> Option<f64> {
         if self.contains_point(origin) {
             return Some(0.0);
         }
@@ -697,7 +704,9 @@ mod tests {
         assert!(d.contains_point(Point3::new(5.0, 0.0, 9.9)));
         assert!(!d.contains_point(Point3::new(5.0, 0.0, 10.1)));
         let down = UnitVec3::new(Vec3::new(0.0, 0.0, -1.0)).unwrap();
-        let t = d.ray_entry(Point3::new(5.0, 0.05, 20.0), down, 50.0).unwrap();
+        let t = d
+            .ray_entry(Point3::new(5.0, 0.05, 20.0), down, 50.0)
+            .unwrap();
         assert!((t - 10.0).abs() < 0.01, "{t}");
         assert!(d.max_radius().unwrap() <= 10.0 + 1e-9);
     }

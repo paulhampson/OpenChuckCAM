@@ -83,7 +83,11 @@ pub struct Deviation {
 }
 
 /// Compares `stock` with the closed surface `target`.
-pub fn compare(stock: &DexelStock, target: &TriangleMesh, options: &DeviationOptions) -> Result<Deviation> {
+pub fn compare(
+    stock: &DexelStock,
+    target: &TriangleMesh,
+    options: &DeviationOptions,
+) -> Result<Deviation> {
     target.validate()?;
     for (name, v) in [
         ("spacing", options.spacing),

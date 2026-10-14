@@ -6,7 +6,9 @@
 
 use openchuck_types::geometry::{Point3, UnitVec3};
 use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, ToolpathGroup};
-use openchuck_types::kinematics::{MachinePosition, machine_xyz, tool_axis_in_model, tool_tip_in_model};
+use openchuck_types::kinematics::{
+    MachinePosition, machine_xyz, tool_axis_in_model, tool_tip_in_model,
+};
 use openchuck_types::machine::MachineProfile;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{RevolvedProfile, Tool, ToolShape};

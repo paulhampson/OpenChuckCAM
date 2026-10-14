@@ -11,9 +11,10 @@ use std::f64::consts::PI;
 use std::sync::Mutex;
 
 use openchuck_sim::{
-    DexelStock, DeviationOptions, Simulator, ToolSolid, compare, cut_spans, stock_mesh,
+    DeviationOptions, DexelStock, Simulator, ToolSolid, compare, cut_spans, stock_mesh,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
+use openchuck_types::Error;
 use openchuck_types::geometry::{Aabb, Point3};
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress, Progress, ProgressSink};
@@ -21,11 +22,13 @@ use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ProfilePoint, ProfileSegment, ToolProfile, ToolShape};
 use openchuck_types::units::{Degrees, Millimetres};
-use openchuck_types::Error;
 
 use support::*;
 
-fn run(stock: DexelStock, groups: &[(&ToolpathGroup, &openchuck_types::tool::RevolvedProfile)]) -> (Simulator, Vec<openchuck_sim::GroupResult>) {
+fn run(
+    stock: DexelStock,
+    groups: &[(&ToolpathGroup, &openchuck_types::tool::RevolvedProfile)],
+) -> (Simulator, Vec<openchuck_sim::GroupResult>) {
     let cancel = CancelToken::new();
     let ctx = JobContext::new(&cancel, &NoProgress);
     let mut sim = Simulator::new(stock, &machine(), None);
@@ -99,7 +102,11 @@ fn turn(case: &TurnedCase, cell: f64, dx: f64, da: f64) -> (f64, f64, f64, usize
             let (c, s) = (t.cos(), t.sin());
             let start = Point3::new(x, 16.0 * c, 16.0 * s);
             let hit = stock
-                .first_material(start, openchuck_types::geometry::Vec3::new(0.0, -c, -s), 16.0)
+                .first_material(
+                    start,
+                    openchuck_types::geometry::Vec3::new(0.0, -c, -s),
+                    16.0,
+                )
                 .unwrap_or(16.0);
             let r = 16.0 - hit;
             worst = worst.max((r - case.part.radius(x)).abs());
@@ -125,7 +132,11 @@ fn req_sim_03_turned_parts_match_the_analytic_volume_within_one_cell() {
         assert!(err.abs() <= bound, "{}: {err} beyond {bound}", case.name);
         // Within one cell, plus the ball's scallop between 0.5 mm stations
         // (0.5^2 / 16 = 0.016 mm).
-        assert!(radial <= 0.1 + 0.016, "{}: radial error {radial}", case.name);
+        assert!(
+            radial <= 0.1 + 0.016,
+            "{}: radial error {radial}",
+            case.name
+        );
     }
 }
 
@@ -223,7 +234,10 @@ fn req_sim_03_straight_pass_by_tool_type_matches_the_closed_form() {
         let outline = 2.0 * r + 2.0 * depth;
         let bound = outline * cell * 20.0;
         println!("{name}: removed {removed:.3} mm3, expected {expected:.3} mm3, bound {bound:.3}");
-        assert!((removed - expected).abs() <= bound, "{name}: {removed} vs {expected}");
+        assert!(
+            (removed - expected).abs() <= bound,
+            "{name}: {removed} vs {expected}"
+        );
     }
 }
 
@@ -425,8 +439,14 @@ fn req_sim_07_finer_resolution_lowers_the_error_and_costs_more() {
     }
     for w in rows.windows(2) {
         let (coarse, fine) = (w[0], w[1]);
-        assert!(fine.1 < coarse.1, "radial error must fall: {coarse:?} -> {fine:?}");
-        assert!(fine.2 > coarse.2, "memory must grow: {coarse:?} -> {fine:?}");
+        assert!(
+            fine.1 < coarse.1,
+            "radial error must fall: {coarse:?} -> {fine:?}"
+        );
+        assert!(
+            fine.2 > coarse.2,
+            "memory must grow: {coarse:?} -> {fine:?}"
+        );
         assert!(fine.3 > coarse.3, "poses must grow: {coarse:?} -> {fine:?}");
     }
 }
@@ -542,11 +562,15 @@ fn req_sim_03_a_rapid_through_the_stock_is_reported() {
     let profile = ball(4.0);
     let mut g = group(
         "op",
-        &[turned_pose(&m, -20.0, 20.0, 0.0), turned_pose(&m, -20.0, 9.0, 0.0)],
+        &[
+            turned_pose(&m, -20.0, 20.0, 0.0),
+            turned_pose(&m, -20.0, 9.0, 0.0),
+        ],
         MoveKind::Rapid,
     );
     // A rapid along X through the stock at radius 9.
-    g.segments.push(segment(MoveKind::Rapid, turned_pose(&m, 20.0, 9.0, 0.0)));
+    g.segments
+        .push(segment(MoveKind::Rapid, turned_pose(&m, 20.0, 9.0, 0.0)));
     let stock = DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
     let (_, results) = run(stock, &[(&g, &profile)]);
     let cuts = &results[0].rapid_cuts;

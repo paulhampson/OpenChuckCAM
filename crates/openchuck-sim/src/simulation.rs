@@ -81,7 +81,11 @@ impl Simulator {
     /// further apart than the stock's cell. A checkpoint is kept at the start,
     /// after each group, and, with `checkpoint_every`, every that many moves
     /// within a group (each holds a copy of the stock).
-    pub fn new(stock: DexelStock, frame: &impl AsRotaryFrame, checkpoint_every: Option<usize>) -> Self {
+    pub fn new(
+        stock: DexelStock,
+        frame: &impl AsRotaryFrame,
+        checkpoint_every: Option<usize>,
+    ) -> Self {
         let (cx, cy) = stock.cell();
         let reach = stock.reach();
         let checkpoints = vec![Checkpoint {
@@ -149,7 +153,9 @@ impl Simulator {
             .iter()
             .rev()
             .find(|c| (c.group, c.moves) <= target)
-            .ok_or_else(|| Error::invalid("checkpoint", "no checkpoint before the requested move"))?;
+            .ok_or_else(|| {
+                Error::invalid("checkpoint", "no checkpoint before the requested move")
+            })?;
         let mut replay = Self {
             frame: self.frame,
             stock: cp.stock.clone(),
@@ -231,9 +237,8 @@ impl Simulator {
             result.moves += 1;
             prev = segment.end;
             let done = i + 1;
-            let at_checkpoint = keep
-                && done < end
-                && self.checkpoint_every.is_some_and(|n| done % n == 0);
+            let at_checkpoint =
+                keep && done < end && self.checkpoint_every.is_some_and(|n| done % n == 0);
             if batch.len() >= BATCH_POSES || at_checkpoint {
                 self.flush(&tool, &mut batch, &mut result, context, total)?;
             }
@@ -250,7 +255,12 @@ impl Simulator {
         Ok(result)
     }
 
-    fn cut_batch(&mut self, tool: &ToolSolid, batch: &mut Vec<Pose>, result: &mut GroupResult) -> f64 {
+    fn cut_batch(
+        &mut self,
+        tool: &ToolSolid,
+        batch: &mut Vec<Pose>,
+        result: &mut GroupResult,
+    ) -> f64 {
         let removed = self.stock.cut(tool, batch);
         result.poses += batch.len();
         result.removed_volume += removed;
