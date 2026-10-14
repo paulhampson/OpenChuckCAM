@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Feature edges for the viewport's edge display (UI-02; decision record 0024
+//! Feature edges for the viewport's edge display (UI-02; decision record 0026
 //! item 4).
 
 #![allow(

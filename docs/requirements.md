@@ -101,6 +101,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | SET-05 | Position the part relative to the rotary centreline and work coordinate system, including a work offset reference (for example G54). | P1 |
 | SET-06 | Define clearance geometry (a safe cylinder around the axis plus a safe Z) used by retracts and rapid links. | P1 |
 | SET-07 | Multiple setups per project (for example re-gripping or flipping the part), each with its own coordinate system and starting stock. | P2 |
+| SET-08 | Optionally define a maximum acceleration for the rotary axis in the machine profile. Where it is set, time estimates (SIM-08) and motion smoothing use it; where it is not, no limit is assumed. Maximum feed rates stay in SET-01. | P2 |
 
 ### 3.4 Tool management
 
@@ -142,6 +143,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | OP-16 | Strategies implement a common internal interface, so new ones can be added without changing the rest of the application. | P1 |
 | OP-17 | Adaptive (constant-engagement) roughing for rotary parts. | P2 |
 | OP-18 | Feature recognition: detect holes, grooves and cylindrical features on the model and propose operations for them. | P3 |
+| OP-19 | Alternative surface-covering patterns for finishing: geodesic-parallel (constant scallop height) and spiral, selectable per operation, with scallop height as the stepover control. | P2 |
 
 ### 3.6 Visualisation and material removal simulation
 
@@ -303,7 +305,7 @@ Decisions are settled and already reflected in the requirements. The assumptions
 **Assumptions**
 
 - The A axis rotates the workpiece about the machine X axis, with a vertical tool axis (Z).
-- The target is a milling machine with a rotary axis programmed in degrees; the Makera Z1 is the reference machine, and G93 inverse-time feed is assumed unsupported until confirmed.
+- The target is a milling machine with a rotary axis programmed in degrees; the Makera Z1 is the reference machine, and G93 inverse-time feed is unsupported (confirmed by the SP-12 air cut, decision 0007).
 - The internal unit is millimetres; inch display and input are a user setting.
 - Work is for a single user on a single machine at a time; there is no multi-user collaboration.
 - Threading, turning and 5-axis tool orientation are not needed.

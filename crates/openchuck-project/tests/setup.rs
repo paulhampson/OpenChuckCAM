@@ -122,7 +122,7 @@ fn req_set_01_machine_copy_survives_save_and_load() {
     file::save(&project, &dir).unwrap();
     let text = std::fs::read_to_string(dir.join(file::MACHINE_FILE)).unwrap();
     assert!(
-        text.starts_with("schema = 4\n\n[machine]\nname = \"Makera Z1\"\n"),
+        text.starts_with("schema = 5\n\n[machine]\nname = \"Makera Z1\"\n"),
         "{text}"
     );
     assert_eq!(file::load(&dir).unwrap().machine(), Some(&z1()));

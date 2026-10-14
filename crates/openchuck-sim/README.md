@@ -4,7 +4,7 @@ Material removal simulation, deviation measurement and the implementations of th
 
 Part of [OpenChuckCAM](../../README.md). Architecture section 5.5; requirements SIM-01 to SIM-10, COL-01 to COL-08.
 
-**Status:** shell. The stock model arrives in slice 7, after spike SP-6.
+**Status:** headless material removal simulation (work breakdown slice 7, decision 0025): dexel stock in the part frame behind the `StockModel` port, a sweep for every revolved tool through the shared kinematics, checkpoints, deviation against the target, and a display mesh as plain data. Collision detection (COL) and time estimation (SIM-08) come later.
 
 
 

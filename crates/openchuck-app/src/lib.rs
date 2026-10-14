@@ -20,7 +20,7 @@
 //! The library's own strategy, helical finishing, is registered from the start;
 //! a host or test can add more with [`Application::register_strategy`].
 //! What the viewport draws for a setup comes from [`scene`] as plain data
-//! (decision record 0024).
+//! (decision record 0026).
 
 #![warn(missing_docs)]
 
@@ -33,6 +33,7 @@ mod pipeline;
 mod posting;
 pub mod scene;
 pub mod setup;
+pub mod simulation;
 pub mod tools;
 
 use std::path::{Path, PathBuf};
@@ -56,9 +57,11 @@ pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
 pub use openchuck_project as project;
+pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use pipeline::Regeneration;
 pub use posting::{GcodeComparison, GcodeReport, PostSelection};
+pub use simulation::{OperationSimulation, SetupSimulation, SimulationReport};
 
 // The application layer maps project data to every engine crate (architecture
 // section 3). Most are still shells; naming them keeps the layering visible.
@@ -432,19 +435,35 @@ impl Application {
 
     /// Starts regenerating every operation's toolpath and G-code as a background job.
     pub fn start_regenerate(&self) -> JobHandle<Regeneration> {
+        self.start_pipeline("regenerate", false)
+    }
+
+    /// Starts regenerating and simulating every operation as a background
+    /// job: the result carries a simulation report (SIM-03, SIM-05 to SIM-07).
+    pub fn start_simulate(&self) -> JobHandle<Regeneration> {
+        self.start_pipeline("simulate", true)
+    }
+
+    fn start_pipeline(&self, name: &str, simulate: bool) -> JobHandle<Regeneration> {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
         self.jobs
-            .submit("regenerate", self.events_tx.clone(), move |context| {
+            .submit(name, self.events_tx.clone(), move |context| {
                 pipeline::regenerate(
                     &document.location,
                     &document.project,
                     &strategies,
                     post.as_ref(),
+                    simulate,
                     context,
                 )
             })
+    }
+
+    /// Regenerates, simulates and waits for the result.
+    pub fn simulate(&self) -> Result<Regeneration, AppError> {
+        self.start_simulate().wait()
     }
 
     /// Chooses the post that turns toolpaths into G-code (GC-02, OI-88).

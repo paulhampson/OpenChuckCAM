@@ -78,6 +78,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | UI-09, NFR-04 | P1 | T | System | UI thread stays responsive during generation and simulation (measured frame gaps); progress is reported; cancel stops work; multi-core speed-up measured |
 | SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected |
 | SET-02, SET-04, SET-07 | P2 | T | Integration | Y-axis rotary, custom stock and multiple setups produce correct coordinate systems and starting stock |
+| SET-08 | P2 | T | Unit | A rotary acceleration limit validates and persists; an unset value means no limit; time estimates use it once SIM-08 exists |
 | TL-01, TL-04, TL-05, TL-06 | P1 | T | Unit | Tool library round-trips in its human-readable format; parameters, cutting data and controller mappings validate |
 | TL-02 | P1 | T | Unit | Flat, ball, bull-nose and tapered ball tools give the expected profile geometry |
 | TL-03 | P1 | T | Unit, integration | V-bit, chamfer, drill and custom-profile tools give the expected revolved profile; a custom profile imported from a text file or drawn in the UI is validated and invalid profiles are rejected; the same profile drives tool-centre solving, the independent gouge checker and the simulation sweep and agrees with an equivalent standard tool (SP-13) |
@@ -98,6 +99,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | OP-16 | P1 | I, T | Design, unit | Design review of the strategy interface; a stub strategy plugs in with no change to other crates, and its parameter schema renders in the panel with no UI change |
 | OP-17 | P2 | T, A | System | Adaptive roughing keeps engagement within limits, measured in simulation |
 | OP-18 | P3 | T | Integration | Feature recognition finds known holes, grooves and cylinders in corpus models, when built |
+| OP-19 | P2 | T, A | System | Geodesic-parallel and spiral patterns keep scallop height within the set limit on surfaces with known geodesics (cylinder, cone), measured in simulation, when built |
 | SIM-01, SIM-02, SIM-04 | P1 | D, T | System | Path display, rapid versus cutting distinction, tool pose with correct A rotation and playback controls checked in the demo script and by pose tests |
 | SIM-03, SIM-06, SIM-07 | P1 | T, A | System | Stock update, including A rotation, matches an independent reference; carry-over between operations; resolution setting changes accuracy as documented |
 | SIM-05 | P1 | T | System | Remaining material and overcut colouring and worst values match reference results on analytic cases |
@@ -145,7 +147,7 @@ These are starting values, chosen before there is anything to measure. They are 
 | Kinematic round trip | OP-05, OP-06 | 1e-6 mm and 1e-6 degrees (double-precision arithmetic only) |
 | G-code replay (gate 2) | GC-09, GC-10 | G-code rounding only, because replay compares the G-code with the same toolpath in the IR: 0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting. These are per axis (half a unit of the last decimal, twice that for A); the tool tip combines three axes, so the check on the tip allows half a unit times root 3 (0.00087 mm at three decimals), confirmed by the owner 13 Oct 2026 (OI-91) |
 | Gouge | OP-12 | Zero overcut beyond the tolerance |
-| Simulation against reference | SIM-03, SIM-05 | Within one simulation cell at the chosen resolution, and no worse than 0.02 mm at the finest setting the user may choose (the default is 0.1 mm; decision 0022, OI-100) |
+| Simulation against reference | SIM-03, SIM-05 | Within one simulation cell at the chosen resolution, and no worse than 0.02 mm at the finest setting the user may choose, 0.025 mm (the default is 0.1 mm; decisions 0022 and 0025; measured 0.0187 mm) |
 | Feed on simultaneous moves | OP-13 | Effective feed at the cutter contact within ±2% of programmed |
 | Determinism | GC-07, NFR-06 | Zero difference, byte for byte, at 1, 2 and all threads |
 | Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; at least 24 cumulative CPU hours per parser with no unresolved crash for release |
@@ -157,7 +159,7 @@ These are starting values, chosen before there is anything to measure. They are 
 The 30 fps requirement is checked on a modest baseline machine, so that faster machines pass with margin.
 
 - **Baseline:** 4 CPU cores, 16 GB RAM, integrated graphics, 1080p display. One physical machine per platform: Apple M1-class on macOS, Intel Xe or recent AMD integrated graphics on Windows and Linux.
-- **Test:** a scripted 60-second camera path (orbit, pan, zoom) over a 1 million triangle model in shaded-with-edges mode. It passes if the 95th percentile frame time is 33 ms or less.
+- **Test:** a scripted 60-second camera path (orbit, pan, zoom) over a 1 million triangle model in shaded-with-edges mode, where the edges are the model's feature edges: those whose two triangles turn by more than 30 degrees, plus open and non-manifold edges, as the viewport draws them (OI-13, [decision 0026](decisions/0026-slice-8-viewport-and-shell.md) item 4). It passes if the 95th percentile frame time is 33 ms or less.
 - **Where it runs:** on the physical machines before each release, not only on hosted CI, whose runners typically have no real GPU. CI runs a software-rendered smoke test (UI-01, NFR-02) and uses native rendering wherever a runner offers it.
 - **Core counts:** generation and simulation also run at 1 core and at all cores. This checks the speed-up (NFR-04) and the identical output (NFR-06).
 
@@ -228,7 +230,7 @@ Generated G-code passes five gates in order. A program cannot move to the next g
 
 **Rules for gates 4 and 5.** The operator keeps the emergency stop in reach and runs attended. Work offsets and stock position are checked by hand. Any unexpected motion stops the trial and is logged as a defect with the G-code attached.
 
-**Feed mode (OP-13).** Compensated feed in units per minute is the default for simultaneous moves. Inverse-time feed (G93) is an optional post-processor capability, assumed unsupported by the Makera Z1 controller until confirmed. Gate 4 includes a short test that confirms or rejects G93 support, and the result is recorded in the Z1 post-processor definition (GC-04, GC-09). The Z1 rotary conventions (axis letter, units, wrap-around) come from existing Makera machine profiles inspected during development, so gate 4 also checks them against real behaviour.
+**Feed mode (OP-13).** Compensated feed in units per minute is the default for simultaneous moves. Inverse-time feed (G93) is an optional post-processor capability, not supported by the Makera Z1 controller: the SP-12 air cut (14 Oct 2026, firmware 1.1.2) showed it ignores `G93`, so the Z1 post never writes it ([decision 0007](decisions/0007-sp-12-z1-conventions.md)). Gate 4 keeps a short G93 test so that a later firmware is rechecked, and the result is recorded in the Z1 post-processor definition (GC-04, GC-09). The Z1 rotary conventions (axis letter, units, wrap-around) come from existing Makera machine profiles inspected during development, so gate 4 also checks them against real behaviour; the SP-12 air cut confirmed direction, wrap and the Z1 feed rule, and gate 4 for generated programs repeats the timed move against the IR's predicted time under that rule. The Z1 applies feed to combined moves with its own rule, not LinuxCNC's, so the predicted time uses the post's rule for the controller.
 
 **Why a verification post-processor (GC-10).** It writes the same toolpath for LinuxCNC, a controller with a mature, independent interpreter. Agreement between that run and the Makera Z1 output is evidence that both post-processors share one correct toolpath. It does not prove the Z1 post-processor is right, which is why gates 4 and 5 stay. If SIM-09 (running exported G-code in the application's own simulator) is approved and built, it becomes an extra automatic check at gate 2.
 
@@ -276,7 +278,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 | Dependency checks | cargo-deny, cargo-audit, cargo-about | Section 7 |
 | Simulator | LinuxCNC (sim configuration, 4-axis XYZA) | Gate 3 |
 
-**Platforms.** CI builds and tests on Linux, Windows and macOS for every pull request, matching the cross-platform requirement. Jobs are path-filtered, so a change to docs/ or posts/ does not rebuild the STEP kernel. The library family builds and tests on all three platforms without the C++ toolchain; the OpenCASCADE build is confined to openchuck-import and cached. The simulator gate runs on Linux. The stable Rust toolchain is pinned in rust-toolchain.toml; cargo-fuzz runs on a nightly toolchain in a separate job, and a scheduled job builds on beta to catch breakage early.
+**Platforms.** CI builds and tests on Linux, Windows and macOS for every pull request, matching the cross-platform requirement. Jobs are path-filtered, so a change to docs/ or posts/ does not rebuild the STEP kernel. The library family builds and tests on all three platforms without the C++ toolchain; the OpenCASCADE build is confined to openchuck-import and cached. The simulator gate runs on Linux. The stable Rust toolchain is pinned in rust-toolchain.toml; cargo-fuzz runs on a nightly toolchain in a separate job, and a scheduled job builds on beta to catch breakage early. A nightly build job (decision record 0023) builds the release binaries for all three platforms when `main` has changed since its last successful run, keeps one archive per platform as a workflow artifact for 30 days and, for `main`, replaces the rolling `nightly` pre-release with them; these are development builds, not releases, and pass no release gate.
 
 **Test data.** The corpus lives in testdata/ in the repository and stays small. Shapes are generated procedurally where possible, and golden files are plain text so reviews show real diffs. It holds the analytic-oracle cases (cylinder, cone, sphere, helical groove, ruled surface), small real STEP and STL parts suited to 4-axis work, damaged files for each importer, expected toolpaths and golden G-code. A README records each model's origin and licence so the corpus stays redistributable. Whether larger models need Git LFS or a separate test-data repository is an open decision in the architecture.
 
@@ -326,7 +328,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 | Selection matching after re-export (IMP-07, PRJ-07, P2) is hard | Lost selections after a model change | Own prototype; descriptor fields reserved in the schema; verified when the P2 work is built |
 | Single maintainer limits independent review | Missed defects | CI automation, independent simulator, test-only independent checker, delay-and-reread before sign-off, external reviewers from the FreeCAD and LinuxCNC communities when available |
 
-**Assumptions** (from the requirements document). The A axis rotates the workpiece about the machine X axis with a vertical tool axis; the target is a mill with a rotary axis programmed in degrees; the Makera Z1 is the reference machine and G93 is assumed unsupported until confirmed; the internal unit is millimetres; work is for a single user on a single machine; threading, turning and 5-axis orientation are not needed. The project is open source under a GPL-compatible licence, with the pathing library starting under AGPL.
+**Assumptions** (from the requirements document). The A axis rotates the workpiece about the machine X axis with a vertical tool axis; the target is a mill with a rotary axis programmed in degrees; the Makera Z1 is the reference machine and G93 is unsupported (confirmed by the SP-12 air cut); the internal unit is millimetres; work is for a single user on a single machine; threading, turning and 5-axis orientation are not needed. The project is open source under a GPL-compatible licence, with the pathing library starting under AGPL.
 
 **Open items.**
 

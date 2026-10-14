@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Display data derived from a mesh: the feature edges the viewport draws in
-//! "shaded with edges" mode (UI-02; decision record 0024 item 4).
+//! "shaded with edges" mode (UI-02; decision record 0026 item 4).
 //!
 //! A feature edge is an edge where the surface turns sharply, plus the edges
 //! that do not join exactly two triangles (boundaries and non-manifold

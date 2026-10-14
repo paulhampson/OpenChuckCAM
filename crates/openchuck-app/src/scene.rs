@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The scene view model: what the viewport draws for a setup, as plain data
-//! (UI-02, UI-03; work breakdown slice 8 items 1 and 2; decision record 0024).
+//! (UI-02, UI-03; work breakdown slice 8 items 1 and 2; decision record 0026).
 //!
 //! Everything is in the model frame, whose X axis is the rotary axis. The
 //! part is the setup's placed model with its feature edges; the stock,

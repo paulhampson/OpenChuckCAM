@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The scene view model the viewport draws (UI-02, UI-03; work breakdown
-//! slice 8 items 1 and 2; decision record 0024), and the application state a
+//! slice 8 items 1 and 2; decision record 0026), and the application state a
 //! front end needs (unsaved changes, polling a job).
 
 // Test code may unwrap, index and panic (NFR-07 applies to library code).

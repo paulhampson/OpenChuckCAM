@@ -10,13 +10,12 @@
 //! - [`renderer`]: uploads a scene and draws it into a wgpu render pass.
 //!
 //! The crate does not depend on egui or any window toolkit: the front end
-//! hands it a device, a queue and a render pass (decision record 0024). No
+//! hands it a device, a queue and a render pass (decision record 0026). No
 //! wgpu type is stored in a public field; wgpu appears only in the
 //! renderer's method signatures, which the front end needs to call it.
 //!
-//! The stack (egui, `egui_wgpu`, wgpu) is used provisionally: the NFR-03
-//! frame-rate measurement on the reference hardware is outstanding (decision
-//! record 0002, OI-09 and OI-11).
+//! The stack (egui, `egui_wgpu`, wgpu) is the one decision record 0002
+//! accepted after the NFR-03 measurement (OI-09, OI-11).
 
 #![warn(missing_docs)]
 

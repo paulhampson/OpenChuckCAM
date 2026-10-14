@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The application shell: menus, the project tree, new, open and save with
 //! unsaved-change handling, undo and redo, and the viewport (UI-01, UI-06,
-//! UI-08; work breakdown slice 8 items 3, 4 and 6; decision record 0024).
+//! UI-08; work breakdown slice 8 items 3, 4 and 6; decision record 0026).
 //!
 //! Every project change goes through `openchuck-app`; the shell holds no CAM
 //! logic. Folders are typed in for now: a native file dialog needs a crate
-//! outside the crate selection (OI-110).
+//! outside the crate selection (OI-117).
 
 use std::path::PathBuf;
 
@@ -285,7 +285,7 @@ impl Shell {
 
     /// The project tree (UI-06): models, setups, operations and tools.
     /// Choosing a setup shows it in the viewport. Reorder, enable, disable
-    /// and duplicate arrive with the next increment (decision record 0024).
+    /// and duplicate arrive with the next increment (decision record 0026).
     fn tree(&mut self, ui: &mut egui::Ui) {
         let Some(app) = &self.app else {
             ui.label("No project open. Use File, Open project or New project.");
