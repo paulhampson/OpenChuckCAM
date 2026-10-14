@@ -1,6 +1,6 @@
 # 0023: Nightly development builds of the application binaries
 
-- **Status:** proposed (14 Oct 2026). The project owner asked for the workflow; this record waits on their acceptance of the choices below.
+- **Status:** accepted by the project owner (14 Oct 2026): items 1 to 6 as written.
 - **Date:** 14 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-103 and OI-104 are new and deferred to slice 20.
 
@@ -12,7 +12,7 @@ The owner asked for a nightly build that produces a runnable archive for each pl
 
 Requirements touched: NFR-02 (Linux, Windows and macOS), NFR-10 (licence notices shipped with binaries), NFR-12 (the user verifies generated G-code; nothing may imply otherwise). Verification plan section 8 (CI and platforms).
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **A separate workflow, `.github/workflows/nightly-build.yml`,** scheduled daily at 01:43 UTC and runnable by hand. It is kept apart from `nightly.yml` (fuzzing and the beta build) so that "the last successful nightly build" means the last run whose binaries built.
 2. **Build only when `main` has moved.** A first job reads the newest successful run of this workflow on the same branch through the Actions API (`actions: read`) and skips the build when its commit is the current head. A failed build is therefore retried the next night. A manual run always builds, from the branch it is started on.
