@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::project::ItemId;
-use openchuck_app::project::id::{OperationId, SetupId, ToolId};
+use openchuck_app::project::id::{ModelId, OperationId, SetupId, ToolId};
 use openchuck_app::scene::SceneView;
 use openchuck_app::tool_edit;
 use openchuck_app::tools::{self, ToolProfile};
@@ -20,6 +20,8 @@ use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::bench;
 use crate::form_panel::{self, FormState};
+use crate::import_panel::{ImportAction, ImportSession};
+use crate::model_panel::ModelPanel;
 use crate::tool_panel;
 use crate::viewport::Viewport;
 
@@ -52,6 +54,8 @@ enum Dialog {
     /// The folder has no project: offer to create one there (decision record
     /// 0008 item 8).
     OfferCreate { folder: PathBuf },
+    /// Ask for a model file to import (typed in until OI-117).
+    ModelFile { path: String },
     /// The project has unsaved changes.
     Unsaved(Next),
     /// Something failed; the message says what.
@@ -73,6 +77,10 @@ pub struct Shell {
     selected: Option<Selection>,
     /// A custom profile being edited, for this tool (TL-03).
     profile_draft: Option<(ToolId, ToolProfile)>,
+    /// A model being imported; the viewport shows its preview meanwhile.
+    import: Option<ImportSession>,
+    /// The chosen model's panel, with its running check.
+    model_panel: Option<ModelPanel>,
     /// Typed text and refused values in the parameter form.
     form: FormState,
 }
@@ -92,6 +100,8 @@ impl Shell {
             bench: None,
             selected: None,
             profile_draft: None,
+            import: None,
+            model_panel: None,
             form: FormState::default(),
         };
         if let Some(folder) = folder {
@@ -151,20 +161,18 @@ impl Shell {
     fn set_app(&mut self, app: Application) {
         self.status = format!("Opened {}", app.location().display());
         // Model files changed or missing since they were added (PRJ-02, OI-45).
-        if let Ok(checks) = app.check_models() {
-            let changed = checks
-                .iter()
-                .filter(|(_, c)| *c != openchuck_app::project::ModelCheck::Unchanged)
-                .count();
-            if changed > 0 {
-                self.status = format!(
-                    "{changed} model file(s) have changed or are missing since they were added"
-                );
-            }
+        let warnings = app.model_file_warnings();
+        if !warnings.is_empty() {
+            self.dialog = Some(Dialog::Error(format!(
+                "Some model files do not match the project:\n{}\n\nThe toolpaths will use the files \
+                 as they are now.",
+                warnings.join("\n")
+            )));
         }
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
         self.profile_draft = None;
+        self.import = None;
         self.form.clear();
         self.app = Some(app);
         self.rebuild_scene(true);
@@ -193,6 +201,8 @@ impl Shell {
                 let fit = *fit;
                 self.scene_job = None;
                 match result {
+                    // While importing, the viewport shows the import preview.
+                    Ok(_) if self.import.is_some() => {}
                     Ok(view) => self.viewport.set_scene(view, fit),
                     Err(AppError::Engine(e)) if e.to_string().contains("cancel") => {}
                     Err(e) => self.status = format!("The view could not be built: {e}"),
@@ -298,6 +308,17 @@ impl Shell {
                 if ui.button("Open project…").clicked() {
                     self.request(Next::Open, &ctx);
                 }
+                if ui
+                    .add_enabled(
+                        self.app.is_some() && self.import.is_none(),
+                        egui::Button::new("Import model…"),
+                    )
+                    .clicked()
+                {
+                    self.dialog = Some(Dialog::ModelFile {
+                        path: String::new(),
+                    });
+                }
                 let save = egui::Button::new("Save").shortcut_text(ctx.format_shortcut(&SAVE));
                 if ui.add_enabled(self.app.is_some(), save).clicked() {
                     self.save();
@@ -360,7 +381,10 @@ impl Shell {
                 .default_open(true)
                 .show(ui, |ui| {
                     for m in project.models() {
-                        ui.label(m.path.as_str());
+                        let selected = self.selected == Some(Selection::Model(m.id));
+                        if ui.selectable_label(selected, m.path.as_str()).clicked() {
+                            command = Some(TreeAction::SelectModel(m.id));
+                        }
                     }
                 });
             egui::CollapsingHeader::new(format!("Setups ({})", project.setups().len()))
@@ -425,6 +449,10 @@ impl Shell {
                 self.select(Selection::Tool(id));
                 return;
             }
+            TreeAction::SelectModel(id) => {
+                self.select(Selection::Model(id));
+                return;
+            }
             TreeAction::Command(c) => Ok(*c),
             TreeAction::Duplicate(id) => openchuck_app::duplicate_operation(app.project(), id),
         };
@@ -445,7 +473,30 @@ impl Shell {
         match self.selected {
             Some(Selection::Operation(id)) => self.operation_properties(ui, id),
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
+            Some(Selection::Model(id)) => self.model_properties(ui, id),
             None => {}
+        }
+    }
+
+    /// A model's units, placement and checks (IMP-03, IMP-04, IMP-05).
+    fn model_properties(&mut self, ui: &mut egui::Ui, id: ModelId) {
+        let Some(app) = &mut self.app else { return };
+        let Some(reference) = app.project().models().iter().find(|m| m.id == id).cloned() else {
+            self.selected = None;
+            return;
+        };
+        let panel = match &mut self.model_panel {
+            Some(p) if p.model() == id => p,
+            _ => self.model_panel.insert(ModelPanel::new(id)),
+        };
+        let command = egui::ScrollArea::vertical()
+            .show(ui, |ui| panel.show(ui, app, &reference))
+            .inner;
+        if let Some(command) = command {
+            match app.execute(command) {
+                Ok(()) => self.rebuild_scene(false),
+                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            }
         }
     }
 
@@ -540,6 +591,44 @@ impl Shell {
         }
     }
 
+    /// Runs the import dialog (OI-51): polls its check, shows the preview in
+    /// the viewport, and adds the model or closes.
+    fn import_frame(&mut self, ctx: &egui::Context) {
+        let (Some(app), Some(session)) = (&self.app, &mut self.import) else {
+            return;
+        };
+        if session.poll() {
+            ctx.request_repaint();
+        }
+        if session.fresh {
+            session.fresh = false;
+            if let Some(preview) = &session.preview {
+                self.viewport.set_scene(preview.scene.clone(), true);
+            }
+        }
+        let action = session.window(ctx, app);
+        match action {
+            ImportAction::None => {}
+            ImportAction::Cancel => {
+                self.import = None;
+                self.rebuild_scene(true);
+            }
+            ImportAction::Add => {
+                let (Some(app), Some(session)) = (&mut self.app, &mut self.import) else {
+                    return;
+                };
+                match app.add_model_with(&session.path, session.units, &session.steps()) {
+                    Ok(_) => {
+                        self.status = format!("Added {}", session.path.display());
+                        self.import = None;
+                        self.rebuild_scene(true);
+                    }
+                    Err(e) => session.error = Some(e.to_string()),
+                }
+            }
+        }
+    }
+
     fn status_bar(&self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if self.scene_job.is_some() {
@@ -608,6 +697,31 @@ impl Shell {
                         folder,
                         name,
                     });
+                }
+            }
+            Dialog::ModelFile { mut path } => {
+                ui.heading("Import model");
+                ui.label("Model file (STL), inside or beside the project folder:");
+                ui.text_edit_singleline(&mut path);
+                ui.horizontal(|ui| {
+                    let ok = ui
+                        .add_enabled(!path.trim().is_empty(), egui::Button::new("Check"))
+                        .clicked();
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                    if ok {
+                        close = true;
+                        let file = PathBuf::from(path.trim());
+                        action = Some(Box::new(move |s: &mut Self| {
+                            if let Some(app) = &s.app {
+                                s.import = Some(ImportSession::new(app, file));
+                            }
+                        }));
+                    }
+                });
+                if !close {
+                    self.dialog = Some(Dialog::ModelFile { path });
                 }
             }
             Dialog::OfferCreate { folder } => {
@@ -689,6 +803,8 @@ enum TreeAction {
     Select(OperationId),
     /// Show this tool's dimensions and profile.
     SelectTool(ToolId),
+    /// Show this model's units, placement and checks.
+    SelectModel(ModelId),
 }
 
 /// What the properties panel shows.
@@ -696,6 +812,7 @@ enum TreeAction {
 enum Selection {
     Operation(OperationId),
     Tool(ToolId),
+    Model(ModelId),
 }
 
 /// One operation in the tree: enable box, name, and move up, move down and
@@ -783,6 +900,7 @@ impl eframe::App for Shell {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.viewport.show(ui));
+        self.import_frame(&ctx);
         self.dialogs(&ctx);
     }
 }

@@ -67,6 +67,17 @@ pub(crate) fn inspect_bytes(
     transform: &[TransformStep],
     context: &JobContext<'_>,
 ) -> Result<ModelInspection, AppError> {
+    inspect_placed(path, bytes, units, transform, context).map(|(inspection, _)| inspection)
+}
+
+/// [`inspect_bytes`], also returning the placed mesh.
+pub(crate) fn inspect_placed(
+    path: &Path,
+    bytes: &[u8],
+    units: Option<LengthUnit>,
+    transform: &[TransformStep],
+    context: &JobContext<'_>,
+) -> Result<(ModelInspection, openchuck_types::mesh::TriangleMesh), AppError> {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -85,7 +96,7 @@ pub(crate) fn inspect_bytes(
         .as_deref()
         .map(|normals| transform_normals(normals, &map));
     let report = check_mesh(&placed, normals.as_deref())?;
-    Ok(ModelInspection {
+    let inspection = ModelInspection {
         path: path.to_path_buf(),
         format: model.format,
         units: model.units,
@@ -95,7 +106,32 @@ pub(crate) fn inspect_bytes(
         extent: openchuck_geom::part_extent(&placed),
         report,
         notes: model.notes,
-    })
+    };
+    Ok((inspection, placed))
+}
+
+/// A model file checked before it is added: the inspection, and the scene
+/// of the placed model with the triangles and edges the checks list
+/// highlighted (OI-51; decision record 0026 item 13).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportPreview {
+    /// What the checks found.
+    pub inspection: ModelInspection,
+    /// The placed model, its problems and the rotary axis.
+    pub scene: crate::scene::SceneView,
+}
+
+/// Reads, places and checks the model file `path`, and builds its preview.
+pub(crate) fn import_preview(
+    path: &Path,
+    units: Option<LengthUnit>,
+    transform: &[TransformStep],
+    context: &JobContext<'_>,
+) -> Result<ImportPreview, AppError> {
+    let bytes = read(path)?;
+    let (inspection, placed) = inspect_placed(path, &bytes, units, transform, context)?;
+    let scene = crate::scene::model_scene(placed, &inspection.report)?;
+    Ok(ImportPreview { inspection, scene })
 }
 
 /// Imports and checks the model file at `path` without a project, read in

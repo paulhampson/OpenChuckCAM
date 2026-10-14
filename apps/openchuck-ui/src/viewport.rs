@@ -10,7 +10,7 @@ use eframe::egui_wgpu;
 use openchuck_app::scene::{SceneRole, SceneView};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, Colour, DisplayMode, Frame, Projection, Renderer, Scene, StandardView,
+    Camera, Colour, DisplayMode, Frame, LineItem, Projection, Renderer, Scene, StandardView,
 };
 
 /// The depth format eframe creates for `depth_buffer: 32`.
@@ -24,6 +24,7 @@ const A_DIRECTION: Colour = [0.85, 0.2, 0.75, 1.0];
 const WORK_X: Colour = [0.9, 0.15, 0.15, 1.0];
 const WORK_Y: Colour = [0.1, 0.7, 0.2, 1.0];
 const WORK_Z: Colour = [0.15, 0.35, 0.95, 1.0];
+const PROBLEM: Colour = [0.95, 0.2, 0.2, 1.0];
 const BACKGROUND: Color32 = Color32::from_rgb(38, 40, 46);
 
 /// Degrees of orbit per pixel dragged.
@@ -41,6 +42,7 @@ fn style(role: SceneRole) -> (Colour, bool) {
         SceneRole::WorkX => (WORK_X, true),
         SceneRole::WorkY => (WORK_Y, true),
         SceneRole::WorkZ => (WORK_Z, true),
+        SceneRole::Problem => (PROBLEM, true),
         _ => (STOCK, false),
     }
 }
@@ -49,8 +51,30 @@ fn style(role: SceneRole) -> (Colour, bool) {
 pub fn to_scene(view: &SceneView) -> Scene {
     let mut scene = Scene::default();
     for mesh in &view.meshes {
-        let (colour, _) = style(mesh.role);
+        let (colour, on_top) = style(mesh.role);
         scene.add_mesh(&mesh.mesh, &mesh.feature_edges, colour, PART_EDGES);
+        // Flagged triangles lie on the part's own surface, where their fill
+        // fights the part's for depth: their outlines are drawn on top.
+        if on_top {
+            let point = |i: u32| {
+                mesh.mesh
+                    .vertices
+                    .get(i as usize)
+                    .map(|p| [p.x as f32, p.y as f32, p.z as f32])
+            };
+            let segments = mesh
+                .mesh
+                .triangles
+                .iter()
+                .flat_map(|&[a, b, c]| [a, b, b, c, c, a])
+                .filter_map(point)
+                .collect();
+            scene.lines.push(LineItem {
+                segments,
+                colour,
+                on_top: true,
+            });
+        }
     }
     for line in &view.lines {
         let (colour, on_top) = style(line.role);
@@ -335,5 +359,42 @@ mod tests {
         assert_eq!(scene.lines[0].segments.len(), 2);
         // The work axes keep their conventional colours.
         assert_eq!(scene.lines[3].colour, WORK_X);
+    }
+
+    #[test]
+    fn req_imp_04_flagged_triangles_are_outlined_on_top_in_one_line_set() {
+        use fixtures::mesh;
+        use openchuck_app::scene::SceneMesh;
+        let view = SceneView {
+            meshes: vec![SceneMesh {
+                role: SceneRole::Problem,
+                mesh: mesh(),
+                feature_edges: Vec::new(),
+            }],
+            ..SceneView::default()
+        };
+        let scene = to_scene(&view);
+        assert_eq!(scene.meshes.len(), 1);
+        assert_eq!(scene.lines.len(), 1);
+        assert!(scene.lines[0].on_top);
+        // Two triangles, three sides each, two points a side.
+        assert_eq!(scene.lines[0].segments.len(), 12);
+    }
+
+    mod fixtures {
+        use openchuck_app::setup::Point3;
+
+        /// Two triangles of a square, through the scene's own mesh type.
+        pub fn mesh() -> openchuck_app::scene::Mesh {
+            openchuck_app::scene::Mesh {
+                vertices: vec![
+                    Point3::new(0.0, 0.0, 0.0),
+                    Point3::new(1.0, 0.0, 0.0),
+                    Point3::new(1.0, 1.0, 0.0),
+                    Point3::new(0.0, 1.0, 0.0),
+                ],
+                triangles: vec![[0, 1, 2], [0, 2, 3]],
+            }
+        }
     }
 }

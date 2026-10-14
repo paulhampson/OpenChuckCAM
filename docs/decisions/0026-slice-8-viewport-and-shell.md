@@ -4,7 +4,7 @@
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
 - **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered when `main` took 0023 to 0025 and OI-103 to OI-116.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13 and OI-118 are closed (items 4 and 10), OI-117 and OI-119 are open, OI-45 progresses, and OI-14 is deferred to slice 11 (item 1).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51 and OI-118 are closed (items 4, 13 and 10), OI-52 is proposed (item 13), OI-117 and OI-119 are open, and OI-14 is deferred to slice 11 (item 1).
 
 ## Context
 
@@ -112,11 +112,28 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
       - Apply (`Application::set_tool_profile`) is the only step that changes the project, and it is one undoable step; the diameter follows the profile's end.
     - **TL-03.** This completes TL-03's UI half. Drawing and editing a profile was the part left from slice 4.
 
+13. **Import dialog and model controls (item 6; IMP-03, IMP-04, IMP-05; OI-45, OI-51 closed, OI-52 proposed).**
+    - **Preview job.** `Application::start_import_preview(path, units, steps)` reads, places and checks a file that is not yet in the project. It returns the inspection and a scene of the placed model: the part with its feature edges, the triangles the checks list (flipped, degenerate, normal mismatches) as a `Problem` mesh, the open and non-manifold edges as `Problem` lines, and the rotary axis.
+    - **Adding.** `Application::add_model_with` adds the model with its unit and placement as one undoable step.
+    - **The dialog.** File > Import model takes a typed path (OI-117) and opens a non-modal dialog. Changing the unit or the placement re-runs the check. The dialog shows:
+      - the unit used and the unit question (IMP-03), with a choice of unit;
+      - the placement: as in the file, centred on the rotary axis, or any file direction turned onto the rotary axis and centred;
+      - the size and the largest radius about the rotary axis;
+      - the STL tessellation statement;
+      - the check report.
+
+      The viewport shows the preview, with flagged triangles outlined in red and drawn over the part (their fill would fight the part's for depth), and the open and non-manifold edges in red.
+    - **Model panel.** Clicking a model in the tree shows:
+      - its unit (`SetModelUnits`);
+      - its placement steps, which can be added (centre, orient, translate, rotate, scale, mirror) or removed (`SetModelTransform`), each undoable;
+      - its check, re-run when the unit or placement changes, with the note when the file has changed.
+    - **Changed files (OI-45).** `Application::model_file_warnings` names each changed or missing file, and the UI lists them in a dialog when a project opens.
+    - **OI-52 (proposed).** Keep the fixed unit-size thresholds. A model is checked at import, before any setup uses it, and the setup checks (SET-06) compare the part with the machine's travel once one does.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
 | --- | --- | --- |
-| 6 | Import dialog with the check report, the tessellation statement and the unit question (OI-51, OI-52); model transform and orientation controls | |
 | 7 (NFR-02) | The CI software-rendered smoke run (OI-119). The benchmark is built (item 9); its run on the reference hardware is the owner's | |
 | — | OI-53 (default library location) and OI-54 (machine copy against the library) | Both were placed in slice 8 |
 
@@ -141,6 +158,12 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
   - `req_tl_03_profile_editor_adds_moves_and_deletes_segments`.
 
   The binary launched with a project and ran until stopped with no error.
+- Import dialog and model controls (item 13): `openchuck-app` `tests/import_preview.rs`, three tests:
+  - the preview highlights exactly the open edges, flipped triangles and non-manifold edges of the seeded defect files, and a clean cube shows none along with the tessellation statement;
+  - the preview follows the unit (an inch file asks, and reads 25.4 times larger in inches) and the placement;
+  - a model is added with its placement as one undoable step.
+
+  Also `req_prj_02_model_file_warnings_name_changed_and_missing_files`, and UI tests that flagged triangles are outlined on top in one line set and that the panel's steps match the CLI's.
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
 ## Alternatives considered

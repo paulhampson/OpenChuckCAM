@@ -210,6 +210,26 @@ impl Application {
             .map_or(true, |saved| *saved != self.document.project)
     }
 
+    /// One sentence per model file that has changed or is missing since it
+    /// was added, naming the file, for a front end to show when a project
+    /// opens (PRJ-02, OI-45). Empty when every file matches.
+    pub fn model_file_warnings(&self) -> Vec<String> {
+        self.document
+            .project
+            .models()
+            .iter()
+            .filter_map(|m| {
+                let path = m.path.as_str();
+                match m.check(&self.document.location) {
+                    Ok(ModelCheck::Unchanged) => None,
+                    Ok(ModelCheck::Missing) => Some(format!("'{path}' is missing")),
+                    Ok(_) => Some(format!("'{path}' has changed since it was added")),
+                    Err(e) => Some(format!("'{path}' cannot be checked: {e}")),
+                }
+            })
+            .collect()
+    }
+
     /// The project folder.
     pub fn location(&self) -> &Path {
         &self.document.location
@@ -254,6 +274,18 @@ impl Application {
         file: &Path,
         units: Option<LengthUnit>,
     ) -> Result<(ModelId, ModelInspection), AppError> {
+        self.add_model_with(file, units, &[])
+    }
+
+    /// [`Application::add_model`] with placement steps (IMP-05), as one
+    /// undoable step: the import dialog adds a model as the user placed it
+    /// (decision record 0026 item 13).
+    pub fn add_model_with(
+        &mut self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+    ) -> Result<(ModelId, ModelInspection), AppError> {
         let relative = model::relative_to(&self.document.location, file)?.ok_or_else(|| {
             AppError::ModelPath {
                 path: file.to_path_buf(),
@@ -264,20 +296,39 @@ impl Application {
         let bytes = model::read(file)?;
         let hash = ContentHash::of_bytes(&bytes);
         let path = file.to_path_buf();
+        let steps = transform.to_vec();
         let inspection = self
             .jobs
             .submit("import model", self.events_tx.clone(), move |context| {
-                model::inspect_bytes(&path, &bytes, units, &[], context)
+                model::inspect_bytes(&path, &bytes, units, &steps, context)
             })
             .wait()?;
         let id = ModelId::new();
         let mut reference = ModelRef::new(id, relative, hash);
         reference.units = units;
+        reference.transform = transform.to_vec();
         self.execute(Command::Add {
             item: Item::Model(reference),
             placement: Placement::End,
         })?;
         Ok((id, inspection))
+    }
+
+    /// Starts reading, placing and checking a model file that is not yet in
+    /// the project, for the import dialog: the inspection and a preview scene
+    /// with the problems highlighted (OI-51).
+    pub fn start_import_preview(
+        &self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+    ) -> JobHandle<model::ImportPreview> {
+        let path = file.to_path_buf();
+        let steps = transform.to_vec();
+        self.jobs
+            .submit("check model", self.events_tx.clone(), move |context| {
+                model::import_preview(&path, units, &steps, context)
+            })
     }
 
     /// The model whose ID or path (as the project lists it) is `text`.

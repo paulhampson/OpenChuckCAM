@@ -21,7 +21,11 @@ use openchuck_types::stock::Stock;
 use openchuck_types::units::Degrees;
 
 use crate::AppError;
+
 use crate::model::placed_mesh;
+/// The triangle mesh type the scene holds, re-exported so front ends need no
+/// engine crate of their own (architecture section 5.8).
+pub use openchuck_types::mesh::TriangleMesh as Mesh;
 
 /// What a scene item shows, so the viewport can colour it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -41,6 +45,9 @@ pub enum SceneRole {
     WorkY,
     /// The work coordinate system's Z axis.
     WorkZ,
+    /// Triangles or edges a mesh check lists (IMP-04): holes, non-manifold
+    /// edges, flipped, degenerate or mismatched triangles.
+    Problem,
 }
 
 /// A mesh to draw shaded, with the feature edges to draw over it.
@@ -363,4 +370,86 @@ fn merge_extent(a: Option<PartExtent>, b: Option<PartExtent>) -> Option<PartExte
             radius: openchuck_types::units::Millimetres(a.radius.0.max(b.radius.0)),
         }),
     }
+}
+
+/// The scene of one placed model on its own, before it joins a setup: the
+/// model with its feature edges, the triangles and edges `report` lists as
+/// problems, and the rotary axis for orientation (OI-51; decision record
+/// 0026 item 13).
+pub(crate) fn model_scene(
+    mesh: TriangleMesh,
+    report: &openchuck_geom::check::MeshReport,
+) -> Result<SceneView, AppError> {
+    let mut view = SceneView::default();
+    let extent = openchuck_geom::part_extent(&mesh);
+    let origin = Point3::new(0.0, 0.0, 0.0);
+    let bounds = union(
+        extent.map(|e| e.bounds),
+        Aabb {
+            min: origin,
+            max: origin,
+        },
+    );
+    let size = (bounds.max - bounds.min).length().max(10.0);
+
+    // Problem triangles as their own mesh, drawn over the model.
+    let mut flagged: Vec<u32> = report
+        .flipped_triangles
+        .iter()
+        .chain(&report.degenerate_triangles)
+        .chain(&report.normal_mismatches)
+        .copied()
+        .collect();
+    flagged.sort_unstable();
+    flagged.dedup();
+    if !flagged.is_empty() {
+        let triangles = flagged
+            .iter()
+            .filter_map(|&t| mesh.triangles.get(t as usize).copied())
+            .collect();
+        view.meshes.push(SceneMesh {
+            role: SceneRole::Problem,
+            mesh: TriangleMesh {
+                vertices: mesh.vertices.clone(),
+                triangles,
+            },
+            feature_edges: Vec::new(),
+        });
+    }
+    // Open and non-manifold edges as lines.
+    for [a, b] in report
+        .holes
+        .iter()
+        .flat_map(|h| h.edges.iter())
+        .chain(&report.non_manifold_edges)
+    {
+        if let (Some(&p), Some(&q)) = (
+            mesh.vertices.get(*a as usize),
+            mesh.vertices.get(*b as usize),
+        ) {
+            view.lines.push(ScenePolyline {
+                role: SceneRole::Problem,
+                points: vec![p, q],
+            });
+        }
+    }
+    let margin = 0.15 * size;
+    view.lines.push(ScenePolyline {
+        role: SceneRole::RotaryAxis,
+        points: vec![
+            Point3::new(bounds.min.x - margin, 0.0, 0.0),
+            Point3::new(bounds.max.x + margin, 0.0, 0.0),
+        ],
+    });
+    let feature_edges = feature_edges(&mesh, DEFAULT_CREASE_DEGREES)?;
+    view.meshes.insert(
+        0,
+        SceneMesh {
+            role: SceneRole::Part,
+            mesh,
+            feature_edges,
+        },
+    );
+    view.bounds = Some(bounds);
+    Ok(view)
 }

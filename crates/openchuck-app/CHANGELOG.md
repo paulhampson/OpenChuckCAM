@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Slice 8, import (decision 0026 item 13): `Application::start_import_preview` (`model::ImportPreview` with the problems as a `SceneRole::Problem` mesh and lines), `add_model_with` (unit and placement in one step) and `model_file_warnings`; `scene::Mesh` re-exported.
 - Slice 8, tool editing (decision 0026 item 12): the `tool_edit` module (tool form fields, `set_tool_field`, `set_tool_profile`, `check_profile`, `starting_profile`, `profile_outline` and segment edits) and `Application::set_tool_field` and `set_tool_profile`.
 - Slice 8, parameter forms (decision 0026 item 11): the `form` module (`parameter_form`, fields with kind, unit, range, value and source), `Application::parameter_form` and `set_parameter`, which refuses an invalid value with the project unchanged.
 - Slice 8, tree commands (decision 0026 item 10): `Command::SetOperationEnabled` and `duplicate_operation`; regeneration (and so simulation and posting) and the tool-number plan skip disabled operations.

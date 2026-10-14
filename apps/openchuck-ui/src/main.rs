@@ -18,6 +18,8 @@ use std::sync::{Arc, OnceLock};
 
 mod bench;
 mod form_panel;
+mod import_panel;
+mod model_panel;
 mod shell;
 mod tool_panel;
 mod viewport;
