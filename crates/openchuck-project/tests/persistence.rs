@@ -49,6 +49,7 @@ fn model(n: u128) -> ModelRef {
 
 fn operation(n: u128) -> Operation {
     Operation {
+        enabled: true,
         id: op_id(n),
         order: OrderKey::default(),
         name: format!("Operation {n}"),
@@ -497,19 +498,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 5\n", "schema = 5\nspeed = 3\n"),
+            |t| t.replace("schema = 6\n", "schema = 6\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 5\n", ""),
+            |t| t.replace("schema = 6\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 5", "schema = 9"),
+            |t| t.replace("schema = 6", "schema = 9"),
             "newer OpenChuckCAM",
         ),
         (
@@ -552,7 +553,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 5\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 6\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -663,14 +664,14 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 5\n"), "{path}");
+        assert!(text.starts_with("schema = 6\n"), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
         let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect::<String>()
-            .replace("schema = 1\n", "schema = 5\n");
+            .replace("schema = 1\n", "schema = 6\n");
         if path.starts_with("setups/") {
             old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
         }

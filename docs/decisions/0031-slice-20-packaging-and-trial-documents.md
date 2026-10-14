@@ -1,11 +1,11 @@
-# 0027: Slice 20 preparation: packaging route, release tags, and the trial documents
+# 0031: Slice 20 preparation: packaging route, release tags, and the trial documents
 
-- **Status:** accepted by the project owner (14 Oct 2026): the packaging route (item 1), the tag schemes (item 2) and the drafting of the trial documents (item 3) as written. Architecture section 12 is edited to match. The Z1 operator (the owner) reviewed and accepted the air-cut procedure and the safe-practice checklist without changes on 14 Oct 2026 (OI-120, closed), and signing and extra platforms stay the owner's later call (OI-122).
+- **Status:** accepted by the project owner (14 Oct 2026): the packaging route (item 1), the tag schemes (item 2) and the drafting of the trial documents (item 3) as written. Architecture section 12 is edited to match. The Z1 operator (the owner) reviewed and accepted the air-cut procedure and the safe-practice checklist without changes on 14 Oct 2026 (OI-133, closed), and signing and extra platforms stay the owner's later call (OI-135).
 - **Date:** 14 Oct 2026.
 - **Work breakdown:** slice 20 items 8, 10 and 12 (preparation only; the slice is not started).
-- **Open items** are tracked in [open-items.md](../open-items.md): OI-120 to OI-122 are new, and OI-103 and OI-104 are the items this record proposes answers to.
+- **Open items** are tracked in [open-items.md](../open-items.md): OI-133 to OI-135 are new, and OI-103 and OI-104 are the items this record proposes answers to.
 
-Numbering: 0026 is claimed on two unmerged branches (`claude/practical-hamilton-svzzan` and `claude/slice-8-viewport-shell`) and OI-117 to OI-119 on `claude/slice-8-viewport-shell`, so this record takes 0027 and OI-120 to OI-122. Renumber if those land differently.
+Numbering: first written as 0027 with OI-120 to OI-122 (14 Oct 2026). Other unmerged branches also hold records numbered 0027 and OI-120 to OI-123, and `main` now holds 0029 and OI-127 to OI-130, so it was renumbered on merging `main` to take the next free numbers across `main` and every unmerged branch: 0031 and OI-133 to OI-135 (0030 and OI-131, OI-132 are on `claude/slice-9-job-pipeline`).
 
 ## Context
 
@@ -48,7 +48,7 @@ The two schemes cannot match each other's trigger pattern, and neither matches `
 Two documents are drafted with this record:
 
 - [z1-air-cut-procedure.md](../z1-air-cut-procedure.md): the gate 4 procedure for generated programs, which turns the plan in [reference-jobs.md](../reference-jobs.md) into a sheet the operator fills in. It uses only facts already in the documents (decisions 0007, 0013, 0020 and the reference job set). Where a value is still unmeasured (axis height, OI-60) it says so and makes the measurement a precondition.
-- [z1-safe-practice-checklist.md](../z1-safe-practice-checklist.md): the checklist for gates 4 and 5. **It is a draft written by the agent from the documents, not from experience of the machine.** It is not reviewed. The slice 20 review item "reviewed by the Z1 operator" stays unticked until the operator has read it, corrected it and said so (OI-120).
+- [z1-safe-practice-checklist.md](../z1-safe-practice-checklist.md): the checklist for gates 4 and 5. **It is a draft written by the agent from the documents, not from experience of the machine.** It is not reviewed. The slice 20 review item "reviewed by the Z1 operator" stays unticked until the operator has read it, corrected it and said so (OI-133).
 
 Gate 5, the 3-axis repeatability cut, the G93 recheck and the tool change test remain hands-on steps for slice 20 (items 11, OI-41).
 
@@ -61,7 +61,7 @@ Gate 5, the 3-axis repeatability cut, the G93 recheck and the tool change test r
 
 ## Consequences
 
-- Architecture section 12 ("Application binaries" and "Names and tags") is edited to the agreed route (done with the acceptance). Work breakdown slice 20 items 8 and 10 now note the route; what remains is to build the release workflow, the bundle command and the gate. OI-103 and OI-104 stay deferred to slice 20 (signing and extra platforms, with OI-122).
+- Architecture section 12 ("Application binaries" and "Names and tags") is edited to the agreed route (done with the acceptance). Work breakdown slice 20 items 8 and 10 now note the route; what remains is to build the release workflow, the bundle command and the gate. OI-103 and OI-104 stay deferred to slice 20 (signing and extra platforms, with OI-135).
 - No dependency changes and no code. `.github/workflows` is untouched.
 - Nothing in the trial documents implies the generated G-code is safe to run unchecked (NFR-12).
 
@@ -69,6 +69,6 @@ Gate 5, the 3-axis repeatability cut, the G93 recheck and the tool change test r
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Accept or amend the packaging route and tag schemes above (OI-121) | Closed 14 Oct 2026: accepted | Project owner |
-| 2 | macOS bundle: is a bundle without notarisation acceptable for the first release, and are Intel macOS or Linux arm64 wanted? (OI-103, OI-104, OI-122) | Slice 20 | Project owner; signing certificates if wanted |
-| 3 | The Z1 operator reviews the safe-practice checklist and the air-cut procedure and corrects them (OI-120) | Closed 14 Oct 2026: reviewed and accepted without changes | The Z1 operator |
+| 1 | Accept or amend the packaging route and tag schemes above (OI-134) | Closed 14 Oct 2026: accepted | Project owner |
+| 2 | macOS bundle: is a bundle without notarisation acceptable for the first release, and are Intel macOS or Linux arm64 wanted? (OI-103, OI-104, OI-135) | Slice 20 | Project owner; signing certificates if wanted |
+| 3 | The Z1 operator reviews the safe-practice checklist and the air-cut procedure and corrects them (OI-133) | Closed 14 Oct 2026: reviewed and accepted without changes | The Z1 operator |

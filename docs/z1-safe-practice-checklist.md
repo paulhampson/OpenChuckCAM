@@ -1,6 +1,6 @@
 # Safe-practice checklist for first Makera Z1 trials
 
-**Status: reviewed and accepted by the project owner, who operates the Z1 (14 Oct 2026), with no changes.** Written by the agent from the project documents ([verification plan section 6](verification-plan.md), [decision 0007](decisions/0007-sp-12-z1-conventions.md), [reference-jobs.md](reference-jobs.md)), not from experience of the machine. Work breakdown slice 20 item 12 required it to be reviewed by whoever operates the Z1 (OI-120, closed). The operator should still correct anything that proves not to match the machine and record the change in the review table.
+**Status: reviewed and accepted by the project owner, who operates the Z1 (14 Oct 2026), with no changes.** Written by the agent from the project documents ([verification plan section 6](verification-plan.md), [decision 0007](decisions/0007-sp-12-z1-conventions.md), [reference-jobs.md](reference-jobs.md)), not from experience of the machine. Work breakdown slice 20 item 12 required it to be reviewed by whoever operates the Z1 (OI-133, closed). The operator should still correct anything that proves not to match the machine and record the change in the review table.
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM has never run a generated program on a Z1 as of this draft. Passing the project's own gates reduces the risk; it does not remove it.
 

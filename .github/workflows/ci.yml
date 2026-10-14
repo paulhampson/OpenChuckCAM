@@ -178,6 +178,77 @@ jobs:
           cargo run --locked -p openchuck-geom --example check_and_place
           cargo run --locked -p openchuck-path --example host
 
+  ui-smoke:
+    name: UI smoke test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
+    # application, software-rendered where the runner has no GPU (decision
+    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
+    # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
+    # yet proven on hosted runners, so they report without blocking until
+    # their first runs are recorded under OI-129.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            require_adapter: "1"
+            blocking: true
+          - os: windows-latest
+            require_adapter: ""
+            blocking: false
+          - os: macos-latest
+            require_adapter: ""
+            blocking: false
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ !matrix.blocking }}
+    timeout-minutes: 30
+    env:
+      OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+      - name: Software Vulkan and a virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # xvfb-run needs xauth, which the xvfb package only recommends.
+          # winit loads libxkbcommon-x11 (and may load the other X11 client
+          # libraries) at run time; the bare runner lacks them.
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth \
+            libxkbcommon-x11-0 libxkbcommon0 libx11-xcb1 libxcursor1 libxrandr2 libxi6
+      - name: Viewport render tests
+        shell: bash
+        run: |
+          if [ -z "$OPENCHUCK_REQUIRE_ADAPTER" ]; then unset OPENCHUCK_REQUIRE_ADAPTER; fi
+          cargo test --locked -p openchuck-viewport --test render -- --nocapture
+      - name: Launch the application (3 s scripted camera path)
+        shell: bash
+        run: |
+          cargo build --locked -p openchuck-ui
+          run() { "$@" ./target/debug/openchuck-ui --bench testdata/stl/cube_ascii.stl --seconds 3; }
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            run xvfb-run -a -s "-screen 0 1920x1080x24" > launch.log 2>&1
+          else
+            run > launch.log 2>&1
+          fi
+          code=$?
+          set -e
+          cat launch.log
+          # 0 passes and 2 fails the frame-time limit; either means the
+          # window opened, drew and closed. Anything else is a failure, and
+          # the end of the output becomes an annotation on the check page.
+          echo "exit code $code"
+          if [ "$code" != 0 ] && [ "$code" != 2 ]; then
+            tail -n 25 launch.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+            echo "::error title=UI launch failed (exit $code)::$(cat tail.txt)"
+            exit 1
+          fi
+
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
     needs: changes
@@ -347,7 +418,23 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
-      - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=60
+      - name: Fuzz for one minute
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set +e
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time=60 > fuzz.log 2>&1
+          code=$?
+          set -e
+          cat fuzz.log
+          # On failure, the end of the output becomes an annotation on the
+          # check page, so the cause is visible without opening the log.
+          if [ "$code" != 0 ]; then
+            tail -n 25 fuzz.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+            echo "::error title=Fuzz $TARGET failed (exit $code)::$(cat tail.txt)"
+            exit "$code"
+          fi
 
   coverage:
     name: Coverage trend
