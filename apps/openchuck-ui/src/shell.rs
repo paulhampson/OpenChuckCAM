@@ -26,6 +26,10 @@ use crate::model_panel::ModelPanel;
 use crate::tool_panel;
 use crate::viewport::Viewport;
 
+/// The starting text and control size. egui's own default reads small on
+/// large desktop displays (owner's visual check, 14 Oct 2026).
+pub const DEFAULT_ZOOM: f32 = 1.2;
+
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
 const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
 const REDO: KeyboardShortcut =
@@ -364,6 +368,22 @@ impl Shell {
                 for mode in DisplayMode::ALL {
                     ui.radio_value(&mut self.viewport.mode, mode, mode.name());
                 }
+                ui.separator();
+                // Text and controls scale together (egui's zoom; Ctrl and +
+                // or - also work).
+                let zoom = ctx.zoom_factor();
+                ui.label(format!("Text size: {:.0} %", zoom * 100.0));
+                ui.horizontal(|ui| {
+                    if ui.button("Larger").clicked() {
+                        ctx.set_zoom_factor((zoom * 1.1).min(3.0));
+                    }
+                    if ui.button("Smaller").clicked() {
+                        ctx.set_zoom_factor((zoom / 1.1).max(0.5));
+                    }
+                    if ui.button("Reset").clicked() {
+                        ctx.set_zoom_factor(DEFAULT_ZOOM);
+                    }
+                });
             });
         });
     }

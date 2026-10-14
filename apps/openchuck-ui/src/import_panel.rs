@@ -201,7 +201,9 @@ impl ImportSession {
                                 }
                             });
                         ui.end_row();
-                        ui.label("Placement");
+                        ui.label("Placement").on_hover_text(
+                        "Moves the model in the 3D view behind this dialog; the orange line is the rotary axis.",
+                    );
                         egui::ComboBox::from_id_salt("import orientation")
                             .selected_text(self.orientation.name())
                             .show_ui(ui, |ui| {
@@ -214,6 +216,10 @@ impl ImportSession {
                         ui.end_row();
                     });
 
+                ui.weak(
+                    "The 3D view previews the model as it will be added: the placement moves it \
+                     there, and the orange line is the rotary axis.",
+                );
                 if let Some(preview) = &self.preview {
                     let i = &preview.inspection;
                     if let Some(question) = &i.unit_question {

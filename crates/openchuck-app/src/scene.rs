@@ -213,11 +213,11 @@ pub(crate) fn build_scene(
                     .max(bounds.max.z.abs())
                     .max(bounds.min.y.abs().max(bounds.min.z.abs())))
             .max(0.08 * size);
-            let (arrow, tip) = a_arrow(&frame, x0 + 0.3 * margin, radius);
+            let (arrow, label_at) = a_arrow(&frame, x0 + 0.3 * margin, radius);
             view.lines.extend(arrow);
             view.labels.push(SceneLabel {
                 role: SceneRole::ADirection,
-                at: tip,
+                at: label_at,
                 text: "A+".to_owned(),
             });
             view.a_direction = Some(crate::setup::a_direction(profile));
@@ -251,7 +251,10 @@ pub(crate) fn build_scene(
 
 /// The arrow for positive A: an arc of 270 degrees around the axis at `x`,
 /// traced by where the part's up side faces as A grows (the shared
-/// kinematics), with a head at its end. Returns the lines and the tip.
+/// kinematics), with a head at its end. Returns the lines and where to put
+/// the "A+" label: just outside the arc an eighth of a turn from its start,
+/// between the top and the side positive A turns toward. The arc's end is
+/// on the other side, where the work Y axis label sits in end views.
 ///
 /// The machine directions from `facing_at` are drawn in the model frame,
 /// which equals the machine frame's orientation at A = 0 when the rotary axis
@@ -268,6 +271,10 @@ fn a_arrow(frame: &RotaryFrame, x: f64, radius: f64) -> (Vec<ScenePolyline>, Poi
         .map(|i| at(sweep * f64::from(i) / f64::from(steps)))
         .collect();
     let tip = at(sweep);
+    let label = {
+        let p = at(45.0);
+        Point3::new(p.x, p.y * 1.15, p.z * 1.15)
+    };
     // The head: two short lines back from the tip, either side of the arc.
     let back = at(sweep - 15.0);
     let along = tip - back;
@@ -286,7 +293,7 @@ fn a_arrow(frame: &RotaryFrame, x: f64, radius: f64) -> (Vec<ScenePolyline>, Poi
                 points: vec![left, tip, right],
             },
         ],
-        tip,
+        label,
     )
 }
 

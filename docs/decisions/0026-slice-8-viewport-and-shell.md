@@ -4,7 +4,7 @@
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
 - **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered when `main` took 0023 to 0025 and OI-103 to OI-116.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-117 and OI-118 are closed (items 4, 10, 13, 15 and 16), OI-119 is open, and OI-14 is deferred to slice 11 (item 1).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-117 and OI-118 are closed (items 4, 10, 13, 15 and 16), OI-119 and OI-120 are open, and OI-14 is deferred to slice 11 (item 1).
 
 ## Context
 
@@ -189,6 +189,48 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
   `openchuck-project` tests: the profile round trip at schema 2, a schema 1 profile read with no ID, and a bad ID refused.
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
+## Owner's local run (14 Oct 2026)
+
+Run by the owner from the prompt in this session, on commit `cf96213` with a release build.
+
+**Machine.** Windows 11 Pro 10.0.26200; AMD Ryzen 5 5600X (6 cores), 32 GB RAM, NVIDIA GeForce RTX 2070 SUPER (driver 32.0.16.1714) through Vulkan; 2560 by 1440 at 144 Hz; mains power. **Not the 4.2 reference class** (4 cores, 16 GB, integrated graphics, 1080p), so the margins are optimistic. The adapter was the real GPU in every run, not a software renderer. Viewport 1751 by 1003 pixels.
+
+**Benchmark** (`openchuck-ui --bench`, 1,002,000 triangles, 60 s path, times in ms):
+
+| Mode | Run | Frames | p50 | p95 | p99 | Max | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Shaded with edges | 1 | 122,658 | 0.44 | 0.77 | 1.12 | 10.78 | PASS |
+| Shaded with edges | 2 | 110,890 | 0.48 | 0.91 | 1.29 | 35.57 | PASS |
+| Shaded with edges | 3 | 128,998 | 0.43 | 0.71 | 0.90 | 1.88 | PASS |
+| Shaded | 1 | 122,057 | 0.43 | 0.84 | 1.17 | 7.18 | PASS |
+| Wireframe | 1 | 70,515 | 0.78 | 1.42 | 1.67 | 6.95 | PASS |
+
+The median p95 with edges is 0.77 ms against 33 ms, about 43 times inside the limit on this hardware. Run 2's one 35.57 ms frame in about 111,000 did not move its p95.
+
+**Visual check:**
+
+| Step | Result |
+| --- | --- |
+| V1 Window and scene (UI-01, UI-03) | Pass |
+| V2 A direction | Pass. In the Right view the A+ arrow starts at the top and turns counter-clockwise toward -Y, as on the machine |
+| V3 Camera (UI-02) | Pass |
+| V4 Display modes | Pass |
+| V5 Machine panel | Pass |
+| V6 Import dialog (OI-51, OI-117) | Pass, with the native dialog |
+| V7 Model panel (IMP-05) | Pass |
+| V8 Tools and profile editor | Skipped: no tools in the project; covered by tests |
+| V9 Unsaved changes | Pass |
+
+**V10, the owner's observations, and what was done:**
+
+1. Some text is small. The UI now starts at 120 % (`DEFAULT_ZOOM`), and View has Larger, Smaller and Reset, alongside egui's Ctrl with + or -. The size is not remembered between runs, because eframe's persistence is not enabled.
+2. The library folder should be creatable and openable. The machine panel now offers "Create the library folder" when it is missing and "Open the library folder" when it exists, using the platform's own `explorer`, `open` or `xdg-open` (no new dependency).
+3. It was not clear that Placement moves the model in the view. The dialog now says that the 3D view previews the model as it will be added and that the orange line is the rotary axis, and the Placement label has the same tooltip.
+4. The import dialog cannot be dragged outside the main window. egui windows live inside the main window; separate OS windows need egui's multi-viewport support. Recorded as OI-120.
+5. The "A+" and "Y" labels overlapped in the Right view: the arrow ended on +Y, where the work Y label sits. The "A+" label now sits an eighth of a turn along the arc, between the top and -Y (`req_set_01_req_ui_03_a_arrow_follows_the_documented_convention` checks it).
+
+**Build note.** The first release build hit a rustc crash compiling `naga` 30.0.1 (Windows `0xc0000374`, heap corruption). A retry with no changes built cleanly, so it is treated as a transient fault of the compiler or the environment; it is recorded in case it recurs.
+
 ## Alternatives considered
 
 - **Renderer inside the egui callback in `openchuck-viewport`** (the spike's layout). Rejected: it ties the viewport crate to egui, and the fallback would then touch the renderer as well.
@@ -206,4 +248,5 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 | --- | --- |
 | OI-117 | Native file dialogs. Folders are typed in until a dialog crate (for example `rfd`) has an NFR-14 record and an AGPL-compatible licence check. |
 | OI-118 | Operations need an enabled flag for UI-06, with a rule for disabled operations. Closed 14 Oct 2026: skipped everywhere, schema 6 (item 10). |
+| OI-120 | Dialogs (import, and later panels) cannot leave the main window; separate OS windows need egui's multi-viewport support (owner's visual check, V10 item 4). |
 | OI-119 | CI smoke test for UI-01 and NFR-02: install a software Vulkan driver (Mesa lavapipe) on the Linux runner and set `OPENCHUCK_REQUIRE_ADAPTER=1` for `openchuck-viewport`'s render tests. Check what the Windows (WARP) and macOS runners offer, and add a scripted launch of the binary. |

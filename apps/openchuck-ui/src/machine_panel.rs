@@ -110,8 +110,18 @@ impl MachinePanel {
         match &self.library {
             Some(dir) => {
                 ui.weak(format!("Library: {}", dir.display()));
-                if !dir.is_dir() {
-                    ui.weak("(the folder does not exist yet; only built-in profiles are listed)");
+                if dir.is_dir() {
+                    if ui.button("Open the library folder").clicked() {
+                        self.message = open_folder(dir).err();
+                    }
+                } else {
+                    ui.weak("The folder does not exist yet; only built-in profiles are listed.");
+                    if ui.button("Create the library folder").clicked() {
+                        self.message = Some(match std::fs::create_dir_all(dir) {
+                            Ok(()) => format!("Created {}.", dir.display()),
+                            Err(e) => format!("{}: {e}", dir.display()),
+                        });
+                    }
                 }
             }
             None => {
@@ -177,4 +187,20 @@ impl MachinePanel {
         }
         command
     }
+}
+
+/// Opens `dir` in the platform's file browser. Returns why it could not.
+fn open_folder(dir: &std::path::Path) -> Result<(), String> {
+    let program = if cfg!(target_os = "windows") {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(program)
+        .arg(dir)
+        .spawn()
+        .map(drop)
+        .map_err(|e| format!("could not open {} with {program}: {e}", dir.display()))
 }

@@ -128,6 +128,10 @@ fn req_set_01_req_ui_03_a_arrow_follows_the_documented_convention() {
     let (start, quarter) = (arc[0], arc[18]);
     assert!(start.y.abs() < 1e-9 && start.z > 0.0, "{start:?}");
     assert!(quarter.z.abs() < 1e-9 && quarter.y < 0.0, "{quarter:?}");
+    // The "A+" label sits between the top and -Y, clear of the work Y
+    // label on +Y (owner's visual check, 14 Oct 2026).
+    let label = view.labels.iter().find(|l| l.text == "A+").unwrap().at;
+    assert!(label.y < 0.0 && label.z > 0.0, "{label:?}");
     assert!(
         view.a_direction
             .as_deref()

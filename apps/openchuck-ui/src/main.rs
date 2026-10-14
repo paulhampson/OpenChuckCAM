@@ -57,6 +57,7 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
         native_options(true),
         Box::new(move |cc| {
             let available = viewport::install(cc);
+            cc.egui_ctx.set_zoom_factor(shell::DEFAULT_ZOOM);
             Ok(Box::new(shell::Shell::new(available, folder)))
         }),
     );
