@@ -1,6 +1,6 @@
 # 0021: SP-11 result, swarf: line-fit detection plus a measured deviation gate
 
-- **Status:** proposed, awaiting the project owner. Guidance only until accepted. The spike met both pass criteria without the fallback. OI-94 to OI-98 are open.
+- **Status:** accepted by the project owner (14 Oct 2026), including items 1 to 7 and the resolutions of OI-94 to OI-96. The spike met both pass criteria without the fallback. OI-97 and OI-98 stay open for slice 17.
 - **Date:** 13 Oct 2026.
 - **Spike branch:** `spike/sp-11-swarf` (throwaway, never merged). Code in `spikes/sp-11-swarf/`, a separate Cargo project with an empty `[workspace]`; the write-up is `spikes/sp-11-swarf/RESULT.md` on that branch, and the full report is `out/report.md` beside it.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-94 to OI-98 are new.
@@ -24,7 +24,7 @@ A dependency-free spike on parametric surfaces `S(u, v)`: cylinder and cone with
 - **A** is continuous with an unwrap, provided the ruling direction sign is chosen once per path (smallest tilt at the first pose).
 - **Determinism:** bit-identical over repeat runs.
 
-## Proposed decision
+## Decision (accepted)
 
 1. **Both criteria are met; the fallback (analytic cylinders and cones only) is not adopted.** The detector reads point samples, so it applies to any face the SP-9 evaluators can sample, including B-spline faces.
 2. **Detection is a straight-line fit per iso-line family** (best-fit line by a fixed number of power iterations, worst residual). A face is a swarf candidate when one family fits within the operation's tolerance; the family with the smaller residual is used, `v` on a tie. A face that fits in neither is refused with a message that names the residual and the limit (slice 17 item 4).
@@ -49,8 +49,8 @@ A dependency-free spike on parametric surfaces `S(u, v)`: cylinder and cone with
 
 ## Open items
 
-- **OI-94**: four-axis reach. Swarf needs the flank line perpendicular to X after the tool's taper is allowed for. Decide what the UI does for a ruled face that cannot be reached (refuse, or offer the matching taper), and whether coaxial faces are refused outright. Slice 17 design refinement.
-- **OI-95**: tolerance split for swarf: gouge against the toolpath tolerance (0.01 mm), material left against stock to leave, and which a pose spacing rule uses (item 6). Decide with the verification plan section 4.1 limits.
-- **OI-96**: mesh models. The spike read parametric faces only. OP-07 says "selected surfaces"; an STL has none. Decide whether swarf is B-rep only (and says so for mesh selections) or recovers a ruled patch from a mesh.
-- **OI-97**: tool detail the spike left out: tip position and engaged flute length against the ruling length, corner radius on ball and bull-nose tools (flank contact must sit above it), and the holder (OP-12). Slice 17.
+- **OI-94** (resolved): a ruled face the four axes cannot reach is refused with a message that suggests the matching taper where one exists. Coaxial faces are always refused, since no taper helps. Slice 17 builds it.
+- **OI-95** (resolved): gouge is checked against the toolpath tolerance (0.01 mm); material left against the stock-to-leave allowance. Pose spacing (item 6) is set so the leftover meets that allowance.
+- **OI-96** (resolved): swarf is B-rep only for P1. The UI says so for mesh selections. Recovering a ruled patch from a mesh is separate work, not planned.
+- **OI-97**: tool detail the spike left out: tip position and engaged flute length against the ruling length, corner radius on ball and bull-nose tools (flank contact must sit above it), and the holder (OP-12). Slice 17 design refinement.
 - **OI-98**: machine conventions. The spike uses rotation about X and a unit-vector axis, not the Z1's A direction, range or wrap limits (decisions 0007 and 0013). Slice 17 reuses the slice 5 A-axis management and checks the sign against the kinematic oracle.
