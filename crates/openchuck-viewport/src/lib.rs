@@ -8,6 +8,7 @@
 //! - [`scene`]: what is drawn, as plain data: meshes with feature edges, and
 //!   lines.
 //! - [`renderer`]: uploads a scene and draws it into a wgpu render pass.
+//! - [`bench`]: the NFR-03 camera path and frame-time statistics.
 //!
 //! The crate does not depend on egui or any window toolkit: the front end
 //! hands it a device, a queue and a render pass (decision record 0026). No
@@ -19,6 +20,7 @@
 
 #![warn(missing_docs)]
 
+pub mod bench;
 pub mod camera;
 pub mod renderer;
 pub mod scene;

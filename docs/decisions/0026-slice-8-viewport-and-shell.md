@@ -62,6 +62,19 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
    - The project tree lists models, setups, operations and tools. Choosing a setup shows it.
    - The status bar shows the A direction, the scene notes and the G-code verification notice (NFR-12).
 
+9. **The product frame-time benchmark (item 7; NFR-03, verification plan 4.2).** OI-09 measured the SP-2 spike. This benchmark runs the 4.2 test on the product viewport, so it can be repeated on each release and on the reference class not yet run (integrated graphics, Apple M1).
+   - **Camera path.** `openchuck_viewport::bench::CameraPath` is a function of time only, so every run moves the camera the same way whatever the frame rate. From a camera fitted to the scene it does two turns of orbit with the pitch swinging 30 degrees either way, then pans once round a circle of a third of the scene radius, then zooms in to about a third of the distance and out to almost three times it.
+   - **Statistics.** `FrameTimes` gives the mean and the 50th, 95th and 99th percentiles (nearest rank) and the maximum. A run passes at p95 of 33 ms or less.
+   - **Running it.** `cargo run --release -p openchuck-benches --example bench_model -- model.stl` writes the testkit's NFR-03 model (1,002,000 triangles). `openchuck-ui --bench model.stl [--seconds N] [--mode shaded|edges|wireframe] [--out report.txt]` then:
+     - adds the model to a temporary project through the application API;
+     - opens a 1920 by 1080 window with vsync off;
+     - draws 30 warm-up frames;
+     - plays the path, recording the interval between frames;
+     - prints the report (adapter, viewport size in pixels, triangle and feature-edge counts, mode, statistics, PASS or FAIL);
+     - exits with code 2 on a fail.
+
+     The default mode is shaded with feature edges, as 4.2 now says. Frame time is the interval between frames, as in SP-2, not a GPU timestamp.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
@@ -69,7 +82,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 | 4 (UI-06) | Reorder, enable, disable and duplicate operations in the tree, through commands and undoable | Operations have no enabled flag, so enable and disable need project schema 5 (OI-118) |
 | 5 (UI-07) | Parameter forms from strategy and tool schemas; the custom-profile editor with live preview (TL-03 closes here) | |
 | 6 | Import dialog with the check report, the tessellation statement and the unit question (OI-51, OI-52); model transform and orientation controls | |
-| 7 (NFR-03) | The scripted 60-second camera-path benchmark on `openchuck_testkit::parts::benchmark_model_1m`; the CI software-rendered smoke run (OI-119) | |
+| 7 (NFR-02) | The CI software-rendered smoke run (OI-119). The benchmark is built (item 9); its run on the reference hardware is the owner's | |
 | — | OI-53 (default library location) and OI-54 (machine copy against the library) | Both were placed in slice 8 |
 
 ## Verification (so far)
@@ -82,7 +95,9 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
   - Where they ran: on llvmpipe (Mesa 25.0.7, Vulkan) with `OPENCHUCK_REQUIRE_ADAPTER=1`. Without an adapter they report a skip.
 - `openchuck-ui`: a unit test that guides are drawn on top and the stock is not. The binary launched with a project and ran for 8 s under X11 with no error. No screenshot: X refused to capture the GPU-composited window. A visual check by the owner is still to do.
 - `cargo clippy --workspace --all-targets` is clean; `cargo test --workspace` passes; `cargo xtask deps`, `licences`, `records`, `trace` and `testdata` pass.
-- Not measured: NFR-03 (OI-09); Windows and macOS launch from CI artefacts.
+- Benchmark (item 9): `openchuck-viewport` `tests/camera.rs` gains 3 tests: the path orbits, pans and zooms and returns to its start; it keeps the scene centre on screen at every pose; the percentile and pass rules. An `openchuck-ui` unit test covers option parsing.
+- **End-to-end benchmark run in the cloud container (not reference hardware, so not a 4.2 result).** llvmpipe (CPU), 1,002,000 triangles, 2,000 feature edges, viewport 1751 by 1003 pixels, 10 s path: 107 frames, p50 93.5 ms, p95 102.1 ms, FAIL (exit code 2), as a CPU renderer should. This shows the harness works end to end. For comparison, SP-2 measured p95 256 ms on llvmpipe with its polyline layer.
+- Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
 ## Alternatives considered
 

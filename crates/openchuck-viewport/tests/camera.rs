@@ -181,3 +181,84 @@ fn req_ui_02_ray_passes_through_the_projected_point() {
         assert!(miss < 1e-6, "{projection:?}: {miss}");
     }
 }
+
+mod bench {
+    use std::time::Duration;
+
+    use openchuck_viewport::bench::{CameraPath, FrameTimes, P95_LIMIT, STANDARD_DURATION};
+    use openchuck_viewport::camera::Camera;
+
+    fn start() -> Camera {
+        let mut c = Camera::default();
+        c.fit([0.0, -25.0, -25.0], [100.0, 25.0, 25.0], 16.0 / 9.0);
+        c
+    }
+
+    #[test]
+    fn req_nfr_03_camera_path_orbits_pans_and_zooms_and_returns() {
+        let path = CameraPath::new(start(), STANDARD_DURATION);
+        let at = |s: f64| path.at(Duration::from_secs_f64(s));
+        let begin = at(0.0);
+        let same_eye = |a: &Camera, b: &Camera| {
+            let (p, q) = (a.eye(), b.eye());
+            (0..3).all(|i| (p[i] - q[i]).abs() < 1e-6)
+        };
+        assert!(same_eye(&begin, &start()));
+        // Orbit phase: the yaw moves, the target and distance do not.
+        let o = at(7.0);
+        assert!(!same_eye(&o, &begin));
+        assert_eq!((o.target, o.distance), (begin.target, begin.distance));
+        // Pan phase: the target moves, the distance does not.
+        let p = at(30.0);
+        assert_ne!(p.target, begin.target);
+        assert_eq!(p.distance, begin.distance);
+        // Zoom phase: the distance moves and returns.
+        let z = at(45.0);
+        assert!((z.distance - begin.distance).abs() > 0.1 * begin.distance);
+        let end = at(60.0);
+        assert!((end.distance - begin.distance).abs() < 1e-6 * begin.distance);
+        for i in 0..3 {
+            assert!((end.target[i] - begin.target[i]).abs() < 1e-6);
+        }
+        // Past the end it stays at the end; the path depends on time only.
+        assert_eq!(at(90.0), end);
+        assert_eq!(at(17.3), at(17.3));
+    }
+
+    #[test]
+    fn req_nfr_03_camera_path_keeps_the_scene_in_view() {
+        // Every pose keeps the scene's centre on screen.
+        let path = CameraPath::new(start(), STANDARD_DURATION);
+        let centre = [50.0, 0.0, 0.0];
+        for step in 0..=600 {
+            let c = path.at(Duration::from_millis(step * 100));
+            let p = c.project(centre, 16.0 / 9.0).unwrap();
+            assert!(p[0].abs() < 1.0 && p[1].abs() < 1.0, "step {step}: {p:?}");
+        }
+    }
+
+    #[test]
+    fn req_nfr_03_frame_summary_percentiles_and_pass_rule() {
+        let mut times = FrameTimes::default();
+        assert!(times.summary().is_none());
+        // 95 frames of 10 ms and 5 of 50 ms: the 95th percentile is 10 ms.
+        for _ in 0..95 {
+            times.push(Duration::from_millis(10));
+        }
+        for _ in 0..5 {
+            times.push(Duration::from_millis(50));
+        }
+        let s = times.summary().unwrap();
+        assert_eq!(s.frames, 100);
+        assert_eq!(s.p50, Duration::from_millis(10));
+        assert_eq!(s.p95, Duration::from_millis(10));
+        assert_eq!(s.p99, Duration::from_millis(50));
+        assert_eq!(s.max, Duration::from_millis(50));
+        assert_eq!(s.mean, Duration::from_millis(12));
+        assert!(s.passes());
+        // One more slow frame moves the 95th percentile past the limit.
+        times.push(Duration::from_millis(50));
+        let s = times.summary().unwrap();
+        assert!(s.p95 > P95_LIMIT && !s.passes());
+    }
+}

@@ -137,6 +137,10 @@ pub struct Viewport {
     /// Fit the camera to the scene on the next frame (a new project).
     fit_pending: bool,
     aspect: f64,
+    /// The generation last handed to the renderer.
+    drawn: u64,
+    /// The viewport size in physical pixels, at the last frame.
+    pixels: [u32; 2],
 }
 
 impl Viewport {
@@ -151,6 +155,8 @@ impl Viewport {
             generation: 0,
             fit_pending: true,
             aspect: 1.0,
+            drawn: 0,
+            pixels: [0, 0],
         }
     }
 
@@ -165,6 +171,27 @@ impl Viewport {
     /// The scene view model shown.
     pub fn view(&self) -> &SceneView {
         &self.view
+    }
+
+    /// Whether a non-empty scene has been handed to the renderer.
+    pub fn is_drawn(&self) -> bool {
+        self.drawn > 0 && self.drawn == self.generation && self.scene.triangle_count() > 0
+    }
+
+    /// Triangles and feature edges in the scene.
+    pub fn counts(&self) -> (usize, usize) {
+        let edges = self
+            .scene
+            .meshes
+            .iter()
+            .map(|m| m.feature_edges.len() / 2)
+            .sum();
+        (self.scene.triangle_count(), edges)
+    }
+
+    /// The viewport size in physical pixels at the last frame.
+    pub fn pixels(&self) -> [u32; 2] {
+        self.pixels
     }
 
     /// Fits the camera to the scene.
@@ -204,6 +231,11 @@ impl Viewport {
             return;
         }
         self.aspect = f64::from(rect.width() / rect.height());
+        let scale = ui.ctx().pixels_per_point();
+        self.pixels = [
+            (rect.width() * scale).round() as u32,
+            (rect.height() * scale).round() as u32,
+        ];
         if self.fit_pending && self.scene.bounds().is_some() {
             self.fit();
             self.fit_pending = false;
@@ -239,6 +271,7 @@ impl Viewport {
                 scene: Some((self.generation, Arc::clone(&self.scene))),
             },
         ));
+        self.drawn = self.generation;
         self.draw_labels(ui, rect);
     }
 

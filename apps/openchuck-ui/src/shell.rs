@@ -15,6 +15,7 @@ use openchuck_app::scene::SceneView;
 use openchuck_app::{AppError, Application, JobHandle, Threads};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
+use crate::bench;
 use crate::viewport::Viewport;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
@@ -61,6 +62,8 @@ pub struct Shell {
     setup: Option<SetupId>,
     status: String,
     quitting: bool,
+    /// A frame-time benchmark run (`--bench`).
+    bench: Option<bench::Run>,
 }
 
 impl Shell {
@@ -75,11 +78,45 @@ impl Shell {
             setup: None,
             status: String::new(),
             quitting: false,
+            bench: None,
         };
         if let Some(folder) = folder {
             shell.open(folder);
         }
         shell
+    }
+
+    /// A shell running the frame-time benchmark on `app`'s scene.
+    pub fn benchmark(app: Application, run: bench::Run) -> Self {
+        let mut shell = Self::new(true, None);
+        shell.viewport.mode = run.mode();
+        shell.bench = Some(run);
+        shell.set_app(app);
+        shell
+    }
+
+    /// Advances a benchmark run by one frame.
+    fn bench_frame(&mut self, ctx: &egui::Context) {
+        let Some(run) = &mut self.bench else { return };
+        let (triangles, feature_edges) = self.viewport.counts();
+        let state = bench::SceneState {
+            ready: self.viewport.is_drawn(),
+            camera: &self.viewport.camera,
+            triangles,
+            feature_edges,
+            pixels: self.viewport.pixels(),
+        };
+        let (step, camera) = run.frame(state);
+        if let Some(camera) = camera {
+            self.viewport.camera = camera;
+        }
+        match step {
+            bench::Step::Continue => ctx.request_repaint(),
+            bench::Step::Finish => {
+                self.quitting = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
     }
 
     fn open(&mut self, folder: PathBuf) {
@@ -480,6 +517,7 @@ impl eframe::App for Shell {
         let ctx = ui.ctx().clone();
         self.guard_close(&ctx);
         self.poll_scene(&ctx);
+        self.bench_frame(&ctx);
         self.shortcuts(&ctx);
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
