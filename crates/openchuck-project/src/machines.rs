@@ -18,8 +18,8 @@
 //! A project keeps its own copy in `machine.toml` (the same layout, with the
 //! project schema), so changing a library profile never changes a project.
 //! Built-in profiles ship inside the program; today that is the Makera Z1
-//! ([`MAKERA_Z1`]), every value marked unconfirmed until it is checked on a
-//! Z1. A library is any folder of profile files.
+//! ([`MAKERA_Z1`]), each value marked confirmed or unconfirmed (the A direction
+//! was confirmed by the SP-12 air cut, decision 0007). A library is any folder of profile files.
 
 use std::path::{Path, PathBuf};
 
