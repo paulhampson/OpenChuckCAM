@@ -80,8 +80,8 @@ pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
 pub use helical::HelicalFinishing;
 pub use params::{
-    CommonParameters, ParameterKind, ParameterSchema, ParameterSpec, ParameterValue, Parameters,
-    Unit,
+    CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
+    ParameterValue, Parameters, Unit,
 };
 pub use rotary::RotaryMapping;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};

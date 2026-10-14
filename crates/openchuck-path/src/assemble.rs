@@ -22,8 +22,10 @@
 //!    the cut at the plunge feed until the tip is the approach distance above
 //!    the stock on its line, then rapids. A descent is a rapid
 //!    that stops the approach distance above where the stock begins on its
-//!    line (or above the first cut point, whichever is higher), then a plunge
-//!    at the plunge feed. Every move is put to the [`CollisionOracle`].
+//!    line (or above the first cut point, whichever is higher), then the
+//!    pass's entry: a plunge at the plunge feed, or a lead arc, ramp or
+//!    helix (the `entry` module; decision record 0026). Every move is put to
+//!    the [`CollisionOracle`].
 //! 3. **Feed and duration (OP-13).** For a cutting move the contact feed `f`
 //!    (mm/min) applies to the cutter contact point, which moves from `c0` to
 //!    `c1`, so the move takes `t = 60 |c1 - c0| / f` seconds and its contact
@@ -34,13 +36,15 @@
 //!    programmed and a [`PathNote`] says so. Moves without a contact
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
+mod entry;
+
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, Segment, ToolPose, ToolpathGroup};
 use openchuck_types::job::JobContext;
 use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
 use crate::error::{PathError, Result};
-use crate::params::{CommonParameters, Retract};
+use crate::params::{CommonParameters, EntryParameters, Retract};
 use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwind_turns, unwrap_continuous};
 use crate::stock::CollisionOracle;
 use crate::strategy::{CutPoint, Pass, StrategyInput};
@@ -207,6 +211,18 @@ pub fn assemble(
     common: &CommonParameters,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
+    assemble_with_entry(passes, input, common, &EntryParameters::PLUNGE, context)
+}
+
+/// [`assemble`] with the entry and exit moves of `entry` (decision record
+/// 0026) in place of a plain plunge.
+pub fn assemble_with_entry(
+    passes: &[Pass],
+    input: &StrategyInput<'_>,
+    common: &CommonParameters,
+    entry: &EntryParameters,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
     let rotary = input.rotary;
     let link_height = match common.retract {
         Retract::Clearance => input.clearance.radius.0,
@@ -283,6 +299,7 @@ pub fn assemble(
         notes: Vec::new(),
     };
 
+    let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
     for (i, points) in placed.iter().enumerate() {
         context.check_cancelled()?;
@@ -299,13 +316,14 @@ pub fn assemble(
             let end = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, end, None, None)?;
         }
-        approach(&mut b, input, common, head)?;
+        entry.enter(&mut b, input, common, i, points)?;
         let contacts = smoothed_contacts(points);
         b.contact = contacts.first().copied().unwrap_or(head.contact);
         for (p, c) in points.iter().zip(&contacts).skip(1) {
             let end = b.pose(p.tip, p.a);
             b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
         }
+        entry.exit(&mut b, common, input, i, points)?;
     }
 
     leave(&mut b, input, common, safe_height)?;
@@ -384,40 +402,4 @@ fn leave(
     );
     let end = b.pose(tip, b.pose.a);
     b.push(MoveKind::Linking, end, None, Some(common.plunge_feed))
-}
-
-/// Descends along the tool axis to `target`: a rapid that stops the approach
-/// distance above the stock (or above the target, whichever is higher), then
-/// a plunge.
-fn approach(
-    b: &mut Builder<'_>,
-    input: &StrategyInput<'_>,
-    common: &CommonParameters,
-    target: &CutPoint,
-) -> Result<()> {
-    let here = b.at();
-    let goal = b.rotary.to_axis(target.tip, target.a);
-    let axis = b.rotary.tool_axis(target.a);
-    let down = openchuck_types::geometry::UnitVec3::new(-axis.get()).map_err(PathError::from)?;
-    let travel = (here.height - goal.height).max(0.0);
-    let entry_height = input
-        .stock
-        .ray_entry(b.pose.tip, down, travel)
-        .map(|d| here.height - d);
-    let mut stop =
-        goal.height.max(entry_height.unwrap_or(f64::NEG_INFINITY)) + common.approach_distance.0;
-    stop = stop.min(here.height);
-    if stop < here.height - EPS {
-        let tip = b.rotary.to_model(
-            AxisPosition {
-                height: stop,
-                ..here
-            },
-            b.pose.a,
-        );
-        let end = b.pose(tip, b.pose.a);
-        b.push(MoveKind::Rapid, end, None, None)?;
-    }
-    let end = b.pose(target.tip, target.a);
-    b.push(MoveKind::Plunge, end, None, Some(common.plunge_feed))
 }

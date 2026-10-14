@@ -91,7 +91,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | OP-04 | P1 | T | Integration | Helical, axial and indexed finishing on analytic cylinders and cones match exact path and stepover |
 | OP-05, OP-06 | P1 | T, A | Unit, system | Kinematic round trip: forward kinematics of each XYZA point gives the intended tool tip; tool axis stays within lead and tilt limits |
 | OP-07, OP-08, OP-09, OP-10 | P1 | T | Integration | Swarf contact deviation on ruled surfaces; curve following on projected chains; rest machining clears only leftover material; radial holes at correct indexed A and depth |
-| OP-11 | P1 | T | Unit | Each common parameter changes the toolpath as specified; stock to leave applies per operation and per selection |
+| OP-11 | P1 | T | Unit | Each common parameter changes the toolpath as specified; stock to leave applies per operation and per selection; each entry style (plunge, lead, ramp, helix) meets its geometry, clearance and surface checks (decision 0026) |
 | OP-12 | P1 | T, A | System | Property tests and simulation show no overcut beyond tolerance for the tool, and for the holder where defined |
 | OP-13 | P1 | T, A | Integration | Feed at the cutter contact point matches the programmed feed within a set band on simultaneous moves; compensated feed is the default; G93 appears only when the post-processor enables it; a round trip through the G-code reader confirms the feed values |
 | OP-14 | P1 | T | Integration | Linking moves use clearance geometry and never cross stock or part |
