@@ -98,7 +98,7 @@ Slices 0 to 7 are closed. The remaining work splits into the lanes below, each o
 | D | 11 items 1 to 4, 6, 8, 9: STEP importer, topology, tessellation, B-rep `SurfaceSource`, corpus, CI | ██ | ██ | ██ | |
 | E | 14 rotary roughing, items 1 to 4, 6, 7 | ██ | ██ | | |
 | F | 19 items 1 to 3 and 5: output grouping, comments, setup sheet | ██ | ██ | | |
-| G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist | ██ | | | |
+| G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist (done 14 Oct 2026, [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md); the release workflow and bundle command are built in lane T) | ██ | | | |
 | H | 12 baseline finishing | ░░ | ██ | | |
 | I | 13 simultaneous 4-axis finishing | ░░ | ██ | ██ | |
 | J | 15 rest machining and pencil clean-up | ░░ | ██ | | |
@@ -156,7 +156,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main` (the slice 11a branch holds 0027 and OI-118 to OI-123; others hold 0028 and up to OI-126). Next free: record 0030, `OI-131`, project schema 7 (claimed in the table above as expected for lane C).
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main` and lane G took record 0031 and OI-133 to OI-135 (unmerged branches hold 0028, 0030 and up to OI-132; the slice 11a branch's 0027 and OI-118 to OI-123 are in its pull request 41). Next free: record 0032, `OI-136`, project schema 7 (claimed in the table above as expected for lane C).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -738,11 +738,11 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 5. Licence review, third-party notices, SPDX headers and an offline run check (NFR-09, NFR-10).
 6. Sample projects, including the Z1 reference part, end to end.
 7. CLI end-to-end scenarios in CI, including undo and redo and cancellation mid-job.
-8. Release tooling assessed under NFR-14 (`cargo-release` for the library family, `cargo-dist` or a plain build matrix for binaries, `release-plz` later) and the packaging route decided; separate tag schemes for library and application releases.
+8. Release tooling assessed under NFR-14 (`cargo-release` for the library family, `cargo-dist` or a plain build matrix for binaries, `release-plz` later) and the packaging route decided; separate tag schemes for library and application releases. *Route decided:* [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md) (plain build matrix, `lib-v` and `app-v` tags); the workflow is still to build.
 9. Release gate in `xtask`: dependency-rule check, `cargo deny`, golden G-code comparison and LinuxCNC replay must pass before a tag is cut.
-10. Z1 air-cut procedure documented (your hands-on step) and packaging for all three platforms, including a Windows installer and macOS app bundle if the egui app needs them.
+10. Z1 air-cut procedure documented (your hands-on step) and packaging for all three platforms, including a Windows installer and macOS app bundle if the egui app needs them. *Prepared:* the [air-cut procedure](z1-air-cut-procedure.md) is written and reviewed by the operator (14 Oct 2026, OI-133); running it is still the hands-on step; the packaging route is accepted in decision 0031 and the bundle command and release workflow are still to build (signing and extra platforms: OI-135).
 11. Gates 4 and 5 on the Z1 for the reference job set (your hands-on step, attended): an air cut at reduced feed (including a timed simultaneous XYZA move compared with the IR's predicted time), then a first cut in wax or foam. Cut a 3-axis test part first to measure the machine's own repeatability, then set the first-cut limit from it (start at ±0.1 mm). Recheck the G93 result on the installed firmware (SP-12 found it ignored on 1.1.2) and carry the confirmed Z1 rotary conventions into the post definition.
-12. Safe-practice checklist for first machine trials, written and reviewed by whoever operates the Z1.
+12. Safe-practice checklist for first machine trials, written and reviewed by whoever operates the Z1. *Written and reviewed by the operator (14 Oct 2026):* [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md) (OI-133).
 13. Verification report for the release: results against the exit criteria, waivers, open defects, the commit covered, a written result for every spike, and the plan reviewed against what happened.
 14. Traceability report generated from the requirement ID tags.
 
@@ -757,7 +757,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [ ] Licences are compatible and the known-issues list is written
 - [ ] Gates 1 to 5 have passed for the reference job set with results stored, and the G93 result is recorded
 - [ ] No severity 1 or 2 defect is open, and the verification report names the commit it covers
-- [ ] The safe-practice checklist has been reviewed by the Z1 operator
+- [x] The safe-practice checklist has been reviewed by the Z1 operator (14 Oct 2026, [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md))
 
 ## Traceability: P1 requirement to slice
 
