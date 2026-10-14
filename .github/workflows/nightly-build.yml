@@ -77,6 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
@@ -116,6 +118,8 @@ jobs:
       NAME: openchuckcam-nightly-${{ needs.changes.outputs.date }}-${{ needs.changes.outputs.short }}-${{ matrix.target }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - name: Build the binaries (release)
         run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-cli -p openchuck-ui
@@ -204,6 +208,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # The archives were uploaded unzipped; skip-decompress keeps the Windows
       # .zip as it is.
       - uses: actions/download-artifact@v8
