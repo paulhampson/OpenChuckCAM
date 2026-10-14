@@ -13,7 +13,8 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Color32, RichText};
 use openchuck_app::model::{
-    Axis, AxisDirection, ImportPreview, LengthUnit, TransformStep, orient_to_rotary_axis,
+    Axis, AxisDirection, ImportPreview, LengthUnit, PreparedModel, TransformStep,
+    orient_to_rotary_axis,
 };
 use openchuck_app::{AppError, Application, JobHandle};
 
@@ -95,6 +96,8 @@ pub struct ImportSession {
     pub error: Option<String>,
     /// The preview changed since the viewport last showed it.
     pub fresh: bool,
+    /// The model being read and checked for adding, off the UI thread.
+    adding: Option<JobHandle<PreparedModel>>,
 }
 
 impl std::fmt::Debug for ImportSession {
@@ -116,6 +119,7 @@ impl ImportSession {
             preview: None,
             error: None,
             fresh: false,
+            adding: None,
         };
         session.check(app);
         session
@@ -157,6 +161,28 @@ impl ImportSession {
         }
     }
 
+    /// Starts reading and checking the model for adding, as a background
+    /// job, so the window stays responsive on a large file.
+    pub fn start_adding(&mut self, app: &Application) {
+        match app.start_prepare_model(&self.path, self.units, &self.steps()) {
+            Ok(job) => self.adding = Some(job),
+            Err(e) => self.error = Some(e.to_string()),
+        }
+    }
+
+    /// The prepared model once the add job ends; `None` while it runs or when
+    /// none was started.
+    pub fn poll_adding(&mut self) -> Option<Result<PreparedModel, AppError>> {
+        let result = self.adding.as_ref()?.try_result()?;
+        self.adding = None;
+        Some(result)
+    }
+
+    /// Whether an add is in progress.
+    pub fn is_adding(&self) -> bool {
+        self.adding.is_some()
+    }
+
     /// Draws the dialog.
     pub fn window(&mut self, ctx: &egui::Context, app: &Application) -> ImportAction {
         let mut action = ImportAction::None;
@@ -164,10 +190,14 @@ impl ImportSession {
         // Its own window, so it can be moved off the main one (OI-130).
         let ((), event) = floating(ctx, "import model", "Import model", [440.0, 620.0], |ui| {
             ui.label(self.path.display().to_string());
-            if self.job.is_some() {
+            if self.job.is_some() || self.adding.is_some() {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label("Checking…");
+                    ui.label(if self.adding.is_some() {
+                        "Adding…"
+                    } else {
+                        "Checking…"
+                    });
                 });
             }
             if let Some(error) = &self.error {
@@ -264,7 +294,7 @@ impl ImportSession {
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
-                        self.preview.is_some() && self.job.is_none(),
+                        self.preview.is_some() && self.job.is_none() && self.adding.is_none(),
                         egui::Button::new("Add to project"),
                     )
                     .clicked()

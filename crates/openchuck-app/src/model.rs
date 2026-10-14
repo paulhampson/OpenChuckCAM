@@ -110,6 +110,21 @@ pub(crate) fn inspect_placed(
     Ok((inspection, placed))
 }
 
+/// A model file read, hashed and checked, ready to be added to the project
+/// with [`crate::Application::add_prepared_model`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreparedModel {
+    pub(crate) reference: ModelRef,
+    pub(crate) inspection: ModelInspection,
+}
+
+impl PreparedModel {
+    /// What the checks found.
+    pub fn inspection(&self) -> &ModelInspection {
+        &self.inspection
+    }
+}
+
 /// A model file checked before it is added: the inspection, and the scene
 /// of the placed model with the triangles and edges the checks list
 /// highlighted (OI-51; decision record 0029 item 13).

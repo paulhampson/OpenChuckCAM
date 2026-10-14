@@ -154,3 +154,34 @@ fn req_imp_05_model_is_added_with_its_placement_in_one_step() {
     assert!(app.project().models().is_empty());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_nfr_04_model_is_prepared_off_the_caller_thread_then_added() {
+    // The slow part (read, hash, check) runs as a job; the project changes
+    // only when the prepared model is added, as one undoable step.
+    let (dir, mut app) = app("prepare");
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    std::fs::copy(stl("cube_ascii.stl"), dir.join("models/cube.stl")).unwrap();
+    let steps = [TransformStep::CentreOnRotaryAxis];
+    let job = app
+        .start_prepare_model(&dir.join("models/cube.stl"), None, &steps)
+        .unwrap();
+    let prepared = loop {
+        if let Some(result) = job.try_result() {
+            break result.unwrap();
+        }
+        std::thread::yield_now();
+    };
+    assert!(app.project().models().is_empty());
+    assert_eq!(prepared.inspection().transform, steps);
+    let (id, _) = app.add_prepared_model(prepared).unwrap();
+    assert_eq!(app.find_model(&id.to_string()).unwrap().transform, steps);
+    app.undo().unwrap();
+    assert!(app.project().models().is_empty());
+    // A file outside the project's reach is refused at once.
+    assert!(
+        app.start_prepare_model(Path::new("/no/such/model.stl"), None, &[])
+            .is_err()
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

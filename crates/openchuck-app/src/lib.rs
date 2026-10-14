@@ -280,13 +280,30 @@ impl Application {
 
     /// [`Application::add_model`] with placement steps (IMP-05), as one
     /// undoable step: the import dialog adds a model as the user placed it
-    /// (decision record 0029 item 13).
+    /// (decision record 0029 item 13). It waits for the file to be read and
+    /// checked; a front end that must stay responsive uses
+    /// [`Application::start_prepare_model`] and
+    /// [`Application::add_prepared_model`] instead.
     pub fn add_model_with(
         &mut self,
         file: &Path,
         units: Option<LengthUnit>,
         transform: &[model::TransformStep],
     ) -> Result<(ModelId, ModelInspection), AppError> {
+        let prepared = self.start_prepare_model(file, units, transform)?.wait()?;
+        self.add_prepared_model(prepared)
+    }
+
+    /// Starts reading, hashing, placing and checking a model file as a
+    /// background job, ready to add with [`Application::add_prepared_model`]
+    /// (UI-09, NFR-04). Fails at once if the file cannot be referenced from
+    /// the project folder.
+    pub fn start_prepare_model(
+        &self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+    ) -> Result<JobHandle<model::PreparedModel>, AppError> {
         let relative = model::relative_to(&self.document.location, file)?.ok_or_else(|| {
             AppError::ModelPath {
                 path: file.to_path_buf(),
@@ -294,25 +311,36 @@ impl Application {
             }
         })?;
         let relative = RelativePath::from_path(&relative)?;
-        let bytes = model::read(file)?;
-        let hash = ContentHash::of_bytes(&bytes);
         let path = file.to_path_buf();
         let steps = transform.to_vec();
-        let inspection = self
+        Ok(self
             .jobs
             .submit("import model", self.events_tx.clone(), move |context| {
-                model::inspect_bytes(&path, &bytes, units, &steps, context)
-            })
-            .wait()?;
-        let id = ModelId::new();
-        let mut reference = ModelRef::new(id, relative, hash);
-        reference.units = units;
-        reference.transform = transform.to_vec();
+                let bytes = model::read(&path)?;
+                let hash = ContentHash::of_bytes(&bytes);
+                let inspection = model::inspect_bytes(&path, &bytes, units, &steps, context)?;
+                let mut reference = ModelRef::new(ModelId::new(), relative, hash);
+                reference.units = units;
+                reference.transform = steps;
+                Ok(model::PreparedModel {
+                    reference,
+                    inspection,
+                })
+            }))
+    }
+
+    /// Adds a model prepared by [`Application::start_prepare_model`] as one
+    /// undoable step.
+    pub fn add_prepared_model(
+        &mut self,
+        prepared: model::PreparedModel,
+    ) -> Result<(ModelId, ModelInspection), AppError> {
+        let id = prepared.reference.id;
         self.execute(Command::Add {
-            item: Item::Model(reference),
+            item: Item::Model(prepared.reference),
             placement: Placement::End,
         })?;
-        Ok((id, inspection))
+        Ok((id, prepared.inspection))
     }
 
     /// Starts reading, placing and checking a model file that is not yet in

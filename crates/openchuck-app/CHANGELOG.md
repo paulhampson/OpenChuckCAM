@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- `Application::start_prepare_model` and `add_prepared_model` (with `model::PreparedModel`): a model is read, hashed and checked as a job and added as one undoable step, so a front end never waits on a large file; `add_model_with` uses them.
 - The scene's "A+" label sits an eighth of a turn along the arrow, clear of the work Y label (owner's visual check, decision 0029).
 - Slice 8, libraries and machines (decision 0029 items 15 and 16): the `library` module (default machine and tool library folders in the platform configuration folder); `Command::SetMachineFrom`; `setup::available_machines`, `compare_machine` and `MachineSource`; the profile entry functions and `new_machine_id` re-exported.
 - Slice 8, import (decision 0029 item 13): `Application::start_import_preview` (`model::ImportPreview` with the problems as a `SceneRole::Problem` mesh and lines), `add_model_with` (unit and placement in one step) and `model_file_warnings`; `scene::Mesh` re-exported.

@@ -288,13 +288,7 @@ impl Shell {
         if self.dialog.is_some() {
             return;
         }
-        let (save, undo, redo) = ctx.input_mut(|i| {
-            (
-                i.consume_shortcut(&SAVE),
-                i.consume_shortcut(&UNDO),
-                i.consume_shortcut(&REDO) || i.consume_shortcut(&REDO_ALT),
-            )
-        });
+        let (save, undo, redo) = ctx.input_mut(edit_shortcuts);
         if save {
             self.save();
         }
@@ -599,12 +593,15 @@ impl Shell {
             })
             .inner;
         let (edit, action) = edit;
-        if let Some(edit) = edit
-            && let Some(value) = edit.value
-        {
-            let result = app
-                .set_tool_field(id, &edit.name, &value)
-                .map_err(|e| e.to_string());
+        if let Some(edit) = edit {
+            // A tool dimension cannot be cleared: say so rather than leave the
+            // box looking empty while the tool keeps its value.
+            let result = match &edit.value {
+                Some(value) => app
+                    .set_tool_field(id, &edit.name, value)
+                    .map_err(|e| e.to_string()),
+                None => Err("a tool dimension needs a value".to_owned()),
+            };
             self.form.result(&edit.name, result);
         }
         match action {
@@ -672,19 +669,33 @@ impl Shell {
                 self.import = None;
                 self.rebuild_scene(true);
             }
+            // The file is read and checked as a job; the model is added when
+            // it ends, below, so the window never waits on it.
             ImportAction::Add => {
-                let (Some(app), Some(session)) = (&mut self.app, &mut self.import) else {
-                    return;
-                };
-                match app.add_model_with(&session.path, session.units, &session.steps()) {
-                    Ok(_) => {
-                        self.status = format!("Added {}", session.path.display());
-                        self.import = None;
-                        self.rebuild_scene(true);
-                    }
-                    Err(e) => session.error = Some(e.to_string()),
+                if let (Some(app), Some(session)) = (&self.app, &mut self.import)
+                    && !session.is_adding()
+                {
+                    session.start_adding(app);
                 }
             }
+        }
+        let (Some(app), Some(session)) = (&mut self.app, &mut self.import) else {
+            return;
+        };
+        if session.is_adding() {
+            ctx.request_repaint();
+        }
+        match session.poll_adding() {
+            None => {}
+            Some(Ok(prepared)) => match app.add_prepared_model(prepared) {
+                Ok(_) => {
+                    self.status = format!("Added {}", session.path.display());
+                    self.import = None;
+                    self.rebuild_scene(true);
+                }
+                Err(e) => session.error = Some(e.to_string()),
+            },
+            Some(Err(e)) => session.error = Some(e.to_string()),
         }
     }
 
@@ -865,6 +876,16 @@ impl Shell {
     }
 }
 
+/// Which of save, undo and redo were pressed this frame, consuming them.
+/// Redo is checked first: egui matches a shortcut while an extra Shift is
+/// held, so Ctrl+Shift+Z would otherwise be taken by Undo (Ctrl+Z).
+fn edit_shortcuts(i: &mut egui::InputState) -> (bool, bool, bool) {
+    let save = i.consume_shortcut(&SAVE);
+    let redo = i.consume_shortcut(&REDO) || i.consume_shortcut(&REDO_ALT);
+    let undo = !redo && i.consume_shortcut(&UNDO);
+    (save, undo, redo)
+}
+
 /// Asks the platform's folder dialog for a folder, starting near `current`
 /// (OI-127). `None` when the user cancels or no dialog is available, in
 /// which case the typed path stays.
@@ -1023,6 +1044,38 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    /// The shortcuts pressed in one frame with `key` and `modifiers` down.
+    fn press(key: Key, modifiers: Modifiers) -> (bool, bool, bool) {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }],
+            ..Default::default()
+        };
+        let mut pressed = (false, false, false);
+        let mut output = ctx.run_ui(input, |ui| {
+            pressed = ui.ctx().input_mut(edit_shortcuts);
+        });
+        output.textures_delta.clear();
+        pressed
+    }
+
+    #[test]
+    fn req_ui_08_ctrl_shift_z_redoes_and_ctrl_z_undoes() {
+        assert_eq!(press(Key::Z, Modifiers::COMMAND), (false, true, false));
+        assert_eq!(
+            press(Key::Z, Modifiers::COMMAND | Modifiers::SHIFT),
+            (false, false, true)
+        );
+        assert_eq!(press(Key::Y, Modifiers::COMMAND), (false, false, true));
+        assert_eq!(press(Key::S, Modifiers::COMMAND), (true, false, false));
+    }
 
     #[test]
     fn req_ui_01_file_dialogs_start_in_an_existing_folder() {

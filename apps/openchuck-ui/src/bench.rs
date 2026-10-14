@@ -18,6 +18,9 @@ use openchuck_app::{Application, Threads};
 use openchuck_viewport::DisplayMode;
 use openchuck_viewport::bench::{CameraPath, FrameTimes, P95_LIMIT, STANDARD_DURATION};
 
+/// How long to wait for the scene to be built and drawn before giving up.
+const SCENE_LIMIT: Duration = Duration::from_secs(120);
+
 /// Frames drawn before measuring, so start-up and the first upload do not count.
 const WARM_UP_FRAMES: u32 = 30;
 
@@ -108,8 +111,8 @@ pub fn project(model: &Path) -> Result<Application, String> {
 /// Where a run is.
 #[derive(Debug)]
 enum Stage {
-    /// Waiting for the scene to be built and drawn.
-    Waiting,
+    /// Waiting, since the given time, for the scene to be built and drawn.
+    Waiting(Option<Instant>),
     /// Drawing frames before measuring.
     WarmingUp(u32),
     /// Measuring.
@@ -164,7 +167,7 @@ impl Run {
         Self {
             options,
             adapter,
-            stage: Stage::Waiting,
+            stage: Stage::Waiting(None),
             outcome,
         }
     }
@@ -179,9 +182,20 @@ impl Run {
     pub fn frame(&mut self, scene: SceneState<'_>) -> (Step, Option<openchuck_viewport::Camera>) {
         let now = Instant::now();
         match &mut self.stage {
-            Stage::Waiting => {
+            Stage::Waiting(since) => {
+                let since = *since.get_or_insert(now);
                 if scene.ready {
                     self.stage = Stage::WarmingUp(WARM_UP_FRAMES);
+                } else if now - since > SCENE_LIMIT {
+                    // A scene that never arrives (an unreadable model, a
+                    // failed build) ends the run instead of hanging it.
+                    self.stage = Stage::Done;
+                    let _ = self.outcome.set(false);
+                    eprint_line(&format!(
+                        "error: the scene was not ready within {} s; nothing was measured",
+                        SCENE_LIMIT.as_secs()
+                    ));
+                    return (Step::Finish, None);
                 }
                 (Step::Continue, None)
             }
@@ -290,6 +304,30 @@ mod tests {
 
     fn args(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn req_nfr_03_bench_gives_up_when_the_scene_never_arrives() {
+        let outcome = Arc::new(OnceLock::new());
+        let mut run = Run::new(
+            Options::parse(&args("ui --bench m.stl")).unwrap().unwrap(),
+            String::new(),
+            Arc::clone(&outcome),
+        );
+        let camera = openchuck_viewport::Camera::default();
+        let state = SceneState {
+            ready: false,
+            camera: &camera,
+            triangles: 0,
+            feature_edges: 0,
+            pixels: [0, 0],
+        };
+        assert_eq!(run.frame(state).0, Step::Continue);
+        // Pretend the wait began longer ago than the limit.
+        run.stage =
+            Stage::Waiting(Instant::now().checked_sub(SCENE_LIMIT + Duration::from_secs(1)));
+        assert_eq!(run.frame(state).0, Step::Finish);
+        assert_eq!(outcome.get(), Some(&false));
     }
 
     #[test]

@@ -208,12 +208,15 @@ jobs:
       OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - name: Software Vulkan and a virtual display (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb
+          # xvfb-run needs xauth, which the xvfb package only recommends.
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth
       - name: Viewport render tests
         shell: bash
         run: |
