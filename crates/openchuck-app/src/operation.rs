@@ -15,8 +15,8 @@ use std::path::Path;
 
 use openchuck_path::params::{ParameterKind, names};
 use openchuck_path::{
-    AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StrategyInput,
-    SurfaceSource, generate,
+    AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
+    StrategyInput, SurfaceSource, generate,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -167,6 +167,10 @@ pub struct OperationPath {
     /// Notes: where the operation's values override the material's cutting
     /// data, then moves the machine's feed limits slow down.
     pub notes: Vec<String>,
+    /// The tool's revolved profile, as the simulation sweeps it.
+    pub tool: openchuck_types::tool::RevolvedProfile,
+    /// The bounds of the setup's placed part (for bounding-box stock).
+    pub part_bounds: openchuck_types::geometry::Aabb,
 }
 
 /// Generates the toolpath of operation `id` of the project in `root`.
@@ -182,6 +186,21 @@ pub fn generate_operation(
     registry: &Registry,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
+    generate_operation_on(root, project, id, registry, None, context)
+}
+
+/// As [`generate_operation`], against `stock` when given: the material the
+/// operations before it in the setup left, as the simulation carries it
+/// (SIM-06). Without it the setup's stock definition is used.
+pub fn generate_operation_on(
+    root: &Path,
+    project: &Project,
+    id: OperationId,
+    registry: &Registry,
+    stock: Option<&dyn StockModel>,
+    context: &JobContext<'_>,
+) -> Result<OperationPath, AppError> {
+    let carried = stock;
     let operation = project
         .operation(id)
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
@@ -223,7 +242,8 @@ pub fn generate_operation(
     let mesh = crate::model::placed_mesh(root, model, context)?;
     context.check_cancelled()?;
     let surface = MeshSurface::new(&mesh)?;
-    let stock = AnalyticStock::from_stock(stock, Some(surface.bounds()))?;
+    let analytic = AnalyticStock::from_stock(stock, Some(surface.bounds()))?;
+    let stock: &dyn StockModel = carried.unwrap_or(&analytic);
     let profile = snapshot.tool.profile()?;
     let tags = PathTags {
         operation: operation.id.to_string(),
@@ -232,7 +252,7 @@ pub fn generate_operation(
     };
     let input = StrategyInput {
         surface: &surface,
-        stock: &stock,
+        stock,
         collision: &AcceptAll,
         tool: &profile,
         rotary: RotaryMapping::of_profile(machine),
@@ -252,5 +272,7 @@ pub fn generate_operation(
     Ok(OperationPath {
         group: path.group,
         notes,
+        tool: profile,
+        part_bounds: surface.bounds(),
     })
 }

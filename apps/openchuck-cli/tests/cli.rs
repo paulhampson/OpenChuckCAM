@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 4\n"), "{text}");
+    assert!(text.starts_with("schema = 5\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -782,4 +782,46 @@ fn req_gc_14_gc_11_cli_asks_for_the_tool_numbers_before_writing_g_code() {
     ]);
     assert_ne!(out.code, Some(0));
     assert!(out.stderr.contains("--post"), "{}", out.stderr);
+}
+
+#[test]
+fn req_sim_07_cli_sets_the_simulation_cell_and_refuses_one_out_of_range() {
+    let project = empty_project("simulate");
+    let out = run(&["simulate".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("simulation cell 0.1 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("no operations to simulate"),
+        "{}",
+        out.stdout
+    );
+    // A finer cell is opt-in, saved in the project with its cost stated.
+    let out = run(&[
+        "simulate".as_ref(),
+        project.as_os_str(),
+        "--cell".as_ref(),
+        "0.05".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout
+            .contains("about 8.0 x the default's time and 4.0 x its memory"),
+        "{}",
+        out.stdout
+    );
+    let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
+    assert!(text.contains("[simulation]\ncell = 0.05\n"), "{text}");
+    let out = run(&[
+        "simulate".as_ref(),
+        project.as_os_str(),
+        "--cell".as_ref(),
+        "0.001".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(1), "{}", out.stdout);
+    assert!(out.stderr.contains("0.025"), "{}", out.stderr);
+    assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
 }

@@ -8,6 +8,7 @@
 //! - length units for imported models ([`units::LengthUnit`]),
 //! - mesh and B-rep data ([`mesh`], [`brep`], [`model`]), model placement
 //!   ([`transform`]), stock ([`stock`]) and tools ([`tool`]),
+//! - the simulation settings ([`simulation`], SIM-07),
 //! - the machine profile ([`machine`]), the setup's part and work offset
 //!   positions and its checks ([`setup`]), and the one shared
 //!   forward-kinematics implementation ([`kinematics`]),
@@ -43,6 +44,7 @@ pub mod mesh;
 pub mod model;
 pub mod notice;
 pub mod setup;
+pub mod simulation;
 pub mod stock;
 pub mod tool;
 pub mod transform;
