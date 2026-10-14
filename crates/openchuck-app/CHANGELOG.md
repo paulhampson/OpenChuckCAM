@@ -5,7 +5,7 @@ All notable changes to `openchuck-app` are recorded here.
 ## Unreleased
 
 - The scene's "A+" label sits an eighth of a turn along the arrow, clear of the work Y label (owner's visual check, decision 0029).
-- Slice 8, libraries and machines (decision 0029 items 15 and 16): the `library` module (default machine and tool library folders in the platform configuration folder); `setup::available_machines`, `compare_machine` and `MachineSource`; `new_machine_id` re-exported.
+- Slice 8, libraries and machines (decision 0029 items 15 and 16): the `library` module (default machine and tool library folders in the platform configuration folder); `Command::SetMachineFrom`; `setup::available_machines`, `compare_machine` and `MachineSource`; the profile entry functions and `new_machine_id` re-exported.
 - Slice 8, import (decision 0029 item 13): `Application::start_import_preview` (`model::ImportPreview` with the problems as a `SceneRole::Problem` mesh and lines), `add_model_with` (unit and placement in one step) and `model_file_warnings`; `scene::Mesh` re-exported.
 - Slice 8, tool editing (decision 0029 item 12): the `tool_edit` module (tool form fields, `set_tool_field`, `set_tool_profile`, `check_profile`, `starting_profile`, `profile_outline` and segment edits) and `Application::set_tool_field` and `set_tool_profile`.
 - Slice 8, parameter forms (decision 0029 item 11): the `form` module (`parameter_form`, fields with kind, unit, range, value and source), `Application::parameter_form` and `set_parameter`, which refuses an invalid value with the project unchanged.

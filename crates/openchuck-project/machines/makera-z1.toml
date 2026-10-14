@@ -8,11 +8,11 @@
 # unconfirmed until the axis is measured (OI-60).
 # Machine coordinates are the firmware's (G53): home at 0, travel negative.
 schema = 2
-
-[machine]
 # Fixed for the built-in profile, so every project copy of it can be compared
 # with it (OI-54, decision 0029 item 16).
 id = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01"
+
+[machine]
 name = "Makera Z1"
 rotary_axis = "x"
 a_sense = "positive"

@@ -29,6 +29,15 @@ pub enum Command {
     RenameProject(String),
     /// Sets or clears the project's copy of its machine profile (SET-01).
     SetMachine(Option<Box<MachineProfile>>),
+    /// Sets or clears the project's machine copy with the ID of the library
+    /// profile it came from, so the copy can later be compared with it
+    /// (SET-01, OI-128).
+    SetMachineFrom {
+        /// The profile, or `None` to clear it.
+        machine: Option<Box<MachineProfile>>,
+        /// The library profile's ID.
+        id: Option<String>,
+    },
     /// Sets the simulation settings (SIM-07).
     SetSimulation(SimulationSettings),
     /// Adds an item.
@@ -99,7 +108,18 @@ impl Command {
         Ok(match self {
             Self::RenameProject(name) => Self::RenameProject(project.set_name(name)),
             Self::SetMachine(machine) => {
-                Self::SetMachine(project.set_machine(machine.map(|m| *m))?.map(Box::new))
+                let (machine, id) = project.set_machine_from(machine.map(|m| *m), None)?;
+                Self::SetMachineFrom {
+                    machine: machine.map(Box::new),
+                    id,
+                }
+            }
+            Self::SetMachineFrom { machine, id } => {
+                let (machine, id) = project.set_machine_from(machine.map(|m| *m), id)?;
+                Self::SetMachineFrom {
+                    machine: machine.map(Box::new),
+                    id,
+                }
             }
             Self::SetSimulation(settings) => Self::SetSimulation(project.set_simulation(settings)?),
             Self::Add { item, placement } => {

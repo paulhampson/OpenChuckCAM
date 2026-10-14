@@ -55,9 +55,34 @@ pub const MAKERA_Z1: &str = "makera-z1";
 /// Built-in profiles as (key, file text).
 const BUILTIN: &[(&str, &str)] = &[(MAKERA_Z1, include_str!("../machines/makera-z1.toml"))];
 
-/// Reads a profile file's text. `path` names the file in messages. The
-/// profile is validated.
-pub fn parse_profile(path: &Path, text: &str) -> Result<MachineProfile, ProjectError> {
+/// A profile as a library or a project stores it: the profile and the ID
+/// that a library profile shares with every project copy made from it
+/// (OI-128). The ID is kept beside the profile rather than in it, so the
+/// shared profile type in `openchuck-types` does not change (decision record
+/// 0029 item 16).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProfileEntry {
+    /// Opaque text, usually a UUID; `None` for a profile never given one.
+    pub id: Option<String>,
+    /// The profile.
+    pub profile: MachineProfile,
+}
+
+/// Checks a machine ID: 1 to 64 characters with no leading or trailing
+/// space.
+pub fn validate_machine_id(id: &str) -> Result<(), openchuck_types::Error> {
+    if id.trim().is_empty() || id.trim() != id || id.len() > 64 {
+        return Err(openchuck_types::Error::invalid(
+            "id",
+            "the machine ID must be 1 to 64 characters with no leading or trailing space",
+        ));
+    }
+    Ok(())
+}
+
+/// Reads a profile file's text with its ID. `path` names the file in
+/// messages. The profile and the ID are validated.
+pub fn parse_profile_entry(path: &Path, text: &str) -> Result<ProfileEntry, ProjectError> {
     let file: MachineFile = parse(
         path,
         text,
@@ -65,63 +90,113 @@ pub fn parse_profile(path: &Path, text: &str) -> Result<MachineProfile, ProjectE
         MACHINE_MIGRATIONS,
         MACHINE_SCHEMA,
     )?;
-    file.machine.validate().map_err(|e| ProjectError::BadFile {
+    let bad = |reason: String| ProjectError::BadFile {
         path: path.to_path_buf(),
-        reason: e.to_string(),
-    })?;
-    Ok(file.machine)
-}
-
-/// The text of a profile file for `profile`.
-pub fn render_profile(profile: &MachineProfile) -> Result<String, ProjectError> {
-    profile.validate()?;
-    to_text(&MachineFile {
-        schema: MACHINE_SCHEMA,
-        machine: profile.clone(),
+        reason,
+    };
+    file.machine.validate().map_err(|e| bad(e.to_string()))?;
+    if let Some(id) = &file.id {
+        validate_machine_id(id).map_err(|e| bad(e.to_string()))?;
+    }
+    Ok(ProfileEntry {
+        id: file.id,
+        profile: file.machine,
     })
 }
 
-/// Reads the profile file at `path`.
-pub fn load_profile(path: &Path) -> Result<MachineProfile, ProjectError> {
+/// Reads a profile file's text. `path` names the file in messages. The
+/// profile is validated.
+pub fn parse_profile(path: &Path, text: &str) -> Result<MachineProfile, ProjectError> {
+    parse_profile_entry(path, text).map(|e| e.profile)
+}
+
+/// The text of a profile file for `entry`.
+pub fn render_profile_entry(entry: &ProfileEntry) -> Result<String, ProjectError> {
+    entry.profile.validate()?;
+    if let Some(id) = &entry.id {
+        validate_machine_id(id)?;
+    }
+    to_text(&MachineFile {
+        schema: MACHINE_SCHEMA,
+        id: entry.id.clone(),
+        machine: entry.profile.clone(),
+    })
+}
+
+/// The text of a profile file for `profile`, with no ID.
+pub fn render_profile(profile: &MachineProfile) -> Result<String, ProjectError> {
+    render_profile_entry(&ProfileEntry {
+        id: None,
+        profile: profile.clone(),
+    })
+}
+
+/// Reads the profile file at `path` with its ID.
+pub fn load_profile_entry(path: &Path) -> Result<ProfileEntry, ProjectError> {
     let text = std::fs::read_to_string(path).map_err(|source| ProjectError::Io {
         path: path.to_path_buf(),
         source,
     })?;
-    parse_profile(path, &text)
+    parse_profile_entry(path, &text)
 }
 
-/// Writes `profile` to a profile file at `path`.
-pub fn save_profile(profile: &MachineProfile, path: &Path) -> Result<(), ProjectError> {
-    let text = render_profile(profile)?;
+/// Reads the profile file at `path`.
+pub fn load_profile(path: &Path) -> Result<MachineProfile, ProjectError> {
+    load_profile_entry(path).map(|e| e.profile)
+}
+
+/// Writes `entry` to a profile file at `path`.
+pub fn save_profile_entry(entry: &ProfileEntry, path: &Path) -> Result<(), ProjectError> {
+    let text = render_profile_entry(entry)?;
     std::fs::write(path, text).map_err(|source| ProjectError::Io {
         path: path.to_path_buf(),
         source,
     })
 }
 
+/// Writes `profile` to a profile file at `path`, with no ID.
+pub fn save_profile(profile: &MachineProfile, path: &Path) -> Result<(), ProjectError> {
+    save_profile_entry(
+        &ProfileEntry {
+            id: None,
+            profile: profile.clone(),
+        },
+        path,
+    )
+}
+
 /// A library's profile files, each read or with its error.
 pub type LibraryListing = Vec<(PathBuf, Result<MachineProfile, ProjectError>)>;
+
+/// A library's profile files, each read with its ID or with its error.
+pub type LibraryEntries = Vec<(PathBuf, Result<ProfileEntry, ProjectError>)>;
 
 /// The keys of the built-in profiles, in order.
 pub fn builtin_keys() -> Vec<&'static str> {
     BUILTIN.iter().map(|(key, _)| *key).collect()
 }
 
-/// The built-in profile whose key or name is `key` (ignoring case).
-pub fn builtin(key: &str) -> Option<Result<MachineProfile, ProjectError>> {
+/// The built-in profile whose key or name is `key` (ignoring case), with its
+/// fixed ID.
+pub fn builtin_entry(key: &str) -> Option<Result<ProfileEntry, ProjectError>> {
     BUILTIN.iter().find_map(|(k, text)| {
-        let profile = parse_profile(Path::new(&format!("built-in {k}")), text);
+        let entry = parse_profile_entry(Path::new(&format!("built-in {k}")), text);
         let matches = k.eq_ignore_ascii_case(key)
-            || profile
+            || entry
                 .as_ref()
-                .is_ok_and(|p| p.name.eq_ignore_ascii_case(key.trim()));
-        matches.then_some(profile)
+                .is_ok_and(|e| e.profile.name.eq_ignore_ascii_case(key.trim()));
+        matches.then_some(entry)
     })
 }
 
-/// Every `.toml` profile file directly in `dir`, by file name, each read or
-/// with its error. A missing folder has none.
-pub fn list_library(dir: &Path) -> Result<LibraryListing, ProjectError> {
+/// The built-in profile whose key or name is `key` (ignoring case).
+pub fn builtin(key: &str) -> Option<Result<MachineProfile, ProjectError>> {
+    builtin_entry(key).map(|r| r.map(|e| e.profile))
+}
+
+/// Every `.toml` profile file directly in `dir`, by file name, each read
+/// with its ID or with its error. A missing folder has none.
+pub fn list_library_entries(dir: &Path) -> Result<LibraryEntries, ProjectError> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -148,9 +223,18 @@ pub fn list_library(dir: &Path) -> Result<LibraryListing, ProjectError> {
     Ok(paths
         .into_iter()
         .map(|path| {
-            let profile = load_profile(&path);
-            (path, profile)
+            let entry = load_profile_entry(&path);
+            (path, entry)
         })
+        .collect())
+}
+
+/// Every `.toml` profile file directly in `dir`, by file name, each read or
+/// with its error. A missing folder has none.
+pub fn list_library(dir: &Path) -> Result<LibraryListing, ProjectError> {
+    Ok(list_library_entries(dir)?
+        .into_iter()
+        .map(|(path, entry)| (path, entry.map(|e| e.profile)))
         .collect())
 }
 
@@ -217,10 +301,6 @@ mod tests {
             ("[machine]\nname = \"x\"\n", "schema"),
             (&z1.replace(&current, &newer), "newer"),
             (
-                &z1.replace("id = \"8f0c2a4e", "id = \" 8f0c2a4e"),
-                "machine.id",
-            ),
-            (
                 &z1.replace("rotary_axis = \"x\"", "rotary_axis = \"y\""),
                 "SET-02",
             ),
@@ -238,6 +318,13 @@ mod tests {
                 "width",
             ),
         ];
+        // A bad ID is refused too.
+        let with_id = render_profile_entry(&builtin_entry(MAKERA_Z1).unwrap().unwrap()).unwrap();
+        let bad_id = with_id.replace("id = \"8f0c2a4e", "id = \" 8f0c2a4e");
+        let err = parse_profile_entry(Path::new("z1.toml"), &bad_id)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("machine ID"), "{err}");
         for (text, expected) in cases {
             let err = parse_profile(Path::new("z1.toml"), text)
                 .unwrap_err()
@@ -257,9 +344,20 @@ mod tests {
             .filter(|l| !l.starts_with("id = "))
             .map(|l| format!("{l}\n"))
             .collect();
-        let profile = parse_profile(Path::new("old.toml"), &old).unwrap();
-        assert_eq!(profile.id, None);
-        assert_eq!(profile.name, "Makera Z1");
+        let entry = parse_profile_entry(Path::new("old.toml"), &old).unwrap();
+        assert_eq!(entry.id, None);
+        assert_eq!(entry.profile.name, "Makera Z1");
+        // The built-in profile has its fixed ID, and it round-trips.
+        let z1 = builtin_entry(MAKERA_Z1).unwrap().unwrap();
+        assert_eq!(
+            z1.id.as_deref(),
+            Some("8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01")
+        );
+        let text = render_profile_entry(&z1).unwrap();
+        assert_eq!(
+            parse_profile_entry(Path::new("z1.toml"), &text).unwrap(),
+            z1
+        );
         assert_ne!(new_machine_id(), new_machine_id());
     }
 

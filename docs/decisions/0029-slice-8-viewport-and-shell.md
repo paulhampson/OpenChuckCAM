@@ -3,6 +3,7 @@
 - **Status:** proposed. Slice 8 is in progress, not closed. Item 4 (OI-13) was accepted by the owner on 14 Oct 2026, and verification plan 4.2 now says what "edges" means.
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
+- **Project schema:** 6 is claimed for lane A (slice 8) in the work breakdown's claims table: the operation `enabled` flag (item 10) and the machine copy's ID (item 16). No other lane had claimed it; slice 10's expected row moves to 7.
 - **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered to 0026 and OI-117 to OI-120 when `main` took 0023 to 0025 and OI-103 to OI-116. It was renumbered again to 0029 and OI-127 to OI-130 when `main` took 0026 (entry moves) and OI-117, and unmerged branches held 0027, 0028 and OI-118 to OI-126.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-127, OI-128 and OI-130 are closed (items 4, 10, 13, 15, 16 and 17), OI-129 is open, and OI-14 is deferred to slice 11 (item 1).
 
@@ -141,10 +142,16 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **No `dirs` crate.** The crate selection's pick for this, `dirs` 7.0.0 (87), pulls in `option-ext`, which is MPL-2.0. MPL-2.0 is compatible with the AGPL, but it is not on the `deny.toml` allow list, and verification plan section 7 asks for an MPL crate to be checked before adoption. `directories` shares the same dependency. The rule needs only a few lines over environment variables, so it is written in-house, with tests for each platform. `dirs` is listed under "Tried and not adopted".
     - **CLI unchanged.** The CLI still takes `--library` explicitly. Defaulting it would make CLI tests depend on the machine's configuration folder.
 16. **The machine copy against its library source (OI-54; the owner chose stable IDs, 14 Oct 2026).**
-    - **The ID.** `MachineProfile` gains an optional `id`: opaque text, usually a UUID, shared by a library profile and every project copy made from it, as tool snapshots share an ID with library tools. It is validated as 1 to 64 characters with no leading or trailing space.
-    - **Files.** Profile files move to schema 2, with a migration that only changes the number; a schema 1 profile reads with no ID. The project copy's `machine.toml` holds the ID under project schema 6 (unmerged, so no further bump). The built-in Makera Z1 has a fixed ID, so every project copy of it can be compared with it.
-    - **Comparison.** `setup::available_machines(library)` lists the library's profiles, then the built-in ones. `setup::compare_machine` gives one of: no machine; source not recorded; source not found; the same; or different, with the differing fields named. The field list destructures the profile exhaustively, so a new field cannot be missed. Library profiles are searched before built-ins, so a profile the user derived from a built-in, keeping its ID, is the source.
-    - **Updating.** Updating the copy is `Command::SetMachine` with the source profile, one undoable step. The project's copy wins until the user updates it (as TL-07 does for tools).
+    - **The ID and where it lives.** A machine ID is opaque text, usually a UUID, shared by a library profile and every project copy made from it, as tool snapshots share an ID with library tools. Like a tool's ID, it describes where a stored profile came from, not the machine, so it is kept **beside** the profile, in storage:
+      - `openchuck_project::machines::ProfileEntry { id, profile }` for library and built-in profiles;
+      - `Project::machine_id` for the project's copy.
+
+      `MachineProfile` in `openchuck-types` is unchanged: pathing, posts and kinematics never read the ID. A first version put the field inside `MachineProfile`. It moved out when the merge with `main` brought the rule against adding fields to public structs in the library family (`cargo-semver-checks` in CI). The owner said a pre-release version bump was acceptable, but beside the profile is where the ID belongs, and the library API stays as it was.
+    - **Validation.** An ID is 1 to 64 characters with no leading or trailing space (`validate_machine_id`).
+    - **Files.** In a profile file and in the project's `machine.toml`, `id` is a top-level field beside `[machine]`. Profile files move to schema 2, with a migration that only changes the number; a schema 1 profile reads with no ID. The project copy's ID is covered by project schema 6 (claimed for lane A, below). The built-in Makera Z1 has a fixed ID.
+    - **Commands.** `Command::SetMachineFrom { machine, id }` sets the copy with its source's ID, and its undo restores the old ID too. The CLI's `machine` command and the UI record the ID. A plain `SetMachine` records no source.
+    - **Comparison.** `setup::available_machines(library)` lists the library's profiles, then the built-in ones. `setup::compare_machine` gives one of: no machine; source not recorded; source not found; the same; or different, with the differing fields named. The field list destructures the profile exhaustively, so a field added to the profile cannot be missed. Library profiles are searched before built-ins, so a profile the user derived from a built-in, keeping its ID, is the source.
+    - **Updating.** Updating the copy is `Command::SetMachineFrom` with the source profile and its ID, one undoable step. The project's copy wins until the user updates it (as TL-07 does for tools).
     - **UI.** A Machine node in the tree opens a panel with the profile name, the A direction in words, the values not yet confirmed on the machine, the comparison with an Update button, a chooser of available profiles, and, for a library profile with no ID, a button that gives it one by rewriting the library file.
 
 17. **Dialogs in their own windows (OI-130; owner's request, 14 Oct 2026).**
@@ -193,7 +200,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
   - a library profile derived from it, keeping its ID, with a faster feed, found as the source with `max_feeds` named;
   - the update and its undo; an orphaned ID.
 
-  `openchuck-project` tests: the profile round trip at schema 2, a schema 1 profile read with no ID, and a bad ID refused.
+  The test also checks: the ID survives a save and reopen; a plain `SetMachine` clears it and undo restores it; a bad ID is refused. `openchuck-project` tests: the profile and the built-in Z1's ID round-trip at schema 2; a schema 1 profile reads with no ID; a bad ID is refused; and a project copy with an ID writes `id` beside `[machine]` and reads it back.
 - Floating dialogs (item 17): a UI unit test runs the helper in an egui context that embeds viewports (the fallback) and checks the dialog is drawn. On X11 in this container (mutter), the real binary with the import dialog open showed "Import model" as its own top-level window with its own frame, next to the "OpenChuckCAM" window (`xwininfo -root -tree`; a temporary start-up hook was used and not committed).
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 

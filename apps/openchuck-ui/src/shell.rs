@@ -525,8 +525,9 @@ impl Shell {
         let Some(app) = &mut self.app else { return };
         let panel = self.machine_panel.get_or_insert_with(MachinePanel::default);
         let copy = app.project().machine().cloned();
+        let copy_id = app.project().machine_id().map(str::to_owned);
         let command = egui::ScrollArea::vertical()
-            .show(ui, |ui| panel.show(ui, copy.as_ref()))
+            .show(ui, |ui| panel.show(ui, copy.as_ref(), copy_id.as_deref()))
             .inner;
         if let Some(command) = command {
             match app.execute(command) {

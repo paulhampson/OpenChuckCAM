@@ -226,12 +226,6 @@ const fn default_max_tool_number() -> u32 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MachineProfile {
-    /// A stable identifier shared by a library profile and every project copy
-    /// made from it, so a copy can be compared with its source (OI-54,
-    /// decision record 0029 item 16). Opaque text, usually a UUID; `None`
-    /// for a profile that was never in a library.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
     /// Display name.
     pub name: String,
     /// Axis the rotary axis is parallel to.
@@ -269,14 +263,6 @@ impl MachineProfile {
     pub fn validate(&self) -> Result<()> {
         if self.name.trim().is_empty() {
             return Err(Error::invalid("machine.name", "the name must not be empty"));
-        }
-        if let Some(id) = &self.id
-            && (id.trim().is_empty() || id.trim() != id || id.len() > 64)
-        {
-            return Err(Error::invalid(
-                "machine.id",
-                "the ID must be 1 to 64 characters with no leading or trailing space",
-            ));
         }
         if self.max_tool_number < 1 {
             return Err(Error::invalid(
@@ -349,7 +335,6 @@ impl MachineProfile {
     /// no real machine.
     pub fn example_x_rotary() -> Self {
         Self {
-            id: None,
             name: "Example X rotary".to_owned(),
             rotary_axis: RotaryAxis::X,
             a_sense: ASense::Positive,

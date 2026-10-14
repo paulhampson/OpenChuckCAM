@@ -4,7 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
-- Machine profile files schema 2 (decision 0029 item 16): an optional `id` kept by project copies; the built-in Makera Z1 has a fixed ID; `new_machine_id`.
+- Machine IDs (decision 0029 item 16): `machines::ProfileEntry` (a profile with its optional `id`), `parse_profile_entry`, `load_profile_entry`, `render_profile_entry`, `save_profile_entry`, `builtin_entry`, `list_library_entries`, `validate_machine_id` and `new_machine_id`; profile files schema 2 with `id` beside `[machine]`; the built-in Makera Z1 has a fixed ID; `Project::machine_id` and `set_machine_from`, and `machine.toml` keeps the copy's source ID (project schema 6).
 - Project schema 6 (decision 0029 item 10): `Operation::enabled`, written to the operation's file only when false; the schema 5 to 6 migration changes only the number.
 - Slice 7 (decision 0025): the project holds `SimulationSettings` (`simulation`, `set_simulation`), written to `project.toml` as `[simulation]` only when not the default; project folder schema 5, migrated from 4.
 - Slice 4 (decision 0014): tool snapshots gain the controller mapping and cutting data; project folder schema 4 (a schema 3 tool snapshot is refused with what to do); new `tools` module: the tool library folder (`ToolLibrary`, one TOML file per tool, import, export, `find`), machine tool sets in `tool-sets/` (`ToolSet`, TL-11), custom profile text files (arcs by centre or by radius and curve) and `compare_snapshot` (TL-07). `file::write_if_changed` is shared within the crate.

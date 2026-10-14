@@ -20,9 +20,11 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, assemble};
+use crate::assemble::{GeneratedPath, assemble_with_entry};
 use crate::error::{PathError, Result};
-use crate::params::{CommonParameters, ParameterSchema, ParameterValue, Parameters};
+use crate::params::{
+    CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
+};
 use crate::rotary::RotaryMapping;
 use crate::stock::{CollisionOracle, StockModel};
 use crate::surface::SurfaceSource;
@@ -113,10 +115,11 @@ pub fn generate(
 ) -> Result<GeneratedPath> {
     let parameters = strategy.schema().resolve(values)?;
     let common = CommonParameters::read(&parameters)?;
+    let entry = EntryParameters::read(&parameters)?;
     context.check_cancelled()?;
     let passes = strategy.passes(input, &parameters, context)?;
     context.check_cancelled()?;
-    assemble(&passes, input, &common, context)
+    assemble_with_entry(&passes, input, &common, &entry, context)
 }
 
 /// The strategies a host offers, by name.

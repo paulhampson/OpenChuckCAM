@@ -181,6 +181,9 @@ struct ProjectFile {
 #[serde(deny_unknown_fields)]
 pub(crate) struct MachineFile {
     pub(crate) schema: i64,
+    /// The ID shared with the library profile the copy came from (OI-128).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) id: Option<String>,
     pub(crate) machine: MachineProfile,
 }
 
@@ -274,6 +277,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
     if let Some(machine) = project.machine() {
         let file = MachineFile {
             schema: SCHEMA,
+            id: project.machine_id().map(str::to_owned),
             machine: machine.clone(),
         };
         files.insert(MACHINE_FILE.to_owned(), to_text(&file)?);
@@ -438,10 +442,18 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
     };
     let file: ProjectFile = parse(&project_path, &text, FileKind::Project, migrations, schema)?;
     let machine_path = root.join(MACHINE_FILE);
+    let mut machine_id = None;
     let machine = match std::fs::read_to_string(&machine_path) {
         Ok(text) => {
             let file: MachineFile =
                 parse(&machine_path, &text, FileKind::Machine, migrations, schema)?;
+            if let Some(id) = &file.id {
+                crate::machines::validate_machine_id(id).map_err(|e| ProjectError::BadFile {
+                    path: machine_path.clone(),
+                    reason: e.to_string(),
+                })?;
+            }
+            machine_id = file.id;
             Some(file.machine)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -528,6 +540,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
         path: root.to_path_buf(),
         reason: e.to_string(),
     })?;
+    project.machine_id = machine_id;
     project
         .set_simulation(file.simulation)
         .map_err(|e| ProjectError::BadFile {

@@ -43,6 +43,8 @@ jobs:
       linuxcnc_image: ${{ steps.filter.outputs.linuxcnc_image }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -65,6 +67,7 @@ jobs:
               - 'about.toml'
               - 'about.hbs'
               - '.cargo/**'
+              - '.config/**'
               - '.github/workflows/**'
             records:
               - 'docs/requirements.md'
@@ -112,6 +115,8 @@ jobs:
       LINUXCNC_IMAGE: ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - name: Get the LinuxCNC image
         env:
@@ -140,6 +145,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - run: cargo fmt --all --check
 
   build-test:
@@ -153,6 +160,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -235,6 +244,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -261,6 +272,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - name: Dependency rules (architecture sections 4 and 12)
         run: cargo xtask deps
@@ -285,6 +298,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -296,6 +311,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -308,6 +325,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
@@ -326,6 +345,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -356,6 +376,8 @@ jobs:
         target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - run: rustup toolchain install nightly --profile minimal
       - uses: taiki-e/install-action@v2
         with:
@@ -392,14 +414,24 @@ jobs:
       COV_IGNORE: 'xtask/'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - run: rustup component add llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
-      # Run the tests once, then render each report format from that run.
+          tool: cargo-llvm-cov,cargo-nextest
+      # Run the tests once, then render each report format from that run. nextest
+      # schedules tests from every binary in parallel, one process each; plain
+      # `cargo test` ran the binaries one after another, and the two heavy path
+      # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
+      # Doctests are not part of this run (llvm-cov nextest does not run them).
+      # The `coverage` profile (.config/nextest.toml) leaves out the long-running
+      # tests: instrumentation makes them 6 to 11 times slower and one test cannot
+      # be split across cores. The Tests job runs all of them, and the nightly run
+      # repeats them.
       - name: Run tests with coverage instrumentation
-        run: cargo llvm-cov --workspace --locked --no-report
+        run: cargo llvm-cov nextest --profile coverage --workspace --locked --no-report
       - name: HTML report (browsable, per file and per line)
         run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
       - name: lcov data (trend tracking)

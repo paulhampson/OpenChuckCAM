@@ -11,8 +11,8 @@ use eframe::egui::{self, Color32};
 use openchuck_app::Command;
 use openchuck_app::library::default_folders;
 use openchuck_app::setup::{
-    AvailableMachine, MachineProfile, MachineSource, ProfileField, a_direction, available_machines,
-    compare_machine, new_machine_id, save_profile,
+    AvailableMachine, MachineProfile, MachineSource, ProfileEntry, ProfileField, a_direction,
+    available_machines, compare_machine, new_machine_id, save_profile_entry,
 };
 
 const NOTE: Color32 = Color32::from_rgb(230, 180, 60);
@@ -47,7 +47,12 @@ impl MachinePanel {
 
     /// Draws the panel for the project's machine `copy`. Returns a command
     /// to execute, if the user chose or updated the machine.
-    pub fn show(&mut self, ui: &mut egui::Ui, copy: Option<&MachineProfile>) -> Option<Command> {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        copy: Option<&MachineProfile>,
+        copy_id: Option<&str>,
+    ) -> Option<Command> {
         let mut command = None;
         match copy {
             None => {
@@ -73,7 +78,7 @@ impl MachinePanel {
         ui.separator();
 
         // The copy against its source (OI-54).
-        match compare_machine(copy, &self.available) {
+        match compare_machine(copy, copy_id, &self.available) {
             MachineSource::NoMachine => {}
             MachineSource::Unrecorded => {
                 ui.weak("This copy does not record which library profile it came from.");
@@ -89,6 +94,7 @@ impl MachinePanel {
             }
             MachineSource::Differs {
                 source,
+                id,
                 profile,
                 fields,
             } => {
@@ -98,7 +104,10 @@ impl MachinePanel {
                 );
                 ui.weak("The project keeps its own copy until you update it.");
                 if ui.button("Update the copy from the library").clicked() {
-                    command = Some(Command::SetMachine(Some(profile)));
+                    command = Some(Command::SetMachineFrom {
+                        machine: Some(profile),
+                        id: Some(id),
+                    });
                 }
             }
             _ => {}
@@ -157,9 +166,12 @@ impl MachinePanel {
                 }
                 Ok(p) => {
                     if ui.button("Use this machine").clicked() {
-                        command = Some(Command::SetMachine(Some(Box::new(p.clone()))));
+                        command = Some(Command::SetMachineFrom {
+                            machine: Some(Box::new(p.clone())),
+                            id: a.id.clone(),
+                        });
                     }
-                    if p.id.is_none() && !a.source.starts_with("built-in ") {
+                    if a.id.is_none() && !a.source.starts_with("built-in ") {
                         ui.weak(
                             "This library profile has no ID, so a project copy of it cannot be \
                              compared with it later.",
@@ -168,10 +180,13 @@ impl MachinePanel {
                             .button("Give it an ID (rewrites the library file)")
                             .clicked()
                         {
-                            let mut with_id = p.clone();
-                            with_id.id = Some(new_machine_id());
+                            let with_id = ProfileEntry {
+                                id: Some(new_machine_id()),
+                                profile: p.clone(),
+                            };
                             self.message = Some(
-                                match save_profile(&with_id, std::path::Path::new(&a.source)) {
+                                match save_profile_entry(&with_id, std::path::Path::new(&a.source))
+                                {
                                     Ok(()) => format!("Saved {} with an ID.", a.source),
                                     Err(e) => e.to_string(),
                                 },

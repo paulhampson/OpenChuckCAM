@@ -10,8 +10,9 @@ use openchuck_types::geometry::Vec3;
 use openchuck_types::kinematics::{RotaryFrame, facing_at, model_up};
 
 pub use openchuck_project::machines::{
-    MACHINE_SCHEMA, MAKERA_Z1, builtin, builtin_keys, list_library, load_profile, new_machine_id,
-    save_profile,
+    MACHINE_SCHEMA, MAKERA_Z1, ProfileEntry, builtin, builtin_entry, builtin_keys, list_library,
+    list_library_entries, load_profile, load_profile_entry, new_machine_id, save_profile,
+    save_profile_entry,
 };
 pub use openchuck_types::geometry::{Aabb, Point3};
 pub use openchuck_types::machine::{
@@ -99,6 +100,8 @@ mod tests {
 pub struct AvailableMachine {
     /// Where it comes from: `built-in makera-z1` or the file's path.
     pub source: String,
+    /// Its ID, which project copies keep (OI-128); `None` if it has none.
+    pub id: Option<String>,
     /// The profile, or why its file cannot be read.
     pub profile: Result<MachineProfile, String>,
 }
@@ -107,22 +110,27 @@ pub struct AvailableMachine {
 /// name order, then the built-in ones.
 pub fn available_machines(library: Option<&std::path::Path>) -> Vec<AvailableMachine> {
     let mut out = Vec::new();
+    let mut push = |source: String, entry: Result<ProfileEntry, String>| {
+        let (id, profile) = match entry {
+            Ok(e) => (e.id, Ok(e.profile)),
+            Err(e) => (None, Err(e)),
+        };
+        out.push(AvailableMachine {
+            source,
+            id,
+            profile,
+        });
+    };
     if let Some(dir) = library.filter(|d| d.is_dir())
-        && let Ok(listing) = list_library(dir)
+        && let Ok(listing) = list_library_entries(dir)
     {
-        for (path, profile) in listing {
-            out.push(AvailableMachine {
-                source: path.display().to_string(),
-                profile: profile.map_err(|e| e.to_string()),
-            });
+        for (path, entry) in listing {
+            push(path.display().to_string(), entry.map_err(|e| e.to_string()));
         }
     }
     for key in builtin_keys() {
-        if let Some(profile) = builtin(key) {
-            out.push(AvailableMachine {
-                source: format!("built-in {key}"),
-                profile: profile.map_err(|e| e.to_string()),
-            });
+        if let Some(entry) = builtin_entry(key) {
+            push(format!("built-in {key}"), entry.map_err(|e| e.to_string()));
         }
     }
     out
@@ -153,6 +161,8 @@ pub enum MachineSource {
     Differs {
         /// Where the source is.
         source: String,
+        /// The source's ID, to keep with the updated copy.
+        id: String,
         /// The source profile, to update the copy from.
         profile: Box<MachineProfile>,
         /// The fields that differ, by their file names.
@@ -160,29 +170,31 @@ pub enum MachineSource {
     },
 }
 
-/// Compares the project's machine copy with the available profiles. The
-/// first profile with the copy's ID is its source; library profiles come
-/// before built-in ones, so a library profile the user derived from a
-/// built-in one, keeping its ID, is the one compared.
+/// Compares the project's machine copy (`copy`, recorded as coming from the
+/// profile with `copy_id`) with the available profiles. The first profile
+/// with that ID is its source; library profiles come before built-in ones,
+/// so a library profile the user derived from a built-in one, keeping its
+/// ID, is the one compared.
 pub fn compare_machine(
     copy: Option<&MachineProfile>,
+    copy_id: Option<&str>,
     available: &[AvailableMachine],
 ) -> MachineSource {
     let Some(copy) = copy else {
         return MachineSource::NoMachine;
     };
-    let Some(id) = &copy.id else {
+    let Some(id) = copy_id else {
         return MachineSource::Unrecorded;
     };
     let found = available.iter().find_map(|a| {
         a.profile
             .as_ref()
             .ok()
-            .filter(|p| p.id.as_ref() == Some(id))
+            .filter(|_| a.id.as_deref() == Some(id))
             .map(|p| (a.source.clone(), p))
     });
     match found {
-        None => MachineSource::NotFound { id: id.clone() },
+        None => MachineSource::NotFound { id: id.to_owned() },
         Some((source, profile)) => {
             let fields = differing_fields(copy, profile);
             if fields.is_empty() {
@@ -190,6 +202,7 @@ pub fn compare_machine(
             } else {
                 MachineSource::Differs {
                     source,
+                    id: id.to_owned(),
                     profile: Box::new(profile.clone()),
                     fields,
                 }
@@ -203,7 +216,6 @@ pub fn compare_machine(
 /// build here until it is compared.
 fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str> {
     let MachineProfile {
-        id: _,
         name,
         rotary_axis,
         a_sense,
