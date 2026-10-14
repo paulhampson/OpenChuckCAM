@@ -58,7 +58,9 @@ use openchuck_types::units::Millimetres;
 ///   and cutting data by stock material (TL-05) (decision record 0014).
 /// - 5: `project.toml` gains the optional `[simulation]` table (SIM-07),
 ///   written only when it differs from the default (decision record 0025).
-pub const SCHEMA: i64 = 5;
+/// - 6: operations gain `enabled`, written only when false (UI-06,
+///   decision record 0026 item 10).
+pub const SCHEMA: i64 = 6;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -72,7 +74,13 @@ pub type Migration = fn(FileKind, &mut toml::Table) -> Result<(), String>;
 
 /// The migrations from each older schema to the next, oldest first. Entry `i`
 /// takes schema `SCHEMA - MIGRATIONS.len() + i` one step forward.
-const MIGRATIONS: &[Migration] = &[schema_1_to_2, schema_2_to_3, schema_3_to_4, schema_4_to_5];
+const MIGRATIONS: &[Migration] = &[
+    schema_1_to_2,
+    schema_2_to_3,
+    schema_3_to_4,
+    schema_4_to_5,
+    schema_5_to_6,
+];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
 /// file does not have, so a schema 1 file needs no change but its number.
@@ -116,6 +124,12 @@ fn schema_3_to_4(kind: FileKind, table: &mut toml::Table) -> Result<(), String> 
 /// Schema 5 only adds the optional `[simulation]` table, which a schema 4
 /// file does not have, so it needs no change but its number.
 fn schema_4_to_5(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 6 only adds `enabled` to operations, written only when false, so a
+/// schema 5 file needs no change but its number: its operations are enabled.
+fn schema_5_to_6(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
@@ -231,6 +245,17 @@ struct OperationFile {
     selections: Vec<SelectionSetId>,
     #[serde(default)]
     parameters: BTreeMap<String, ParameterValue>,
+    #[serde(default = "enabled_default", skip_serializing_if = "is_enabled")]
+    enabled: bool,
+}
+
+const fn enabled_default() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+const fn is_enabled(enabled: &bool) -> bool {
+    *enabled
 }
 
 /// Every file of `project` as (path relative to the project folder, text),
@@ -303,6 +328,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             tool: o.tool,
             selections: o.selections.clone(),
             parameters: o.parameters.clone(),
+            enabled: o.enabled,
         };
         files.insert(item_path(FileKind::Operation, &o.id), to_text(&file)?);
     }
@@ -483,6 +509,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                 tool: f.tool,
                 selections: f.selections,
                 parameters: f.parameters,
+                enabled: f.enabled,
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -734,16 +761,17 @@ mod tests {
 
     #[test]
     fn req_prj_04_newer_schema_is_refused() {
+        let newer = SCHEMA + 1;
         let err = parse::<ProjectFile>(
             Path::new(PROJECT_FILE),
-            "schema = 6\nname = \"x\"\n",
+            &format!("schema = {newer}\nname = \"x\"\n"),
             FileKind::Project,
             MIGRATIONS,
             SCHEMA,
         )
         .unwrap_err();
         assert!(
-            matches!(err, ProjectError::SchemaTooNew { found: 6, .. }),
+            matches!(err, ProjectError::SchemaTooNew { found, .. } if found == newer),
             "{err}"
         );
         assert!(err.to_string().contains("newer OpenChuckCAM"), "{err}");
@@ -751,7 +779,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 5);
+        assert_eq!(SCHEMA, 6);
         let mut project = Project::new("p");
         project
             .insert(
@@ -760,7 +788,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 5\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 6\n"), "{path}: {text}");
         }
     }
 

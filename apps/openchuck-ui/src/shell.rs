@@ -10,9 +10,10 @@
 use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
-use openchuck_app::project::id::SetupId;
+use openchuck_app::project::ItemId;
+use openchuck_app::project::id::{OperationId, SetupId};
 use openchuck_app::scene::SceneView;
-use openchuck_app::{AppError, Application, JobHandle, Threads};
+use openchuck_app::{AppError, Application, Command, JobHandle, Threads};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::bench;
@@ -321,8 +322,8 @@ impl Shell {
     }
 
     /// The project tree (UI-06): models, setups, operations and tools.
-    /// Choosing a setup shows it in the viewport. Reorder, enable, disable
-    /// and duplicate arrive with the next increment (decision record 0026).
+    /// Choosing a setup shows it in the viewport. Operations can be enabled,
+    /// disabled, moved and duplicated, each through an undoable command.
     fn tree(&mut self, ui: &mut egui::Ui) {
         let Some(app) = &self.app else {
             ui.label("No project open. Use File, Open project or New project.");
@@ -331,6 +332,7 @@ impl Shell {
         let project = app.project();
         ui.heading(project.name());
         let mut chosen = None;
+        let mut command: Option<TreeAction> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::CollapsingHeader::new(format!("Models ({})", project.models().len()))
                 .default_open(true)
@@ -354,8 +356,11 @@ impl Shell {
             egui::CollapsingHeader::new(format!("Operations ({})", project.operations().len()))
                 .default_open(true)
                 .show(ui, |ui| {
-                    for o in project.operations() {
-                        ui.label(&o.name);
+                    let count = project.operations().len();
+                    for (index, o) in project.operations().iter().enumerate() {
+                        if let Some(c) = operation_row(ui, index, count, o) {
+                            command = Some(c);
+                        }
                     }
                 });
             egui::CollapsingHeader::new(format!("Tools ({})", project.tools().len()))
@@ -371,6 +376,21 @@ impl Shell {
         {
             self.setup = Some(id);
             self.rebuild_scene(true);
+        }
+        if let Some(action) = command {
+            self.tree_action(action);
+        }
+    }
+
+    /// Runs a project tree action through a command, so it can be undone.
+    fn tree_action(&mut self, action: TreeAction) {
+        let Some(app) = &mut self.app else { return };
+        let command = match action {
+            TreeAction::Command(c) => Ok(*c),
+            TreeAction::Duplicate(id) => openchuck_app::duplicate_operation(app.project(), id),
+        };
+        if let Err(e) = command.and_then(|c| app.execute(c)) {
+            self.dialog = Some(Dialog::Error(e.to_string()));
         }
     }
 
@@ -510,6 +530,74 @@ impl Shell {
             self.dialog = Some(Dialog::Unsaved(Next::Quit));
         }
     }
+}
+
+/// What a row of the project tree asks for.
+#[derive(Debug, Clone, PartialEq)]
+enum TreeAction {
+    /// A command to execute.
+    Command(Box<Command>),
+    /// Duplicate this operation (the command is built from the project).
+    Duplicate(OperationId),
+}
+
+/// One operation in the tree: enable box, name, and move up, move down and
+/// duplicate buttons (UI-06). A disabled operation's name is greyed.
+fn operation_row(
+    ui: &mut egui::Ui,
+    index: usize,
+    count: usize,
+    o: &openchuck_app::project::Operation,
+) -> Option<TreeAction> {
+    let mut action = None;
+    ui.horizontal(|ui| {
+        let mut enabled = o.enabled;
+        if ui
+            .checkbox(&mut enabled, "")
+            .on_hover_text("Include in regeneration, simulation and posting")
+            .changed()
+        {
+            action = Some(TreeAction::Command(Box::new(
+                Command::SetOperationEnabled {
+                    operation: o.id,
+                    enabled,
+                },
+            )));
+        }
+        let name = egui::RichText::new(&o.name);
+        ui.label(if o.enabled {
+            name
+        } else {
+            name.weak().strikethrough()
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let id = ItemId::Operation(o.id);
+            if ui.small_button("Duplicate").clicked() {
+                action = Some(TreeAction::Duplicate(o.id));
+            }
+            if ui
+                .add_enabled(index + 1 < count, egui::Button::new("↓").small())
+                .on_hover_text("Move later")
+                .clicked()
+            {
+                action = Some(TreeAction::Command(Box::new(Command::Move {
+                    id,
+                    index: index + 1,
+                })));
+            }
+            if ui
+                .add_enabled(index > 0, egui::Button::new("↑").small())
+                .on_hover_text("Move earlier")
+                .clicked()
+            {
+                action = Some(TreeAction::Command(Box::new(Command::Move {
+                    id,
+                    index: index - 1,
+                })));
+            }
+        });
+    });
+    action
 }
 
 impl eframe::App for Shell {

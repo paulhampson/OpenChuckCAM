@@ -47,7 +47,7 @@ use openchuck_project::{
 };
 use setup::{PartExtent, SetupReport};
 
-pub use command::Command;
+pub use command::{Command, duplicate_operation};
 pub use error::AppError;
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
 /// The G-code reader and replay, re-exported so front ends need no engine

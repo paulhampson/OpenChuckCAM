@@ -140,6 +140,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
         Item::Setup(setup),
         Item::Tool(snapshot),
         Item::Operation(Operation {
+            enabled: true,
             id: op,
             order: OrderKey::default(),
             name: "Ring".into(),
@@ -435,5 +436,86 @@ fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_st
     app.save().unwrap();
     let again = Application::open(&dir, Threads::Exactly(3)).unwrap();
     assert_eq!(again.regenerate().unwrap().toolpath, first.toolpath);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_06_duplicate_and_reorder_are_undoable() {
+    let (dir, mut app, op) = project("tree");
+    let command = openchuck_app::duplicate_operation(app.project(), op).unwrap();
+    app.execute(command).unwrap();
+    let names: Vec<_> = app
+        .project()
+        .operations()
+        .iter()
+        .map(|o| o.name.clone())
+        .collect();
+    assert_eq!(names, ["Ring", "Ring (copy)"]);
+    let (original, copy) = (
+        &app.project().operations()[0],
+        &app.project().operations()[1],
+    );
+    assert_ne!(copy.id, original.id);
+    assert_eq!(
+        (&copy.strategy, copy.tool, copy.setup, &copy.parameters),
+        (
+            &original.strategy,
+            original.tool,
+            original.setup,
+            &original.parameters
+        )
+    );
+    let copy_id = copy.id;
+
+    // Reorder: the copy moves first.
+    app.execute(Command::Move {
+        id: openchuck_app::project::ItemId::Operation(copy_id),
+        index: 0,
+    })
+    .unwrap();
+    assert_eq!(app.project().operations()[0].id, copy_id);
+    // Undo the move, then the duplicate.
+    app.undo().unwrap();
+    assert_eq!(app.project().operations()[1].id, copy_id);
+    app.undo().unwrap();
+    assert_eq!(app.project().operations().len(), 1);
+    assert!(openchuck_app::duplicate_operation(app.project(), OperationId::new()).is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_06_disabled_operations_are_skipped_and_saved() {
+    let (dir, mut app, op) = project("enable");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    app.execute(openchuck_app::duplicate_operation(app.project(), op).unwrap())
+        .unwrap();
+    assert_eq!(app.regenerate().unwrap().toolpath.groups.len(), 2);
+
+    // Disabled: left out of regeneration (and so of simulation and posting).
+    app.execute(Command::SetOperationEnabled {
+        operation: op,
+        enabled: false,
+    })
+    .unwrap();
+    let regeneration = app.regenerate().unwrap();
+    assert_eq!(regeneration.toolpath.groups.len(), 1);
+    assert_ne!(
+        regeneration.toolpath.groups[0].tags.operation,
+        op.to_string()
+    );
+
+    // Saved as one line, written only while disabled.
+    app.save().unwrap();
+    let file = dir.join(format!("operations/{op}.toml"));
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("enabled = false"), "{text}");
+    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert!(!reopened.project().operation(op).unwrap().enabled);
+
+    // Undo enables it again, and the line goes.
+    app.undo().unwrap();
+    assert!(app.project().operation(op).unwrap().enabled);
+    app.save().unwrap();
+    assert!(!std::fs::read_to_string(&file).unwrap().contains("enabled"));
     std::fs::remove_dir_all(&dir).unwrap();
 }

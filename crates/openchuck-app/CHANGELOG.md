@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Slice 8, tree commands (decision 0026 item 10): `Command::SetOperationEnabled` and `duplicate_operation`; regeneration (and so simulation and posting) and the tool-number plan skip disabled operations.
 - Slice 8, first step (decision 0026): the `scene` module and `Application::start_scene` (the viewport's view model: part with feature edges, stock outline, rotary axis, A+ arrow from the shared kinematics, work coordinate system, labels and notes); `JobHandle::try_result`; `Application::is_modified` and `location`.
 - Slice 7 (decision 0025): `Command::SetSimulation`; `Application::simulate` and `start_simulate`; `Regeneration::simulation` with a `SimulationReport`; operations after the first in a setup are generated against the simulated stock (`generate_operation_on`, SIM-06); `OperationPath` gains the tool profile and part bounds; `openchuck_sim` re-exported as `sim`. `openchuck-cli simulate`.
 - Feed and material (decision 0018 item 7): `parameter_values` returns `ResolvedValues` with notes where an operation's value overrides the material's cutting data; a required feed, plunge feed or stepover with no source is refused naming the operation, the material and the tool; `generate_operation` returns `OperationPath` (group and notes). `openchuck-cli` prints regeneration notes as warnings in `validate` and `regenerate`.
