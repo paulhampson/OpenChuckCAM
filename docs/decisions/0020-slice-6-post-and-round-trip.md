@@ -1,14 +1,14 @@
 # 0020: Slice 6 design refinement: posts, G-code reader and round trip
 
-- **Status:** proposed; the owner accepted open items 1, 2 and 3, settled 5 (the post copy of the maximum feed is dropped) and confirmed the reading in 6 on 13 Oct 2026 (below); 4 and 7 to 9 stay open. The rest is accepted at slice close. Built on branch `claude/nice-fermi-lyjx5n` as the slice progresses; this record grows with each step and is accepted at slice close. It relies on accepted records 0001, 0005, 0007, 0009 and 0019. The Z1 conventions stay derived and unconfirmed until the air cut (OI-37).
+- **Status:** accepted by the project owner (14 Oct 2026) at slice close. Open items 1, 2, 3, 5 and 6 were settled on 13 Oct 2026; 7 closes with the green CI run (below); 4, 8 and 9 stay open with their owners. It relies on accepted records 0001, 0005, 0007, 0009 and 0019. The Z1 conventions stay derived and unconfirmed until the air cut (OI-37). Built on branch `claude/nice-fermi-lyjx5n`.
 - **Date:** 13 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-84 and OI-85 progress, OI-88 to OI-93 are new, OI-02, OI-46 and OI-83 progress, OI-47 progresses (the runner and image exist, the CI job has not run on GitHub), OI-60 progresses (the owner gave the chuck height) and OI-62 and OI-93 are closed.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-84 and OI-85 progress, OI-88 to OI-93 are new, OI-02, OI-46 and OI-83 progress, OI-47 and OI-83 are closed (the `gate3` job and image build ran green), OI-60 progresses (the owner gave the chuck height) and OI-62 and OI-93 are closed.
 
 ## Context
 
 Work breakdown slice 6 (GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14; GC-01 end to end; NFR-08). Architecture section 5.3. Decision 0019 chose the engine and put the feed rule in Rust (item 5). This record covers the whole slice as built: the post stage (items 1 to 6), the reader, replay and gates (items 7 and 11), the application and CLI (item 10), the simulator runner (item 9), the reference job set (item 12) and the tool numbers (item 13).
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **Neutral machine program (slice item 1).** `openchuck_post::to_machine_program` turns the IR into `Step`s in the work frame (`RotaryFrame`): comment, tool change, spindle on, rapid, fed move with its `FeedWord`, and unwind. Machine XYZ comes from the shared kinematics. A rapid at an unchanged tip whose A changes by whole turns is an `Unwind`. Moves with no motion are dropped. A fed move with motion and no duration is an error (the feed cannot be worked out). Tool numbers and spindle speeds come from a `ToolSetting` per IR tool tag (GC-14); a tag with none is refused naming the group and operation.
 2. **Post definition and options (items 3 and 4; OI-85).** A post is a folder: `post.toml` (`schema`, `name`, `template`, `feed_rule`, `[options]`) and one template. `PostOptions` is typed (units, A letter, direction, unwind mode and command, header, footer, work offset, tool change, coolant, line numbers, decimals, maximum feed, feed mode, comments); unknown keys, wrong types and out-of-range values are refused at load naming the option, the feed mode must agree with the feed rule, and the template is compiled at load so a syntax error names its line. The template sees every option (unset is `none`). Environment as decision 0019 item 3; fuel is 100,000 plus 400 per step. A direction and unwinding are applied in Rust before the template runs: with `drop_turns` the controller keeps the remainder of A with its sign, so later A values are shifted by whole turns to keep every machine position, which the template then writes unchanged.
@@ -70,7 +70,7 @@ Work breakdown slice 6 (GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14; 
 | 4 | Inches and wrapped A. (OI-89) | When a machine needs them | |
 | 5 | Post `max_feed` duplicates the profile's. (OI-90) | **Settled 13 Oct 2026: the shipped posts no longer set it** (the option stays, GC-04 lists it; the profile's limits govern every move; the golden files did not change) | |
 | 6 | Gate 2's combined tip tolerance (0.00087 mm at three decimals) against the plan's 0.0005 mm, which reads as per axis. Confirm the reading, or change the plan's wording. (OI-91) | **Reading confirmed 13 Oct 2026:** 0.0005 mm and 0.001 degrees are per axis; the tip check allows 0.00087 mm at three decimals. The verification plan row says so | |
-| 7 | Gate 3 runs against LinuxCNC (table in item 10) and CI is wired to it with the image of item 13, but the CI job and the image push have not run on GitHub. (OI-47) | Slice 6 close | A green `gate3` job |
+| 7 | Gate 3 runs against LinuxCNC (table in item 10) and CI is wired to it with the image of item 13, but the CI job and the image push have not run on GitHub. (OI-47) | **Closed 14 Oct 2026:** the `gate3` job and the image build ran green on GitHub (PR 28, head `bb901fb`) | |
 | 8 | GC-05 file splits other than per setup. (OI-92) | Slice 19 (export in the UI) | |
 | 9 | The axis height (OI-60): measure it, and the bed-at-travel-bottom assumption. The tool number range (OI-62) is settled at 1000. | Slice 20 | Z1 facts |
 | 10 | Verification plan section 6 gate 3 names the xtask replay runner: it now exists. (OI-93, closed) | Done | |
