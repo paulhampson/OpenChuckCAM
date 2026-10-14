@@ -25,6 +25,7 @@ use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::machine::{Clearance, MachineProfile};
 use openchuck_types::model::{ModelFormat, ModelKind};
 use openchuck_types::setup::{SetupFrame, validate_setup};
+use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable, Tool};
 use openchuck_types::transform::TransformStep;
@@ -487,6 +488,7 @@ pub enum OldPlace {
 pub struct Project {
     name: String,
     machine: Option<MachineProfile>,
+    simulation: SimulationSettings,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
     tools: Vec<ToolSnapshot>,
@@ -742,6 +744,7 @@ impl Project {
         let project = Self {
             name,
             machine,
+            simulation: SimulationSettings::default(),
             models,
             setups,
             tools,
@@ -762,6 +765,13 @@ impl Project {
     /// computer (GC-07, decision record 0011).
     pub fn machine(&self) -> Option<&MachineProfile> {
         self.machine.as_ref()
+    }
+
+    /// How the material removal simulation runs (SIM-07). Part of the
+    /// project because later operations are generated against the simulated
+    /// stock (SIM-06), so the G-code depends on it (GC-07, decision record 0023).
+    pub fn simulation(&self) -> SimulationSettings {
+        self.simulation
     }
 
     /// Model references in order.
@@ -860,6 +870,16 @@ impl Project {
             profile.validate()?;
         }
         Ok(std::mem::replace(&mut self.machine, machine))
+    }
+
+    /// Sets the simulation settings and returns the old ones. Fails, leaving
+    /// the project unchanged, if they are out of range.
+    pub fn set_simulation(
+        &mut self,
+        settings: SimulationSettings,
+    ) -> Result<SimulationSettings, ProjectError> {
+        settings.validate()?;
+        Ok(std::mem::replace(&mut self.simulation, settings))
     }
 
     /// The setup with this ID.
@@ -995,6 +1015,7 @@ impl Project {
         if let Some(profile) = &self.machine {
             profile.validate()?;
         }
+        self.simulation.validate()?;
         let mut seen = BTreeSet::new();
         for item in self.items() {
             let id = item.id();

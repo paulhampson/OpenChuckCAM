@@ -22,6 +22,7 @@ use openchuck_app::setup::{
     ARange, Aabb, Clearance, Confirmation, MachineProfile, Millimetres, Point3, SetupReport, Stock,
     WorkOffsetRegister, a_direction, builtin, builtin_keys, list_library, load_profile,
 };
+use openchuck_app::simulation::{DEFAULT_CELL, SimulationSettings};
 use openchuck_app::tools::{
     ControllerMapping, LibraryTool, NumberSource, SnapshotStatus, ToolLibrary, ToolNumbering,
     ToolReport, ToolSet, check_tools, default_controller, describe, describe_controller, find_tool,
@@ -29,7 +30,7 @@ use openchuck_app::tools::{
     with_custom_profile,
 };
 use openchuck_app::{
-    AppError, Application, Command, PostSelection, Query, QueryResult, Threads,
+    AppError, Application, Command, PostSelection, Query, QueryResult, SimulationReport, Threads,
     VERIFY_GCODE_NOTICE, inspect_file,
 };
 
@@ -92,6 +93,18 @@ enum Action {
         /// numbers are shown and you are asked; otherwise this is required.
         #[arg(long, value_enum)]
         tool_numbers: Option<NumberChoice>,
+    },
+    /// Regenerate and simulate material removal for every operation, then
+    /// compare the stock left with each setup's part (SIM-03, SIM-05 to
+    /// SIM-07). Fails when the stock is overcut beyond one cell or a rapid
+    /// move removes material.
+    Simulate {
+        /// The project folder.
+        project: PathBuf,
+        /// Set the simulation cell in mm and save it in the project first
+        /// (default 0.1; finer costs time and memory, down to 0.025).
+        #[arg(long)]
+        cell: Option<f64>,
     },
     /// Compare a LinuxCNC simulator report with the replay of the G-code file
     /// it ran (gate 3): every move must reach its position, LinuxCNC must
@@ -546,6 +559,37 @@ fn run(cli: Cli) -> Result<()> {
             println!("{VERIFY_GCODE_NOTICE}");
             if unclean > 0 {
                 anyhow::bail!("{unclean} G-code file(s) failed the checks above");
+            }
+        }
+        Action::Simulate { project, cell } => {
+            let mut app = open_project(&project, threads, create)?;
+            if let Some(cell) = cell {
+                app.execute(Command::SetSimulation(SimulationSettings {
+                    cell: Millimetres(cell),
+                }))?;
+                app.save()?;
+            }
+            let settings = app.project().simulation();
+            println!(
+                "{}: simulation cell {} mm (default {DEFAULT_CELL} mm; about {:.1} x the default's time and {:.1} x its memory)",
+                project.display(),
+                settings.cell.0,
+                settings.relative_time(),
+                settings.relative_memory()
+            );
+            let start = std::time::Instant::now();
+            let result = app.simulate()?;
+            let seconds = start.elapsed().as_secs_f64();
+            for note in &result.notes {
+                eprintln!("warning: {note}");
+            }
+            let report = result
+                .simulation
+                .context("the pipeline returned no simulation report")?;
+            let failures = print_simulation(&report);
+            println!("simulated in {seconds:.1} s");
+            if failures > 0 {
+                anyhow::bail!("{failures} problem(s) found in the simulation above");
             }
         }
         Action::GcodeSim {
@@ -1014,6 +1058,71 @@ fn find_library_tool<'a>(
 
 /// Runs a `library` subcommand on the tool library folder at `path` (TL-01,
 /// TL-11).
+/// Prints a simulation report and returns how many problems it shows:
+/// overcut places and rapid moves that cut.
+fn print_simulation(report: &SimulationReport) -> usize {
+    let mut failures = 0;
+    if report.setups.is_empty() {
+        println!("  no operations to simulate");
+    }
+    for setup in &report.setups {
+        println!(
+            "  setup '{}': {} x {} columns, {:.1} MB; material {:.1} -> {:.1} mm3",
+            setup.setup,
+            setup.columns.0,
+            setup.columns.1,
+            setup.memory_bytes as f64 / 1e6,
+            setup.initial_volume,
+            setup.final_volume
+        );
+        for op in &setup.operations {
+            println!(
+                "    operation '{}': {} moves, {} poses, removed {:.1} mm3",
+                op.operation, op.moves, op.poses, op.removed_volume
+            );
+            for cut in &op.rapid_cuts {
+                failures += 1;
+                println!(
+                    "      rapid move {} removes {:.3} mm3, ending at ({:.3}, {:.3}, {:.3})",
+                    cut.segment, cut.volume, cut.end.x, cut.end.y, cut.end.z
+                );
+            }
+        }
+        let Some(d) = &setup.deviation else {
+            continue;
+        };
+        let at = |p: &openchuck_app::sim::DeviationPoint| {
+            format!(
+                "({:.3}, {:.3}, {:.3}){}",
+                p.point.x,
+                p.point.y,
+                p.point.z,
+                if p.at_least { ", at least" } else { "" }
+            )
+        };
+        println!("    against the part: {} surface samples", d.points.len());
+        match &d.worst_remaining {
+            Some(p) => println!("      most material left: {:.4} mm at {}", p.value, at(p)),
+            None => println!("      no material left on the part"),
+        }
+        match &d.worst_overcut {
+            Some(p) => println!("      deepest overcut: {:.4} mm at {}", -p.value, at(p)),
+            None => println!("      no overcut"),
+        }
+        if d.overcut_count > 0 {
+            failures += d.overcut_places.len();
+            println!(
+                "      OVERCUT beyond {} mm (one cell) at {} samples; places:",
+                d.overcut_limit, d.overcut_count
+            );
+            for p in &d.overcut_places {
+                println!("        {:.4} mm at {}", -p.value, at(p));
+            }
+        }
+    }
+    failures
+}
+
 fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: bool) -> Result<()> {
     let mut library = open_library(Some(path))?.context("no library")?;
     match action {
