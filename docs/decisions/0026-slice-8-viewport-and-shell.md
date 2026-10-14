@@ -130,11 +130,16 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **Changed files (OI-45).** `Application::model_file_warnings` names each changed or missing file, and the UI lists them in a dialog when a project opens.
     - **OI-52 (proposed).** Keep the fixed unit-size thresholds. A model is checked at import, before any setup uses it, and the setup checks (SET-06) compare the part with the machine's travel once one does.
 
+14. **CI smoke test (item 7; UI-01, NFR-02; OI-119).** A `ui-smoke` job in `ci.yml` runs on Linux, Windows and macOS. It runs `openchuck-viewport`'s offscreen render tests, then launches the real binary with `--bench testdata/stl/cube_ascii.stl --seconds 3`, which opens a window, draws the scripted path and exits by itself. Exit 0 (pass) or 2 (frame-time fail) both mean the window opened, drew and closed.
+    - **Linux.** Installs Mesa's lavapipe and Xvfb and requires an adapter (`OPENCHUCK_REQUIRE_ADAPTER=1`), so it cannot pass by skipping.
+    - **Windows (WARP) and macOS (the runner's Metal device).** Not yet tried on hosted runners, so they do not block until their first runs are recorded under OI-119.
+    - **Local run (this container, debug build).** The command passed with exit 0: 178 frames, p95 19.4 ms on llvmpipe.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
 | --- | --- | --- |
-| 7 (NFR-02) | The CI software-rendered smoke run (OI-119). The benchmark is built (item 9); its run on the reference hardware is the owner's | |
+| 7 (NFR-02) | First CI runs of the `ui-smoke` job (item 14, OI-119); then make Windows and macOS blocking if they pass. The benchmark is built (item 9); its run on the reference hardware is the owner's | |
 | — | OI-53 (default library location) and OI-54 (machine copy against the library) | Both were placed in slice 8 |
 
 ## Verification (so far)

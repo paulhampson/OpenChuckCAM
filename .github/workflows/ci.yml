@@ -169,6 +169,61 @@ jobs:
           cargo run --locked -p openchuck-geom --example check_and_place
           cargo run --locked -p openchuck-path --example host
 
+  ui-smoke:
+    name: UI smoke test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
+    # application, software-rendered where the runner has no GPU (decision
+    # 0026, OI-119). Linux uses Mesa's lavapipe under Xvfb and must find an
+    # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
+    # yet proven on hosted runners, so they report without blocking until
+    # their first runs are recorded under OI-119.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            require_adapter: "1"
+            blocking: true
+          - os: windows-latest
+            require_adapter: ""
+            blocking: false
+          - os: macos-latest
+            require_adapter: ""
+            blocking: false
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ !matrix.blocking }}
+    timeout-minutes: 30
+    env:
+      OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - name: Software Vulkan and a virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb
+      - name: Viewport render tests
+        shell: bash
+        run: |
+          if [ -z "$OPENCHUCK_REQUIRE_ADAPTER" ]; then unset OPENCHUCK_REQUIRE_ADAPTER; fi
+          cargo test --locked -p openchuck-viewport --test render -- --nocapture
+      - name: Launch the application (3 s scripted camera path)
+        shell: bash
+        run: |
+          cargo build --locked -p openchuck-ui
+          run() { "$@" ./target/debug/openchuck-ui --bench testdata/stl/cube_ascii.stl --seconds 3; }
+          set +e
+          if [ "$RUNNER_OS" = "Linux" ]; then run xvfb-run -a -s "-screen 0 1920x1080x24"; else run; fi
+          code=$?
+          set -e
+          # 0 passes and 2 fails the frame-time limit; either means the
+          # window opened, drew and closed. Anything else is a failure.
+          echo "exit code $code"
+          [ "$code" = 0 ] || [ "$code" = 2 ]
+
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
     needs: changes
