@@ -17,6 +17,7 @@ use openchuck_app::{AppError, Application, Command, JobHandle, Threads};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::bench;
+use crate::form_panel::{self, FormState};
 use crate::viewport::Viewport;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
@@ -65,6 +66,10 @@ pub struct Shell {
     quitting: bool,
     /// A frame-time benchmark run (`--bench`).
     bench: Option<bench::Run>,
+    /// The operation whose parameters are shown.
+    selected: Option<OperationId>,
+    /// Typed text and refused values in the parameter form.
+    form: FormState,
 }
 
 impl Shell {
@@ -80,6 +85,8 @@ impl Shell {
             status: String::new(),
             quitting: false,
             bench: None,
+            selected: None,
+            form: FormState::default(),
         };
         if let Some(folder) = folder {
             shell.open(folder);
@@ -150,6 +157,8 @@ impl Shell {
             }
         }
         self.setup = app.project().setups().first().map(|s| s.id);
+        self.selected = None;
+        self.form.clear();
         self.app = Some(app);
         self.rebuild_scene(true);
     }
@@ -202,7 +211,10 @@ impl Shell {
     fn undo(&mut self) {
         if let Some(app) = &mut self.app {
             match app.undo() {
-                Ok(true) => self.rebuild_scene(false),
+                Ok(true) => {
+                    self.form.clear();
+                    self.rebuild_scene(false);
+                }
                 Ok(false) => {}
                 Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
             }
@@ -212,7 +224,10 @@ impl Shell {
     fn redo(&mut self) {
         if let Some(app) = &mut self.app {
             match app.redo() {
-                Ok(true) => self.rebuild_scene(false),
+                Ok(true) => {
+                    self.form.clear();
+                    self.rebuild_scene(false);
+                }
                 Ok(false) => {}
                 Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
             }
@@ -358,7 +373,9 @@ impl Shell {
                 .show(ui, |ui| {
                     let count = project.operations().len();
                     for (index, o) in project.operations().iter().enumerate() {
-                        if let Some(c) = operation_row(ui, index, count, o) {
+                        if let Some(c) =
+                            operation_row(ui, index, count, o, self.selected == Some(o.id))
+                        {
                             command = Some(c);
                         }
                     }
@@ -386,11 +403,49 @@ impl Shell {
     fn tree_action(&mut self, action: TreeAction) {
         let Some(app) = &mut self.app else { return };
         let command = match action {
+            TreeAction::Select(id) => {
+                if self.selected != Some(id) {
+                    self.selected = Some(id);
+                    self.form.clear();
+                }
+                return;
+            }
             TreeAction::Command(c) => Ok(*c),
             TreeAction::Duplicate(id) => openchuck_app::duplicate_operation(app.project(), id),
         };
         if let Err(e) = command.and_then(|c| app.execute(c)) {
             self.dialog = Some(Dialog::Error(e.to_string()));
+        }
+    }
+
+    /// The chosen operation's parameter form (UI-07).
+    fn properties(&mut self, ui: &mut egui::Ui) {
+        let (Some(app), Some(id)) = (&mut self.app, self.selected) else {
+            return;
+        };
+        let Some(operation) = app.project().operation(id) else {
+            self.selected = None;
+            return;
+        };
+        ui.heading(&operation.name);
+        let edit = match app.parameter_form(id) {
+            Ok(form) => {
+                ui.weak(format!("Strategy: {}", form.strategy));
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .show(ui, |ui| form_panel::show(ui, &form, &mut self.form))
+                    .inner
+            }
+            Err(e) => {
+                ui.label(e.to_string());
+                None
+            }
+        };
+        if let Some(edit) = edit {
+            let result = app
+                .set_parameter(id, &edit.name, edit.value)
+                .map_err(|e| e.to_string());
+            self.form.result(&edit.name, result);
         }
     }
 
@@ -539,6 +594,8 @@ enum TreeAction {
     Command(Box<Command>),
     /// Duplicate this operation (the command is built from the project).
     Duplicate(OperationId),
+    /// Show this operation's parameters.
+    Select(OperationId),
 }
 
 /// One operation in the tree: enable box, name, and move up, move down and
@@ -548,6 +605,7 @@ fn operation_row(
     index: usize,
     count: usize,
     o: &openchuck_app::project::Operation,
+    selected: bool,
 ) -> Option<TreeAction> {
     let mut action = None;
     ui.horizontal(|ui| {
@@ -565,11 +623,14 @@ fn operation_row(
             )));
         }
         let name = egui::RichText::new(&o.name);
-        ui.label(if o.enabled {
+        let name = if o.enabled {
             name
         } else {
             name.weak().strikethrough()
-        });
+        };
+        if ui.selectable_label(selected, name).clicked() {
+            action = Some(TreeAction::Select(o.id));
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let id = ItemId::Operation(o.id);
             if ui.small_button("Duplicate").clicked() {
@@ -613,6 +674,12 @@ impl eframe::App for Shell {
             .resizable(true)
             .default_size(240.0)
             .show(ui, |ui| self.tree(ui));
+        if self.selected.is_some() {
+            egui::Panel::right("properties")
+                .resizable(true)
+                .default_size(320.0)
+                .show(ui, |ui| self.properties(ui));
+        }
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.viewport.show(ui));

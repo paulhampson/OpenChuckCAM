@@ -26,6 +26,7 @@
 
 mod command;
 mod error;
+pub mod form;
 mod jobs;
 pub mod model;
 pub mod operation;
@@ -41,7 +42,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use command::History;
 use model::{LengthUnit, ModelInspection};
-use openchuck_project::id::ModelId;
+use openchuck_project::id::{ModelId, OperationId};
 use openchuck_project::{
     ContentHash, Item, ModelCheck, ModelRef, Placement, Project, RelativePath,
 };
@@ -399,6 +400,34 @@ impl Application {
     /// Redoes the latest undone command. Returns false when there is nothing to redo.
     pub fn redo(&mut self) -> Result<bool, AppError> {
         self.history.redo(&mut self.document.project)
+    }
+
+    /// The parameter form of an operation (UI-07).
+    pub fn parameter_form(&self, operation: OperationId) -> Result<form::ParameterForm, AppError> {
+        form::parameter_form(&self.document.project, &self.strategies, operation)
+    }
+
+    /// Sets an operation parameter, or clears it with `None`, after checking
+    /// the value against the strategy's schema. An invalid value is an error
+    /// naming the parameter, and the project is left unchanged (UI-07).
+    pub fn set_parameter(
+        &mut self,
+        operation: OperationId,
+        name: &str,
+        value: Option<openchuck_project::ParameterValue>,
+    ) -> Result<(), AppError> {
+        form::check_parameter(
+            &self.document.project,
+            &self.strategies,
+            operation,
+            name,
+            value.as_ref(),
+        )?;
+        self.execute(Command::SetParameter {
+            operation,
+            name: name.to_owned(),
+            value,
+        })
     }
 
     /// Whether there is a command to undo.

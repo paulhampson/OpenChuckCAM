@@ -82,11 +82,27 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **Reorder.** Uses the existing `Command::Move`, which changes one order key (decision 0006).
     - **In the UI.** Each operation row in the tree has an enable box and move-earlier, move-later and duplicate buttons, each one undoable step.
 
+11. **Parameter forms (item 5, operations; UI-07).**
+    - **View model.** `openchuck_app::form::parameter_form` builds the form from the strategy's schema. Each field has:
+      - its label and description;
+      - its kind: a number with its unit symbol and range, a whole number, a flag, or a choice from a list;
+      - the value the operation sets;
+      - the value that applies, and where it comes from: the operation, the tool's cutting data for the stock material (TL-05), the strategy default, or missing and required.
+
+      Notes report overrides of the cutting data, or why a required value is missing.
+    - **Validation.** `Application::set_parameter` checks the value against that one parameter's schema (name, kind, finiteness, range, choice) before executing `Command::SetParameter`. A refused value returns an error naming the parameter and leaves the project and the undo history unchanged. Clearing a value is always allowed: the default or the cutting data then applies.
+    - **In the UI.** Clicking an operation in the tree shows its form in a right-hand panel:
+      - number boxes show the applying value as a hint and the unit beside them, and the allowed range is in the tooltip;
+      - a value is applied when the box loses focus, and a refused value stays in its box with the reason under it;
+      - flags are check boxes and choices are drop-down lists;
+      - "Reset" clears a value the operation sets.
+    - **Units.** Values are shown and entered in the units the schema states (millimetres, degrees, mm/min), which are the internal units (NFR-05). Inch display is not part of P1.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
 | --- | --- | --- |
-| 5 (UI-07) | Parameter forms from strategy and tool schemas; the custom-profile editor with live preview (TL-03 closes here) | |
+| 5 (UI-07, TL-03) | Tool parameter forms; the custom-profile editor with live preview (TL-03 closes here). Operation forms are built (item 11) | |
 | 6 | Import dialog with the check report, the tessellation statement and the unit question (OI-51, OI-52); model transform and orientation controls | |
 | 7 (NFR-02) | The CI software-rendered smoke run (OI-119). The benchmark is built (item 9); its run on the reference hardware is the owner's | |
 | — | OI-53 (default library location) and OI-54 (machine copy against the library) | Both were placed in slice 8 |
@@ -104,6 +120,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 - Benchmark (item 9): `openchuck-viewport` `tests/camera.rs` gains 3 tests: the path orbits, pans and zooms and returns to its start; it keeps the scene centre on screen at every pose; the percentile and pass rules. An `openchuck-ui` unit test covers option parsing.
 - **End-to-end benchmark run in the cloud container (not reference hardware, so not a 4.2 result).** llvmpipe (CPU), 1,002,000 triangles, 2,000 feature edges, viewport 1751 by 1003 pixels, 10 s path: 107 frames, p50 93.5 ms, p95 102.1 ms, FAIL (exit code 2), as a CPU renderer should. This shows the harness works end to end. For comparison, SP-2 measured p95 256 ms on llvmpipe with its polyline layer.
 - Tree commands (item 10): `openchuck-app` `tests/operation.rs` gains `req_ui_06_duplicate_and_reorder_are_undoable` and `req_ui_06_disabled_operations_are_skipped_and_saved`. The second checks that a disabled operation is left out of regeneration, saved as `enabled = false`, reloaded, and that undo removes the line again. Tests that state the current schema were moved to 6, and the newer-schema test now uses `SCHEMA + 1`.
+- Parameter forms (item 11): `req_ui_07_form_shows_units_defaults_and_sources` and `req_ui_07_invalid_parameter_is_refused_and_leaves_the_project_unchanged` (`openchuck-app` `tests/operation.rs`; six refused values, each naming the parameter, with the project and the undo history unchanged); UI unit tests for reading typed text and keeping a refusal's reason.
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
 ## Alternatives considered

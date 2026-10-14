@@ -17,6 +17,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 
 mod bench;
+mod form_panel;
 mod shell;
 mod viewport;
 
