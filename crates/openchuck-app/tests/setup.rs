@@ -149,7 +149,7 @@ fn req_set_01_a_direction_on_an_asymmetric_part_matches_the_oracle() {
     // Z1's documented convention (right-handed about +X, decision record
     // 0007) puts the nub toward the front, machine -Y. The shared kinematics,
     // the independent oracle and the stated direction must all agree. The
-    // convention itself stays unconfirmed until the air cut (OI-03, OI-37).
+    // SP-12 air cut confirmed the convention on the Z1 (OI-03, OI-37).
     use openchuck_app::setup::{ASense, a_direction};
     use openchuck_testkit::oracle::{OracleMachine, distance, model_tip};
     use openchuck_types::geometry::Point3;
