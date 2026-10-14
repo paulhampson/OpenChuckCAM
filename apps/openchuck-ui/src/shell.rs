@@ -4,8 +4,8 @@
 //! UI-08; work breakdown slice 8 items 3, 4 and 6; decision record 0026).
 //!
 //! Every project change goes through `openchuck-app`; the shell holds no CAM
-//! logic. Folders are typed in for now: a native file dialog needs a crate
-//! outside the crate selection (OI-117).
+//! logic. Paths can be typed, or picked with the platform's own dialog
+//! through `rfd` (OI-117); the typed path stays when no dialog is available.
 
 use std::path::PathBuf;
 
@@ -54,7 +54,7 @@ enum Dialog {
     /// The folder has no project: offer to create one there (decision record
     /// 0008 item 8).
     OfferCreate { folder: PathBuf },
-    /// Ask for a model file to import (typed in until OI-117).
+    /// Ask for a model file to import, typed or picked (OI-117).
     ModelFile { path: String },
     /// The project has unsaved changes.
     Unsaved(Next),
@@ -668,7 +668,14 @@ impl Shell {
                     "Open project"
                 });
                 ui.label("Project folder:");
-                ui.text_edit_singleline(&mut folder);
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut folder);
+                    if ui.button("Browse…").clicked()
+                        && let Some(picked) = pick_folder(&folder)
+                    {
+                        folder = picked;
+                    }
+                });
                 if create {
                     ui.label("Project name:");
                     ui.text_edit_singleline(&mut name);
@@ -702,7 +709,14 @@ impl Shell {
             Dialog::ModelFile { mut path } => {
                 ui.heading("Import model");
                 ui.label("Model file (STL), inside or beside the project folder:");
-                ui.text_edit_singleline(&mut path);
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut path);
+                    if ui.button("Browse…").clicked()
+                        && let Some(picked) = pick_model(&path, self.app.as_ref())
+                    {
+                        path = picked;
+                    }
+                });
                 ui.horizontal(|ui| {
                     let ok = ui
                         .add_enabled(!path.trim().is_empty(), egui::Button::new("Check"))
@@ -789,6 +803,43 @@ impl Shell {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.dialog = Some(Dialog::Unsaved(Next::Quit));
         }
+    }
+}
+
+/// Asks the platform's folder dialog for a folder, starting near `current`
+/// (OI-117). `None` when the user cancels or no dialog is available, in
+/// which case the typed path stays.
+fn pick_folder(current: &str) -> Option<String> {
+    let mut dialog = rfd::FileDialog::new().set_title("Project folder");
+    if let Some(start) = existing_dir(current) {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.pick_folder().map(|p| p.display().to_string())
+}
+
+/// Asks the platform's file dialog for a model file, starting near `current`
+/// or in the project folder (OI-117).
+fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
+    let mut dialog = rfd::FileDialog::new()
+        .set_title("Import model")
+        .add_filter("STL model", &["stl", "STL"]);
+    let start = existing_dir(current).or_else(|| app.map(|a| a.location().to_path_buf()));
+    if let Some(start) = start {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.pick_file().map(|p| p.display().to_string())
+}
+
+/// The folder `text` names, or its parent, if it exists.
+fn existing_dir(text: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(text.trim());
+    if text.trim().is_empty() {
+        return None;
+    }
+    if path.is_dir() {
+        Some(path)
+    } else {
+        path.parent().filter(|p| p.is_dir()).map(PathBuf::from)
     }
 }
 
@@ -902,5 +953,24 @@ impl eframe::App for Shell {
             .show(ui, |ui| self.viewport.show(ui));
         self.import_frame(&ctx);
         self.dialogs(&ctx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn req_ui_01_file_dialogs_start_in_an_existing_folder() {
+        let dir = std::env::temp_dir();
+        let text = dir.display().to_string();
+        assert_eq!(existing_dir(&text), Some(dir.clone()));
+        // A file that does not exist yet starts in its folder.
+        let file = dir.join("not-there-yet.stl").display().to_string();
+        assert_eq!(existing_dir(&file), Some(dir));
+        assert_eq!(existing_dir("   "), None);
+        assert_eq!(existing_dir("/no/such/folder/at/all"), None);
     }
 }

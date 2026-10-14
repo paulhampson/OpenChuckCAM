@@ -28,6 +28,7 @@ mod command;
 mod error;
 pub mod form;
 mod jobs;
+pub mod library;
 pub mod model;
 pub mod operation;
 mod pipeline;
