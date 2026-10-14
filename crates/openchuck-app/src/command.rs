@@ -12,6 +12,7 @@ use openchuck_project::{
     Item, ItemId, ListKind, ModelRef, OldPlace, OrderKey, ParameterValue, Placement, Project,
 };
 use openchuck_types::machine::MachineProfile;
+use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::transform::TransformStep;
 use openchuck_types::units::LengthUnit;
 
@@ -28,6 +29,8 @@ pub enum Command {
     RenameProject(String),
     /// Sets or clears the project's copy of its machine profile (SET-01).
     SetMachine(Option<Box<MachineProfile>>),
+    /// Sets the simulation settings (SIM-07).
+    SetSimulation(SimulationSettings),
     /// Adds an item.
     Add {
         /// The new item, with a fresh ID.
@@ -89,6 +92,7 @@ impl Command {
             Self::SetMachine(machine) => {
                 Self::SetMachine(project.set_machine(machine.map(|m| *m))?.map(Box::new))
             }
+            Self::SetSimulation(settings) => Self::SetSimulation(project.set_simulation(settings)?),
             Self::Add { item, placement } => {
                 let id = item.id();
                 let rekeyed = project.insert(item, placement)?;

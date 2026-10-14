@@ -14,6 +14,11 @@ authors.workspace = true
 [dependencies]
 openchuck-types.workspace = true
 openchuck-path.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
+rayon.workspace = true
 
 [lints]
 workspace = true
