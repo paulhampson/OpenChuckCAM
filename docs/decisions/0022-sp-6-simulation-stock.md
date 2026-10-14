@@ -1,9 +1,9 @@
 # 0022: SP-6 result, simulation stock representation
 
-- **Status:** proposed. The spike met its pass criteria for two of the three candidates; the recommendation, the default cell and the budget need the owner's agreement (OI-99, OI-100, OI-56).
+- **Status:** accepted by the project owner (14 Oct 2026): dexels (item 1), voxel as the fallback (item 2), the budget (item 4). Item 3 was amended by the owner: the default stays 0.1 mm and the user may configure a finer resolution at the cost of speed, never as the default. The spike met its pass criteria for dexel and voxel.
 - **Date:** 14 Oct 2026.
 - **Spike branch:** `spike/sp-6-simulation-stock` (throwaway, never merged). The code is in `spikes/sp-6-simulation-stock/`, a separate Cargo project with no third-party dependencies, never a workspace member; the write-up is `spikes/sp-6-simulation-stock/RESULT.md` and the full tables `spikes/sp-6-simulation-stock/out/report.md`, both on that branch.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-56 moves to proposed; OI-99 to OI-102 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-56 and OI-99 closed; OI-100 to OI-102 are new and open for slice 7.
 
 Numbering: record 0020 and 0021 are claimed on unmerged branches (slice 6, SP-11), and OI-96 to OI-98 on unmerged branches, so this record takes 0022 and OI-99 to OI-102.
 
@@ -31,11 +31,11 @@ Three small implementations behind one trait, in the part frame, with one shared
 
 The rotary grid is the most accurate and smallest on turned surfaces, but a ray from the axis that leaves the tool through a vertical wall removes the material beyond it, so any slot, pocket or island is wrong. That rules it out as the stock for roughing, rest machining and carry-over (OP-03, OP-09, SIM-06). Voxel memory is cubic in the resolution.
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **Dexels in the part frame (Z dexels on an (x, y) grid), with the tool span solved exactly per column,** are the `StockModel` implementation for slice 7 (OI-99).
 2. **Voxel is the fallback** behind the same interface; **the rotary grid is not used as the main stock.**
-3. **Default cell 0.1 mm, finest 0.05 mm** (SIM-07); the verification limit "no worse than 0.02 mm at the finest setting" is not met by dexel or voxel at 0.05 mm (0.036 to 0.043 mm), so the owner chooses between a finer finest setting and a restated limit (OI-100).
+3. **Default cell 0.1 mm; a finer resolution is a user setting, never the default** (SIM-07, owner's amendment). The user may choose a finer cell at the cost of speed and memory; slice 7 builds the setting, shows its cost and fixes the finest supported cell. At 0.05 mm dexel and voxel show 0.036 to 0.043 mm worst radial error, which meets "within one cell" but not "no worse than 0.02 mm at the finest setting"; the error scales with the cell, so about 0.025 mm is expected to meet it (an estimate, to be measured; OI-100).
 4. **Budget for SP-13 criterion 3 (OI-56):** the reference job (52,200 poses, Ø4 ball, 0.1 mm) finishes in no more than 30 s on 4 threads, 120 s on one thread, and 256 MB. Dexel measures 13 s, 46 s and 12 MB, so criterion 3 is met against it.
 5. **Collision queries (COL-05)** run as the same span test without the subtraction, on dexel columns, with the holder as a second revolved profile.
 
@@ -48,15 +48,15 @@ The rotary grid is the most accurate and smallest on turned surfaces, but a ray 
 ## Consequences
 
 - **Slice 7** implements dexels in `openchuck-sim` behind `StockModel`; items 1 to 3 take decision items 1 and 3; its review checklist limits follow OI-100.
-- No change to `requirements.md` or `architecture.md` yet. When the owner agrees, architecture sections 5.2, 9 and 13 and the verification plan's open-decision line are edited in the same change that records the agreement.
+- Documents updated with this record (owner agreed): `requirements.md` SIM-07 (default 0.1 mm, finer opt-in), `architecture.md` section 5 (stock representation), section 11 spike note, section 13 (decided) and the revision note, `verification-plan.md` (finest setting, risk and open-decision lines), `crate-selection.md` (in-house dexels) and `work-breakdown.md` (SP-6 status, slice 7 items and checklist).
 - No dependency enters the product; the spike uses only the standard library.
 
 ## Open items for later decisions
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Agree the representation (OI-99) | Owner | This record |
-| 2 | Default and finest cell, and the 0.02 mm limit (OI-100) | Slice 7 | Owner's choice |
-| 3 | Agree the budget; then SP-13 criterion 3 closes (OI-56) | Owner | This record |
+| 1 | Agree the representation (OI-99). Closed 14 Oct 2026 | Closed | |
+| 2 | Finest user-selectable cell and the 0.02 mm limit there (OI-100) | Slice 7 | Measurement at about 0.025 mm |
+| 3 | Agree the budget; SP-13 criterion 3 (OI-56). Closed 14 Oct 2026 | Closed | |
 | 4 | Span solver speed (OI-101) | Slice 7 | Profiling |
 | 5 | Sampling rules, shank, platforms (OI-102) | Slice 7 | Tests on all three platforms |
