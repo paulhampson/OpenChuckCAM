@@ -306,7 +306,7 @@ Scores for the crates above (parry3d-f64 comes from the same repository and rele
 
 The foundations (rayon, nalgebra, glam, rstar) are the safest dependencies in the whole survey. parry3d is the one CAM-critical crate here: its health is good, but its test density is modest (about 3 tests per 1,000 lines) and its API churn is the risk to plan for. glamx is held back mainly by its age, and mesh\_to\_sdf by two years without a release.
 
-I found no standalone crate for material-removal simulation. The Rust apps that have one (ivacam, OpenCAMStudio) implement it inside the application, so plan to write it, probably on a height-field or dexel grid.
+I found no standalone crate for material-removal simulation. The Rust apps that have one (ivacam, OpenCAMStudio) implement it inside the application, so plan to write it. SP-6 (decision 0022) chose dexels in the part frame, written in-house in `openchuck-sim` with no third-party dependency.
 
 ## Project files, identifiers and hashing
 
