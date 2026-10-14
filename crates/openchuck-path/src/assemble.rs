@@ -44,7 +44,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
 use crate::error::{PathError, Result};
-use crate::params::{CommonParameters, Retract};
+use crate::params::{CommonParameters, EntryParameters, Retract};
 use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwind_turns, unwrap_continuous};
 use crate::stock::CollisionOracle;
 use crate::strategy::{CutPoint, Pass, StrategyInput};
@@ -211,6 +211,18 @@ pub fn assemble(
     common: &CommonParameters,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
+    assemble_with_entry(passes, input, common, &EntryParameters::PLUNGE, context)
+}
+
+/// [`assemble`] with the entry and exit moves of `entry` (decision record
+/// 0026) in place of a plain plunge.
+pub fn assemble_with_entry(
+    passes: &[Pass],
+    input: &StrategyInput<'_>,
+    common: &CommonParameters,
+    entry: &EntryParameters,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
     let rotary = input.rotary;
     let link_height = match common.retract {
         Retract::Clearance => input.clearance.radius.0,
@@ -287,7 +299,7 @@ pub fn assemble(
         notes: Vec::new(),
     };
 
-    let entry = entry::Entry::new(input, common)?;
+    let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
     for (i, points) in placed.iter().enumerate() {
         context.check_cancelled()?;

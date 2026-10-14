@@ -35,7 +35,7 @@ use super::{Builder, EPS};
 use crate::cutter::{self, ToolLine};
 use crate::error::{PathError, Result};
 use crate::helical::CHORD_FACTOR;
-use crate::params::{CommonParameters, EntryStyle};
+use crate::params::{CommonParameters, EntryParameters, EntryStyle};
 use crate::rotary::AxisPosition;
 use crate::strategy::{CutPoint, StrategyInput};
 
@@ -61,8 +61,11 @@ pub(super) struct Entry {
 }
 
 impl Entry {
-    pub(super) fn new(input: &StrategyInput<'_>, common: &CommonParameters) -> Result<Self> {
-        let e = common.entry;
+    pub(super) fn new(
+        input: &StrategyInput<'_>,
+        common: &CommonParameters,
+        e: &EntryParameters,
+    ) -> Result<Self> {
         let radius = input.tool.cutting_radius();
         let leave = common.stock_to_leave.0;
         let grown = match e.style {

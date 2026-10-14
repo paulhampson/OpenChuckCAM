@@ -508,6 +508,28 @@ pub struct EntryParameters {
     pub lead_radius: Millimetres,
 }
 
+impl EntryParameters {
+    /// A straight plunge, the entry before decision record 0026.
+    pub const PLUNGE: Self = Self {
+        style: EntryStyle::Plunge,
+        ramp_angle: Degrees(DEFAULT_RAMP_ANGLE),
+        helix_diameter: DEFAULT_HELIX_DIAMETER,
+        lead_radius: Millimetres(0.0),
+    };
+
+    /// Reads the entry parameters from values resolved against a schema that
+    /// includes the common parameters.
+    pub fn read(p: &Parameters) -> Result<Self> {
+        use names::*;
+        Ok(Self {
+            style: EntryStyle::parse(p.text(ENTRY)?),
+            ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
+            helix_diameter: p.number(HELIX_DIAMETER)?,
+            lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
+        })
+    }
+}
+
 /// Where links between passes go (OP-14).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Retract {
@@ -534,8 +556,6 @@ pub struct CommonParameters {
     pub retract: Retract,
     /// How far above the stock a rapid approach stops.
     pub approach_distance: Millimetres,
-    /// How the tool enters and leaves a cut.
-    pub entry: EntryParameters,
 }
 
 impl CommonParameters {
@@ -554,12 +574,6 @@ impl CommonParameters {
                 _ => Retract::Clearance,
             },
             approach_distance: Millimetres(p.number(APPROACH_DISTANCE)?),
-            entry: EntryParameters {
-                style: EntryStyle::parse(p.text(ENTRY)?),
-                ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
-                helix_diameter: p.number(HELIX_DIAMETER)?,
-                lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
-            },
         })
     }
 }
