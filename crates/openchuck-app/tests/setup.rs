@@ -178,3 +178,80 @@ fn req_set_01_a_direction_on_an_asymmetric_part_matches_the_oracle() {
     }
     assert!(a_direction(&z1).ends_with("faces -Y at A 90"));
 }
+
+#[test]
+fn req_set_01_machine_copy_is_compared_with_its_source() {
+    use openchuck_app::setup::{
+        MachineSource, available_machines, compare_machine, new_machine_id, save_profile,
+    };
+    let (dir, mut app, _) = project("compare");
+    let library = dir.join("machine-library");
+    std::fs::create_dir_all(&library).unwrap();
+
+    // No machine; then the example profile, which records no source.
+    let available = available_machines(Some(&library));
+    assert!(available.iter().any(|a| a.source == "built-in makera-z1"));
+    assert_eq!(
+        compare_machine(app.project().machine(), &available),
+        MachineSource::NoMachine
+    );
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    assert_eq!(
+        compare_machine(app.project().machine(), &available),
+        MachineSource::Unrecorded
+    );
+
+    // The built-in Z1: the copy matches its source.
+    let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+    app.execute(Command::SetMachine(Some(Box::new(z1.clone()))))
+        .unwrap();
+    assert_eq!(
+        compare_machine(app.project().machine(), &available),
+        MachineSource::Same {
+            source: "built-in makera-z1".into()
+        }
+    );
+
+    // A library profile derived from it, keeping its ID, with a faster feed:
+    // the library one is the source, and the feed is named as different.
+    let mut tuned = z1.clone();
+    tuned.max_feeds.linear.0 = 1500.0;
+    save_profile(&tuned, &library.join("z1-tuned.toml")).unwrap();
+    let available = available_machines(Some(&library));
+    let MachineSource::Differs {
+        source,
+        profile,
+        fields,
+    } = compare_machine(app.project().machine(), &available)
+    else {
+        panic!("expected a difference");
+    };
+    assert!(source.ends_with("z1-tuned.toml"), "{source}");
+    assert_eq!(fields, ["max_feeds"]);
+
+    // Updating the copy is one undoable step.
+    app.execute(Command::SetMachine(Some(profile))).unwrap();
+    assert!(matches!(
+        compare_machine(app.project().machine(), &available),
+        MachineSource::Same { .. }
+    ));
+    app.undo().unwrap();
+    assert!(matches!(
+        compare_machine(app.project().machine(), &available),
+        MachineSource::Differs { .. }
+    ));
+
+    // A copy whose source is gone.
+    let mut orphan = z1;
+    orphan.id = Some(new_machine_id());
+    app.execute(Command::SetMachine(Some(Box::new(orphan))))
+        .unwrap();
+    assert!(matches!(
+        compare_machine(app.project().machine(), &available),
+        MachineSource::NotFound { .. }
+    ));
+    std::fs::remove_dir_all(&dir).ok();
+}

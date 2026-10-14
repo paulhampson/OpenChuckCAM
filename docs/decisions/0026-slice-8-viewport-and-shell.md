@@ -4,7 +4,7 @@
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
 - **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered when `main` took 0023 to 0025 and OI-103 to OI-116.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51 and OI-118 are closed (items 4, 13 and 10), OI-52 is proposed (item 13), OI-117 and OI-119 are open, and OI-14 is deferred to slice 11 (item 1).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-53, OI-54, OI-117 and OI-118 are closed (items 4, 10, 13, 15 and 16), OI-52 is proposed (item 13), OI-119 is open, and OI-14 is deferred to slice 11 (item 1).
 
 ## Context
 
@@ -135,12 +135,23 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **Windows (WARP) and macOS (the runner's Metal device).** Not yet tried on hosted runners, so they do not block until their first runs are recorded under OI-119.
     - **Local run (this container, debug build).** The command passed with exit 0: 178 frames, p95 19.4 ms on llvmpipe.
 
+15. **Native file dialogs and the library location (OI-117, OI-53; owner's choices, 14 Oct 2026).**
+    - **File dialogs.** `rfd` 0.17.2 (MIT, survey score 77, NFR-14 record in `docs/dependencies.md`) is added to `openchuck-ui` only, with its default features: the XDG portal and Wayland on Linux, so no GTK libraries are needed to build. It adds no network client (NFR-09). A Browse button beside each typed path (new, open, import) fills it from the platform's dialog. The typed path stays, so a missing portal or a cancelled dialog never blocks the user.
+    - **Library location.** The owner chose the platform configuration folder: `OpenChuckCAM/machines` and `OpenChuckCAM/tools` under `$XDG_CONFIG_HOME` (else `~/.config`) on Unix, `%APPDATA%` on Windows, and `~/Library/Application Support` on macOS (`openchuck_app::library`).
+    - **No `dirs` crate.** The crate selection's pick for this, `dirs` 7.0.0 (87), pulls in `option-ext`, which is MPL-2.0. MPL-2.0 is compatible with the AGPL, but it is not on the `deny.toml` allow list, and verification plan section 7 asks for an MPL crate to be checked before adoption. `directories` shares the same dependency. The rule needs only a few lines over environment variables, so it is written in-house, with tests for each platform. `dirs` is listed under "Tried and not adopted".
+    - **CLI unchanged.** The CLI still takes `--library` explicitly. Defaulting it would make CLI tests depend on the machine's configuration folder.
+16. **The machine copy against its library source (OI-54; the owner chose stable IDs, 14 Oct 2026).**
+    - **The ID.** `MachineProfile` gains an optional `id`: opaque text, usually a UUID, shared by a library profile and every project copy made from it, as tool snapshots share an ID with library tools. It is validated as 1 to 64 characters with no leading or trailing space.
+    - **Files.** Profile files move to schema 2, with a migration that only changes the number; a schema 1 profile reads with no ID. The project copy's `machine.toml` holds the ID under project schema 6 (unmerged, so no further bump). The built-in Makera Z1 has a fixed ID, so every project copy of it can be compared with it.
+    - **Comparison.** `setup::available_machines(library)` lists the library's profiles, then the built-in ones. `setup::compare_machine` gives one of: no machine; source not recorded; source not found; the same; or different, with the differing fields named. The field list destructures the profile exhaustively, so a new field cannot be missed. Library profiles are searched before built-ins, so a profile the user derived from a built-in, keeping its ID, is the source.
+    - **Updating.** Updating the copy is `Command::SetMachine` with the source profile, one undoable step. The project's copy wins until the user updates it (as TL-07 does for tools).
+    - **UI.** A Machine node in the tree opens a panel with the profile name, the A direction in words, the values not yet confirmed on the machine, the comparison with an Update button, a chooser of available profiles, and, for a library profile with no ID, a button that gives it one by rewriting the library file.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
 | --- | --- | --- |
 | 7 (NFR-02) | First CI runs of the `ui-smoke` job (item 14, OI-119); then make Windows and macOS blocking if they pass. The benchmark is built (item 9); its run on the reference hardware is the owner's | |
-| — | OI-53 (default library location) and OI-54 (machine copy against the library) | Both were placed in slice 8 |
 
 ## Verification (so far)
 
@@ -169,6 +180,13 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
   - a model is added with its placement as one undoable step.
 
   Also `req_prj_02_model_file_warnings_name_changed_and_missing_files`, and UI tests that flagged triangles are outlined on top in one line set and that the panel's steps match the CLI's.
+- Dialogs and libraries (item 15): `openchuck-app` `tests/library.rs` covers the configuration folder rule on Unix and macOS (on Unix runners) and on Windows (on Windows runners), and the default folders; a UI unit test covers where the dialogs start.
+- Machine source (item 16): `req_set_01_machine_copy_is_compared_with_its_source` (`openchuck-app` `tests/setup.rs`) walks through every outcome:
+  - no machine; an unrecorded source; the built-in Z1 the same;
+  - a library profile derived from it, keeping its ID, with a faster feed, found as the source with `max_feeds` named;
+  - the update and its undo; an orphaned ID.
+
+  `openchuck-project` tests: the profile round trip at schema 2, a schema 1 profile read with no ID, and a bad ID refused.
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
 ## Alternatives considered

@@ -21,6 +21,7 @@ use openchuck_viewport::{DisplayMode, Projection, StandardView};
 use crate::bench;
 use crate::form_panel::{self, FormState};
 use crate::import_panel::{ImportAction, ImportSession};
+use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
 use crate::tool_panel;
 use crate::viewport::Viewport;
@@ -81,6 +82,8 @@ pub struct Shell {
     import: Option<ImportSession>,
     /// The chosen model's panel, with its running check.
     model_panel: Option<ModelPanel>,
+    /// The machine panel, with the profiles found when it was opened.
+    machine_panel: Option<MachinePanel>,
     /// Typed text and refused values in the parameter form.
     form: FormState,
 }
@@ -102,6 +105,7 @@ impl Shell {
             profile_draft: None,
             import: None,
             model_panel: None,
+            machine_panel: None,
             form: FormState::default(),
         };
         if let Some(folder) = folder {
@@ -373,9 +377,19 @@ impl Shell {
             return;
         };
         let project = app.project();
-        ui.heading(project.name());
         let mut chosen = None;
         let mut command: Option<TreeAction> = None;
+        ui.heading(project.name());
+        let machine = project.machine().map_or_else(
+            || "Machine: none".to_owned(),
+            |m| format!("Machine: {}", m.name),
+        );
+        if ui
+            .selectable_label(self.selected == Some(Selection::Machine), machine)
+            .clicked()
+        {
+            command = Some(TreeAction::SelectMachine);
+        }
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::CollapsingHeader::new(format!("Models ({})", project.models().len()))
                 .default_open(true)
@@ -453,6 +467,13 @@ impl Shell {
                 self.select(Selection::Model(id));
                 return;
             }
+            TreeAction::SelectMachine => {
+                if self.selected != Some(Selection::Machine) {
+                    self.machine_panel = Some(MachinePanel::default());
+                }
+                self.select(Selection::Machine);
+                return;
+            }
             TreeAction::Command(c) => Ok(*c),
             TreeAction::Duplicate(id) => openchuck_app::duplicate_operation(app.project(), id),
         };
@@ -474,7 +495,24 @@ impl Shell {
             Some(Selection::Operation(id)) => self.operation_properties(ui, id),
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
             Some(Selection::Model(id)) => self.model_properties(ui, id),
+            Some(Selection::Machine) => self.machine_properties(ui),
             None => {}
+        }
+    }
+
+    /// The project's machine and its library source (SET-01, OI-54).
+    fn machine_properties(&mut self, ui: &mut egui::Ui) {
+        let Some(app) = &mut self.app else { return };
+        let panel = self.machine_panel.get_or_insert_with(MachinePanel::default);
+        let copy = app.project().machine().cloned();
+        let command = egui::ScrollArea::vertical()
+            .show(ui, |ui| panel.show(ui, copy.as_ref()))
+            .inner;
+        if let Some(command) = command {
+            match app.execute(command) {
+                Ok(()) => self.rebuild_scene(false),
+                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            }
         }
     }
 
@@ -856,6 +894,8 @@ enum TreeAction {
     SelectTool(ToolId),
     /// Show this model's units, placement and checks.
     SelectModel(ModelId),
+    /// Show the project's machine.
+    SelectMachine,
 }
 
 /// What the properties panel shows.
@@ -864,6 +904,7 @@ enum Selection {
     Operation(OperationId),
     Tool(ToolId),
     Model(ModelId),
+    Machine,
 }
 
 /// One operation in the tree: enable box, name, and move up, move down and

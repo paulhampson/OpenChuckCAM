@@ -31,7 +31,23 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 /// The machine profile file schema this build writes and reads.
 ///
 /// - 1: slice 3 (decision record 0011).
-pub const MACHINE_SCHEMA: i64 = 1;
+/// - 2: the profile may hold an `id` that project copies keep, so a copy can
+///   be compared with its source (OI-54, decision record 0026 item 16).
+pub const MACHINE_SCHEMA: i64 = 2;
+
+/// Profile file migrations, oldest first (see `file::MIGRATIONS`).
+const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[machine_1_to_2];
+
+/// Schema 2 only adds the optional `id`, so a schema 1 file needs no change
+/// but its number. Its profile has no ID until it is saved with one.
+fn machine_1_to_2(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// A new machine ID, for a profile entering a library without one.
+pub fn new_machine_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
 
 /// The built-in Makera Z1 profile's key.
 pub const MAKERA_Z1: &str = "makera-z1";
@@ -42,7 +58,13 @@ const BUILTIN: &[(&str, &str)] = &[(MAKERA_Z1, include_str!("../machines/makera-
 /// Reads a profile file's text. `path` names the file in messages. The
 /// profile is validated.
 pub fn parse_profile(path: &Path, text: &str) -> Result<MachineProfile, ProjectError> {
-    let file: MachineFile = parse(path, text, FileKind::Machine, &[], MACHINE_SCHEMA)?;
+    let file: MachineFile = parse(
+        path,
+        text,
+        FileKind::Machine,
+        MACHINE_MIGRATIONS,
+        MACHINE_SCHEMA,
+    )?;
     file.machine.validate().map_err(|e| ProjectError::BadFile {
         path: path.to_path_buf(),
         reason: e.to_string(),
@@ -176,7 +198,10 @@ mod tests {
     fn req_set_01_profile_file_round_trips() {
         let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
         let text = render_profile(&z1).unwrap();
-        assert!(text.starts_with("schema = 1\n"), "{text}");
+        assert!(
+            text.starts_with(&format!("schema = {MACHINE_SCHEMA}\n")),
+            "{text}"
+        );
         let back = parse_profile(Path::new("z1.toml"), &text).unwrap();
         assert_eq!(back, z1);
         assert_eq!(render_profile(&back).unwrap(), text);
@@ -185,10 +210,16 @@ mod tests {
     #[test]
     fn req_nfr_07_bad_profile_files_give_clear_errors() {
         let z1 = render_profile(&builtin(MAKERA_Z1).unwrap().unwrap()).unwrap();
+        let current = format!("schema = {MACHINE_SCHEMA}");
+        let newer = format!("schema = {}", MACHINE_SCHEMA + 1);
         let cases = [
             ("not toml [", "z1.toml"),
             ("[machine]\nname = \"x\"\n", "schema"),
-            (&z1.replace("schema = 1", "schema = 2"), "newer"),
+            (&z1.replace(&current, &newer), "newer"),
+            (
+                &z1.replace("id = \"8f0c2a4e", "id = \" 8f0c2a4e"),
+                "machine.id",
+            ),
             (
                 &z1.replace("rotary_axis = \"x\"", "rotary_axis = \"y\""),
                 "SET-02",
@@ -213,6 +244,23 @@ mod tests {
                 .to_string();
             assert!(err.contains(expected), "{expected}: {err}");
         }
+    }
+
+    #[test]
+    fn req_set_01_profiles_written_before_ids_still_read() {
+        // A profile file written before IDs (OI-54) still reads; its profile
+        // has no ID, so nothing can be compared with it until it gets one.
+        let z1 = render_profile(&builtin(MAKERA_Z1).unwrap().unwrap()).unwrap();
+        let old: String = z1
+            .replace(&format!("schema = {MACHINE_SCHEMA}"), "schema = 1")
+            .lines()
+            .filter(|l| !l.starts_with("id = "))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let profile = parse_profile(Path::new("old.toml"), &old).unwrap();
+        assert_eq!(profile.id, None);
+        assert_eq!(profile.name, "Makera Z1");
+        assert_ne!(new_machine_id(), new_machine_id());
     }
 
     #[test]

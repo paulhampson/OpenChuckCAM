@@ -4,6 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- `MachineProfile::id`: an optional identifier shared by a library profile and its project copies (decision 0026 item 16).
 - Slice 7 (decision 0025): the `simulation` module, `SimulationSettings` (default cell 0.1 mm, finest 0.025, coarsest 1.0) with its relative time and memory.
 - **Breaking (0.4.0):** `machine::MachineProfile` has a new public field, `max_tool_number` (the highest tool number the controller accepts, 1000 by default, `DEFAULT_MAX_TOOL_NUMBER`; GC-14, decision 0020 item 12). Profile files without it read as 1000.
 - **Breaking (0.3.0):** `tool::Tool` replaces `stickout` with `overall_length` and gains `flute_count` and `material` (TL-04); `tool` is now a module directory. Slice 4 (decision 0014): `tool::profile` validates a `ToolProfile` by the monotone rule into a `RevolvedProfile` (lower envelope `height_at`, envelope pieces with a convexity flag, `is_convex`, `point_for_normal`) and gives `arc_centre` for arcs given by radius (decision 0012); `Tool::profile` maps every standard type to the profile and checks its values; `ControllerMapping` (TL-06), `CuttingData` and `CuttingTable` (TL-05), `validate_entry`; `units::SpindleSpeed`.
