@@ -64,7 +64,7 @@ pub struct Regeneration {
 /// generated stops the run with its error: nothing is left out silently
 /// (verification policy 8). A disabled operation is skipped as if it were
 /// absent: no toolpath, no stock removal, no G-code (UI-06; decision record
-/// 0026 item 10).
+/// 0029 item 10).
 pub(crate) fn regenerate(
     location: &Path,
     project: &Project,

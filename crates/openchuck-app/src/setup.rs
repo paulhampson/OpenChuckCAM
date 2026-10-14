@@ -129,7 +129,7 @@ pub fn available_machines(library: Option<&std::path::Path>) -> Vec<AvailableMac
 }
 
 /// Where a project's machine copy stands against the profile it came from
-/// (OI-54; decision record 0026 item 16).
+/// (OI-54; decision record 0029 item 16).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum MachineSource {

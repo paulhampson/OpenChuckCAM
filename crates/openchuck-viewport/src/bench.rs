@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The NFR-03 frame-time benchmark: the scripted camera path and the
 //! frame-time statistics (verification plan section 4.2; work breakdown
-//! slice 8 item 7; decision record 0026 item 9).
+//! slice 8 item 7; decision record 0029 item 9).
 //!
 //! The path is a function of time only, so every run moves the camera the
 //! same way whatever the frame rate. It orbits for the first third, pans for

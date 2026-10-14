@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The parameter form of the chosen operation (UI-07; decision record 0026
+//! The parameter form of the chosen operation (UI-07; decision record 0029
 //! item 11). The form comes from `openchuck-app` as a view model; this
 //! module only draws it and hands edits back. A rejected value stays in its
 //! field with the reason under it, and the project is unchanged.

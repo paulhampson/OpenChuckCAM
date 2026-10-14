@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! A project model's properties: its file, with a note when it changed
 //! (PRJ-02, OI-45), its unit (IMP-03), its placement steps (IMP-05) and its check
-//! report (IMP-04) (work breakdown slice 8 item 6; decision record 0026
+//! report (IMP-04) (work breakdown slice 8 item 6; decision record 0029
 //! item 13). Every change is a command, so it can be undone.
 
 use eframe::egui::{self, Color32, RichText};

@@ -65,7 +65,7 @@ pub enum Command {
         value: Option<ParameterValue>,
     },
     /// Enables or disables an operation (UI-06). A disabled operation is left
-    /// out of regeneration, simulation and posting (decision record 0026
+    /// out of regeneration, simulation and posting (decision record 0029
     /// item 10).
     SetOperationEnabled {
         /// The operation.

@@ -59,7 +59,7 @@ use openchuck_types::units::Millimetres;
 /// - 5: `project.toml` gains the optional `[simulation]` table (SIM-07),
 ///   written only when it differs from the default (decision record 0025).
 /// - 6: operations gain `enabled`, written only when false (UI-06,
-///   decision record 0026 item 10), and the machine copy in `machine.toml`
+///   decision record 0029 item 10), and the machine copy in `machine.toml`
 ///   may hold the `id` of the library profile it came from (OI-54, item 16).
 pub const SCHEMA: i64 = 6;
 

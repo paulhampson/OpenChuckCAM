@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Editing a project's tools: the tool form and the custom-profile editor
-//! (UI-07, TL-03; work breakdown slice 8 item 5; decision record 0026
+//! (UI-07, TL-03; work breakdown slice 8 item 5; decision record 0029
 //! item 12).
 //!
 //! The form lists a tool's dimensions as [`crate::form::Field`]s, the same

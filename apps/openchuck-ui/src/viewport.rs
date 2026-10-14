@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The viewport widget: turns the application's scene view model into a
 //! renderer scene, handles orbit, pan and zoom, and draws through an
-//! `egui_wgpu` paint callback (UI-02, UI-03; decision record 0026).
+//! `egui_wgpu` paint callback (UI-02, UI-03; decision record 0029).
 
 use std::sync::Arc;
 

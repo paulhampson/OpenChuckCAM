@@ -2,7 +2,7 @@
 //! `openchuck-ui`: the egui front end (architecture section 5.8).
 //!
 //! A window with menus, the project tree and the 3D viewport (work breakdown
-//! slice 8; decision record 0026). It talks only to `openchuck-app` and
+//! slice 8; decision record 0029). It talks only to `openchuck-app` and
 //! `openchuck-viewport`. The stack is egui, `egui_wgpu` and wgpu (decision
 //! record 0002, accepted).
 //!

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Parameter forms: an operation's parameters as a view model built from its
 //! strategy's schema, with units, ranges, defaults and where each shown value
-//! comes from (UI-07; work breakdown slice 8 item 5; decision record 0026
+//! comes from (UI-07; work breakdown slice 8 item 5; decision record 0029
 //! item 11).
 //!
 //! The front end draws one field per parameter and calls

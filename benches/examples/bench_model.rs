@@ -2,7 +2,7 @@
 //! Writes the NFR-03 benchmark model (`openchuck_testkit::parts::benchmark_model_1m`,
 //! a cylinder of about 1,000,000 triangles) as a binary STL, for the
 //! frame-time benchmark `openchuck-ui --bench` (verification plan 4.2; work
-//! breakdown slice 8 item 7; decision record 0026 item 9).
+//! breakdown slice 8 item 7; decision record 0029 item 9).
 //!
 //! `cargo run --release -p openchuck-benches --example bench_model -- OUT.stl`
 

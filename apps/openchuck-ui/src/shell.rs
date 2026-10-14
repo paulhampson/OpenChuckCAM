@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The application shell: menus, the project tree, new, open and save with
 //! unsaved-change handling, undo and redo, and the viewport (UI-01, UI-06,
-//! UI-08; work breakdown slice 8 items 3, 4 and 6; decision record 0026).
+//! UI-08; work breakdown slice 8 items 3, 4 and 6; decision record 0029).
 //!
 //! Every project change goes through `openchuck-app`; the shell holds no CAM
 //! logic. Paths can be typed, or picked with the platform's own dialog
-//! through `rfd` (OI-117); the typed path stays when no dialog is available.
+//! through `rfd` (OI-127); the typed path stays when no dialog is available.
 
 use std::path::PathBuf;
 
@@ -59,7 +59,7 @@ enum Dialog {
     /// The folder has no project: offer to create one there (decision record
     /// 0008 item 8).
     OfferCreate { folder: PathBuf },
-    /// Ask for a model file to import, typed or picked (OI-117).
+    /// Ask for a model file to import, typed or picked (OI-127).
     ModelFile { path: String },
     /// The project has unsaved changes.
     Unsaved(Next),
@@ -865,7 +865,7 @@ impl Shell {
 }
 
 /// Asks the platform's folder dialog for a folder, starting near `current`
-/// (OI-117). `None` when the user cancels or no dialog is available, in
+/// (OI-127). `None` when the user cancels or no dialog is available, in
 /// which case the typed path stays.
 fn pick_folder(current: &str) -> Option<String> {
     let mut dialog = rfd::FileDialog::new().set_title("Project folder");
@@ -876,7 +876,7 @@ fn pick_folder(current: &str) -> Option<String> {
 }
 
 /// Asks the platform's file dialog for a model file, starting near `current`
-/// or in the project folder (OI-117).
+/// or in the project folder (OI-127).
 fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
     let mut dialog = rfd::FileDialog::new()
         .set_title("Import model")

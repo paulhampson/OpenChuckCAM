@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The custom-profile editor with live preview (TL-03; work breakdown slice 8
-//! item 5; decision record 0026 item 12). The profile being edited is held
+//! item 5; decision record 0029 item 12). The profile being edited is held
 //! here; every edit is checked by `openchuck-app` as the file import checks
 //! it, and the preview turns red with the reason while it is invalid. Only
 //! Apply changes the project, as one undoable step.

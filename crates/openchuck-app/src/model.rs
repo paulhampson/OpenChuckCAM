@@ -112,7 +112,7 @@ pub(crate) fn inspect_placed(
 
 /// A model file checked before it is added: the inspection, and the scene
 /// of the placed model with the triangles and edges the checks list
-/// highlighted (OI-51; decision record 0026 item 13).
+/// highlighted (OI-51; decision record 0029 item 13).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportPreview {
     /// What the checks found.

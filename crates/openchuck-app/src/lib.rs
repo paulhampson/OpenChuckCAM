@@ -20,7 +20,7 @@
 //! The library's own strategy, helical finishing, is registered from the start;
 //! a host or test can add more with [`Application::register_strategy`].
 //! What the viewport draws for a setup comes from [`scene`] as plain data
-//! (decision record 0026).
+//! (decision record 0029).
 
 #![warn(missing_docs)]
 
@@ -280,7 +280,7 @@ impl Application {
 
     /// [`Application::add_model`] with placement steps (IMP-05), as one
     /// undoable step: the import dialog adds a model as the user placed it
-    /// (decision record 0026 item 13).
+    /// (decision record 0029 item 13).
     pub fn add_model_with(
         &mut self,
         file: &Path,

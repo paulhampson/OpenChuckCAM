@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The import dialog (IMP-03, IMP-04, IMP-05; OI-51; work breakdown slice 8
-//! item 6; decision record 0026 item 13).
+//! item 6; decision record 0029 item 13).
 //!
 //! The file is read, placed and checked by `openchuck-app` as a job each time
 //! the units or the orientation change. The dialog shows the size, the STL
@@ -161,7 +161,7 @@ impl ImportSession {
     pub fn window(&mut self, ctx: &egui::Context, app: &Application) -> ImportAction {
         let mut action = ImportAction::None;
         let mut changed = false;
-        // Its own window, so it can be moved off the main one (OI-120).
+        // Its own window, so it can be moved off the main one (OI-130).
         let ((), event) = floating(ctx, "import model", "Import model", [440.0, 620.0], |ui| {
             ui.label(self.path.display().to_string());
             if self.job.is_some() {

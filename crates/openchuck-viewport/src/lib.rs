@@ -11,7 +11,7 @@
 //! - [`bench`]: the NFR-03 camera path and frame-time statistics.
 //!
 //! The crate does not depend on egui or any window toolkit: the front end
-//! hands it a device, a queue and a render pass (decision record 0026). No
+//! hands it a device, a queue and a render pass (decision record 0029). No
 //! wgpu type is stored in a public field; wgpu appears only in the
 //! renderer's method signatures, which the front end needs to call it.
 //!

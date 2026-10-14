@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Dialogs in their own operating-system windows, so they can be moved
-//! outside the main window, for example to a second screen (OI-120; decision
-//! record 0026 item 17).
+//! outside the main window, for example to a second screen (OI-130; decision
+//! record 0029 item 17).
 //!
 //! A floating dialog is an egui *immediate* viewport: it is drawn in the same
 //! frame as the main window and may borrow the shell's state. Where the

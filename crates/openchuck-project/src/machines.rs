@@ -32,7 +32,7 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 ///
 /// - 1: slice 3 (decision record 0011).
 /// - 2: the profile may hold an `id` that project copies keep, so a copy can
-///   be compared with its source (OI-54, decision record 0026 item 16).
+///   be compared with its source (OI-54, decision record 0029 item 16).
 pub const MACHINE_SCHEMA: i64 = 2;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).

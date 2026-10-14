@@ -228,7 +228,7 @@ const fn default_max_tool_number() -> u32 {
 pub struct MachineProfile {
     /// A stable identifier shared by a library profile and every project copy
     /// made from it, so a copy can be compared with its source (OI-54,
-    /// decision record 0026 item 16). Opaque text, usually a UUID; `None`
+    /// decision record 0029 item 16). Opaque text, usually a UUID; `None`
     /// for a profile that was never in a library.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,

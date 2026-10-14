@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The project's machine (SET-01): its profile copy, the direction of A,
 //! the values not yet confirmed on the machine, and how the copy compares
-//! with the library profile it came from (OI-54; decision record 0026
+//! with the library profile it came from (OI-54; decision record 0029
 //! item 16). The library is the platform's configuration folder (OI-53).
 //! Choosing or updating the machine is a command, so it can be undone.
 

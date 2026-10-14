@@ -2,7 +2,7 @@
 
 The OpenChuckCAM desktop application, built on egui with the wgpu backend (architecture section 5.8). It talks only to `openchuck-app` and `openchuck-viewport`, and contains no CAM logic.
 
-**Status:** work breakdown slice 8 is in progress (decision record 0026). It has:
+**Status:** work breakdown slice 8 is in progress (decision record 0029). It has:
 
 - the window and menus: new, open and save, with unsaved-change prompts;
 - the 3D viewport: part, stock, rotary axis, A+ arrow and work coordinate system;

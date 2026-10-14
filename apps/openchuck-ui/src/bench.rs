@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! `openchuck-ui --bench`: the NFR-03 frame-time benchmark on the product
 //! viewport (verification plan 4.2; work breakdown slice 8 item 7; decision
-//! record 0026 item 9).
+//! record 0029 item 9).
 //!
 //! The model is added to a new project in the temporary folder through the
 //! application API, like any other model. Once the scene is drawn, the

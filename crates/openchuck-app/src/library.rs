@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Where the user's machine and tool libraries live by default (SET-01,
-//! TL-01; OI-53; decision record 0026 item 15): `OpenChuckCAM/machines` and
+//! TL-01; OI-53; decision record 0029 item 15): `OpenChuckCAM/machines` and
 //! `OpenChuckCAM/tools` in the platform's configuration folder.
 //!
 //! | Platform | Configuration folder |
@@ -11,7 +11,7 @@
 //!
 //! The rule is a few lines over the environment, written here rather than
 //! taken from the `dirs` crate, whose `option-ext` dependency is MPL-2.0 and
-//! outside the licence allow list (decision record 0026 item 15). A relative
+//! outside the licence allow list (decision record 0029 item 15). A relative
 //! or empty variable is ignored, as the XDG specification asks.
 
 use std::ffi::OsString;

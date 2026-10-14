@@ -363,7 +363,7 @@ pub struct Operation {
     pub parameters: BTreeMap<String, ParameterValue>,
     /// False when the user has disabled it: it stays in the project and the
     /// tree but is left out of regeneration, simulation and posting, as if it
-    /// were absent (UI-06; decision record 0026 item 10).
+    /// were absent (UI-06; decision record 0029 item 10).
     pub enabled: bool,
 }
 

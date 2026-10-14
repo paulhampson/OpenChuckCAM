@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The import dialog's model: checking a file before it is added, with the
 //! problems the checks list highlighted, and adding it with its placement as
-//! one undoable step (IMP-03, IMP-04, IMP-05; OI-51; decision record 0026
+//! one undoable step (IMP-03, IMP-04, IMP-05; OI-51; decision record 0029
 //! item 13).
 
 #![allow(

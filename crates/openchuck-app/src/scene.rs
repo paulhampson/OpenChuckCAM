@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The scene view model: what the viewport draws for a setup, as plain data
-//! (UI-02, UI-03; work breakdown slice 8 items 1 and 2; decision record 0026).
+//! (UI-02, UI-03; work breakdown slice 8 items 1 and 2; decision record 0029).
 //!
 //! Everything is in the model frame, whose X axis is the rotary axis. The
 //! part is the setup's placed model with its feature edges; the stock,
@@ -382,7 +382,7 @@ fn merge_extent(a: Option<PartExtent>, b: Option<PartExtent>) -> Option<PartExte
 /// The scene of one placed model on its own, before it joins a setup: the
 /// model with its feature edges, the triangles and edges `report` lists as
 /// problems, and the rotary axis for orientation (OI-51; decision record
-/// 0026 item 13).
+/// 0029 item 13).
 pub(crate) fn model_scene(
     mesh: TriangleMesh,
     report: &openchuck_geom::check::MeshReport,

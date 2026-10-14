@@ -175,10 +175,10 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
-    # 0026, OI-119). Linux uses Mesa's lavapipe under Xvfb and must find an
+    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
     # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
     # yet proven on hosted runners, so they report without blocking until
-    # their first runs are recorded under OI-119.
+    # their first runs are recorded under OI-129.
     strategy:
       fail-fast: false
       matrix:

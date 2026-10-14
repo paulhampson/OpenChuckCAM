@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The default library folders on each platform (SET-01, TL-01; OI-53;
-//! decision record 0026 item 15).
+//! decision record 0029 item 15).
 
 #![allow(clippy::unwrap_used)]
 

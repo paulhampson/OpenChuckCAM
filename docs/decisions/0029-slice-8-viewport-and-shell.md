@@ -1,10 +1,10 @@
-# 0026: Slice 8 design refinement: viewport and application shell
+# 0029: Slice 8 design refinement: viewport and application shell
 
 - **Status:** proposed. Slice 8 is in progress, not closed. Item 4 (OI-13) was accepted by the owner on 14 Oct 2026, and verification plan 4.2 now says what "edges" means.
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
-- **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered when `main` took 0023 to 0025 and OI-103 to OI-116.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-117, OI-118 and OI-120 are closed (items 4, 10, 13, 15, 16 and 17), OI-119 is open, and OI-14 is deferred to slice 11 (item 1).
+- **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered to 0026 and OI-117 to OI-120 when `main` took 0023 to 0025 and OI-103 to OI-116. It was renumbered again to 0029 and OI-127 to OI-130 when `main` took 0026 (entry moves) and OI-117, and unmerged branches held 0027, 0028 and OI-118 to OI-126.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-127, OI-128 and OI-130 are closed (items 4, 10, 13, 15, 16 and 17), OI-129 is open, and OI-14 is deferred to slice 11 (item 1).
 
 ## Context
 
@@ -57,7 +57,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
    - Menus: File (new, open, save, quit), Edit (undo, redo, with shortcuts) and View (standard views, fit, projection, display mode).
    - New, open and quit ask Save, Discard or Cancel when there are unsaved changes, and so does closing the window.
    - A folder without a project offers to create one (decision 0008 item 8).
-   - Folders are typed in, because a native file dialog needs a crate outside the crate selection (OI-117).
+   - Folders are typed in, because a native file dialog needs a crate outside the crate selection (OI-127).
    - On open, changed or missing model files are reported in the status bar (OI-45, in part).
    - The project tree lists models, setups, operations and tools. Choosing a setup shows it.
    - The status bar shows the A direction, the scene notes and the G-code verification notice (NFR-12).
@@ -75,7 +75,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 
      The default mode is shaded with feature edges, as 4.2 now says. Frame time is the interval between frames, as in SP-2, not a GPU timestamp.
 
-10. **Operation tree commands (item 4; UI-06; OI-118 settled by the owner, 14 Oct 2026).**
+10. **Operation tree commands (item 4; UI-06; OI-128 settled by the owner, 14 Oct 2026).**
     - **Enable and disable.** `Operation.enabled` is new. A disabled operation stays in the project and the tree, its name struck through, but is skipped everywhere, as if it were absent: no toolpath, no stock removal in simulation or carry-over, no G-code, and its tool is not in the tool-number plan (GC-14). `Command::SetOperationEnabled` is undoable.
     - **Storage.** The flag is written to the operation's file as `enabled = false` only while the operation is disabled, so enabling it again restores the file's bytes and existing projects do not change. Project schema 6, with a migration that changes only the number (a schema 5 operation is enabled).
     - **Duplicate.** `duplicate_operation` builds an `Add` of a copy with a new ID, named "<name> (copy)", placed just after the original. It keeps the strategy, tool, setup, selections, parameters and enabled state.
@@ -115,7 +115,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 13. **Import dialog and model controls (item 6; IMP-03, IMP-04, IMP-05; OI-45, OI-51 and OI-52 closed).**
     - **Preview job.** `Application::start_import_preview(path, units, steps)` reads, places and checks a file that is not yet in the project. It returns the inspection and a scene of the placed model: the part with its feature edges, the triangles the checks list (flipped, degenerate, normal mismatches) as a `Problem` mesh, the open and non-manifold edges as `Problem` lines, and the rotary axis.
     - **Adding.** `Application::add_model_with` adds the model with its unit and placement as one undoable step.
-    - **The dialog.** File > Import model takes a typed path (OI-117) and opens a non-modal dialog. Changing the unit or the placement re-runs the check. The dialog shows:
+    - **The dialog.** File > Import model takes a typed path (OI-127) and opens a non-modal dialog. Changing the unit or the placement re-runs the check. The dialog shows:
       - the unit used and the unit question (IMP-03), with a choice of unit;
       - the placement: as in the file, centred on the rotary axis, or any file direction turned onto the rotary axis and centred;
       - the size and the largest radius about the rotary axis;
@@ -130,12 +130,12 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **Changed files (OI-45).** `Application::model_file_warnings` names each changed or missing file, and the UI lists them in a dialog when a project opens.
     - **OI-52 (accepted by the owner, 14 Oct 2026).** Keep the fixed unit-size thresholds. A model is checked at import, before any setup uses it, and the setup checks (SET-06) compare the part with the machine's travel once one does.
 
-14. **CI smoke test (item 7; UI-01, NFR-02; OI-119).** A `ui-smoke` job in `ci.yml` runs on Linux, Windows and macOS. It runs `openchuck-viewport`'s offscreen render tests, then launches the real binary with `--bench testdata/stl/cube_ascii.stl --seconds 3`, which opens a window, draws the scripted path and exits by itself. Exit 0 (pass) or 2 (frame-time fail) both mean the window opened, drew and closed.
+14. **CI smoke test (item 7; UI-01, NFR-02; OI-129).** A `ui-smoke` job in `ci.yml` runs on Linux, Windows and macOS. It runs `openchuck-viewport`'s offscreen render tests, then launches the real binary with `--bench testdata/stl/cube_ascii.stl --seconds 3`, which opens a window, draws the scripted path and exits by itself. Exit 0 (pass) or 2 (frame-time fail) both mean the window opened, drew and closed.
     - **Linux.** Installs Mesa's lavapipe and Xvfb and requires an adapter (`OPENCHUCK_REQUIRE_ADAPTER=1`), so it cannot pass by skipping.
-    - **Windows (WARP) and macOS (the runner's Metal device).** Not yet tried on hosted runners, so they do not block until their first runs are recorded under OI-119.
+    - **Windows (WARP) and macOS (the runner's Metal device).** Not yet tried on hosted runners, so they do not block until their first runs are recorded under OI-129.
     - **Local run (this container, debug build).** The command passed with exit 0: 178 frames, p95 19.4 ms on llvmpipe.
 
-15. **Native file dialogs and the library location (OI-117, OI-53; owner's choices, 14 Oct 2026).**
+15. **Native file dialogs and the library location (OI-127, OI-53; owner's choices, 14 Oct 2026).**
     - **File dialogs.** `rfd` 0.17.2 (MIT, survey score 77, NFR-14 record in `docs/dependencies.md`) is added to `openchuck-ui` only, with its default features: the XDG portal and Wayland on Linux, so no GTK libraries are needed to build. It adds no network client (NFR-09). A Browse button beside each typed path (new, open, import) fills it from the platform's dialog. The typed path stays, so a missing portal or a cancelled dialog never blocks the user.
     - **Library location.** The owner chose the platform configuration folder: `OpenChuckCAM/machines` and `OpenChuckCAM/tools` under `$XDG_CONFIG_HOME` (else `~/.config`) on Unix, `%APPDATA%` on Windows, and `~/Library/Application Support` on macOS (`openchuck_app::library`).
     - **No `dirs` crate.** The crate selection's pick for this, `dirs` 7.0.0 (87), pulls in `option-ext`, which is MPL-2.0. MPL-2.0 is compatible with the AGPL, but it is not on the `deny.toml` allow list, and verification plan section 7 asks for an MPL crate to be checked before adoption. `directories` shares the same dependency. The rule needs only a few lines over environment variables, so it is written in-house, with tests for each platform. `dirs` is listed under "Tried and not adopted".
@@ -147,10 +147,10 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **Updating.** Updating the copy is `Command::SetMachine` with the source profile, one undoable step. The project's copy wins until the user updates it (as TL-07 does for tools).
     - **UI.** A Machine node in the tree opens a panel with the profile name, the A direction in words, the values not yet confirmed on the machine, the comparison with an Update button, a chooser of available profiles, and, for a library profile with no ID, a button that gives it one by rewriting the library file.
 
-17. **Dialogs in their own windows (OI-120; owner's request, 14 Oct 2026).**
+17. **Dialogs in their own windows (OI-130; owner's request, 14 Oct 2026).**
     - **How.** `openchuck-ui`'s `floating` helper shows a dialog as an egui *immediate* viewport: its own operating-system window, drawn in the same frame as the main window, so it can borrow the shell's state. It can be moved outside the main window, for example to a second screen.
     - **Fallback.** Where the platform cannot open another window, egui draws the dialog inside the main window, so it always works.
-    - **No second paint path.** A dialog draws no 3D: the import preview stays in the main window's viewport. The second paint path that OI-120 assumed is not needed.
+    - **No second paint path.** A dialog draws no 3D: the import preview stays in the main window's viewport. The second paint path that OI-130 assumed is not needed.
     - **Closing.** The window's close button means Cancel.
     - **Where it is used.** The import dialog uses it now. Later floating panels (slice 9's playback controls) can use the same helper. The modal dialogs (open, new, unsaved changes, errors) stay inside the main window on purpose.
 
@@ -158,7 +158,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
 
 | Item | What remains | Note |
 | --- | --- | --- |
-| 7 (NFR-02) | First CI runs of the `ui-smoke` job (item 14, OI-119); then make Windows and macOS blocking if they pass. The benchmark is built (item 9); its run on the reference hardware is the owner's | |
+| 7 (NFR-02) | First CI runs of the `ui-smoke` job (item 14, OI-129); then make Windows and macOS blocking if they pass. The benchmark is built (item 9); its run on the reference hardware is the owner's | |
 
 ## Verification (so far)
 
@@ -224,7 +224,7 @@ The median p95 with edges is 0.77 ms against 33 ms, about 43 times inside the li
 | V3 Camera (UI-02) | Pass |
 | V4 Display modes | Pass |
 | V5 Machine panel | Pass |
-| V6 Import dialog (OI-51, OI-117) | Pass, with the native dialog |
+| V6 Import dialog (OI-51, OI-127) | Pass, with the native dialog |
 | V7 Model panel (IMP-05) | Pass |
 | V8 Tools and profile editor | Skipped: no tools in the project; covered by tests |
 | V9 Unsaved changes | Pass |
@@ -234,7 +234,7 @@ The median p95 with edges is 0.77 ms against 33 ms, about 43 times inside the li
 1. Some text is small. The UI now starts at 120 % (`DEFAULT_ZOOM`), and View has Larger, Smaller and Reset, alongside egui's Ctrl with + or -. The size is not remembered between runs, because eframe's persistence is not enabled.
 2. The library folder should be creatable and openable. The machine panel now offers "Create the library folder" when it is missing and "Open the library folder" when it exists, using the platform's own `explorer`, `open` or `xdg-open` (no new dependency).
 3. It was not clear that Placement moves the model in the view. The dialog now says that the 3D view previews the model as it will be added and that the orange line is the rotary axis, and the Placement label has the same tooltip.
-4. The import dialog cannot be dragged outside the main window. It now opens in its own operating-system window (item 17, OI-120 closed).
+4. The import dialog cannot be dragged outside the main window. It now opens in its own operating-system window (item 17, OI-130 closed).
 5. The "A+" and "Y" labels overlapped in the Right view: the arrow ended on +Y, where the work Y label sits. The "A+" label now sits an eighth of a turn along the arc, between the top and -Y (`req_set_01_req_ui_03_a_arrow_follows_the_documented_convention` checks it).
 
 **Build note.** The first release build hit a rustc crash compiling `naga` 30.0.1 (Windows `0xc0000374`, heap corruption). A retry with no changes built cleanly, so it is treated as a transient fault of the compiler or the environment; it is recorded in case it recurs.
@@ -254,7 +254,7 @@ The median p95 with edges is 0.77 ms against 33 ms, about 43 times inside the li
 
 | ID | Item |
 | --- | --- |
-| OI-117 | Native file dialogs. Folders are typed in until a dialog crate (for example `rfd`) has an NFR-14 record and an AGPL-compatible licence check. |
-| OI-118 | Operations need an enabled flag for UI-06, with a rule for disabled operations. Closed 14 Oct 2026: skipped everywhere, schema 6 (item 10). |
-| OI-120 | Dialogs could not leave the main window (owner's visual check, V10 item 4). Closed 14 Oct 2026: the import dialog opens in its own window (item 17). |
-| OI-119 | CI smoke test for UI-01 and NFR-02: install a software Vulkan driver (Mesa lavapipe) on the Linux runner and set `OPENCHUCK_REQUIRE_ADAPTER=1` for `openchuck-viewport`'s render tests. Check what the Windows (WARP) and macOS runners offer, and add a scripted launch of the binary. |
+| OI-127 | Native file dialogs. Folders are typed in until a dialog crate (for example `rfd`) has an NFR-14 record and an AGPL-compatible licence check. |
+| OI-128 | Operations need an enabled flag for UI-06, with a rule for disabled operations. Closed 14 Oct 2026: skipped everywhere, schema 6 (item 10). |
+| OI-130 | Dialogs could not leave the main window (owner's visual check, V10 item 4). Closed 14 Oct 2026: the import dialog opens in its own window (item 17). |
+| OI-129 | CI smoke test for UI-01 and NFR-02: install a software Vulkan driver (Mesa lavapipe) on the Linux runner and set `OPENCHUCK_REQUIRE_ADAPTER=1` for `openchuck-viewport`'s render tests. Check what the Windows (WARP) and macOS runners offer, and add a scripted launch of the binary. |
