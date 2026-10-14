@@ -65,6 +65,8 @@ fn snapshot(name: &str, diameter: f64, number: u32) -> ToolSnapshot {
 fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
     let mut parameters = BTreeMap::new();
     parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(step));
+    // A wide pitch keeps the programs short.
+    parameters.insert("stepover".to_owned(), ParameterValue::Number(5.0));
     Operation {
         id: OperationId::new(),
         order: OrderKey::default(),
@@ -131,15 +133,15 @@ fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
     let first = setups[0].0;
     add(
         &mut app,
-        Item::Operation(operation("Finish A", first, a_id, 30.0)),
+        Item::Operation(operation("Finish A", first, a_id, 90.0)),
     );
     add(
         &mut app,
-        Item::Operation(operation("Finish B", first, b_id, 45.0)),
+        Item::Operation(operation("Finish B", first, b_id, 60.0)),
     );
     add(
         &mut app,
-        Item::Operation(operation("Touch up A", first, a_id, 60.0)),
+        Item::Operation(operation("Touch up A", first, a_id, 90.0)),
     );
     if second_setup {
         add(

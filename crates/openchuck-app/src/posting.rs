@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 use openchuck_gcode::{CheckConfig, Dialect, TimingRule, Tolerances};
 use openchuck_post::{
-    FeedMode, FeedRule, PostDefinition, PostJob, PostProcessor, TemplatePost, ToolSetting,
-    UnwindMode, builtin, builtin_ids,
+    FeedMode, FeedRule, PostDefinition, PostJob, TemplatePost, ToolSetting, UnwindMode, builtin,
+    builtin_ids,
 };
 use openchuck_project::Project;
 use openchuck_types::ir::{Toolpath, ToolpathGroup};
@@ -468,13 +468,12 @@ pub(crate) fn post_toolpath(
                 Some((title, _)) => format!("{} - {} - {title}", project.name(), setup.name),
                 None => format!("{} - {}", project.name(), setup.name),
             },
-            operation_names: operation_names.clone(),
             revision: None,
             work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
         };
         let part = Toolpath { groups };
         let output = post
-            .post(&part, &job)
+            .post_named(&part, &job, &operation_names)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;
         if output.clamped_feeds > 0 {
             notes.push(format!(

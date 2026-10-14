@@ -67,7 +67,6 @@ fn options(rule: FeedRule) -> ConvertOptions<MachineProfile> {
         max_feed: None,
         tools,
         decimals: None,
-        operation_names: BTreeMap::new(),
     }
 }
 
