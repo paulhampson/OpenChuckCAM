@@ -5,7 +5,7 @@
 - **Spike branch:** `spike/sp-6-simulation-stock` (throwaway, never merged). The code is in `spikes/sp-6-simulation-stock/`, a separate Cargo project with no third-party dependencies, never a workspace member; the write-up is `spikes/sp-6-simulation-stock/RESULT.md` and the full tables `spikes/sp-6-simulation-stock/out/report.md`, both on that branch.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-56 and OI-99 closed; OI-100 to OI-102 are new and open for slice 7.
 
-Numbering: record 0020 and 0021 are claimed on unmerged branches (slice 6, SP-11), and OI-96 to OI-98 on unmerged branches, so this record takes 0022 and OI-99 to OI-102.
+Numbering: record 0021 and OI-94 to OI-98 are on `main` (SP-11), and record 0020 is claimed on the unmerged slice 6 branch (`claude/nice-fermi-lyjx5n`, OI-88 to OI-93), so this record takes 0022 and OI-99 to OI-102.
 
 ## Context
 
