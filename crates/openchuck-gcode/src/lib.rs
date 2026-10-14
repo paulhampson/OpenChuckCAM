@@ -3,8 +3,23 @@
 //!
 //! Architecture section 5.3 and 9; requirements GC-08, SIM-09.
 //!
-//! This crate is a shell created in work breakdown slice 0. The reader and replay arrive in slice 6, after spike SP-5 (see decision record 0001, open item 5).
+//! The in-house reader ([`read`], decision record 0005) and the modal replay
+//! ([`replay`]) are built; the checks and the comparison with the IR follow in
+//! this slice.
 
 #![warn(missing_docs)]
 
-use openchuck_types as _;
+mod check;
+mod compare;
+mod interp;
+mod reader;
+mod sim;
+
+pub use check::{CheckConfig, FeedLimits, Finding, FindingKind, static_check};
+pub use compare::{CompareError, Comparison, TimingRule, Tolerances, compare};
+pub use interp::{
+    Axes, Dialect, Event, KNOWN_G, KNOWN_M, Motion, Move, Replay, ReplayError, Step, Z1_G, replay,
+    replay_axis,
+};
+pub use reader::{Block, MAX_LINE_CHARS, Program, ReadError, Word, read};
+pub use sim::{SimComparison, SimError, SimReport, SimRow, compare_simulator, parse_sim_report};

@@ -11,13 +11,18 @@
 //! - `testdata`: the test-data size policy.
 //! - `all`: every check above.
 //!
-//! The LinuxCNC replay runner and the release gate are added in slices 6 and 20.
+//! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
+//! - `replay`: gate 3, LinuxCNC programs in the headless simulator (needs LinuxCNC; not part of `all`).
+//!
+//! The release gate is added in slice 20.
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 mod deps;
+mod golden;
 mod licences;
 mod records;
+mod replay;
 mod testdata;
 mod trace;
 
@@ -53,6 +58,28 @@ enum Check {
     },
     /// Test-data size policy.
     Testdata,
+    /// Audit the golden G-code files against the exact parts, the post conventions and the
+    /// controller's feed rule, so they need no reading by hand.
+    Golden,
+    /// Gate 3: run LinuxCNC programs in the simulator and compare with the replay.
+    /// With no program, every LinuxCNC golden program is run. Needs LinuxCNC:
+    /// `--docker IMAGE`, `LINUXCNC_RIP`, or `linuxcnc` on the PATH.
+    Replay {
+        /// Programs to run (LinuxCNC dialect).
+        programs: Vec<PathBuf>,
+        /// Run LinuxCNC in this Docker image (see docker/linuxcnc).
+        #[arg(long)]
+        docker: Option<String>,
+        /// Keep each simulator report in this folder.
+        #[arg(long)]
+        keep_reports: Option<PathBuf>,
+        /// Largest per-line difference allowed, mm or degrees.
+        #[arg(long, default_value_t = 0.1)]
+        tolerance: f64,
+        /// Give up on one program after this many seconds.
+        #[arg(long, default_value_t = 900)]
+        timeout: u64,
+    },
     /// Every check.
     All,
 }
@@ -85,6 +112,26 @@ fn run() -> Result<bool> {
             )]
         }
         Check::Testdata => vec![("testdata", testdata::check(&root)?)],
+        Check::Golden => vec![("golden", golden::check(&root)?)],
+        Check::Replay {
+            programs,
+            docker,
+            keep_reports,
+            tolerance,
+            timeout,
+        } => vec![(
+            "replay",
+            replay::check(
+                &root,
+                &replay::Options {
+                    programs,
+                    docker,
+                    keep_reports,
+                    tolerance,
+                    timeout_seconds: timeout,
+                },
+            )?,
+        )],
         Check::All => vec![
             ("deps", deps::check(&root)?),
             ("licences", licences::check(&root)?),

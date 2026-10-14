@@ -21,6 +21,8 @@ pub struct Regeneration {
     pub gcode: Vec<(String, String)>,
     /// Notes about the toolpaths, each naming its operation, in order.
     pub notes: Vec<String>,
+    /// What the G-code checks found for each file in `gcode` (GC-08, GC-11).
+    pub reports: Vec<crate::posting::GcodeReport>,
 }
 
 /// Regenerates every operation of `project` (in the folder `location`) in
@@ -30,6 +32,7 @@ pub(crate) fn regenerate(
     location: &Path,
     project: &Project,
     registry: &Registry,
+    post: Option<&crate::posting::PostSelection>,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
@@ -53,5 +56,13 @@ pub(crate) fn regenerate(
         context.report("regenerate", i as u64 + 1, Some(total));
     }
     regeneration.toolpath.validate()?;
+    if let Some(selection) = post {
+        context.check_cancelled()?;
+        let (files, reports, notes) =
+            crate::posting::post_toolpath(project, &regeneration.toolpath, selection)?;
+        regeneration.gcode = files;
+        regeneration.reports = reports;
+        regeneration.notes.extend(notes);
+    }
     Ok(regeneration)
 }

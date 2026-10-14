@@ -3,8 +3,32 @@
 //!
 //! Architecture section 5.3; requirements GC-02 to GC-10, GC-13, INT-03.
 //!
-//! This crate is a shell created in work breakdown slice 0. The machine program, post definitions and feed modes arrive in slice 6.
+//! Slice 6 is under way. So far: the neutral machine program stage
+//! ([`to_machine_program`]) and the per-controller feed rules ([`FeedRule`],
+//! decision 0019 item 5). The template engine, post definitions and the
+//! `PostProcessor` trait follow.
 
 #![warn(missing_docs)]
 
-use openchuck_types as _;
+mod builtin;
+mod convert;
+mod definition;
+mod engine;
+mod error;
+mod feed;
+mod options;
+mod program;
+mod render;
+
+pub use builtin::{builtin, builtin_ids};
+pub use convert::{ConvertOptions, ToolSetting, round_written, to_machine_program};
+pub use definition::{MAX_FILE_BYTES, PostDefinition, SCHEMA};
+pub use engine::fixed_str;
+pub use error::{PostError, Result};
+pub use feed::{FeedRule, FeedWord, MoveMetrics, NO_MOTION};
+pub use options::{
+    ADirection, Coolant, Decimals, FeedMode, LineNumbers, PostOptions, ToolChange, Units,
+    UnwindMode,
+};
+pub use program::{MachineProgram, Step, Target};
+pub use render::{PostJob, PostOutput, PostProcessor, TemplatePost, sanitise_comment};

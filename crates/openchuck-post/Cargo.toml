@@ -13,6 +13,13 @@ authors.workspace = true
 
 [dependencies]
 openchuck-types.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+minijinja.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+openchuck-testkit.workspace = true
 
 [lints]
 workspace = true

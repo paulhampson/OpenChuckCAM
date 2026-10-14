@@ -28,7 +28,7 @@ exclude = ["fuzz"]
 
 [workspace.package]
 # The four library-family crates share this version before 1.0 (architecture section 12).
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.97"
 license = "AGPL-3.0-or-later"
@@ -37,17 +37,17 @@ authors = ["OpenChuckCAM contributors"]
 
 [workspace.dependencies]
 # Project crates. Path dependencies carry a version so `cargo publish` works unchanged.
-openchuck-types = { path = "crates/openchuck-types", version = "0.3.0" }
-openchuck-path = { path = "crates/openchuck-path", version = "0.3.0" }
-openchuck-post = { path = "crates/openchuck-post", version = "0.3.0" }
-openchuck-gcode = { path = "crates/openchuck-gcode", version = "0.3.0" }
-openchuck-geom = { path = "crates/openchuck-geom", version = "0.3.0" }
-openchuck-import = { path = "crates/openchuck-import", version = "0.3.0" }
-openchuck-sim = { path = "crates/openchuck-sim", version = "0.3.0" }
-openchuck-project = { path = "crates/openchuck-project", version = "0.3.0" }
-openchuck-app = { path = "crates/openchuck-app", version = "0.3.0" }
-openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.3.0" }
-openchuck-testkit = { path = "crates/openchuck-testkit", version = "0.3.0" }
+openchuck-types = { path = "crates/openchuck-types", version = "0.4.0" }
+openchuck-path = { path = "crates/openchuck-path", version = "0.4.0" }
+openchuck-post = { path = "crates/openchuck-post", version = "0.4.0" }
+openchuck-gcode = { path = "crates/openchuck-gcode", version = "0.4.0" }
+openchuck-geom = { path = "crates/openchuck-geom", version = "0.4.0" }
+openchuck-import = { path = "crates/openchuck-import", version = "0.4.0" }
+openchuck-sim = { path = "crates/openchuck-sim", version = "0.4.0" }
+openchuck-project = { path = "crates/openchuck-project", version = "0.4.0" }
+openchuck-app = { path = "crates/openchuck-app", version = "0.4.0" }
+openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.4.0" }
+openchuck-testkit = { path = "crates/openchuck-testkit", version = "0.4.0" }
 
 # Third-party crates, exact pins (work breakdown slice 0 item 12).
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -60,6 +60,8 @@ uuid = { version = "=1.28.0", features = ["v4"] }
 clap = { version = "=4.6.7", features = ["derive"] }
 cargo_metadata = "=0.23.1"
 toml = "=1.1.8"
+# Post templates (decision record 0019); `openchuck-post` only. `fuel` needs `multi_template`.
+minijinja = { version = "=3.0.0", default-features = false, features = ["builtins", "macros", "multi_template", "debug", "fuel", "serde"] }
 stl_io = "=0.11.0"
 # 2D offsets on the unrolled development (decision record 0016; i_overlay is
 # declared with its first use, slice 12).
