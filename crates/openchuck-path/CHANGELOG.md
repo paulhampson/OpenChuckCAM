@@ -4,6 +4,8 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Version 0.5.0 with the library family (the B-rep face record in `openchuck-types` is a breaking change, OI-123).
+
 - Slice 11, item 6 (IMP-02, decision 0017): `brep` with `ExactFace` (a `ParametricFace` from a `BrepFace`: closed-form plane, cylinder, cone, sphere and torus, and a clamped rational B-spline evaluator with a damped closest-point solver that survives singular poles, OI-72) and `BrepSurface` (a `SurfaceSource` over the faces of a `BrepModel` or a selection of them; tool drops fall back to the tessellation, OI-81 stays open).
 - Entry moves (decision 0026): `assemble::assemble_with_entry`, `EntryStyle` and `EntryParameters` (plunge, lead, ramp and helix; `EntryParameters::PLUNGE`, `EntryParameters::read`), and the common parameters `entry`, `ramp_angle`, `helix_diameter` and `lead_radius`. `generate` uses them; `assemble` is unchanged and plunges.
 - Slice 5, second part (decision 0018): `helical` (helical finishing, `HelicalFinishing`, `CHORD_FACTOR` 0.4) and `Registry::builtin` holding it; `cutter::grow_profile` and `cutter::cutter_contact` for stock to leave; a pruned drop-cutter (`MeshSurface` finds the highest point on the axis line and walks the bounding volume hierarchy with a height bound); `unroll` (regions on the development, `Region::validate`, `ValidRegion::offset` and `passes`, `chord_points`, `PeriodicBand`); the port gains `tessellation`, `position: Option<FacePosition>` on `SurfacePoint` and `RayHit`, and the `ParametricFace` trait; `PathError::Region`. New dependency `cavalier_contours`.
