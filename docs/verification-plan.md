@@ -78,6 +78,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | UI-09, NFR-04 | P1 | T | System | UI thread stays responsive during generation and simulation (measured frame gaps); progress is reported; cancel stops work; multi-core speed-up measured |
 | SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected |
 | SET-02, SET-04, SET-07 | P2 | T | Integration | Y-axis rotary, custom stock and multiple setups produce correct coordinate systems and starting stock |
+| SET-08 | P2 | T | Unit | A rotary acceleration limit validates and persists; an unset value means no limit; time estimates use it once SIM-08 exists |
 | TL-01, TL-04, TL-05, TL-06 | P1 | T | Unit | Tool library round-trips in its human-readable format; parameters, cutting data and controller mappings validate |
 | TL-02 | P1 | T | Unit | Flat, ball, bull-nose and tapered ball tools give the expected profile geometry |
 | TL-03 | P1 | T | Unit, integration | V-bit, chamfer, drill and custom-profile tools give the expected revolved profile; a custom profile imported from a text file or drawn in the UI is validated and invalid profiles are rejected; the same profile drives tool-centre solving, the independent gouge checker and the simulation sweep and agrees with an equivalent standard tool (SP-13) |
@@ -98,6 +99,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | OP-16 | P1 | I, T | Design, unit | Design review of the strategy interface; a stub strategy plugs in with no change to other crates, and its parameter schema renders in the panel with no UI change |
 | OP-17 | P2 | T, A | System | Adaptive roughing keeps engagement within limits, measured in simulation |
 | OP-18 | P3 | T | Integration | Feature recognition finds known holes, grooves and cylinders in corpus models, when built |
+| OP-19 | P2 | T, A | System | Geodesic-parallel and spiral patterns keep scallop height within the set limit on surfaces with known geodesics (cylinder, cone), measured in simulation, when built |
 | SIM-01, SIM-02, SIM-04 | P1 | D, T | System | Path display, rapid versus cutting distinction, tool pose with correct A rotation and playback controls checked in the demo script and by pose tests |
 | SIM-03, SIM-06, SIM-07 | P1 | T, A | System | Stock update, including A rotation, matches an independent reference; carry-over between operations; resolution setting changes accuracy as documented |
 | SIM-05 | P1 | T | System | Remaining material and overcut colouring and worst values match reference results on analytic cases |
