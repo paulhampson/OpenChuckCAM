@@ -6,11 +6,14 @@
 //! report follows when asked for, and posting when a post is chosen (slice 6).
 
 use std::path::Path;
+use std::sync::Arc;
 
 use openchuck_path::{Registry, StockModel};
 use openchuck_project::Project;
 use openchuck_types::ir::Toolpath;
 use openchuck_types::job::JobContext;
+
+use openchuck_project::id::OperationId;
 
 use crate::AppError;
 use crate::simulation::{SetupState, SimulationReport};
@@ -43,6 +46,7 @@ fn setup_parts<'a>(
         .ok_or_else(|| fail("the project has no machine profile"))?;
     Ok((setup, stock, machine))
 }
+use crate::cache::PipelineCache;
 
 /// The result of regenerating a project.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -57,6 +61,11 @@ pub struct Regeneration {
     pub reports: Vec<crate::posting::GcodeReport>,
     /// The material removal simulation, when one was asked for (slice 7).
     pub simulation: Option<crate::simulation::SimulationReport>,
+    /// Operations whose toolpath was generated in this run.
+    pub generated: Vec<OperationId>,
+    /// Operations whose toolpath came from the cache because nothing it
+    /// depends on, including the operations before it, changed.
+    pub reused: Vec<OperationId>,
 }
 
 /// Regenerates every enabled operation of `project` (in the folder
@@ -71,6 +80,7 @@ pub(crate) fn regenerate(
     registry: &Registry,
     post: Option<&crate::posting::PostSelection>,
     simulate: bool,
+    cache: &PipelineCache,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
@@ -81,19 +91,54 @@ pub(crate) fn regenerate(
     let settings = project.simulation();
     let mut regeneration = Regeneration::default();
     let mut setups: Vec<SetupState> = Vec::new();
+    // Disabled operations keep their cached results, so enabling one again
+    // can reuse them; only removed operations are dropped.
+    let ids: Vec<OperationId> = project.operations().iter().map(|o| o.id).collect();
+    cache.retain_only(&ids);
+    // With caching off, none of the hashing and keying is done.
+    let caching = cache.versions() != 0;
+    let files = if caching {
+        crate::cache::ModelFiles::read(location, project)
+    } else {
+        crate::cache::ModelFiles::default()
+    };
+    let mut previous = None;
     for (i, operation) in operations.iter().enumerate() {
+        context.check_cancelled()?;
         let carried = setups
             .iter()
             .find(|s| s.id == operation.setup)
             .map(|s| s.stock() as &dyn StockModel);
-        let path = crate::operation::generate_operation_on(
-            location,
-            project,
-            operation.id,
-            registry,
-            carried,
-            context,
-        )?;
+        // The key chains from the operations before, which fixes the stock
+        // they leave (SIM-06), so a hit is valid on carried stock too.
+        let key = if caching {
+            Some(crate::cache::operation_key(
+                project, operation, previous, &files,
+            )?)
+        } else {
+            None
+        };
+        let path = if let Some(hit) = key.and_then(|k| cache.get(operation.id, k)) {
+            regeneration.reused.push(operation.id);
+            hit
+        } else {
+            let made = Arc::new(crate::operation::generate_operation_on(
+                location,
+                project,
+                operation.id,
+                registry,
+                carried,
+                context,
+            )?);
+            if let Some(key) = key
+                && files.unchanged(location, project, operation)
+            {
+                cache.put(operation.id, key, Arc::clone(&made));
+            }
+            regeneration.generated.push(operation.id);
+            made
+        };
+        previous = key;
         for note in &path.notes {
             regeneration
                 .notes
@@ -130,7 +175,7 @@ pub(crate) fn regenerate(
                 }
             }
         }
-        regeneration.toolpath.groups.push(path.group);
+        regeneration.toolpath.groups.push(path.group.clone());
         context.report("regenerate", i as u64 + 1, Some(total));
     }
     if simulate {
@@ -151,6 +196,14 @@ pub(crate) fn regenerate(
             report.setups.push(state.finish(mesh.as_ref(), settings)?);
         }
         regeneration.simulation = Some(report);
+    }
+    // Every operation was keyed and made from the part files as they were at
+    // the start. A file that changed since would leave results from two
+    // snapshots side by side, so the run is refused instead.
+    if caching && !files.parts_unchanged(location, project) {
+        return Err(AppError::Cache(
+            "a model file changed while regenerating; regenerate again".to_owned(),
+        ));
     }
     regeneration.toolpath.validate()?;
     if let Some(selection) = post {

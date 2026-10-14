@@ -69,6 +69,9 @@ pub enum AppError {
     /// An engine library reported an error.
     #[error(transparent)]
     Engine(#[from] openchuck_types::Error),
+    /// The pipeline cache could not key an operation's inputs.
+    #[error("pipeline cache: {0}")]
+    Cache(String),
     /// The job hit an internal error and stopped. This is a defect; please report it.
     #[error("the job '{0}' stopped on an internal error; please report this as a defect")]
     JobPanicked(String),
