@@ -4,7 +4,7 @@ This is the hands-on part of spike SP-12, under the bring-up exception in verifi
 
 ## Before you start
 
-- [ ] The Z1 is on firmware 1.1.2 (the source this spike read). Note the version you have: ________
+- [ ] The Z1 is on firmware 1.1.2 (the source this spike read). Note the version you have: 1.1.2
 - [ ] The 4th-axis module is fitted and enabled the way Makera's instructions say, with the jaws empty.
 - [ ] **No tool in the spindle.** The program has no tool change and never starts the spindle.
 - [ ] No material in the chuck, nothing loose on the bed, the enclosure closed, your hand near the stop button for the whole run.
@@ -19,22 +19,24 @@ The program pauses with `M600` before each step; resume from Makera Studio (or t
 
 | Step | What happens | Expected (from Makera's profiles and firmware source) | What you saw |
 | --- | --- | --- | --- |
-| 0 | `G92.4 A0 S0`, then A0, X0 Y0, Z30 | No surprise moves; DRO shows X0 Y0 Z30 A0 | |
-| 1 | `G1 A90` | DRO A90. The mark on top moves **toward the front (toward you, -Y)** and ends facing you. Seen from the right-hand end of the axis, the chuck turns counter-clockwise. | Toward the front / toward the back: |
-| 1 | `G1 A0` | Back to A0 | |
-| 2 | `G1 A370 F1200` | One turn plus 10 degrees, the same way as step 1; DRO A370 | |
-| 2 | `G92.4 A0 S0` | **No motion**; DRO changes to A10 | DRO: |
+| 0 | `G92.4 A0 S0`, then A0, X0 Y0, Z30 | No surprise moves; DRO shows X0 Y0 Z30 A0 | As expected. DRO matches. |
+| 1 | `G1 A90` | DRO A90. The mark on top moves **toward the front (toward you, -Y)** and ends facing you. Seen from the right-hand end of the axis, the chuck turns counter-clockwise. | Toward the front |
+| 1 | `G1 A0` | Back to A0 | As expected, mark on top |
+| 2 | `G1 A370 F1200` | One turn plus 10 degrees, the same way as step 1; DRO A370 | As expected |
+| 2 | `G92.4 A0 S0` | **No motion**; DRO changes to A10 | DRO: A10 |
 | 2 | `G1 A0` | Turns **10 degrees back**, not 370 | Degrees turned: |
-| 2 | `G1 A-370 F1200`, `G92.4 A0 S0` | Turns the other way; no motion at G92.4; DRO A-10 | DRO: |
-| 2 | `G1 A0` | Turns 10 degrees forward | |
-| T3a | `G1 X60 F300` | **12.0 s** | s |
-| T3b | `G1 A360 F600` (A only, radius 30) | **21.8 s** on the Z1 rule; 36.0 s if it behaved like LinuxCNC | s |
-| T3c | `G1 X20 A540 F600` (X and A, A larger) | **10.9 s** on the Z1 rule; 2.0 s if it behaved like LinuxCNC | s |
-| T3d | `G1 X60 A570 F300` (X and A, X larger) | **12.0 s** on either rule | s |
-| 3 | `G92.4 A0 S0` | No motion; DRO A210 | DRO: |
-| T4 | `G1 A570 F600` at Z60 (A only, radius 60) | **36.0 s** on either rule (the firmware stops scaling past a 360 mm "perimeter") | s, or skipped |
-| T5 | `G93`, then `G1 X10 F6` | **100 s (a crawl) if G93 is ignored**, which the firmware source says it is; 10.0 s if G93 works. If it is still crawling after 20 s, feed hold: the answer is clear. | s |
-| End | `G94`, X0, unwind, retract, `G28`, `M2` | A unwinds to A0 by at most one turn; clearance move; program ends | |
+| 2 | `G1 A-370 F1200`, `G92.4 A0 S0` | Turns the other way; no motion at G92.4; DRO A-10 | DRO: A-10.001, mark matches |
+| 2 | `G1 A0` | Turns 10 degrees forward | As expected |
+| T3a | `G1 X60 F300` | **12.0 s** | 12 s |
+| T3b | `G1 A360 F600` (A only, radius 30) | **21.8 s** on the Z1 rule; 36.0 s if it behaved like LinuxCNC | 21.6 s |
+| T3c | `G1 X20 A540 F600` (X and A, A larger) | **10.9 s** on the Z1 rule; 2.0 s if it behaved like LinuxCNC | 10.9 s |
+| T3d | `G1 X60 A570 F300` (X and A, X larger) | **12.0 s** on either rule | 12 s |
+| 3 | `G92.4 A0 S0` | No motion; DRO A210 | DRO: A210 |
+| T4 | `G1 A570 F600` at Z60 (A only, radius 60) | **36.0 s** on either rule (the firmware stops scaling past a 360 mm "perimeter") | 36 s |
+| T5 | `G93`, then `G1 X10 F6` | **100 s (a crawl) if G93 is ignored**, which the firmware source says it is; 10.0 s if G93 works. If it is still crawling after 20 s, feed hold: the answer is clear. | 100 s, run to the end (no feed hold) |
+| End | `G94`, X0, unwind, retract, `G28`, `M2` | A unwinds to A0 by at most one turn; clearance move; program ends | As expected |
+
+Result: no alarm, warning or message was shown, the controller accepted every line, and nothing moved in a way the table does not predict (run on firmware 1.1.2, 14 Oct 2026).
 
 Also note: any alarm, warning or message the controller showed, and which line it was on; whether the controller accepted every line; anything that moved in a way the table does not predict.
 

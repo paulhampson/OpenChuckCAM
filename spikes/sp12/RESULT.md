@@ -1,9 +1,9 @@
 # SP-12 result: Makera Z1 rotary conventions and G93 (desk part)
 
 Branch `spike/sp-12-z1-conventions`. Throwaway work in `spikes/sp12/`; not for merging into the product (spike rules).
-Requirements touched: GC-02, GC-04, GC-09, GC-10, OP-13, OP-15, SET-01, SET-05, SET-06, NFR-12. Decision record 0007 (proposed) carries the decisions; open items OI-03, OI-04 and OI-37 to OI-41.
+Requirements touched: GC-02, GC-04, GC-09, GC-10, OP-13, OP-15, SET-01, SET-05, SET-06, NFR-12. Decision record 0007 (accepted) carries the decisions; open items OI-03, OI-04 and OI-37 are closed, OI-38 to OI-40 were settled earlier, OI-41 and OI-60 stay open.
 
-**State: desk part done, machine part outstanding.** The pass criterion asks for each convention to be marked *confirmed*. Nothing below is confirmed on a Z1 yet: values are *derived* from Makera's own profiles and firmware source, and the attended air cut in `AIR-CUT.md` is what confirms or refutes them. It needs you and the machine.
+**State: done (14 Oct 2026).** The attended air cut in `AIR-CUT.md` was run on a Z1 with firmware 1.1.2. It confirmed the direction, the wrap and unwind, the feed rule and the G93 answer; none was refuted. The tool change and the machine Z of the axis are not covered by an air cut (OI-41, OI-60). Decision record 0007 is accepted with these results.
 
 ## Question
 
@@ -23,22 +23,39 @@ Not reached: `wiki.makera.com` (including its supported-codes page) is blocked b
 
 | Convention | Value for the Z1 | Evidence | State |
 | --- | --- | --- | --- |
-| Axis letter | **A** | Fusion: rotary part named A, coordinate 0; FreeCAD: axis "A"; firmware: `A_AXIS` | derived; air cut step 1 |
+| Axis letter | **A** | Fusion: rotary part named A, coordinate 0; FreeCAD: axis "A"; firmware: `A_AXIS` | **confirmed** (air cut step 1) |
 | Units | Degrees | Fusion `units.angle = degrees`; firmware divides A distance by 360 | derived |
 | Axis orientation | Parallel to machine X, mounted on the Y table | Fusion: `axis_of_rotation.direction = [1, 0, 0]`, parent Y; FreeCAD: joint `[1, 0, 0]`, parent Y, `table_rotary` | derived |
-| Direction | **Right-handed about +X** (`ASense::Positive`): positive A carries the top of the part toward the front (-Y); seen from the +X end, counter-clockwise | Fusion: `conventions.rotation = right-handed`, rotary `reversed = false`; FreeCAD: no reversal. The firmware's direction comes from factory config not in the public source | derived, **unconfirmed**; air cut step 1 |
-| Rotary offset | Programs run in G54 with **Y0 Z0 on the A axis** | Fusion: axis point (14, 0, 0) in the setup frame; the firmware's feed rule takes the radius from WCS Y and Z (below), which is only right with this origin | derived; air cut set-up |
+| Direction | **Right-handed about +X** (`ASense::Positive`): positive A carries the top of the part toward the front (-Y); seen from the +X end, counter-clockwise | Fusion: `conventions.rotation = right-handed`, rotary `reversed = false`; FreeCAD: no reversal. The firmware's direction comes from factory config not in the public source | **confirmed** (air cut step 1: the top moved toward the front at A +90) |
+| Rotary offset | Programs run in G54 with **Y0 Z0 on the A axis** | Fusion: axis point (14, 0, 0) in the setup frame; the firmware's feed rule takes the radius from WCS Y and Z (below), which is only right with this origin | derived; supported by the air cut (the measured times match only with Y0 Z0 on the axis); machine Z open (OI-60) |
 | Range | **Continuous**: no A soft limit (soft limits cover X, Y, Z only); with the module enabled the firmware lowers Y's soft minimum to -160 | Firmware `append_milestone`; Fusion: no A limits, `reset = never`; FreeCAD: ±1e7, `wrap_strategy = unwound` | derived from source |
-| Wrap and unwind | `G92.4 A0 S0` renumbers A by whole turns with **no motion**, keeping the sign (A370 → A10, A-370 → A-10, exactly ±360 unchanged). Makera's Fusion post uses `G92.4 A<a> R0` before indexed rotations, which **moves** A (by the raw difference of the two angles mod 360, not the shortest way) and rewrites G54 to EEPROM when G54 is active: our post should not use the R form | Firmware `G92.4` handler; `Carvera.cps` `positionABC` | derived; air cut step 2 |
-| Feed mode | **G94 only**, with a Makera-specific rule (next section) | Firmware; Makera's Fusion post uses `FEED_DPM` with `DPM_COMBINATION`, never G93 | derived; air cut T3, T4 |
-| **G93** | **Not supported.** The stock Z1 firmware (and the stock Carvera firmware) have no case for G93 or G94: both are **silently ignored**, so after `G93` an inverse-time F is read as mm/min. The community firmware added G93; stock firmware is the reference. | Firmware `Robot::on_gcode_received`; community firmware `Robot.cpp` | derived; air cut T5 |
+| Wrap and unwind | `G92.4 A0 S0` renumbers A by whole turns with **no motion**, keeping the sign (A370 → A10, A-370 → A-10, exactly ±360 unchanged). Makera's Fusion post uses `G92.4 A<a> R0` before indexed rotations, which **moves** A (by the raw difference of the two angles mod 360, not the shortest way) and rewrites G54 to EEPROM when G54 is active: our post should not use the R form | Firmware `G92.4` handler; `Carvera.cps` `positionABC` | **confirmed** (air cut step 2: A370 to A10, A-370 to A-10.001, A570 to A210, no motion at `G92.4`) |
+| Feed mode | **G94 only**, with a Makera-specific rule (next section) | Firmware; Makera's Fusion post uses `FEED_DPM` with `DPM_COMBINATION`, never G93 | **confirmed** (air cut T3, T4) |
+| **G93** | **Not supported.** The stock Z1 firmware (and the stock Carvera firmware) have no case for G93 or G94: both are **silently ignored**, so after `G93` an inverse-time F is read as mm/min. The community firmware added G93; stock firmware is the reference. | Firmware `Robot::on_gcode_received`; community firmware `Robot.cpp` | **confirmed**: G93 ignored (air cut T5: 100 s) |
 | Header | `G90 G21 G17` (G94 is harmless but ignored), `G54` | Fusion `onOpen`; Makera Studio exports start `G90 G21` after an optional `;@MKR|` block that Studio uses for its preview | derived |
-| Tool change | `M5`, then `T<n> M6` (stock Z1: any tool number; the machine measures tool length itself; no `G43`) | `Carvera.cps` "Stock Air/Z1" option; FreeCAD post: no G43, `M05` before tool change; z1-macros: `T1 M6` | derived; **not exercised by the air cut** (no tool) |
+| Tool change | `M5`, then `T<n> M6` (stock Z1: any tool number; the machine measures tool length itself; no `G43`) | `Carvera.cps` "Stock Air/Z1" option; FreeCAD post: no G43, `M05` before tool change; z1-macros: `T1 M6` | derived; **not exercised by the air cut** (no tool, OI-41) |
 | Footer | `M5`, `G53 G0 Z-3` (machine Z top is 0), `G28` (clearance position), `M2`. Use **M2, not M30**: outside grbl mode the firmware treats M30 as "delete file" (a no-op without a file name) and does not end the program | Firmware `M30`/`M2` handling; Makera Studio exports end `G28`/`M02` | derived |
 | Coolant | `M7` air on, `M9` off | Fusion post (`M400` first), Studio exports | derived |
 | Comments and lines | A `(` or `;` drops **the rest of the line**, so comments go on their own line or at the end; each G or M word starts a new command (`G93 G1 X10 F6` is two commands); no line numbers | Firmware `GcodeDispatch` | derived from source |
 | Number format | 3 decimals for X, Y, Z and A (Makera's Fusion post); the firmware parses single-precision floats, so keep A small by unwinding | `Carvera.cps`; firmware | derived |
 | Limits | Linear 4000 mm/min, A 21600 deg/min (60 rpm), spindle 13000 rpm; travel X -10..200, Y -200..10, Z 0..100 | Fusion Z1 file. FreeCAD differs (X, Y 0..200); a third-party script cites 1200 mm/min "from Studio's machine table" | **sources disagree** (OI-39) |
+
+## Air cut results (14 Oct 2026)
+
+Firmware 1.1.2, 4th-axis module fitted, no tool, no material, G54 with Y0 Z0 on the A axis, stopwatch times. No alarm, warning or message; the controller accepted every line; nothing moved unexpectedly.
+
+| Step | Expected | Measured | Result |
+| --- | --- | --- | --- |
+| `G1 A90` | Top moves toward the front (-Y) | Toward the front | Direction confirmed |
+| A370, `G92.4 A0 S0`, A0 | DRO A10, no motion, 10 degrees back | As expected | Confirmed |
+| A-370, `G92.4 A0 S0`, A0 | DRO A-10, no motion, 10 degrees forward | DRO A-10.001, as expected | Confirmed (0.001 degree float error) |
+| `G92.4 A0 S0` at A570 | DRO A210 | A210 | Confirmed |
+| T3a `G1 X60 F300` | 12.0 s | 12 s | Confirmed |
+| T3b A360, r = 30 | 21.8 s (LinuxCNC 36.0 s) | 21.6 s | Z1 rule (-1.1 %) |
+| T3c X20 A540 | 10.9 s (LinuxCNC 2.0 s) | 10.9 s | Z1 rule |
+| T3d X60 A570 | 12.0 s | 12 s | Confirmed |
+| T4 A570, r = 60 | 36.0 s | 36 s | 360 mm perimeter cap confirmed |
+| T5 `G93`, `G1 X10 F6` | 100 s if ignored (10.0 s if it works) | 100 s | G93 ignored |
 
 ## The Z1 feed rule
 
@@ -84,12 +101,11 @@ This confirms the LinuxCNC half of OI-04 (how LinuxCNC applies F to mixed XYZ an
 
 ## Fallback status
 
-Not triggered. If the air cut refutes the derived direction or feed rule, the measured behaviour replaces the derived value and stays flagged until a second run agrees.
+Not triggered: the air cut refuted nothing.
 
 ## Limits of this spike
 
-- Nothing is confirmed on a Z1 yet (the air cut is outstanding).
-- The A direction depends on factory configuration that is not in the public firmware source; only the air cut settles it.
-- The feed rule is read from the 1.1.2 source; a later firmware may change it. Record the firmware version with every trial.
+- The air cut ran once on one Z1 with firmware 1.1.2; the feed rule and the G93 answer are measured on that version only, and a later firmware may change them. Record the firmware version with every trial.
+- The times are stopwatch times, good to about 0.3 s; acceleration was not separated out.
 - The tool change is not exercised (no tool in an air cut); the first attended cut with a tool, or a separate attended tool-change test, covers it.
 - The Makera wiki was not reachable from the spike environment.
