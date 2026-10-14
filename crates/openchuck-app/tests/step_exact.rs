@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Exact evaluation against the kernel (IMP-02; decision records 0017 and 0026): the SP-9 comparison, kept
+//! Exact evaluation against the kernel (IMP-02; decision records 0017 and 0027): the SP-9 comparison, kept
 //! as a regression test. Each STEP fixture is imported, its faces become the library's pure-Rust
 //! `ExactFace`s, and point, normal, closest point, ray hit and trim test are compared with what OpenCASCADE
 //! answers for the same face. Needs the kernel: `--features kernel-tests`.

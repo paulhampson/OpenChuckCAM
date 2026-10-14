@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Long-running tests (AGENTS.md, "Long-running tests"). A test that takes more
+# than about a minute uninstrumented is listed in both profiles below, as the
+# exclusion in `coverage` and the selection in `long`; the two lists must match.
+#
+# - The pull request Tests job runs everything (the default profile).
+# - The Coverage trend job uses `--profile coverage`, which leaves the long tests
+#   out: instrumentation slows the hot loops 6 to 11 times and a single test
+#   cannot be split across cores.
+# - The nightly run uses `--profile long`, which runs only the long tests,
+#   uninstrumented.
+#
+# Uninstrumented times when listed: 368 s, 252 s, 137 s, 122 s and 121 s.
+
+[profile.coverage]
+default-filter = '''not (
+    test(~finest_setting_is_within)
+  | test(~simulation_is_identical_at_1_2_and_n_threads)
+  | test(~finer_resolution_lowers_the_error)
+  | test(~a_gouging_path_is_reported_as_overcut)
+  | test(~req_op_12_the_independent_checker_finds_no_gouge)
+)'''
+
+[profile.long]
+default-filter = '''
+    test(~finest_setting_is_within)
+  | test(~simulation_is_identical_at_1_2_and_n_threads)
+  | test(~finer_resolution_lowers_the_error)
+  | test(~a_gouging_path_is_reported_as_overcut)
+  | test(~req_op_12_the_independent_checker_finds_no_gouge)
+'''

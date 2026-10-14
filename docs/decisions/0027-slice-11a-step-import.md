@@ -1,10 +1,10 @@
-# 0026: Slice 11a design refinement: STEP import, B-rep data and the exact `SurfaceSource`
+# 0027: Slice 11a design refinement: STEP import, B-rep data and the exact `SurfaceSource`
 
 - **Status:** proposed (14 Oct 2026), built on branch `claude/busy-lovelace-khabqi`. It settles how work breakdown slice 11 items 1 to 4, 6, 8 and 9 are built, inside the route already accepted in [decision 0003](0003-step-kernel-route.md) and the data shape accepted in [decision 0017](0017-sp-9-exact-surfaces.md). Where this record relies on those it is bound by them; the choices that are new (items 1 to 9 below) wait for the project owner's agreement.
 - **Date:** 14 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-20, OI-27 and OI-72 are closed by this change; OI-117 to OI-121 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-20, OI-27 and OI-72 are closed by this change; OI-118 to OI-123 are new.
 
-Numbering: records 0001 to 0025 and OI-01 to OI-116 are on `main`; no unmerged branch claims 0026 or OI-117 and above.
+Numbering: records 0001 to 0025 and OI-01 to OI-116 are on `main`; no unmerged branch claims 0027 or OI-118 and above.
 
 ## Context
 
@@ -38,9 +38,10 @@ Slice 11 is "STEP import and B-rep selection" (IMP-02, IMP-06, NFR-13; extends U
 
 ## Open items
 
-- **OI-117** Ship the worker with the application: the nightly build and release archives build only `openchuck-cli` and `openchuck-ui`; they need `openchuck-step-worker` beside them (built with `--features kernel`), the OpenCASCADE licence notice (OI-29) and a cold-build cache.
-- **OI-118** Slice 11b: items 5 and 7 and the app's use of a B-rep (the app still answers "not supported" for a STEP model after import, `openchuck-app::model`), the project's STEP selections, and the review checklist ticks that need them.
-- **OI-119** Untested paths in the converter: a periodic B-spline face read from a file (the `Segment` and shift path has no fixture; the vases are surfaces of revolution), offset surfaces, faces of other CAD tools (with OI-25), a trim loop crossing a periodic seam.
-- **OI-120** Size and speed: the 300-solid, 7,800-face SP-1 file was not re-measured through the worker; JSON is verbose (the answer is about 9 times the STEP file for the filleted box at the default tolerance, 590 KB for 63 KB); the 120 s timeout and the single-threaded mesher are guesses; progress inside a long import is not reported.
-- **OI-121** The importer trusts the file's unit name through a table of 17 names; a unit outside it is converted by the reader but cannot be overridden.
+- **OI-118** Ship the worker with the application: the nightly build and release archives build only `openchuck-cli` and `openchuck-ui`; they need `openchuck-step-worker` beside them (built with `--features kernel`), the OpenCASCADE licence notice (OI-29) and a cold-build cache.
+- **OI-119** Slice 11b: items 5 and 7 and the app's use of a B-rep (the app still answers "not supported" for a STEP model after import, `openchuck-app::model`), the project's STEP selections, and the review checklist ticks that need them.
+- **OI-120** Untested paths in the converter: a periodic B-spline face read from a file (the `Segment` and shift path has no fixture; the vases are surfaces of revolution), offset surfaces, faces of other CAD tools (with OI-25), a trim loop crossing a periodic seam.
+- **OI-121** Size and speed: the 300-solid, 7,800-face SP-1 file was not re-measured through the worker; JSON is verbose (the answer is about 9 times the STEP file for the filleted box at the default tolerance, 590 KB for 63 KB); the 120 s timeout and the single-threaded mesher are guesses; progress inside a long import is not reported.
+- **OI-122** The importer trusts the file's unit name through a table of 17 names; a unit outside it is converted by the reader but cannot be overridden.
+- **OI-123** `cargo-semver-checks` fails `openchuck-types` on the eight fields added to `BrepFace`, `BrepEdge` and `BrepModel`; the owner chooses between a lockstep 0.5.0 bump and parallel types.
 - Progressed, not closed: OI-19 (the FFI exists; the sanitizer job does not), OI-28 (golden tests on kernel numbers: none yet; the comparison test uses tolerances), OI-73, OI-74, OI-75 (evaluators were run on Linux only), OI-76 (default settings measured above), OI-81.

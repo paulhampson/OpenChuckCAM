@@ -1,10 +1,10 @@
 # OpenChuckCAM – Phase 1 Work Breakdown Structure
 
-Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2026 (repository structure, scored dependencies, independent kinematic oracle, traceability), the Software Verification Plan and the Initial Requirements (crates named `openchuck-*`). It covers all 79 P1 requirements (TL-03 and GC-11 moved to P1) in 21 vertical slices (0–20), preceded by 13 timeboxed spikes. The order follows the architecture's build order: guardrails, spikes, a thin P1 slice (STL, project file, one wrap-family strategy, simulator deviation, both posts, golden files, viewport), then P1 breadth.
+Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2026 (repository structure, scored dependencies, independent kinematic oracle, traceability), the Software Verification Plan and the Initial Requirements (crates named `openchuck-*`). It covers all 81 P1 requirements (TL-03 and GC-11 moved to P1; TL-11 and GC-14 added by decisions 0014 and 0020) in 21 vertical slices (0–20), preceded by 13 timeboxed spikes. The order follows the architecture's build order: guardrails, spikes, a thin P1 slice (STL, project file, one wrap-family strategy, simulator deviation, both posts, golden files, viewport), then P1 breadth.
 
 ## P1 assessment
 
-79 of 122 requirements are P1: IMP 6, UI 9, SET 4, TL 7, OP 16, SIM 7, GC 11, PRJ 6, NFR 13. The other 43 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition.
+81 of 124 requirements are P1: IMP 6, UI 9, SET 4, TL 8, OP 16, SIM 7, GC 12, PRJ 6, NFR 13 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 43 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition.
 
 Findings, after reconciling with the architecture:
 
@@ -36,7 +36,7 @@ The crate survey compiled and benchmarked nothing, so each risky layer is proved
 
 | Spike | Question | Throwaway build | Pass criteria | If it fails | Run before | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| SP-1 STEP kernel (5 d) | Does the `opencascade` crate build on all three platforms and expose topology, surface evaluation and tessellation control? | STEP to B-rep walk, deterministic face and edge numbering, tessellation at two tolerances. | Builds in CI on Windows, macOS and Linux. Faces, edges and surface types readable. Tolerance controls triangle count. Same file gives identical IDs twice. A malformed file returns an error. | Thin in-house wrapper over the C++ kernel, cadrum as a justified risk under NFR-14, or brepkit-io (60; pure Rust, AGPL-3.0-only, 0.2 years old) as a spike candidate only. | Slices 0 and 11 | Decided: [0003](decisions/0003-step-kernel-route.md) accepted (option B, process isolation). Branch `spike/sp-1-step-kernel` has no RESULT.md; the record is the write-up. Built in slice 11a ([0026](decisions/0026-slice-11a-step-import.md), proposed); OI-20 and OI-27 closed there; OI-25 and OI-26 still open. |
+| SP-1 STEP kernel (5 d) | Does the `opencascade` crate build on all three platforms and expose topology, surface evaluation and tessellation control? | STEP to B-rep walk, deterministic face and edge numbering, tessellation at two tolerances. | Builds in CI on Windows, macOS and Linux. Faces, edges and surface types readable. Tolerance controls triangle count. Same file gives identical IDs twice. A malformed file returns an error. | Thin in-house wrapper over the C++ kernel, cadrum as a justified risk under NFR-14, or brepkit-io (60; pure Rust, AGPL-3.0-only, 0.2 years old) as a spike candidate only. | Slices 0 and 11 | Decided: [0003](decisions/0003-step-kernel-route.md) accepted (option B, process isolation). Branch `spike/sp-1-step-kernel` has no RESULT.md; the record is the write-up. Built in slice 11a ([0027](decisions/0027-slice-11a-step-import.md), proposed); OI-20 and OI-27 closed there; OI-25 and OI-26 still open. |
 | SP-2 Viewport (3 d) | Does egui with `egui_wgpu` hold 30 fps on 1M triangles on all three platforms, with native graphics? | Window, wgpu mesh draw, orbit, one polyline layer, CPU BVH pick. Combine with SP-1 output for STEP to orbitable window. | 30 fps or better on the reference machine at 1M triangles. Builds on three platforms. Pick within budget. | Tauri with a JavaScript viewer (replaces `openchuck-viewport`) or iced. | Slice 8 | Done: [0002](decisions/0002-sp-2-viewport-spike.md) accepted 14 Oct 2026, keep egui and wgpu (OI-11 closed). NFR-03 measured on 14 Oct 2026 on a Ryzen 5 5600X and RTX 2070 Super (Windows 11): p95 0.69 ms, 0.93 ms with all edges, against 33 ms (OI-09 closed by the owner on that margin; integrated graphics and macOS not run). Builds on Linux and Windows, CI on all three (OI-10 closed). Still open: OI-12 (pick budget), OI-13 (edges), OI-14 (combine with SP-1). `spike/sp-2-viewport` has RESULT.md. |
 | SP-3 Wrapped path to G-code (4 d) | Does a wrapped engraving path on a cylinder become correct A-word G-code that replays in the LinuxCNC simulator? | Fixed path to IR to hard-coded post to G-code; read back with the SP-5 reader; run in LinuxCNC. | Reached positions match the IR within tolerance and agree with the independent kinematic oracle. A wrap and unwinding behave. Compensated feed correct at the contact point. | Revise IR fields and A conventions before the IR is frozen. | Slices 0, 5, 6 | Result accepted: [0001](decisions/0001-sp3-wrapped-path-result.md), backed by the LinuxCNC runs in [0009](decisions/0009-linuxcnc-fixture-checks.md). Items 3, 4 and 6 to 8 stay open (OI-03, OI-04, OI-06 to OI-08). |
 | SP-4 Ray-cast sweep (5 d) | Is continuous 4-axis feasible with `parry3d-f64` ray casts swept around the A axis? | On a real part, step A, cast along X, derive tool centres and tool angle, compare with an analytic surface. | Accuracy within 0.01 mm. Runtime figure for the reference part. Identical results at 1 and N threads. | Own BVH, or analytic-only first for the continuous family. | Slices 5, 13 | Result accepted: [0015](decisions/0015-sp-4-ray-cast-sweep.md); all three criteria met on smooth star-shaped parts; OI-07 closed. `spike/sp-4-ray-cast-sweep` has RESULT.md. OI-64 to OI-67 open for slices 5 and 13. |
@@ -44,7 +44,7 @@ The crate survey compiled and benchmarked nothing, so each risky layer is proved
 | SP-6 Simulation stock (5 d) | Rotary grid, dexel or voxel: which gives the best accuracy, speed and memory on a rotary part? | Three small implementations behind one `StockModel` interface. Also sketch how a collision query would run on each (COL-05, P2), and include a V-bit and a custom-profile tool in the sweep (SP-13). | Removed volume on cylinder, cone and sphere parts within the resolution error. Time and memory within budget at default resolution. Same results at any thread count. Ray and region queries supported. | Pick the next best; the interface keeps the choice swappable. | Slice 7 | Result accepted: [0022](decisions/0022-sp-6-simulation-stock.md) (dexels; voxel fallback; rotary grid overcuts slot walls). Criteria met by dexel and voxel; the budget is agreed, so SP-13 criterion 3 is met (OI-56, OI-99 closed). Slice 7 built on it ([0025](decisions/0025-slice-7-simulation.md), accepted): OI-100 and OI-101 closed, OI-102 still open. `spike/sp-6-simulation-stock` has RESULT.md. |
 | SP-7 2D offsets (2 d) | Do `cavalier_contours` and `i_overlay` give robust offsets and booleans for unrolled regions, with arcs surviving back to A angles and G2 or G3? | Unroll a cylinder with a boundary and holes, offset several passes, convert back. | No failures on a corpus of awkward shapes. Arcs kept or approximated within tolerance. Deterministic. | `clipper2` C++ wrapper, or polylines only. | Slice 5 | Result accepted: [0016](decisions/0016-sp-7-2d-offsets.md) (cavalier_contours for offsets, i_overlay for region booleans; criteria met; G2/G3 not usable with A). Branch `spike/sp-7-2d-offsets` has RESULT.md. Open items OI-68 to OI-70. |
 | SP-8 Project format and order keys (2 d) | Which serialisation format and order-key scheme give clean diffs and merges? | Sample project in two candidate formats, real Git merges (reorder on one branch, edit another operation on the other). | Byte-identical re-save. One-line diff for a one-parameter edit. Conflict-free merges. Load then save is a no-op. | Second candidate format or key scheme. | Slice 1 | Result accepted: [0006](decisions/0006-sp-8-project-format.md) (TOML, per-item order keys). `spike/sp-8-project-format` has RESULT.md. |
-| SP-9 Exact surfaces (3 d) | What does `SurfaceSource` need for B-rep faces, and who evaluates NURBS? | Points, normals and projections on plane, cylinder, cone, sphere and B-spline faces, by analytic Rust code and by the kernel, compared with tessellation. | Exact-versus-mesh differences measured. Decision recorded with a dependency assessment. | P1 uses tessellation for non-analytic faces and says so (the conditional waiver recorded in IMP-02). | Slice 5 | Result written: `spike/sp-9-exact-surfaces` (`spikes/sp9-exact/RESULT.md`); [0017](decisions/0017-sp-9-exact-surfaces.md) accepted 12 Oct 2026 (waiver not applied; OI-73 to OI-76 open, OI-72 closed by [0026](decisions/0026-slice-11a-step-import.md), proposed). |
+| SP-9 Exact surfaces (3 d) | What does `SurfaceSource` need for B-rep faces, and who evaluates NURBS? | Points, normals and projections on plane, cylinder, cone, sphere and B-spline faces, by analytic Rust code and by the kernel, compared with tessellation. | Exact-versus-mesh differences measured. Decision recorded with a dependency assessment. | P1 uses tessellation for non-analytic faces and says so (the conditional waiver recorded in IMP-02). | Slice 5 | Result written: `spike/sp-9-exact-surfaces` (`spikes/sp9-exact/RESULT.md`); [0017](decisions/0017-sp-9-exact-surfaces.md) accepted 12 Oct 2026 (waiver not applied; OI-73 to OI-76 open, OI-72 closed by [0027](decisions/0027-slice-11a-step-import.md), proposed). |
 | SP-10 Template engine (2 d) | Can a candidate engine express rotary posts (modal state, A wrap, line numbers, feed mode, conditionals) deterministically? | The SP-3 post as a template, plus a Makera-style variant. | Both render identically on repeat runs. Errors name the line. Fixed-decimal number formatting checked (minijinja reached 3.0 on 8 Oct 2026, so pin the version). NFR-14 assessment recorded. | Second engine, or a minimal in-house template language. | Slice 6 | Result written: `spike/sp-10-template-engine` (`spikes/sp-10-template-engine/RESULT.md`); criteria met for `minijinja` 3.0.0. Result accepted: [0019](decisions/0019-sp-10-template-engine.md) (13 Oct 2026; OI-38 closed; OI-83 to OI-87 open). |
 | SP-11 Swarf (3 d) | Can ruled-surface detection and flank tool placement be made robust? | Fit rulings on cylinder, cone, helicoid and a near-ruled spline; place a tapered tool; measure flank deviation. | Deviation within tolerance on ruled surfaces. Non-ruled surfaces refused. | Restrict P1 swarf to analytic ruled surfaces (cylinders and cones). | Slice 17 | Result written: `spike/sp-11-swarf` (`spikes/sp-11-swarf/RESULT.md`); both criteria met, fallback not needed. Result accepted: [0021](decisions/0021-sp-11-swarf.md) (14 Oct 2026; OI-94 to OI-96 closed; OI-97 and OI-98 open). |
 | SP-12 Z1 conventions and G93 (2 d plus machine time) | What rotary conventions does the Z1 use, and does it accept inverse-time feed? | Inspect existing Makera machine profiles; write a short test program with A moves; check it by hand and in the LinuxCNC simulator, then run it as an attended air cut with no tool and no material (the bring-up exception in verification policy 6; hands-on with you). | Axis letter, direction, wrap, feed mode, header, footer and tool change documented, each marked confirmed. G93 answer recorded. | Keep unconfirmed values flagged in the profile and post. | Slices 3 and 6 | Done: [0007](decisions/0007-sp-12-z1-conventions.md) accepted 14 Oct 2026 after the air cut on firmware 1.1.2 (direction, wrap, feed rule and G93 confirmed; OI-03, OI-04 and OI-37 closed). Not exercised: the tool change (OI-41); machine Z of the axis still open (OI-60). Z1 values in [0013](decisions/0013-z1-profile-consensus.md) accepted, with four fields confirmed from use. Write-up on `spike/sp-12-z1-conventions` (never merged). |
@@ -80,9 +80,88 @@ These apply to every slice and are not repeated below.
 
 1. Slice 0 (guardrails), then spikes SP-1, SP-2, SP-3, SP-5, SP-8 and SP-12 in parallel.
 2. Thin P1 slice: slices 1 to 9 (project, STL, setup, tools, first strategy, posts, simulator, viewport, display and jobs). SP-9, SP-4, SP-7, SP-10 and SP-13 run before slices 4 to 6; SP-6 before slice 7.
-3. Selection and STEP: slice 10 needs 8; slice 11 needs 10 and SP-1, SP-9.
-4. Strategies: 12 and 13 need 5 and 10; 14 and 15 need 7; 16 needs 10; 17 needs SP-11; 18 needs 10.
-5. Close: slice 19 needs 6; slice 20 needs everything.
+3. Slice 9 needs 8 for its drawing, playback and forms (items 3 to 8); its job manager and operation pipeline (items 1 and 2) need only `openchuck-app` and can start with slice 8.
+4. Selection and STEP: slice 10 needs 8 for picking, hover and the panel (items 1 and 6); its selection model, flood fill, sets, persistence and region constraint (items 2 to 5) are headless and do not wait. Slice 11 needs SP-1 and SP-9 for the importer, topology, tessellation, `SurfaceSource` adapter, corpus and CI (items 1 to 4, 6, 8 and 9); only the viewport drawing and B-rep selection storage (items 5 and 7) need 8 and 10.
+5. Strategies: 12 and 13 need 5 and 10, and 12 needs the shared entry module, built 15 Oct 2026 as a preliminary change ([decision 0026](decisions/0026-entry-moves.md), accepted; `openchuck-path` `assemble::entry`). 14 needs 7 and the entry module, and its containment (item 5) needs 10. 15 needs 7 and the pipeline of slice 9 (items 1 and 2). 16 needs 10 for mesh feature edges and 11 for B-rep edges. 17 needs SP-11 and 11, because swarf is B-rep only ([decision 0021](decisions/0021-sp-11-swarf.md), OI-96). 18 needs 10 and 11, because holes are found from cylindrical faces.
+6. Close: slice 19 needs 6 (its export dialogs need 8); slice 20 needs everything, but its packaging, air-cut procedure and safe-practice checklist (items 8, 10 and 12) can be written earlier.
+7. Which parts of these slices can run in parallel, what each lane needs, and the order for project schema numbers are in "Parallel work" below.
+
+## Parallel work
+
+Slices 0 to 7 are closed. The remaining work splits into the lanes below, each of which can run in its own session once what it needs has merged. A lane may be a whole slice or only the part of a slice that does not wait on another lane; the "Slice order and dependencies" list above gives the reasons. Lane letters are for reference in branch names, pull requests and decision records, not requirement or slice numbers.
+
+| Lane | Slice and scope | Wave 0 | Wave 1 | Wave 2 | Wave 3 |
+| --- | --- | --- | --- | --- | --- |
+| A | 8 viewport and application shell (continue `claude/slice-8-viewport-shell`) | ██ | ██ | | |
+| B | 9 items 1 and 2: job manager, pipeline caches (headless) | ██ | | | |
+| C | 10 items 2 to 5: selection model, flood fill, sets, persistence, region constraint (headless) | ██ | | | |
+| D | 11 items 1 to 4, 6, 8, 9: STEP importer, topology, tessellation, B-rep `SurfaceSource`, corpus, CI | ██ | ██ | ██ | |
+| E | 14 rotary roughing, items 1 to 4, 6, 7 | ██ | ██ | | |
+| F | 19 items 1 to 3 and 5: output grouping, comments, setup sheet | ██ | ██ | | |
+| G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist | ██ | | | |
+| H | 12 baseline finishing | ░░ | ██ | | |
+| I | 13 simultaneous 4-axis finishing | ░░ | ██ | ██ | |
+| J | 15 rest machining and pencil clean-up | ░░ | ██ | | |
+| K | 16 edge following on mesh feature edges | ░░ | ██ | | |
+| L | 14 item 5: containment to selected regions | ░░ | ██ | | |
+| M | 10 items 1 and 6: picking, hover, selection panel | ░░ | ░░ | ██ | |
+| N | 9 items 3 to 8: drawing, playback, forms | ░░ | ░░ | ██ | |
+| O | 11 items 5 and 7: viewport faces and edges, B-rep selection storage | ░░ | ░░ | ██ | |
+| P | 16 edge following on B-rep edges | ░░ | ░░ | ░░ | ██ |
+| Q | 17 swarf | ░░ | ░░ | ░░ | ██ |
+| R | 18 radial drilling | ░░ | ░░ | ░░ | ██ |
+| S | 19 item 4: export dialogs and the tool-number dialog | ░░ | ░░ | ░░ | ██ |
+| T | 20 hardening and first release | | | | ██ |
+
+`██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
+
+| Lane | Needs merged first |
+| --- | --- |
+| A, B, C, D, F, G | Nothing |
+| E | The entry module (decision 0026); item 5 waits for C |
+| H | C and the entry module |
+| I | C |
+| J | E and B |
+| K | C |
+| L | C and E |
+| M | A and C |
+| N | A and B |
+| O | A, C and D |
+| P | D |
+| Q | D (swarf is B-rep only, decision 0021) |
+| R | C and D |
+| S | A and F |
+| T | Everything |
+
+### Project schema ordering
+
+The project folder has one schema number for every file ([decision 0008](decisions/0008-slice-1-project-model.md) item 12), now 5 (`openchuck-project/src/file.rs`, `SCHEMA` and `MIGRATIONS`). A change to what any project file holds takes the next number, adds one migration step and, where the change is not a plain addition, a fixture folder under `crates/openchuck-project/tests/fixtures/`. Two lanes that both need the next number collide on the constant, the migration list, the fixtures and the `schema = N` text in every golden project, so numbers are claimed before they are used.
+
+1. **Claim first.** Before changing the format, add a row to the claims table below in a small documentation pull request (or in your first push, if the lane has none yet), taking the next free number. Check unmerged branches as well as `main`, as for decision and `OI-` numbers. A row is a claim on the number only; it does not say the lane will merge first.
+2. **Merge in claim order where you can.** If a lane with a later number is ready first, it may merge first, and the earlier lane then takes the later number: renumber the constant, the migration step, the fixture folder, the golden projects and the claims row in the same pull request, and say so in the record.
+3. **A format change is a bump, however small.** Slice 7 bumped for a table written only when non-default ([decision 0025](decisions/0025-slice-7-simulation.md) item 5). Operation parameters are a free map (decision 0008 item 6), so a new strategy parameter is not a format change; a new field in a file, a new file kind or a changed meaning is.
+4. **Migrate, never guess.** A migration renames, moves or fills fields from what is there. If a value cannot be inferred, the older file is refused with a message saying what to add, as for schema 3 tool files ([decision 0014](decisions/0014-slice-4-tool-library.md) item 10).
+5. **Rebase before merge.** The lane that merges second merges `main` first, re-runs `cargo test -p openchuck-project` and the fuzz target for project files, and checks the golden projects.
+6. **Nothing is released yet,** so a claimed number can be renumbered freely until the first release (slice 20). After it, numbers are fixed.
+
+| Schema | Lane | Change | Status |
+| --- | --- | --- | --- |
+| 5 | Slice 7 | Simulation settings in `project.toml` | Merged |
+| 6 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Expected, not yet claimed |
+| 7 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
+| 8 | F or S (slice 19) | Export grouping and the confirmed tool numbers' presentation, if they are stored in the project (GC-05, GC-14) | Expected only if stored; decide in design refinement |
+
+The lanes not listed (A, B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
+
+### Working in parallel
+
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8's branch already holds a record numbered 0024, which `main` also has; it renumbers when it merges. Next free: record 0028, `OI-124` (decision 0027 and OI-118 to OI-122 are on the slice 11a branch).
+- **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
+- **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
+- **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
+- **Spike status.** A lane that touches a spike updates its Status cell in the same pull request (lane D: SP-1 and SP-9).
+- **Before every push** run `cargo fmt --all`, `cargo clippy --workspace --all-targets` (library code denies `unwrap` and unchecked indexing), the tests of the crates you changed, and `cargo xtask deps`, `licences` and `trace`.
+- **Review comments.** CodeRabbit reviews code, not `docs/` or Markdown. Answer each finding on its thread and resolve it; a finding that is not worth its code is answered with the path traced and why.
 
 ## Slice 0 – Guardrails and shared data
 
@@ -424,7 +503,7 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-1 (kernel), SP-9 (exact surfaces).
 
-**Status:** 11a built on branch `claude/busy-lovelace-khabqi` ([decision 0026](decisions/0026-slice-11a-step-import.md), proposed 14 Oct 2026): items 1 to 4, 6, 8 and 9 (wrapper and worker process, topology and deterministic numbering, units, tessellation with face IDs per triangle, the exact `BrepSurface`, the corpus and mutation run, the three-platform kernel CI). 11b is items 5 and 7 (viewport drawing and picking, B-rep selections in the project; OI-118), after slices 8 and 10. The slice is not closed: its review checklist is ticked below only for what 11a proves, and OI-25 (STEP from other CAD tools), OI-119 and OI-117 are open. The three-platform CI result is not yet seen; it runs when the branch is pushed.
+**Status:** 11a built on branch `claude/busy-lovelace-khabqi` ([decision 0027](decisions/0027-slice-11a-step-import.md), proposed 14 Oct 2026): items 1 to 4, 6, 8 and 9 (wrapper and worker process, topology and deterministic numbering, units, tessellation with face IDs per triangle, the exact `BrepSurface`, the corpus and mutation run, the three-platform kernel CI). 11b is items 5 and 7 (viewport drawing and picking, B-rep selections in the project; OI-119), after slices 8 and 10. The slice is not closed: its review checklist is ticked below only for what 11a proves, and OI-25 (STEP from other CAD tools), OI-120 and OI-118 are open. The three-platform CI result is not yet seen. This is lane D of "Parallel work" (nothing needed merged first). It takes **no project schema number**: the units override for STEP is the existing model-reference override (schema 2), and the B-rep selection storage that row 7 of the claims table expects belongs to 11b (lanes D and O). `cargo-semver-checks` fails `openchuck-types` on the new B-rep fields (OI-123).
 
 **Design refinement:** the kernel route chosen in SP-1 (a thin in-house wrapper over OpenCASCADE with an isolated import process, [decision 0003](decisions/0003-step-kernel-route.md)), the deterministic face and edge numbering, how exact evaluation reaches `openchuck-path` ([decision 0017](decisions/0017-sp-9-exact-surfaces.md): the importer emits a face record with the analytic frame or a clamped, unwrapped rational B-spline patch, UV bounds, trim loops and the tessellation, and the library evaluates it in pure Rust; shim additions `occ_face_frame`, B-spline unwrapping and trim sampling; the SP-9 comparison kept as a regression test), and the licence boundary (the LGPL kernel stays in `openchuck-import`).
 
@@ -441,7 +520,7 @@ These apply to every slice and are not repeated below.
 **Review checklist**
 
 - [x] A reference STEP part matches its CAD dimensions within tolerance (`req_imp_02_box_matches_its_cad_dimensions`: 20 x 30 x 40 mm, area to 1e-6; the other fixtures' radii are exact)
-- [x] Changing the tessellation tolerance changes triangle count and deviation as documented (`req_imp_06_tolerance_controls_triangle_count_and_deviation`, numbers in decision 0026 item 7)
+- [x] Changing the tessellation tolerance changes triangle count and deviation as documented (`req_imp_06_tolerance_controls_triangle_count_and_deviation`, numbers in decision 0027 item 7)
 - [ ] Face and edge IDs are identical after save and reload, and across two imports (two imports and a data round trip are tested; reload of a project's selections is 11b)
 - [x] Exact versus mesh evaluation is measured on a curved surface and the difference recorded (exact 7e-15 mm, mesh 9.2e-3 mm on a sphere; `step_exact`)
 - [ ] The kernel builds on all three platforms in CI (the job is written; its first run is the check)
@@ -453,13 +532,15 @@ These apply to every slice and are not repeated below.
 
 **Requirements:** OP-04 (completes slice 5 work); continues OP-11
 
+**Depends on:** slices 5 and 10; the entry moves of [decision 0026](decisions/0026-entry-moves.md) (OI-80) for item 5; the stronger offset result check (OI-82) once regions come from meshes.
+
 **Design refinement:** how each strategy parameterises stepover and scallop, how region constraints enter the unrolled 2D development, and what the indexed form outputs for positioning moves.
 
 1. Helical finishing on a selected region (spiral around the axis).
 2. Axial finishing, parallel to the axis and stepping in A.
 3. Indexed finishing at fixed A positions (3+1 positional), with positioning moves.
 4. Tolerance, stepover and scallop controls; stock to leave per operation and per selection.
-5. Lead-in and lead-out, ramping.
+5. Lead-in and lead-out, ramping, as strategy requests for the shared entry moves in `assemble` (decision 0026, OI-80).
 6. Strategy parameter schemas so the forms are generated; golden files for each.
 
 **Review checklist**
@@ -503,12 +584,14 @@ These apply to every slice and are not repeated below.
 
 **Requirements:** OP-03; completes OP-11
 
+**Depends on:** slice 7 (the `StockModel`), the entry moves of [decision 0026](decisions/0026-entry-moves.md) (OI-80), and slice 10 for item 5 (containment, OP-02).
+
 **Design refinement:** layer definition for rotary parts using the wrap-family approach, how `StockModel` queries avoid air cutting, and entry and retract rules.
 
 1. Stock-aware roughing using the `StockModel` port implemented by `openchuck-sim`.
 2. Indexed (3+1) roughing: layers at fixed A positions.
 3. Continuous roughing in rotary layers.
-4. Stepdown, stock to leave, ramped entry and retract strategy, completing OP-11.
+4. Stepdown, stock to leave, ramped and helical entry (through the shared entry moves of decision 0026, OI-80) and retract strategy, completing OP-11.
 5. Containment to selected regions (OP-02).
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
@@ -526,6 +609,8 @@ These apply to every slice and are not repeated below.
 **Goal:** clean up material that earlier operations could not reach.
 
 **Requirements:** OP-09
+
+**Depends on:** slice 7 (carry-over, SIM-06) and slice 9 items 1 and 2 (pipeline invalidation, item 4).
 
 **Design refinement:** how remaining material is found from the carried-over stock (SIM-06) against the target through the `StockModel` port, and the threshold that counts as worth cutting.
 
@@ -547,6 +632,8 @@ These apply to every slice and are not repeated below.
 **Goal:** engrave or carve along selected edge chains or curves projected onto the surface.
 
 **Requirements:** OP-08
+
+**Depends on:** slice 10 for mesh feature edges and slice 11 for B-rep edges (item 1).
 
 **Design refinement:** the `CurveSource` trait, the projection method, and how A and tool axis behave along a curve. This is a wrap-family strategy and reuses the unrolled-development approach from SP-7.
 
@@ -571,6 +658,8 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-11 (swarf).
 
+**Depends on:** slice 11 (B-rep faces and the exact `SurfaceSource`): swarf is B-rep only for P1 and the UI says so for mesh selections ([decision 0021](decisions/0021-sp-11-swarf.md), OI-96).
+
 **Design refinement:** the detection method and deviation tolerance from SP-11, which tool shapes can do flank cuts, and whether P1 is limited to analytic ruled surfaces if the spike falls back.
 
 1. Detect ruled or near-ruled selected surfaces and fit rulings, reporting deviation.
@@ -592,6 +681,8 @@ These apply to every slice and are not repeated below.
 
 **Requirements:** OP-10
 
+**Depends on:** slice 11 (cylindrical faces) and slice 10 (selection sets). Hole detection on meshes is not planned.
+
 **Design refinement:** hole detection from cylindrical faces, how each hole's axis maps to an A angle, and whether canned cycles or expanded moves are output (expanded by default). It uses the drill tool type from TL-03, now P1 (finding 7).
 
 1. Hole selection from model geometry, with axis, diameter and depth.
@@ -612,6 +703,8 @@ These apply to every slice and are not repeated below.
 **Goal:** export G-code in the groupings a shop uses, and a printable job summary.
 
 **Requirements:** GC-05, GC-06, GC-12 (GC-14 in the UI)
+
+**Depends on:** slice 6. Items 1 to 3 and 5 are headless; the export dialogs of item 4 need slice 8.
 
 **Design refinement:** file naming and grouping rules, comment content, the setup sheet layout, and the HTML and PDF generation approach, assessed under NFR-14 because the architecture does not score it. Decide whether IR-duration totals appear (finding 6); otherwise times are left out until SIM-08.
 
