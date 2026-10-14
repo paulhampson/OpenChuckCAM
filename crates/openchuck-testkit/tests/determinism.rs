@@ -56,21 +56,34 @@ fn req_nfr_06_gc_07_thread_dependent_chunking_is_caught() {
 #[test]
 fn req_nfr_06_gc_07_shared_push_order_is_caught() {
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
     let result = determinism::check(|| {
         // Results pushed to a shared container in completion order.
         let out = Mutex::new(Vec::new());
+        let pushed = AtomicUsize::new(0);
         (0..64u32).into_par_iter().for_each(|i| {
-            let mut x = u64::from(i);
-            for _ in 0..(20_000 * (64 - u64::from(i))) {
-                x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
+            if i == 0 {
+                // Item 0 finishes last whenever another thread is working: it
+                // waits until something else has been pushed. This makes the
+                // order depend on the thread count without relying on how
+                // long each item takes, which a slow-starting thread on a
+                // loaded machine can defeat. At one thread nothing else can
+                // run, so the wait gives up (the limit only bounds that run).
+                let start = Instant::now();
+                while pushed.load(Ordering::Acquire) == 0
+                    && start.elapsed() < Duration::from_millis(500)
+                {
+                    std::thread::yield_now();
+                }
             }
-            out.lock().unwrap().push((i, x));
+            out.lock().unwrap().push(i);
+            pushed.fetch_add(1, Ordering::Release);
         });
         let out = out.into_inner().unwrap();
-        out.iter().map(|(i, _)| *i as u8).collect()
+        out.iter().map(|i| *i as u8).collect()
     });
-    // At one thread the order is 0..64; with more it follows completion. This
-    // is reported unless the scheduler happens to finish strictly in order,
-    // which the uneven work makes vanishingly unlikely.
+    // At one thread the order is 0..64; with two or more, item 0 is pushed
+    // after at least one other item.
     assert!(result.is_err());
 }
