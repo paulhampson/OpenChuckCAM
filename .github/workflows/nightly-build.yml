@@ -192,8 +192,8 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # The rolling `nightly` pre-release: deleted and created again on each
-  # build, so it always holds one complete set of archives from one commit.
+  # The rolling `nightly` pre-release: replaced on each build, so it always
+  # holds one complete set of archives from one commit.
   # Only `main` publishes it, and only when every platform built.
   publish:
     name: Publish the nightly pre-release
@@ -219,6 +219,7 @@ jobs:
           SHA: ${{ github.sha }}
           DATE: ${{ needs.changes.outputs.date }}
           SHORT: ${{ needs.changes.outputs.short }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           ls -l dist
           count=$(find dist -maxdepth 1 -type f -name 'openchuckcam-nightly-*' | wc -l)
@@ -234,10 +235,23 @@ jobs:
             echo
             echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the licence, the third-party notices and a README. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
           } > notes.md
+          # Upload everything to a draft first: a draft creates no tag and is
+          # not visible to visitors, so the current `nightly` release stays up
+          # until its replacement holds all three archives. A draft left by
+          # an earlier failed run is removed first.
+          staging="nightly-staging-$RUN_ID"
+          gh release list -R "$REPO" --json tagName,isDraft \
+            --jq '.[] | select(.isDraft and (.tagName | startswith("nightly-staging-"))) | .tagName' |
+            while read -r old; do gh release delete "$old" -R "$REPO" --yes; done
+          gh release create "$staging" dist/openchuckcam-nightly-* -R "$REPO" \
+            --draft --target "$SHA" --prerelease \
+            --title "Nightly build $DATE ($SHORT)" --notes-file notes.md
+          assets=$(gh release view "$staging" -R "$REPO" --json assets --jq '.assets | length')
+          [ "$assets" -eq 3 ] || { echo "the draft holds $assets archives, expected 3"; exit 1; }
+          # Swap: remove the old release and tag, then publish the draft as
+          # `nightly`, which creates the tag at the built commit.
           if gh release view nightly -R "$REPO" > /dev/null 2>&1; then
             gh release delete nightly -R "$REPO" --cleanup-tag --yes
           fi
-          gh release create nightly dist/openchuckcam-nightly-* -R "$REPO" \
-            --target "$SHA" --prerelease --latest=false \
-            --title "Nightly build $DATE ($SHORT)" --notes-file notes.md
+          gh release edit "$staging" -R "$REPO" --tag nightly --draft=false --prerelease --latest=false
           echo "Published the nightly pre-release for $SHA." >> "$GITHUB_STEP_SUMMARY"
