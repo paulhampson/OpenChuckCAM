@@ -228,13 +228,23 @@ jobs:
           cargo build --locked -p openchuck-ui
           run() { "$@" ./target/debug/openchuck-ui --bench testdata/stl/cube_ascii.stl --seconds 3; }
           set +e
-          if [ "$RUNNER_OS" = "Linux" ]; then run xvfb-run -a -s "-screen 0 1920x1080x24"; else run; fi
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            run xvfb-run -a -s "-screen 0 1920x1080x24" > launch.log 2>&1
+          else
+            run > launch.log 2>&1
+          fi
           code=$?
           set -e
+          cat launch.log
           # 0 passes and 2 fails the frame-time limit; either means the
-          # window opened, drew and closed. Anything else is a failure.
+          # window opened, drew and closed. Anything else is a failure, and
+          # the end of the output becomes an annotation on the check page.
           echo "exit code $code"
-          [ "$code" = 0 ] || [ "$code" = 2 ]
+          if [ "$code" != 0 ] && [ "$code" != 2 ]; then
+            tail -n 25 launch.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+            echo "::error title=UI launch failed (exit $code)::$(cat tail.txt)"
+            exit 1
+          fi
 
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
@@ -405,7 +415,23 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
-      - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=60
+      - name: Fuzz for one minute
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set +e
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time=60 > fuzz.log 2>&1
+          code=$?
+          set -e
+          cat fuzz.log
+          # On failure, the end of the output becomes an annotation on the
+          # check page, so the cause is visible without opening the log.
+          if [ "$code" != 0 ]; then
+            tail -n 25 fuzz.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+            echo "::error title=Fuzz $TARGET failed (exit $code)::$(cat tail.txt)"
+            exit "$code"
+          fi
 
   coverage:
     name: Coverage trend
