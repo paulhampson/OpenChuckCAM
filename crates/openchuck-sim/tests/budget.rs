@@ -23,7 +23,7 @@ use openchuck_types::tool::ToolShape;
 use support::*;
 
 #[test]
-#[ignore = "timing: run in release by hand (decision record 0023)"]
+#[ignore = "timing: run in release by hand (decision record 0025)"]
 fn req_sim_03_req_nfr_04_reference_job_meets_the_budget() {
     let m = machine();
     let mut t = tool(ToolShape::BallEnd, 4.0);

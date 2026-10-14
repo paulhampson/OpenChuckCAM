@@ -769,7 +769,7 @@ impl Project {
 
     /// How the material removal simulation runs (SIM-07). Part of the
     /// project because later operations are generated against the simulated
-    /// stock (SIM-06), so the G-code depends on it (GC-07, decision record 0023).
+    /// stock (SIM-06), so the G-code depends on it (GC-07, decision record 0025).
     pub fn simulation(&self) -> SimulationSettings {
         self.simulation
     }

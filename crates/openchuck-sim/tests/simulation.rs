@@ -596,3 +596,22 @@ fn req_sim_03_line_spans_follow_the_tool_tilt() {
     assert!((span.0 - 8.0).abs() < 1e-6, "{span:?}");
     assert!((span.1 - 14.0).abs() < 1e-6, "{span:?}");
 }
+
+#[test]
+fn req_sim_06_a_simulator_without_checkpoints_keeps_no_copies() {
+    let m = machine();
+    let profile = ball(4.0);
+    let poses = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g = group("op", &poses, MoveKind::Cutting);
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let mut lean = Simulator::without_checkpoints(make(), &m);
+    lean.run_group(&g, &profile, &ctx).unwrap();
+    lean.run_group(&g, &profile, &ctx).unwrap();
+    assert!(lean.checkpoints().is_empty());
+    assert!(lean.stock_at(0, 1, &[(&g, &profile)], &ctx).is_err());
+    let (full, _) = run(make(), &[(&g, &profile), (&g, &profile)]);
+    assert_eq!(full.checkpoints().len(), 3);
+    assert_eq!(lean.into_stock().state_hash(), full.stock().state_hash());
+}

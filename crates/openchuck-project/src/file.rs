@@ -57,7 +57,7 @@ use openchuck_types::units::Millimetres;
 ///   stickout, flute count, tool material), the controller mapping (TL-06)
 ///   and cutting data by stock material (TL-05) (decision record 0014).
 /// - 5: `project.toml` gains the optional `[simulation]` table (SIM-07),
-///   written only when it differs from the default (decision record 0023).
+///   written only when it differs from the default (decision record 0025).
 pub const SCHEMA: i64 = 5;
 
 /// Name of the machine profile file in the project folder.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Material removal simulation in the operation pipeline (work breakdown
-//! slice 7; SIM-03, SIM-05, SIM-06, SIM-07; decision record 0023).
+//! slice 7; SIM-03, SIM-05, SIM-06, SIM-07; decision record 0025).
 //!
 //! Each setup's stock is simulated as a dexel stock at the project's cell.
 //! Operations after the first in a setup are generated against the stock the
@@ -70,11 +70,14 @@ pub struct SimulationReport {
     pub setups: Vec<SetupSimulation>,
 }
 
-/// One setup's simulator while the pipeline runs.
+/// One setup's simulator while the pipeline runs. It keeps no checkpoints:
+/// the pipeline needs only the stock each operation leaves.
 pub(crate) struct SetupState {
     pub(crate) id: SetupId,
     simulator: Simulator,
-    report: SetupSimulation,
+    name: String,
+    initial_volume: f64,
+    operations: Vec<OperationSimulation>,
 }
 
 impl std::fmt::Debug for SetupState {
@@ -97,20 +100,12 @@ impl SetupState {
     ) -> Result<Self, AppError> {
         settings.validate()?;
         let stock = DexelStock::from_stock(stock, Some(part_bounds), settings.cell.0)?;
-        let report = SetupSimulation {
-            setup: name.to_owned(),
-            initial_volume: stock.volume(),
-            final_volume: stock.volume(),
-            columns: stock.columns(),
-            memory_bytes: stock.memory_bytes(),
-            operations: Vec::new(),
-            deviation: None,
-            stock: stock.clone(),
-        };
         Ok(Self {
             id,
-            simulator: Simulator::new(stock, machine, None),
-            report,
+            initial_volume: stock.volume(),
+            simulator: Simulator::without_checkpoints(stock, machine),
+            name: name.to_owned(),
+            operations: Vec::new(),
         })
     }
 
@@ -128,7 +123,7 @@ impl SetupState {
         context: &JobContext<'_>,
     ) -> Result<GroupResult, AppError> {
         let result = self.simulator.run_group(group, tool, context)?;
-        self.report.operations.push(OperationSimulation {
+        self.operations.push(OperationSimulation {
             operation: operation.to_owned(),
             moves: result.moves,
             poses: result.poses,
@@ -138,24 +133,31 @@ impl SetupState {
         Ok(result)
     }
 
-    /// Finishes the setup's report, comparing the stock with `part` when given.
+    /// Finishes the setup's report, comparing the stock with `part` when
+    /// given. The stock moves into the report; nothing is copied.
     pub(crate) fn finish(
         self,
         part: Option<&openchuck_types::mesh::TriangleMesh>,
         settings: SimulationSettings,
     ) -> Result<SetupSimulation, AppError> {
-        let mut report = self.report;
-        let stock = self.simulator.stock();
-        report.final_volume = stock.volume();
-        report.memory_bytes = stock.memory_bytes();
-        if let Some(mesh) = part {
-            report.deviation = Some(compare(
-                stock,
+        let stock = self.simulator.into_stock();
+        let deviation = match part {
+            Some(mesh) => Some(compare(
+                &stock,
                 mesh,
                 &DeviationOptions::for_cell(settings.cell.0),
-            )?);
-        }
-        report.stock = stock.clone();
-        Ok(report)
+            )?),
+            None => None,
+        };
+        Ok(SetupSimulation {
+            setup: self.name,
+            initial_volume: self.initial_volume,
+            final_volume: stock.volume(),
+            columns: stock.columns(),
+            memory_bytes: stock.memory_bytes(),
+            operations: self.operations,
+            deviation,
+            stock,
+        })
     }
 }

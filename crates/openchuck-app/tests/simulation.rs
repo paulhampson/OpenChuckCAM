@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Simulation through the application (work breakdown slice 7; SIM-03,
-//! SIM-05, SIM-06, SIM-07, GC-07; decision record 0023).
+//! SIM-05, SIM-06, SIM-07, GC-07; decision record 0025).
 
 // Test code may unwrap, index and panic (NFR-07 applies to library code).
 #![allow(

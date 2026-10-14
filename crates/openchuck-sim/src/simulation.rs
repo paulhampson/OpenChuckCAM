@@ -71,6 +71,7 @@ pub struct Simulator {
     spacing: f64,
     reach: f64,
     checkpoint_every: Option<usize>,
+    keep_checkpoints: bool,
     checkpoints: Vec<Checkpoint>,
     groups_done: usize,
 }
@@ -99,9 +100,33 @@ impl Simulator {
             spacing: cx.min(cy),
             reach,
             checkpoint_every: checkpoint_every.filter(|&n| n > 0),
+            keep_checkpoints: true,
             checkpoints,
             groups_done: 0,
         }
+    }
+
+    /// A simulator that keeps no checkpoints, for a host that only needs the
+    /// stock at the end (each checkpoint holds a copy of the stock).
+    /// [`Simulator::stock_at`] then fails.
+    pub fn without_checkpoints(stock: DexelStock, frame: &impl AsRotaryFrame) -> Self {
+        let (cx, cy) = stock.cell();
+        let reach = stock.reach();
+        Self {
+            frame: frame.rotary_frame(),
+            stock,
+            spacing: cx.min(cy),
+            reach,
+            checkpoint_every: None,
+            keep_checkpoints: false,
+            checkpoints: Vec::new(),
+            groups_done: 0,
+        }
+    }
+
+    /// The stock, giving up the simulator.
+    pub fn into_stock(self) -> DexelStock {
+        self.stock
     }
 
     /// The stock now.
@@ -127,13 +152,16 @@ impl Simulator {
         context: &JobContext<'_>,
     ) -> Result<GroupResult> {
         let index = self.groups_done;
-        let result = self.run_range(group, profile, 0, group.segments.len(), true, context)?;
+        let keep = self.keep_checkpoints;
+        let result = self.run_range(group, profile, 0, group.segments.len(), keep, context)?;
         self.groups_done += 1;
-        self.checkpoints.push(Checkpoint {
-            group: index + 1,
-            moves: 0,
-            stock: self.stock.clone(),
-        });
+        if keep {
+            self.checkpoints.push(Checkpoint {
+                group: index + 1,
+                moves: 0,
+                stock: self.stock.clone(),
+            });
+        }
         Ok(result)
     }
 
@@ -162,6 +190,7 @@ impl Simulator {
             spacing: self.spacing,
             reach: self.reach,
             checkpoint_every: None,
+            keep_checkpoints: false,
             checkpoints: Vec::new(),
             groups_done: cp.group,
         };

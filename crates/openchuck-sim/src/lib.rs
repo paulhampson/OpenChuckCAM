@@ -4,7 +4,7 @@
 //! Architecture section 5.5; requirements SIM-01 to SIM-10, COL-01 to COL-08.
 //! Work breakdown slice 7 builds the headless simulation (SIM-03, SIM-05,
 //! SIM-06, SIM-07) on the representation spike SP-6 chose (decision record
-//! 0022; the slice's design is in decision record 0023):
+//! 0022; the slice's design is in decision record 0025):
 //!
 //! - [`DexelStock`]: material intervals along model Z on an (x, y) grid of
 //!   columns in the part frame, with the tool span solved exactly per column.
@@ -15,9 +15,9 @@
 //!   any operation or move, cancellation and progress.
 //! - [`ToolSolid`]: any revolved tool profile (TL-03), from the tip to the top
 //!   of its flutes.
-//! - [`compare`]: the simulated stock against the target model along the
-//!   surface normal, with the worst remaining and overcut values and where
-//!   they are (SIM-05).
+//! - [`compare`]: the simulated stock against the target model by the
+//!   closest distance to the stock's boundary at each surface sample, with
+//!   the worst remaining and overcut values and where they are (SIM-05).
 //! - [`stock_mesh`]: the stock as a mesh for the viewport; plain data only.
 //!
 //! Results never depend on the thread count (NFR-06): work runs on the
