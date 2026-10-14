@@ -2,8 +2,10 @@
 #
 # Makera Z1 with its 4th-axis module (decision records 0007, 0011 and 0013).
 # Values are a consensus across Makera's published profiles and the Z1
-# firmware's default configuration, not measured on a Z1: each stays
-# unconfirmed until the SP-12 air cut (OI-37) and a measurement of the axis (OI-60).
+# firmware's default configuration. The rotary axis, A direction, A range and
+# feed limits are confirmed by the owner, and the SP-12 air cut on firmware
+# 1.1.2 (decision 0007, 14 Oct 2026) confirmed the A direction. The rest stay
+# unconfirmed until the axis is measured (OI-60).
 # Machine coordinates are the firmware's (G53): home at 0, travel negative.
 schema = 1
 
@@ -59,7 +61,7 @@ source = "confirmed by the owner from use of the machine (11 Oct 2026): the rota
 
 [machine.provenance.a_sense]
 state = "confirmed"
-source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Checked again on the machine on 13 Oct 2026 by sending an A+ command: a camera behind the chuck, looking toward home, sees the top of the chuck turn toward the front of the machine (away from home, -Y): clockwise from that view, counter-clockwise looking at the chuck from +X. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The air cut (OI-37, step 1) is kept open as a cross check (decision 0013)"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): positive A is right-handed about +X, so the side facing up at A 0 faces machine -Y at A +90. Checked again on the machine on 13 Oct 2026 by sending an A+ command: a camera behind the chuck, looking toward home, sees the top of the chuck turn toward the front of the machine (away from home, -Y): clockwise from that view, counter-clockwise looking at the chuck from +X. Consistent with the Fusion (4 four-axis machine files), Mastercam and SolidCAM profiles. The SP-12 air cut (14 Oct 2026, firmware 1.1.2, decision 0007) confirmed it a third time: at A +90 the top moved toward the front"
 
 [machine.provenance.rotary_origin]
 state = "unconfirmed"
@@ -67,7 +69,7 @@ source = "X and Y derived from the Z1 firmware config (anchor1 plus rotation off
 
 [machine.provenance.a_range]
 state = "confirmed"
-source = "confirmed by the owner from use of the machine (11 Oct 2026): the A axis is continuous. Consistent with Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous) and the Z1 firmware (no A soft limit)"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): the A axis is continuous. Consistent with Fusion (no limits, never reset), FreeCAD (+/-1e7, unwound), Mastercam (signed continuous) and the Z1 firmware (no A soft limit). The air cut turned A to 570 and -370 and unwound by `G92.4 A0 S0` with no limit stop"
 
 [machine.provenance.travel]
 state = "unconfirmed"

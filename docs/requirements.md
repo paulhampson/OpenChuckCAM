@@ -303,7 +303,7 @@ Decisions are settled and already reflected in the requirements. The assumptions
 **Assumptions**
 
 - The A axis rotates the workpiece about the machine X axis, with a vertical tool axis (Z).
-- The target is a milling machine with a rotary axis programmed in degrees; the Makera Z1 is the reference machine, and G93 inverse-time feed is assumed unsupported until confirmed.
+- The target is a milling machine with a rotary axis programmed in degrees; the Makera Z1 is the reference machine, and G93 inverse-time feed is unsupported (confirmed by the SP-12 air cut, decision 0007).
 - The internal unit is millimetres; inch display and input are a user setting.
 - Work is for a single user on a single machine at a time; there is no multi-user collaboration.
 - Threading, turning and 5-axis tool orientation are not needed.
