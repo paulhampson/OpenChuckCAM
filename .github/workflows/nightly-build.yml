@@ -248,10 +248,15 @@ jobs:
             --title "Nightly build $DATE ($SHORT)" --notes-file notes.md
           assets=$(gh release view "$staging" -R "$REPO" --json assets --jq '.assets | length')
           [ "$assets" -eq 3 ] || { echo "the draft holds $assets archives, expected 3"; exit 1; }
-          # Swap: remove the old release and tag, then publish the draft as
-          # `nightly`, which creates the tag at the built commit.
+          # Swap: remove the old release, then the tag on its own (it can
+          # outlive its release, and publishing onto an existing tag would keep
+          # the old commit), then publish the draft as `nightly`, which creates
+          # the tag at the built commit.
           if gh release view nightly -R "$REPO" > /dev/null 2>&1; then
-            gh release delete nightly -R "$REPO" --cleanup-tag --yes
+            gh release delete nightly -R "$REPO" --yes
+          fi
+          if gh api "repos/$REPO/git/ref/tags/nightly" > /dev/null 2>&1; then
+            gh api -X DELETE "repos/$REPO/git/refs/tags/nightly"
           fi
           gh release edit "$staging" -R "$REPO" --tag nightly --draft=false --prerelease --latest=false
           echo "Published the nightly pre-release for $SHA." >> "$GITHUB_STEP_SUMMARY"
