@@ -643,9 +643,9 @@ These apply to every slice and are not repeated below.
 7. CLI end-to-end scenarios in CI, including undo and redo and cancellation mid-job.
 8. Release tooling assessed under NFR-14 (`cargo-release` for the library family, `cargo-dist` or a plain build matrix for binaries, `release-plz` later) and the packaging route decided; separate tag schemes for library and application releases. *Route decided:* [decision 0027](decisions/0027-slice-20-packaging-and-trial-documents.md) (plain build matrix, `lib-v` and `app-v` tags); the workflow is still to build.
 9. Release gate in `xtask`: dependency-rule check, `cargo deny`, golden G-code comparison and LinuxCNC replay must pass before a tag is cut.
-10. Z1 air-cut procedure documented (your hands-on step) and packaging for all three platforms, including a Windows installer and macOS app bundle if the egui app needs them. *Prepared:* the [air-cut procedure](z1-air-cut-procedure.md) is drafted for the operator's review (OI-120); the packaging route is accepted in decision 0027 and the bundle command and release workflow are still to build (signing and extra platforms: OI-122).
+10. Z1 air-cut procedure documented (your hands-on step) and packaging for all three platforms, including a Windows installer and macOS app bundle if the egui app needs them. *Prepared:* the [air-cut procedure](z1-air-cut-procedure.md) is written and reviewed by the operator (14 Oct 2026, OI-120); running it is still the hands-on step; the packaging route is accepted in decision 0027 and the bundle command and release workflow are still to build (signing and extra platforms: OI-122).
 11. Gates 4 and 5 on the Z1 for the reference job set (your hands-on step, attended): an air cut at reduced feed (including a timed simultaneous XYZA move compared with the IR's predicted time), then a first cut in wax or foam. Cut a 3-axis test part first to measure the machine's own repeatability, then set the first-cut limit from it (start at ±0.1 mm). Recheck the G93 result on the installed firmware (SP-12 found it ignored on 1.1.2) and carry the confirmed Z1 rotary conventions into the post definition.
-12. Safe-practice checklist for first machine trials, written and reviewed by whoever operates the Z1. *Drafted, not reviewed:* [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md) (OI-120).
+12. Safe-practice checklist for first machine trials, written and reviewed by whoever operates the Z1. *Written and reviewed by the operator (14 Oct 2026):* [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md) (OI-120).
 13. Verification report for the release: results against the exit criteria, waivers, open defects, the commit covered, a written result for every spike, and the plan reviewed against what happened.
 14. Traceability report generated from the requirement ID tags.
 
@@ -660,7 +660,7 @@ These apply to every slice and are not repeated below.
 - [ ] Licences are compatible and the known-issues list is written
 - [ ] Gates 1 to 5 have passed for the reference job set with results stored, and the G93 result is recorded
 - [ ] No severity 1 or 2 defect is open, and the verification report names the commit it covers
-- [ ] The safe-practice checklist has been reviewed by the Z1 operator
+- [x] The safe-practice checklist has been reviewed by the Z1 operator (14 Oct 2026, [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md))
 
 ## Traceability: P1 requirement to slice
 

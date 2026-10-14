@@ -1,6 +1,6 @@
 # 0027: Slice 20 preparation: packaging route, release tags, and the trial documents
 
-- **Status:** accepted by the project owner (14 Oct 2026): the packaging route (item 1), the tag schemes (item 2) and the drafting of the trial documents (item 3) as written. Architecture section 12 is edited to match. The trial documents stay drafts until the Z1 operator reviews them (OI-120), and signing and extra platforms stay the owner's later call (OI-122).
+- **Status:** accepted by the project owner (14 Oct 2026): the packaging route (item 1), the tag schemes (item 2) and the drafting of the trial documents (item 3) as written. Architecture section 12 is edited to match. The Z1 operator (the owner) reviewed and accepted the air-cut procedure and the safe-practice checklist without changes on 14 Oct 2026 (OI-120, closed), and signing and extra platforms stay the owner's later call (OI-122).
 - **Date:** 14 Oct 2026.
 - **Work breakdown:** slice 20 items 8, 10 and 12 (preparation only; the slice is not started).
 - **Open items** are tracked in [open-items.md](../open-items.md): OI-120 to OI-122 are new, and OI-103 and OI-104 are the items this record proposes answers to.
@@ -71,4 +71,4 @@ Gate 5, the 3-axis repeatability cut, the G93 recheck and the tool change test r
 | --- | --- | --- | --- |
 | 1 | Accept or amend the packaging route and tag schemes above (OI-121) | Closed 14 Oct 2026: accepted | Project owner |
 | 2 | macOS bundle: is a bundle without notarisation acceptable for the first release, and are Intel macOS or Linux arm64 wanted? (OI-103, OI-104, OI-122) | Slice 20 | Project owner; signing certificates if wanted |
-| 3 | The Z1 operator reviews the safe-practice checklist and the air-cut procedure and corrects them (OI-120) | Before gate 4 | The Z1 operator |
+| 3 | The Z1 operator reviews the safe-practice checklist and the air-cut procedure and corrects them (OI-120) | Closed 14 Oct 2026: reviewed and accepted without changes | The Z1 operator |

@@ -1,6 +1,6 @@
 # Safe-practice checklist for first Makera Z1 trials
 
-**Status: draft, not reviewed.** Written by the agent from the project documents ([verification plan section 6](verification-plan.md), [decision 0007](decisions/0007-sp-12-z1-conventions.md), [reference-jobs.md](reference-jobs.md)), not from experience of the machine. Work breakdown slice 20 item 12 requires it to be written and reviewed by whoever operates the Z1, and the slice review item "the safe-practice checklist has been reviewed by the Z1 operator" stays unticked until they have. The operator should correct anything here that does not match the machine, and add what a person who runs it would add (OI-120).
+**Status: reviewed and accepted by the project owner, who operates the Z1 (14 Oct 2026), with no changes.** Written by the agent from the project documents ([verification plan section 6](verification-plan.md), [decision 0007](decisions/0007-sp-12-z1-conventions.md), [reference-jobs.md](reference-jobs.md)), not from experience of the machine. Work breakdown slice 20 item 12 required it to be reviewed by whoever operates the Z1 (OI-120, closed). The operator should still correct anything that proves not to match the machine and record the change in the review table.
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM has never run a generated program on a Z1 as of this draft. Passing the project's own gates reduces the risk; it does not remove it.
 
@@ -54,8 +54,8 @@ Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop a
 
 | | |
 | --- | --- |
-| Reviewed by (Z1 operator) | |
-| Date | |
-| Machine and firmware | |
-| Changes required to this checklist | |
-| Reviewed: yes / no | |
+| Reviewed by (Z1 operator) | Paul Hampson (project owner) |
+| Date | 14 Oct 2026 |
+| Machine and firmware | Makera Z1; firmware not recorded in the review (note it at the first trial) |
+| Changes required to this checklist | None |
+| Reviewed: yes / no | Yes |
