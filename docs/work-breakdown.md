@@ -475,7 +475,7 @@ The lanes not listed (A, B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected
 
 **Goal:** pick geometry on a mesh, save it as named sets, and make an operation cut only there.
 
-**Status:** in progress. Items 2 to 5 are built headless on branch `claude/slice-10-mesh-selection` (lane C; project schema 6); design in [decision 0027](decisions/0027-slice-10-mesh-selection.md), accepted 14 Oct 2026 (OI-119 to OI-122 open or deferred). Items 1 (picking, which also needs OI-12, the pick budget) and 6 (the selection panel) wait on the viewport (slice 8). Review checklist, headless: the third and fourth boxes are met by the tests named in the record; the first is met without the highlight (the same set comes back with its model hash) and the second as a query and a hash, not a cache (OI-122); the fifth (picking time) and sixth (the visible warning, OI-120) need items 1 and 6. No box is ticked yet.
+**Status:** in progress. Items 2 to 5 are built headless on branch `claude/slice-10-mesh-selection` (lane C; project schema 6); design in [decision 0027](decisions/0027-slice-10-mesh-selection.md), accepted 14 Oct 2026 (OI-119 to OI-122 open or deferred). Items 1 (picking, which also needs OI-12, the pick budget) and 6 (the selection panel) wait on the viewport (slice 8). Review checklist, headless: the third and fourth boxes are met by the tests named in the record; the first is met without the highlight (the same set comes back with its model hash) and the second as a query and a hash, not a cache (OI-122); the fifth (picking time) and sixth (the visible warning, OI-120) need items 1 and 6. The third and fourth boxes are ticked; the other four stay open until their remaining parts land.
 
 **Requirements:** UI-04 (mesh), UI-05, PRJ-06 (mesh), OP-02
 
@@ -492,8 +492,8 @@ The lanes not listed (A, B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected
 
 - [ ] Select, save, close and reopen: the same set is highlighted
 - [ ] Editing a set marks dependent operations for regeneration
-- [ ] Flood fill and select-by-angle give expected counts on a reference mesh
-- [ ] An avoid surface is never cut in the test case
+- [x] Flood fill and select-by-angle give expected counts on a reference mesh (`openchuck-geom/tests/select.rs`, `openchuck-app/tests/selection.rs`)
+- [x] An avoid surface is never cut in the test case (`openchuck-path/tests/region.rs`, `openchuck-app/tests/selection.rs`)
 - [ ] Picking on a 1M-triangle model stays within its time budget
 - [ ] A reference to missing geometry shows a visible warning
 
