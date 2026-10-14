@@ -1,0 +1,1 @@
+{"adapter":"NVIDIA GeForce RTX 2070 SUPER (Vulkan, DiscreteGpu)","tris":999698,"edges":1500254,"polyline_pts":300000,"wire":true,"vsync_off":true,"frames":98749,"mean_ms":0.61,"p50_ms":0.56,"p95_ms":0.93,"p99_ms":1.07,"max_ms":3.05,"fps_mean":1648.7,"pass_p95_le_33ms":true,"bvh_build_ms":531.8,"mesh_build_ms":38.6,"picks":98780,"pick_p95_us":5.8,"pick_max_us":277.8}

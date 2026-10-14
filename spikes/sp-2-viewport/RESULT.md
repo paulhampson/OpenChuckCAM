@@ -1,6 +1,6 @@
 # SP-2 Viewport spike: result
 
-Status: **partly complete, not yet decided.** Builds, renders and picks correctly on Linux. The 30 fps criterion has **not** been measured on real graphics, because this container has no GPU. The decision (keep egui and `egui_wgpu`, or switch to the fallback) waits for the runs listed under "To finish SP-2".
+Status: **measured on one real GPU; keep-or-fall-back decision still open.** Builds, renders and picks correctly on Linux (software rendering) and Windows 11 (RTX 2070 Super). The 30 fps criterion passes on the Windows desktop GPU with about 50 times headroom. The owner closed the measurement item (OI-09) on that margin on 14 Oct 2026, although the plan's reference class (integrated graphics, Apple M1) was not tested. The keep-or-fall-back decision (OI-11) is still open.
 
 Work breakdown reference: Spikes, SP-2 (3 d), requirements NFR-02 and NFR-03, architecture sections 5.8 and 10, verification plan section 4.2. Branch `spike/sp-2-viewport`. This code is throwaway and is never merged into the product (spike rules).
 
@@ -29,6 +29,15 @@ Only software rendering was available: `llvmpipe` (Mesa lavapipe, Vulkan on the 
 | 1M triangles, polyline, no edges | 203.9 ms (4.9 fps) | 256.1 ms | 56 |
 | 1M triangles, polyline, edge overlay | 360.9 ms (2.8 fps) | 450.5 ms | 32 |
 
+Windows run, 14 Oct 2026: Windows 11 Pro, AMD Ryzen 5 5600X, 32 GB RAM, NVIDIA GeForce RTX 2070 Super 8 GB (Vulkan, discrete GPU), Rust 1.97.0 (the pinned toolchain; the machine's default cargo 1.74 cannot read the lock file). `cargo run --release -- --bench 60 [--wire] --out results/<name>.jsonl`, 60 s scripted path, no vsync. Frame time is the interval between frames as the app sees it, not a GPU timestamp query.
+
+| Run (60 s scripted path, 1M triangles) | Mean frame | p50 | p95 | p99 | Max | Mean fps | Frames |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Polyline, no edges | 0.46 ms | 0.43 ms | 0.69 ms | 0.88 ms | 2.24 ms | 2187 | 131,016 |
+| Polyline and edge overlay (`--wire`, every triangle edge) | 0.61 ms | 0.56 ms | 0.93 ms | 1.07 ms | 3.05 ms | 1649 | 98,749 |
+
+Both pass (p95 33 ms or less). Raw lines: `results/windows-2070super.jsonl` and `results/windows-2070super-wire.jsonl`. On the same machine the BVH build took about 535 ms, and the pick p95 was 5.7 to 5.8 µs (max 313 µs).
+
 Picking (does not depend on the GPU):
 
 | Measure | Value |
@@ -44,8 +53,8 @@ Rendering checked by eye (`results/screenshot-llvmpipe.png`, 200k triangles): sh
 
 | Criterion | State |
 | --- | --- |
-| 30 fps or better on the reference machine at 1M triangles (p95 frame time 33 ms or less) | **Not measured.** Needs real graphics. |
-| Builds on three platforms | **Linux only** (Ubuntu 24.04, Rust 1.97). Windows and macOS not tried. |
+| 30 fps or better on the reference machine at 1M triangles (p95 frame time 33 ms or less) | **Met on a desktop GPU** (RTX 2070 Super: p95 0.69 ms, 0.93 ms with every triangle edge drawn). **Not measured** on the plan's reference class (integrated graphics, Apple M1). Accepted by the owner on the margin (OI-09 closed, 14 Oct 2026). |
+| Builds on three platforms | **Linux and Windows** (Ubuntu 24.04; Windows 11, Rust 1.97). macOS not tried here; CI builds it (OI-10). |
 | Pick within budget | **Met on the measure taken**, but the docs set no pick budget. Assumed 10 ms for interaction; the cast takes about 0.02 ms. The BVH build (0.9 s) is a load-time cost to plan for. |
 
 ## Findings that matter for slice 8
@@ -69,6 +78,8 @@ Rendering checked by eye (`results/screenshot-llvmpipe.png`, 200k triangles): sh
 Licences were not checked with `cargo deny` (not part of this spike); do that when the dependency is adopted in slice 0.
 
 ## To finish SP-2
+
+Update, 14 Oct 2026: step 1 was run on the Windows desktop above and the owner closed it on the margin; step 2 is covered on Windows and by CI (OI-10). The weaker integrated-graphics and M1 machines were not run. The list below is kept as written.
 
 1. On each reference machine (verification plan 4.2: Apple M1-class on macOS, Intel Xe or recent AMD integrated graphics on Windows and Linux):
    `cargo run --release -- --bench 60 --out results/<platform>.jsonl`, then again with `--wire`.
