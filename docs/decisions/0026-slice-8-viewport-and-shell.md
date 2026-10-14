@@ -4,7 +4,7 @@
 - **Date:** 14 Oct 2026.
 - **Branch:** `claude/slice-8-viewport-shell`.
 - **Numbering:** first written as 0024 with OI-110 to OI-112 while slice 7 was unmerged. It was renumbered when `main` took 0023 to 0025 and OI-103 to OI-116.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-117 and OI-118 are closed (items 4, 10, 13, 15 and 16), OI-119 and OI-120 are open, and OI-14 is deferred to slice 11 (item 1).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-13, OI-45, OI-51, OI-52, OI-53, OI-54, OI-117, OI-118 and OI-120 are closed (items 4, 10, 13, 15, 16 and 17), OI-119 is open, and OI-14 is deferred to slice 11 (item 1).
 
 ## Context
 
@@ -147,6 +147,13 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
     - **Updating.** Updating the copy is `Command::SetMachine` with the source profile, one undoable step. The project's copy wins until the user updates it (as TL-07 does for tools).
     - **UI.** A Machine node in the tree opens a panel with the profile name, the A direction in words, the values not yet confirmed on the machine, the comparison with an Update button, a chooser of available profiles, and, for a library profile with no ID, a button that gives it one by rewriting the library file.
 
+17. **Dialogs in their own windows (OI-120; owner's request, 14 Oct 2026).**
+    - **How.** `openchuck-ui`'s `floating` helper shows a dialog as an egui *immediate* viewport: its own operating-system window, drawn in the same frame as the main window, so it can borrow the shell's state. It can be moved outside the main window, for example to a second screen.
+    - **Fallback.** Where the platform cannot open another window, egui draws the dialog inside the main window, so it always works.
+    - **No second paint path.** A dialog draws no 3D: the import preview stays in the main window's viewport. The second paint path that OI-120 assumed is not needed.
+    - **Closing.** The window's close button means Cancel.
+    - **Where it is used.** The import dialog uses it now. Later floating panels (slice 9's playback controls) can use the same helper. The modal dialogs (open, new, unsaved changes, errors) stay inside the main window on purpose.
+
 ## Not built yet (rest of slice 8)
 
 | Item | What remains | Note |
@@ -187,6 +194,7 @@ Also relevant: architecture section 4 (only `openchuck-ui` and `openchuck-viewpo
   - the update and its undo; an orphaned ID.
 
   `openchuck-project` tests: the profile round trip at schema 2, a schema 1 profile read with no ID, and a bad ID refused.
+- Floating dialogs (item 17): a UI unit test runs the helper in an egui context that embeds viewports (the fallback) and checks the dialog is drawn. On X11 in this container (mutter), the real binary with the import dialog open showed "Import model" as its own top-level window with its own frame, next to the "OpenChuckCAM" window (`xwininfo -root -tree`; a temporary start-up hook was used and not committed).
 - Not measured: the 60 s product run on hardware; Windows and macOS launch from CI artefacts.
 
 ## Owner's local run (14 Oct 2026)
@@ -226,7 +234,7 @@ The median p95 with edges is 0.77 ms against 33 ms, about 43 times inside the li
 1. Some text is small. The UI now starts at 120 % (`DEFAULT_ZOOM`), and View has Larger, Smaller and Reset, alongside egui's Ctrl with + or -. The size is not remembered between runs, because eframe's persistence is not enabled.
 2. The library folder should be creatable and openable. The machine panel now offers "Create the library folder" when it is missing and "Open the library folder" when it exists, using the platform's own `explorer`, `open` or `xdg-open` (no new dependency).
 3. It was not clear that Placement moves the model in the view. The dialog now says that the 3D view previews the model as it will be added and that the orange line is the rotary axis, and the Placement label has the same tooltip.
-4. The import dialog cannot be dragged outside the main window. egui windows live inside the main window; separate OS windows need egui's multi-viewport support. Recorded as OI-120.
+4. The import dialog cannot be dragged outside the main window. It now opens in its own operating-system window (item 17, OI-120 closed).
 5. The "A+" and "Y" labels overlapped in the Right view: the arrow ended on +Y, where the work Y label sits. The "A+" label now sits an eighth of a turn along the arc, between the top and -Y (`req_set_01_req_ui_03_a_arrow_follows_the_documented_convention` checks it).
 
 **Build note.** The first release build hit a rustc crash compiling `naga` 30.0.1 (Windows `0xc0000374`, heap corruption). A retry with no changes built cleanly, so it is treated as a transient fault of the compiler or the environment; it is recorded in case it recurs.
@@ -248,5 +256,5 @@ The median p95 with edges is 0.77 ms against 33 ms, about 43 times inside the li
 | --- | --- |
 | OI-117 | Native file dialogs. Folders are typed in until a dialog crate (for example `rfd`) has an NFR-14 record and an AGPL-compatible licence check. |
 | OI-118 | Operations need an enabled flag for UI-06, with a rule for disabled operations. Closed 14 Oct 2026: skipped everywhere, schema 6 (item 10). |
-| OI-120 | Dialogs (import, and later panels) cannot leave the main window; separate OS windows need egui's multi-viewport support (owner's visual check, V10 item 4). |
+| OI-120 | Dialogs could not leave the main window (owner's visual check, V10 item 4). Closed 14 Oct 2026: the import dialog opens in its own window (item 17). |
 | OI-119 | CI smoke test for UI-01 and NFR-02: install a software Vulkan driver (Mesa lavapipe) on the Linux runner and set `OPENCHUCK_REQUIRE_ADAPTER=1` for `openchuck-viewport`'s render tests. Check what the Windows (WARP) and macOS runners offer, and add a scripted launch of the binary. |
