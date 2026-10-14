@@ -21,7 +21,7 @@ Add a row for each new record. Read the records that touch your task before you 
 | Record | Title | Status |
 | --- | --- | --- |
 | [0001](0001-sp3-wrapped-path-result.md) | SP-3 result, wrapped path to G-code with A words | Accepted (simulator criterion met by [0009](0009-linuxcnc-fixture-checks.md); open items OI-06 to OI-08 stay in; OI-03 and OI-04 closed 14 Oct 2026 by [0007](0007-sp-12-z1-conventions.md) in [open-items.md](../open-items.md)) |
-| [0002](0002-sp-2-viewport-spike.md) | SP-2 viewport spike, interim result | Proposed (NFR-03 measured on a desktop GPU, 14 Oct 2026; accepting the record settles keep or fall back, OI-11) |
+| [0002](0002-sp-2-viewport-spike.md) | SP-2 viewport spike, interim result | Accepted 14 Oct 2026 (keep egui and wgpu; NFR-03 measured on a desktop GPU only; open items OI-12 to OI-14) |
 | [0003](0003-step-kernel-route.md) | SP-1 STEP kernel route: thin in-house wrapper over OpenCASCADE, isolated import process | Accepted (third-party STEP samples still required before slice 11 import work is accepted) |
 | [0004](0004-slice-0-guardrails.md) | Slice 0 design refinement, guardrails and shared data | Accepted (IR not frozen until a later slice). Open items in [open-items.md](../open-items.md) |
 | [0005](0005-sp-5-gcode-reader.md) | SP-5 result, G-code reader: in-house reader | Accepted (LinuxCNC check of the fixture done in [0009](0009-linuxcnc-fixture-checks.md): the file needs four arc lines corrected, OI-46) |

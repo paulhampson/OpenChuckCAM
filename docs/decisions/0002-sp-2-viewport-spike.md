@@ -1,6 +1,6 @@
 # 0002: SP-2 viewport spike, interim result
 
-- **Status:** proposed. The NFR-03 measurement was taken on 14 Oct 2026 (see "Windows run") and the owner closed that item on the margin. The decision to keep or replace egui and `egui_wgpu` is still **open** (OI-11) until the owner accepts this record, which then becomes accepted (or superseded).
+- **Status:** accepted 14 Oct 2026. Keep egui, `egui_wgpu` and wgpu as the viewport stack. NFR-03 was measured on a desktop GPU (see "Windows run") and the owner closed that item on the margin; integrated graphics and Apple M1 were not run. Open items 4, 5 and 7 remain (OI-12, OI-13, OI-14).
 - **Date:** 10 Oct 2026.
 
 ## Context
@@ -70,7 +70,7 @@ Both pass the 33 ms p95 limit by about 35 to 50 times. Picking on this machine: 
 
 1. **Closed 14 Oct 2026 (OI-09), measured on a desktop GPU only; see "Windows run".** **Measure NFR-03 on the reference hardware** (verification plan 4.2: Apple M1-class on macOS, Intel Xe or recent AMD integrated graphics on Windows and Linux), 60 s scripted path, without and with the edge overlay, native graphics only. A run passes at p95 of 33 ms or less. Owner: the project owner, since it needs the physical machines.
 2. **Closed 11 Oct 2026 (OI-10).** **Confirm the build on Windows and macOS** (NFR-02). Slice 0 sets up the three-platform CI and covers this.
-3. **Decide keep or fall back** (OI-11) now that items 1 and 2 are closed; the evidence favours keeping. If any platform fails, apply the fallback (Tauri or iced) and supersede this record. Review the result before slice 8.
+3. **Decide keep or fall back** (OI-11): closed 14 Oct 2026, keep. If any platform fails, apply the fallback (Tauri or iced) and supersede this record. Review the result before slice 8.
 4. **Define the pick budget.** Propose a figure (10 ms assumed here) for the verification plan; this needs a document change, so agree it first.
 5. **Define "edges" for the NFR-03 test** (feature edges or all triangle edges) and update verification plan 4.2 if the wording changes.
 6. **Adoption records (NFR-14)** for `eframe`/`egui`, `egui-wgpu`, `wgpu`, `parry3d-f64` and `bytemuck`, with licence checks through `cargo deny`, to be made in slice 0. The versions tried were `eframe` 0.36.2, `wgpu` 30.0.1, `parry3d-f64` 0.31.1 and `bytemuck` 1.25.0.
@@ -79,5 +79,5 @@ Both pass the 33 ms p95 limit by about 35 to 50 times. Picking on this machine: 
 ## Consequences
 
 - No document is changed by this record, and no rule exception or `xtask` allow-list entry is needed (nothing from the spike enters the product).
-- When the outstanding items close, update this record's status, and if the stack changes, edit the architecture (sections 4, 5.8 and the crate selection) and the crate selection in the same change.
+- The stack does not change; if a later measurement fails, edit the architecture (sections 4, 5.8 and the crate selection) and the crate selection in the same change.
 - Items 4 and 5 may lead to edits of the verification plan; propose them before editing.
