@@ -65,6 +65,7 @@ jobs:
               - 'about.toml'
               - 'about.hbs'
               - '.cargo/**'
+              - '.config/**'
               - '.github/workflows/**'
             records:
               - 'docs/requirements.md'
@@ -347,22 +348,12 @@ jobs:
       # `cargo test` ran the binaries one after another, and the two heavy path
       # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
       # Doctests are not part of this run (llvm-cov nextest does not run them).
-      #
-      # Five tests are left out of this run only; the Tests job runs every one.
-      # Instrumentation makes the hot loops 6 to 11 times slower, and a single test
-      # cannot be split across cores. Uninstrumented they take 368 s, 252 s, 137 s,
-      # 122 s and 121 s, so the longest alone would run for about an hour here. They
-      # are a brute-force comparison, a thread-count determinism run, a resolution
-      # sweep, a gouge/coverage checker sweep and an overcut-location case, which
-      # re-run code the remaining simulation and path tests already execute.
+      # The `coverage` profile (.config/nextest.toml) leaves out the long-running
+      # tests: instrumentation makes them 6 to 11 times slower and one test cannot
+      # be split across cores. The Tests job runs all of them, and the nightly run
+      # repeats them.
       - name: Run tests with coverage instrumentation
-        run: >
-          cargo llvm-cov nextest --workspace --locked --no-report
-          -E 'not (test(~finest_setting_is_within)
-          | test(~simulation_is_identical_at_1_2_and_n_threads)
-          | test(~finer_resolution_lowers_the_error)
-          | test(~a_gouging_path_is_reported_as_overcut)
-          | test(~req_op_12_the_independent_checker_finds_no_gouge))'
+        run: cargo llvm-cov nextest --profile coverage --workspace --locked --no-report
       - name: HTML report (browsable, per file and per line)
         run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
       - name: lcov data (trend tracking)

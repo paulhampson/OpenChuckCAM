@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Scheduled checks (work breakdown slice 0 item 13; verification plan
-# sections 4.1 and 8): one hour of fuzzing per parser, and a beta-toolchain
-# build to catch breakage early.
+# sections 4.1 and 8): one hour of fuzzing per parser, a beta-toolchain
+# build to catch breakage early, and the long-running tests listed in
+# .config/nextest.toml.
 name: Nightly
 
 on:
@@ -49,6 +50,19 @@ jobs:
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts
+
+  long-tests:
+    name: Long-running tests (uninstrumented)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      # The `long` profile selects the tests the Coverage trend job leaves out.
+      - run: cargo nextest run --profile long --workspace --locked --no-fail-fast
 
   beta:
     name: Beta toolchain (${{ matrix.os }})
