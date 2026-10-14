@@ -8,6 +8,7 @@
 //!   triangles, reported for the user (IMP-04).
 //! - [`transform`]: translate, rotate, scale and mirror with the winding kept
 //!   outward, and orientation to the rotary axis (IMP-05).
+//! - [`display`]: feature edges for the viewport's edge display (UI-02).
 //!
 //! Selection and picking arrive in slice 10. Everything here is format
 //! independent and single-threaded, so results are the same on every run
@@ -41,6 +42,7 @@
 #![warn(missing_docs)]
 
 pub mod check;
+pub mod display;
 pub mod edges;
 pub mod transform;
 

@@ -75,6 +75,8 @@ cavalier_contours = "=0.9.0"
 parry3d-f64 = { version = "=0.31.1", default-features = false, features = ["std", "alloc", "dim3", "f64"] }
 eframe = { version = "=0.36.2", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
 wgpu = "=30.0.1"
+# Native open and save dialogs, `openchuck-ui` only (decision record 0029 item 15, OI-127).
+rfd = "=0.17.2"
 
 # Test, golden-file and benchmark crates (dev-dependencies only).
 proptest = "=1.12.0"

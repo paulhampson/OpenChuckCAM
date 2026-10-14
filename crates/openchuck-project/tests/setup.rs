@@ -122,10 +122,36 @@ fn req_set_01_machine_copy_survives_save_and_load() {
     file::save(&project, &dir).unwrap();
     let text = std::fs::read_to_string(dir.join(file::MACHINE_FILE)).unwrap();
     assert!(
-        text.starts_with("schema = 5\n\n[machine]\nname = \"Makera Z1\"\n"),
+        text.starts_with("schema = 6\n\n[machine]\nname = \"Makera Z1\"\n"),
         "{text}"
     );
     assert_eq!(file::load(&dir).unwrap().machine(), Some(&z1()));
+
+    // A copy that records its library source writes the ID beside the
+    // profile, not in it, and reads it back (OI-128).
+    let mut with_id = project.clone();
+    with_id
+        .set_machine_from(
+            Some(z1()),
+            Some("8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01".into()),
+        )
+        .unwrap();
+    let id_dir = temp_dir("machine-id");
+    file::save(&with_id, &id_dir).unwrap();
+    let id_text = std::fs::read_to_string(id_dir.join(file::MACHINE_FILE)).unwrap();
+    assert!(
+        id_text.starts_with(
+            "schema = 6\nid = \"8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01\"\n\n[machine]\nname = \"Makera Z1\"\n"
+        ),
+        "{id_text}"
+    );
+    let loaded = file::load(&id_dir).unwrap();
+    assert_eq!(
+        loaded.machine_id(),
+        Some("8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01")
+    );
+    assert_eq!(loaded, with_id);
+    std::fs::remove_dir_all(&id_dir).ok();
 
     // Editing one value of the copy changes one line.
     let mut edited = z1();
