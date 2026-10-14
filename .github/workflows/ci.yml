@@ -216,7 +216,10 @@ jobs:
         run: |
           sudo apt-get update
           # xvfb-run needs xauth, which the xvfb package only recommends.
-          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth
+          # winit loads libxkbcommon-x11 (and may load the other X11 client
+          # libraries) at run time; the bare runner lacks them.
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth \
+            libxkbcommon-x11-0 libxkbcommon0 libx11-xcb1 libxcursor1 libxrandr2 libxi6
       - name: Viewport render tests
         shell: bash
         run: |
