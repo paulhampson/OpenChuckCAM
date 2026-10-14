@@ -1,0 +1,657 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! Output grouping, comments and the setup sheet (GC-05, GC-06, GC-12;
+//! decision record 0028).
+
+// Test code may unwrap, index and panic (NFR-07 applies to library code).
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::float_cmp
+)]
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use openchuck_app::model::TransformStep;
+use openchuck_app::project::id::{OperationId, SetupId, ToolId};
+use openchuck_app::project::{
+    Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
+};
+use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
+use openchuck_app::{Application, Command, OutputGrouping, PostSelection, Threads};
+use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
+use openchuck_types::units::{FeedRate, SpindleSpeed};
+
+fn ball(diameter: f64) -> Tool {
+    Tool {
+        shape: ToolShape::BallEnd,
+        diameter: Millimetres(diameter),
+        flute_length: Millimetres(10.0),
+        overall_length: Millimetres(40.0),
+        shank_diameter: Millimetres(diameter),
+        flute_count: 2,
+        material: Some("carbide".into()),
+    }
+}
+
+fn snapshot(name: &str, diameter: f64, number: u32) -> ToolSnapshot {
+    let mut cutting_data = BTreeMap::new();
+    cutting_data.insert(
+        "oak".to_owned(),
+        CuttingData {
+            spindle_speed: SpindleSpeed(10000.0),
+            feed_per_tooth: Millimetres(0.02),
+            plunge_feed: FeedRate(150.0),
+            stepover: Millimetres(0.8),
+            stepdown: Millimetres(1.0),
+        },
+    );
+    ToolSnapshot {
+        id: ToolId::new(),
+        order: OrderKey::default(),
+        name: name.into(),
+        tool: ball(diameter),
+        controller: ControllerMapping {
+            number,
+            length_offset: None,
+            diameter_offset: None,
+        },
+        cutting_data,
+    }
+}
+
+fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
+    let mut parameters = BTreeMap::new();
+    parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(step));
+    Operation {
+        id: OperationId::new(),
+        order: OrderKey::default(),
+        name: name.into(),
+        setup,
+        strategy: "helical_finishing".into(),
+        tool: Some(tool),
+        selections: Vec::new(),
+        parameters,
+    }
+}
+
+fn add(app: &mut Application, item: Item) {
+    app.execute(Command::Add {
+        item,
+        placement: Placement::End,
+    })
+    .unwrap();
+}
+
+/// The 10 mm corpus cube on the rotary axis, the example machine, one setup in
+/// oak, two ball tools (T1 4 mm, T2 6 mm), and three operations in this order:
+/// "Finish A" (T1), "Finish B" (T2) and "Touch up A" (T1). Coarse angle steps
+/// keep the programs short.
+fn project(name: &str, second_setup: bool) -> (PathBuf, Application) {
+    // Tests run in parallel: each gets a folder of its own, whatever the project is called.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let unique = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("openchuck-out-{unique}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    let cube = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+    let (model, _) = app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+    app.execute(Command::SetModelTransform {
+        model,
+        transform: vec![TransformStep::CentreOnRotaryAxis],
+    })
+    .unwrap();
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    let mut setups = vec![(SetupId::new(), "Setup 1")];
+    if second_setup {
+        setups.push((SetupId::new(), "Flip / side 2"));
+    }
+    for (id, label) in &setups {
+        let mut setup = Setup::new(*id, *label);
+        setup.part = Some(model);
+        setup.material = Some("oak".into());
+        setup.stock = Some(Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(14.0),
+            x_start: Millimetres(-7.0),
+        });
+        add(&mut app, Item::Setup(setup));
+    }
+    let (a, b) = (snapshot("4 mm ball", 4.0, 1), snapshot("6 mm ball", 6.0, 2));
+    let (a_id, b_id) = (a.id, b.id);
+    add(&mut app, Item::Tool(a));
+    add(&mut app, Item::Tool(b));
+    let first = setups[0].0;
+    add(
+        &mut app,
+        Item::Operation(operation("Finish A", first, a_id, 30.0)),
+    );
+    add(
+        &mut app,
+        Item::Operation(operation("Finish B", first, b_id, 45.0)),
+    );
+    add(
+        &mut app,
+        Item::Operation(operation("Touch up A", first, a_id, 60.0)),
+    );
+    if second_setup {
+        add(
+            &mut app,
+            Item::Operation(operation("Side two", setups[1].0, a_id, 45.0)),
+        );
+    }
+    (dir, app)
+}
+
+fn post(app: &mut Application, grouping: OutputGrouping) -> openchuck_app::Regeneration {
+    app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    app.set_output_grouping(grouping);
+    app.regenerate().unwrap()
+}
+
+fn names(result: &openchuck_app::Regeneration) -> Vec<&str> {
+    result.gcode.iter().map(|(n, _)| n.as_str()).collect()
+}
+
+/// The end position of every fed move a program reaches (rapids between
+/// operations are written only when the position changes, so they differ
+/// with the grouping), written to six
+/// decimals, in a stable order.
+fn reached(text: &str) -> Vec<String> {
+    let program = openchuck_app::gcode::read(text).unwrap();
+    let replay =
+        openchuck_app::gcode::replay_axis(&program, openchuck_app::gcode::Dialect::MakeraZ1, 'A')
+            .unwrap();
+    let mut ends: Vec<String> = replay
+        .moves()
+        .filter(|m| m.motion == openchuck_app::gcode::Motion::Linear)
+        .map(|m| {
+            format!(
+                "{:.6} {:.6} {:.6} {:.6}",
+                m.to[0], m.to[1], m.to[2], m.to[3]
+            )
+        })
+        .collect();
+    ends.sort();
+    ends
+}
+
+#[test]
+fn req_gc_05_the_default_is_one_file_per_setup() {
+    let (dir, mut app) = project("default", false);
+    assert_eq!(app.output_grouping(), OutputGrouping::Setup);
+    app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    let result = app.regenerate().unwrap();
+    assert_eq!(names(&result), ["01-setup-1.nc"]);
+    assert!(result.reports.iter().all(|r| r.is_clean()));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_one_file_for_the_project_is_named_for_the_project() {
+    let (dir, mut app) = project("whole", false);
+    let result = post(&mut app, OutputGrouping::Project);
+    assert_eq!(names(&result), ["01-whole.nc"]);
+    assert!(result.reports[0].is_clean(), "{:?}", result.reports[0]);
+    // With one setup it holds what the per-setup file holds.
+    let per_setup = post(&mut app, OutputGrouping::Setup);
+    assert_eq!(result.gcode[0].1, per_setup.gcode[0].1);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_one_file_for_the_project_is_refused_when_the_project_has_two_setups() {
+    let (dir, mut app) = project("two-refused", true);
+    app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    app.set_output_grouping(OutputGrouping::Project);
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("one file for the project") && e.contains("per setup"),
+        "{e}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_one_file_per_setup_with_two_setups() {
+    let (dir, mut app) = project("two-setups", true);
+    let result = post(&mut app, OutputGrouping::Setup);
+    assert_eq!(
+        names(&result),
+        ["01-setup-1.nc", "02-flip-side-2.nc"],
+        "names are ASCII and numbered in machining order"
+    );
+    assert!(result.reports.iter().all(|r| r.is_clean()));
+    assert!(result.gcode[1].1.contains("(operation Side two,"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_one_file_per_operation() {
+    let (dir, mut app) = project("per-op", false);
+    let result = post(&mut app, OutputGrouping::Operation);
+    assert_eq!(
+        names(&result),
+        [
+            "01-setup-1-finish-a.nc",
+            "02-setup-1-finish-b.nc",
+            "03-setup-1-touch-up-a.nc"
+        ]
+    );
+    assert!(result.reports.iter().all(|r| r.is_clean()));
+    for ((_, text), operation) in result
+        .gcode
+        .iter()
+        .zip(["Finish A", "Finish B", "Touch up A"])
+    {
+        assert!(
+            text.starts_with(&format!("(per-op - Setup 1 - {operation})\n")),
+            "{text}"
+        );
+        assert_eq!(
+            text.matches("(operation ").count(),
+            1,
+            "one operation per file"
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_one_file_per_tool_gathers_that_tools_operations() {
+    let (dir, mut app) = project("per-tool", false);
+    let result = post(&mut app, OutputGrouping::Tool);
+    assert_eq!(
+        names(&result),
+        ["01-setup-1-t1-4-mm-ball.nc", "02-setup-1-t2-6-mm-ball.nc"]
+    );
+    assert!(result.reports.iter().all(|r| r.is_clean()));
+    let first = &result.gcode[0].1;
+    assert!(first.contains("(operation Finish A, tool T1 4 mm ball,"));
+    assert!(first.contains("(operation Touch up A, tool T1 4 mm ball,"));
+    assert_eq!(
+        first.matches("T1 M6").count(),
+        1,
+        "one tool change per file"
+    );
+    assert!(!first.contains("T2 M6"));
+    assert!(result.gcode[1].1.contains("T2 M6"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_every_grouping_reaches_the_same_moves() {
+    let (dir, mut app) = project("same-moves", false);
+    let whole = reached(&post(&mut app, OutputGrouping::Setup).gcode[0].1);
+    assert!(whole.len() > 50);
+    for grouping in OutputGrouping::ALL {
+        let result = post(&mut app, grouping);
+        let mut together: Vec<String> = result.gcode.iter().flat_map(|(_, t)| reached(t)).collect();
+        together.sort();
+        assert_eq!(together, whole, "{grouping:?}");
+        assert!(result.reports.iter().all(|r| r.is_clean()), "{grouping:?}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count() {
+    let (dir, mut app) = project("det", false);
+    app.save().unwrap();
+    for grouping in OutputGrouping::ALL {
+        let first = post(&mut app, grouping).gcode;
+        for threads in [1, 4] {
+            let mut again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+            assert_eq!(
+                post(&mut again, grouping).gcode,
+                first,
+                "{grouping:?} at {threads}"
+            );
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_a_grouping_is_spelled_by_name() {
+    for grouping in OutputGrouping::ALL {
+        assert_eq!(
+            grouping.as_str().parse::<OutputGrouping>().unwrap(),
+            grouping
+        );
+    }
+    let e = "everything".parse::<OutputGrouping>().unwrap_err();
+    assert!(e.contains("everything") && e.contains("operation"), "{e}");
+}
+
+#[test]
+fn req_gc_06_comments_name_the_operation_and_the_tool_by_name_and_number() {
+    let (dir, mut app) = project("comments", false);
+    let text = post(&mut app, OutputGrouping::Setup).gcode.remove(0).1;
+    let comments: Vec<&str> = text
+        .lines()
+        .filter(|l| l.starts_with("(operation "))
+        .collect();
+    assert_eq!(comments.len(), 3, "{text}");
+    for (line, expected) in comments.iter().zip([
+        "(operation Finish A, tool T1 4 mm ball, about ",
+        "(operation Finish B, tool T2 6 mm ball, about ",
+        "(operation Touch up A, tool T1 4 mm ball, about ",
+    ]) {
+        assert!(line.starts_with(expected), "{line}");
+        assert!(line.ends_with(" s)"), "{line}");
+    }
+    // No identifier leaks into the file: the names are the project's.
+    assert!(!text.contains("op-") && !text.contains('-') || text.lines().all(|l| l.len() < 200));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_06_a_name_with_brackets_or_accents_is_made_safe_in_the_comment() {
+    let (dir, mut app) = project("comment-safe", false);
+    let mut op = app.project().operations()[0].clone();
+    op.name = "Fräsen (fine)".into();
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let text = post(&mut app, OutputGrouping::Setup).gcode.remove(0).1;
+    assert!(
+        text.contains("(operation Fr?sen [fine], tool T1 4 mm ball,"),
+        "{text}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_file_names_are_ascii_and_unique_whatever_the_operation_names() {
+    let (dir, mut app) = project("odd-names", false);
+    for (i, name) in ["Rough (6 mm)/pass", "Rough (6 mm)/pass", "***"]
+        .iter()
+        .enumerate()
+    {
+        let mut op = app.project().operations()[i].clone();
+        op.name = (*name).into();
+        app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    }
+    let result = post(&mut app, OutputGrouping::Operation);
+    assert_eq!(
+        names(&result),
+        [
+            "01-setup-1-rough-6-mm-pass.nc",
+            "02-setup-1-rough-6-mm-pass.nc",
+            "03-setup-1-operation.nc"
+        ]
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn golden(folder: &str, name: &str, text: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/golden/grouping")
+        .join(folder)
+        .join(name);
+    openchuck_testkit::golden::check(&path, text).unwrap_or_else(|m| panic!("{m}"));
+}
+
+#[test]
+fn req_gc_05_req_nfr_08_each_grouping_matches_its_golden_files() {
+    let (dir, mut app) = project("golden", false);
+    for grouping in OutputGrouping::ALL {
+        for (name, text) in post(&mut app, grouping).gcode {
+            golden(grouping.as_str(), &name, &text);
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+// ---- the setup sheet (GC-12) ----
+
+fn sheet_project() -> (PathBuf, Application) {
+    let (dir, mut app) = project("sheet", true);
+    // A tool no operation uses stays off the sheet.
+    add(&mut app, Item::Tool(snapshot("spare <b>", 1.0, 9)));
+    (dir, app)
+}
+
+fn cell_rows(sheet: &openchuck_app::SetupSheet, heading: &str) -> Vec<Vec<String>> {
+    let section = sheet
+        .sections
+        .iter()
+        .find(|s| s.heading == heading)
+        .unwrap();
+    match &section.body {
+        openchuck_app::SheetBody::Table { rows, .. } => rows.clone(),
+        other => panic!("{heading} is not a table: {other:?}"),
+    }
+}
+
+#[test]
+fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
+    let (dir, app) = sheet_project();
+    let sheet = app.setup_sheet(None);
+    let tools = cell_rows(&sheet, "Tools");
+    let listed: Vec<(&str, &str)> = tools
+        .iter()
+        .map(|r| (r[0].as_str(), r[1].as_str()))
+        .collect();
+    assert_eq!(listed, [("T1", "4 mm ball"), ("T2", "6 mm ball")]);
+    assert_eq!(
+        tools[0][8], "Setup 1, Flip / side 2",
+        "where each tool is used"
+    );
+    assert_eq!(tools[1][8], "Setup 1");
+    let operations = cell_rows(&sheet, "Operations");
+    assert_eq!(operations.len(), 4);
+    assert_eq!(
+        operations[1],
+        [
+            "2",
+            "Finish B",
+            "helical_finishing",
+            "Setup 1",
+            "T2 6 mm ball",
+            "10000",
+            "-"
+        ]
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_the_sheet_describes_each_setups_stock_and_work_offset() {
+    let (dir, app) = sheet_project();
+    let sheet = app.setup_sheet(None);
+    let setup = sheet
+        .sections
+        .iter()
+        .find(|s| s.heading == "Setup: Setup 1")
+        .unwrap();
+    let openchuck_app::SheetBody::Facts(facts) = &setup.body else {
+        panic!("facts expected");
+    };
+    let fact = |label: &str| facts.iter().find(|(l, _)| l == label).unwrap().1.as_str();
+    assert_eq!(fact("Part"), "models/cube.stl");
+    assert_eq!(
+        fact("Stock"),
+        "cylinder, diameter 20 mm, length 14 mm, from X -7 mm"
+    );
+    assert_eq!(fact("Stock material"), "oak");
+    assert!(fact("Work offset").starts_with("G54, work zero at model X 0 mm"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_times_come_from_the_toolpath_and_are_labelled_as_programmed_time() {
+    let (dir, mut app) = sheet_project();
+    app.set_post(None);
+    let result = app.regenerate().unwrap();
+    let sheet = app.setup_sheet(Some(&result.toolpath));
+    let operations = cell_rows(&sheet, "Operations");
+    for row in &operations {
+        assert!(row[6].contains(':'), "a time in m:ss: {row:?}");
+    }
+    let html = sheet.to_html();
+    assert!(html.contains("Programmed time"));
+    assert!(html.contains("not the simulated estimate"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_nfr_07_names_are_escaped_in_the_html() {
+    let (dir, mut app) = sheet_project();
+    let mut op = app.project().operations()[0].clone();
+    op.name = "<script>alert(1)</script> & \"q\"".into();
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let html = app.setup_sheet(None).to_html();
+    assert!(!html.contains("<script"), "{html}");
+    assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot;"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_the_html_opens_offline() {
+    let (dir, app) = sheet_project();
+    let html = app.setup_sheet(None).to_html();
+    for external in [
+        "http://", "https://", "<script", "<link", "src=", "@import", "url(",
+    ] {
+        assert!(!html.contains(external), "{external}");
+    }
+    assert!(html.starts_with("<!DOCTYPE html>\n<html lang=\"en\">"));
+    assert!(html.contains("<meta charset=\"utf-8\">"));
+    assert!(html.contains("@media print"));
+    assert!(
+        html.contains("must be verified by the user"),
+        "the NFR-12 notice"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Checks the file's structure: header, one cross-reference entry per object
+/// at the offset the entry gives, a trailer pointing at the table.
+fn check_pdf(bytes: &[u8]) -> String {
+    let text = String::from_utf8(bytes.to_vec()).expect("the PDF is ASCII");
+    assert!(text.starts_with("%PDF-1.4\n") && text.ends_with("%%EOF\n"));
+    let start: usize = text
+        .rsplit("startxref\n")
+        .next()
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(text[start..].starts_with("xref\n0 "));
+    let table: Vec<&str> = text[start..].lines().skip(1).collect();
+    let count: usize = table[0].strip_prefix("0 ").unwrap().parse().unwrap();
+    for (i, entry) in table[2..=count].iter().enumerate() {
+        let offset: usize = entry[..10].parse().unwrap();
+        assert!(
+            text[offset..].starts_with(&format!("{} 0 obj\n", i + 1)),
+            "object {} is at {offset}",
+            i + 1
+        );
+    }
+    text
+}
+
+#[test]
+fn req_gc_12_the_pdf_is_well_formed_and_holds_the_sheets_text() {
+    let (dir, app) = sheet_project();
+    let sheet = app.setup_sheet(None);
+    let text = check_pdf(&sheet.to_pdf());
+    for expected in [
+        "Setup sheet: sheet",
+        "T1    4 mm ball",
+        "T2    6 mm ball",
+        "Finish B",
+        "Page 1 of ",
+    ] {
+        assert!(text.contains(expected), "{expected}");
+    }
+    assert!(
+        !text.contains("spare"),
+        "an unused tool stays off the sheet"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_a_long_sheet_runs_onto_more_pages_and_keeps_every_row() {
+    let (dir, mut app) = sheet_project();
+    for i in 0..120 {
+        let tool = app.project().tools()[0].id;
+        let setup = app.project().setups()[0].id;
+        add(
+            &mut app,
+            Item::Operation(operation(&format!("Extra pass {i:03}"), setup, tool, 60.0)),
+        );
+    }
+    let text = check_pdf(&app.setup_sheet(None).to_pdf());
+    assert!(
+        text.contains("/Count 3") || text.contains("/Count 4"),
+        "several pages"
+    );
+    for i in [0, 59, 119] {
+        assert!(text.contains(&format!("Extra pass {i:03}")), "{i}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_non_ascii_is_written_as_a_question_mark_in_the_pdf_and_kept_in_the_html() {
+    let (dir, mut app) = sheet_project();
+    let mut op = app.project().operations()[0].clone();
+    op.name = "Fräsen (a\\b)".into();
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let sheet = app.setup_sheet(None);
+    assert!(sheet.to_html().contains("Fräsen (a\\b)"));
+    let text = check_pdf(&sheet.to_pdf());
+    assert!(
+        text.contains("Fr?sen \\(a\\\\b\\)"),
+        "escaped for a PDF string"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_gc_07_the_sheet_is_the_same_bytes_each_time() {
+    let (dir, mut app) = sheet_project();
+    app.save().unwrap();
+    app.set_post(None);
+    let result = app.regenerate().unwrap();
+    let first = app.setup_sheet(Some(&result.toolpath));
+    for threads in [1, 4] {
+        let mut again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+        again.set_post(None);
+        let regenerated = again.regenerate().unwrap();
+        let sheet = again.setup_sheet(Some(&regenerated.toolpath));
+        assert_eq!(sheet.to_html(), first.to_html(), "{threads} threads");
+        assert_eq!(sheet.to_pdf(), first.to_pdf(), "{threads} threads");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn sheet_golden(name: &str, text: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/golden/setup_sheet")
+        .join(name);
+    openchuck_testkit::golden::check(&path, text).unwrap_or_else(|m| panic!("{m}"));
+}
+
+#[test]
+fn req_gc_12_req_nfr_08_the_sheet_content_matches_its_snapshot() {
+    let (dir, mut app) = sheet_project();
+    app.set_post(None);
+    let result = app.regenerate().unwrap();
+    let sheet = app.setup_sheet(Some(&result.toolpath));
+    sheet_golden("small_project.html", &sheet.to_html());
+    let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
+    sheet_golden("small_project.pdf", &pdf);
+    std::fs::remove_dir_all(dir).unwrap();
+}

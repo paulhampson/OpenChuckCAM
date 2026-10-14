@@ -49,7 +49,7 @@ fn req_gc_09_z1_output_follows_the_sp_12_conventions() {
     );
     // Comments stand on their own line and carry no parentheses from project text.
     assert!(
-        text.contains("(operation groove [finish] tool 4 mm ball about"),
+        text.contains("(operation groove [finish], tool T1 4 mm ball, about"),
         "{text}"
     );
 }
@@ -249,7 +249,10 @@ fn req_nfr_07_comments_from_project_text_are_made_safe() {
     let mut path = small_part();
     path.groups[0].tags.operation = "gr\u{fc}n (rough)\nM30".into();
     let text = builtin_post("linuxcnc").post(&path, &job()).unwrap().text;
-    assert!(text.contains("(operation gr?n [rough] M30 tool"), "{text}");
+    assert!(
+        text.contains("(operation gr?n [rough] M30, tool T1"),
+        "{text}"
+    );
     assert!(!text.lines().any(|l| l == "M30" && false));
     let mut j = job();
     j.title = "a (b)".into();

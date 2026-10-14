@@ -54,8 +54,55 @@ impl PostSelection {
     }
 }
 
-fn file_stem(index: usize, name: &str) -> String {
-    let slug: String = name
+/// How the toolpath is split into G-code files (GC-05, decision record 0028
+/// item 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputGrouping {
+    /// One file for the whole project. A program has one work frame and one
+    /// work offset, so a project with more than one setup is refused (OI-92).
+    Project,
+    /// One file for each run of operations in one setup. The default.
+    #[default]
+    Setup,
+    /// One file for each operation.
+    Operation,
+    /// One file for each tool in each setup, holding every operation that
+    /// tool cuts there, in machining order.
+    Tool,
+}
+
+impl OutputGrouping {
+    /// Every grouping, in the order a front end lists them.
+    pub const ALL: [Self; 4] = [Self::Project, Self::Setup, Self::Operation, Self::Tool];
+
+    /// The grouping's name as the command line and project files spell it.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Setup => "setup",
+            Self::Operation => "operation",
+            Self::Tool => "tool",
+        }
+    }
+}
+
+impl std::str::FromStr for OutputGrouping {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, String> {
+        Self::ALL
+            .into_iter()
+            .find(|g| g.as_str() == value)
+            .ok_or_else(|| {
+                format!("unknown output grouping '{value}' (use project, setup, operation or tool)")
+            })
+    }
+}
+
+/// A name made safe for a file name: lower-case ASCII letters and digits
+/// joined by hyphens, at most 40 characters, `fallback` when nothing is left.
+fn slug(name: &str, fallback: &str) -> String {
+    let mapped: String = name
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() {
@@ -65,17 +112,29 @@ fn file_stem(index: usize, name: &str) -> String {
             }
         })
         .collect();
-    let slug = slug
+    let joined = mapped
         .split('-')
         .filter(|p| !p.is_empty())
         .collect::<Vec<_>>()
         .join("-");
-    let slug = if slug.is_empty() {
-        "setup".to_string()
+    let joined: String = joined.chars().take(40).collect();
+    let joined = joined.trim_end_matches('-');
+    if joined.is_empty() {
+        fallback.to_string()
     } else {
-        slug
-    };
-    format!("{:02}-{slug}", index + 1)
+        joined.to_string()
+    }
+}
+
+/// A file name stem: the running number, so the files sort in machining
+/// order and no two share a name, then the parts that say what is inside.
+fn file_stem(index: usize, parts: &[String]) -> String {
+    let mut stem = format!("{:02}", index + 1);
+    for part in parts {
+        stem.push('-');
+        stem.push_str(part);
+    }
+    stem
 }
 
 /// What the checks found about one G-code file (GC-08, GC-11; gates 1 and 2).
@@ -232,12 +291,98 @@ fn check_file(
     }
 }
 
+/// One program file's worth of groups.
+struct Unit {
+    setup: String,
+    /// What the file holds beyond its setup, for its title and name.
+    label: Option<(String, String)>,
+    groups: Vec<ToolpathGroup>,
+}
+
+/// Splits the toolpath into the files `grouping` asks for.
+fn split_units(
+    project: &Project,
+    toolpath: &Toolpath,
+    grouping: OutputGrouping,
+) -> Result<Vec<Unit>, AppError> {
+    // Runs of consecutive groups from one setup: the work frame is the setup's.
+    let mut runs: Vec<(String, Vec<ToolpathGroup>)> = Vec::new();
+    for group in &toolpath.groups {
+        match runs.last_mut() {
+            Some((setup, groups)) if *setup == group.tags.setup => groups.push(group.clone()),
+            _ => runs.push((group.tags.setup.clone(), vec![group.clone()])),
+        }
+    }
+    if grouping == OutputGrouping::Project && runs.len() > 1 {
+        return Err(AppError::Post(format!(
+            "one file for the project cannot hold {} setup runs: each setup has its own work frame and work offset, and the operator refixtures between them; choose one file per setup, operation or tool",
+            runs.len()
+        )));
+    }
+    let tool_name = |tag: &str| {
+        project
+            .tools()
+            .iter()
+            .find(|t| t.id.to_string() == tag)
+            .map(|t| (t.controller.number, t.name.clone()))
+    };
+    let mut units = Vec::new();
+    for (setup, groups) in runs {
+        match grouping {
+            OutputGrouping::Project | OutputGrouping::Setup => units.push(Unit {
+                setup,
+                label: None,
+                groups,
+            }),
+            OutputGrouping::Operation => {
+                for group in groups {
+                    let name = project
+                        .operations()
+                        .iter()
+                        .find(|o| o.id.to_string() == group.tags.operation)
+                        .map_or_else(|| group.tags.operation.clone(), |o| o.name.clone());
+                    units.push(Unit {
+                        setup: setup.clone(),
+                        label: Some((name.clone(), slug(&name, "operation"))),
+                        groups: vec![group],
+                    });
+                }
+            }
+            OutputGrouping::Tool => {
+                let mut by_tool: Vec<(String, Vec<ToolpathGroup>)> = Vec::new();
+                for group in groups {
+                    match by_tool.iter_mut().find(|(t, _)| *t == group.tags.tool) {
+                        Some((_, list)) => list.push(group),
+                        None => by_tool.push((group.tags.tool.clone(), vec![group])),
+                    }
+                }
+                for (tag, groups) in by_tool {
+                    let (title, part) = match tool_name(&tag) {
+                        Some((number, name)) => (
+                            format!("T{number} {name}"),
+                            format!("t{number}-{}", slug(&name, "tool")),
+                        ),
+                        None => (tag.clone(), slug(&tag, "tool")),
+                    };
+                    units.push(Unit {
+                        setup: setup.clone(),
+                        label: Some((title, part)),
+                        groups,
+                    });
+                }
+            }
+        }
+    }
+    Ok(units)
+}
+
 /// Posts `toolpath` and returns the files as (name, text), their reports and notes.
 #[allow(clippy::type_complexity)]
 pub(crate) fn post_toolpath(
     project: &Project,
     toolpath: &Toolpath,
     selection: &PostSelection,
+    grouping: OutputGrouping,
 ) -> Result<(Vec<(String, String)>, Vec<GcodeReport>, Vec<String>), AppError> {
     let post = TemplatePost::new(selection.load()?);
     if toolpath.groups.is_empty() {
@@ -247,18 +392,23 @@ pub(crate) fn post_toolpath(
     let machine = project
         .machine()
         .ok_or_else(|| AppError::Post("the project has no machine profile".into()))?;
-    // Runs of consecutive groups from one setup.
-    let mut runs: Vec<(String, Vec<ToolpathGroup>)> = Vec::new();
-    for group in &toolpath.groups {
-        match runs.last_mut() {
-            Some((setup, groups)) if *setup == group.tags.setup => groups.push(group.clone()),
-            _ => runs.push((group.tags.setup.clone(), vec![group.clone()])),
-        }
-    }
+    let operation_names: BTreeMap<String, String> = project
+        .operations()
+        .iter()
+        .map(|o| (o.id.to_string(), o.name.clone()))
+        .collect();
     let mut files = Vec::new();
     let mut reports = Vec::new();
     let mut notes = Vec::new();
-    for (index, (setup_tag, groups)) in runs.into_iter().enumerate() {
+    for (index, unit) in split_units(project, toolpath, grouping)?
+        .into_iter()
+        .enumerate()
+    {
+        let Unit {
+            setup: setup_tag,
+            label,
+            groups,
+        } = unit;
         let setup = project
             .setups()
             .iter()
@@ -314,7 +464,11 @@ pub(crate) fn post_toolpath(
         let job = PostJob {
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
-            title: format!("{} - {}", project.name(), setup.name),
+            title: match &label {
+                Some((title, _)) => format!("{} - {} - {title}", project.name(), setup.name),
+                None => format!("{} - {}", project.name(), setup.name),
+            },
+            operation_names: operation_names.clone(),
             revision: None,
             work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
         };
@@ -328,7 +482,16 @@ pub(crate) fn post_toolpath(
                 setup.name, output.clamped_feeds
             ));
         }
-        let name = format!("{}.{extension}", file_stem(index, &setup.name));
+        let mut parts = Vec::new();
+        if grouping == OutputGrouping::Project {
+            parts.push(slug(project.name(), "project"));
+        } else {
+            parts.push(slug(&setup.name, "setup"));
+        }
+        if let Some((_, part)) = &label {
+            parts.push(part.clone());
+        }
+        let name = format!("{}.{extension}", file_stem(index, &parts));
         reports.push(check_file(
             &output.text,
             &name,

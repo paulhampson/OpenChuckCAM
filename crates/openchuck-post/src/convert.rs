@@ -40,6 +40,9 @@ pub struct ConvertOptions<F> {
     /// feeds are worked out from positions rounded this way, and a move that
     /// rounds to no motion is dropped. `None` keeps full precision.
     pub decimals: Option<(u32, u32)>,
+    /// Display names of operations by the IR's operation tag, for the
+    /// comments (GC-06). A tag with no name is written as it is.
+    pub operation_names: BTreeMap<String, String>,
 }
 
 /// `value` rounded to `decimals` places as the post writes it (ties to even
@@ -112,10 +115,14 @@ pub fn to_machine_program<F: AsRotaryFrame>(
             });
         }
         let seconds: f64 = group.segments.iter().map(|s| s.duration.0).sum();
+        let operation = options
+            .operation_names
+            .get(&group.tags.operation)
+            .unwrap_or(&group.tags.operation);
         program.steps.push(Step::Comment {
             text: format!(
-                "operation {} tool {} about {:.0} s",
-                group.tags.operation, tool.name, seconds
+                "operation {operation}, tool T{} {}, about {seconds:.0} s",
+                tool.number, tool.name
             ),
         });
         if current_tool != Some(tool.number) {

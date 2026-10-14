@@ -26,6 +26,9 @@ pub struct PostJob {
     pub tools: BTreeMap<String, ToolSetting>,
     /// The program title, written as a comment.
     pub title: String,
+    /// Display names of operations by the IR's operation tag, written in the
+    /// comments that name each operation (GC-06).
+    pub operation_names: BTreeMap<String, String>,
     /// A revision identifier for the header, when supplied (VC-06).
     pub revision: Option<String>,
     /// The setup's work offset register (`G54` to `G59`), which replaces the
@@ -166,6 +169,7 @@ impl PostProcessor for TemplatePost {
             max_feed: d.options.max_feed,
             tools: job.tools.clone(),
             decimals: Some((d.options.decimals.pos, d.options.decimals.a)),
+            operation_names: job.operation_names.clone(),
         };
         let mut program = to_machine_program(toolpath, &convert)?;
         for step in &mut program.steps {

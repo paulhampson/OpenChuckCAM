@@ -609,6 +609,8 @@ These apply to every slice and are not repeated below.
 
 **Goal:** export G-code in the groupings a shop uses, and a printable job summary.
 
+**Status:** in progress. Items 1, 2, 3 and 5 are built on branch `claude/awesome-sagan-wqv9bz`; design in [decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) (proposed, waits for the owner). Item 4 (export UI and CLI options, the tool-number dialog) is not built, so the slice stays open and GC-05, GC-06, GC-12 and GC-14 are not yet closed in `xtask/traceability.toml`. Open items OI-92 (narrowed), OI-123 to OI-126.
+
 **Requirements:** GC-05, GC-06, GC-12 (GC-14 in the UI)
 
 **Design refinement:** file naming and grouping rules, comment content, the setup sheet layout, and the HTML and PDF generation approach, assessed under NFR-14 because the architecture does not score it. Decide whether IR-duration totals appear (finding 6); otherwise times are left out until SIM-08.

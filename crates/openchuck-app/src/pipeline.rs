@@ -67,6 +67,7 @@ pub(crate) fn regenerate(
     project: &Project,
     registry: &Registry,
     post: Option<&crate::posting::PostSelection>,
+    grouping: crate::posting::OutputGrouping,
     simulate: bool,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
@@ -152,7 +153,7 @@ pub(crate) fn regenerate(
     if let Some(selection) = post {
         context.check_cancelled()?;
         let (files, reports, notes) =
-            crate::posting::post_toolpath(project, &regeneration.toolpath, selection)?;
+            crate::posting::post_toolpath(project, &regeneration.toolpath, selection, grouping)?;
         regeneration.gcode = files;
         regeneration.reports = reports;
         regeneration.notes.extend(notes);
