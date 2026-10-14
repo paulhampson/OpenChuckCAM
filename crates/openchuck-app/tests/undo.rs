@@ -77,6 +77,11 @@ enum Edit {
         pick: usize,
         tool: Option<usize>,
     },
+    SetEnabled {
+        pick: usize,
+        enabled: bool,
+    },
+    Duplicate(usize),
     RenameSetup {
         pick: usize,
         name: String,
@@ -123,6 +128,9 @@ fn edit() -> impl Strategy<Value = Edit> {
             .prop_map(|(pick, name, value)| Edit::SetParameter { pick, name, value }),
         (any::<usize>(), proptest::option::of(any::<usize>()))
             .prop_map(|(pick, tool)| Edit::SetTool { pick, tool }),
+        (any::<usize>(), any::<bool>())
+            .prop_map(|(pick, enabled)| Edit::SetEnabled { pick, enabled }),
+        any::<usize>().prop_map(Edit::Duplicate),
         (any::<usize>(), "[A-Z][a-z]{0,6}")
             .prop_map(|(pick, name)| Edit::RenameSetup { pick, name }),
         (
@@ -237,6 +245,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
             let setup = pick(p.setups(), n)?;
             Command::Add {
                 item: Item::Operation(Operation {
+                    enabled: true,
                     id: OperationId::from_u128(id),
                     order: OrderKey::default(),
                     name: format!("Op {id}"),
@@ -273,6 +282,13 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
             name: ["stepover", "depth", "angle"][name].into(),
             value: value.map(ParameterValue::Number),
         },
+        Edit::SetEnabled { pick: n, enabled } => Command::SetOperationEnabled {
+            operation: pick(p.operations(), n)?.id,
+            enabled,
+        },
+        Edit::Duplicate(n) => {
+            openchuck_app::duplicate_operation(p, pick(p.operations(), n)?.id).ok()?
+        }
         Edit::SetTool { pick: n, tool } => {
             let mut op = pick(p.operations(), n)?.clone();
             op.tool = tool.and_then(|t| pick(p.tools(), t)).map(|t| t.id);

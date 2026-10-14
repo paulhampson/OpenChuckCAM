@@ -132,6 +132,7 @@ fn project(name: &str, ops: usize, threads: usize) -> (PathBuf, Application) {
     ];
     for i in 0..ops {
         items.push(Item::Operation(Operation {
+            enabled: true,
             id: OperationId::new(),
             order: OrderKey::default(),
             name: format!("Ring {}", i + 1),

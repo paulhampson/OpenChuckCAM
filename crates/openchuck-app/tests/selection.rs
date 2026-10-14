@@ -105,6 +105,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             setup: setup_id,
             strategy: "helical_finishing".into(),
             tool: Some(tool_id),
+            enabled: true,
             selections: Vec::new(),
             boundary: None,
             avoid: Vec::new(),

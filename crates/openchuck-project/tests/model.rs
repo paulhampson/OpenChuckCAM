@@ -53,6 +53,7 @@ fn model(id: u128) -> ModelRef {
 
 fn operation(id: u128, setup: SetupId) -> Operation {
     Operation {
+        enabled: true,
         id: OperationId::from_u128(id),
         order: OrderKey::default(),
         name: format!("Operation {id}"),

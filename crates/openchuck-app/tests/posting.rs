@@ -94,6 +94,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
         Item::Setup(setup),
         Item::Tool(snapshot),
         Item::Operation(Operation {
+            enabled: true,
             id: op,
             order: OrderKey::default(),
             name: "Finish".into(),
@@ -208,6 +209,7 @@ fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (T
     .unwrap();
     let setup = app.project().setups()[0].id;
     let op = Operation {
+        enabled: true,
         id: OperationId::new(),
         order: OrderKey::default(),
         name: "Second".into(),

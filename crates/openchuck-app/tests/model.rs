@@ -273,3 +273,31 @@ fn req_nfr_06_inspection_is_identical_at_any_thread_count() {
     .unwrap();
     assert!(runs.len() >= 3);
 }
+
+#[test]
+fn req_prj_02_model_file_warnings_name_changed_and_missing_files() {
+    let dir = std::env::temp_dir().join(format!("openchuck-model-warn-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = Application::create(&dir, "warn", Threads::Exactly(1)).unwrap();
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    let cube = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    for name in ["a.stl", "b.stl", "c.stl"] {
+        std::fs::copy(&cube, dir.join("models").join(name)).unwrap();
+        app.add_model(&dir.join("models").join(name), None).unwrap();
+    }
+    assert!(app.model_file_warnings().is_empty());
+    std::fs::write(
+        dir.join("models/a.stl"),
+        "solid changed\nendsolid changed\n",
+    )
+    .unwrap();
+    std::fs::remove_file(dir.join("models/c.stl")).unwrap();
+    assert_eq!(
+        app.model_file_warnings(),
+        [
+            "'models/a.stl' has changed since it was added",
+            "'models/c.stl' is missing"
+        ]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

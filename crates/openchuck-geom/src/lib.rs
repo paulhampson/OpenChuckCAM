@@ -10,6 +10,7 @@
 //!   outward, and orientation to the rotary axis (IMP-05).
 //! - [`select`]: flood fill, select-by-angle and select-by-direction on
 //!   triangles (UI-04). Ray-cast picking follows in slice 10 item 1.
+//! - [`display`]: feature edges for the viewport's edge display (UI-02).
 //!
 //! Everything here is format independent and single-threaded, so results are
 //! the same on every run (NFR-06).
@@ -42,6 +43,7 @@
 #![warn(missing_docs)]
 
 pub mod check;
+pub mod display;
 pub mod edges;
 pub mod select;
 pub mod transform;

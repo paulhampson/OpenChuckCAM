@@ -150,6 +150,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
         Item::Setup(setup),
         Item::Tool(snapshot),
         Item::Operation(Operation {
+            enabled: true,
             id: OperationId::new(),
             order: OrderKey::default(),
             name: "Finish".into(),

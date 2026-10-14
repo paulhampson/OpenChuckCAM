@@ -159,7 +159,7 @@ These are starting values, chosen before there is anything to measure. They are 
 The 30 fps requirement is checked on a modest baseline machine, so that faster machines pass with margin.
 
 - **Baseline:** 4 CPU cores, 16 GB RAM, integrated graphics, 1080p display. One physical machine per platform: Apple M1-class on macOS, Intel Xe or recent AMD integrated graphics on Windows and Linux.
-- **Test:** a scripted 60-second camera path (orbit, pan, zoom) over a 1 million triangle model in shaded-with-edges mode. It passes if the 95th percentile frame time is 33 ms or less.
+- **Test:** a scripted 60-second camera path (orbit, pan, zoom) over a 1 million triangle model in shaded-with-edges mode, where the edges are the model's feature edges: those whose two triangles turn by more than 30 degrees, plus open and non-manifold edges, as the viewport draws them (OI-13, [decision 0029](decisions/0029-slice-8-viewport-and-shell.md) item 4). It passes if the 95th percentile frame time is 33 ms or less.
 - **Where it runs:** on the physical machines before each release, not only on hosted CI, whose runners typically have no real GPU. CI runs a software-rendered smoke test (UI-01, NFR-02) and uses native rendering wherever a runner offers it.
 - **Core counts:** generation and simulation also run at 1 core and at all cores. This checks the speed-up (NFR-04) and the identical output (NFR-06).
 

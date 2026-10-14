@@ -58,10 +58,13 @@ use openchuck_types::units::Millimetres;
 ///   and cutting data by stock material (TL-05) (decision record 0014).
 /// - 5: `project.toml` gains the optional `[simulation]` table (SIM-07),
 ///   written only when it differs from the default (decision record 0025).
-/// - 6: operations gain the optional `boundary`, `avoid` and `check`
+/// - 6: operations gain `enabled`, written only when false (UI-06,
+///   decision record 0029 item 10), and the machine copy in `machine.toml`
+///   may hold the `id` of the library profile it came from (OI-54, item 16).
+/// - 7: operations gain the optional `boundary`, `avoid` and `check`
 ///   selection set references (OP-02), written only when set (decision
-///   record 0027).
-pub const SCHEMA: i64 = 6;
+///   record 0032).
+pub const SCHEMA: i64 = 7;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -81,6 +84,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_3_to_4,
     schema_4_to_5,
     schema_5_to_6,
+    schema_6_to_7,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -128,9 +132,16 @@ fn schema_4_to_5(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
-/// Schema 6 only adds optional operation fields, which a schema 5 file does
-/// not have, so it needs no change but its number.
+/// Schema 6 only adds `enabled` to operations, written only when false, so a
+/// schema 5 file needs no change but its number: its operations are enabled.
 fn schema_5_to_6(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 7 only adds optional operation fields (`boundary`, `avoid`,
+/// `check`), which a schema 6 file does not have, so it needs no change but
+/// its number.
+fn schema_6_to_7(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
@@ -181,6 +192,9 @@ struct ProjectFile {
 #[serde(deny_unknown_fields)]
 pub(crate) struct MachineFile {
     pub(crate) schema: i64,
+    /// The ID shared with the library profile the copy came from (OI-128).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) id: Option<String>,
     pub(crate) machine: MachineProfile,
 }
 
@@ -252,6 +266,17 @@ struct OperationFile {
     check: Vec<SelectionSetId>,
     #[serde(default)]
     parameters: BTreeMap<String, ParameterValue>,
+    #[serde(default = "enabled_default", skip_serializing_if = "is_enabled")]
+    enabled: bool,
+}
+
+const fn enabled_default() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+const fn is_enabled(enabled: &bool) -> bool {
+    *enabled
 }
 
 /// A hash of everything an operation takes from selections: the sets it uses
@@ -324,6 +349,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
     if let Some(machine) = project.machine() {
         let file = MachineFile {
             schema: SCHEMA,
+            id: project.machine_id().map(str::to_owned),
             machine: machine.clone(),
         };
         files.insert(MACHINE_FILE.to_owned(), to_text(&file)?);
@@ -382,6 +408,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             avoid: o.avoid.clone(),
             check: o.check.clone(),
             parameters: o.parameters.clone(),
+            enabled: o.enabled,
         };
         files.insert(item_path(FileKind::Operation, &o.id), to_text(&file)?);
     }
@@ -490,10 +517,18 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
     };
     let file: ProjectFile = parse(&project_path, &text, FileKind::Project, migrations, schema)?;
     let machine_path = root.join(MACHINE_FILE);
+    let mut machine_id = None;
     let machine = match std::fs::read_to_string(&machine_path) {
         Ok(text) => {
             let file: MachineFile =
                 parse(&machine_path, &text, FileKind::Machine, migrations, schema)?;
+            if let Some(id) = &file.id {
+                crate::machines::validate_machine_id(id).map_err(|e| ProjectError::BadFile {
+                    path: machine_path.clone(),
+                    reason: e.to_string(),
+                })?;
+            }
+            machine_id = file.id;
             Some(file.machine)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -565,6 +600,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                 avoid: f.avoid,
                 check: f.check,
                 parameters: f.parameters,
+                enabled: f.enabled,
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -582,6 +618,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
         path: root.to_path_buf(),
         reason: e.to_string(),
     })?;
+    project.machine_id = machine_id;
     project
         .set_simulation(file.simulation)
         .map_err(|e| ProjectError::BadFile {
@@ -816,16 +853,17 @@ mod tests {
 
     #[test]
     fn req_prj_04_newer_schema_is_refused() {
+        let newer = SCHEMA + 1;
         let err = parse::<ProjectFile>(
             Path::new(PROJECT_FILE),
-            "schema = 7\nname = \"x\"\n",
+            &format!("schema = {newer}\nname = \"x\"\n"),
             FileKind::Project,
             MIGRATIONS,
             SCHEMA,
         )
         .unwrap_err();
         assert!(
-            matches!(err, ProjectError::SchemaTooNew { found: 7, .. }),
+            matches!(err, ProjectError::SchemaTooNew { found, .. } if found == newer),
             "{err}"
         );
         assert!(err.to_string().contains("newer OpenChuckCAM"), "{err}");
@@ -833,7 +871,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 6);
+        assert_eq!(SCHEMA, 7);
         let mut project = Project::new("p");
         project
             .insert(
@@ -842,7 +880,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 6\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 7\n"), "{path}: {text}");
         }
     }
 

@@ -29,6 +29,15 @@ pub enum Command {
     RenameProject(String),
     /// Sets or clears the project's copy of its machine profile (SET-01).
     SetMachine(Option<Box<MachineProfile>>),
+    /// Sets or clears the project's machine copy with the ID of the library
+    /// profile it came from, so the copy can later be compared with it
+    /// (SET-01, OI-128).
+    SetMachineFrom {
+        /// The profile, or `None` to clear it.
+        machine: Option<Box<MachineProfile>>,
+        /// The library profile's ID.
+        id: Option<String>,
+    },
     /// Sets the simulation settings (SIM-07).
     SetSimulation(SimulationSettings),
     /// Adds an item.
@@ -64,6 +73,15 @@ pub enum Command {
         /// The new value.
         value: Option<ParameterValue>,
     },
+    /// Enables or disables an operation (UI-06). A disabled operation is left
+    /// out of regeneration, simulation and posting (decision record 0029
+    /// item 10).
+    SetOperationEnabled {
+        /// The operation.
+        operation: OperationId,
+        /// Whether it takes part.
+        enabled: bool,
+    },
     /// Sets the unit a model file is read in, or `None` to use the file's
     /// own unit (IMP-03).
     SetModelUnits {
@@ -90,7 +108,18 @@ impl Command {
         Ok(match self {
             Self::RenameProject(name) => Self::RenameProject(project.set_name(name)),
             Self::SetMachine(machine) => {
-                Self::SetMachine(project.set_machine(machine.map(|m| *m))?.map(Box::new))
+                let (machine, id) = project.set_machine_from(machine.map(|m| *m), None)?;
+                Self::SetMachineFrom {
+                    machine: machine.map(Box::new),
+                    id,
+                }
+            }
+            Self::SetMachineFrom { machine, id } => {
+                let (machine, id) = project.set_machine_from(machine.map(|m| *m), id)?;
+                Self::SetMachineFrom {
+                    machine: machine.map(Box::new),
+                    id,
+                }
             }
             Self::SetSimulation(settings) => Self::SetSimulation(project.set_simulation(settings)?),
             Self::Add { item, placement } => {
@@ -140,6 +169,20 @@ impl Command {
                     value: old,
                 }
             }
+            Self::SetOperationEnabled { operation, enabled } => {
+                let mut edited = project.operation(operation).cloned().ok_or_else(|| {
+                    openchuck_project::ProjectError::NotFound {
+                        kind: OperationId::KIND,
+                        id: operation.to_string(),
+                    }
+                })?;
+                let old = std::mem::replace(&mut edited.enabled, enabled);
+                project.replace(Item::Operation(edited))?;
+                Self::SetOperationEnabled {
+                    operation,
+                    enabled: old,
+                }
+            }
             Self::SetModelUnits { model, units } => {
                 let mut edited = model_ref(project, model)?;
                 let old = std::mem::replace(&mut edited.units, units);
@@ -174,6 +217,29 @@ impl Command {
             }
         })
     }
+}
+
+/// The command that duplicates an operation (UI-06): a copy with a new ID,
+/// named "<name> (copy)", placed just after the original in machining order.
+/// Its parameters, tool, setup, selections and enabled state are the
+/// original's.
+pub fn duplicate_operation(project: &Project, operation: OperationId) -> Result<Command, AppError> {
+    let index = project
+        .operations()
+        .iter()
+        .position(|o| o.id == operation)
+        .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+    let mut copy = project
+        .operations()
+        .get(index)
+        .cloned()
+        .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+    copy.id = OperationId::new();
+    copy.name = format!("{} (copy)", copy.name);
+    Ok(Command::Add {
+        item: Item::Operation(copy),
+        placement: Placement::Index(index + 1),
+    })
 }
 
 /// A copy of a model reference, to edit.
