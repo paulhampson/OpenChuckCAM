@@ -566,22 +566,15 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert!(
         out.stdout
-            .contains("set G55 to machine X -162.400 Y -108.800 Z 0.000"),
+            .contains("set G55 to machine X -162.400 Y -108.800 Z -55.000"),
         "{}",
         out.stdout
     );
-    // The Z1 profile has no machine Z for the axis (OI-60), so the safe Z
-    // cannot be checked against the travel: the only warning says so, and
-    // names the unconfirmed values it used.
-    let warnings: Vec<&str> = out
-        .stdout
-        .lines()
-        .filter(|l| l.starts_with("  - "))
-        .collect();
-    assert_eq!(warnings.len(), 1, "{}", out.stdout);
+    // The Z1 profile's axis height is the owner's (45 mm above the bed, OI-60), so the safe Z
+    // fits the travel and the setup has nothing to warn about.
+    assert!(out.stdout.contains("no problems found"), "{}", out.stdout);
     assert!(
-        warnings[0].contains("the safe Z is at machine Z 60.000")
-            && warnings[0].contains("rotary_origin"),
+        !out.stdout.lines().any(|l| l.starts_with("  - ")),
         "{}",
         out.stdout
     );
@@ -748,4 +741,45 @@ fn req_tl_01_req_tl_07_req_tl_11_cli_tool_library_and_snapshots() {
     let out = run(&["tools".as_ref(), p]);
     assert!(out.stdout.contains("no tools"), "{}", out.stdout);
     std::fs::remove_dir_all(&library).ok();
+}
+
+#[test]
+fn req_gc_14_gc_11_cli_asks_for_the_tool_numbers_before_writing_g_code() {
+    let project = empty_project("tool-numbers");
+    let out = run(&["tool-numbers".as_ref(), project.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(
+        out.stdout.contains("no operation uses a tool"),
+        "{}",
+        out.stdout
+    );
+    // Not on a terminal and no option: the numbers are shown and the run stops.
+    let out = run(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--post".as_ref(),
+        "linuxcnc".as_ref(),
+    ]);
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("--tool-numbers keep"), "{}", out.stderr);
+    // With the option it goes on, and the notice is printed (NFR-12).
+    let out = run(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--post".as_ref(),
+        "linuxcnc".as_ref(),
+        "--tool-numbers".as_ref(),
+        "keep".as_ref(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(out.stdout.contains("0 G-code files"), "{}", out.stdout);
+    // G-code without a post is refused rather than guessed.
+    let out = run(&[
+        "regenerate".as_ref(),
+        project.as_os_str(),
+        "--out".as_ref(),
+        "x".as_ref(),
+    ]);
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("--post"), "{}", out.stderr);
 }

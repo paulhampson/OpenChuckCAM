@@ -179,6 +179,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "minijinja"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13345868cfa94eadafc067112ff29271380a820d5594d9ee6ba81a8d00ea5dc2"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,23 +198,35 @@ name = "openchuck-fuzz"
 version = "0.1.0"
 dependencies = [
  "libfuzzer-sys",
+ "openchuck-gcode",
  "openchuck-geom",
  "openchuck-import",
+ "openchuck-post",
  "openchuck-project",
  "openchuck-types",
  "serde_json",
 ]
 
 [[package]]
+name = "openchuck-gcode"
+version = "0.4.0"
+dependencies = [
+ "openchuck-types",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "openchuck-geom"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "openchuck-types",
 ]
 
 [[package]]
 name = "openchuck-import"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "openchuck-geom",
  "openchuck-types",
@@ -214,8 +235,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "openchuck-post"
+version = "0.4.0"
+dependencies = [
+ "minijinja",
+ "openchuck-types",
+ "serde",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "openchuck-project"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -227,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "thiserror",

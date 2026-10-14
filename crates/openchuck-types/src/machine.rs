@@ -212,6 +212,16 @@ pub struct Provenance {
     pub source: String,
 }
 
+/// The tool number limit profiles get when they do not say: 1000. The Z1's
+/// real limit is not known (the number range is effectively unlimited; the
+/// probe uses a high number), and the owner chose 1000 as reasonable for now
+/// (13 Oct 2026, OI-62).
+pub const DEFAULT_MAX_TOOL_NUMBER: u32 = 1000;
+
+const fn default_max_tool_number() -> u32 {
+    DEFAULT_MAX_TOOL_NUMBER
+}
+
 /// A machine profile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -236,6 +246,11 @@ pub struct MachineProfile {
     pub max_feeds: MaxFeeds,
     /// The default clearance geometry; a setup may set its own (SET-06).
     pub clearance: Clearance,
+    /// The highest tool number the controller accepts (GC-14, OI-62). The
+    /// lowest is 1. Not tied to a measured value: see
+    /// [`DEFAULT_MAX_TOOL_NUMBER`].
+    #[serde(default = "default_max_tool_number")]
+    pub max_tool_number: u32,
     /// Where each value came from, and whether it is confirmed on the
     /// machine. A field not listed is treated as unconfirmed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -248,6 +263,12 @@ impl MachineProfile {
     pub fn validate(&self) -> Result<()> {
         if self.name.trim().is_empty() {
             return Err(Error::invalid("machine.name", "the name must not be empty"));
+        }
+        if self.max_tool_number < 1 {
+            return Err(Error::invalid(
+                "machine.max_tool_number",
+                "the highest tool number must be at least 1",
+            ));
         }
         if self.rotary_axis != RotaryAxis::X {
             return Err(Error::invalid(
@@ -331,6 +352,7 @@ impl MachineProfile {
                 rapid_z: FeedRate(4000.0),
                 rapid_rotary: RotaryFeedRate(14400.0),
             },
+            max_tool_number: DEFAULT_MAX_TOOL_NUMBER,
             clearance: Clearance {
                 radius: Millimetres(40.0),
                 safe_z: Millimetres(50.0),

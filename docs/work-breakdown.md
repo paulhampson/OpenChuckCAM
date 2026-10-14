@@ -41,7 +41,7 @@ The crate survey compiled and benchmarked nothing, so each risky layer is proved
 | SP-3 Wrapped path to G-code (4 d) | Does a wrapped engraving path on a cylinder become correct A-word G-code that replays in the LinuxCNC simulator? | Fixed path to IR to hard-coded post to G-code; read back with the SP-5 reader; run in LinuxCNC. | Reached positions match the IR within tolerance and agree with the independent kinematic oracle. A wrap and unwinding behave. Compensated feed correct at the contact point. | Revise IR fields and A conventions before the IR is frozen. | Slices 0, 5, 6 | Result accepted: [0001](decisions/0001-sp3-wrapped-path-result.md), backed by the LinuxCNC runs in [0009](decisions/0009-linuxcnc-fixture-checks.md). Items 3, 4 and 6 to 8 stay open (OI-03, OI-04, OI-06 to OI-08). |
 | SP-4 Ray-cast sweep (5 d) | Is continuous 4-axis feasible with `parry3d-f64` ray casts swept around the A axis? | On a real part, step A, cast along X, derive tool centres and tool angle, compare with an analytic surface. | Accuracy within 0.01 mm. Runtime figure for the reference part. Identical results at 1 and N threads. | Own BVH, or analytic-only first for the continuous family. | Slices 5, 13 | Result accepted: [0015](decisions/0015-sp-4-ray-cast-sweep.md); all three criteria met on smooth star-shaped parts; OI-07 closed. `spike/sp-4-ray-cast-sweep` has RESULT.md. OI-64 to OI-67 open for slices 5 and 13. |
 | SP-5 G-code reader (1 d) | Does the `gcode` crate read A words and the LinuxCNC dialect? | Parse the SP-3 output and a hand-written file with A words, comments and modal codes. | Every code our posts emit is parsed with positions. | `g-code` crate, or a small in-house reader for the subset our posts emit. | Slice 6 | Result accepted: [0005](decisions/0005-sp-5-gcode-reader.md) (in-house reader). The LinuxCNC fixture needs four arc corrections (OI-46), recorded in [0009](decisions/0009-linuxcnc-fixture-checks.md). |
-| SP-6 Simulation stock (5 d) | Rotary grid, dexel or voxel: which gives the best accuracy, speed and memory on a rotary part? | Three small implementations behind one `StockModel` interface. Also sketch how a collision query would run on each (COL-05, P2), and include a V-bit and a custom-profile tool in the sweep (SP-13). | Removed volume on cylinder, cone and sphere parts within the resolution error. Time and memory within budget at default resolution. Same results at any thread count. Ray and region queries supported. | Pick the next best; the interface keeps the choice swappable. | Slice 7 | Not started. No branch or record. Its budget is needed for SP-13 criterion 3 (OI-56). |
+| SP-6 Simulation stock (5 d) | Rotary grid, dexel or voxel: which gives the best accuracy, speed and memory on a rotary part? | Three small implementations behind one `StockModel` interface. Also sketch how a collision query would run on each (COL-05, P2), and include a V-bit and a custom-profile tool in the sweep (SP-13). | Removed volume on cylinder, cone and sphere parts within the resolution error. Time and memory within budget at default resolution. Same results at any thread count. Ray and region queries supported. | Pick the next best; the interface keeps the choice swappable. | Slice 7 | Result accepted: [0022](decisions/0022-sp-6-simulation-stock.md) (dexels; voxel fallback; rotary grid overcuts slot walls). Criteria met by dexel and voxel; the budget is agreed, so SP-13 criterion 3 is met (OI-56, OI-99 closed). OI-100 to OI-102 open for slice 7. `spike/sp-6-simulation-stock` has RESULT.md. |
 | SP-7 2D offsets (2 d) | Do `cavalier_contours` and `i_overlay` give robust offsets and booleans for unrolled regions, with arcs surviving back to A angles and G2 or G3? | Unroll a cylinder with a boundary and holes, offset several passes, convert back. | No failures on a corpus of awkward shapes. Arcs kept or approximated within tolerance. Deterministic. | `clipper2` C++ wrapper, or polylines only. | Slice 5 | Result accepted: [0016](decisions/0016-sp-7-2d-offsets.md) (cavalier_contours for offsets, i_overlay for region booleans; criteria met; G2/G3 not usable with A). Branch `spike/sp-7-2d-offsets` has RESULT.md. Open items OI-68 to OI-70. |
 | SP-8 Project format and order keys (2 d) | Which serialisation format and order-key scheme give clean diffs and merges? | Sample project in two candidate formats, real Git merges (reorder on one branch, edit another operation on the other). | Byte-identical re-save. One-line diff for a one-parameter edit. Conflict-free merges. Load then save is a no-op. | Second candidate format or key scheme. | Slice 1 | Result accepted: [0006](decisions/0006-sp-8-project-format.md) (TOML, per-item order keys). `spike/sp-8-project-format` has RESULT.md. |
 | SP-9 Exact surfaces (3 d) | What does `SurfaceSource` need for B-rep faces, and who evaluates NURBS? | Points, normals and projections on plane, cylinder, cone, sphere and B-spline faces, by analytic Rust code and by the kernel, compared with tessellation. | Exact-versus-mesh differences measured. Decision recorded with a dependency assessment. | P1 uses tessellation for non-analytic faces and says so (the conditional waiver recorded in IMP-02). | Slice 5 | Result written: `spike/sp-9-exact-surfaces` (`spikes/sp9-exact/RESULT.md`); [0017](decisions/0017-sp-9-exact-surfaces.md) accepted 12 Oct 2026 (waiver not applied; OI-72 to OI-76 open). |
@@ -274,6 +274,8 @@ These apply to every slice and are not repeated below.
 
 ## Slice 6 – Post-processing and G-code round trip
 
+**Status:** closed 14 Oct 2026; design in [decision 0020](decisions/0020-slice-6-post-and-round-trip.md), accepted 14 Oct 2026. Items 1 to 13 are built. Gates 1 and 2 pass on the posted projects and the reference jobs, and gate 3 passes in LinuxCNC 2.9.10 locally and in the `gate3` CI job (OI-47 closed). The Z1 air cut and first cut are the owner's machine tests (slice 20); the air-cut plan is in [reference-jobs.md](reference-jobs.md). Open items carried forward: OI-60 (axis height), OI-89 (inches, wrapped A), OI-92 (slice 19).
+
 **Goal:** an operation becomes G-code for the Z1 and for the LinuxCNC simulator, with the same IR behind both and an independent check that the G-code means what the IR meant.
 
 **Requirements:** GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14 (GC-01 proven end to end; NFR-08 golden files)
@@ -290,7 +292,7 @@ These apply to every slice and are not repeated below.
 6. Byte-identical output through fixed number formatting (GC-07).
 7. `openchuck-gcode`: reader and replay for the codes our posts emit, comparing positions, A travel, feeds and limits with the IR. The reader is in-house (SP-5, [decision 0005](decisions/0005-sp-5-gcode-reader.md)): f64 values from the source text, errors naming line and column, a known-code list kept in step with the posts, and a fuzz target. Its fixtures come from SP-5; LinuxCNC has read them ([decision 0009](decisions/0009-linuxcnc-fixture-checks.md)), and the post-subset file takes four corrected arc lines (OI-46).
 8. Golden files on small hand-reviewed parts (NFR-08).
-9. LinuxCNC simulator replay: documented configuration and a script that compares reached positions and limit faults with the expected toolpath.
+9. LinuxCNC simulator replay: documented configuration and a script that compares reached positions and limit faults with the expected toolpath (`cargo xtask replay`, `tools/linuxcnc/`, a Docker image for CI).
 10. CLI: regenerate G-code from a project file without the UI, with a report (GC-11); this is also the end-to-end test harness.
 11. G-code verification gates 1 to 3 for the reference jobs in CI: gate 1 static checks (syntax, modal state, units, axis limits, feed on every cutting move, safe retract and tool change) as test code in openchuck-gcode; gate 2 replay within G-code rounding only (0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting); gate 3 the LinuxCNC simulator through the xtask replay runner. Any change to kinematics, a post or a strategy reruns all three.
 12. Choose the reference job set (parts, stock, tools) for gates 4 and 5 and write its Z1 programs.
@@ -298,15 +300,15 @@ These apply to every slice and are not repeated below.
 
 **Review checklist**
 
-- [ ] Re-running gives byte-identical G-code at any thread count
-- [ ] You have reviewed the golden files line by line
-- [ ] The `openchuck-gcode` round trip matches the IR on positions, A travel and feeds
-- [ ] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults
-- [ ] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line
-- [ ] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (hands-on step for you)
-- [ ] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees
-- [ ] The reference job set is chosen and its Z1 programs pass gates 1 to 3
-- [ ] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code
+- [x] Re-running gives byte-identical G-code at any thread count (`req_gc_07_*` in `posts.rs`, `posting.rs` and `reference_jobs.rs`: repeats, four threads, and projects reopened at 1, 3 and 4 threads)
+- [x] You have reviewed the golden files line by line (replaced, at your request, by an automated audit: `cargo xtask golden`, `crates/openchuck-app/tests/golden_audit.rs`, decision 0020 item 14: conventions, gate 1, the exact parts through the independent oracle, the contact feed under the controller's rule, and agreement between the posts)
+- [x] The `openchuck-gcode` round trip matches the IR on positions, A travel and feeds (`round_trip.rs`; the three reference jobs and the posted projects: tip within 0.00064 mm, A exact, cut time within 1 %)
+- [x] The helical test replays to completion in the LinuxCNC simulator with matching end position and no limit faults (`cargo xtask replay testdata/golden/reference/groove_linuxcnc.ngc`: all 640 moves reached, ended at the program's end, no fault; also the small part, cone and sphere; decision 0020 item 10)
+- [x] Editing a post definition changes the output without recompiling; an unknown variable gives an error naming the line (`req_gc_03_*` in `posts.rs`)
+- [x] Z1 output reviewed against SP-12 conventions, with an air-cut plan written (accepted by the owner 14 Oct 2026; the machine tests are run later, slice 20; the output follows the findings table, `req_gc_09_z1_output_follows_the_sp_12_conventions`, and the plan is drafted in [reference-jobs.md](reference-jobs.md))
+- [x] Gate 1 fails on seeded faults (missing feed, A beyond its limit, wrong units), and gate 2 agrees within 0.0005 mm and 0.001 degrees (gate 1 does, with more faults than named; gate 2 agrees to 0.00064 mm at the tip and 0 degrees, per axis within 0.0005; the owner confirmed on 13 Oct 2026 that the figures are per axis, so the tip may differ by 0.00087 mm, OI-91)
+- [x] The reference job set is chosen and its Z1 programs pass gates 1 to 3 ([reference-jobs.md](reference-jobs.md); gates 1 and 2 pass for the Z1 and LinuxCNC programs in `reference_jobs.rs`; gate 3 passes for the LinuxCNC programs, which share the toolpath and the kinematics with the Z1 programs; the Z1 post's own text, `G92.4` and the Makera feed rule, cannot run in LinuxCNC)
+- [x] Confirming keeps the tool numbers, automatic renumbering follows operation order, a number used twice is refused, and a second post after renumbering gives byte-identical G-code (`req_gc_14_*` in `posting.rs`)
 
 ## Slice 7 – Material removal simulation (headless)
 
@@ -316,11 +318,11 @@ These apply to every slice and are not repeated below.
 
 **Spike inputs:** SP-6 (representation), SP-13 (tool profiles; [decision 0012](decisions/0012-sp-13-tool-profiles.md)). SP-6 times the profile sweep in its candidates and sets the budget SP-13's sweep-time criterion is judged against (OI-56).
 
-**Design refinement:** the representation chosen in SP-6 behind `StockModel`, resolution settings, checkpoints for jumping to any operation or move, and results returned as plain data.
+**Design refinement:** the representation chosen in SP-6 (dexels, [decision 0022](decisions/0022-sp-6-simulation-stock.md)) behind `StockModel`, resolution settings, checkpoints for jumping to any operation or move, and results returned as plain data.
 
-1. Stock model in `openchuck-sim` implementing the `StockModel` port, with rotation about the A axis (SIM-03).
+1. Dexel stock model in `openchuck-sim` implementing the `StockModel` port, with rotation about the A axis (SIM-03): Z dexels in the part frame, the tool span solved exactly per column (decision 0022).
 2. Tool sweep along IR segments for every tool type, including V-bit, chamfer, drill and custom profiles, with A rotation.
-3. Adjustable resolution trading accuracy for speed (SIM-07).
+3. Adjustable resolution trading accuracy for speed (SIM-07): the default cell is 0.1 mm; the user can configure a finer resolution (proposed finest 0.025 mm, to be measured) at the cost of speed and memory, and a finer setting is never the default. The setting is a project or application option, shown with its time and memory cost.
 4. Carry-over: the stock left by operation N is the input to operation N+1 (SIM-06), with checkpoints.
 5. Deviation against the target model, per-point remaining and overcut values, and worst-case figures (SIM-05).
 6. Display meshes and result data for the viewport; no drawing code in this crate.
@@ -332,7 +334,8 @@ These apply to every slice and are not repeated below.
 - [ ] On cylinder, cone and sphere cases removed volume matches the expected value within one simulation cell at the chosen resolution, and no worse than 0.02 mm at the finest setting
 - [ ] A deliberately gouging path is reported as overcut with a location
 - [ ] Operation N+1 sees the stock left by operation N
-- [ ] Changing resolution changes time and error as documented; memory use is stated
+- [ ] Changing resolution changes time and error as documented; memory use is stated; the default is 0.1 mm and a finer setting is opt-in
+- [ ] The reference job (52,200 poses, Ø4 ball, 0.1 mm) meets the budget: 30 s on 4 threads, 120 s on one thread, 256 MB (decision 0022)
 - [ ] Results are identical at 1, 2 and N threads
 
 ## Slice 8 – Viewport and application shell

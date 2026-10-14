@@ -2,7 +2,8 @@
 #
 # Pull request and main-branch CI (work breakdown slice 0 items 5 and 13;
 # verification plan sections 7 to 9). Jobs are path-filtered: a change to
-# docs/ or posts/ alone does not rebuild the Rust workspace.
+# docs/ alone does not rebuild the Rust workspace (posts/ and testdata/ do, because
+# the golden G-code tests read them).
 name: CI
 
 on:
@@ -38,6 +39,8 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       records: ${{ steps.filter.outputs.records }}
       fuzz: ${{ steps.filter.outputs.fuzz }}
+      gate3: ${{ steps.filter.outputs.gate3 }}
+      linuxcnc_image: ${{ steps.filter.outputs.linuxcnc_image }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -50,6 +53,9 @@ jobs:
               - 'xtask/**'
               - 'benches/**'
               - 'fuzz/**'
+              - 'posts/**'
+              - 'testdata/**'
+              - 'tools/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -65,13 +71,67 @@ jobs:
               - 'docs/work-breakdown.md'
               - 'docs/dependencies.md'
               - 'testdata/**'
+            gate3:
+              - 'crates/openchuck-types/**'
+              - 'crates/openchuck-post/**'
+              - 'crates/openchuck-gcode/**'
+              - 'crates/openchuck-app/**'
+              - 'apps/openchuck-cli/**'
+              - 'posts/**'
+              - 'testdata/golden/**'
+              - 'tools/linuxcnc/**'
+              - 'docker/linuxcnc/**'
+              - 'xtask/**'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+            linuxcnc_image:
+              - 'docker/linuxcnc/**'
             fuzz:
               - 'fuzz/**'
+              - 'crates/openchuck-gcode/**'
+              - 'crates/openchuck-post/**'
+              - 'posts/**'
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-project/**'
               - 'crates/openchuck-geom/**'
               - 'crates/openchuck-import/**'
               - 'testdata/stl/**'
+
+  gate3:
+    name: Gate 3 (LinuxCNC simulator)
+    needs: changes
+    if: needs.changes.outputs.gate3 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Built from docker/linuxcnc by the linuxcnc-image workflow; if it has not been
+      # published yet (or the Dockerfile changed in this pull request) it is built here.
+      LINUXCNC_IMAGE: ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - name: Get the LinuxCNC image
+        env:
+          IMAGE_CHANGED: ${{ needs.changes.outputs.linuxcnc_image }}
+        run: |
+          if [ "$IMAGE_CHANGED" = "true" ]; then
+            docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc
+          else
+            docker pull "$LINUXCNC_IMAGE" || docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc
+          fi
+      # Every LinuxCNC golden program runs in the headless XYZA simulator and is compared
+      # with the replay of the same file (verification plan section 6, gate 3).
+      - name: Replay the golden programs in LinuxCNC
+        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --keep-reports target/replay
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate3-reports
+          path: target/replay
+          if-no-files-found: ignore
 
   fmt:
     name: rustfmt
@@ -238,7 +298,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml]
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install nightly --profile minimal
@@ -257,6 +317,14 @@ jobs:
       - name: Seed the tool profile corpus
         if: matrix.target == 'tool_profile_toml'
         run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
+      - name: Seed the G-code corpus
+        if: matrix.target == 'gcode_reader'
+        run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
+      - name: Seed the post definition corpus
+        if: matrix.target == 'post_definition'
+        run: |
+          mkdir -p fuzz/corpus/post_definition
+          for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
       - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=60
 
   coverage:

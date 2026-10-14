@@ -197,7 +197,7 @@ mod tests {
                 &z1.replace("linear = 1200.0", "linear = -1.0"),
                 "max_feeds.linear",
             ),
-            (&z1.replace("safe_z = 60.0", "safe_z = 10.0"), "safe Z"),
+            (&z1.replace("safe_z = 50.0", "safe_z = 10.0"), "safe Z"),
             (
                 &z1.replace("a_sense = \"positive\"", "a_sense = \"up\""),
                 "a_sense",
