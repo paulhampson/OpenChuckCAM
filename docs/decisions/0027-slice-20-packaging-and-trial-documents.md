@@ -1,6 +1,6 @@
 # 0027: Slice 20 preparation: packaging route, release tags, and the trial documents
 
-- **Status:** proposed. Nothing here is agreed. It is guidance until the project owner accepts it; the packaging parts then amend architecture section 12 (to be edited in the same change as the acceptance).
+- **Status:** accepted by the project owner (14 Oct 2026): the packaging route (item 1), the tag schemes (item 2) and the drafting of the trial documents (item 3) as written. Architecture section 12 is edited to match. The trial documents stay drafts until the Z1 operator reviews them (OI-120), and signing and extra platforms stay the owner's later call (OI-122).
 - **Date:** 14 Oct 2026.
 - **Work breakdown:** slice 20 items 8, 10 and 12 (preparation only; the slice is not started).
 - **Open items** are tracked in [open-items.md](../open-items.md): OI-120 to OI-122 are new, and OI-103 and OI-104 are the items this record proposes answers to.
@@ -17,7 +17,7 @@ Slice 20 asks for three things that can be prepared before the slice and that ne
 
 Requirements touched: NFR-02 (Windows, macOS, Linux), NFR-10 (licence notices with binaries), NFR-12 (the user verifies generated G-code), NFR-14 (dependency health). Verification plan section 6 (gates 4 and 5 and their rules) and section 8. Decisions 0007 (Z1 air cut), 0013 (Z1 profile), 0020 item 8 (reference jobs) and 0023 (nightly builds, OI-103, OI-104).
 
-## Proposal
+## Decision (accepted)
 
 ### 1. Packaging route (item 8): a plain build matrix, extended from the nightly workflow
 
@@ -61,7 +61,7 @@ Gate 5, the 3-axis repeatability cut, the G93 recheck and the tool change test r
 
 ## Consequences
 
-- If accepted: architecture section 12 ("Application binaries" and "Names and tags") is edited to the agreed route, work breakdown slice 20 items 8 and 10 are updated to say what remains (the workflow, the bundle command, the gate), and OI-103 and OI-104 close or move.
+- Architecture section 12 ("Application binaries" and "Names and tags") is edited to the agreed route (done with the acceptance). Work breakdown slice 20 items 8 and 10 now note the route; what remains is to build the release workflow, the bundle command and the gate. OI-103 and OI-104 stay deferred to slice 20 (signing and extra platforms, with OI-122).
 - No dependency changes and no code. `.github/workflows` is untouched.
 - Nothing in the trial documents implies the generated G-code is safe to run unchecked (NFR-12).
 
@@ -69,6 +69,6 @@ Gate 5, the 3-axis repeatability cut, the G93 recheck and the tool change test r
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Accept or amend the packaging route and tag schemes above (OI-121) | Before slice 20 | Project owner |
+| 1 | Accept or amend the packaging route and tag schemes above (OI-121) | Closed 14 Oct 2026: accepted | Project owner |
 | 2 | macOS bundle: is a bundle without notarisation acceptable for the first release, and are Intel macOS or Linux arm64 wanted? (OI-103, OI-104, OI-122) | Slice 20 | Project owner; signing certificates if wanted |
 | 3 | The Z1 operator reviews the safe-practice checklist and the air-cut procedure and corrects them (OI-120) | Before gate 4 | The Z1 operator |
