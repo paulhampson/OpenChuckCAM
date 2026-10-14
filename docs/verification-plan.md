@@ -145,7 +145,7 @@ These are starting values, chosen before there is anything to measure. They are 
 | Kinematic round trip | OP-05, OP-06 | 1e-6 mm and 1e-6 degrees (double-precision arithmetic only) |
 | G-code replay (gate 2) | GC-09, GC-10 | G-code rounding only, because replay compares the G-code with the same toolpath in the IR: 0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting. These are per axis (half a unit of the last decimal, twice that for A); the tool tip combines three axes, so the check on the tip allows half a unit times root 3 (0.00087 mm at three decimals), confirmed by the owner 13 Oct 2026 (OI-91) |
 | Gouge | OP-12 | Zero overcut beyond the tolerance |
-| Simulation against reference | SIM-03, SIM-05 | Within one simulation cell at the chosen resolution, and no worse than 0.02 mm at the finest setting |
+| Simulation against reference | SIM-03, SIM-05 | Within one simulation cell at the chosen resolution, and no worse than 0.02 mm at the finest setting the user may choose (the default is 0.1 mm; decision 0022, OI-100) |
 | Feed on simultaneous moves | OP-13 | Effective feed at the cutter contact within ±2% of programmed |
 | Determinism | GC-07, NFR-06 | Zero difference, byte for byte, at 1, 2 and all threads |
 | Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; at least 24 cumulative CPU hours per parser with no unresolved crash for release |
@@ -320,7 +320,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 | Unconfirmed controller behaviour (G93 support, arc and rotary handling) | Feed errors on 4-axis moves | Gate 4 test to confirm; keep the path as short linear segments within tolerance |
 | STEP kernel fitness: opencascade scores 66, its README calls it a work in progress and it has no dependents | Missing topology, surface or tessellation control; crashes at the boundary | SP-1 first; fuzzing and boundary tests; the ModelImporter interface lets a fallback (cadrum, an in-house wrapper or brepkit-io) run the same corpus |
 | NURBS surface evaluation has no proven pure-Rust crate (written in-house, decision 0017) | Wrong normals or distances on STEP surfaces | Oracle tests against analytic shapes and the kernel's own evaluation; evaluators written in-house per decision 0017 |
-| Material removal simulation is written in-house and its representation is undecided | Wrong or slow results; collision queries depend on it | SP-6; independent reference checks; first cut compared with the simulation |
+| Material removal simulation is written in-house (dexels, decision 0022) | Wrong or slow results; collision queries depend on it | SP-6 settled the representation; independent reference checks; first cut compared with the simulation |
 | API churn and abandonment in dependencies | Breakage and schedule loss | Section 7: containment behind our own interfaces, pinned versions, planned upgrade cadence, scheduled activity check |
 | Order-key scheme for merge-friendly files is unproven | Merge conflicts in project files | Prototype with a real Git merge; keep the merge test in openchuck-project |
 | Selection matching after re-export (IMP-07, PRJ-07, P2) is hard | Lost selections after a model change | Own prototype; descriptor fields reserved in the schema; verified when the P2 work is built |
@@ -332,7 +332,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 
 - Keep section 4 in step with the requirements document and section 5 in step with the architecture; a change to either needs a matching change here.
 - The limits in 4.1 and the hardware in 4.2 are starting values. Revise them after the first benchmarks, the simulation spike and the 3-axis test cut, and record each change.
-- Open architecture decisions that change verification: simulation stock representation (decided by SP-6) and Git LFS or a separate test-data repository.
+- Open architecture decisions that change verification: simulation stock representation (decided by SP-6, decision 0022: dexels) and Git LFS or a separate test-data repository.
 - The reference job set (parts, stock, tools) for gates 4 and 5 is chosen in work breakdown slice 6.
 - A safe-practice checklist for first machine trials is written in work breakdown slice 20 and reviewed by whoever operates the Makera Z1.
 - P2 groups (COL, VC, INT) have outline verification only; detailed test design waits until their designs exist.

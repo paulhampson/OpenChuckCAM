@@ -153,7 +153,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | SIM-04 | Playback controls: play, pause, step, speed, and jump to an operation or move. | P1 |
 | SIM-05 | Compare the simulated stock with the target model and colour the result by remaining material and overcut; report the worst values. | P1 |
 | SIM-06 | Carry the simulated stock from one operation to the next, so later operations see the material actually left. | P1 |
-| SIM-07 | Adjustable simulation resolution, trading accuracy against speed. | P1 |
+| SIM-07 | Adjustable simulation resolution, trading accuracy against speed. The default is a moderate resolution (0.1 mm); the user may choose a finer one at the cost of speed and memory, and a finer setting is never the default. | P1 |
 | SIM-08 | Estimate machining time per operation and in total from feeds, rapids and tool changes. | P2 |
 | SIM-09 | Load exported G-code into the simulator and run it, to check the post-processor output as well as the internal toolpath. | P3 |
 | SIM-10 | Adjust feed rates using the tool engagement measured in the simulation, for faster cuts at a steady tool load. | P3 |

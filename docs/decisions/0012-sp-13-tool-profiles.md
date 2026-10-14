@@ -80,6 +80,6 @@ Findings:
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | Sweep time against the SP-6 budget (criterion 3): SP-6 sets the budget and times the profile sweep in its candidates, including V-bit and custom profiles. (OI-56) | SP-6 | SP-6 |
+| 1 | Sweep time against the SP-6 budget (criterion 3): SP-6 set the budget and timed the profile sweep, including V-bit and custom profiles; met by dexel ([decision 0022](0022-sp-6-simulation-stock.md)). Closed 14 Oct 2026 (OI-56). | Closed | |
 | 2 | Undercut tools (dovetail, lollipop, keyseat, back chamfer) are rejected by the monotone rule. Accepted for P1 on 11 Oct 2026 (OI-57 closed); a general profile with a self-intersection test and a different drop would be a new decision. | Closed | |
 | 3 | Custom profile text format: TOML with the `ToolProfile` fields, with an arc by `radius` as an alternative to `centre`. Accepted on 11 Oct 2026 (OI-58 closed); slice 4 fixes the field names and writes the corpus tests and fuzz target. | Closed (slice 4 specifies details) | |
