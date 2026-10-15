@@ -314,12 +314,12 @@ X9.961 Z5.008 A717.188 F548.0
 X10.000 Z5.000 A720.000 F553.6
 G0 Z50.000
 G92.4 A0 S0
-(operation Finish B, tool T2 6 mm ball, about 18 s)
+(operation Finish B, tool T2 6 mm ball, about 19 s)
 M5
 T2 M6
 S10000 M3
 X0.000
-Z6.001
+Z9.984
 G1 Z5.000 F150.0
 X0.026 Z5.004 A1.875 F486.0
 X0.052 Z5.017 A3.750 F484.2

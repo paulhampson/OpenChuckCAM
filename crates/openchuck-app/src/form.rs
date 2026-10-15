@@ -43,6 +43,8 @@ pub enum FieldKind {
     },
     /// On or off.
     Flag,
+    /// Free text, such as a list of angles.
+    Text,
     /// One of a list of words.
     Choice {
         /// The words, in display order.
@@ -161,6 +163,9 @@ pub fn parameter_form(
                 ),
                 ParameterKind::Flag { default } => {
                     (FieldKind::Flag, Some(ParameterValue::Flag(*default)))
+                }
+                ParameterKind::AngleList { default } => {
+                    (FieldKind::Text, Some(ParameterValue::Text(default.clone())))
                 }
                 ParameterKind::Choice { options, default } => (
                     FieldKind::Choice {
