@@ -76,6 +76,7 @@ pub mod stock;
 pub mod strategy;
 pub mod surface;
 pub mod unroll;
+mod wrap_fit;
 
 pub use assemble::{GeneratedPath, PathNote};
 pub use brep::{BrepSurface, ExactFace};
