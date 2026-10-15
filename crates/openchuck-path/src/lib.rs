@@ -66,6 +66,7 @@
 pub mod assemble;
 pub mod axial;
 pub mod brep;
+mod candidates;
 pub mod cutter;
 mod error;
 pub mod helical;

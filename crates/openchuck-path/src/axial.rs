@@ -14,6 +14,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
+use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::helical::CONSTRAINED_SPACING;
@@ -21,7 +22,9 @@ use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, U
 use crate::region::RegionConstraint;
 use crate::scallop;
 use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
-use crate::wrap_fit::{CHORD_FACTOR, Fit, ZoneFit, fit_curve, zone_fits};
+use crate::wrap_fit::{
+    CHORD_FACTOR, Fit, ZoneFit, fit_region, region_index, region_spacing, zone_fits,
+};
 
 /// Axial finishing of the whole model, or of a region.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -189,6 +192,10 @@ pub(crate) struct AlongX<'a> {
     seeds: usize,
     chord: f64,
     constrained: bool,
+    /// The selected region in the development, when it is known.
+    candidates: Option<DevIndex>,
+    /// Points inside the intervals that reach the region, mm of path.
+    spacing: f64,
     /// The part's largest radius about the rotary axis.
     pub(crate) radius: f64,
     /// Alternate the direction of each pass.
@@ -226,10 +233,14 @@ impl<'a> AlongX<'a> {
             ));
         }
         let constrained = region.is_some_and(|r| !r.is_empty());
-        if constrained {
-            // A region constraint is only seen where the tool is dropped
-            // (decision 0032 item 6; replaced by region offsets later in
-            // slice 12).
+        // With a selected region the pass is only fitted where it can reach
+        // the region (decision record 0033 item 5). Without one, or when the
+        // region cannot be developed, a region constraint is only seen where
+        // the tool is dropped (decision 0032 item 6), so points are never
+        // further apart than `CONSTRAINED_SPACING`.
+        let most_leave = zones.iter().fold(leave, |m, z| m.max(z.leave));
+        let candidates = region_index(input, region, radius, most_leave, tolerance);
+        if constrained && candidates.is_none() {
             x_step = x_step.min(CONSTRAINED_SPACING);
         }
         let seeds = (length / x_step).ceil().max(1.0);
@@ -250,6 +261,8 @@ impl<'a> AlongX<'a> {
             seeds: seeds as usize,
             chord: CHORD_FACTOR * tolerance,
             constrained,
+            candidates,
+            spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
             radius,
             zigzag,
         })
@@ -257,7 +270,7 @@ impl<'a> AlongX<'a> {
 
     /// Refuses a job of `count` passes that would make too many points.
     pub(crate) fn check_passes(&self, count: usize) -> Result<()> {
-        if self.seeds as f64 * count as f64 > MAX_SEEDS {
+        if self.candidates.is_none() && self.seeds as f64 * count as f64 > MAX_SEEDS {
             return Err(PathError::Parameter {
                 name: parameter::MAX_X_STEP.to_owned(),
                 reason: format!(
@@ -291,8 +304,12 @@ impl<'a> AlongX<'a> {
             chord: self.chord,
             region: self.region,
             constrained: self.constrained,
+            candidates: self.candidates.as_ref(),
+            spacing: self.spacing,
+            thin: false,
+            max_dt: 1.0 / self.seeds as f64,
         };
-        fit_curve(&fit, self.seeds, "axial finishing", context)
+        fit_region(&fit, self.seeds, "axial finishing", context)
     }
 }
 

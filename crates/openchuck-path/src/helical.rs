@@ -37,7 +37,7 @@ use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, U
 use crate::region::RegionConstraint;
 use crate::scallop;
 use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
-use crate::wrap_fit::{Fit, fit_curve, zone_fits};
+use crate::wrap_fit::{Fit, fit_region, region_index, region_spacing, zone_fits};
 
 pub use crate::wrap_fit::CHORD_FACTOR;
 
@@ -219,13 +219,17 @@ fn passes(
         // A region constraint can only be seen where the tool is dropped, so
         // its points are never further apart than `CONSTRAINED_SPACING` of
         // path: a feature of the selection narrower than that may be missed.
-        if region.is_some_and(|r| !r.is_empty()) {
-            let radius = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
-                .into_iter()
-                .fold(0.0_f64, |r, v| r.max(v.abs()));
-            if radius > 0.0 {
-                step = step.min((CONSTRAINED_SPACING / radius).to_degrees());
-            }
+        let radius = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
+            .into_iter()
+            .fold(0.0_f64, |r, v| r.max(v.abs()));
+        // With a selected region the pass is only fitted where it can reach
+        // the region (decision record 0033 item 5); without one, or when the
+        // region cannot be developed, points are never further apart than
+        // `CONSTRAINED_SPACING` of path.
+        let most_leave = zones.iter().fold(leave, |m, z| m.max(z.leave));
+        let candidates = region_index(input, region, radius, most_leave, tolerance);
+        if region.is_some_and(|r| !r.is_empty()) && candidates.is_none() && radius > 0.0 {
+            step = step.min((CONSTRAINED_SPACING / radius).to_degrees());
         }
         let turns = length / pitch;
         let total_angle = 360.0 * turns;
@@ -255,8 +259,12 @@ fn passes(
             chord: CHORD_FACTOR * tolerance,
             region,
             constrained: region.is_some_and(|r| !r.is_empty()),
+            candidates: candidates.as_ref(),
+            spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
+            thin: false,
+            max_dt: 1.0 / seeds as f64,
         };
 
-        fit_curve(&fit, seeds, "helical finishing", context)
+        fit_region(&fit, seeds, "helical finishing", context)
     }
 }

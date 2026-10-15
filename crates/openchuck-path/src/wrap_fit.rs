@@ -14,8 +14,9 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
 
+use crate::candidates::{DevIndex, DevLine};
 use crate::cutter::{self, Contact, ToolLine};
-use crate::error::Result;
+use crate::error::{PathError, Result};
 use crate::parallel;
 use crate::region::RegionConstraint;
 use crate::rotary::AxisPosition;
@@ -95,6 +96,13 @@ pub(crate) fn fit_curve(
     let mut passes = Vec::new();
     for (k, piece) in pieces.iter().enumerate() {
         context.check_cancelled()?;
+        let thinned;
+        let piece = if fit.thin {
+            thinned = fit.thin(piece);
+            &thinned
+        } else {
+            piece
+        };
         let intervals: Vec<(&Node, &Node)> = piece.iter().zip(piece.iter().skip(1)).collect();
         let refined: Vec<Vec<Option<Node>>> = parallel::map_in_order(&intervals, |(a, b)| {
             let mut out = Vec::new();
@@ -168,6 +176,7 @@ pub(crate) fn zone_fits<'a>(
         .collect()
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct Fit<'a> {
     pub(crate) input: &'a StrategyInput<'a>,
     pub(crate) region: Option<&'a RegionConstraint<'a>>,
@@ -185,9 +194,52 @@ pub(crate) struct Fit<'a> {
     pub(crate) chord: f64,
     /// Whether a region constraint limits where the tool may cut (OP-02).
     pub(crate) constrained: bool,
+    /// The selected region in the development, when it is known: the tool is
+    /// only dropped where it can reach the region ([`crate::candidates`]).
+    pub(crate) candidates: Option<&'a DevIndex>,
+    /// How far apart, in mm of path, points are inside those intervals.
+    pub(crate) spacing: f64,
+    /// Keep only the points the chord limit needs from the seeds of a run
+    /// (set where the seeds are much finer than the path needs).
+    pub(crate) thin: bool,
+    /// The most the parameter may advance between two points of a thinned run:
+    /// the strategy's own largest step (angle or X), so thinning only removes
+    /// the extra points that finer seeding added. Infinite for no limit.
+    pub(crate) max_dt: f64,
 }
 
 impl Fit<'_> {
+    /// The path in the development, if the region is known.
+    fn dev_line(&self, index: &DevIndex) -> DevLine {
+        let r = index.radius();
+        DevLine {
+            x0: self.x0,
+            dx: self.length,
+            u0: r * self.start.to_radians(),
+            du: r * (self.sign * self.total_angle).to_radians(),
+        }
+    }
+
+    /// The part of this path from parameter `a` to `b`, as a path of its own.
+    fn between(&self, a: f64, b: f64) -> Self {
+        Self {
+            x0: self.x0 + self.length * a,
+            length: self.length * (b - a),
+            start: self.start + self.sign * self.total_angle * a,
+            total_angle: self.total_angle * (b - a),
+            max_dt: self.max_dt / (b - a),
+            ..*self
+        }
+    }
+
+    /// The length of this path in mm at the development's radius.
+    fn path_length(&self, index: &DevIndex) -> f64 {
+        let r = index.radius();
+        self.length
+            .hypot(r * (self.sign * self.total_angle).to_radians())
+            .abs()
+    }
+
     fn x_at(&self, t: f64) -> f64 {
         self.x0 + self.length * t
     }
@@ -284,6 +336,105 @@ impl Fit<'_> {
         }
     }
 
+    /// As [`deviation`](Self::deviation) for a node `mid` anywhere between `a`
+    /// and `b`, not only at their middle. A is linear in the parameter, so
+    /// the machine's straight move reaches the same fraction of every axis.
+    fn deviation_between(&self, a: &Node, b: &Node, mid: &Node) -> f64 {
+        let rotary = &self.input.rotary;
+        let span = b.t - a.t;
+        let frac = if span > 0.0 {
+            (mid.t - a.t) / span
+        } else {
+            0.5
+        };
+        let (pa, pb) = (
+            rotary.to_axis(self.tip(a), a.a),
+            rotary.to_axis(self.tip(b), b.a),
+        );
+        let lin = AxisPosition {
+            along: pa.along + frac * (pb.along - pa.along),
+            across: pa.across + frac * (pb.across - pa.across),
+            height: pa.height + frac * (pb.height - pa.height),
+        };
+        let lin_tip = rotary.to_model(lin, mid.a);
+        let delta = self.tip(mid) - lin_tip;
+        match self.input.surface.project(mid.contact.contact) {
+            Some(sp) => delta.dot(sp.normal.get()).abs(),
+            None => delta.length(),
+        }
+    }
+
+    /// The fewest of `nodes` (a run where the tool may cut, closely seeded)
+    /// that keeps every node within the chord limit of the straight machine
+    /// moves between those kept, so a finely seeded run does not make a
+    /// point per seed. The ends are always kept; the move between two kept
+    /// nodes is refined further afterwards like any other.
+    pub(crate) fn thin(&self, nodes: &[Node]) -> Vec<Node> {
+        let last = nodes.len().saturating_sub(1);
+        let Some(first) = nodes.first() else {
+            return Vec::new();
+        };
+        let mut kept = vec![*first];
+        let mut start = 0;
+        // Whether the move from `start` to `end` keeps every seed between.
+        let holds = |start: usize, end: usize| {
+            let (Some(a), Some(b)) = (nodes.get(start), nodes.get(end)) else {
+                return false;
+            };
+            if end == start + 1 {
+                return true;
+            }
+            if b.t - a.t > self.max_dt * (1.0 + 1e-9) {
+                return false;
+            }
+            nodes.get(start + 1..end).is_some_and(|between| {
+                between
+                    .iter()
+                    .all(|mid| self.deviation_between(a, b, mid) <= self.chord)
+            })
+        };
+        while start < last {
+            // Gallop out while the move holds, then bisect the last step.
+            let (mut good, mut bad) = (1_usize, None);
+            let mut step = 2_usize;
+            loop {
+                let end = start + step;
+                if end >= last {
+                    if holds(start, last) {
+                        good = last - start;
+                    } else {
+                        bad = Some(last - start);
+                    }
+                    break;
+                }
+                if holds(start, end) {
+                    good = step;
+                    step *= 2;
+                } else {
+                    bad = Some(step);
+                    break;
+                }
+            }
+            if let Some(mut hi) = bad {
+                let mut lo = good;
+                while hi - lo > 1 {
+                    let mid = (lo + hi) / 2;
+                    if holds(start, start + mid) {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                good = lo;
+            }
+            start += good;
+            if let Some(n) = nodes.get(start) {
+                kept.push(*n);
+            }
+        }
+        kept
+    }
+
     /// The node nearest to parameter `bad_t` where the tool may still cut,
     /// found by bisection from `from`, which may cut, towards `bad_t`, where
     /// it may not. `None` when the limit is already at `from`.
@@ -337,4 +488,66 @@ impl Fit<'_> {
         }
         out.push(Some(*b));
     }
+}
+
+/// As [`fit_curve`] for a path limited to a region: when the region is known
+/// in the development, only the intervals of the path that can reach it are
+/// fitted, each with points `fit.spacing` apart, and nothing is dropped
+/// elsewhere. Otherwise `seeds` evenly spaced points cover the whole path.
+pub(crate) fn fit_region(
+    fit: &Fit<'_>,
+    seeds: usize,
+    label: &str,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    let Some(index) = fit.candidates.filter(|_| fit.constrained) else {
+        return fit_curve(fit, seeds, label, context);
+    };
+    let intervals = index.intervals(&fit.dev_line(index));
+    let mut parts = Vec::new();
+    let mut total = 0.0;
+    for (a, b) in intervals {
+        let part = fit.between(a, b);
+        let n = (part.path_length(index) / fit.spacing).ceil().max(2.0);
+        total += n;
+        parts.push((part, n as usize));
+    }
+    if total > MAX_POINTS {
+        return Err(PathError::Strategy(format!(
+            "the region needs {total:.0} points at a spacing of {} mm; increase the tolerance",
+            fit.spacing
+        )));
+    }
+    let mut out = Vec::new();
+    for (part, n) in parts {
+        context.check_cancelled()?;
+        out.extend(fit_curve(&Fit { thin: true, ..part }, n, label, context)?);
+    }
+    Ok(out)
+}
+
+/// Most points one pass may make inside a region (NFR-07).
+const MAX_POINTS: f64 = 5.0e6;
+
+/// The selected region of `region` in the development at `radius`, for a tool
+/// that reaches `reach` from its axis with the largest stock to leave, or
+/// `None` when there is no selected region or it cannot be developed (the
+/// caller then samples the whole path).
+pub(crate) fn region_index(
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    radius: f64,
+    leave: f64,
+    tolerance: f64,
+) -> Option<DevIndex> {
+    let surface = region?.region?;
+    let reach = input.tool.cutting_radius() + leave + tolerance + crate::region::ON_SURFACE;
+    DevIndex::build(surface.tessellation(), &input.rotary, radius, reach)
+}
+
+/// How far apart, in mm of path, points are inside the intervals that can
+/// reach a region: the toolpath tolerance, between 0.002 mm and the old
+/// whole-path spacing.
+pub(crate) fn region_spacing(tolerance: f64, whole_path: f64) -> f64 {
+    tolerance.clamp(0.002, whole_path)
 }
