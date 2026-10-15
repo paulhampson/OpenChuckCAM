@@ -14,6 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result, require_finite, require_positive};
+use crate::setup::{PartExtent, SetupWarningKind};
 use crate::stock::Stock;
 use crate::units::{Degrees, Millimetres};
 
@@ -313,4 +314,110 @@ fn validate_tab(tab: &Tab, field: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The head zone and the tail zone, where tabs may lie: from the inner edge
+/// of the held region (or the end of the stock) to the part, and from the
+/// part to the inner edge of the other held region (or end of the stock).
+/// `None` when the stock's extent is not known.
+pub fn tab_zones(
+    workholding: &Workholding,
+    stock: &Stock,
+    part: &PartExtent,
+) -> Option<(Interval, Interval)> {
+    let bounds = stock.bounds(Some(part))?;
+    let (held_start, held_end) = workholding.held_intervals((bounds.min.x, bounds.max.x));
+    let head_from = held_start.map_or(bounds.min.x, |(_, hi)| hi);
+    let tail_to = held_end.map_or(bounds.max.x, |(lo, _)| lo);
+    Some(((head_from, part.bounds.min.x), (part.bounds.max.x, tail_to)))
+}
+
+/// Tabs on a rotary part are restricted to the head and tail zones (OP-21,
+/// decision record 0035): the warnings for each tab that is not wholly inside
+/// one, in the order of the tabs. Needs the part's extent, so it is a check of
+/// the setup (reported with [`crate::setup::check_setup`]), not of the data.
+pub fn check_tab_zones(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+) -> Vec<SetupWarningKind> {
+    let (Some(stock), Some(part)) = (stock, part) else {
+        return Vec::new();
+    };
+    let Some((head, tail)) = tab_zones(workholding, stock, part) else {
+        return Vec::new();
+    };
+    // A small allowance for rounding in the part's extent.
+    const EPS: f64 = 1e-9;
+    let inside = |lo: f64, hi: f64, z: Interval| lo >= z.0 - EPS && hi <= z.1 + EPS;
+    workholding
+        .tabs
+        .iter()
+        .enumerate()
+        .filter_map(|(i, t)| {
+            let (lo, hi) = (t.x_start.0, t.x_start.0 + t.length.0);
+            (!inside(lo, hi, head) && !inside(lo, hi, tail)).then_some(
+                SetupWarningKind::TabOutsideEndZones {
+                    tab: i + 1,
+                    x: (lo, hi),
+                },
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::geometry::{Aabb, Point3};
+
+    fn tab(x_start: f64, length: f64) -> Tab {
+        Tab {
+            x_start: Millimetres(x_start),
+            length: Millimetres(length),
+            shape: TabShape::Cylinder {
+                diameter: Millimetres(4.0),
+            },
+            layout: TabLayout::OnAxis,
+        }
+    }
+
+    #[test]
+    fn req_op_21_tabs_are_restricted_to_the_head_and_tail() {
+        // Stock X 0 to 100, part X 30 to 80, 15 mm held at the start.
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(40.0),
+            length: Millimetres(100.0),
+            x_start: Millimetres(0.0),
+        };
+        let part = PartExtent {
+            bounds: Aabb {
+                min: Point3::new(30.0, -10.0, -10.0),
+                max: Point3::new(80.0, 10.0, 10.0),
+            },
+            radius: Millimetres(10.0),
+        };
+        let held = Some(HeldRegion {
+            length: Millimetres(15.0),
+            diameter: None,
+        });
+        let w = |tabs: Vec<Tab>| Workholding {
+            start: held,
+            end: None,
+            tabs,
+        };
+        let check = |tabs| check_tab_zones(&w(tabs), Some(&stock), Some(&part));
+        // Head 15 to 30, tail 80 to 100: these two fit.
+        assert!(check(vec![tab(16.0, 10.0), tab(80.0, 20.0)]).is_empty());
+        // Mid-part, across the part's start, and across the held edge do not.
+        let found = check(vec![tab(40.0, 5.0), tab(25.0, 10.0), tab(10.0, 10.0)]);
+        assert_eq!(found.len(), 3);
+        assert!(matches!(
+            found[0],
+            SetupWarningKind::TabOutsideEndZones { tab: 1, .. }
+        ));
+        // Nothing is checked without the part.
+        assert!(check_tab_zones(&w(vec![tab(40.0, 5.0)]), Some(&stock), None).is_empty());
+    }
 }
