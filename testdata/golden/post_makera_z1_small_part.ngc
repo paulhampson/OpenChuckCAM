@@ -2,7 +2,7 @@
 (revision abc1234)
 G90 G21 G17
 G54
-(operation groove [finish] tool 4 mm ball about 26 s)
+(operation groove [finish], tool T1 4 mm ball, about 26 s)
 M5
 T1 M6
 S10000 M3

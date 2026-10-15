@@ -151,7 +151,7 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0032](decisions/0032-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields (the selection kind per model was already in schema 1, decision 0010). In pull request 39 |
 | 8 | H (slice 12) | Selection sets gain an optional `stock_to_leave`, written only when set (OP-11 per selection; [decision 0034](decisions/0034-slice-12-baseline-finishing.md) item 4) | Claimed as 10 and built as 8, the next number on `main` that keeps the migration chain whole. **Lane E (pull request 45) claims 8 first; this lane merges after it and becomes 9** (renumber `SCHEMA`, the migration step, the `schema = 8` text in tests and the golden projects, and this row; lanes D and O and slice 19 item 4 move down by one). Lanes D, O, F and S take the next free numbers when they claim |
 | 9 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
-| 10 | F or S (slice 19) | Export grouping and the confirmed tool numbers' presentation, if they are stored in the project (GC-05, GC-14) | Expected only if stored; decide in design refinement |
+| 10 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S |
 
 The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
 
@@ -710,6 +710,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 ## Slice 19 – Output options and setup sheet
 
 **Goal:** export G-code in the groupings a shop uses, and a printable job summary.
+
+**Status:** in progress. Lane F (items 1, 2, 3 and 5) is built on branch `claude/awesome-sagan-wqv9bz`; design in [decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) (accepted 15 Oct 2026). Item 4 (export UI and CLI options, the tool-number dialog) is not built, so the slice stays open and GC-05, GC-06, GC-12 and GC-14 are not yet closed in `xtask/traceability.toml`. Open items OI-92 (narrowed), OI-143 and OI-144.
 
 **Requirements:** GC-05, GC-06, GC-12 (GC-14 in the UI)
 

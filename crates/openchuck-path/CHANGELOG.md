@@ -4,6 +4,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Version 0.6.0 with the library family (`PostJob` and `ConvertOptions` in `openchuck-post` gain `operation_names`, a breaking change; decision 0028).
 - Slice 10 (decision 0032): `RegionConstraint` and `Window` (OP-02); `Strategy::honours_region` and `Strategy::passes_in_region` (defaults refuse) and `generate_in_region`; helical finishing honours regions. No field was added to a public struct.
 
 - Version 0.5.0 with the library family (the B-rep face record in `openchuck-types` is a breaking change, OI-123).
