@@ -1,6 +1,6 @@
 # 0035: Workholding and retaining tabs (SET-09, OP-21)
 
-- **Status:** proposed (15 Oct 2026). The two requirements were added to `docs/requirements.md` at the project owner's direction (SET-09 and OP-21, both P1; tab shapes cylinder and frustum). The design below is guidance until the owner accepts it. Nothing is built.
+- **Status:** accepted by the project owner (15 Oct 2026), with the answers at the end of this record. The two requirements were added to `docs/requirements.md` at the project owner's direction (SET-09 and OP-21, both P1; tab shapes cylinder and frustum).
 - **Date:** 15 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-158 to OI-162.
 
@@ -12,7 +12,7 @@ A rotary part is held at one end, often with the rest of the stock hanging beyon
 
 The new requirements: **SET-09** (a gripped length at either end of the stock, with an optional holding diameter; the held region is never machined, links keep clear of it, and the simulation keeps it) and **OP-21** (retaining tabs shaped as a cylinder or a frustum, set by axial position, diameter and, for tabs around the axis, count and angle; operations leave them uncut and the simulation keeps them). The work breakdown adds slice 21 with sub-slices 21a, 21b and 21c (lanes U, V and W) so slices 12, 13 and 14, already in progress, are not touched.
 
-## Decision (proposed)
+## Decision
 
 1. **The held region and each tab are part of the target.** The cleanest way to keep every strategy off them is to add them to the surface the strategies already treat as the finished part, so stock to leave, gouge protection, the independent checker, the simulation target and the deviation report all treat them as part without any strategy changing. The held region is a cylinder of the stock's radius (or the holding diameter, where one is set) over its gripped length. A tab is a cylinder or a frustum.
 2. **A composite surface in `openchuck-path`.** A new type implements the existing surface port over the model's surface plus a list of analytic solids: a tool drop returns the highest contact, a distance the nearest, a ray the first hit. Cylinder and frustum are exact analytic evaluators (decision 0017 gives the pattern: pure Rust, exact point, normal, closest point, ray). The port and `StrategyInput` do not change, and no public struct gains a field (the semver check, decision 0026). Results are identical at any thread count (NFR-06).
@@ -41,9 +41,14 @@ The new requirements: **SET-09** (a gripped length at either end of the stock, w
 
 ## Owner's answers (15 Oct 2026)
 
-The record is still proposed; these answers settle open items without accepting the rest.
+These answers settle the open items below; the record is accepted with them.
 
-- **OI-158, default tab length.** At the end next to the chuck, a tab runs from the inner edge of the held region to the start of the model. At the other end it runs from the end of the model to the end of the stock. Any held region is honoured, so a default never enters one. Count, diameters and which end of a frustum faces the part are still open. The defaults need the part's extent, so the application computes them when a tab is added (slice 21c); the stored data stays explicit (decision 0040 item 2).
+- **OI-158, defaults (closed).** A new setup's tabs default to **two on the axis, one at the head and one at the tail**.
+  - *Length.* At the chuck end, a tab runs from the inner edge of the held region to the start of the model. At the other end, from the end of the model to the end of the stock.
+  - *Protected regions.* A default never enters a held region or a region the user has excluded (an avoid selection set, OP-02).
+  - *Diameter.* The smaller of 10 mm and half the part diameter.
+  - *Shape.* A frustum, with its small end attached to the model.
+  The defaults need the part's extent, so the application computes them when a tab is added (slice 21c); the stored data stays explicit (decision 0040 item 2).
 - **OI-159, tool against tab.** A tab narrower than the tool is not permitted. It is refused with a message, not left to produce a wrong shape (item 6 changes from "refuse when the generator cannot cut it" to a check when the tool is chosen or the tab edited).
 - **OI-160.** Deferred until COL-04 (P2).
 - **OI-161.** Not a P1 requirement; no cut-off operation is built.

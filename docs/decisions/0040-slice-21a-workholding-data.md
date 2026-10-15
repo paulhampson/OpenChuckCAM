@@ -1,6 +1,6 @@
 # 0040: Slice 21a design refinement: workholding and tab data in the setup (SET-09, OP-21)
 
-- **Status:** accepted by the project owner (15 Oct 2026), with project schema **10** and the tab layout of item 4 as written (this closes OI-170). It refines [decision 0035](0035-workholding-and-retaining-tabs.md), which is still *proposed*; this record relies on it for the design and not on any point it leaves open (OI-158).
+- **Status:** accepted by the project owner (15 Oct 2026), with project schema **10** and the tab layout of item 4 as written (this closes OI-170). It refines [decision 0035](0035-workholding-and-retaining-tabs.md), which the owner accepted the same day.
 - **Date:** 15 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-169 and OI-170 (OI-170 closed by the acceptance).
 
@@ -10,7 +10,7 @@ Numbering: the unmerged branches hold records 0037 (lane M) and 0038 (lane N and
 
 Slice 21a (lane U) is the data half of workholding: types, validation, the project file, undoable edits and the command-line report. Decision 0035 fixes the design (a held region at each end, tabs as cylinder or frustum, held in the setup) and leaves the layout and defaults to the owner (OI-158). The lane has to pick concrete field names and a few conventions to build, and to say so.
 
-## Decision (proposed)
+## Decision
 
 1. **Types** in `openchuck-types::workholding` (new module, so the semver family gains types and no field): `Workholding { start, end, tabs }`, `HeldRegion { length, diameter }`, `Tab { x_start, length, shape, layout }`, `TabShape` (`Cylinder`, `Frustum`) and `TabLayout` (`OnAxis`, `AroundAxis`). `validate_workholding` is a new function beside `validate_setup`; `validate_setup`'s signature is unchanged.
 2. **No defaults (OI-158).** Every dimension is explicit. An empty `Workholding` is the default for every setup, so a project without a held region or tab is unchanged and writes nothing.

@@ -748,7 +748,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 ## Slice 21 – Workholding and retaining tabs
 
-**Status:** 21a built (lane U, decision 0040 accepted, unmerged); 21b and 21c not started. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (proposed). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
+**Status:** 21a built (lane U, decision 0040 accepted, unmerged); 21b and 21c not started. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 
@@ -772,7 +772,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 1. Mapping in `openchuck-app` from the setup to the composite target for generation, the gouge checker's target, the simulation's target and the deviation report; the simulated stock keeps the held region and the tabs (SET-09, OP-21, SIM-05, SIM-06).
 2. Parameter forms and the viewport show the held region and tabs (UI-03, UI-07), with a warning if an operation's selection reaches one.
-3. Default tab placement from the part's extent: next to the chuck from the held region's inner edge to the start of the model, at the other end from the model's end to the stock's end, kept out of held regions (decision 0035, owner's answers, OI-158); a tab narrower than the tool is refused (OI-159).
+3. Default tabs when none are set, from the part's extent (decision 0035, owner's answers, OI-158): two on the axis, one at the head and one at the tail, frustums with the small end on the model, each the smaller of 10 mm and half the part diameter across; the head tab runs from the held region's inner edge to the start of the model and the tail tab from the model's end to the stock's end, kept out of held regions and user-excluded regions. A tab narrower than the tool is refused (OI-159).
 4. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
 
 **Review checklist**
