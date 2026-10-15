@@ -93,6 +93,7 @@ pub fn job() -> PostJob {
         },
         tools,
         title: "Small part".into(),
+        operation_names: BTreeMap::new(),
         revision: Some("abc1234".into()),
         work_offset: None,
     }

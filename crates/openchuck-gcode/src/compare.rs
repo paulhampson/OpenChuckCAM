@@ -187,11 +187,14 @@ pub fn compare(
     let mut ir_travel = 0.0;
     for (g, group) in toolpath.groups.iter().enumerate() {
         let mut prev = machine_of(group.start.tip, group.start.a.0);
-        if g == 0
-            || !expected
-                .last()
-                .is_some_and(|e: &Expected| same(&machine_of(e.tip, e.a), &prev))
-        {
+        let before = expected.last().map(|e: &Expected| machine_of(e.tip, e.a));
+        if g == 0 || !before.is_some_and(|b| same(&b, &prev)) {
+            // The post writes the move to a group's start as a plain rapid, so
+            // the A it turns between two groups is travel in the G-code and
+            // counts here too (a file with more than one operation).
+            if let Some(b) = before {
+                ir_travel += (prev[3] - b[3]).abs();
+            }
             expected.push(Expected {
                 tip: group.start.tip,
                 a: group.start.a.0,
