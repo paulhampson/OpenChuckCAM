@@ -584,7 +584,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 
 ### 14.3 Type and size
 
-- **Typefaces.** The mockups use IBM Plex Sans for text and IBM Plex Mono for numbers. Until OI-164 is decided, the application uses egui's bundled proportional and monospace fonts, which `deny.toml` already allows.
+- **Typefaces.** IBM Plex Sans for text and IBM Plex Mono for numbers, as in the mockups (accepted 15 Oct 2026, OI-164). They are bundled with the application under the SIL Open Font License 1.1, on these conditions: ship the unmodified font files with IBM's copyright line and the OFL text (`LICENSES/OFL-1.1.txt`, and a line in the release and nightly notices, which `cargo about` does not produce for files that are not crates); do not subset or otherwise modify them, since a modified font may not be called "Plex"; never sell them on their own; load them from the application, never from Google Fonts at run time (NFR-09). egui's own fonts stay as the fallback for characters Plex does not have.
 - **Sizes** at 100% scale:
   - text and values: 12 pixels;
   - section headings and group labels: 11, upper case, with letter spacing;
@@ -684,7 +684,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 Tracked in [open-items.md](../open-items.md):
 
 - **OI-163 (closed 15 Oct 2026):** selection highlight colours are the ones in section 7.4 (D7).
-- **OI-164 (open):** the typeface. egui's bundled fonts are used until it is decided.
+- **OI-164 (closed 15 Oct 2026):** the typeface is IBM Plex Sans and Mono, bundled under the OFL (section 14.3).
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
 - **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
 
