@@ -64,9 +64,11 @@ use openchuck_types::units::Millimetres;
 /// - 7: operations gain the optional `boundary`, `avoid` and `check`
 ///   selection set references (OP-02), written only when set (decision
 ///   record 0032).
-/// - 8: selection sets gain the optional `stock_to_leave` (OP-11, per
+/// - 8: tools gain the optional `centre_cutting` field, written only when
+///   set (OI-117, decision record 0033).
+/// - 9: selection sets gain the optional `stock_to_leave` (OP-11, per
 ///   selection), written only when set (decision record 0034 item 4).
-pub const SCHEMA: i64 = 8;
+pub const SCHEMA: i64 = 9;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -88,6 +90,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_5_to_6,
     schema_6_to_7,
     schema_7_to_8,
+    schema_8_to_9,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -148,9 +151,30 @@ fn schema_6_to_7(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
-/// Schema 8 only adds the optional `stock_to_leave` to selection sets, which
-/// a schema 7 file does not have, so it needs no change but its number.
-fn schema_7_to_8(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+/// Schema 8 adds the optional `centre_cutting` tool field, written only when
+/// set, so a schema 7 file needs no change but its number: its tools state
+/// nothing and follow their shape. A schema 7 tool file that already holds the
+/// field was not written by any version that knew it, so it is refused rather
+/// than guessed at.
+fn schema_7_to_8(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let stated = kind == FileKind::Tool
+        && table
+            .get("tool")
+            .and_then(toml::Value::as_table)
+            .is_some_and(|t| t.contains_key("centre_cutting"));
+    if stated {
+        return Err(
+            "this schema 7 tool file has `centre_cutting`, a field schema 8 introduced; \
+             remove it, or set `schema = 8` if the file was written for schema 8"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+/// Schema 9 adds the optional `stock_to_leave` to selection sets, which a
+/// schema 8 file does not have, so it needs no change but its number.
+fn schema_8_to_9(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
@@ -894,7 +918,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 8);
+        assert_eq!(SCHEMA, 9);
         let mut project = Project::new("p");
         project
             .insert(
@@ -903,7 +927,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 8\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 9\n"), "{path}: {text}");
         }
     }
 

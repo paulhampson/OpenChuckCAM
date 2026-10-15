@@ -33,6 +33,7 @@ fn ball(diameter: f64) -> Tool {
         shank_diameter: Millimetres(diameter),
         flute_count: 2,
         material: Some("carbide".into()),
+        centre_cutting: None,
     }
 }
 

@@ -123,6 +123,7 @@ pub fn ball(diameter: f64) -> Tool {
         shank_diameter: Millimetres(diameter),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 

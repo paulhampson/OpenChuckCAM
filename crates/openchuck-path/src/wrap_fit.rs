@@ -122,13 +122,17 @@ pub(crate) fn fit_curve(
                     if !points.is_empty() {
                         passes.push(Pass {
                             points: std::mem::take(&mut points),
+                            stock: None,
                         });
                     }
                 }
             }
         }
         if !points.is_empty() {
-            passes.push(Pass { points });
+            passes.push(Pass {
+                points,
+                stock: None,
+            });
         }
         context.report(
             &format!("{label}: fitting the path"),

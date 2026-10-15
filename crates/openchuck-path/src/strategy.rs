@@ -42,11 +42,35 @@ pub struct CutPoint {
     pub contact: Point3,
 }
 
+/// The material as it is when a pass starts, for a strategy that removes
+/// material in stages (rotary roughing, decision record 0033). The shared
+/// services use it for the pass's entry, its leave and the link from the
+/// pass before it (OP-14), in place of the setup's stock, which does not
+/// know what the operation itself has already cut.
+#[derive(Clone)]
+pub struct PassStock(pub Arc<dyn StockModel>);
+
+impl std::fmt::Debug for PassStock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq for PassStock {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// A run of cut points cut without lifting the tool.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Pass {
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
+    /// The material when this pass starts, if the strategy tracks it. Passes
+    /// that have it are linked without a retract to the clearance cylinder
+    /// where the link is clear of it (decision record 0033 item 6).
+    pub stock: Option<PassStock>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -268,13 +292,15 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides: helical, axial and indexed finishing (OP-04).
+    /// The strategies this library provides: helical, axial and indexed finishing
+    /// (OP-04) and rotary roughing (OP-03).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
-        // The name is fixed and the registry is empty, so this cannot fail.
+        // The names are fixed and distinct, so these cannot fail.
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
         let _ = registry.register(Arc::new(crate::axial::AxialFinishing));
         let _ = registry.register(Arc::new(crate::indexed::IndexedFinishing));
+        let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
         registry
     }
 

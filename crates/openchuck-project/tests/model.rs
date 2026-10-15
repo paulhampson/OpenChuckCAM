@@ -39,6 +39,7 @@ fn tool() -> Tool {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 

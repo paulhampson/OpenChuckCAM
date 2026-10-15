@@ -37,6 +37,7 @@ fn ball() -> Tool {
         shank_diameter: Millimetres(4.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 

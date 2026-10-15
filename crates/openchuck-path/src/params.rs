@@ -564,6 +564,20 @@ impl EntryParameters {
         lead_radius: Millimetres(0.0),
     };
 
+    /// Refuses a straight plunge for a tool that cannot cut straight down
+    /// (OI-117; decision record 0033). The other styles are not refused here:
+    /// their geometry is checked when the entry is built.
+    pub fn check_tool(&self, can_plunge: bool) -> Result<()> {
+        if self.style == EntryStyle::Plunge && !can_plunge {
+            return Err(PathError::parameter(
+                names::ENTRY,
+                "this tool cannot cut straight down (it is not centre-cutting); choose ramp or \
+                 helix entry, or state on the tool that it can plunge",
+            ));
+        }
+        Ok(())
+    }
+
     /// Reads the entry parameters from values resolved against a schema that
     /// includes the common parameters.
     pub fn read(p: &Parameters) -> Result<Self> {
