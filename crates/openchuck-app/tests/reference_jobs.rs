@@ -75,7 +75,7 @@ fn jobs() -> Vec<Job> {
             strategy: "helical_finishing",
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
-        // Slice 12 baseline finishing (decision 0033): axial, indexed, and
+        // Slice 12 baseline finishing (decision 0034): axial, indexed, and
         // axial with lead-in and lead-out, on the cone.
         Job {
             name: "cone_axial",

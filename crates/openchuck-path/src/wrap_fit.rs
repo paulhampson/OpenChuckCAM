@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The path fitting the wrap-family strategies share (OP-04; decision record
-//! 0018 item 12, decision 0033 item 2).
+//! 0018 item 12, decision 0034 item 2).
 //!
 //! A strategy describes a curve in the development as X and A as functions of
 //! a parameter `t` from 0 to 1 (a [`Fit`]): a helix turns A as X advances; an
@@ -152,7 +152,7 @@ pub(crate) struct Node {
 }
 
 /// A part of the surface with its own stock to leave, and the tool grown by
-/// it (decision record 0033 item 4).
+/// it (decision record 0034 item 4).
 pub(crate) struct ZoneFit<'a> {
     pub(crate) surface: &'a dyn SurfaceSource,
     pub(crate) leave: f64,

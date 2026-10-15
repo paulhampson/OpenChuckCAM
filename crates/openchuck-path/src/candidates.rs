@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Where on a pass the cutter contact can lie inside a selected region (OP-02;
-//! work breakdown slice 12 item 5; decision record 0033 item 5).
+//! work breakdown slice 12 item 5; decision record 0034 item 5).
 //!
 //! A pass is a line in the development of the rotary axis: `x` along it and
 //! `u = R * A` round it (R the part's largest radius, A in radians; the

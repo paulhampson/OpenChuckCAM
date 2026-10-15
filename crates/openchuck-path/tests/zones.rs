@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Stock to leave per selection (OP-11; work breakdown slice 12 item 4;
-//! decision record 0033).
+//! decision record 0034).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,

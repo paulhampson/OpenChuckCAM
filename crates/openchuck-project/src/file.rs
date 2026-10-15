@@ -65,7 +65,7 @@ use openchuck_types::units::Millimetres;
 ///   selection set references (OP-02), written only when set (decision
 ///   record 0032).
 /// - 8: selection sets gain the optional `stock_to_leave` (OP-11, per
-///   selection), written only when set (decision record 0033 item 4).
+///   selection), written only when set (decision record 0034 item 4).
 pub const SCHEMA: i64 = 8;
 
 /// Name of the machine profile file in the project folder.

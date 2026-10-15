@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Indexed finishing (OP-04, with OP-14; work breakdown slice 12 item 3;
-//! decision record 0033).
+//! decision record 0034).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,

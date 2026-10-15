@@ -561,7 +561,7 @@ fn req_gc_09_req_gc_10_req_nfr_08_small_part_golden_files_match_their_closed_for
     }
 }
 
-/// The baseline finishing jobs of slice 12 (decision 0033), on the cone of
+/// The baseline finishing jobs of slice 12 (decision 0034), on the cone of
 /// the `cone` job.
 const BASELINE_JOBS: [&str; 3] = ["cone_axial", "cone_indexed", "cone_axial_lead"];
 

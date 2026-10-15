@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Stepover from a scallop (cusp) height (OP-04, OP-11; decision record 0033
+//! Stepover from a scallop (cusp) height (OP-04, OP-11; decision record 0034
 //! item 1).
 //!
 //! The closed forms need a tool whose contact is on one arc of radius `rho`: a

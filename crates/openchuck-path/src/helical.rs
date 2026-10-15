@@ -223,7 +223,7 @@ fn passes(
             .into_iter()
             .fold(0.0_f64, |r, v| r.max(v.abs()));
         // With a selected region the pass is only fitted where it can reach
-        // the region (decision record 0033 item 5); without one, or when the
+        // the region (decision record 0034 item 5); without one, or when the
         // region cannot be developed, points are never further apart than
         // `CONSTRAINED_SPACING` of path.
         let most_leave = zones.iter().fold(leave, |m, z| m.max(z.leave));

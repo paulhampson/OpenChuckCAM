@@ -283,7 +283,7 @@ pub(crate) struct ResolvedRegion {
     check: Option<MeshSurface>,
     /// The selected triangles that have a stock to leave of their own,
     /// grouped by amount; where sets overlap the largest amount applies
-    /// (OP-11, decision record 0033 item 4).
+    /// (OP-11, decision record 0034 item 4).
     leaves: Vec<(MeshSurface, f64)>,
     /// The rest of the part, which takes the operation's stock to leave.
     /// `None` when no set has an amount of its own.

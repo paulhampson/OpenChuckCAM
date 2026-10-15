@@ -141,7 +141,7 @@ impl Builder<'_> {
         // post works the feed out from positions rounded to the written
         // decimals, which can lengthen a short move by a few thousandths of a
         // millimetre, so fed moves are timed for that much more (decision
-        // record 0033, as built).
+        // record 0034, as built).
         let (dx, dy, dz) = (
             (to.along - from.along).abs(),
             (to.across - from.across).abs(),

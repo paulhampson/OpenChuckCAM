@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Axial finishing (OP-04, with OP-11, OP-13, OP-15; work breakdown slice 12
-//! item 2; decision record 0033).
+//! item 2; decision record 0034).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,

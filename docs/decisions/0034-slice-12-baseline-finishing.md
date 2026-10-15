@@ -1,10 +1,10 @@
-# 0033: Slice 12 design refinement: baseline finishing (helical, axial, indexed)
+# 0034: Slice 12 design refinement: baseline finishing (helical, axial, indexed)
 
-- **Status:** accepted by the project owner (15 Oct 2026): question 1 option A (a stock-to-leave field on the selection set, project schema 10), question 2 (`scallop` is in, ball and bull-nose only) and question 3 (`zigzag` default); the rest as proposed. OI-146 and OI-147 are closed by these answers. It relies on accepted records [0018](0018-slice-5-pathing-core.md) (strategy interface, helical finishing, shared services), [0026](0026-entry-moves.md) (entry moves), [0016](0016-sp-7-2d-offsets.md) (2D offsets) and [0032](0032-slice-10-mesh-selection.md) (region constraints). Lane H of the work breakdown's parallel work; its needs (lane C, the entry module) are on `main`.
+- **Status:** accepted by the project owner (15 Oct 2026): question 1 option A (a stock-to-leave field on the selection set, project schema 10), question 2 (`scallop` is in, ball and bull-nose only) and question 3 (`zigzag` default); the rest as proposed. OI-150 and OI-151 are closed by these answers. It relies on accepted records [0018](0018-slice-5-pathing-core.md) (strategy interface, helical finishing, shared services), [0026](0026-entry-moves.md) (entry moves), [0016](0016-sp-7-2d-offsets.md) (2D offsets) and [0032](0032-slice-10-mesh-selection.md) (region constraints). Lane H of the work breakdown's parallel work; its needs (lane C, the entry module) are on `main`.
 - **Date:** 15 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): this record takes OI-145 to OI-148 and proposes to settle OI-137 and OI-138 (item 5).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): this record takes OI-149 to OI-152 and proposes to settle OI-137 and OI-138 (item 5).
 
-Numbering: 0032 is the last record on `main`; the unmerged branches hold 0028 (and OI-141 to OI-144), so this record takes 0033 and OI-145 onward. Project schema 10 is claimed in the work breakdown's table (item 4; 8 and 9 are expected by other lanes).
+Numbering: 0032 is the last record on `main`. The unmerged branches hold 0028 (slice 19, pull request 43), 0033 (lane E, pull request 45, and lane I's branch) and OI-141 to OI-148, so this record takes 0034 and OI-149 to OI-152 (first written as 0033 and OI-145 to OI-148, renumbered on 15 Oct 2026). Project schema: built as 8 (see "As built"); lane E claims 8 first (decision 0033, pull request 45), so this lane becomes **9** when that pull request merges, and the constant, the migration step, the golden projects' `schema = 8` text and the table row are renumbered in this lane's merge.
 
 ## Context
 
@@ -54,10 +54,10 @@ Verification plan row OP-04: "Helical, axial and indexed finishing on analytic c
 
 ## Open items
 
-- **OI-145:** meaning of `stepover` for axial finishing (arc length at the largest radius, rounded to a whole number of steps), and whether a tool with a taper should be measured at the contact radius instead.
-- **OI-146:** closed: stored on the selection set, schema 10.
-- **OI-147:** closed: `scallop` is in, for ball and bull-nose only; other tools get a warning and the stepover is used.
-- **OI-148:** `lead` on an axial pass that starts on the end face of the part: needs air beyond the end (item 6).
+- **OI-149:** meaning of `stepover` for axial finishing (arc length at the largest radius, rounded to a whole number of steps), and whether a tool with a taper should be measured at the contact radius instead.
+- **OI-150:** closed: stored on the selection set (schema 8 as built; 9 after lane E).
+- **OI-151:** closed: `scallop` is in, for ball and bull-nose only; other tools get a warning and the stepover is used.
+- **OI-152:** `lead` on an axial pass that starts on the end face of the part: needs air beyond the end (item 6).
 - **OI-137, OI-138:** proposed to close by item 5 when it is built and accepted.
 
 ## As built
@@ -78,3 +78,5 @@ Verification plan row OP-04: "Helical, axial and indexed finishing on analytic c
   - A region that cannot be developed (no selected surface, or no triangles) keeps the old whole-path sampling at `CONSTRAINED_SPACING`.
   - **OI-137 stays open.** The containment boundary is still the bounding window of its set: making it a curve on the surface needs a decision on what a ring of triangles means as a boundary (the curve, or the area it encloses), which the requirements do not say. The candidate intervals could also clip to a boundary outline once that is decided.
   - Evidence: `candidates::tests::req_op_02_candidate_intervals_are_the_region_offset_along_random_lines` (intervals against a brute-force distance test on random lines that wrap several times), `tests/region_offsets.rs`, and the existing `tests/region.rs`, unchanged. A region run takes more time than before (the region tests take about 15 s against about 10 s): the price of 0.01 mm sampling inside the intervals.
+
+- **Numbering check, 15 Oct 2026** (before opening the pull request): lane E (pull request 45) has decision 0033, OI-141 to OI-144 and schema 8; slice 19 (pull request 43) has decision 0028 and OI-141 to OI-144 (the two clash with each other on OI-141 to OI-144, for those lanes to settle); lane I's branch has decision 0033 and OI-145 to OI-148. This record therefore takes 0034 and OI-149 to OI-152, and schema 9 once lane E has merged.

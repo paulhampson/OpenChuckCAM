@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Regions found through their offset instead of by sampling (OP-02; work
-//! breakdown slice 12 item 5; decision record 0033 item 5; OI-138).
+//! breakdown slice 12 item 5; decision record 0034 item 5; OI-138).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,

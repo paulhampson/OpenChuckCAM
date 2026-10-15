@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Axial finishing: passes parallel to the rotary axis, stepping in A (OP-04;
-//! work breakdown slice 12 item 2; decision record 0033 items 1 and 2).
+//! work breakdown slice 12 item 2; decision record 0034 items 1 and 2).
 //!
 //! The tool is held at one A and dropped along X over the part, then A steps
 //! to the next pass. The A positions are `360 / n` degrees apart, where `n` is
@@ -234,7 +234,7 @@ impl<'a> AlongX<'a> {
         }
         let constrained = region.is_some_and(|r| !r.is_empty());
         // With a selected region the pass is only fitted where it can reach
-        // the region (decision record 0033 item 5). Without one, or when the
+        // the region (decision record 0034 item 5). Without one, or when the
         // region cannot be developed, a region constraint is only seen where
         // the tool is dropped (decision 0032 item 6), so points are never
         // further apart than `CONSTRAINED_SPACING`.

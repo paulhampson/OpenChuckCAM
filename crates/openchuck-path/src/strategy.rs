@@ -83,7 +83,7 @@ impl std::fmt::Debug for StrategyInput<'_> {
 }
 
 /// A part of the surface that is left its own stock to leave in place of the
-/// operation's (OP-11 per selection; decision record 0033 item 4). The
+/// operation's (OP-11 per selection; decision record 0034 item 4). The
 /// zones given to a strategy partition the part: where they overlap the
 /// largest amount applies, so the host assigns each triangle to one.
 #[derive(Clone, Copy)]
@@ -205,7 +205,7 @@ pub fn generate_in_region(
 }
 
 /// As [`generate`] or [`generate_in_region`], leaving each of `zones` its own
-/// stock to leave (OP-11 per selection; decision record 0033 item 4). The
+/// stock to leave (OP-11 per selection; decision record 0034 item 4). The
 /// zones cover the part; the operation's own value is only the default for a
 /// host that gives none. The entry checks use the largest amount, so an entry
 /// never comes closer to any part than its stock to leave. Fails for a

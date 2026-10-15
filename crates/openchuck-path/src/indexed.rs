@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Indexed finishing: passes along the rotary axis at fixed A positions, the
 //! 3+1 positional form (OP-04; work breakdown slice 12 item 3; decision record
-//! 0033 item 3).
+//! 0034 item 3).
 //!
 //! One pass along X is cut at each requested A, in the order given. The angle
 //! goes to the IR as given (the shared services only add whole turns to keep A
