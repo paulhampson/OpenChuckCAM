@@ -83,6 +83,7 @@ jobs:
               - 'rust-toolchain.toml'
               - 'deny.toml'
               - '.github/workflows/ci.yml'
+              - '.github/actions/occt/**'
             records:
               - 'docs/requirements.md'
               - 'docs/work-breakdown.md'
@@ -264,8 +265,8 @@ jobs:
           fi
 
   # OpenCASCADE 7.8.1 is built from source by occt-sys (cold: 8 to 9 min on macOS arm64, 32 to 51 min
-  # on Linux, 48 to 71 min on Windows, decision 0003), so the build is cached per platform and saved
-  # even when a later step fails. The job runs only when a change can affect the wrapper. The other
+  # on Linux, 48 to 71 min on Windows, decision 0003), so the finished install is cached per platform
+  # on its own (.github/actions/occt, decision 0039) and saved even when a later step fails. The job runs only when a change can affect the wrapper. The other
   # jobs exclude the kernel: it is behind the `kernel` feature of openchuck-import.
   step-kernel:
     name: STEP kernel (${{ matrix.os }})
@@ -281,6 +282,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # OpenCASCADE comes from its own cache (decision 0039), keyed on the occt-sys version, so a
+      # manifest change no longer rebuilds it; rust-cache keeps the Rust dependencies.
+      - uses: ./.github/actions/occt
       - uses: Swatinem/rust-cache@v2
         with:
           key: step-kernel
