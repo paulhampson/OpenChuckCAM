@@ -197,8 +197,11 @@ impl Strategy for SimultaneousFinishing {
             degrees_spec(
                 parameter::LEAD_ANGLE,
                 "Lead angle",
-                "Tilt of the tool axis from the surface normal towards the direction of travel \
-                 round the axis. Axial passes travel along the axis and need 0.",
+                "Leans the tool from the surface normal towards the way the path travels round \
+                 the axis, for example to keep a ball's centre, where it barely cuts, off the \
+                 surface. A can only lean the tool round the axis, so this applies to the spiral \
+                 pattern; axial passes travel along the axis and need 0. Gouging is still \
+                 checked at any lean.",
                 Some(-MAX_LEAD),
                 Some(MAX_LEAD),
                 0.0,
@@ -206,8 +209,11 @@ impl Strategy for SimultaneousFinishing {
             degrees_spec(
                 parameter::MAX_TILT,
                 "Largest tilt",
-                "The most the tool axis may leave the normal (plus the lead) so that A turns \
-                 smoothly with fewer reversals; 0 follows the normal exactly.",
+                "How far the tool may lean away from the normal (plus the lead) so that A turns \
+                 smoothly with fewer reversals. 0 follows the normal exactly; a larger value \
+                 gives smoother A but cuts with more of the tool's side, which changes the finish \
+                 for flat, bull-nose and V tools. The slope along the axis cannot be followed by \
+                 any A and is reported separately.",
                 Some(0.0),
                 Some(MAX_TILT),
                 10.0,
