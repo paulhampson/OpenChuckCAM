@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Adding operations and generating their toolpaths: the flow from a new
 //! operation to a toolpath on screen (UI-06, UI-09, NFR-04; work breakdown
-//! slice 9 item 7; decision record 0038 item 7).
+//! slice 9 item 7; decision record 0040 item 7).
 //!
 //! Generating runs as a job on the application's pool, so the window stays
 //! live; the panel shows its progress and a Cancel button, then the results:

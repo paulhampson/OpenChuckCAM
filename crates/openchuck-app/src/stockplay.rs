@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The stock at any point of the playback, from the simulator's checkpoints
 //! (SIM-04, SIM-05; work breakdown slice 9 items 5 and 6; decision record
-//! 0038).
+//! 0040).
 //!
 //! The pipeline's simulation keeps no checkpoints, because each is a copy of
 //! the stock (decision 0025 item 7). Playback needs them, so it runs the

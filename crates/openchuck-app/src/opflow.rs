@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Adding and deleting operations, and the list of strategies to choose from
 //! (UI-06; work breakdown slice 9 item 7, the operation add, edit, generate
-//! and regenerate flow; decision record 0038 item 7).
+//! and regenerate flow; decision record 0040 item 7).
 //!
 //! Editing is [`Application::set_parameter`](crate::Application::set_parameter)
 //! and the selection roles; generating is

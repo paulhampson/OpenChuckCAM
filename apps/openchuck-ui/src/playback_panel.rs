@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Toolpath display and playback in the viewport (SIM-01, SIM-02, SIM-04,
-//! SIM-05; work breakdown slice 9 items 3 to 6 and 8; decision record 0038).
+//! SIM-05; work breakdown slice 9 items 3 to 6 and 8; decision record 0040).
 //!
 //! After a run the panel prepares its toolpath for display as a job, then
 //! draws it in the viewport's path layer, one colour for each class of move

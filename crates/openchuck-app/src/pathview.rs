@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The toolpath and the simulation result as plain data for the viewport
 //! (SIM-01, SIM-05; work breakdown slice 9 items 3, 5 and 8; decision record
-//! 0038).
+//! 0040).
 //!
 //! **Toolpaths (SIM-01).** [`ToolpathDisplay`] cuts a regeneration into runs of
 //! moves of one [`PathClass`] (rapid, link, entry or cut) in the part's frame,

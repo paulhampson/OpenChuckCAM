@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The job manager (UI-09, NFR-04): one worker pool, cancellation and progress.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use openchuck_types::job::{CancelToken, JobContext, Progress, ProgressSink};
@@ -37,6 +37,10 @@ pub struct JobHandle<T> {
     name: String,
     cancel: CancelToken,
     result: Receiver<Result<T, AppError>>,
+    /// Set once [`JobHandle::try_result`] has handed the result over. The
+    /// worker drops its end of the channel only after sending, so the
+    /// channel alone would read as still running in between.
+    taken: AtomicBool,
 }
 
 struct EventProgress {
@@ -112,6 +116,7 @@ impl JobManager {
             name: handle_name,
             cancel,
             result: rx,
+            taken: AtomicBool::new(false),
         }
     }
 }
@@ -131,8 +136,14 @@ impl<T> JobHandle<T> {
     /// runs. A front end polls this each frame. After it has returned a
     /// result it returns a lost-job error.
     pub fn try_result(&self) -> Option<Result<T, AppError>> {
+        if self.taken.load(Ordering::Acquire) {
+            return Some(Err(AppError::JobLost(self.name.clone())));
+        }
         match self.result.try_recv() {
-            Ok(result) => Some(result),
+            Ok(result) => {
+                self.taken.store(true, Ordering::Release);
+                Some(result)
+            }
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 Some(Err(AppError::JobLost(self.name.clone())))
@@ -145,5 +156,34 @@ impl<T> JobHandle<T> {
         self.result
             .recv()
             .unwrap_or_else(|_| Err(AppError::JobLost(self.name)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+    use super::*;
+
+    #[test]
+    fn req_nfr_04_a_polled_result_is_handed_over_once_with_no_gap() {
+        // The worker sends the result and drops its end of the channel a
+        // moment later; a poll in between must not read as "still running"
+        // (`try_result` documents a lost-job error once the result is taken).
+        let manager = JobManager::new(Threads::Exactly(2)).unwrap();
+        let (events, _rx) = channel();
+        for i in 0..2000 {
+            let handle = manager.submit("quick", events.clone(), move |_| Ok(i));
+            let result = loop {
+                if let Some(result) = handle.try_result() {
+                    break result;
+                }
+                std::hint::spin_loop();
+            };
+            assert_eq!(result.unwrap(), i);
+            match handle.try_result() {
+                Some(Err(AppError::JobLost(_))) => {}
+                other => panic!("run {i}: a second poll gave {other:?}"),
+            }
+        }
     }
 }

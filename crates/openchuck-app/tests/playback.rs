@@ -2,7 +2,7 @@
 //! Playback, the tool at a point on the path, the toolpath and simulation
 //! display data, and the responsiveness of the jobs behind them (SIM-01,
 //! SIM-02, SIM-04, SIM-05, UI-09, NFR-04; work breakdown slice 9 and its
-//! review checklist; decision record 0038).
+//! review checklist; decision record 0040).
 
 #![allow(
     clippy::unwrap_used,
@@ -766,7 +766,7 @@ fn req_ui_09_a_timeline_needs_a_run_made_by_the_pipeline_and_a_machine() {
 }
 
 /// Slice 9 review checklist: "The UI stays responsive during generation
-/// within a stated frame-time budget" (decision record 0038 item 8). The user
+/// within a stated frame-time budget" (decision record 0040 item 8). The user
 /// interface thread only polls (`try_result`, `drain_events`); this checks
 /// that polling stays cheap and prompt while the pipeline runs on the pool.
 #[test]
@@ -825,7 +825,7 @@ fn req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread(
 }
 
 /// Slice 9 review checklist: "Cancel stops within a stated time and leaves no
-/// partial result" (decision record 0038 item 8: 2 s at the default cell).
+/// partial result" (decision record 0040 item 8: 2 s at the default cell).
 #[test]
 fn req_ui_09_cancel_stops_a_run_within_two_seconds_and_leaves_no_partial_result() {
     let (dir, app, _) = project("cancel");

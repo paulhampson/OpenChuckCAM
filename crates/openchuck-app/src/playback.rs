@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Playback: the tool at any point along the generated toolpath, with the
 //! workpiece turned by A, and the controls that move along it (SIM-02,
-//! SIM-04; work breakdown slice 9 items 4 and 6; decision record 0038).
+//! SIM-04; work breakdown slice 9 items 4 and 6; decision record 0040).
 //!
 //! A [`Timeline`] lays the moves of a regeneration end to end in the time
 //! the program would take. A [`Cursor`] says how many moves are done and how
