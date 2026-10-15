@@ -234,24 +234,85 @@ impl Deviation {
     }
 }
 
+/// The deviation on each triangle of `mesh`: of the samples taken on it, the
+/// one furthest from the surface, with the sign of [`DeviationPoint::value`]
+/// (positive for material left, negative for overcut), and whether that
+/// sample's value is only a bound. `None` for a triangle that has no samples
+/// (a degenerate one). `deviation` must be the comparison of `mesh` made with
+/// samples no further apart than `spacing` ([`DeviationOptions::spacing`]),
+/// since the samples are in triangle order and a triangle's share follows
+/// from its size. Fails if the counts do not add up.
+pub fn triangle_values(
+    deviation: &Deviation,
+    mesh: &TriangleMesh,
+    spacing: f64,
+) -> Result<Vec<Option<(f64, bool)>>> {
+    let mut out = Vec::with_capacity(mesh.triangles.len());
+    let mut next = 0usize;
+    for t in 0..mesh.triangles.len() {
+        let Some((_, n, _)) = triangle_subdivision(mesh, t, spacing) else {
+            out.push(None);
+            continue;
+        };
+        let count = n * n;
+        let samples = deviation.points.get(next..next + count).ok_or_else(|| {
+            Error::invalid(
+                "deviation",
+                "it does not hold the samples of this mesh at this spacing",
+            )
+        })?;
+        next += count;
+        let worst = samples
+            .iter()
+            .fold(None, |best: Option<&DeviationPoint>, p| {
+                if best.is_none_or(|b| p.value.abs() > b.value.abs()) {
+                    Some(p)
+                } else {
+                    best
+                }
+            });
+        out.push(worst.map(|p| (p.value, p.at_least)));
+    }
+    if next != deviation.points.len() {
+        return Err(Error::invalid(
+            "deviation",
+            "it holds more samples than this mesh has at this spacing",
+        ));
+    }
+    Ok(out)
+}
+
+/// The unit normal and the subdivision count `n` of triangle `t` (samples are
+/// the centroids of an n x n subdivision), with its corners; `None` for a
+/// triangle that is degenerate or refers to a missing vertex.
+fn triangle_subdivision(
+    mesh: &TriangleMesh,
+    t: usize,
+    spacing: f64,
+) -> Option<(Vec3, usize, [Point3; 3])> {
+    let [a, b, c] = mesh.triangle(t)?;
+    let (ab, ac) = (b - a, c - a);
+    let cross = ab.cross(ac);
+    let area2 = cross.length();
+    if area2.is_nan() || area2 <= 1e-18 {
+        return None;
+    }
+    let normal = cross * (1.0 / area2);
+    let longest = ab.length().max(ac.length()).max((c - b).length());
+    let n = ((longest / spacing).ceil() as usize).clamp(1, 4096);
+    Some((normal, n, [a, b, c]))
+}
+
 /// Points on each triangle no further apart than `spacing`: the centroids of
 /// an n x n subdivision, with the triangle's unit normal. Degenerate
 /// triangles give none.
 fn surface_samples(mesh: &TriangleMesh, spacing: f64) -> Vec<(Point3, Vec3)> {
     let mut out = Vec::new();
     for t in 0..mesh.triangles.len() {
-        let Some([a, b, c]) = mesh.triangle(t) else {
+        let Some((normal, n, [a, b, c])) = triangle_subdivision(mesh, t, spacing) else {
             continue;
         };
         let (ab, ac) = (b - a, c - a);
-        let cross = ab.cross(ac);
-        let area2 = cross.length();
-        if area2.is_nan() || area2 <= 1e-18 {
-            continue;
-        }
-        let normal = cross * (1.0 / area2);
-        let longest = ab.length().max(ac.length()).max((c - b).length());
-        let n = ((longest / spacing).ceil() as usize).clamp(1, 4096);
         let step = 1.0 / n as f64;
         for i in 0..n {
             for j in 0..n - i {

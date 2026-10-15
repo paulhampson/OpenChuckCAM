@@ -52,6 +52,9 @@ pub enum AppError {
     /// No selection set has this ID.
     #[error("the project has no selection set '{0}'")]
     UnknownSelection(String),
+    /// Playback cannot be set up as asked (SIM-02, SIM-04).
+    #[error("playback: {0}")]
+    Playback(String),
     /// A selection cannot be made or changed as asked (UI-04, UI-05).
     #[error("selection '{name}': {reason}")]
     Selection {

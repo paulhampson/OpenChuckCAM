@@ -9,8 +9,10 @@
 
 use wgpu::util::DeviceExt;
 
-use crate::camera::{Camera, Projection, to_f32};
-use crate::scene::{Colour, DisplayMode, Scene, wireframe_indices};
+use crate::camera::{
+    Camera, IDENTITY, Mat4, Projection, multiply, rigid_inverse, to_f32, transform,
+};
+use crate::scene::{Colour, DisplayMode, Scene, Slot, wireframe_indices};
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, a colour and the eye.
 const UNIFORM_SIZE: u64 = 96;
@@ -24,6 +26,60 @@ pub struct Frame {
     pub aspect: f64,
     /// How meshes are drawn.
     pub mode: DisplayMode,
+    /// The rigid transform of each [`Slot`], indexed by [`Slot::index`]: the
+    /// tool's placement and the workpiece's turn with A. Items in a slot are
+    /// drawn as if their points were moved by it.
+    pub transforms: [Mat4; Slot::COUNT],
+}
+
+impl Frame {
+    /// A frame with every slot at the identity.
+    pub fn new(camera: Camera, aspect: f64, mode: DisplayMode) -> Self {
+        Self {
+            camera,
+            aspect,
+            mode,
+            transforms: [IDENTITY; Slot::COUNT],
+        }
+    }
+}
+
+/// The parts of the picture, uploaded and replaced separately so a change to
+/// one never uploads the others again. Drawn in this order: opaque meshes,
+/// then translucent meshes, then the highlights, then lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Layer {
+    /// The part, the stock outline and the guides.
+    Scene,
+    /// The simulated stock, usually translucent.
+    Stock,
+    /// Toolpaths.
+    Paths,
+    /// The tool, which moves with the playback position.
+    Tool,
+    /// Selection and hover highlights.
+    Overlay,
+}
+
+impl Layer {
+    /// Every layer, in drawing order.
+    pub const ALL: [Self; 5] = [
+        Self::Scene,
+        Self::Stock,
+        Self::Paths,
+        Self::Tool,
+        Self::Overlay,
+    ];
+
+    const fn index(self) -> usize {
+        match self {
+            Self::Scene => 0,
+            Self::Stock => 1,
+            Self::Paths => 2,
+            Self::Tool => 3,
+            Self::Overlay => 4,
+        }
+    }
 }
 
 /// One draw call's uniforms.
@@ -36,6 +92,8 @@ struct Uniform {
 
 #[derive(Debug)]
 struct GpuMesh {
+    slot: Slot,
+    translucent: bool,
     vertices: wgpu::Buffer,
     triangles: Option<(wgpu::Buffer, u32)>,
     feature_edges: Option<(wgpu::Buffer, u32)>,
@@ -49,6 +107,7 @@ struct GpuMesh {
 
 #[derive(Debug)]
 struct GpuLines {
+    slot: Slot,
     vertices: wgpu::Buffer,
     count: u32,
     on_top: bool,
@@ -66,11 +125,15 @@ pub struct Renderer {
     lines: wgpu::RenderPipeline,
     lines_on_top: wgpu::RenderPipeline,
     highlight: wgpu::RenderPipeline,
-    meshes: Vec<GpuMesh>,
-    line_sets: Vec<GpuLines>,
-    overlay_meshes: Vec<GpuMesh>,
-    overlay_lines: Vec<GpuLines>,
+    glass: wgpu::RenderPipeline,
+    layers: [GpuLayer; 5],
     mode: DisplayMode,
+}
+
+#[derive(Debug, Default)]
+struct GpuLayer {
+    meshes: Vec<GpuMesh>,
+    lines: Vec<GpuLines>,
 }
 
 impl Renderer {
@@ -196,35 +259,44 @@ impl Renderer {
                 false,
                 pull_forward,
             ),
+            glass: make(
+                "glass", "vs_mesh", "fs_mesh", triangles, Less, false, push_back,
+            ),
             layout,
-            meshes: Vec::new(),
-            line_sets: Vec::new(),
-            overlay_meshes: Vec::new(),
-            overlay_lines: Vec::new(),
+            layers: Default::default(),
             mode: DisplayMode::default(),
         }
     }
 
-    /// Replaces the scene, uploading it to the GPU.
+    /// Replaces the scene ([`Layer::Scene`]), uploading it to the GPU.
     pub fn set_scene(&mut self, device: &wgpu::Device, scene: &Scene) {
-        (self.meshes, self.line_sets) = self.upload(device, scene);
+        self.set_layer(device, Layer::Scene, scene);
     }
 
-    /// Replaces the overlay, uploading it to the GPU. The overlay is drawn
-    /// over the scene: its meshes win the depth test over the surface they
-    /// lie on (a selection or a hover highlight), and its lines marked
-    /// `on_top` are drawn over everything. Small and quick to replace, so
-    /// moving the pointer does not upload the scene again.
+    /// Replaces the highlights ([`Layer::Overlay`]). Its meshes win the depth
+    /// test over the surface they lie on (a selection or a hover highlight)
+    /// and are still hidden by anything in front of them. Small and quick to
+    /// replace, so moving the pointer does not upload the scene again.
     pub fn set_overlay(&mut self, device: &wgpu::Device, overlay: &Scene) {
-        (self.overlay_meshes, self.overlay_lines) = self.upload(device, overlay);
+        self.set_layer(device, Layer::Overlay, overlay);
     }
 
-    fn upload(&self, device: &wgpu::Device, scene: &Scene) -> (Vec<GpuMesh>, Vec<GpuLines>) {
+    /// Replaces one layer, uploading it to the GPU.
+    pub fn set_layer(&mut self, device: &wgpu::Device, layer: Layer, scene: &Scene) {
+        let uploaded = self.upload(device, scene);
+        if let Some(slot) = self.layers.get_mut(layer.index()) {
+            *slot = uploaded;
+        }
+    }
+
+    fn upload(&self, device: &wgpu::Device, scene: &Scene) -> GpuLayer {
         let meshes = scene
             .meshes
             .iter()
             .filter(|m| !m.positions.is_empty())
             .map(|m| GpuMesh {
+                slot: m.slot,
+                translucent: m.translucent,
                 vertices: vertex_buffer(device, "mesh vertices", &m.positions),
                 triangles: index_buffer(device, "mesh triangles", &m.indices),
                 feature_edges: index_buffer(device, "mesh feature edges", &m.feature_edges),
@@ -239,6 +311,7 @@ impl Renderer {
             .iter()
             .filter(|l| l.segments.len() >= 2)
             .map(|l| GpuLines {
+                slot: l.slot,
                 vertices: vertex_buffer(device, "lines", &l.segments),
                 // An odd last point has no partner and is left out.
                 count: u32::try_from(l.segments.len() & !1).unwrap_or(!1),
@@ -246,81 +319,90 @@ impl Renderer {
                 uniform: self.uniform(device, l.colour),
             })
             .collect();
-        (meshes, lines)
+        GpuLayer { meshes, lines }
     }
 
-    /// Writes the frame's camera to the GPU, and builds the wireframe the
-    /// first time it is needed.
+    /// Writes the frame's camera and slot transforms to the GPU, and builds
+    /// the wireframe the first time it is needed.
     pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &Frame) {
         self.mode = frame.mode;
-        let view_projection = to_f32(&frame.camera.view_projection(frame.aspect));
-        #[allow(clippy::cast_possible_truncation)]
+        let view_projection = frame.camera.view_projection(frame.aspect);
         let eye = match frame.camera.projection {
-            Projection::Perspective => frame.camera.eye().map(|v| v as f32),
-            Projection::Orthographic => frame.camera.basis().2.map(|v| v as f32),
+            Projection::Perspective => frame.camera.eye(),
+            Projection::Orthographic => frame.camera.basis().2,
         };
         let w = match frame.camera.projection {
             Projection::Perspective => 1.0,
             Projection::Orthographic => 0.0,
         };
-        let write = |u: &Uniform| {
+        // Per slot: the matrix that takes the item's own points to the screen,
+        // and the eye in the item's own frame, so the shading follows the
+        // item when it moves.
+        #[allow(clippy::cast_possible_truncation)]
+        let per_slot: Vec<([[f32; 4]; 4], [f32; 3])> = frame
+            .transforms
+            .iter()
+            .map(|t| {
+                let matrix = to_f32(&multiply(&view_projection, t));
+                let local = transform(&rigid_inverse(t), [eye[0], eye[1], eye[2], w]);
+                (matrix, [local[0] as f32, local[1] as f32, local[2] as f32])
+            })
+            .collect();
+        #[allow(clippy::cast_possible_truncation)]
+        let write = |u: &Uniform, slot: Slot| {
+            let Some((matrix, eye)) = per_slot.get(slot.index()) else {
+                return;
+            };
             let mut floats = Vec::with_capacity(24);
-            floats.extend(view_projection.iter().flatten());
+            floats.extend(matrix.iter().flatten());
             floats.extend(u.colour);
             floats.extend(eye);
-            floats.push(w);
+            floats.push(w as f32);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
         };
-        for mesh in &mut self.meshes {
-            write(&mesh.fill);
-            write(&mesh.edges);
-            if frame.mode == DisplayMode::Wireframe && mesh.wireframe.is_none() {
-                mesh.wireframe =
-                    index_buffer(device, "wireframe", &wireframe_indices(&mesh.indices));
+        for layer in &mut self.layers {
+            for mesh in &mut layer.meshes {
+                write(&mesh.fill, mesh.slot);
+                write(&mesh.edges, mesh.slot);
+                if frame.mode == DisplayMode::Wireframe && mesh.wireframe.is_none() {
+                    mesh.wireframe =
+                        index_buffer(device, "wireframe", &wireframe_indices(&mesh.indices));
+                }
             }
-        }
-        for mesh in &self.overlay_meshes {
-            write(&mesh.fill);
-        }
-        for lines in self.line_sets.iter().chain(&self.overlay_lines) {
-            write(&lines.uniform);
+            for lines in &layer.lines {
+                write(&lines.uniform, lines.slot);
+            }
         }
     }
 
     /// Draws the scene into `pass`, which must have the colour and depth
     /// formats the renderer was built for.
     pub fn paint(&self, pass: &mut wgpu::RenderPass<'_>) {
-        for mesh in &self.meshes {
-            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-            match self.mode {
-                DisplayMode::Shaded | DisplayMode::ShadedWithEdges => {
-                    if let Some((buffer, count)) = &mesh.triangles {
-                        pass.set_pipeline(&self.fill);
-                        pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
-                        pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        pass.draw_indexed(0..*count, 0, 0..1);
-                    }
-                    if self.mode == DisplayMode::ShadedWithEdges
-                        && let Some((buffer, count)) = &mesh.feature_edges
-                    {
-                        pass.set_pipeline(&self.edges);
-                        pass.set_bind_group(0, &mesh.edges.bind_group, &[]);
-                        pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        pass.draw_indexed(0..*count, 0, 0..1);
-                    }
-                }
-                DisplayMode::Wireframe => {
-                    if let Some((buffer, count)) = &mesh.wireframe {
-                        pass.set_pipeline(&self.edges);
-                        pass.set_bind_group(0, &mesh.edges.bind_group, &[]);
-                        pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        pass.draw_indexed(0..*count, 0, 0..1);
-                    }
+        // Opaque meshes of every layer but the highlights.
+        for layer in Layer::ALL.iter().filter(|l| **l != Layer::Overlay) {
+            for mesh in self.layer(*layer).meshes.iter().filter(|m| !m.translucent) {
+                self.paint_mesh(pass, mesh);
+            }
+        }
+        // Translucent meshes over them, without hiding what is behind.
+        for layer in Layer::ALL {
+            for mesh in self.layer(layer).meshes.iter().filter(|m| m.translucent) {
+                if let Some((buffer, count)) = &mesh.triangles {
+                    pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                    pass.set_pipeline(&self.glass);
+                    pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..*count, 0, 0..1);
                 }
             }
         }
         // Highlights over the surfaces they cover.
-        for mesh in &self.overlay_meshes {
+        for mesh in self
+            .layer(Layer::Overlay)
+            .meshes
+            .iter()
+            .filter(|m| !m.translucent)
+        {
             if let Some((buffer, count)) = &mesh.triangles {
                 pass.set_pipeline(&self.highlight);
                 pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
@@ -331,20 +413,60 @@ impl Renderer {
         }
         // Lines tested against depth first, then the guides drawn over everything.
         for on_top in [false, true] {
-            for lines in self
-                .line_sets
-                .iter()
-                .chain(&self.overlay_lines)
-                .filter(|l| l.on_top == on_top)
-            {
-                pass.set_pipeline(if on_top {
-                    &self.lines_on_top
-                } else {
-                    &self.lines
-                });
-                pass.set_bind_group(0, &lines.uniform.bind_group, &[]);
-                pass.set_vertex_buffer(0, lines.vertices.slice(..));
-                pass.draw(0..lines.count, 0..1);
+            for layer in Layer::ALL {
+                for lines in self
+                    .layer(layer)
+                    .lines
+                    .iter()
+                    .filter(|l| l.on_top == on_top)
+                {
+                    pass.set_pipeline(if on_top {
+                        &self.lines_on_top
+                    } else {
+                        &self.lines
+                    });
+                    pass.set_bind_group(0, &lines.uniform.bind_group, &[]);
+                    pass.set_vertex_buffer(0, lines.vertices.slice(..));
+                    pass.draw(0..lines.count, 0..1);
+                }
+            }
+        }
+    }
+
+    fn layer(&self, layer: Layer) -> &GpuLayer {
+        static EMPTY: GpuLayer = GpuLayer {
+            meshes: Vec::new(),
+            lines: Vec::new(),
+        };
+        self.layers.get(layer.index()).unwrap_or(&EMPTY)
+    }
+
+    fn paint_mesh(&self, pass: &mut wgpu::RenderPass<'_>, mesh: &GpuMesh) {
+        pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+        match self.mode {
+            DisplayMode::Shaded | DisplayMode::ShadedWithEdges => {
+                if let Some((buffer, count)) = &mesh.triangles {
+                    pass.set_pipeline(&self.fill);
+                    pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..*count, 0, 0..1);
+                }
+                if self.mode == DisplayMode::ShadedWithEdges
+                    && let Some((buffer, count)) = &mesh.feature_edges
+                {
+                    pass.set_pipeline(&self.edges);
+                    pass.set_bind_group(0, &mesh.edges.bind_group, &[]);
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..*count, 0, 0..1);
+                }
+            }
+            DisplayMode::Wireframe => {
+                if let Some((buffer, count)) = &mesh.wireframe {
+                    pass.set_pipeline(&self.edges);
+                    pass.set_bind_group(0, &mesh.edges.bind_group, &[]);
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..*count, 0, 0..1);
+                }
             }
         }
     }

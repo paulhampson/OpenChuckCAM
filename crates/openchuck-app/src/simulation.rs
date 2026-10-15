@@ -164,3 +164,11 @@ impl SetupState {
         })
     }
 }
+
+impl SetupSimulation {
+    /// The stock left, as a closed mesh for the viewport (SIM-03, SIM-05).
+    /// Quads do not share vertices, so the mesh is blocky at the cell size.
+    pub fn stock_mesh(&self) -> openchuck_types::mesh::TriangleMesh {
+        openchuck_sim::stock_mesh(&self.stock)
+    }
+}

@@ -74,6 +74,7 @@ pub fn to_scene(view: &SceneView) -> Scene {
                 segments,
                 colour,
                 on_top: true,
+                ..LineItem::default()
             });
         }
     }
@@ -335,11 +336,7 @@ impl Viewport {
 
         self.pick(ui, &response, rect);
 
-        let frame = Frame {
-            camera: self.camera,
-            aspect: self.aspect,
-            mode: self.mode,
-        };
+        let frame = Frame::new(self.camera, self.aspect, self.mode);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
             Callback {

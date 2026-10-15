@@ -12,6 +12,7 @@ use std::sync::Mutex;
 
 use openchuck_sim::{
     DeviationOptions, DexelStock, Simulator, ToolSolid, compare, cut_spans, stock_mesh,
+    triangle_values,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::Error;
@@ -286,6 +287,61 @@ fn req_sim_03_the_groove_does_not_depend_on_where_the_part_has_turned() {
     assert!(a0 > 1.0);
     // One cell over the groove's outline (about 2 x 4 mm) along 12 mm.
     assert!((a0 - a37).abs() <= 8.0 * 0.1 * 12.0, "{a0} vs {a37}");
+}
+
+#[test]
+fn req_sim_05_triangle_values_put_the_overcut_on_the_triangles_it_is_on() {
+    let m = machine();
+    let profile = ball(4.0);
+    let target = Cylinder {
+        radius: 10.0,
+        length: 16.0,
+    };
+    let mut poses = turning_poses(&m, &Cyl(10.0), 2.0, (0.0, 16.0), 0.5, 3.0);
+    for k in 0..40 {
+        let p = &mut poses[16 * 120 + k];
+        let a = p.a.0;
+        *p = turned_pose(&m, 8.0, 9.5, a);
+    }
+    let g = group("gouge", &poses, MoveKind::Cutting);
+    let stock = DexelStock::from_stock(&cylinder_stock(26.0, -2.0, 20.0), None, 0.1).unwrap();
+    let (sim, _) = run(stock, &[(&g, &profile)]);
+    let mesh = target.mesh(161, 180);
+    let options = DeviationOptions::for_cell(0.1);
+    let d = compare(sim.stock(), &mesh, &options).unwrap();
+    let values = triangle_values(&d, &mesh, options.spacing).unwrap();
+    assert_eq!(values.len(), mesh.triangles.len());
+    // The triangles with the deepest overcut are the ones at the dip, and
+    // the value is the worst of their samples.
+    let (deepest, deepest_value) = values
+        .iter()
+        .enumerate()
+        .filter_map(|(i, v)| v.map(|v| (i, v.0)))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .unwrap();
+    let [a, b, c] = mesh.triangle(deepest).unwrap();
+    let x = (a.x + b.x + c.x) / 3.0;
+    assert!((x - 8.0).abs() <= 2.0 + 0.1, "centroid x {x}");
+    assert!((-deepest_value - 0.5).abs() <= 0.12, "{deepest_value}");
+    assert!(
+        (deepest_value - d.worst_overcut.unwrap().value).abs() < 1e-12,
+        "the worst triangle carries the worst sample"
+    );
+    // Away from the dip no triangle is overcut beyond the limit.
+    for (i, v) in values.iter().enumerate() {
+        let [a, b, c] = mesh.triangle(i).unwrap();
+        let x = (a.x + b.x + c.x) / 3.0;
+        if let Some((value, _)) = v
+            && !(3.0..=13.0).contains(&x)
+            && x > 0.5
+            && x < 15.5
+        {
+            assert!(-value <= options.overcut_limit, "{i} at x {x}: {value}");
+        }
+    }
+    // A comparison made at another spacing does not fit this mesh.
+    assert!(triangle_values(&d, &mesh, 0.01).is_err());
+    assert!(triangle_values(&d, &target.mesh(20, 20), options.spacing).is_err());
 }
 
 #[test]
