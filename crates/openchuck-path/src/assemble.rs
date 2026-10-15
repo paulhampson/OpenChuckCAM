@@ -417,6 +417,15 @@ const SWEPT_RINGS: u32 = 4;
 /// behaves as a cylinder; a ball is narrow near its tip. The cutter may reach
 /// material by at most `radius * (1 - cos(pi / SWEPT_RAYS))` between two
 /// lines, 0.007 mm for a 1.5 mm radius.
+///
+/// **Resolution.** Material is found only if one of these lines meets it, so a
+/// stock whose overlap with the cutter's footprint is thinner than the spacing
+/// of the lines (about 0.2 times the cutting radius, 0.3 mm for a 1.5 mm
+/// radius) can be missed. The stock models are convex solids that contain the
+/// part (a cylinder, or the part's bounding box), so such a sliver is only the
+/// rim of the footprint, where the miss is the 0.007 mm above. `None` means no
+/// line met material, and the caller then descends to the approach distance
+/// above the goal; it is not a measured clearance.
 pub(crate) fn swept_entry(
     stock: &dyn crate::stock::StockModel,
     profile: &openchuck_types::tool::profile::RevolvedProfile,
