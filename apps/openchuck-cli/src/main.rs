@@ -1069,7 +1069,7 @@ fn find_library_tool<'a>(
 /// overcut places and rapid moves that cut.
 fn print_simulation(
     report: &SimulationReport,
-    leaves: &std::collections::BTreeMap<String, f64>,
+    leaves: &std::collections::BTreeMap<SetupId, f64>,
     cell: f64,
 ) -> usize {
     let mut failures = 0;
@@ -1120,7 +1120,7 @@ fn print_simulation(
             Some(p) => println!("      deepest overcut: {:.4} mm at {}", -p.value, at(p)),
             None => println!("      no overcut"),
         }
-        if let Some(&leave) = leaves.get(&setup.setup) {
+        if let Some(&leave) = leaves.get(&setup.id) {
             // A roughing operation ends the setup: how near its stock to
             // leave the part is (slice 14 item 7).
             let l = d.leftover(leave, 2.0 * cell);
@@ -1147,13 +1147,13 @@ fn print_simulation(
 /// roughing, by setup name.
 fn roughing_leaves(
     project: &openchuck_app::project::Project,
-) -> std::collections::BTreeMap<String, f64> {
-    let mut last: std::collections::BTreeMap<String, Option<f64>> =
+) -> std::collections::BTreeMap<SetupId, f64> {
+    let mut last: std::collections::BTreeMap<SetupId, Option<f64>> =
         std::collections::BTreeMap::new();
     for op in project.operations().iter().filter(|o| o.enabled) {
-        let Some(setup) = project.setup(op.setup) else {
+        if project.setup(op.setup).is_none() {
             continue;
-        };
+        }
         let leave = (op.strategy == openchuck_app::path::roughing::NAME).then(|| {
             match op
                 .parameters
@@ -1164,7 +1164,7 @@ fn roughing_leaves(
                 _ => 0.0,
             }
         });
-        last.insert(setup.name.clone(), leave);
+        last.insert(op.setup, leave);
     }
     last.into_iter()
         .filter_map(|(k, v)| v.map(|v| (k, v)))
@@ -1854,13 +1854,31 @@ mod tests {
         }
         let leaves = roughing_leaves(&project);
         // A disabled operation is left out; an unset stock to leave is 0.
-        assert_eq!(
-            leaves.into_iter().collect::<Vec<_>>(),
-            [
-                ("disabled finish".to_owned(), 0.0),
-                ("ends rough".to_owned(), 0.5)
-            ]
-        );
+        assert_eq!(leaves.len(), 2);
+        assert_eq!(leaves.get(&a), Some(&0.5));
+        assert_eq!(leaves.get(&c), Some(&0.0));
+        assert_eq!(leaves.get(&b), None);
+    }
+
+    #[test]
+    fn req_op_03_setups_with_the_same_name_keep_their_own_stock_to_leave() {
+        let mut project = openchuck_app::project::Project::new("p");
+        let (a, b) = (SetupId::new(), SetupId::new());
+        for id in [a, b] {
+            project
+                .insert(Item::Setup(Setup::new(id, "twin")), Placement::End)
+                .unwrap();
+        }
+        for (id, leave) in [(a, 0.2), (b, 0.7)] {
+            project
+                .insert(
+                    Item::Operation(operation(id, "rough", "rotary_roughing", Some(leave), true)),
+                    Placement::End,
+                )
+                .unwrap();
+        }
+        let leaves = roughing_leaves(&project);
+        assert_eq!((leaves.get(&a), leaves.get(&b)), (Some(&0.2), Some(&0.7)));
     }
 
     #[test]
