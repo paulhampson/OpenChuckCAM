@@ -6,3 +6,4 @@ testdata/** -text
 # Post definitions are compared byte for byte and the loader normalises newlines to LF,
 # but a CRLF checkout must not change the files that are reviewed (decision record 0019 item 6).
 posts/** -text
+*.step -text

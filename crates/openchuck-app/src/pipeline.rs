@@ -97,6 +97,7 @@ pub(crate) fn regenerate(
     cache.retain_only(&ids);
     // With caching off, none of the hashing and keying is done.
     let caching = cache.versions() != 0;
+    let generation = cache.generation();
     let files = if caching {
         crate::cache::ModelFiles::read(location, project)
     } else {
@@ -133,7 +134,7 @@ pub(crate) fn regenerate(
             if let Some(key) = key
                 && files.unchanged(location, project, operation)
             {
-                cache.put(operation.id, key, Arc::clone(&made));
+                cache.put(operation.id, key, Arc::clone(&made), generation);
             }
             regeneration.generated.push(operation.id);
             made

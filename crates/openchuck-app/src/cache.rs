@@ -41,6 +41,9 @@ type Versions = Vec<(Key, Arc<OperationPath>)>;
 #[derive(Debug)]
 struct State {
     versions: usize,
+    /// Counts the times the cache was cleared, so that a job started before
+    /// a clear cannot store a result made under what was cleared.
+    generation: u64,
     entries: BTreeMap<OperationId, Versions>,
 }
 
@@ -55,6 +58,7 @@ impl Default for PipelineCache {
         Self {
             state: Arc::new(Mutex::new(State {
                 versions: DEFAULT_CACHE_VERSIONS,
+                generation: 0,
                 entries: BTreeMap::new(),
             })),
         }
@@ -98,10 +102,24 @@ impl PipelineCache {
         Some(value)
     }
 
-    pub(crate) fn put(&self, id: OperationId, key: Key, value: Arc<OperationPath>) {
+    /// The number of clears so far; a job reads it when it starts and hands
+    /// it to [`PipelineCache::put`].
+    pub(crate) fn generation(&self) -> u64 {
+        self.lock().generation
+    }
+
+    /// Stores a result. Nothing is stored if the cache was cleared since
+    /// `generation` was read, because the result may predate the change.
+    pub(crate) fn put(
+        &self,
+        id: OperationId,
+        key: Key,
+        value: Arc<OperationPath>,
+        generation: u64,
+    ) {
         let mut state = self.lock();
         let keep = state.versions;
-        if keep == 0 {
+        if keep == 0 || state.generation != generation {
             return;
         }
         let versions = state.entries.entry(id).or_default();
@@ -117,7 +135,9 @@ impl PipelineCache {
 
     /// Drops everything (for example when the strategies change).
     pub(crate) fn clear(&self) {
-        self.lock().entries.clear();
+        let mut state = self.lock();
+        state.generation += 1;
+        state.entries.clear();
     }
 }
 

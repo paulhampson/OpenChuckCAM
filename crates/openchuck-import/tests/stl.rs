@@ -40,7 +40,10 @@ fn import_with(name: &str, units: Option<LengthUnit>) -> Result<ImportedModel, I
     let (cancel, progress) = (CancelToken::new(), NoProgress);
     import_file(
         &corpus(name),
-        &ImportOptions { units },
+        &ImportOptions {
+            units,
+            ..ImportOptions::default()
+        },
         &JobContext::new(&cancel, &progress),
     )
 }
@@ -329,7 +332,9 @@ fn req_nfr_07_wrong_formats_and_missing_files_give_clear_errors() {
     let err = import_bytes("part.obj", b"v 0 0 0", &options, &context).unwrap_err();
     assert!(matches!(err, ImportError::UnknownFormat(_)), "{err}");
     let err = import_bytes("part.STEP", b"ISO-10303-21;", &options, &context).unwrap_err();
-    assert_eq!(err.to_string(), "STEP import is not available yet");
+    // STEP is read by the worker program (slice 11a); a build without one says so, and a build with
+    // one rejects this text as an invalid STEP file. Either way the user gets words, not a crash.
+    assert!(err.to_string().to_lowercase().contains("step"), "{err}");
     let err = import_file(&corpus("missing.stl"), &options, &context).unwrap_err();
     assert!(err.to_string().starts_with("cannot read"), "{err}");
     // Upper-case extensions are STL too.
