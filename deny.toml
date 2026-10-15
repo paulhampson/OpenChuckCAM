@@ -42,6 +42,15 @@ unused-allowed-license = "allow"
 crate = "epaint_default_fonts"
 allow = ["OFL-1.1", "Ubuntu-font-1.0"]
 
+# occt-sys builds OpenCASCADE 7.8.1 for the STEP reader (openchuck-import, feature
+# `kernel`, build dependency only; decision records 0003 and 0027). Its licence is
+# LGPL-2.1 (OpenCASCADE: LGPL-2.1 with its exception), accepted by the project
+# owner on 11 Oct 2026 for static linking into the worker program and nothing
+# else. Scoped to this crate so no other LGPL code is allowed by accident.
+[[licenses.exceptions]]
+crate = "occt-sys"
+allow = ["LGPL-2.1"]
+
 [licenses.private]
 ignore = true
 

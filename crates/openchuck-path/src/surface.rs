@@ -12,9 +12,11 @@
 //!
 //! # B-rep faces (spike SP-9, decision record 0017)
 //!
-//! Exact faces reach the library as plain data and are evaluated in pure Rust
-//! (slice 11 builds the face record in `openchuck-types` and the evaluators).
-//! A B-rep `SurfaceSource` holds its faces as [`ParametricFace`]s, answers
+//! Exact faces reach the library as plain data and are evaluated in pure Rust.
+//! The face record is `openchuck_types::brep::BrepFace`; the evaluators
+//! ([`crate::brep::ExactFace`], a [`ParametricFace`]) and the B-rep source
+//! ([`crate::brep::BrepSurface`]) live in [`crate::brep`] (work breakdown
+//! slice 11). A B-rep `SurfaceSource` holds its faces as [`ParametricFace`]s, answers
 //! [`SurfaceSource::project`] and [`SurfaceSource::cast_ray`] by taking the
 //! nearest point and the first trimmed hit over its faces (each answer
 //! carries the face and its (u, v) in [`FacePosition`]), and offers its
@@ -54,8 +56,8 @@ pub struct Uv {
 /// source, and the parameters on it. Meshes carry none.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FacePosition {
-    /// The face's index in the source (the deterministic face number of the
-    /// import, decision record 0003).
+    /// The face's number: its `FaceId`, the deterministic number the import
+    /// gave it (decision record 0003), not a position in a selection.
     pub face: u32,
     /// The parameters on that face.
     pub uv: Uv,

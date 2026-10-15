@@ -12,8 +12,9 @@
 //! answer; nothing is converted without that answer (decision record 0010).
 //!
 //! Damaged input gives an [`ImportError`] that says what is wrong, never a
-//! panic (NFR-07). STL is read now (slice 2); STEP arrives with the
-//! OpenCASCADE wrapper in slice 11 (decision record 0003).
+//! panic (NFR-07). STL is read in process (slice 2). STEP is read by the
+//! OpenCASCADE wrapper in a child process (slice 11, decision record 0003):
+//! see [`step`].
 //!
 //! ```
 //! use openchuck_import::{ImportOptions, import_bytes};
@@ -38,7 +39,7 @@
 //! assert_eq!(model.units.applied, LengthUnit::Millimetre);
 //! assert_eq!(model.unit_question.unwrap().suggestions, [LengthUnit::Inch]);
 //! // The user confirms inches.
-//! let options = ImportOptions { units: Some(LengthUnit::Inch) };
+//! let options = ImportOptions { units: Some(LengthUnit::Inch), ..ImportOptions::default() };
 //! let model = import_bytes("tri.stl", text.as_bytes(), &options, &context)?;
 //! let ModelGeometry::Mesh(mesh) = &model.geometry else { unreachable!() };
 //! assert_eq!(mesh.vertices[1].x, 25.4);
@@ -47,10 +48,15 @@
 
 #![warn(missing_docs)]
 
+pub mod step;
 pub mod stl;
+
+#[cfg(feature = "kernel")]
+pub mod kernel;
 
 use std::path::Path;
 
+use openchuck_types::brep::TessellationSettings;
 use openchuck_types::geometry::Vec3;
 use openchuck_types::job::JobContext;
 use openchuck_types::model::{ModelFormat, ModelGeometry};
@@ -67,11 +73,16 @@ the file was exported, and gouge tolerance on this part is measured against this
 original surface.";
 
 /// Choices the user makes for an import.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ImportOptions {
-    /// The unit the file is in (IMP-03). `None` reads it in millimetres and
-    /// raises a [`UnitQuestion`] when the file suggests otherwise.
+    /// The unit the file is in (IMP-03). `None` reads an STL in millimetres
+    /// and raises a [`UnitQuestion`] when the file suggests otherwise; a STEP
+    /// file states its own unit, which `None` uses.
     pub units: Option<LengthUnit>,
+    /// How finely a STEP model is tessellated (IMP-06); `None` uses
+    /// [`TessellationSettings::default`]. Ignored for STL, whose triangles
+    /// are fixed by the file.
+    pub tessellation: Option<TessellationSettings>,
 }
 
 /// Where the unit used for an import came from.
@@ -81,6 +92,8 @@ pub enum UnitSource {
     User,
     /// Nobody chose: millimetres, the default.
     Default,
+    /// The file states its own unit (STEP, IMP-03) and nobody overrode it.
+    File,
 }
 
 /// Smallest bounding-box size, in millimetres, that a part read in
@@ -128,6 +141,7 @@ impl Units {
             }
             (UnitSource::User, _) => format!("{applied}, set by the user"),
             (UnitSource::Default, _) => format!("{applied}, the default"),
+            (UnitSource::File, _) => format!("{applied}, from the file"),
         }
     }
 }
@@ -238,9 +252,7 @@ pub struct ImportedModel {
 #[non_exhaustive]
 pub enum ImportError {
     /// The file name's extension names no format we read.
-    #[error(
-        "'{0}' is not a model format OpenChuckCAM reads: use an .stl file (STEP arrives in a later release)"
-    )]
+    #[error("'{0}' is not a model format OpenChuckCAM reads: use an .stl, .step or .stp file")]
     UnknownFormat(String),
     /// The format is known, but this build cannot read it yet.
     #[error("{0} import is not available yet")]
@@ -264,6 +276,11 @@ pub enum ImportError {
     /// The import was cancelled.
     #[error("the import was cancelled")]
     Cancelled,
+    /// The STEP reader process failed, timed out, was not found or crashed on
+    /// the file. A crash means the file is damaged or uses something the
+    /// kernel cannot read; OpenChuckCAM itself is unaffected (NFR-07).
+    #[error("STEP import failed: {0}")]
+    Worker(String),
 }
 
 /// Reads one model format.
@@ -285,6 +302,7 @@ pub trait ModelImporter: Send + Sync {
 pub fn importer_for(format: ModelFormat) -> Option<&'static dyn ModelImporter> {
     match format {
         ModelFormat::Stl => Some(&stl::StlImporter),
+        ModelFormat::Step => Some(&step::STEP_IMPORTER),
         _ => None,
     }
 }

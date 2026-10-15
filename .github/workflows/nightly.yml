@@ -16,6 +16,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   fuzz:
@@ -52,6 +53,68 @@ jobs:
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts
+
+  # NFR-07 for STEP (decision 0003, OI-27): the OpenCASCADE reader segfaults on damaged files, so the
+  # importer runs it in a child process. This mutates the corpus and imports every mutant through the
+  # importer; the application process must never crash, hang or panic. The kernel build is cached.
+  step-mutations:
+    name: STEP mutation run through the importer
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel
+          cache-on-failure: true
+      - name: Build the kernel and the worker
+        run: cargo build --locked --release -p openchuck-import --features kernel --bins
+      - name: Mutate and import 3000 files
+        run: cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 3000
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: step-mutation-failures
+          path: target/step-mutations
+
+  # OI-19: AddressSanitizer on the only foreign code in the workspace (decision 0027 item 3). Miri
+  # cannot run C++, and the unsafe Rust is a thin layer over it, so the sanitizer covers both: the
+  # C ABI wrapper, the worker and the kernel oracle, under the import tests and the comparison with
+  # the kernel. Leak detection is off because OpenCASCADE leaks small registry objects on its error
+  # paths by design; memory errors in our code, or in the kernel on valid files, still fail the run.
+  # The crash corpus is part of the import tests: the reader's own segfaults there are expected
+  # and happen in the child process.
+  sanitizer:
+    name: AddressSanitizer on the STEP wrapper
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+      RUSTFLAGS: -Zsanitizer=address
+      CXXFLAGS: -fsanitize=address -fno-omit-frame-pointer
+      CARGO_TARGET_DIR: target/asan
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal -c rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel-asan
+          cache-on-failure: true
+          workspaces: ". -> target/asan"
+      - name: Build the instrumented worker
+        run: cargo +nightly build -Zbuild-std --target $TARGET -p openchuck-import --features kernel --bins
+      # Doctests are left out: rustdoc does not take the sanitizer flags.
+      - name: Import tests
+        run: cargo +nightly test -Zbuild-std --target $TARGET -p openchuck-import --features kernel --lib --tests
+      - name: Comparison with the kernel
+        env:
+          OPENCHUCK_STEP_WORKER: ${{ github.workspace }}/target/asan/x86_64-unknown-linux-gnu/debug/openchuck-step-worker
+        run: cargo +nightly test -Zbuild-std --target $TARGET -p openchuck-app --features kernel-tests --test step_exact
 
   long-tests:
     name: Long-running tests (uninstrumented)

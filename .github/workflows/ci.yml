@@ -39,6 +39,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       records: ${{ steps.filter.outputs.records }}
       fuzz: ${{ steps.filter.outputs.fuzz }}
+      step: ${{ steps.filter.outputs.step }}
       gate3: ${{ steps.filter.outputs.gate3 }}
       linuxcnc_image: ${{ steps.filter.outputs.linuxcnc_image }}
     steps:
@@ -69,6 +70,19 @@ jobs:
               - '.cargo/**'
               - '.config/**'
               - '.github/workflows/**'
+            # The STEP kernel build (decision 0003): only what can change the wrapper, its
+            # inputs or what is compared with it. A docs or posts change never gets here.
+            step:
+              - 'crates/openchuck-import/**'
+              - 'crates/openchuck-types/**'
+              - 'crates/openchuck-path/**'
+              - 'crates/openchuck-app/**'
+              - 'testdata/step/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'deny.toml'
+              - '.github/workflows/ci.yml'
             records:
               - 'docs/requirements.md'
               - 'docs/work-breakdown.md'
@@ -248,6 +262,45 @@ jobs:
             echo "::error title=UI launch failed (exit $code)::$(cat tail.txt)"
             exit 1
           fi
+
+  # OpenCASCADE 7.8.1 is built from source by occt-sys (cold: 8 to 9 min on macOS arm64, 32 to 51 min
+  # on Linux, 48 to 71 min on Windows, decision 0003), so the build is cached per platform and saved
+  # even when a later step fails. The job runs only when a change can affect the wrapper. The other
+  # jobs exclude the kernel: it is behind the `kernel` feature of openchuck-import.
+  step-kernel:
+    name: STEP kernel (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.step == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: step-kernel
+          cache-on-failure: true
+      - name: Tool versions
+        shell: bash
+        run: rustc --version; cmake --version | head -1
+      - name: Build the kernel, the wrapper and the worker
+        run: cargo build --locked -p openchuck-import --features kernel --bins
+      - name: clippy on the wrapper (deny warnings)
+        run: cargo clippy --locked -p openchuck-import --features kernel --all-targets -- -D warnings
+      # Import, numbering, units, tessellation, the corpus, the crash and malformed files, and the
+      # worker exiting cleanly (the link order contract of decision 0003).
+      - name: Import tests
+        run: cargo test --locked -p openchuck-import --features kernel
+      # Exact evaluation against the kernel itself (decision 0017: the SP-9 comparison, kept).
+      - name: Exact surfaces against the kernel
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_exact
+      - name: Mutation run through the importer (NFR-07)
+        run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
   libraries-alone:
     name: Each library alone (${{ matrix.os }})

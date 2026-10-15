@@ -482,6 +482,63 @@ fn req_prj_05_conflicting_model_additions_are_reported_clearly() {
     );
 }
 
+/// An operation using all three roles, with a set per role.
+fn with_roles() -> Project {
+    let mut p = sample();
+    let set = |n: u128| {
+        Item::SelectionSet(SelectionSet {
+            id: SelectionSetId::from_u128(n),
+            order: OrderKey::default(),
+            name: format!("Set {n}"),
+            model: ModelId::from_u128(1),
+            model_hash: model(1).hash,
+            target: SelectionTarget::Faces(BTreeSet::from([FaceId(n as u32)])),
+            descriptors: Vec::new(),
+        })
+    };
+    for n in [31, 32, 33] {
+        p.insert(set(n), Placement::End).unwrap();
+    }
+    let mut o = operation(101);
+    o.boundary = Some(SelectionSetId::from_u128(31));
+    o.avoid = vec![SelectionSetId::from_u128(32)];
+    o.check = vec![SelectionSetId::from_u128(33)];
+    p.replace(Item::Operation(o)).unwrap();
+    p
+}
+
+#[test]
+fn req_op_02_prj_06_operation_roles_survive_save_and_load() {
+    let dir = temp_dir("roles");
+    let p = with_roles();
+    file::save(&p, &dir).unwrap();
+    let loaded = file::load(&dir).unwrap();
+    let o = &loaded.operations()[0];
+    assert_eq!(o.boundary, Some(SelectionSetId::from_u128(31)));
+    assert_eq!(o.avoid, vec![SelectionSetId::from_u128(32)]);
+    assert_eq!(o.check, vec![SelectionSetId::from_u128(33)]);
+    assert_eq!(loaded, p);
+}
+
+#[test]
+fn req_op_02_nfr_07_unknown_set_in_any_role_is_refused_on_load() {
+    let base = temp_dir("roles-unknown-base");
+    file::save(&with_roles(), &base).unwrap();
+    let op_file = base.join("operations/00000000-0000-0000-0000-000000000065.toml");
+    let text = std::fs::read_to_string(&op_file).unwrap();
+    for (role, known) in [("boundary", 31u128), ("avoid", 32), ("check", 33)] {
+        let known = SelectionSetId::from_u128(known).to_string();
+        assert!(text.contains(&known), "{role}: {text}");
+        let dir = temp_dir(&format!("roles-unknown-{role}"));
+        file::save(&with_roles(), &dir).unwrap();
+        let path = dir.join("operations/00000000-0000-0000-0000-000000000065.toml");
+        let bad = SelectionSetId::from_u128(999).to_string();
+        std::fs::write(&path, text.replace(&known, &bad)).unwrap();
+        let err = file::load(&dir).expect_err(role);
+        assert!(err.to_string().contains(&bad), "{role}: {err}");
+    }
+}
+
 #[test]
 fn req_nfr_07_damaged_project_folders_are_errors() {
     let base = temp_dir("damaged-base");
