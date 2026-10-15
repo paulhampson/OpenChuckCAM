@@ -304,6 +304,9 @@ pub fn generate_operation_on(
     };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
+    if let Ok(parameters) = strategy.schema().resolve(&resolved.values) {
+        notes.extend(strategy.parameter_warnings(&profile, &parameters));
+    }
     notes.extend(
         path.notes
             .iter()

@@ -29,6 +29,7 @@
 //! services link the pieces.
 
 use openchuck_types::job::JobContext;
+use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter;
 use crate::error::{PathError, Result};
@@ -135,6 +136,15 @@ impl Strategy for HelicalFinishing {
         true
     }
 
+    fn parameter_warnings(&self, tool: &RevolvedProfile, parameters: &Parameters) -> Vec<String> {
+        parameters
+            .number(parameter::SCALLOP)
+            .ok()
+            .and_then(|height| scallop::warning(tool, height))
+            .into_iter()
+            .collect()
+    }
+
     fn honours_leave_zones(&self) -> bool {
         true
     }
@@ -181,11 +191,12 @@ fn passes(
     {
         let mut pitch = parameters.number(names::STEPOVER)?;
         let height = parameters.number(parameter::SCALLOP)?;
-        if height > 0.0 {
-            pitch = pitch.min(scallop::straight_step(
-                scallop::cusp_radius(input.tool)?,
-                height,
-            ));
+        // A tool with no closed form for a cusp is warned about
+        // ([`Strategy::parameter_warnings`]) and the stepover alone is used.
+        if height > 0.0
+            && let Some(rho) = scallop::cusp_radius(input.tool)
+        {
+            pitch = pitch.min(scallop::straight_step(rho, height));
         }
         let tolerance = parameters.number(names::TOLERANCE)?;
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;

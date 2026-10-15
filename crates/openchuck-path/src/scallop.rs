@@ -8,17 +8,9 @@
 
 use openchuck_types::tool::profile::{ProfilePiece, RevolvedProfile};
 
-use crate::error::{PathError, Result};
-
-/// The radius of the arc that cuts, for a ball end or a bull-nose; fails for
-/// any other profile.
-pub(crate) fn cusp_radius(profile: &RevolvedProfile) -> Result<f64> {
-    let refuse = || PathError::Parameter {
-        name: "scallop".to_owned(),
-        reason: "a scallop height is only defined for ball-end and bull-nose tools; \
-                     give a stepover instead"
-            .to_owned(),
-    };
+/// The radius of the arc that cuts, for a ball end or a bull-nose; `None`
+/// for any other profile, which has no closed form for a cusp height.
+pub(crate) fn cusp_radius(profile: &RevolvedProfile) -> Option<f64> {
     let mut radius: Option<f64> = None;
     for piece in profile.pieces() {
         match *piece {
@@ -26,7 +18,7 @@ pub(crate) fn cusp_radius(profile: &RevolvedProfile) -> Result<f64> {
                 radius: r, convex, ..
             } => {
                 if !convex || radius.is_some_and(|known| (known - r).abs() > 1e-6) {
-                    return Err(refuse());
+                    return None;
                 }
                 radius = Some(r);
             }
@@ -38,12 +30,24 @@ pub(crate) fn cusp_radius(profile: &RevolvedProfile) -> Result<f64> {
                     (end.height.0 - start.height.0).abs(),
                 );
                 if dr > 1e-9 && dz > 1e-9 {
-                    return Err(refuse());
+                    return None;
                 }
             }
         }
     }
-    radius.filter(|r| *r > 0.0).ok_or_else(refuse)
+    radius.filter(|r| *r > 0.0)
+}
+
+/// What to tell the user when `height` is set and `profile` cannot use it:
+/// the scallop is ignored and the stepover alone sets the passes. `None`
+/// when there is nothing to say.
+pub(crate) fn warning(profile: &RevolvedProfile, height: f64) -> Option<String> {
+    (height > 0.0 && cusp_radius(profile).is_none()).then(|| {
+        format!(
+            "the scallop height of {height} mm is ignored: a cusp height can only be worked out \
+             for ball-end and bull-nose tools, so the stepover alone sets the passes"
+        )
+    })
 }
 
 /// The angle, in radians, between neighbouring passes round a convex surface

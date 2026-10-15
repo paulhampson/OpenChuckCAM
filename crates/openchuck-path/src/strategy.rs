@@ -115,6 +115,13 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// ([`ParameterSchema::with_common`]).
     fn schema(&self) -> ParameterSchema;
 
+    /// Things to tell the user about `parameters` for `tool` that do not stop
+    /// the operation: a setting the strategy cannot use with this tool and
+    /// ignores, for example. The host shows them with the operation's notes.
+    fn parameter_warnings(&self, _tool: &RevolvedProfile, _parameters: &Parameters) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Whether the strategy limits its cuts to a region
     /// ([`passes_in_region`](Self::passes_in_region), OP-02). A strategy that
     /// does not is refused for an operation with selections, rather than

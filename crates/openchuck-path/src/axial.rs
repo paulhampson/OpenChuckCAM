@@ -115,6 +115,15 @@ impl Strategy for AxialFinishing {
         true
     }
 
+    fn parameter_warnings(&self, tool: &RevolvedProfile, parameters: &Parameters) -> Vec<String> {
+        parameters
+            .number(parameter::SCALLOP)
+            .ok()
+            .and_then(|height| scallop::warning(tool, height))
+            .into_iter()
+            .collect()
+    }
+
     fn honours_leave_zones(&self) -> bool {
         true
     }
@@ -298,8 +307,10 @@ fn passes(
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;
     let along = AlongX::read(input, region, zones, parameters)?;
+    // A tool with no closed form for a cusp is warned about
+    // ([`Strategy::parameter_warnings`]) and the stepover alone is used.
     let scallop = if height > 0.0 {
-        Some((scallop::cusp_radius(input.tool)?, height))
+        scallop::cusp_radius(input.tool).map(|rho| (rho, height))
     } else {
         None
     };

@@ -14,7 +14,9 @@ use std::collections::BTreeMap;
 
 use openchuck_path::axial::parameter;
 use openchuck_path::params::names;
-use openchuck_path::{AxialFinishing, GeneratedPath, MeshSurface, ParameterValue, generate};
+use openchuck_path::{
+    AxialFinishing, GeneratedPath, MeshSurface, ParameterValue, Strategy, generate,
+};
 use openchuck_testkit::gouge::{Outline, Pose, coverage, max_gouge};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
 use openchuck_types::ir::{MoveKind, ToolPose};
@@ -165,7 +167,7 @@ fn req_op_04_axial_zigzag_alternates_and_climb_does_not() {
 }
 
 #[test]
-fn req_op_04_req_op_11_scallop_sets_the_pass_count_for_ball_and_refuses_flat() {
+fn req_op_04_req_op_11_scallop_sets_the_pass_count_for_ball_and_warns_for_flat() {
     let part = Cylinder {
         radius: 15.0,
         length: 10.0,
@@ -185,19 +187,33 @@ fn req_op_04_req_op_11_scallop_sets_the_pass_count_for_ball_and_refuses_flat() {
         passes(&path).len(),
         (std::f64::consts::TAU * r / 0.5).ceil().max(n as f64) as usize
     );
-    // A flat end has no closed form.
+    // A flat end has no closed form: the scallop is warned about and ignored,
+    // and the stepover alone sets the passes (not an error).
     let flat = tool(ToolShape::FlatEnd, 6.0);
     let g = fixture(&part, 3, 720, &flat);
-    let err = run(|ctx| {
-        generate(
-            &AxialFinishing,
-            &g.input(),
-            &values(1.0, &[(parameter::SCALLOP, num(h))]),
-            ctx,
-        )
-    })
-    .unwrap_err();
-    assert!(err.to_string().contains("scallop"), "{err}");
+    let with_scallop = values(1.0, &[(parameter::SCALLOP, num(h))]);
+    let path = axial(&g, &with_scallop);
+    assert_eq!(
+        passes(&path).len(),
+        (std::f64::consts::TAU * r / 1.0).ceil() as usize
+    );
+    let schema = AxialFinishing.schema();
+    let resolved = schema.resolve(&with_scallop).unwrap();
+    let warnings = AxialFinishing.parameter_warnings(&g.tool, &resolved);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("scallop") && warnings[0].contains("ignored"),
+        "{warnings:?}"
+    );
+    // No warning for a ball, or when no scallop is asked for.
+    let ball_resolved = schema.resolve(&with_scallop).unwrap();
+    assert!(
+        AxialFinishing
+            .parameter_warnings(&f.tool, &ball_resolved)
+            .is_empty()
+    );
+    let none = schema.resolve(&values(1.0, &[])).unwrap();
+    assert!(AxialFinishing.parameter_warnings(&g.tool, &none).is_empty());
 }
 
 #[test]
