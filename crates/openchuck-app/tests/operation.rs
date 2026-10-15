@@ -140,6 +140,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
         Item::Setup(setup),
         Item::Tool(snapshot),
         Item::Operation(Operation {
+            enabled: true,
             id: op,
             order: OrderKey::default(),
             name: "Ring".into(),
@@ -435,5 +436,441 @@ fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_st
     app.save().unwrap();
     let again = Application::open(&dir, Threads::Exactly(3)).unwrap();
     assert_eq!(again.regenerate().unwrap().toolpath, first.toolpath);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_06_duplicate_and_reorder_are_undoable() {
+    let (dir, mut app, op) = project("tree");
+    let command = openchuck_app::duplicate_operation(app.project(), op).unwrap();
+    app.execute(command).unwrap();
+    let names: Vec<_> = app
+        .project()
+        .operations()
+        .iter()
+        .map(|o| o.name.clone())
+        .collect();
+    assert_eq!(names, ["Ring", "Ring (copy)"]);
+    let (original, copy) = (
+        &app.project().operations()[0],
+        &app.project().operations()[1],
+    );
+    assert_ne!(copy.id, original.id);
+    assert_eq!(
+        (&copy.strategy, copy.tool, copy.setup, &copy.parameters),
+        (
+            &original.strategy,
+            original.tool,
+            original.setup,
+            &original.parameters
+        )
+    );
+    let copy_id = copy.id;
+
+    // Reorder: the copy moves first.
+    app.execute(Command::Move {
+        id: openchuck_app::project::ItemId::Operation(copy_id),
+        index: 0,
+    })
+    .unwrap();
+    assert_eq!(app.project().operations()[0].id, copy_id);
+    // Undo the move, then the duplicate.
+    app.undo().unwrap();
+    assert_eq!(app.project().operations()[1].id, copy_id);
+    app.undo().unwrap();
+    assert_eq!(app.project().operations().len(), 1);
+    assert!(openchuck_app::duplicate_operation(app.project(), OperationId::new()).is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_06_disabled_operations_are_skipped_and_saved() {
+    let (dir, mut app, op) = project("enable");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    app.execute(openchuck_app::duplicate_operation(app.project(), op).unwrap())
+        .unwrap();
+    assert_eq!(app.regenerate().unwrap().toolpath.groups.len(), 2);
+
+    // Disabled: left out of regeneration (and so of simulation and posting).
+    app.execute(Command::SetOperationEnabled {
+        operation: op,
+        enabled: false,
+    })
+    .unwrap();
+    let regeneration = app.regenerate().unwrap();
+    assert_eq!(regeneration.toolpath.groups.len(), 1);
+    assert_ne!(
+        regeneration.toolpath.groups[0].tags.operation,
+        op.to_string()
+    );
+
+    // Saved as one line, written only while disabled.
+    app.save().unwrap();
+    let file = dir.join(format!("operations/{op}.toml"));
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("enabled = false"), "{text}");
+    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert!(!reopened.project().operation(op).unwrap().enabled);
+
+    // Undo enables it again, and the line goes.
+    app.undo().unwrap();
+    assert!(app.project().operation(op).unwrap().enabled);
+    app.save().unwrap();
+    assert!(!std::fs::read_to_string(&file).unwrap().contains("enabled"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_07_form_shows_units_defaults_and_sources() {
+    use openchuck_app::form::{FieldKind, Source};
+    use openchuck_app::project::ParameterValue;
+    let (dir, mut app, op) = project("form");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let form = app.parameter_form(op).unwrap();
+    assert_eq!(form.strategy, "one_ring");
+    let field = |name: &str| form.fields.iter().find(|f| f.name == name).unwrap().clone();
+
+    // Tolerance: millimetres, above zero, the strategy's default.
+    let tolerance = field(names::TOLERANCE);
+    assert!(matches!(
+        tolerance.kind,
+        FieldKind::Number {
+            unit: "mm",
+            min: Some(0.0),
+            min_exclusive: true,
+            ..
+        }
+    ));
+    assert_eq!(tolerance.source, Source::Default);
+    assert_eq!(tolerance.set, None);
+    // Feed: from the tool's cutting data for oak, in mm/min.
+    let feed = field(names::FEED);
+    assert_eq!(feed.source, Source::CuttingData);
+    assert!(matches!(
+        feed.kind,
+        FieldKind::Number { unit: "mm/min", .. }
+    ));
+    assert!(matches!(feed.value, Some(ParameterValue::Number(v)) if v > 0.0));
+    // Retract: a choice with its default.
+    let retract = field(names::RETRACT);
+    assert!(matches!(&retract.kind, FieldKind::Choice { options } if options.len() == 2));
+    assert_eq!(
+        retract.value,
+        Some(ParameterValue::Text("clearance".into()))
+    );
+
+    // A value the operation sets shows as its own.
+    app.set_parameter(op, names::STEPOVER, Some(ParameterValue::Number(0.5)))
+        .unwrap();
+    let form = app.parameter_form(op).unwrap();
+    let stepover = form
+        .fields
+        .iter()
+        .find(|f| f.name == names::STEPOVER)
+        .unwrap();
+    assert_eq!(stepover.source, Source::Operation);
+    assert_eq!(stepover.set, Some(ParameterValue::Number(0.5)));
+    assert!(
+        form.notes.iter().any(|n| n.contains("overrides")),
+        "{:?}",
+        form.notes
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_07_invalid_parameter_is_refused_and_leaves_the_project_unchanged() {
+    use openchuck_app::project::ParameterValue;
+    let (dir, mut app, op) = project("invalid");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let before = app.project().clone();
+    let undo_before = app.can_undo();
+    for (name, value) in [
+        (names::TOLERANCE, ParameterValue::Number(0.0)), // must be above zero
+        (names::TOLERANCE, ParameterValue::Number(f64::NAN)),
+        (names::STOCK_TO_LEAVE, ParameterValue::Number(-1.0)),
+        (names::RETRACT, ParameterValue::Text("sideways".into())),
+        (names::FEED, ParameterValue::Flag(true)),
+        ("no_such_parameter", ParameterValue::Number(1.0)),
+    ] {
+        let e = app
+            .set_parameter(op, name, Some(value))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains(name), "{name}: {e}");
+        assert_eq!(app.project(), &before, "{name}");
+        assert_eq!(app.can_undo(), undo_before);
+    }
+    // A valid value is applied as one undoable step; clearing it is allowed.
+    app.set_parameter(op, names::TOLERANCE, Some(ParameterValue::Number(0.02)))
+        .unwrap();
+    assert_ne!(app.project(), &before);
+    app.set_parameter(op, names::TOLERANCE, None).unwrap();
+    app.undo().unwrap();
+    app.undo().unwrap();
+    assert_eq!(app.project(), &before);
+    assert!(app.parameter_form(OperationId::new()).is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Adds two copies of `op` after it and returns the three IDs in order.
+fn three_operations(app: &mut Application, op: OperationId) -> Vec<OperationId> {
+    let original = app.project().operation(op).unwrap().clone();
+    let mut ids = vec![op];
+    for n in 2..=3 {
+        let mut copy = original.clone();
+        copy.id = OperationId::new();
+        copy.name = format!("Ring {n}");
+        ids.push(copy.id);
+        app.execute(Command::Add {
+            item: Item::Operation(copy),
+            placement: Placement::End,
+        })
+        .unwrap();
+    }
+    ids
+}
+
+#[test]
+fn req_nfr_04_editing_operation_n_regenerates_n_and_later_operations_only() {
+    let (dir, mut app, op) = project("chain");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let ids = three_operations(&mut app, op);
+
+    let first = app.regenerate().unwrap();
+    assert_eq!(first.generated, ids);
+    assert!(first.reused.is_empty());
+
+    // Nothing changed: everything is reused and the result is identical.
+    let second = app.regenerate().unwrap();
+    assert!(second.generated.is_empty());
+    assert_eq!(second.reused, ids);
+    assert_eq!(second.toolpath, first.toolpath);
+
+    // Edit each position in turn.
+    for (n, id) in ids.iter().enumerate() {
+        app.execute(Command::SetParameter {
+            operation: *id,
+            name: names::STOCK_TO_LEAVE.into(),
+            value: Some(ParameterValue::Number(0.1 * (n as f64 + 1.0))),
+        })
+        .unwrap();
+        let r = app.regenerate().unwrap();
+        assert_eq!(r.reused, ids[..n], "edit at {n}");
+        assert_eq!(r.generated, ids[n..], "edit at {n}");
+    }
+
+    // Undoing the last edit returns operation 3 to an earlier state, which the
+    // cache still holds (default depth), so nothing is regenerated.
+    app.undo().unwrap();
+    let after_undo = app.regenerate().unwrap();
+    assert!(after_undo.generated.is_empty());
+    assert_eq!(after_undo.reused, ids);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_a_shared_input_or_changed_part_file_invalidates_every_operation() {
+    let (dir, mut app, op) = project("shared");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let ids = three_operations(&mut app, op);
+    app.regenerate().unwrap();
+
+    // The machine is read by every operation.
+    let mut machine = MachineProfile::example_x_rotary();
+    machine.clearance.safe_z = Millimetres(machine.clearance.safe_z.0 + 1.0);
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    assert_eq!(app.regenerate().unwrap().generated, ids);
+    assert!(app.regenerate().unwrap().generated.is_empty());
+
+    // So is the part file: a changed file is never served from the cache.
+    let file = dir.join("models/cube.stl");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{text}\n")).unwrap();
+    assert_eq!(app.regenerate().unwrap().generated, ids);
+
+    // A failed generation is not cached.
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: "no_such_parameter".into(),
+        value: Some(ParameterValue::Number(1.0)),
+    })
+    .unwrap();
+    assert!(app.regenerate().is_err());
+    assert!(app.regenerate().is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_09_a_cancelled_regeneration_stops_and_a_later_one_completes() {
+    let (dir, mut app, op) = project("cancel");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let ids = three_operations(&mut app, op);
+    let handle = app.start_regenerate();
+    handle.cancel();
+    // Cancelled before or during the run: an error, never a partial result.
+    let _ = handle.wait();
+    let done = app.regenerate().unwrap();
+    assert_eq!(done.generated.len() + done.reused.len(), ids.len());
+    assert_eq!(done.toolpath.groups.len(), 3);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_the_number_of_results_kept_per_operation_is_configurable() {
+    let (dir, mut app, op) = project("depth");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    assert_eq!(app.cache_versions(), openchuck_app::DEFAULT_CACHE_VERSIONS);
+    let set = |app: &mut Application, v: f64| {
+        app.execute(Command::SetParameter {
+            operation: op,
+            name: names::STOCK_TO_LEAVE.into(),
+            value: Some(ParameterValue::Number(v)),
+        })
+        .unwrap();
+        app.regenerate().unwrap()
+    };
+
+    // Keeping one result: going back regenerates.
+    app.set_cache_versions(1);
+    set(&mut app, 0.1);
+    set(&mut app, 0.2);
+    assert_eq!(set(&mut app, 0.1).generated, [op]);
+
+    // Keeping two: the previous state is still there.
+    app.set_cache_versions(2);
+    set(&mut app, 0.2);
+    assert_eq!(set(&mut app, 0.1).reused, [op]);
+    // Three states cycle through two slots, so the oldest is gone.
+    set(&mut app, 0.3);
+    assert_eq!(set(&mut app, 0.2).generated, [op]);
+
+    // Lowering the number drops the older results at once.
+    app.set_cache_versions(1);
+    assert_eq!(set(&mut app, 0.3).generated, [op]);
+
+    // Zero turns caching off.
+    app.set_cache_versions(0);
+    assert_eq!(app.regenerate().unwrap().generated, [op]);
+    assert_eq!(app.regenerate().unwrap().generated, [op]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A strategy that changes the part file while it generates, once.
+#[derive(Debug)]
+struct Rewriter {
+    file: PathBuf,
+    done: std::sync::atomic::AtomicBool,
+}
+
+impl Strategy for Rewriter {
+    fn name(&self) -> &str {
+        "rewriter"
+    }
+    fn label(&self) -> &str {
+        "Rewriter"
+    }
+    fn schema(&self) -> ParameterSchema {
+        ParameterSchema::with_common(Vec::new())
+    }
+    fn passes(
+        &self,
+        input: &StrategyInput<'_>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> openchuck_path::Result<Vec<Pass>> {
+        if !self.done.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let text = std::fs::read_to_string(&self.file).unwrap();
+            std::fs::write(&self.file, format!("{text}\n")).unwrap();
+        }
+        OneRing.passes(input, parameters, context)
+    }
+}
+
+#[test]
+fn req_nfr_04_a_run_in_which_the_part_file_changed_is_refused_and_not_cached() {
+    let (dir, mut app, op) = project("rewrite");
+    let file = dir.join("models/cube.stl");
+    let original = std::fs::read(&file).unwrap();
+    app.register_strategy(Arc::new(Rewriter {
+        file: file.clone(),
+        done: std::sync::atomic::AtomicBool::new(false),
+    }))
+    .unwrap();
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "rewriter".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+
+    // The file changes during generation: the run is refused, and nothing is
+    // stored.
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("changed while regenerating"), "{e}");
+    // Put back as it was: nothing made from the changed file may be reused.
+    std::fs::write(&file, original).unwrap();
+    let again = app.regenerate().unwrap();
+    assert_eq!(again.generated, [op]);
+    assert!(again.reused.is_empty());
+    // Now stable, so it is cached.
+    assert_eq!(app.regenerate().unwrap().reused, [op]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_a_cache_hit_is_not_mixed_with_results_from_a_changed_part_file() {
+    let (dir, mut app, op) = project("mixed");
+    let file = dir.join("models/cube.stl");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    app.register_strategy(Arc::new(Rewriter {
+        file: file.clone(),
+        done: std::sync::atomic::AtomicBool::new(false),
+    }))
+    .unwrap();
+    // Operation 1 is cached from an earlier run.
+    app.regenerate().unwrap();
+    let mut second = app.project().operation(op).unwrap().clone();
+    second.id = OperationId::new();
+    second.name = "Rewrites".into();
+    second.strategy = "rewriter".into();
+    app.execute(Command::Add {
+        item: Item::Operation(second),
+        placement: Placement::End,
+    })
+    .unwrap();
+    // Operation 1 hits; operation 2 changes the file while it generates, so
+    // the old result for operation 1 must not be returned beside it.
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("changed while regenerating"), "{e}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_disabling_an_operation_regenerates_those_after_it_and_enabling_reuses_them() {
+    let (dir, mut app, op) = project("disable");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let ids = three_operations(&mut app, op);
+    app.regenerate().unwrap();
+
+    // The middle one leaves the chain: the one before is reused, the one
+    // after is made again (the stock it sees has changed).
+    app.execute(Command::SetOperationEnabled {
+        operation: ids[1],
+        enabled: false,
+    })
+    .unwrap();
+    let r = app.regenerate().unwrap();
+    assert_eq!(r.reused, [ids[0]]);
+    assert_eq!(r.generated, [ids[2]]);
+
+    // Enabled again: its own results were kept, so nothing is regenerated.
+    app.execute(Command::SetOperationEnabled {
+        operation: ids[1],
+        enabled: true,
+    })
+    .unwrap();
+    let r = app.regenerate().unwrap();
+    assert!(r.generated.is_empty(), "{:?}", r.generated);
+    assert_eq!(r.reused, ids);
     std::fs::remove_dir_all(&dir).unwrap();
 }

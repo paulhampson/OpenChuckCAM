@@ -127,6 +127,19 @@ impl<T> JobHandle<T> {
         self.cancel.cancel();
     }
 
+    /// The result if the job has ended, without waiting; `None` while it
+    /// runs. A front end polls this each frame. After it has returned a
+    /// result it returns a lost-job error.
+    pub fn try_result(&self) -> Option<Result<T, AppError>> {
+        match self.result.try_recv() {
+            Ok(result) => Some(result),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                Some(Err(AppError::JobLost(self.name.clone())))
+            }
+        }
+    }
+
     /// Blocks until the job ends and returns its result.
     pub fn wait(self) -> Result<T, AppError> {
         self.result

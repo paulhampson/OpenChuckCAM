@@ -170,7 +170,12 @@ impl SetupSheet {
             ("Setups".to_string(), project.setups().len().to_string()),
             (
                 "Operations".to_string(),
-                project.operations().len().to_string(),
+                project
+                    .operations()
+                    .iter()
+                    .filter(|o| o.enabled)
+                    .count()
+                    .to_string(),
             ),
             ("Tools used".to_string(), used.len().to_string()),
         ];
@@ -212,7 +217,7 @@ impl SetupSheet {
                         let setups: Vec<&str> = project
                             .operations()
                             .iter()
-                            .filter(|o| o.tool == Some(t.id))
+                            .filter(|o| o.enabled && o.tool == Some(t.id))
                             .filter_map(|o| project.setup(o.setup))
                             .map(|s| s.name.as_str())
                             .fold(Vec::new(), |mut names, name| {
@@ -254,6 +259,7 @@ impl SetupSheet {
                 rows: project
                     .operations()
                     .iter()
+                    .filter(|o| o.enabled)
                     .enumerate()
                     .map(|(i, o)| operation_row(project, i, o, &times, toolpath.is_some()))
                     .collect(),
@@ -365,12 +371,18 @@ impl SetupSheet {
     }
 }
 
-/// Tools that at least one operation cuts with, in the project's tool order.
+/// Tools that at least one enabled operation cuts with (a disabled operation
+/// is not in the program, UI-06), in the project's tool order.
 fn used_tools(project: &Project) -> Vec<&ToolSnapshot> {
     project
         .tools()
         .iter()
-        .filter(|t| project.operations().iter().any(|o| o.tool == Some(t.id)))
+        .filter(|t| {
+            project
+                .operations()
+                .iter()
+                .any(|o| o.enabled && o.tool == Some(t.id))
+        })
         .collect()
 }
 

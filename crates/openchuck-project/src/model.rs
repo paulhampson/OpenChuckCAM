@@ -361,6 +361,10 @@ pub struct Operation {
     pub selections: Vec<SelectionSetId>,
     /// Parameter values by name, in name order.
     pub parameters: BTreeMap<String, ParameterValue>,
+    /// False when the user has disabled it: it stays in the project and the
+    /// tree but is left out of regeneration, simulation and posting, as if it
+    /// were absent (UI-06; decision record 0029 item 10).
+    pub enabled: bool,
 }
 
 /// Any item with a stable ID, for the generic edits.
@@ -488,6 +492,8 @@ pub enum OldPlace {
 pub struct Project {
     name: String,
     machine: Option<MachineProfile>,
+    /// The ID of the library profile the machine copy came from (OI-128).
+    pub(crate) machine_id: Option<String>,
     simulation: SimulationSettings,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
@@ -744,6 +750,7 @@ impl Project {
         let project = Self {
             name,
             machine,
+            machine_id: None,
             simulation: SimulationSettings::default(),
             models,
             setups,
@@ -860,16 +867,41 @@ impl Project {
         std::mem::replace(&mut self.name, name.into())
     }
 
-    /// Sets the machine profile and returns the old one. Fails, leaving the
-    /// project unchanged, if the profile is not valid.
+    /// Sets the machine profile, with no record of a source, and returns the
+    /// old one. Fails, leaving the project unchanged, if the profile is not
+    /// valid.
     pub fn set_machine(
         &mut self,
         machine: Option<MachineProfile>,
     ) -> Result<Option<MachineProfile>, ProjectError> {
+        self.set_machine_from(machine, None).map(|(old, _)| old)
+    }
+
+    /// Sets the machine profile and the ID of the library profile it came
+    /// from (OI-128), and returns the old pair. Without a machine there is no
+    /// ID. Fails, leaving the project unchanged, if either is not valid.
+    pub fn set_machine_from(
+        &mut self,
+        machine: Option<MachineProfile>,
+        id: Option<String>,
+    ) -> Result<(Option<MachineProfile>, Option<String>), ProjectError> {
         if let Some(profile) = &machine {
             profile.validate()?;
         }
-        Ok(std::mem::replace(&mut self.machine, machine))
+        if let Some(id) = &id {
+            crate::machines::validate_machine_id(id)?;
+        }
+        let id = if machine.is_some() { id } else { None };
+        Ok((
+            std::mem::replace(&mut self.machine, machine),
+            std::mem::replace(&mut self.machine_id, id),
+        ))
+    }
+
+    /// The ID of the library profile the machine copy came from, if it
+    /// records one (OI-128).
+    pub fn machine_id(&self) -> Option<&str> {
+        self.machine_id.as_deref()
     }
 
     /// Sets the simulation settings and returns the old ones. Fails, leaving

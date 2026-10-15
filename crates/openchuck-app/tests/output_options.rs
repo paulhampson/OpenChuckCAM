@@ -71,6 +71,7 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         id: OperationId::new(),
         order: OrderKey::default(),
         name: name.into(),
+        enabled: true,
         setup,
         strategy: "helical_finishing".into(),
         tool: Some(tool),
@@ -655,5 +656,25 @@ fn req_gc_12_req_nfr_08_the_sheet_content_matches_its_snapshot() {
     sheet_golden("small_project.html", &sheet.to_html());
     let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
     sheet_golden("small_project.pdf", &pdf);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_ui_06_a_disabled_operation_is_off_the_sheet_and_out_of_the_files() {
+    let (dir, mut app) = sheet_project();
+    let off = app.project().operations()[1].id; // the only operation using T2
+    app.execute(Command::SetOperationEnabled {
+        operation: off,
+        enabled: false,
+    })
+    .unwrap();
+    let sheet = app.setup_sheet(None);
+    let tools = cell_rows(&sheet, "Tools");
+    assert_eq!(tools.len(), 1, "T2 is no longer used: {tools:?}");
+    let operations = cell_rows(&sheet, "Operations");
+    assert_eq!(operations.len(), 3);
+    assert!(operations.iter().all(|r| r[1] != "Finish B"));
+    let result = post(&mut app, OutputGrouping::Operation);
+    assert!(names(&result).iter().all(|n| !n.contains("finish-b")));
     std::fs::remove_dir_all(dir).unwrap();
 }

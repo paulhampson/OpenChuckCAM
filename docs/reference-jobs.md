@@ -39,7 +39,7 @@ All three use the same tool, material and strategy: a 3 mm ball end mill (2 flut
 
 ## Air-cut plan (gate 4) for the operator
 
-For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
+The full procedure and record sheet are in [z1-air-cut-procedure.md](z1-air-cut-procedure.md) (reviewed 14 Oct 2026). For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
 
 1. Check the profile values the programs depend on: axis height (OI-60), travel (OI-39). The A direction is already confirmed. Regenerate the Z1 programs and compare with the golden files.
 2. Run SP-12's conventions program first (`spikes/sp12/AIR-CUT.md` on the SP-12 branch) and record the results in decision 0007's open items (wrap, feed rule, G93; the direction is confirmed).
@@ -48,4 +48,4 @@ For the operator to review before the first trial; amend it after the review. Ru
 5. Run `groove_makera-z1.nc` and `cone_makera-z1.nc` the same way; watch the unwind at the end (`G92.4 A0 S0`: A must not move).
 6. Record, for each run: file, override, result, measured against predicted time, alarms. Any unexpected motion is a defect with the G-code attached.
 
-Gate 5 (first cut in wax or foam) follows only when gate 4 passes, with the safe-practice checklist reviewed by the Z1's operator (slice 20).
+Gate 5 (first cut in wax or foam) follows only when gate 4 passes, with the safe-practice checklist ([reviewed by the operator](z1-safe-practice-checklist.md), 14 Oct 2026).

@@ -19,8 +19,9 @@ use openchuck_app::model::{
 use openchuck_app::project::id::SetupId;
 use openchuck_app::project::{Item, ModelCheck, Placement, Setup};
 use openchuck_app::setup::{
-    ARange, Aabb, Clearance, Confirmation, MachineProfile, Millimetres, Point3, SetupReport, Stock,
-    WorkOffsetRegister, a_direction, builtin, builtin_keys, list_library, load_profile,
+    ARange, Aabb, Clearance, Confirmation, MachineProfile, Millimetres, Point3, ProfileEntry,
+    SetupReport, Stock, WorkOffsetRegister, a_direction, builtin, builtin_entry, builtin_keys,
+    list_library, load_profile_entry,
 };
 use openchuck_app::simulation::{DEFAULT_CELL, SimulationSettings};
 use openchuck_app::tools::{
@@ -777,8 +778,13 @@ fn run(cli: Cli) -> Result<()> {
                 app.save()?;
                 println!("{}: machine profile removed", project.display());
             } else if let Some(text) = profile {
-                let profile = find_profile(&text, library.as_deref())?;
-                app.execute(Command::SetMachine(Some(Box::new(profile))))?;
+                // The copy keeps the profile's ID, so it can be compared with
+                // its source later (OI-128).
+                let entry = find_profile(&text, library.as_deref())?;
+                app.execute(Command::SetMachineFrom {
+                    machine: Some(Box::new(entry.profile)),
+                    id: entry.id,
+                })?;
                 app.save()?;
             }
             match app.project().machine() {
@@ -1276,19 +1282,19 @@ fn print_tool(app: &Application, report: &ToolReport) {
 
 /// A machine profile by built-in key or name, by file stem in `library`, or
 /// from a profile file.
-fn find_profile(text: &str, library: Option<&Path>) -> Result<MachineProfile> {
-    if let Some(profile) = builtin(text) {
-        return Ok(profile?);
+fn find_profile(text: &str, library: Option<&Path>) -> Result<ProfileEntry> {
+    if let Some(entry) = builtin_entry(text) {
+        return Ok(entry?);
     }
     if let Some(dir) = library {
         let path = dir.join(format!("{text}.toml"));
         if path.is_file() {
-            return Ok(load_profile(&path)?);
+            return Ok(load_profile_entry(&path)?);
         }
     }
     let path = Path::new(text);
     if path.is_file() {
-        return Ok(load_profile(path)?);
+        return Ok(load_profile_entry(path)?);
     }
     anyhow::bail!(
         "'{text}' is not a built-in machine ({}), a profile in the library or a profile file",

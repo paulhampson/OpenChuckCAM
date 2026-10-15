@@ -19,19 +19,26 @@
 //! in machining order through the strategies in the application's registry.
 //! The library's own strategy, helical finishing, is registered from the start;
 //! a host or test can add more with [`Application::register_strategy`].
+//! What the viewport draws for a setup comes from [`scene`] as plain data
+//! (decision record 0029).
 
 #![warn(missing_docs)]
 
+mod cache;
 mod command;
 mod error;
+pub mod form;
 mod jobs;
+pub mod library;
 pub mod model;
 pub mod operation;
 mod pipeline;
 mod posting;
+pub mod scene;
 pub mod setup;
 mod setup_sheet;
 pub mod simulation;
+pub mod tool_edit;
 pub mod tools;
 
 use std::path::{Path, PathBuf};
@@ -39,13 +46,14 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use command::History;
 use model::{LengthUnit, ModelInspection};
-use openchuck_project::id::ModelId;
+use openchuck_project::id::{ModelId, OperationId};
 use openchuck_project::{
     ContentHash, Item, ModelCheck, ModelRef, Placement, Project, RelativePath,
 };
 use setup::{PartExtent, SetupReport};
 
-pub use command::Command;
+pub use cache::DEFAULT_CACHE_VERSIONS;
+pub use command::{Command, duplicate_operation};
 pub use error::AppError;
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
 /// The G-code reader and replay, re-exported so front ends need no engine
@@ -135,7 +143,11 @@ struct Document {
 pub struct Application {
     document: Document,
     history: History,
+    /// The project as last opened, created or saved, for
+    /// [`Application::is_modified`]. Behind a lock so `save` can stay `&self`.
+    saved: std::sync::Mutex<Project>,
     jobs: JobManager,
+    cache: cache::PipelineCache,
     strategies: Registry,
     post: Option<PostSelection>,
     grouping: OutputGrouping,
@@ -172,12 +184,14 @@ impl Application {
     fn with_project(folder: &Path, project: Project, threads: Threads) -> Result<Self, AppError> {
         let (events_tx, events_rx) = channel();
         Ok(Self {
+            saved: std::sync::Mutex::new(project.clone()),
             document: Document {
                 location: folder.to_path_buf(),
                 project,
             },
             history: History::default(),
             jobs: JobManager::new(threads)?,
+            cache: cache::PipelineCache::default(),
             strategies: Registry::builtin(),
             post: None,
             grouping: OutputGrouping::default(),
@@ -189,10 +203,60 @@ impl Application {
     /// Saves the project to its folder. Only changed files are written
     /// (PRJ-01).
     pub fn save(&self) -> Result<(), AppError> {
-        Ok(openchuck_project::file::save(
-            &self.document.project,
-            &self.document.location,
-        )?)
+        openchuck_project::file::save(&self.document.project, &self.document.location)?;
+        if let Ok(mut saved) = self.saved.lock() {
+            saved.clone_from(&self.document.project);
+        }
+        Ok(())
+    }
+
+    /// Whether the project differs from what was last opened, created or
+    /// saved, so a front end can ask before discarding changes. Undoing back
+    /// to the saved state makes it unmodified again.
+    pub fn is_modified(&self) -> bool {
+        self.saved
+            .lock()
+            .map_or(true, |saved| *saved != self.document.project)
+    }
+
+    /// One sentence per model file that has changed or is missing since it
+    /// was added, naming the file, for a front end to show when a project
+    /// opens (PRJ-02, OI-45). Empty when every file matches.
+    pub fn model_file_warnings(&self) -> Vec<String> {
+        self.document
+            .project
+            .models()
+            .iter()
+            .filter_map(|m| {
+                let path = m.path.as_str();
+                match m.check(&self.document.location) {
+                    Ok(ModelCheck::Unchanged) => None,
+                    Ok(ModelCheck::Missing) => Some(format!("'{path}' is missing")),
+                    Ok(_) => Some(format!("'{path}' has changed since it was added")),
+                    Err(e) => Some(format!("'{path}' cannot be checked: {e}")),
+                }
+            })
+            .collect()
+    }
+
+    /// The project folder.
+    pub fn location(&self) -> &Path {
+        &self.document.location
+    }
+
+    /// Starts building the scene the viewport draws for `setup` (or the first
+    /// setup, or every model when there is none) as a background job: the
+    /// models are read and placed, which takes time on large meshes (UI-09,
+    /// NFR-04; decision record 0002, "Findings for later slices").
+    pub fn start_scene(
+        &self,
+        setup: Option<openchuck_project::id::SetupId>,
+    ) -> JobHandle<scene::SceneView> {
+        let document = self.document.clone();
+        self.jobs
+            .submit("build scene", self.events_tx.clone(), move |context| {
+                scene::build_scene(&document.location, &document.project, setup, context)
+            })
     }
 
     /// Checks every model file against its recorded content hash (PRJ-02).
@@ -219,6 +283,35 @@ impl Application {
         file: &Path,
         units: Option<LengthUnit>,
     ) -> Result<(ModelId, ModelInspection), AppError> {
+        self.add_model_with(file, units, &[])
+    }
+
+    /// [`Application::add_model`] with placement steps (IMP-05), as one
+    /// undoable step: the import dialog adds a model as the user placed it
+    /// (decision record 0029 item 13). It waits for the file to be read and
+    /// checked; a front end that must stay responsive uses
+    /// [`Application::start_prepare_model`] and
+    /// [`Application::add_prepared_model`] instead.
+    pub fn add_model_with(
+        &mut self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+    ) -> Result<(ModelId, ModelInspection), AppError> {
+        let prepared = self.start_prepare_model(file, units, transform)?.wait()?;
+        self.add_prepared_model(prepared)
+    }
+
+    /// Starts reading, hashing, placing and checking a model file as a
+    /// background job, ready to add with [`Application::add_prepared_model`]
+    /// (UI-09, NFR-04). Fails at once if the file cannot be referenced from
+    /// the project folder.
+    pub fn start_prepare_model(
+        &self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+    ) -> Result<JobHandle<model::PreparedModel>, AppError> {
         let relative = model::relative_to(&self.document.location, file)?.ok_or_else(|| {
             AppError::ModelPath {
                 path: file.to_path_buf(),
@@ -226,23 +319,53 @@ impl Application {
             }
         })?;
         let relative = RelativePath::from_path(&relative)?;
-        let bytes = model::read(file)?;
-        let hash = ContentHash::of_bytes(&bytes);
         let path = file.to_path_buf();
-        let inspection = self
+        let steps = transform.to_vec();
+        Ok(self
             .jobs
             .submit("import model", self.events_tx.clone(), move |context| {
-                model::inspect_bytes(&path, &bytes, units, &[], context)
-            })
-            .wait()?;
-        let id = ModelId::new();
-        let mut reference = ModelRef::new(id, relative, hash);
-        reference.units = units;
+                let bytes = model::read(&path)?;
+                let hash = ContentHash::of_bytes(&bytes);
+                let inspection = model::inspect_bytes(&path, &bytes, units, &steps, context)?;
+                let mut reference = ModelRef::new(ModelId::new(), relative, hash);
+                reference.units = units;
+                reference.transform = steps;
+                Ok(model::PreparedModel {
+                    reference,
+                    inspection,
+                })
+            }))
+    }
+
+    /// Adds a model prepared by [`Application::start_prepare_model`] as one
+    /// undoable step.
+    pub fn add_prepared_model(
+        &mut self,
+        prepared: model::PreparedModel,
+    ) -> Result<(ModelId, ModelInspection), AppError> {
+        let id = prepared.reference.id;
         self.execute(Command::Add {
-            item: Item::Model(reference),
+            item: Item::Model(prepared.reference),
             placement: Placement::End,
         })?;
-        Ok((id, inspection))
+        Ok((id, prepared.inspection))
+    }
+
+    /// Starts reading, placing and checking a model file that is not yet in
+    /// the project, for the import dialog: the inspection and a preview scene
+    /// with the problems highlighted (OI-51).
+    pub fn start_import_preview(
+        &self,
+        file: &Path,
+        units: Option<LengthUnit>,
+        transform: &[model::TransformStep],
+    ) -> JobHandle<model::ImportPreview> {
+        let path = file.to_path_buf();
+        let steps = transform.to_vec();
+        self.jobs
+            .submit("check model", self.events_tx.clone(), move |context| {
+                model::import_preview(&path, units, &steps, context)
+            })
     }
 
     /// The model whose ID or path (as the project lists it) is `text`.
@@ -368,6 +491,80 @@ impl Application {
         self.history.redo(&mut self.document.project)
     }
 
+    /// The parameter form of an operation (UI-07).
+    pub fn parameter_form(&self, operation: OperationId) -> Result<form::ParameterForm, AppError> {
+        form::parameter_form(&self.document.project, &self.strategies, operation)
+    }
+
+    /// Sets an operation parameter, or clears it with `None`, after checking
+    /// the value against the strategy's schema. An invalid value is an error
+    /// naming the parameter, and the project is left unchanged (UI-07).
+    pub fn set_parameter(
+        &mut self,
+        operation: OperationId,
+        name: &str,
+        value: Option<openchuck_project::ParameterValue>,
+    ) -> Result<(), AppError> {
+        form::check_parameter(
+            &self.document.project,
+            &self.strategies,
+            operation,
+            name,
+            value.as_ref(),
+        )?;
+        self.execute(Command::SetParameter {
+            operation,
+            name: name.to_owned(),
+            value,
+        })
+    }
+
+    /// Sets one field of a project tool (UI-07), after checking the whole
+    /// tool. An invalid value is an error naming the field, and the project
+    /// is left unchanged.
+    pub fn set_tool_field(
+        &mut self,
+        tool: openchuck_project::id::ToolId,
+        name: &str,
+        value: &openchuck_project::ParameterValue,
+    ) -> Result<(), AppError> {
+        let mut snapshot = self.tool_snapshot(tool)?;
+        snapshot.tool = tool_edit::set_tool_field(&snapshot.tool, name, value)?;
+        self.execute(Command::Replace(Item::Tool(snapshot)))
+    }
+
+    /// Gives a project tool a custom profile (TL-03), after the same checks
+    /// as importing one from a file. An invalid profile is an error naming
+    /// the segment, and the project is left unchanged.
+    pub fn set_tool_profile(
+        &mut self,
+        tool: openchuck_project::id::ToolId,
+        profile: tools::ToolProfile,
+    ) -> Result<(), AppError> {
+        let mut snapshot = self.tool_snapshot(tool)?;
+        snapshot.tool = tool_edit::set_tool_profile(&snapshot.tool, profile)?;
+        self.execute(Command::Replace(Item::Tool(snapshot)))
+    }
+
+    fn tool_snapshot(
+        &self,
+        tool: openchuck_project::id::ToolId,
+    ) -> Result<openchuck_project::ToolSnapshot, AppError> {
+        self.document
+            .project
+            .tools()
+            .iter()
+            .find(|t| t.id == tool)
+            .cloned()
+            .ok_or_else(|| {
+                openchuck_project::ProjectError::NotFound {
+                    kind: openchuck_project::id::ToolId::KIND,
+                    id: tool.to_string(),
+                }
+                .into()
+            })
+    }
+
     /// Whether there is a command to undo.
     pub fn can_undo(&self) -> bool {
         self.history.can_undo()
@@ -416,15 +613,16 @@ impl Application {
         let strategies = self.strategies.clone();
         let post = self.post.clone();
         let grouping = self.grouping;
+        let cache = self.cache.clone();
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
                 pipeline::regenerate(
                     &document.location,
                     &document.project,
                     &strategies,
-                    post.as_ref(),
-                    grouping,
+                    post.as_ref().map(|p| (p, grouping)),
                     simulate,
+                    &cache,
                     context,
                 )
             })
@@ -433,6 +631,23 @@ impl Application {
     /// Regenerates, simulates and waits for the result.
     pub fn simulate(&self) -> Result<Regeneration, AppError> {
         self.start_simulate().wait()
+    }
+
+    /// How many generated results are kept for each operation, so that
+    /// going back to an earlier state (an undo, a parameter toggled back)
+    /// reuses a result instead of regenerating. At least the latest one is
+    /// useful; 0 turns the cache off. The default is
+    /// [`DEFAULT_CACHE_VERSIONS`].
+    pub fn cache_versions(&self) -> usize {
+        self.cache.versions()
+    }
+
+    /// Sets how many results are kept for each operation (see
+    /// [`Application::cache_versions`]). Results beyond the new number are
+    /// dropped at once, oldest first. Each is a whole toolpath, so a higher
+    /// number costs memory on long paths.
+    pub fn set_cache_versions(&self, count: usize) {
+        self.cache.set_versions(count);
     }
 
     /// Chooses the post that turns toolpaths into G-code (GC-02, OI-88).
@@ -469,7 +684,10 @@ impl Application {
         &mut self,
         strategy: std::sync::Arc<dyn Strategy>,
     ) -> Result<(), AppError> {
-        Ok(self.strategies.register(strategy)?)
+        self.strategies.register(strategy)?;
+        // A new strategy may replace what a cached result was made with.
+        self.cache.clear();
+        Ok(())
     }
 
     /// Regenerates and waits for the result.
