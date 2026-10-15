@@ -603,13 +603,15 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
 
+**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) and per-selection stock to leave (slice 12 item 4) are not built, so the slice stays open. OI-117 is closed; OI-141 to OI-144 are open.
+
 **Review checklist**
 
-- [ ] Simulated leftover is uniform and matches stock to leave within tolerance
-- [ ] A second roughing pass does not re-cut already removed material
-- [ ] Indexed and continuous forms reach the same final stock envelope
-- [ ] Every OP-11 parameter exists and has a test
-- [ ] Link moves never cross the stock
+- [x] Simulated leftover is uniform and matches stock to leave within tolerance (cylinder: 0.45 to 0.53 mm for 0.5 mm to leave at a 0.1 mm cell; cone and indexed forms within the stepover's scallop; strips the tool cannot reach are reported, OI-141)
+- [x] A second roughing pass does not re-cut already removed material (`req_op_03_a_second_roughing_run_over_its_own_result_cuts_nothing`)
+- [x] Indexed and continuous forms reach the same final stock envelope (to within the scallop of the stepover, `req_op_03_indexed_and_continuous_forms_reach_the_same_envelope`)
+- [ ] Every OP-11 parameter exists and has a test (stepdown, stock to leave per operation, entry styles and retract do; per-selection stock to leave is slice 12 item 4)
+- [x] Link moves never cross the stock (`req_op_14_links_stay_below_the_clearance_cylinder_without_cutting`, simulated, no rapid cuts)
 
 ## Slice 15 – Rest machining and pencil clean-up
 

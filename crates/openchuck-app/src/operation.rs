@@ -13,7 +13,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use openchuck_path::params::{ParameterKind, names};
+use openchuck_path::params::{EntryParameters, ParameterKind, names};
+use openchuck_path::roughing::parameter::STEPDOWN;
 use openchuck_path::{
     AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
     StrategyInput, SurfaceSource, generate, generate_in_region,
@@ -92,6 +93,7 @@ pub fn parameter_values(
             (names::FEED, data.cutting_feed(&snapshot.tool).0),
             (names::PLUNGE_FEED, data.plunge_feed.0),
             (names::STEPOVER, data.stepover.0),
+            (STEPDOWN, data.stepdown.0),
         ];
         for (name, value) in from_data {
             let numeric = matches!(
@@ -268,6 +270,9 @@ pub fn generate_operation_on(
         tags: &tags,
     };
     let resolved = parameter_values(project, operation, registry)?;
+    // A straight plunge needs a tool that can cut straight down (OI-117).
+    EntryParameters::read(&strategy.schema().resolve(&resolved.values)?)?
+        .check_tool(snapshot.tool.can_plunge())?;
     let path = match &constraint {
         Some(region) => generate_in_region(strategy, &input, region, &resolved.values, context)?,
         None => generate(strategy, &input, &resolved.values, context)?,

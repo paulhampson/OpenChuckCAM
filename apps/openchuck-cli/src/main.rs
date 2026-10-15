@@ -587,7 +587,8 @@ fn run(cli: Cli) -> Result<()> {
             let report = result
                 .simulation
                 .context("the pipeline returned no simulation report")?;
-            let failures = print_simulation(&report);
+            let leaves = roughing_leaves(app.project());
+            let failures = print_simulation(&report, &leaves, settings.cell.0);
             println!("simulated in {seconds:.1} s");
             if failures > 0 {
                 anyhow::bail!("{failures} problem(s) found in the simulation above");
@@ -1066,7 +1067,11 @@ fn find_library_tool<'a>(
 /// TL-11).
 /// Prints a simulation report and returns how many problems it shows:
 /// overcut places and rapid moves that cut.
-fn print_simulation(report: &SimulationReport) -> usize {
+fn print_simulation(
+    report: &SimulationReport,
+    leaves: &std::collections::BTreeMap<String, f64>,
+    cell: f64,
+) -> usize {
     let mut failures = 0;
     if report.setups.is_empty() {
         println!("  no operations to simulate");
@@ -1115,6 +1120,25 @@ fn print_simulation(report: &SimulationReport) -> usize {
             Some(p) => println!("      deepest overcut: {:.4} mm at {}", -p.value, at(p)),
             None => println!("      no overcut"),
         }
+        if let Some(&leave) = leaves.get(&setup.setup) {
+            // A roughing operation ends the setup: how near its stock to
+            // leave the part is (slice 14 item 7).
+            let l = d.leftover(leave, 2.0 * cell);
+            println!(
+                "    roughing leftover against {leave} mm to leave (within {:.2} mm): {:.1} % at it, \
+                 {} above, {} below; least {:.3}, mean {:.3}, most {:.3} mm",
+                l.tolerance,
+                100.0 * l.at_leave(),
+                l.above,
+                l.below,
+                l.least,
+                l.mean,
+                l.most
+            );
+            if let Some(p) = &l.worst_above {
+                println!("      most beyond it: {:.4} mm at {}", p.value, at(p));
+            }
+        }
         if d.overcut_count > 0 {
             failures += d.overcut_places.len();
             println!(
@@ -1127,6 +1151,34 @@ fn print_simulation(report: &SimulationReport) -> usize {
         }
     }
     failures
+}
+
+/// The stock to leave of each setup whose last enabled operation is rotary
+/// roughing, by setup name.
+fn roughing_leaves(
+    project: &openchuck_app::project::Project,
+) -> std::collections::BTreeMap<String, f64> {
+    let mut last: std::collections::BTreeMap<String, Option<f64>> =
+        std::collections::BTreeMap::new();
+    for op in project.operations().iter().filter(|o| o.enabled) {
+        let Some(setup) = project.setup(op.setup) else {
+            continue;
+        };
+        let leave = (op.strategy == openchuck_app::path::roughing::NAME).then(|| {
+            match op
+                .parameters
+                .get(openchuck_app::path::params::names::STOCK_TO_LEAVE)
+            {
+                Some(openchuck_app::project::ParameterValue::Number(n)) => *n,
+                Some(openchuck_app::project::ParameterValue::Integer(n)) => *n as f64,
+                _ => 0.0,
+            }
+        });
+        last.insert(setup.name.clone(), leave);
+    }
+    last.into_iter()
+        .filter_map(|(k, v)| v.map(|v| (k, v)))
+        .collect()
 }
 
 fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: bool) -> Result<()> {

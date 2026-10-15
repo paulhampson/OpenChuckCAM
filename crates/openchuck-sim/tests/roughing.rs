@@ -289,3 +289,42 @@ fn req_op_11_helix_and_ramp_entries_work_in_roughing() {
         }
     }
 }
+
+#[test]
+fn req_sim_05_leftover_counts_samples_against_a_stock_to_leave() {
+    use openchuck_sim::{Deviation, DeviationPoint};
+    use openchuck_types::geometry::{Point3, Vec3};
+    let point = |value: f64, at_least: bool| DeviationPoint {
+        point: Point3::new(value, 0.0, 0.0),
+        normal: Vec3::new(0.0, 0.0, 1.0),
+        value,
+        at_least,
+    };
+    let points = vec![
+        point(0.50, false),
+        point(0.52, false),
+        point(0.30, false),
+        point(0.90, false),
+        point(3.0, true),
+    ];
+    let d = Deviation {
+        points,
+        worst_remaining: None,
+        worst_overcut: None,
+        overcut_count: 0,
+        overcut_places: Vec::new(),
+        overcut_limit: 0.1,
+    };
+    let l = d.leftover(0.5, 0.05);
+    assert_eq!((l.samples, l.below, l.above), (5, 1, 2));
+    assert_eq!((l.least, l.most), (0.30, 3.0));
+    assert!((l.mean - (0.5 + 0.52 + 0.3 + 0.9 + 3.0) / 5.0).abs() < 1e-12);
+    assert_eq!(l.worst_above.unwrap().value, 3.0);
+    assert!((l.at_leave() - 0.4).abs() < 1e-12);
+    let none = Deviation {
+        points: Vec::new(),
+        ..d
+    };
+    let l = none.leftover(0.5, 0.05);
+    assert_eq!((l.samples, l.at_leave()), (0, 1.0));
+}

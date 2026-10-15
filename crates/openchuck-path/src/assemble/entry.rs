@@ -168,6 +168,7 @@ impl Entry {
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn lead_in(
         &self,
         b: &mut Builder<'_>,
@@ -244,6 +245,7 @@ impl Entry {
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn ramp(
         &self,
         b: &mut Builder<'_>,
@@ -307,6 +309,7 @@ impl Entry {
         b.push(MoveKind::LeadIn, pose, None, Some(common.plunge_feed))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn helix(
         &self,
         b: &mut Builder<'_>,

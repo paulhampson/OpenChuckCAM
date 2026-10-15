@@ -79,16 +79,17 @@ const MAX_NODES: f64 = 2.0e6;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RotaryRoughing;
 
+/// A number parameter. `range` is the lowest value, whether it is excluded,
+/// and the highest value if any.
 fn number(
     name: &str,
     label: &str,
     description: &str,
     unit: Unit,
-    min: f64,
-    min_exclusive: bool,
-    max: Option<f64>,
+    range: (f64, bool, Option<f64>),
     default: Option<f64>,
 ) -> ParameterSpec {
+    let (min, min_exclusive, max) = range;
     ParameterSpec {
         name: name.to_owned(),
         label: label.to_owned(),
@@ -131,9 +132,7 @@ impl Strategy for RotaryRoughing {
                 "The depth of each layer, along the tool axis. Layers are made equal, so the \
                  last is not a thin one.",
                 Unit::Millimetres,
-                0.0,
-                true,
-                None,
+                (0.0, true, None),
                 None,
             ),
             number(
@@ -142,9 +141,7 @@ impl Strategy for RotaryRoughing {
                 "Indexed form: the angle between positions of A. The tool cuts the sector each \
                  position faces.",
                 Unit::Degrees,
-                0.0,
-                true,
-                Some(180.0),
+                (0.0, true, Some(180.0)),
                 Some(30.0),
             ),
             ParameterSpec {
@@ -166,9 +163,7 @@ impl Strategy for RotaryRoughing {
                 "Largest angle step",
                 "Continuous form: the most A may turn between two points of a layer.",
                 Unit::Degrees,
-                0.0,
-                true,
-                Some(90.0),
+                (0.0, true, Some(90.0)),
                 Some(5.0),
             ),
             number(
@@ -179,9 +174,7 @@ impl Strategy for RotaryRoughing {
                  least the simulation cell (0.1 mm by default), which is how finely the \
                  remaining stock is known.",
                 Unit::Millimetres,
-                0.0,
-                false,
-                None,
+                (0.0, false, None),
                 Some(0.15),
             ),
         ])
@@ -198,6 +191,17 @@ impl Strategy for RotaryRoughing {
             "indexed" => job.indexed(parameters, context),
             _ => job.continuous(parameters, context),
         }
+        .and_then(|passes| {
+            if passes.is_empty() {
+                Err(PathError::Strategy(format!(
+                    "rotary roughing has no cut to make: no material stands more than {} mm \
+                     above the part with its stock to leave",
+                    job.min_cut
+                )))
+            } else {
+                Ok(passes)
+            }
+        })
     }
 }
 
