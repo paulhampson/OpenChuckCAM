@@ -290,6 +290,7 @@ fn req_imp_02_tessellation_fallback_drop_is_within_the_mesh_error() {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
     .profile()
     .unwrap();

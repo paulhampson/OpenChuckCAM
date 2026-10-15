@@ -316,6 +316,7 @@ fn audit_geometry(
         shank_diameter: Millimetres(3.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     };
     let outline = Outline::new(&ball.profile().unwrap());
     let cuts = cutting_moves(replayed);

@@ -209,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-gcode"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "openchuck-types",
  "serde",
@@ -219,24 +219,26 @@ dependencies = [
 
 [[package]]
 name = "openchuck-geom"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "openchuck-types",
 ]
 
 [[package]]
 name = "openchuck-import"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "openchuck-geom",
  "openchuck-types",
+ "serde",
+ "serde_json",
  "stl_io",
  "thiserror",
 ]
 
 [[package]]
 name = "openchuck-post"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "minijinja",
  "openchuck-types",
@@ -247,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-project"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -259,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "serde",
  "thiserror",

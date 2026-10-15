@@ -934,6 +934,7 @@ fn req_imp_02_source_drop_tool_falls_back_to_the_tessellation() {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
     .profile()
     .unwrap();

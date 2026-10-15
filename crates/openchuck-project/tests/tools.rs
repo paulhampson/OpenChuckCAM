@@ -235,7 +235,7 @@ fn req_tl_04_req_tl_05_req_tl_06_snapshot_file_holds_every_value() {
     let files = file::render(&project).unwrap();
     let text = &files[&format!("tools/{id}.toml")];
     for line in [
-        "schema = 7",
+        "schema = 8",
         "name = \"6 mm flat\"",
         "overall_length = 50.0",
         "flute_count = 2",
@@ -263,4 +263,22 @@ fn req_prj_04_old_tool_snapshot_is_refused_with_what_to_do() {
     ] {
         assert!(err.contains(part), "{part}: {err}");
     }
+}
+
+#[test]
+fn req_tl_04_centre_cutting_is_read_from_a_tool_file_and_defaults_to_the_shape() {
+    let text = std::fs::read_to_string(corpus().join("library/6-mm-flat.toml")).unwrap();
+    let plain = parse_tool_file(Path::new("flat.toml"), &text).unwrap();
+    assert_eq!(plain.tool.centre_cutting, None);
+    assert!(plain.tool.can_plunge());
+
+    let stated = text.replace(
+        "material = \"carbide\"\n",
+        "material = \"carbide\"\ncentre_cutting = false\n",
+    );
+    let tool = parse_tool_file(Path::new("flat.toml"), &stated)
+        .unwrap()
+        .tool;
+    assert_eq!(tool.centre_cutting, Some(false));
+    assert!(!tool.can_plunge());
 }

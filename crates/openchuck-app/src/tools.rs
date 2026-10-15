@@ -276,6 +276,7 @@ mod tests {
                 shank_diameter: Millimetres(6.0),
                 flute_count: 2,
                 material: None,
+                centre_cutting: None,
             },
             controller: ControllerMapping::numbered(number),
             cutting_data: CuttingTable::new(),
