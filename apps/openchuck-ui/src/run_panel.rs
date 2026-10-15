@@ -164,6 +164,10 @@ struct RunningJob {
     handle: JobHandle<Regeneration>,
     simulate: bool,
     started: Instant,
+    /// The project as it was when the run started. It becomes the project
+    /// the latest run was made from only if the run succeeds, so a failed or
+    /// cancelled run never makes an older run look current.
+    project: Project,
 }
 
 /// The form for a new operation.
@@ -210,7 +214,6 @@ impl RunPanel {
         }
         self.last_error = None;
         self.progress = None;
-        self.last_project = Some(app.project().clone());
         let handle = if simulate {
             app.start_simulate()
         } else {
@@ -220,6 +223,7 @@ impl RunPanel {
             handle,
             simulate,
             started: Instant::now(),
+            project: app.project().clone(),
         });
     }
 
@@ -281,8 +285,8 @@ impl RunPanel {
                     Ok(run) => {
                         let run = Arc::new(run);
                         self.last = Some(Arc::clone(&run));
+                        self.last_project = Some(finished.project);
                         self.show_results = true;
-                        let _ = finished.simulate;
                         Some(run)
                     }
                     Err(e) if e.to_string().contains("cancel") => {
@@ -514,5 +518,47 @@ mod tests {
         let panel = RunPanel::default();
         assert!(!panel.is_running());
         assert!(panel.last.is_none());
+    }
+
+    /// A cancelled run must not make an older run look current: the project
+    /// the latest run was made from changes only when a run succeeds.
+    #[test]
+    fn req_ui_09_a_cancelled_run_leaves_an_older_run_out_of_date() {
+        use std::time::{Duration, Instant};
+
+        use crate::testing::cube_project;
+
+        let (dir, mut app, op, _) = cube_project("run-stale");
+        let ctx = egui::Context::default();
+        let mut panel = RunPanel::default();
+        let finish = |panel: &mut RunPanel, app: &Application| {
+            let started = Instant::now();
+            while panel.is_running() {
+                panel.poll(app, &ctx);
+                assert!(started.elapsed() < Duration::from_secs(120));
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        panel.start(&app, false);
+        finish(&mut panel, &app);
+        assert_eq!(panel.badge(&app, op), Some("generated"));
+        // An edit makes the run out of date.
+        app.set_parameter(
+            op,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(0.7)),
+        )
+        .unwrap();
+        assert_eq!(panel.badge(&app, op), Some("out of date"));
+        // A run that is started and cancelled does not make it current.
+        panel.start(&app, true);
+        panel.cancel();
+        finish(&mut panel, &app);
+        assert_eq!(panel.badge(&app, op), Some("out of date"));
+        // A run that succeeds does.
+        panel.start(&app, false);
+        finish(&mut panel, &app);
+        assert_eq!(panel.badge(&app, op), Some("generated"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

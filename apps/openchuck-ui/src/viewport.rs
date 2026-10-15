@@ -11,7 +11,7 @@ use openchuck_app::pathview::{DeviationBand, DeviationBands};
 use openchuck_app::pick::ScenePick;
 use openchuck_app::project::id::ModelId;
 use openchuck_app::scene::{Mesh as TriangleMesh, SceneRole, SceneView, triangles_mesh};
-use openchuck_viewport::camera::{IDENTITY, Mat4, rotation_x};
+use openchuck_viewport::camera::{IDENTITY, Mat4, rigid_inverse, rotation_x, transform};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
     Camera, Colour, DisplayMode, Frame, Layer, LineItem, Projection, Renderer, Scene, Slot,
@@ -481,7 +481,13 @@ impl Viewport {
             1.0 - f64::from((pointer.y - rect.top()) / rect.height()) * 2.0,
         ];
         let (origin, direction) = self.camera.ray(ndc, self.aspect);
-        let Ok(Some(hit)) = picker.pick(origin, direction) else {
+        // The part is drawn turned by its slot's transform (the machine view),
+        // so the ray is carried into the part's own frame: the hit is then the
+        // triangle under the pointer, in the frame the selections use.
+        let back = rigid_inverse(&self.part_transform);
+        let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
+        let d = transform(&back, [direction[0], direction[1], direction[2], 0.0]);
+        let Ok(Some(hit)) = picker.pick([o[0], o[1], o[2]], [d[0], d[1], d[2]]) else {
             return;
         };
         self.input.hover = Some(hit);
@@ -664,6 +670,40 @@ mod tests {
         };
         let mut output = ctx.run_ui(input, |ui| viewport.show(ui));
         output.textures_delta.clear();
+    }
+
+    /// In the machine view the part is drawn turned by its slot's transform,
+    /// so the pick ray must be carried into the part's frame: the hit is the
+    /// triangle under the pointer on screen, with its normal in the part's
+    /// own frame (the frame selections use).
+    #[test]
+    fn req_ui_04_picking_follows_the_part_when_it_is_turned_with_a() {
+        let view = cube_scene("turned");
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_picking(true);
+        viewport.set_view(StandardView::Front);
+        // Not turned: the face toward the viewer (looking along +Y) is the
+        // one whose normal is -Y.
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), false);
+        let plain = viewport.take_input().hover.unwrap().normal.unwrap();
+        assert!((plain.y + 1.0).abs() < 1e-9, "{plain:?}");
+        // Turned a quarter turn about X, the face toward the viewer is the
+        // one that was on top: normal +Z in the part's frame.
+        viewport.set_part_turn(90.0);
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), false);
+        let turned = viewport
+            .take_input()
+            .hover
+            .expect("the turned cube is under the pointer");
+        let n = turned.normal.unwrap();
+        assert!((n.z - 1.0).abs() < 1e-9 && n.y.abs() < 1e-9, "{n:?}");
+        // Turned back, it is the original face again.
+        viewport.set_part_turn(0.0);
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), false);
+        let again = viewport.take_input().hover.unwrap().normal.unwrap();
+        assert!((again.y + 1.0).abs() < 1e-9);
     }
 
     #[test]

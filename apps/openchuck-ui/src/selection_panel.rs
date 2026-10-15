@@ -476,7 +476,7 @@ impl SelectionPanel {
                 ),
                 (
                     "Replace with selection",
-                    "Make this set the working selection",
+                    "Replace this set's triangles with the working selection",
                     2,
                 ),
             ] {

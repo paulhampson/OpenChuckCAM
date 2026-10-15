@@ -156,8 +156,30 @@ impl Default for PlaybackPanel {
 }
 
 impl PlaybackPanel {
+    /// Asks every job the panel has running to stop: a job handle does not
+    /// cancel its job when dropped, and an obsolete stock preparation would
+    /// go on using the pool and holding checkpoint memory.
+    fn cancel_jobs(&self) {
+        if let Some(job) = &self.data_job {
+            job.cancel();
+        }
+        if let Some(job) = &self.lines_job {
+            job.cancel();
+        }
+        if let Some(job) = &self.bands_job {
+            job.cancel();
+        }
+        if let Some(job) = &self.stock.prepare {
+            job.cancel();
+        }
+        if let Some((job, _)) = &self.stock.mesh {
+            job.cancel();
+        }
+    }
+
     /// Forgets everything: a project was closed or opened.
     pub fn clear(&mut self) {
+        self.cancel_jobs();
         *self = Self {
             open: self.open,
             reset_layers: true,
@@ -167,6 +189,7 @@ impl PlaybackPanel {
 
     /// Takes in a new run: prepares it for display, and opens the panel.
     pub fn set_run(&mut self, app: &Application, run: Arc<Regeneration>) {
+        self.cancel_jobs();
         *self = Self {
             open: true,
             view: self.view,
