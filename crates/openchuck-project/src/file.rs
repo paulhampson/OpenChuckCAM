@@ -306,6 +306,8 @@ pub fn selection_inputs_hash(
         model: ModelId,
         model_hash: ContentHash,
         target: &'a SelectionTarget,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        stock_to_leave: Option<f64>,
     }
     #[derive(Serialize)]
     struct Inputs<'a> {
@@ -331,6 +333,7 @@ pub fn selection_inputs_hash(
                     model: s.model,
                     model_hash: s.model_hash,
                     target: &s.target,
+                    stock_to_leave: s.stock_to_leave,
                 },
             )
         })

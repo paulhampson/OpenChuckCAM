@@ -16,7 +16,7 @@ use std::path::Path;
 use openchuck_path::params::{ParameterKind, names};
 use openchuck_path::{
     AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
-    StrategyInput, SurfaceSource, generate, generate_in_region,
+    StrategyInput, SurfaceSource, generate, generate_in_region, generate_in_zones,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -268,9 +268,39 @@ pub fn generate_operation_on(
         tags: &tags,
     };
     let resolved = parameter_values(project, operation, registry)?;
-    let path = match &constraint {
-        Some(region) => generate_in_region(strategy, &input, region, &resolved.values, context)?,
-        None => generate(strategy, &input, &resolved.values, context)?,
+    let zones = resolved_region.as_ref().map_or_else(Vec::new, |r| {
+        let leave = match resolved.values.get(names::STOCK_TO_LEAVE) {
+            Some(openchuck_path::ParameterValue::Number(v)) => *v,
+            _ => 0.0,
+        };
+        r.zones(leave)
+    });
+    if !zones.is_empty() && !strategy.honours_leave_zones() {
+        return Err(missing(
+            operation,
+            &format!(
+                "the strategy '{}' cannot leave different stock on different selections \
+                 (OP-11); clear the stock to leave of the selection sets",
+                operation.strategy
+            ),
+        ));
+    }
+    let path = if zones.is_empty() {
+        match &constraint {
+            Some(region) => {
+                generate_in_region(strategy, &input, region, &resolved.values, context)?
+            }
+            None => generate(strategy, &input, &resolved.values, context)?,
+        }
+    } else {
+        generate_in_zones(
+            strategy,
+            &input,
+            constraint.as_ref(),
+            &zones,
+            &resolved.values,
+            context,
+        )?
     };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;

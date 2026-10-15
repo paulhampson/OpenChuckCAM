@@ -28,11 +28,11 @@
 //! nothing, or a face or edge selection on a mesh. Nothing is dropped
 //! silently (verification policy 8).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use openchuck_geom::edges::EdgeMap;
 use openchuck_geom::select::{self, TriangleSet};
-use openchuck_path::{MeshSurface, RegionConstraint, Window};
+use openchuck_path::{LeaveZone, MeshSurface, RegionConstraint, Window};
 use openchuck_project::id::{ModelId, SelectionSetId};
 use openchuck_project::{
     ContentHash, Item, ModelRef, Operation, Placement, Project, SelectionSet, SelectionTarget,
@@ -82,6 +82,9 @@ pub enum SelectionEdit {
     Replace(TriangleSet),
     /// Renames the set.
     Rename(String),
+    /// Sets the stock to leave on the set, in millimetres, or clears it so the
+    /// operation's value applies (OP-11).
+    StockToLeave(Option<f64>),
 }
 
 fn selection_error(name: &str, reason: impl Into<String>) -> AppError {
@@ -205,6 +208,14 @@ impl Application {
             .ok_or_else(|| AppError::UnknownSelection(set.to_string()))?;
         if let SelectionEdit::Rename(name) = edit {
             edited.name = name;
+        } else if let SelectionEdit::StockToLeave(leave) = edit {
+            if leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                return Err(selection_error(
+                    &edited.name,
+                    "the stock to leave must be zero or more millimetres",
+                ));
+            }
+            edited.stock_to_leave = leave;
         } else {
             let SelectionTarget::Triangles(current) = &mut edited.target else {
                 return Err(selection_error(
@@ -216,7 +227,7 @@ impl Application {
                 SelectionEdit::Add(more) => current.extend(more),
                 SelectionEdit::Remove(less) => current.retain(|t| !less.contains(t)),
                 SelectionEdit::Replace(all) => *current = all,
-                SelectionEdit::Rename(_) => {}
+                SelectionEdit::Rename(_) | SelectionEdit::StockToLeave(_) => {}
             }
             if current.is_empty() {
                 return Err(selection_error(
@@ -270,9 +281,39 @@ pub(crate) struct ResolvedRegion {
     boundary: Option<Window>,
     avoid: Option<MeshSurface>,
     check: Option<MeshSurface>,
+    /// The selected triangles that have a stock to leave of their own,
+    /// grouped by amount; where sets overlap the largest amount applies
+    /// (OP-11, decision record 0033 item 4).
+    leaves: Vec<(MeshSurface, f64)>,
+    /// The rest of the part, which takes the operation's stock to leave.
+    /// `None` when no set has an amount of its own.
+    rest: Option<MeshSurface>,
 }
 
 impl ResolvedRegion {
+    /// The zones for a strategy, the rest taking `operation_leave`. Empty
+    /// when no selected set has a stock to leave of its own.
+    pub(crate) fn zones(&self, operation_leave: f64) -> Vec<LeaveZone<'_>> {
+        if self.leaves.is_empty() {
+            return Vec::new();
+        }
+        let mut zones: Vec<LeaveZone<'_>> = self
+            .leaves
+            .iter()
+            .map(|(surface, leave)| LeaveZone {
+                surface,
+                leave: *leave,
+            })
+            .collect();
+        if let Some(rest) = &self.rest {
+            zones.push(LeaveZone {
+                surface: rest,
+                leave: operation_leave,
+            });
+        }
+        zones
+    }
+
     pub(crate) fn constraint(&self) -> RegionConstraint<'_> {
         RegionConstraint {
             region: self.region.as_ref().map(|s| s as _),
@@ -362,10 +403,58 @@ pub(crate) fn resolve(
     let boundary = union(&mut operation.boundary.into_iter())?
         .map(|t| Ok::<_, AppError>(Window::of_mesh(&select::submesh(mesh, &t)?)?))
         .transpose()?;
+    // Each triangle takes the largest stock to leave of the selected sets
+    // that hold it.
+    let mut amount: BTreeMap<u32, f64> = BTreeMap::new();
+    for id in &operation.selections {
+        let Some(set) = project.selection_sets().iter().find(|s| s.id == *id) else {
+            continue;
+        };
+        let (Some(leave), SelectionTarget::Triangles(triangles)) =
+            (set.stock_to_leave, &set.target)
+        else {
+            continue;
+        };
+        for &t in triangles {
+            let entry = amount.entry(t).or_insert(leave);
+            *entry = entry.max(leave);
+        }
+    }
+    let mut groups: BTreeMap<u64, (f64, TriangleSet)> = BTreeMap::new();
+    for (t, leave) in &amount {
+        groups
+            .entry(leave.to_bits())
+            .or_insert_with(|| (*leave, BTreeSet::new()))
+            .1
+            .insert(*t);
+    }
+    let leaves = groups
+        .into_values()
+        .map(|(leave, triangles)| {
+            Ok((
+                MeshSurface::new(&select::submesh(mesh, &triangles)?)?,
+                leave,
+            ))
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    let rest = if leaves.is_empty() {
+        None
+    } else {
+        let others: TriangleSet = (0..mesh.triangles.len() as u32)
+            .filter(|t| !amount.contains_key(t))
+            .collect();
+        if others.is_empty() {
+            None
+        } else {
+            Some(MeshSurface::new(&select::submesh(mesh, &others)?)?)
+        }
+    };
     Ok(Some(ResolvedRegion {
         region,
         boundary,
         avoid,
         check,
+        leaves,
+        rest,
     }))
 }
