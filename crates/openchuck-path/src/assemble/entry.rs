@@ -461,9 +461,7 @@ fn stop_height(
         return here.height;
     };
     let travel = (here.height - goal).max(0.0);
-    let entry_height = input
-        .stock
-        .ray_entry(b.pose.tip, down, travel)
+    let entry_height = super::swept_entry(input.stock, input.tool, b.pose.tip, down, travel)
         .map(|d| here.height - d);
     let stop = goal.max(entry_height.unwrap_or(f64::NEG_INFINITY)) + common.approach_distance.0;
     stop.min(here.height)

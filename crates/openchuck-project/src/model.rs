@@ -1176,6 +1176,13 @@ impl Project {
                     .find(|m| m.id == s.model)
                     .and_then(ModelRef::kind);
                 check_selection_kind(s, kind)?;
+                if s.stock_to_leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("selection set {}.stock_to_leave", s.id),
+                        "stock_to_leave must be a number of millimetres, zero or more",
+                    )
+                    .into());
+                }
                 for (i, d) in s.descriptors.iter().enumerate() {
                     let field = format!("selection set {}.descriptors[{i}]", s.id);
                     d.position.validate(&format!("{field}.position"))?;

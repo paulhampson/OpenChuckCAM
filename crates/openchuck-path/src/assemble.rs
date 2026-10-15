@@ -397,6 +397,63 @@ pub fn smoothed_contacts(points: &[CutPoint]) -> Vec<Point3> {
         .collect()
 }
 
+/// How many parallel lines [`swept_entry`] casts round the cutter at each of
+/// [`SWEPT_RINGS`] radii.
+const SWEPT_RAYS: u32 = 32;
+
+/// How many radii out to the cutting radius [`swept_entry`] samples.
+const SWEPT_RINGS: u32 = 4;
+
+/// The distance the tool tip, at `tip`, can move along `direction` (the way
+/// the tool moves, a unit vector along its axis) before the cutter first meets
+/// material, no further than `max_distance`; `None` when it stays clear.
+///
+/// A line through the tool tip alone can miss stock that the body of the
+/// cutter would hit, such as a stock end beside a lead arc outside the part.
+/// So lines are cast from the cutter's own surface: at each of
+/// [`SWEPT_RINGS`] radii out to the cutting radius, [`SWEPT_RAYS`] parallel
+/// lines start at the point of the profile at that radius (its height above
+/// the tip) and the least entry counts. A flat tool's profile is flat, so it
+/// behaves as a cylinder; a ball is narrow near its tip. The cutter may reach
+/// material by at most `radius * (1 - cos(pi / SWEPT_RAYS))` between two
+/// lines, 0.007 mm for a 1.5 mm radius.
+pub(crate) fn swept_entry(
+    stock: &dyn crate::stock::StockModel,
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tip: Point3,
+    direction: openchuck_types::geometry::UnitVec3,
+    max_distance: f64,
+) -> Option<f64> {
+    let mut best = stock.ray_entry(tip, direction, max_distance);
+    let radius = profile.cutting_radius();
+    if !(radius.is_finite() && radius > 0.0) {
+        return best;
+    }
+    // Up the tool axis is against the way it moves.
+    let up = -direction.get();
+    // Two directions across the tool axis: along the rotary axis (model X)
+    // and the one perpendicular to both.
+    let along = openchuck_types::geometry::Vec3::new(1.0, 0.0, 0.0);
+    let across = up.cross(along);
+    let len = across.length();
+    if len < 1e-9 {
+        return best;
+    }
+    let across = across * (1.0 / len);
+    for ring in 1..=SWEPT_RINGS {
+        let d = radius * f64::from(ring) / f64::from(SWEPT_RINGS);
+        let rise = profile.height_at(d).unwrap_or(0.0);
+        for k in 0..SWEPT_RAYS {
+            let angle = std::f64::consts::TAU * f64::from(k) / f64::from(SWEPT_RAYS);
+            let origin = tip + up * rise + along * (d * angle.cos()) + across * (d * angle.sin());
+            if let Some(e) = stock.ray_entry(origin, direction, max_distance) {
+                best = Some(best.map_or(e, |b| b.min(e)));
+            }
+        }
+    }
+    best
+}
+
 /// Leaves the cut along the tool axis at the plunge feed until the tool tip
 /// is the approach distance above the stock on that line (the stock model
 /// may not know what this operation has cut), so the rapid retract that
@@ -414,7 +471,7 @@ fn leave(
     let axis = b.rotary.tool_axis(b.pose.a);
     let down = openchuck_types::geometry::UnitVec3::new(-axis.get()).map_err(PathError::from)?;
     let top = b.rotary.to_model(AxisPosition { height, ..here }, b.pose.a);
-    let Some(d) = input.stock.ray_entry(top, down, height - here.height) else {
+    let Some(d) = swept_entry(input.stock, input.tool, top, down, height - here.height) else {
         return Ok(());
     };
     let clear = (height - d + common.approach_distance.0).min(height);

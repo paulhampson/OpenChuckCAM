@@ -967,3 +967,22 @@ fn req_op_11_nfr_07_bad_stock_to_leave_is_refused_and_schema_7_still_loads() {
     }
     assert_eq!(file::load(&old).unwrap(), q);
 }
+
+#[test]
+fn req_op_11_nfr_07_a_bad_stock_to_leave_cannot_be_put_in_the_project() {
+    for bad in [-0.5, f64::NAN, f64::INFINITY] {
+        let mut p = with_roles();
+        let mut set = p
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == SelectionSetId::from_u128(31))
+            .unwrap()
+            .clone();
+        set.stock_to_leave = Some(bad);
+        let err = p.replace(Item::SelectionSet(set.clone())).unwrap_err();
+        assert!(err.to_string().contains("stock_to_leave"), "{bad}: {err}");
+        // Zero is allowed.
+        set.stock_to_leave = Some(0.0);
+        p.replace(Item::SelectionSet(set)).unwrap();
+    }
+}

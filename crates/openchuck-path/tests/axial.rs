@@ -298,6 +298,41 @@ fn req_op_11_lead_entry_works_on_all_three_finishing_strategies() {
             .collect();
         let g = max_gouge(&outline, &part, &poses, 0.15);
         assert!(g.depth <= 0.003, "{}: gouge {}", strategy.name(), g.depth);
+        // No rapid puts the ball into the stock (a cylinder of radius 16 from
+        // X = -1 to 21): the lead arcs start outside the part, where a line
+        // through the tool tip alone can miss the stock end beside the ball.
+        let mut prev = path.group.start;
+        for s in &path.group.segments {
+            if s.kind == MoveKind::Rapid {
+                for i in 0..=20 {
+                    let t = f64::from(i) / 20.0;
+                    // The machine moves in a straight line in X, Y, Z and A.
+                    let (p0, p1) = (
+                        f.rotary.to_axis(prev.tip, prev.a),
+                        f.rotary.to_axis(s.end.tip, s.end.a),
+                    );
+                    let at = openchuck_path::rotary::AxisPosition {
+                        along: p0.along + t * (p1.along - p0.along),
+                        across: p0.across + t * (p1.across - p0.across),
+                        height: p0.height + t * (p1.height - p0.height),
+                    };
+                    let a = openchuck_types::units::Degrees(prev.a.0 + t * (s.end.a.0 - prev.a.0));
+                    let tip = f.rotary.to_model(at, a);
+                    let c = tip + f.rotary.tool_axis(a).get() * 3.0;
+                    let dx = (-1.0 - c.x).max(0.0).max(c.x - 21.0);
+                    let dr = (c.y.hypot(c.z) - 16.0).max(0.0);
+                    assert!(
+                        // The cutter is judged by 32 lines round it, so it may
+                        // reach material by up to 3 (1 - cos(pi / 32)) = 0.015 mm.
+                        dx.hypot(dr) > 3.0 - 0.02,
+                        "{}: a rapid puts the ball {:.3} mm into the stock at {c:?}",
+                        strategy.name(),
+                        3.0 - dx.hypot(dr)
+                    );
+                }
+            }
+            prev = s.end;
+        }
     }
 }
 
@@ -362,4 +397,62 @@ mod property {
             }
         }
     }
+}
+
+/// OP-14: no rapid puts the cutter into the stock, with a lead arc that starts
+/// beyond the end of the part (and so beside the end of the stock), on a
+/// part much smaller than its stock. The line through the tool tip alone
+/// misses the stock end there, so the descent was stopped too low.
+#[test]
+fn req_op_14_req_op_11_lead_entry_beside_the_stock_end_never_rapids_into_stock() {
+    let part = Cone {
+        start_radius: 10.0,
+        end_radius: 5.0,
+        length: 30.0,
+    };
+    let surface = MeshSurface::new(&part.mesh(121, 144)).unwrap();
+    // Stock: radius 11, from X = -1 to 31 (what `Fixture` makes).
+    let f = Fixture::new(surface, 11.0, &ball(3.0));
+    let v = values(
+        2.0,
+        &[
+            (names::ENTRY, ParameterValue::Text("lead".into())),
+            (parameter::MAX_X_STEP, num(3.0)),
+        ],
+    );
+    let path = axial(&f, &v);
+    let mut prev = path.group.start;
+    let mut worst = 0.0_f64;
+    let mut rapids = 0;
+    for s in &path.group.segments {
+        if s.kind == MoveKind::Rapid {
+            rapids += 1;
+            for i in 0..=20 {
+                let t = f64::from(i) / 20.0;
+                // The machine moves in a straight line in X, Y, Z and A.
+                let (p0, p1) = (
+                    f.rotary.to_axis(prev.tip, prev.a),
+                    f.rotary.to_axis(s.end.tip, s.end.a),
+                );
+                let at = openchuck_path::rotary::AxisPosition {
+                    along: p0.along + t * (p1.along - p0.along),
+                    across: p0.across + t * (p1.across - p0.across),
+                    height: p0.height + t * (p1.height - p0.height),
+                };
+                let a = openchuck_types::units::Degrees(prev.a.0 + t * (s.end.a.0 - prev.a.0));
+                let c = f.rotary.to_model(at, a) + f.rotary.tool_axis(a).get() * 1.5;
+                let dx = (-1.0 - c.x).max(0.0).max(c.x - 31.0);
+                let dr = (c.y.hypot(c.z) - 11.0).max(0.0);
+                worst = worst.max(1.5 - dx.hypot(dr));
+            }
+        }
+        prev = s.end;
+    }
+    assert!(rapids > 10);
+    // The cutter is judged by 32 lines round it, so it may reach material by
+    // up to 1.5 (1 - cos(pi / 32)) = 0.007 mm.
+    assert!(
+        worst <= 0.02,
+        "a rapid puts the ball {worst:.3} mm into the stock"
+    );
 }
