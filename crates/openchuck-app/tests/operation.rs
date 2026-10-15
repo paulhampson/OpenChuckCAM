@@ -387,6 +387,32 @@ fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_nam
 }
 
 #[test]
+fn req_op_05_req_op_01_simultaneous_finishing_runs_from_a_project_with_the_builtin_strategy() {
+    let (dir, mut app, op) = project("simultaneous");
+    assert!(app.strategies().get("simultaneous_finishing").is_ok());
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "simultaneous_finishing".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let result = app.regenerate().unwrap();
+    let group = &result.toolpath.groups[0];
+    let cutting: Vec<_> = group
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .collect();
+    assert!(cutting.len() > 500, "{}", cutting.len());
+    assert!(group.segments.iter().all(|s| s.end.tip.is_finite()));
+    // The part is a mesh, and the notes say the tolerance is judged on it.
+    assert!(
+        result.notes.iter().any(|n| n.contains("against the mesh")),
+        "{:?}",
+        result.notes
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_04_req_op_01_helical_finishing_runs_from_a_project_with_the_builtin_strategy() {
     let (dir, mut app, op) = project("helical");
     // The library's own strategy needs no registration.

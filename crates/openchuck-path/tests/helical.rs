@@ -762,3 +762,21 @@ fn req_nfr_08_the_helical_toolpath_matches_its_golden_file() {
         .join("../../testdata/golden/helical_cone.txt");
     openchuck_testkit::golden::check(&golden, &text).unwrap();
 }
+
+#[test]
+fn req_op_04_req_op_11_helical_scallop_sets_the_pitch_for_a_ball() {
+    let part = Cylinder {
+        radius: 15.0,
+        length: 10.0,
+    };
+    let f = fixture(&part, 3, 1440, &ball(6.0));
+    // A 3 mm ball leaving 0.01 mm cusps: pitch 2 sqrt(2 rho h - h^2).
+    let h: f64 = 0.01;
+    let pitch = 2.0 * (2.0 * 3.0 * h - h * h).sqrt();
+    let path = helical(&f, &values(50.0, &[(parameter::SCALLOP, num(h))]));
+    let cuts = cuts(&path);
+    let (from, s) = cuts[10];
+    let dx = s.end.tip.x - from.tip.x;
+    let da = s.end.a.0 - from.a.0;
+    assert!((da - 360.0 * dx / pitch).abs() < 1e-6, "{da} {dx} {pitch}");
+}

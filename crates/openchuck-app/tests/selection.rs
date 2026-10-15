@@ -580,3 +580,71 @@ fn req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations() {
+    let (dir, mut app, op, model) = project("leave");
+    let roof = app
+        .save_selection("Top", model, top_face(&app, model))
+        .unwrap();
+    set_roles(&mut app, op, |o| {
+        o.selections = vec![roof];
+        // A whole number, as a hand-edited project file may hold it: it is
+        // still the operation's 1 mm.
+        o.parameters.insert(
+            "stock_to_leave".into(),
+            openchuck_app::project::ParameterValue::Integer(1),
+        );
+    });
+    let gaps = |app: &mut Application| -> Vec<f64> {
+        let group = app.regenerate().unwrap().toolpath.groups[0].clone();
+        cuts(&group).iter().map(|(_, c)| gap_to_top(*c)).collect()
+    };
+    // Without an amount of its own the operation's 1 mm applies.
+    let before = selection_inputs_hash(app.project(), op).unwrap();
+    for g in gaps(&mut app) {
+        assert!((g - 1.0).abs() < 2e-3, "{g}");
+    }
+    // The set's 0.3 mm replaces it on the selection; the hash changes, so the
+    // cache regenerates.
+    let marked = app
+        .edit_selection(roof, SelectionEdit::StockToLeave(Some(0.3)))
+        .unwrap();
+    assert_eq!(marked, vec![op]);
+    assert_ne!(selection_inputs_hash(app.project(), op).unwrap(), before);
+    let g = gaps(&mut app);
+    assert!(!g.is_empty());
+    // Away from the cube's edges the selection keeps 0.3 mm; beside an edge
+    // the ball also rides the neighbouring faces' 1 mm, so it is never
+    // closer than 0.3 mm and never further than 1 mm.
+    for g in &g {
+        assert!((0.3 - 2e-3..=1.0 + 2e-3).contains(g), "{g}");
+    }
+    // The ball is 2 mm in radius on a 10 mm face, so the part of the face
+    // clear of the 1 mm beside the edges is a middle strip: some cuts keep
+    // the selection's own 0.3 mm (the path has few points on a flat strip).
+    // Beside an edge the rest of the part is left the operation's 1 mm (not
+    // 0, as when a whole-number value was read as no value).
+    assert!(
+        g.iter().any(|g| (*g - 1.0).abs() < 2e-3),
+        "no cut rides the rest of the part at 1 mm"
+    );
+    let own = g.iter().filter(|g| (**g - 0.3).abs() < 2e-3).count();
+    assert!(own >= 3, "{own} of {} cuts keep 0.3 mm", g.len());
+    // Bad amounts are refused; clearing goes back to the operation's.
+    for bad in [-0.1, f64::NAN] {
+        assert!(
+            err(app.edit_selection(roof, SelectionEdit::StockToLeave(Some(bad))))
+                .contains("zero or more")
+        );
+    }
+    app.edit_selection(roof, SelectionEdit::StockToLeave(None))
+        .unwrap();
+    assert_eq!(selection_inputs_hash(app.project(), op).unwrap(), before);
+    // The edit is one undoable command.
+    app.edit_selection(roof, SelectionEdit::StockToLeave(Some(0.3)))
+        .unwrap();
+    app.undo().unwrap();
+    assert_eq!(app.project().selection_sets()[0].stock_to_leave, None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

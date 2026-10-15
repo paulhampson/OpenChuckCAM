@@ -25,9 +25,9 @@
 //! **Boundary.** A [`Window`] is the bounding window of a set of triangles in
 //! the development of the rotary axis: an interval of X and the smallest arc
 //! of angle about X that holds the vertices. It is the first form of the
-//! containment boundary; offset boundaries drawn on the unrolled surface
-//! arrive with the region offsets of slice 12 (OP-02 spans slices 10, 12 and
-//! 14).
+//! containment boundary; a boundary drawn as a curve on the surface is still open (OI-137).
+//! Where a pass can reach the selected region is found through the region's
+//! offset ([`crate::candidates`], slice 12).
 
 use openchuck_types::geometry::Point3;
 use openchuck_types::mesh::TriangleMesh;

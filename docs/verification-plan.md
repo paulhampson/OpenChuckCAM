@@ -101,6 +101,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | OP-17 | P2 | T, A | System | Adaptive roughing keeps engagement within limits, measured in simulation |
 | OP-18 | P3 | T | Integration | Feature recognition finds known holes, grooves and cylinders in corpus models, when built |
 | OP-19 | P2 | T, A | System | Geodesic-parallel and spiral patterns keep scallop height within the set limit on surfaces with known geodesics (cylinder, cone), measured in simulation, when built |
+| OP-20 | P2 | T, A | System | On parts with undercuts and slot walls, the reachable hidden surfaces are driven and covered, the independent checker reports no gouge, and unreachable surfaces are reported, when built |
 | OP-21 | P1 | T, D | Unit, system | Cylindrical and frustum tabs have their analytic volumes and surfaces; tab placement, count and spacing validate and persist; roughing and finishing on the oracle parts leave each tab whole (independent checker reports no gouge into it); the simulated stock keeps it and the deviation report counts it as part |
 | SIM-01, SIM-02, SIM-04 | P1 | D, T | System | Path display, rapid versus cutting distinction, tool pose with correct A rotation and playback controls checked in the demo script and by pose tests |
 | SIM-03, SIM-06, SIM-07 | P1 | T, A | System | Stock update, including A rotation, matches an independent reference; carry-over between operations; resolution setting changes accuracy as documented |

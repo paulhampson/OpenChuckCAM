@@ -20,7 +20,8 @@
 //! parameters against its schema and hands the passes to the shared services
 //! in [`assemble`]: A-axis management (OP-15), linking (OP-14) and contact
 //! feed with segment durations (OP-13). Strategies are found by name in a
-//! [`Registry`] (OP-16); the library's own is [`HelicalFinishing`]. Tool-centre
+//! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`] and
+//! [`SimultaneousFinishing`]. Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -65,27 +66,35 @@
 #![warn(missing_docs)]
 
 pub mod assemble;
+pub mod axial;
 pub mod brep;
+mod candidates;
 pub mod cutter;
 mod error;
 pub mod field;
 pub mod helical;
+pub mod indexed;
 pub mod parallel;
 pub mod params;
 pub mod region;
 pub mod rotary;
 pub mod roughing;
+mod scallop;
+pub mod simultaneous;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
 pub mod unroll;
+mod wrap_fit;
 
 pub use assemble::{GeneratedPath, PathNote};
+pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
 pub use field::HeightStock;
 pub use helical::HelicalFinishing;
+pub use indexed::IndexedFinishing;
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,
@@ -93,9 +102,11 @@ pub use params::{
 pub use region::{RegionConstraint, Window};
 pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;
+pub use simultaneous::SimultaneousFinishing;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, Pass, PassStock, Registry, Strategy, StrategyInput, generate, generate_in_region,
+    CutPoint, LeaveZone, Pass, PassStock, Registry, Strategy, StrategyInput, StrategyOutput,
+    generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
