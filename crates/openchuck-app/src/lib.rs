@@ -38,6 +38,7 @@ mod posting;
 pub mod scene;
 pub mod selection;
 pub mod setup;
+mod setup_sheet;
 pub mod simulation;
 pub mod tool_edit;
 pub mod tools;
@@ -68,8 +69,9 @@ pub use openchuck_project as project;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use pipeline::Regeneration;
-pub use posting::{GcodeComparison, GcodeReport, PostSelection};
+pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PostSelection};
 pub use selection::{RegionRequest, SelectionEdit};
+pub use setup_sheet::{SetupSheet, SheetBody, SheetSection};
 pub use simulation::{OperationSimulation, SetupSimulation, SimulationReport};
 
 // The application layer maps project data to every engine crate (architecture
@@ -152,6 +154,7 @@ pub struct Application {
     cache: cache::PipelineCache,
     strategies: Registry,
     post: Option<PostSelection>,
+    grouping: OutputGrouping,
     events_tx: Sender<Event>,
     events_rx: Receiver<Event>,
 }
@@ -195,6 +198,7 @@ impl Application {
             cache: cache::PipelineCache::default(),
             strategies: Registry::builtin(),
             post: None,
+            grouping: OutputGrouping::default(),
             events_tx,
             events_rx,
         })
@@ -612,6 +616,7 @@ impl Application {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
+        let grouping = self.grouping;
         let cache = self.cache.clone();
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
@@ -619,7 +624,7 @@ impl Application {
                     &document.location,
                     &document.project,
                     &strategies,
-                    post.as_ref(),
+                    post.as_ref().map(|p| (p, grouping)),
                     simulate,
                     &cache,
                     context,
@@ -653,6 +658,23 @@ impl Application {
     /// Without one, regeneration produces toolpaths only.
     pub fn set_post(&mut self, post: Option<PostSelection>) {
         self.post = post;
+    }
+
+    /// Chooses how the G-code is split into files (GC-05). The default is one
+    /// file per setup.
+    pub fn set_output_grouping(&mut self, grouping: OutputGrouping) {
+        self.grouping = grouping;
+    }
+
+    /// How the G-code is split into files.
+    pub fn output_grouping(&self) -> OutputGrouping {
+        self.grouping
+    }
+
+    /// The project's setup sheet (GC-12). Pass a regeneration's toolpath to
+    /// include each operation's programmed time.
+    pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
+        SetupSheet::new(&self.document.project, toolpath)
     }
 
     /// The strategies operations can use (OP-16).

@@ -153,7 +153,7 @@ Built as if it already belonged to another project (INT-01): small public API, p
 - **Job manager (UI-09, NFR-04).** Runs pathing, simulation and import on a worker pool with cancellation and progress, and never on the UI thread.
 - **Operation pipeline.** See section 6.
 - **Mapping.** Converts project-model objects to the library's plain data, so the libraries never see the project file (INT-01).
-- **Export.** G-code through `openchuck-post`, setup sheet as HTML or PDF (GC-12), with times once SIM-08 exists.
+- **Export.** G-code through `openchuck-post`, setup sheet as HTML or PDF (GC-12), written by the setup sheet module from one document model; times are the IR's programmed time until SIM-08 gives estimates.
 
 ### 5.8 Viewport and UI (`openchuck-viewport`, `openchuck-ui`)
 
@@ -207,7 +207,7 @@ Taken from the crate survey, which scores crates out of 100 against NFR-14's cri
 | Post scripting (GC-13, P2) | Spike `rhai` (90) | `openchuck-post` | `starlark` (84) is built to be deterministic; `mlua` (94) scores higher but needs a C compiler. Pick on fit, not rank. rhai's repository carries an AGENTS.md; the survey scores it 4 on AI risk because the project is old. |
 | Project files (PRJ-01 to PRJ-04) | `serde` (93) with `toml` (92); `toml_edit` (93) for hand-edited files (decision 0006) | `openchuck-project` | `serde_json` (97), `ron` (85). `serde_yaml` is archived. Use ordered maps so saved files are stable (NFR-06). |
 | IDs and hashes | `uuid` (99), `blake3` (93) | `openchuck-project` | `sha2` (85). Order keys (PRJ-05) are written in-house: `fractional_index` (64) is the only crate and serves as a reference. |
-| Setup sheet (GC-12) | HTML from the template engine; `printpdf` (90) if a PDF is required | `openchuck-app` (setup sheet module), rendering through the template engine | `typst` (88) is heavy; `genpdf` (53) is abandoned. |
+| Setup sheet (GC-12) | In-house: HTML with an escaping helper, and a small PDF writer in the built-in Courier fonts, both from one document model (decision 0028) | `openchuck-app` (setup sheet module) | `printpdf` (90, 105 packages in its tree) and `pdf-writer` (75) stay the fallbacks if layout quality matters; `typst` (88) is heavy; `genpdf` (53) is abandoned. |
 | NURBS evaluation | In-house, pure Rust, from plain data (decision 0017); analytic surfaces in-house | `openchuck-path` | `curvo` (71) tried by SP-9 and not adopted (slow projection, experimental ray tool, panics on periodic input); `brepkit-math` (66) is AGPL-3.0-only. |
 | Python bindings (INT-05, later) | `pyo3` (99) with `maturin` (82) | `openchuck-path-py` | `uniffi` (81). |
 | C interface (INT-06, later) | `cbindgen` (84) over a hand-written `extern "C"` layer | `openchuck-path-capi` | `diplomat` (82). `cbindgen` and `uniffi` are MPL-2.0; check against INT-09 and NFR-10. |
@@ -406,3 +406,4 @@ This follows the requirement priorities and the survey's advice to spike each la
 - Verification review: added an independent kinematic oracle to the verification table (it covers the case where the path library, post and G-code reader share one wrong machine model), the acceptance limits and reference hardware from the verification plan to the simulation and performance rows, and the requirement-ID test convention and traceability report to the repository section.
 - Revision 4 (diagrams only, no design change): added Figure 1, the static structure of the crates (section 3), and Figure 2, the dataflow of the operation pipeline (section 6). Both are SVG files in `docs/diagrams/`, drawn from sections 3, 4 and 6, and follow the viewer's light or dark setting.
 - Slice 4 (decision record 0014, agreed 12 Oct 2026): section 5.6 describes the tool library as a folder of tool files with machine tool sets (TL-11), tool numbers belonging to the project; section 5.3 gains the tool-number confirmation before posting (GC-14), which the application layer asks and the post receives as data.
+- Slice 19 (decision record 0028, accepted 15 Oct 2026): section 5.3's output control gains output grouping by project, setup, operation or tool (a project file across several setups is refused for now, OI-92) and operation comments that name the operation and tool number; the setup sheet row in section 7 describes the in-house HTML and PDF writers in place of the template engine and `printpdf`.
