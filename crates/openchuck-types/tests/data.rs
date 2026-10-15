@@ -101,6 +101,7 @@ fn req_nfr_07_bad_tools_and_stock_give_errors() {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     };
     assert!(
         tool.validate()

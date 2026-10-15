@@ -153,6 +153,87 @@ pub fn compare(
     })
 }
 
+/// The material left on the part measured against a stock to leave: how much
+/// of the surface is at it, above it and below it (work breakdown slice 14
+/// item 7; decision record 0033).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Leftover {
+    /// The stock to leave the operation asked for.
+    pub leave: f64,
+    /// How far from it a sample may be and still count as at it.
+    pub tolerance: f64,
+    /// Samples measured.
+    pub samples: usize,
+    /// The mean material left.
+    pub mean: f64,
+    /// The least material left (negative where the stock is cut below the
+    /// surface).
+    pub least: f64,
+    /// The most material left.
+    pub most: f64,
+    /// Samples with less than `leave - tolerance` left: cut into the stock to
+    /// leave.
+    pub below: usize,
+    /// Samples with more than `leave + tolerance` left: not roughed down to it
+    /// (a corner the tool cannot reach, or too few passes).
+    pub above: usize,
+    /// The sample with the most material beyond `leave + tolerance`.
+    pub worst_above: Option<DeviationPoint>,
+}
+
+impl Leftover {
+    /// The share of samples at the stock to leave, 0 to 1 (1 when there are
+    /// none).
+    #[must_use]
+    pub fn at_leave(&self) -> f64 {
+        if self.samples == 0 {
+            1.0
+        } else {
+            (self.samples - self.below - self.above) as f64 / self.samples as f64
+        }
+    }
+}
+
+impl Deviation {
+    /// The material left against `leave`, within `tolerance` (all in mm).
+    /// A sample whose search reached its limit counts as above.
+    #[must_use]
+    pub fn leftover(&self, leave: f64, tolerance: f64) -> Leftover {
+        let mut out = Leftover {
+            leave,
+            tolerance,
+            samples: self.points.len(),
+            mean: 0.0,
+            least: f64::INFINITY,
+            most: f64::NEG_INFINITY,
+            below: 0,
+            above: 0,
+            worst_above: None,
+        };
+        let mut sum = 0.0;
+        for p in &self.points {
+            sum += p.value;
+            out.least = out.least.min(p.value);
+            out.most = out.most.max(p.value);
+            if p.value < leave - tolerance {
+                out.below += 1;
+            } else if p.value > leave + tolerance || p.at_least {
+                out.above += 1;
+                if out.worst_above.is_none_or(|w| p.value > w.value) {
+                    out.worst_above = Some(*p);
+                }
+            }
+        }
+        if out.samples > 0 {
+            out.mean = sum / out.samples as f64;
+        } else {
+            out.least = 0.0;
+            out.most = 0.0;
+        }
+        out
+    }
+}
+
 /// Points on each triangle no further apart than `spacing`: the centroids of
 /// an n x n subdivision, with the triangle's unit normal. Degenerate
 /// triangles give none.

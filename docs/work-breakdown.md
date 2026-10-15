@@ -149,14 +149,15 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | 5 | Slice 7 | Simulation settings in `project.toml` | Merged |
 | 6 | A (slice 8) | Operations gain `enabled`, written only when false (UI-06); the machine copy in `machine.toml` gains its library source's `id` ([decision 0029](decisions/0029-slice-8-viewport-and-shell.md) items 10 and 16) | Claimed; in the slice 8 pull request |
 | 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0032](decisions/0032-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields (the selection kind per model was already in schema 1, decision 0010). In pull request 39 |
-| 8 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
-| 9 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S |
+| 8 | E (slice 14) | Tools gain `centre_cutting` (optional), in tool library files and in the project's tool snapshots (OI-117; decision 0033) | Claimed and built on `claude/slice-14-rotary-roughing` (pull request 45). Lane D and O take 9 if they merge after it |
+| 9 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed (was 8; renumbers if E merges first) |
+| 10 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S (was 9; renumbers if E merges first) |
 
 The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Next free: record 0033, `OI-141`, project schema 8.
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-148 on `main` first, so lane E's open items are OI-150 to OI-153. Next free after that: record 0034, `OI-154`, project schema 11 (9 and 10 are expected by lanes D and O and S).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -602,13 +603,15 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
 
+**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) and per-selection stock to leave (slice 12 item 4) are not built, so the slice stays open. OI-117 is closed; OI-150 to OI-153 are open.
+
 **Review checklist**
 
-- [ ] Simulated leftover is uniform and matches stock to leave within tolerance
-- [ ] A second roughing pass does not re-cut already removed material
-- [ ] Indexed and continuous forms reach the same final stock envelope
-- [ ] Every OP-11 parameter exists and has a test
-- [ ] Link moves never cross the stock
+- [x] Simulated leftover is uniform and matches stock to leave within tolerance (cylinder: 0.45 to 0.53 mm for 0.5 mm to leave at a 0.1 mm cell; cone and indexed forms within the stepover's scallop; strips the tool cannot reach are reported, OI-150)
+- [x] A second roughing pass does not re-cut already removed material (`req_op_03_a_second_roughing_run_over_its_own_result_cuts_nothing`)
+- [x] Indexed and continuous forms reach the same final stock envelope (to within the scallop of the stepover, `req_op_03_indexed_and_continuous_forms_reach_the_same_envelope`)
+- [ ] Every OP-11 parameter exists and has a test (stepdown, stock to leave per operation, entry styles and retract do; per-selection stock to leave is slice 12 item 4)
+- [x] Link moves never cross the stock (`req_op_14_links_stay_below_the_clearance_cylinder_without_cutting`, simulated, no rapid cuts)
 
 ## Slice 15 – Rest machining and pencil clean-up
 

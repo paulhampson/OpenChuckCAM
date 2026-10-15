@@ -4,6 +4,8 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- Version 0.7.0 with the library family (`Tool` gains `centre_cutting` and `Pass` gains `stock`, breaking changes; decision 0033).
+- **Breaking (0.7.0):** `tool::Tool` has a new public field, `centre_cutting: Option<bool>` (TL-04, OI-117; project schema 8), and `Tool::can_plunge()` (decision 0033).
 - Version 0.6.0 with the library family (`PostJob` and `ConvertOptions` in `openchuck-post` gain `operation_names`, a breaking change; decision 0028).
 - **Breaking (0.5.0):** the B-rep face record (slice 11a, decisions 0017 and 0027). `brep::BrepFace` gains `body`, `geometry` (a `Surface`: plane, cylinder, cone, sphere, torus with a `Frame`, or a clamped rational `BSplinePatch`), `reversed`, `uv_bounds` and `trims`; `BrepEdge` gains `vertices`; `BrepModel` gains `vertices` and `tessellation` (`TessellationSettings`). New: `VertexId`, `BrepVertex`, `Frame`, `UvPoint`, `TrimLoop`, `BrepModel::validate` and `joined_tessellation`. The family version moves from 0.4.0 to 0.5.0 for it, as the semver check requires (OI-123).
 

@@ -64,7 +64,9 @@ use openchuck_types::units::Millimetres;
 /// - 7: operations gain the optional `boundary`, `avoid` and `check`
 ///   selection set references (OP-02), written only when set (decision
 ///   record 0032).
-pub const SCHEMA: i64 = 7;
+/// - 8: tools gain the optional `centre_cutting` field, written only when
+///   set (OI-117, decision record 0033).
+pub const SCHEMA: i64 = 8;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -85,6 +87,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_4_to_5,
     schema_5_to_6,
     schema_6_to_7,
+    schema_7_to_8,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -142,6 +145,27 @@ fn schema_5_to_6(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
 /// `check`), which a schema 6 file does not have, so it needs no change but
 /// its number.
 fn schema_6_to_7(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 8 adds the optional `centre_cutting` tool field, written only when
+/// set, so a schema 7 file needs no change but its number: its tools state
+/// nothing and follow their shape. A schema 7 tool file that already holds the
+/// field was not written by any version that knew it, so it is refused rather
+/// than guessed at.
+fn schema_7_to_8(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let stated = kind == FileKind::Tool
+        && table
+            .get("tool")
+            .and_then(toml::Value::as_table)
+            .is_some_and(|t| t.contains_key("centre_cutting"));
+    if stated {
+        return Err(
+            "this schema 7 tool file has `centre_cutting`, a field schema 8 introduced; \
+             remove it, or set `schema = 8` if the file was written for schema 8"
+                .to_owned(),
+        );
+    }
     Ok(())
 }
 
@@ -871,7 +895,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 7);
+        assert_eq!(SCHEMA, 8);
         let mut project = Project::new("p");
         project
             .insert(
@@ -880,7 +904,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 7\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 8\n"), "{path}: {text}");
         }
     }
 
