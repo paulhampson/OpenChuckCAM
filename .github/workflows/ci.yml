@@ -541,3 +541,51 @@ jobs:
         with:
           name: coverage-lcov
           path: lcov.info
+
+  # The single status to require in the branch ruleset for `main` ("CI required checks").
+  # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
+  # required status that never reports blocks the merge. Requiring this one job
+  # avoids listing every job (and every matrix leg) in the ruleset. It always
+  # runs, fails if any job it needs failed or was cancelled, and accepts a
+  # skipped job only because a path filter or event condition turned it off.
+  # `changes` itself must succeed: if it fails, every other job is skipped and
+  # the filter result is unknown, so that must not read as a pass.
+  # To make a new job required, add it to `needs:` here; to make one advisory,
+  # remove it.
+  required:
+    name: CI required checks
+    if: always()
+    needs:
+      - changes
+      - gate3
+      - fmt
+      - build-test
+      - ui-smoke
+      - step-kernel
+      - libraries-alone
+      - repository-checks
+      - cargo-deny
+      - cargo-audit
+      - licence-notices
+      - semver
+      - fuzz-smoke
+      - coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the required jobs
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if [ "$(echo "$NEEDS" | jq -r '.changes.result')" != "success" ]; then
+            echo "::error::The change-detection job did not succeed, so skipped jobs cannot be trusted"
+            exit 1
+          fi
+          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) (\(.value.result))"')
+          if [ -n "$bad" ]; then
+            echo "::error title=Required jobs did not pass::$(echo "$bad" | paste -sd, -)"
+            exit 1
+          fi
+          echo "All required jobs passed or were skipped by their path filters."
