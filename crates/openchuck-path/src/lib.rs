@@ -11,6 +11,8 @@
 //!
 //! - [`SurfaceSource`]: points, normals, rays, distances and tool drops on
 //!   the selected surfaces. [`MeshSurface`] implements it for meshes.
+//!   [`CompositeSurface`] joins a model's source to analytic [`Solid`]s (a
+//!   held region, retaining tabs) so strategies treat them as part.
 //! - [`StockModel`]: the material still to be cut. [`AnalyticStock`] covers
 //!   cylinder and box stock.
 //! - [`CollisionOracle`]: whether a move is allowed. [`AcceptAll`] relies on
@@ -69,6 +71,7 @@ pub mod assemble;
 pub mod axial;
 pub mod brep;
 mod candidates;
+mod composite;
 pub mod cutter;
 mod error;
 pub mod field;
@@ -81,6 +84,7 @@ pub mod rotary;
 pub mod roughing;
 mod scallop;
 pub mod simultaneous;
+mod solid;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
@@ -90,6 +94,7 @@ mod wrap_fit;
 pub use assemble::{GeneratedPath, PathNote};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
+pub use composite::CompositeSurface;
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
 pub use field::HeightStock;
@@ -103,6 +108,7 @@ pub use region::{RegionConstraint, Window};
 pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;
 pub use simultaneous::SimultaneousFinishing;
+pub use solid::Solid;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
     CutPoint, LeaveZone, Pass, PassStock, Registry, Strategy, StrategyInput, StrategyOutput,
