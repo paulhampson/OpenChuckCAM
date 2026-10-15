@@ -1,6 +1,6 @@
 # 0033: Slice 14 design refinement: rotary roughing (lane E, items 1 to 4, 6 and 7)
 
-- **Status:** accepted by the project owner for the choices made in the session of 15 Oct 2026: the radial layer model (item 2), the scope of OP-11 in this slice (item 5), the stock-only link check (item 7) and adding the centre-cutting field with a family version bump (item 1). The remaining items are the design that follows from them and are proposed until the pull request is reviewed.
+- **Status:** accepted by the project owner for the choices made in the session of 15 Oct 2026: the radial layer model (item 2), the scope of OP-11 in this slice (item 5), the stock-only link check (item 7) and adding the centre-cutting field with a family version bump (item 1). The architecture 5.2 sentence was agreed on 15 Oct 2026. The remaining items are the design that follows from these choices and are proposed until the pull request is reviewed.
 - **Date:** 15 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-117 is closed with this record; new OI-141 to OI-144.
 
@@ -37,6 +37,6 @@ Slice 14 (work breakdown) builds rotary roughing, OP-03 (indexed and continuous,
 
 - **Code:** `openchuck-types` (`Tool::centre_cutting`, `can_plunge`); `openchuck-path` (`field`, `roughing`, `PassStock`, `EntryParameters::check_tool`, the link and footprint rules in `assemble`, `Registry::builtin` offers `rotary_roughing`); `openchuck-sim` (`Leftover`); `openchuck-app` (stepdown default, the plunge check, `path` re-export); `openchuck-cli` (leftover line); `openchuck-project` (schema 8).
 - **Tests:** `crates/openchuck-path/tests/roughing.rs` and `field.rs`; `crates/openchuck-sim/tests/roughing.rs`; two in `crates/openchuck-app/tests/operation.rs`; one in each of the tool tests of `openchuck-types` and `openchuck-project`. The slowest takes 24 s uninstrumented, so none is listed in `.config/nextest.toml`.
-- **Documents:** the work breakdown (the schema claim, slice 14 status and the review checklist that is met), the verification plan rows OP-03 and OP-14, the open-items register, the decision index. Architecture section 5.2 would gain a sentence on pass stock and the heightfield; not edited, proposed for agreement.
+- **Documents:** the work breakdown (the schema claim, slice 14 status and the review checklist that is met), the verification plan rows OP-03 and OP-14, the open-items register, the decision index. Architecture section 5.2 gains a sentence on pass stock and the heightfield (edited with the owner's agreement, 15 Oct 2026).
 - **Not done in this record:** item 5 (lane L); per-selection stock to leave (slice 12); `xtask/traceability.toml` keeps slice 14 open; OP-11 and OP-14 close with the slice.
 - **Open items:** OI-117 closed. OI-141 (strips the tool cannot reach, and the heightfield's resolution), OI-142 (entries over slopes and at sector edges), OI-143 (`min_cut` against the simulation cell), OI-144 (flute length, shank and holder against layer depth).
