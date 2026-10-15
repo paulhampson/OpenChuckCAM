@@ -3,7 +3,8 @@
 - **Status:** accepted by the project owner (15 Oct 2026): the specification, the requirements and their priorities, the verification rows, the resolutions of the specification's section 17 (D1 to D11), and the recommendations on OI-163 and OI-165. OI-164 and OI-166 had no recommendation and stay open.
 - **Date:** 15 Oct 2026.
 - **Branch:** `claude/compassionate-pascal-se4cct`. This is a documentation change, not a lane of the work breakdown's parallel plan; it informs lanes A, M, N, O, S and T.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-163 and OI-165 are closed by this record's acceptance; OI-164 and OI-166 are open.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-163 and OI-165 are closed by this record's acceptance, and OI-166 on 15 Oct 2026 (amendment below); OI-164 is open.
+- **Amendment (15 Oct 2026, owner):** the default scale stays 120% (OI-166). UI-16 therefore states its 1366 by 768 at 100% scale, in `requirements.md`, the verification plan, the work breakdown's slice 8 and the specification's section 3; on a 1366 by 768 screen the user reduces the scale once, and it is remembered (UI-15).
 
 Numbering: `main` holds records up to 0033 and OI-153; unmerged branches hold records 0034 to 0037 and OI-154 to OI-162. This record therefore takes 0038 and OI-163 to OI-166. Unmerged branches also hold requirement IDs OP-20, OP-21 and SET-09, so the IDs proposed here avoid the OP and SET families. It takes no project schema number: nothing proposed here is stored in the project.
 

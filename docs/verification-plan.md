@@ -82,7 +82,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | UI-13 | P1 | T | Unit | The machine panel view model gives confirmed, vendor or unconfirmed for each field from the profile's `provenance`, and unconfirmed for an unlisted field |
 | UI-14 | P1 | I, D | System | Inspection that every menu command has a shortcut or menu path; a keyboard-only demo script through the five steps, with tooltips opened by focus |
 | UI-15 | P1 | T | Unit | Settings round-trip in the configuration folder; a missing or damaged file gives defaults and a message; nothing is written to the project folder |
-| UI-16 | P1 | D | System | Screenshots of the reference screens at 1366 by 768 logical pixels: no overlay overlaps another and no text is clipped; panels resize and collapse |
+| UI-16 | P1 | D | System | Screenshots of the reference screens at 1366 by 768 logical pixels at 100% scale: no overlay overlaps another and no text is clipped; panels resize and collapse |
 | UI-17 | P2 | T | Integration | Command search finds each menu command by name and runs it |
 | UI-18 | P2 | T | Unit | Inch display round-trips to millimetres; a value typed with a unit converts exactly; an unknown unit is refused with a message |
 | UI-19 | P2 | T | Integration | The form view model groups basic and advanced fields from the schema, flags values that differ from their default, resets them, and gives derived values that match their formula |

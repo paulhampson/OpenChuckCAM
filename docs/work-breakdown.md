@@ -440,7 +440,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 5. Parameter forms generated from strategy and tool schemas, with units, validation and defaults (UI-07), and a custom-profile editor with live preview: add, move and delete line and arc segments, with the same validation as file import.
 6. Import dialog with the check report; model transform and orientation controls; undo and redo menu.
 7. Scripted 60-second camera-path benchmark on the 1M-triangle model, run on the physical reference machines, with a software-rendered smoke test in CI because hosted runners typically have no real GPU (native rendering is used wherever a runner offers it) (NFR-03).
-8. Workflow steps with their availability and reasons, the footer and its primary action, and the window layout: resizable and collapsible panels, usable at 1366 by 768 (UI-10, UI-16; specification sections 3 to 5 and 10).
+8. Workflow steps with their availability and reasons, the footer and its primary action, and the window layout: resizable and collapsible panels, usable at 1366 by 768 at 100% scale, with 120% as the default scale (UI-10, UI-16; specification sections 3 to 5 and 10).
 9. Machine value provenance icons with tooltips on hover and focus, replacing the list of unconfirmed values (UI-13; specification section 8, D8).
 10. Keyboard map, focus order and tooltips on focus; legibility, scale and contrast (UI-14, NFR-15; specification sections 14 and 16; checked again in slice 20).
 11. Per-user settings in the configuration folder: layout, scale, theme, units, recent projects, acknowledgements (UI-15; specification section 13).
@@ -457,7 +457,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [ ] Each machine value shows its provenance on hover and keyboard focus (UI-13)
 - [ ] Every menu command has a shortcut or menu path, and a keyboard-only run reaches all five steps (UI-14)
 - [ ] Layout, scale and theme survive a restart; nothing is written to the project folder (UI-15)
-- [ ] The reference screens at 1366 by 768 have no overlapping overlays or clipped text (UI-16, NFR-15)
+- [ ] The reference screens at 1366 by 768 at 100% scale have no overlapping overlays or clipped text (UI-16, NFR-15)
 - [x] An invalid parameter shows an inline error and leaves the project unchanged. *`req_ui_07_invalid_parameter_is_refused_and_leaves_the_project_unchanged`, the tool equivalent, and the inline error in the properties panel.*
 
 ## Slice 9 – Toolpath and simulation display, playback and background jobs

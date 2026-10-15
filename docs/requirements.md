@@ -95,7 +95,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-13 | Show, for each machine profile value, whether it is confirmed on the machine, taken from a vendor profile, or an unconfirmed placeholder, with how to confirm it. | P1 |
 | UI-14 | Every command is available from the menus and the keyboard, every control can be used with the keyboard, and anything shown on hover is also shown on keyboard focus. | P1 |
 | UI-15 | Keep per-user settings on the computer (window layout, scale, theme, display units, recent projects, export acknowledgements), never in the project. | P1 |
-| UI-16 | The window is usable at 1366 by 768 logical pixels, and its panels can be resized and collapsed. | P1 |
+| UI-16 | The window is usable at 1366 by 768 logical pixels at 100% scale, and its panels can be resized and collapsed. | P1 |
 | UI-17 | A command search that finds any command by name and runs it. | P2 |
 | UI-18 | Display and enter lengths in inches as a user setting, and accept a unit typed with a value; values are stored in millimetres. | P2 |
 | UI-19 | Parameter forms group settings as basic and advanced, mark values that differ from their default with a way to reset them, and show derived values with how they were worked out. | P2 |

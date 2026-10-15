@@ -51,7 +51,7 @@ The user is the one in requirements section 2: a machinist, maker or small-shop 
 
 ## 3. Window structure
 
-Sizes are logical pixels at 100% scale. Slice 8 starts at 120% (decision 0029, owner's run, observation 1), with View > Larger, Smaller and Reset.
+Sizes are logical pixels at 100% scale. The default scale is 120% (decision 0029, owner's run, observation 1; kept by the owner on 15 Oct 2026, OI-166), with View > Larger, Smaller and Reset, and the chosen scale is remembered (UI-15).
 
 | Region | Size | Contents |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ Sizes are logical pixels at 100% scale. Slice 8 starts at 120% (decision 0029, o
 
 - **Splitters** are 5 pixels with a grip mark. Double-clicking one resets its panel to the default size.
 - **Collapsing.** The project panel, the inspector and the dock collapse with the chevron in their headers, or Ctrl 1, Ctrl 2 and Ctrl 3. A collapsed side panel leaves a 28-pixel rail with its icon. *(UI-16)*
-- **Smallest window.** Everything stays usable at 1366 × 768 logical pixels: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size, the dock and then the inspector collapse first. *(UI-16)*
+- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 120% a 1366 × 768 screen gives about 1138 × 640 logical pixels, so on such a screen the user reduces the scale once with View > Smaller. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size, the dock and then the inspector collapse first. *(UI-16)*
 - **Remembered layout.** Panel sizes, collapsed panels, open sections, scale and theme are remembered per user on the computer, never in the project (section 13). *(UI-15)*
 - **Dialogs.**
   - Modal dialogs (open, new, unsaved changes, errors) stay inside the main window.
@@ -686,7 +686,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-163 (closed 15 Oct 2026):** selection highlight colours are the ones in section 7.4 (D7).
 - **OI-164 (open):** the typeface. egui's bundled fonts are used until it is decided.
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
-- **OI-166 (open):** the default scale (120%) against the smallest window (1366 × 768).
+- **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
 
 ## 20. Rendered mockups
 
