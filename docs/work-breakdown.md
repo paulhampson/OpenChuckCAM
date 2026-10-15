@@ -561,7 +561,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Goal:** A varies continuously with X, Y and Z to follow the surface, with the tool held near the surface normal.
 
-**Status:** closed by the owner (15 Oct 2026). Built on branch `claude/lane-i-slice-13-simultaneous` (lane I); design in [decision 0033](decisions/0033-slice-13-simultaneous-finishing.md), accepted: items 1 to 7 as the record's table says, with the drop on exact faces still using their tessellation (OI-81). Lead and tilt as the record defines them (OI-145, closed), with explanatory tooltips in the UI; not building SP-4's climb for meshes is a deferred future optimisation (OI-146); surfaces hidden from a ray from outside are a P1 limitation, and supporting them is requirement OP-20 (P2; OI-148 closed). The gate 3 replay of the new `lobed` reference job must pass in this slice's pull request before merge (OI-147). No project schema number.
+**Status:** closed by the owner (15 Oct 2026). Built on branch `claude/lane-i-slice-13-simultaneous` (lane I); design in [decision 0033](decisions/0033-slice-13-simultaneous-finishing.md), accepted: items 1 to 7 as the record's table says, with the drop on exact faces still using their tessellation (OI-81). Lead and tilt as the record defines them (OI-145, closed), with explanatory tooltips in the UI; not building SP-4's climb for meshes is a deferred future optimisation (OI-146); surfaces hidden from a ray from outside are a P1 limitation, and supporting them is requirement OP-20 (P2; OI-148 closed). The gate 3 replay of the new `lobed` reference job passed in the slice's pull request (OI-147, closed). No project schema number.
 
 **Requirements:** OP-05, OP-06, OP-12
 
@@ -583,7 +583,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [x] A reversal count is lower than the unconstrained version (120 following the normal, 45 within 10 degrees, none within 20)
 - [x] The independent checker reports zero gouge on the corpus (at most 0.00008 mm, the mesh's own error, on four parts and eight tool types)
 - [x] Lead and tilt limits and A range are obeyed
-- [ ] Simulator replay passes (the `lobed` reference job; gate 3 in CI, OI-147); deviation against the helical result on the same surface is recorded (up to 17.9 degrees of A and 4.34 mm across the axis on the lobed part)
+- [x] Simulator replay passes (the `lobed` reference job, gate 3 in pull request 48's CI, OI-147 closed); deviation against the helical result on the same surface is recorded (up to 17.9 degrees of A and 4.34 mm across the axis on the lobed part)
 - [x] Results are identical at 1, 2 and N threads
 
 ## Slice 14 – Rotary roughing

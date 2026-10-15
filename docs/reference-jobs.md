@@ -35,7 +35,7 @@ All use the same tool and material: a 3 mm ball end mill (2 flutes, 8 mm flute l
 | `sphere_linuxcnc.ngc` | 726 | 0.1000 | 87.2 s | none |
 | `cone_linuxcnc.ngc` | 1086 | 0.1000 | 117.0 s | none |
 | `groove_linuxcnc.ngc` | 1086 | 0.1000 | 151.6 s | none |
-| `lobed_linuxcnc.ngc` | not yet run (gate 3 in the slice 13 pull request's CI, OI-147) | | | |
+| `lobed_linuxcnc.ngc` | passed in CI (pull request 48, 15 Oct 2026; Docker image, report in the gate 3 artifact) | | | none |
 
 (0.1000 is the tolerance: some nodes were accepted as passed between two samples when run in the Docker image. An earlier run of the 10 degree programs on a locally built LinuxCNC had differences of 0.034 to 0.067.) The simulator cannot confirm the A direction, or the Z1 post's `G92.4` and feed rule: the Z1 programs share the toolpath and the kinematics with these, and gate 4 checks the rest on the machine. See [tools/linuxcnc/README.md](../tools/linuxcnc/README.md) for how to run it and [docker/linuxcnc](../docker/linuxcnc/Dockerfile) for the image CI uses.
 
