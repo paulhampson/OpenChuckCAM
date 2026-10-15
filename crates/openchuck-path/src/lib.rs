@@ -69,6 +69,7 @@ pub mod brep;
 pub mod cutter;
 mod error;
 pub mod helical;
+pub mod indexed;
 pub mod parallel;
 pub mod params;
 pub mod region;
@@ -86,6 +87,7 @@ pub use brep::{BrepSurface, ExactFace};
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
 pub use helical::HelicalFinishing;
+pub use indexed::IndexedFinishing;
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,

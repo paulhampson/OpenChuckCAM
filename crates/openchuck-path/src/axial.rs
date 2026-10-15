@@ -11,6 +11,7 @@
 //! helical finishing ([`crate::wrap_fit`]).
 
 use openchuck_types::job::JobContext;
+use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
 use crate::cutter;
@@ -151,6 +152,122 @@ fn pass_count(radius: f64, stepover: f64, scallop: Option<(f64, f64)>) -> Result
     Ok((n as usize).max(1))
 }
 
+/// What axial and indexed finishing share: the part's extent, the grown tool
+/// and the fitting limits, and the fit of one pass along X at one A.
+pub(crate) struct AlongX<'a> {
+    input: &'a StrategyInput<'a>,
+    region: Option<&'a RegionConstraint<'a>>,
+    grown: RevolvedProfile,
+    leave: f64,
+    x0: f64,
+    x1: f64,
+    seeds: usize,
+    chord: f64,
+    constrained: bool,
+    /// The part's largest radius about the rotary axis.
+    pub(crate) radius: f64,
+    /// Alternate the direction of each pass.
+    pub(crate) zigzag: bool,
+}
+
+impl<'a> AlongX<'a> {
+    /// Reads the parts of `parameters` that every pass along X uses. The
+    /// number of passes is checked with [`check_passes`](Self::check_passes).
+    pub(crate) fn read(
+        input: &'a StrategyInput<'a>,
+        region: Option<&'a RegionConstraint<'a>>,
+        parameters: &Parameters,
+    ) -> Result<Self> {
+        let tolerance = parameters.number(names::TOLERANCE)?;
+        let leave = parameters.number(names::STOCK_TO_LEAVE)?;
+        let mut x_step = parameters.number(parameter::MAX_X_STEP)?;
+        let zigzag = parameters.text(parameter::DIRECTION)? == "zigzag";
+
+        let bounds = input.surface.bounds();
+        let (x0, x1) = (bounds.min.x, bounds.max.x);
+        let length = x1 - x0;
+        if length.is_nan() || length <= 0.0 {
+            return Err(PathError::Strategy(
+                "the part has no length along the rotary axis to finish".to_owned(),
+            ));
+        }
+        let radius = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
+            .into_iter()
+            .fold(0.0_f64, |r, v| r.max(v.abs()));
+        if radius.is_nan() || radius <= 0.0 {
+            return Err(PathError::Strategy(
+                "the part has no radius about the rotary axis to finish".to_owned(),
+            ));
+        }
+        let constrained = region.is_some_and(|r| !r.is_empty());
+        if constrained {
+            // A region constraint is only seen where the tool is dropped
+            // (decision 0032 item 6; replaced by region offsets later in
+            // slice 12).
+            x_step = x_step.min(CONSTRAINED_SPACING);
+        }
+        let seeds = (length / x_step).ceil().max(1.0);
+        if seeds > MAX_SEEDS {
+            return Err(PathError::Parameter {
+                name: parameter::MAX_X_STEP.to_owned(),
+                reason: format!("{seeds:.0} points per pass is too many; increase the step"),
+            });
+        }
+        Ok(Self {
+            input,
+            region,
+            grown: cutter::grow_profile(input.tool, leave)?,
+            leave,
+            x0,
+            x1,
+            seeds: seeds as usize,
+            chord: CHORD_FACTOR * tolerance,
+            constrained,
+            radius,
+            zigzag,
+        })
+    }
+
+    /// Refuses a job of `count` passes that would make too many points.
+    pub(crate) fn check_passes(&self, count: usize) -> Result<()> {
+        if self.seeds as f64 * count as f64 > MAX_SEEDS {
+            return Err(PathError::Parameter {
+                name: parameter::MAX_X_STEP.to_owned(),
+                reason: format!(
+                    "{count} passes of {} points each is too many; increase the stepover \
+                     or the largest step",
+                    self.seeds
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    /// The pass at `a`, running from the high end of X when `backwards`.
+    pub(crate) fn pass(
+        &self,
+        a: Degrees,
+        backwards: bool,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let length = self.x1 - self.x0;
+        let fit = Fit {
+            input: self.input,
+            drop_profile: &self.grown,
+            leave: self.leave,
+            x0: if backwards { self.x1 } else { self.x0 },
+            length: if backwards { -length } else { length },
+            start: a.0,
+            sign: 1.0,
+            total_angle: 0.0,
+            chord: self.chord,
+            region: self.region,
+            constrained: self.constrained,
+        };
+        fit_curve(&fit, self.seeds, "axial finishing", context)
+    }
+}
+
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
@@ -158,74 +275,23 @@ fn passes(
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     let stepover = parameters.number(names::STEPOVER)?;
-    let tolerance = parameters.number(names::TOLERANCE)?;
-    let leave = parameters.number(names::STOCK_TO_LEAVE)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;
-    let mut x_step = parameters.number(parameter::MAX_X_STEP)?;
-    let zigzag = parameters.text(parameter::DIRECTION)? == "zigzag";
-
-    let bounds = input.surface.bounds();
-    let (x0, x1) = (bounds.min.x, bounds.max.x);
-    let length = x1 - x0;
-    if length.is_nan() || length <= 0.0 {
-        return Err(PathError::Strategy(
-            "the part has no length along the rotary axis to finish".to_owned(),
-        ));
-    }
-    let radius = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
-        .into_iter()
-        .fold(0.0_f64, |r, v| r.max(v.abs()));
-    if radius.is_nan() || radius <= 0.0 {
-        return Err(PathError::Strategy(
-            "the part has no radius about the rotary axis to finish".to_owned(),
-        ));
-    }
+    let along = AlongX::read(input, region, parameters)?;
     let scallop = if height > 0.0 {
         Some((scallop::cusp_radius(input.tool)?, height))
     } else {
         None
     };
-    let constrained = region.is_some_and(|r| !r.is_empty());
-    if constrained {
-        // A region constraint is only seen where the tool is dropped
-        // (decision 0032 item 6; replaced by region offsets later in slice 12).
-        x_step = x_step.min(CONSTRAINED_SPACING);
-    }
-    let count = pass_count(radius, stepover, scallop)?;
-    let seeds = (length / x_step).ceil().max(1.0);
-    if seeds * count as f64 > MAX_SEEDS {
-        return Err(PathError::Parameter {
-            name: parameter::MAX_X_STEP.to_owned(),
-            reason: format!(
-                "{count} passes of {seeds:.0} points each is too many; increase the stepover \
-                 or the largest step"
-            ),
-        });
-    }
-    let seeds = seeds as usize;
-    let grown = cutter::grow_profile(input.tool, leave)?;
+    let count = pass_count(along.radius, stepover, scallop)?;
+    along.check_passes(count)?;
     let step = 360.0 / count as f64;
 
     let mut out = Vec::new();
     for i in 0..count {
         context.check_cancelled()?;
         let a = Degrees(start + step * i as f64);
-        let backwards = zigzag && i % 2 == 1;
-        let fit = Fit {
-            input,
-            drop_profile: &grown,
-            leave,
-            x0: if backwards { x1 } else { x0 },
-            length: if backwards { -length } else { length },
-            start: a.0,
-            sign: 1.0,
-            total_angle: 0.0,
-            chord: CHORD_FACTOR * tolerance,
-            region,
-            constrained,
-        };
-        out.extend(fit_curve(&fit, seeds, "axial finishing", context)?);
+        out.extend(along.pass(a, along.zigzag && i % 2 == 1, context)?);
     }
     Ok(out)
 }
