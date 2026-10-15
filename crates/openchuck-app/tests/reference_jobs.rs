@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The reference job set for the G-code gates (verification plan section 6;
-//! work breakdown slice 6 item 12; decision record 0020 item 8): three small
-//! analytic parts, each machined by helical finishing with a 3 mm ball in oak
-//! on the Makera Z1 profile. Every job posts with both shipped posts, passes
+//! work breakdown slice 6 item 12; decision record 0020 item 8): small
+//! analytic parts, each machined with a 3 mm ball in oak on the Makera Z1
+//! profile, by helical finishing, and one by simultaneous 4-axis finishing
+//! (decision record 0036 item 12). Every job posts with both shipped posts, passes
 //! gates 1 and 2, and matches its golden file. Gate 3 replays the LinuxCNC
 //! programs in the simulator; gates 4 and 5 are run on the machine by the
 //! operator (slice 20).
@@ -24,7 +25,7 @@ use openchuck_app::project::{
 };
 use openchuck_app::setup::{Millimetres, Stock, builtin};
 use openchuck_app::{Application, Command, PostSelection, Threads};
-use openchuck_testkit::parts::{Cone, HelicalGroove, RadialPart, Sphere};
+use openchuck_testkit::parts::{Cone, HelicalGroove, LobedVase, RadialPart, Sphere};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
@@ -34,6 +35,8 @@ struct Job {
     part: Box<dyn RadialPart>,
     radius: f64,
     strategy: &'static str,
+    /// Mesh stations along X and round the axis.
+    mesh: (u32, u32),
     /// Parameters beyond the tool's cutting data.
     parameters: Vec<(&'static str, ParameterValue)>,
 }
@@ -59,6 +62,7 @@ fn jobs() -> Vec<Job> {
             }),
             radius: 12.0,
             strategy: "helical_finishing",
+            mesh: (121, 144),
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         Job {
@@ -66,6 +70,7 @@ fn jobs() -> Vec<Job> {
             part: cone_part(),
             radius: 10.0,
             strategy: "helical_finishing",
+            mesh: (121, 144),
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         Job {
@@ -73,7 +78,30 @@ fn jobs() -> Vec<Job> {
             part: Box::new(Sphere { radius: 10.0 }),
             radius: 10.0,
             strategy: "helical_finishing",
+            mesh: (121, 144),
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
+        },
+        // A, Y and Z all move with X: the tool follows a normal that leaves
+        // the plane through the axis (OP-05, OP-06).
+        Job {
+            name: "lobed",
+            part: Box::new(LobedVase {
+                base: 10.0,
+                wave: 1.5,
+                wave_length: 40.0,
+                lobe: 1.0,
+                lobes: 3,
+                length: 20.0,
+            }),
+            radius: 12.5,
+            strategy: "simultaneous_finishing",
+            // Finer round the axis: the tool follows the lobes' normal, and
+            // the contact feed needs facets small against the lobes (OI-77).
+            mesh: (201, 720),
+            // Points evenly spaced: path fitting halves moves where the ball
+            // rolls over a lobe, and the contact smoothing of the shared
+            // services weighs points by count, not spacing (OI-77).
+            parameters: vec![("max_angle_step", ParameterValue::Number(2.0))],
         },
         // Slice 12 baseline finishing (decision 0034): axial, indexed, and
         // axial with lead-in and lead-out, on the cone.
@@ -82,6 +110,7 @@ fn jobs() -> Vec<Job> {
             part: cone_part(),
             radius: 10.0,
             strategy: "axial_finishing",
+            mesh: (121, 144),
             parameters: vec![("max_x_step", ParameterValue::Number(3.0))],
         },
         Job {
@@ -89,6 +118,7 @@ fn jobs() -> Vec<Job> {
             part: cone_part(),
             radius: 10.0,
             strategy: "indexed_finishing",
+            mesh: (121, 144),
             parameters: vec![
                 ("angles", ParameterValue::Text("0, 90, 180, 270".into())),
                 ("max_x_step", ParameterValue::Number(3.0)),
@@ -99,6 +129,7 @@ fn jobs() -> Vec<Job> {
             part: cone_part(),
             radius: 10.0,
             strategy: "axial_finishing",
+            mesh: (121, 144),
             parameters: vec![
                 ("max_x_step", ParameterValue::Number(3.0)),
                 ("entry", ParameterValue::Text("lead".into())),
@@ -140,7 +171,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
     let mut app = Application::create(&dir, job.name, Threads::Exactly(2)).unwrap();
     std::fs::create_dir_all(dir.join("models")).unwrap();
     let (x0, x1) = job.part.x_range();
-    let mesh = job.part.mesh(121, 144);
+    let mesh = job.part.mesh(job.mesh.0, job.mesh.1);
     write_stl(&mesh, &dir.join("models/part.stl"));
     let (model, _) = app.add_model(&dir.join("models/part.stl"), None).unwrap();
     let machine = builtin("makera-z1").unwrap().unwrap();

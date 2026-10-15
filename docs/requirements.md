@@ -144,6 +144,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | OP-17 | Adaptive (constant-engagement) roughing for rotary parts. | P2 |
 | OP-18 | Feature recognition: detect holes, grooves and cylindrical features on the model and propose operations for them. | P3 |
 | OP-19 | Alternative surface-covering patterns for finishing: geodesic-parallel (constant scallop height) and spiral, selectable per operation, with scallop height as the stepover control. | P2 |
+| OP-20 | Simultaneous 4-axis finishing of surfaces that a ray from outside the part towards the rotary axis does not meet first, such as undercuts and the far walls of slots and pockets, wherever the tool can still reach them (for example by closest-point or offset-surface drive curves); surfaces the tool cannot reach are reported. | P2 |
 
 ### 3.6 Visualisation and material removal simulation
 

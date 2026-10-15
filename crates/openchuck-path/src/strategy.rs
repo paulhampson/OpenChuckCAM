@@ -20,7 +20,7 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, assemble_with_entry};
+use crate::assemble::{GeneratedPath, PathNote, assemble_with_entry};
 use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
@@ -71,6 +71,17 @@ pub struct Pass {
     /// that have it are linked without a retract to the clearance cylinder
     /// where the link is clear of it (decision record 0033 item 6).
     pub stock: Option<PassStock>,
+}
+
+/// A strategy's passes with what it found worth telling the user, as
+/// sentences (decision record 0036 item 9). The notes are added to the
+/// generated path's notes, against its first segment.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StrategyOutput {
+    /// The passes, as [`Strategy::passes`] gives them.
+    pub passes: Vec<Pass>,
+    /// Notes about the whole toolpath.
+    pub notes: Vec<String>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -170,6 +181,26 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         )))
     }
 
+    /// The passes, limited to `region` when given, with notes for the user.
+    /// The default runs [`passes`](Self::passes) or
+    /// [`passes_in_region`](Self::passes_in_region) and has no notes.
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let passes = match region {
+            Some(region) => self.passes_in_region(input, region, parameters, context)?,
+            None => self.passes(input, parameters, context)?,
+        };
+        Ok(StrategyOutput {
+            passes,
+            notes: Vec::new(),
+        })
+    }
+
     /// Whether the strategy leaves each zone its own stock to leave
     /// ([`passes_in_zones`](Self::passes_in_zones)). A strategy that does not
     /// is refused for zones, rather than leaving the wrong amount.
@@ -264,20 +295,31 @@ fn generate_with(
         )));
     }
     context.check_cancelled()?;
-    let passes = if zones.is_empty() {
-        match region {
-            Some(region) => strategy.passes_in_region(input, region, &parameters, context)?,
-            None => strategy.passes(input, &parameters, context)?,
-        }
+    let (passes, notes) = if zones.is_empty() {
+        let output = strategy.passes_with_notes(input, region, &parameters, context)?;
+        (output.passes, output.notes)
     } else {
         let most = zones
             .iter()
             .fold(common.stock_to_leave.0, |m, z| m.max(z.leave));
         common.stock_to_leave = openchuck_types::units::Millimetres(most);
-        strategy.passes_in_zones(input, region, zones, &parameters, context)?
+        let passes = strategy.passes_in_zones(input, region, zones, &parameters, context)?;
+        (passes, Vec::new())
     };
     context.check_cancelled()?;
-    assemble_with_entry(&passes, input, &common, &entry, context)
+    let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
+    if !notes.is_empty() {
+        let mut notes: Vec<PathNote> = notes
+            .into_iter()
+            .map(|message| PathNote {
+                segment: 0,
+                message,
+            })
+            .collect();
+        notes.append(&mut path.notes);
+        path.notes = notes;
+    }
+    Ok(path)
 }
 
 /// The strategies a host offers, by name.
@@ -292,8 +334,9 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides: helical, axial and indexed finishing
-    /// (OP-04) and rotary roughing (OP-03).
+    /// The strategies this library provides: helical, axial and indexed
+    /// finishing (OP-04), rotary roughing (OP-03) and simultaneous 4-axis
+    /// finishing (OP-05, OP-06).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
@@ -301,6 +344,7 @@ impl Registry {
         let _ = registry.register(Arc::new(crate::axial::AxialFinishing));
         let _ = registry.register(Arc::new(crate::indexed::IndexedFinishing));
         let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
+        let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         registry
     }
 
