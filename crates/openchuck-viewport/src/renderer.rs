@@ -33,6 +33,13 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// Sets the transform of `slot`.
+    pub fn set_transform(&mut self, slot: Slot, transform: Mat4) {
+        if let Some(t) = self.transforms.get_mut(slot.index()) {
+            *t = transform;
+        }
+    }
+
     /// A frame with every slot at the identity.
     pub fn new(camera: Camera, aspect: f64, mode: DisplayMode) -> Self {
         Self {
@@ -71,7 +78,9 @@ impl Layer {
         Self::Overlay,
     ];
 
-    const fn index(self) -> usize {
+    /// The layer's position in [`Layer::ALL`], for front ends that keep a
+    /// record per layer.
+    pub const fn index(self) -> usize {
         match self {
             Self::Scene => 0,
             Self::Stock => 1,

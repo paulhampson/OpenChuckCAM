@@ -17,7 +17,7 @@ use openchuck_app::scene::{SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
     Application, JobHandle, SelectionEdit, SelectionRole, SelectionSummary, TriangleSet,
 };
-use openchuck_viewport::{Colour, Scene};
+use openchuck_viewport::{Colour, Scene, Slot};
 
 use crate::viewport::PickInput;
 
@@ -250,6 +250,10 @@ impl SelectionPanel {
         {
             let one = TriangleSet::from([hover.triangle]);
             scene.add_mesh(&triangles_mesh(&part.mesh, &one), &[], HOVER, NO_EDGES);
+        }
+        // The highlights are on the workpiece, which turns with A.
+        for mesh in &mut scene.meshes {
+            mesh.slot = Slot::Part;
         }
         Some(scene)
     }

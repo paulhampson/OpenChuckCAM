@@ -802,6 +802,12 @@ fn req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread(
     );
     gaps.sort();
     let worst = *gaps.last().unwrap();
+    eprintln!(
+        "responsiveness: {} polls, p50 {:?}, p95 {:?}, worst {worst:?}",
+        gaps.len(),
+        gaps[gaps.len() / 2],
+        gaps[gaps.len() * 95 / 100]
+    );
     // Each poll-and-drain, with its 2 ms of other work, fits in half a frame
     // of the 33 ms budget even though every core is busy with the job.
     assert!(
@@ -829,8 +835,172 @@ fn req_ui_09_cancel_stops_a_run_within_two_seconds_and_leaves_no_partial_result(
         Ok(_) => {}
         Err(e) => assert!(e.to_string().contains("cancel"), "{e}"),
     }
+    eprintln!("cancel: stopped in {took:?}");
     assert!(took < Duration::from_secs(2), "cancel took {took:?}");
     // And the application is still good: a second run completes normally.
     app.regenerate().unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_steps() {
+    let (dir, mut app, op) = project("opflow");
+    let setup = app.project().setups()[0].id;
+    let tool = app.project().tools()[0].id;
+    // The registry's strategies are what the dialog offers.
+    let choices = app.strategy_choices();
+    assert!(choices.iter().any(|c| c.name == "helical_finishing"));
+    assert!(choices.iter().all(|c| !c.label.is_empty()));
+    // Adding: at the end, enabled, with the strategy's defaults.
+    let before = app.project().operations().len();
+    let second = app
+        .add_operation("  Second pass ", "helical_finishing", setup, Some(tool))
+        .unwrap();
+    assert_eq!(app.project().operations().len(), before + 1);
+    let added = app.project().operation(second).unwrap();
+    assert_eq!(added.name, "Second pass");
+    assert!(added.enabled && added.parameters.is_empty());
+    assert_eq!(app.project().operations().last().unwrap().id, second);
+    // Edit and generate: both operations make a toolpath; the first is
+    // reused when only the second changed (chain invalidation, decision 0030).
+    let first = app.regenerate().unwrap();
+    assert_eq!(first.toolpath.groups.len(), 2);
+    assert_eq!(first.groups.len(), 2);
+    assert_eq!(first.groups[0].operation, op);
+    assert_eq!(first.groups[1].operation, second);
+    app.set_parameter(
+        second,
+        "stepover",
+        Some(openchuck_app::project::ParameterValue::Number(0.5)),
+    )
+    .unwrap();
+    let again = app.regenerate().unwrap();
+    assert_eq!(again.reused, [op]);
+    assert_eq!(again.generated, [second]);
+    // Refusals say why and change nothing.
+    let count = app.project().operations().len();
+    for (name, strategy, setup_id, tool_id, word) in [
+        ("", "helical_finishing", setup, Some(tool), "name"),
+        (
+            "x",
+            "no_such_strategy",
+            setup,
+            Some(tool),
+            "no_such_strategy",
+        ),
+        (
+            "x",
+            "helical_finishing",
+            SetupId::new(),
+            Some(tool),
+            "setup",
+        ),
+        ("x", "helical_finishing", setup, Some(ToolId::new()), "tool"),
+    ] {
+        let error = app
+            .add_operation(name, strategy, setup_id, tool_id)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(word), "{error}");
+    }
+    assert_eq!(app.project().operations().len(), count);
+    // Deleting is one undoable step; an unknown operation is an error.
+    app.delete_operation(second).unwrap();
+    assert!(app.project().operation(second).is_none());
+    assert!(app.delete_operation(second).is_err());
+    assert!(app.undo().unwrap());
+    assert!(app.project().operation(second).is_some());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Item 8, level of detail for paths with millions of segments: a helical
+/// path of two million cutting moves is cut into runs, simplified to fit a
+/// budget of one million points, and still follows the path.
+#[test]
+fn req_nfr_04_a_path_of_two_million_moves_is_displayed_within_its_budget() {
+    use openchuck_types::geometry::UnitVec3;
+    use openchuck_types::ir::{MoveKind, Segment, ToolPose};
+    use openchuck_types::units::{FeedRate, Millimetres, Seconds};
+
+    let (dir, app, _) = project("two-million");
+    let mut run = app.regenerate().unwrap();
+    const MOVES: usize = 2_000_000;
+    let pose = |i: usize| {
+        // A spiral on a cylinder of radius 12 mm: 400 moves a turn, 0.01 mm
+        // of X for each turn's worth of ten, so neighbouring turns are
+        // 0.25 mm apart.
+        let angle = i as f64 * std::f64::consts::TAU / 400.0;
+        ToolPose {
+            tip: Point3::new(
+                i as f64 * 0.25 / 400.0,
+                12.0 * angle.cos(),
+                12.0 * angle.sin(),
+            ),
+            axis: UnitVec3::Z,
+            a: Degrees(0.0),
+        }
+    };
+    let group = &mut run.toolpath.groups[0];
+    group.start = pose(0);
+    group.segments = (1..=MOVES)
+        .map(|i| Segment {
+            kind: MoveKind::Cutting,
+            end: pose(i),
+            contact_feed: Some(FeedRate(600.0)),
+            duration: Seconds(0.001),
+            contact_length: Millimetres(0.19),
+        })
+        .collect();
+    let started = Instant::now();
+    let t = timeline(&app, run);
+    let timeline_time = started.elapsed();
+    let started = Instant::now();
+    let display = ToolpathDisplay::build(&t);
+    let build_time = started.elapsed();
+    assert_eq!(t.move_count(), MOVES);
+    let started = Instant::now();
+    let lines = display.lines(&|_| true, 1_000_000);
+    let lines_time = started.elapsed();
+    let again = Instant::now();
+    let cached = display.lines(&|_| true, 1_000_000);
+    let cached_time = again.elapsed();
+    eprintln!(
+        "{MOVES} moves: timeline {timeline_time:?}, runs {build_time:?}, lines {lines_time:?} (level {}, {} of {} points), cached {cached_time:?}",
+        lines.level, lines.points, lines.full_points
+    );
+    assert!(lines.full_points > MOVES);
+    assert!(lines.points <= 1_000_000 || lines.level == LEVEL_TOLERANCES.len() - 1);
+    assert!(
+        lines.level > 0,
+        "two million points do not fit a budget of one million"
+    );
+    assert_eq!(cached, lines);
+    // The drawn path stays within the stated tolerance of the real one:
+    // sample the original and measure against the simplified polyline.
+    let run_points = &display.runs()[0].points;
+    let simple = &lines.lines[0].points;
+    for k in (0..run_points.len()).step_by(20_011) {
+        let p = run_points[k];
+        // Distance to the nearest simplified segment among those near in X.
+        let d = simple
+            .windows(2)
+            .filter(|w| (w[0].x.min(w[1].x) - 1.0..=w[0].x.max(w[1].x) + 1.0).contains(&p.x))
+            .map(|w| {
+                let ab = w[1] - w[0];
+                let l2 = ab.dot(ab);
+                let u = if l2 > 0.0 {
+                    ((p - w[0]).dot(ab) / l2).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                p.distance(w[0] + ab * u)
+            })
+            .fold(f64::MAX, f64::min);
+        assert!(
+            d <= lines.tolerance + 1e-9,
+            "point {k}: {d} > {}",
+            lines.tolerance
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }

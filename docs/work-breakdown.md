@@ -157,7 +157,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-148 on `main` first, so lane E's open items are OI-150 to OI-153. Next free after that: record 0034, `OI-154`, project schema 11 (9 and 10 are expected by lanes D and O and S). Lane M (slice 10 items 1 and 6) took record 0037 and OI-159 to OI-162, and no schema number, because unmerged branches hold records 0034 to 0036 and OI-149 to OI-158. Next free after that: record 0038, `OI-163`.
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-148 on `main` first, so lane E's open items are OI-150 to OI-153. Next free after that: record 0034, `OI-154`, project schema 11 (9 and 10 are expected by lanes D and O and S). Lane M (slice 10 items 1 and 6) took record 0037 and OI-159 to OI-162, and no schema number, because unmerged branches hold records 0034 to 0036 and OI-149 to OI-158. Lane N (slice 9 items 3 to 8) took record 0038 and OI-163 to OI-168, and no schema number. Next free after that: record 0039, `OI-169`.
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -453,7 +453,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Goal:** generate and simulate without freezing the UI, then review exactly what was generated.
 
-**Progress:** items 1 and 2 are built headless (14 Oct 2026; [decision 0030](decisions/0030-slice-9-pipeline-cache.md), accepted): the job manager existed from slice 0, and the pipeline now keeps an in-memory cache with chained keys, so editing operation N regenerates N and later operations only. Open: OI-131 (cache on disk) and OI-132 (simulation checkpoints cached, with items 5 and 6).
+**Progress:** items 1 and 2 are built headless (14 Oct 2026; [decision 0030](decisions/0030-slice-9-pipeline-cache.md), accepted): the job manager existed from slice 0, and the pipeline now keeps an in-memory cache with chained keys, so editing operation N regenerates N and later operations only. Items 3 to 8 are built on branch `claude/lane-n-slice-9-playback` (lane N; [decision 0038](decisions/0038-slice-9-display-and-playback.md), proposed, stacked on lane M's branch because both change the renderer, the viewport and the shell): toolpaths drawn by class and operation, the tool at any point with the workpiece turned by A, playback with jumps, the stock at any move from checkpoints, the part coloured by deviation, the operation add, generate and cancel flow, and levels of detail. Open: OI-131 (cache on disk), OI-132 (simulation checkpoints, progressed), OI-163 to OI-168. The limits it states (17 ms poll gap, 2 s cancel, 1,000,000 drawn points) are measured on the CPU side in one container (OI-165), so the slice stays open until the reference-machine run.
 
 **Requirements:** SIM-01, SIM-02, SIM-04, UI-09, NFR-04
 
@@ -470,11 +470,11 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Review checklist**
 
-- [ ] The UI stays responsive during generation within a stated frame-time budget
-- [ ] Cancel stops within a stated time and leaves no partial result
-- [ ] Editing operation N invalidates only N and later operations; unchanged operations reuse their cache
-- [ ] The A rotation shown matches the post output and the LinuxCNC replay
-- [ ] Jumping to move N shows the same position as the corresponding G-code line
+- [x] The UI stays responsive during generation within a stated frame-time budget (17 ms poll gap while a job runs; `req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread`, worst 9 ms; the shell draws a whole run in `req_ui_06_req_ui_09_the_shell_generates_shows_and_plays_a_run`; OI-165 for the reference machines)
+- [x] Cancel stops within a stated time and leaves no partial result (2 s at the default cell; `req_ui_09_cancel_stops_a_run_within_two_seconds_and_leaves_no_partial_result`, 6 to 12 ms on the test job; a large simulation waits for its batch, OI-116)
+- [x] Editing operation N invalidates only N and later operations; unchanged operations reuse their cache (decision 0030; `req_nfr_04_editing_operation_n_regenerates_n_and_later_operations_only`, and through the add and edit flow `req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_steps`)
+- [x] The A rotation shown matches the post output and the LinuxCNC replay (the pose's A and the work coordinates are those of the replayed LinuxCNC post lines, `req_sim_04_jumping_to_a_move_shows_the_position_of_its_g_code_line`; the machine view turns the part by `sign * A`, `req_sim_02_the_machine_view_turns_the_part_by_the_post_sign_and_keeps_the_tool_upright`; the LinuxCNC simulator run of the same programs is gate 3 in CI)
+- [x] Jumping to move N shows the same position as the corresponding G-code line (`req_sim_04_jumping_to_a_move_shows_the_position_of_its_g_code_line`; the line number is not shown, OI-164)
 
 ## Slice 10 – Geometry selection on meshes
 

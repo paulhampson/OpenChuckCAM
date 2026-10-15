@@ -7,11 +7,15 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Color32, Modifiers, PointerButton, Rect, Sense, pos2};
 use eframe::egui_wgpu;
+use openchuck_app::pathview::{DeviationBand, DeviationBands};
 use openchuck_app::pick::ScenePick;
-use openchuck_app::scene::{SceneRole, SceneView};
+use openchuck_app::project::id::ModelId;
+use openchuck_app::scene::{Mesh as TriangleMesh, SceneRole, SceneView, triangles_mesh};
+use openchuck_viewport::camera::{IDENTITY, Mat4, rotation_x};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, Colour, DisplayMode, Frame, LineItem, Projection, Renderer, Scene, StandardView,
+    Camera, Colour, DisplayMode, Frame, Layer, LineItem, Projection, Renderer, Scene, Slot,
+    StandardView,
 };
 
 /// The depth format eframe creates for `depth_buffer: 32`.
@@ -48,12 +52,51 @@ fn style(role: SceneRole) -> (Colour, bool) {
     }
 }
 
+/// The colour a deviation band is drawn in (SIM-05).
+pub fn band_colour(band: DeviationBand) -> Colour {
+    match band {
+        DeviationBand::Overcut => [0.90, 0.12, 0.12, 1.0],
+        DeviationBand::OnTarget => [0.25, 0.75, 0.35, 1.0],
+        DeviationBand::Thin => [0.82, 0.85, 0.22, 1.0],
+        DeviationBand::Medium => [0.95, 0.60, 0.15, 1.0],
+        DeviationBand::Thick => [0.45, 0.40, 0.90, 1.0],
+        _ => [0.5, 0.5, 0.5, 1.0],
+    }
+}
+
 /// The renderer scene for a view model.
+#[cfg(test)]
 pub fn to_scene(view: &SceneView) -> Scene {
+    to_scene_with(view, None)
+}
+
+/// The renderer scene for a view model, with the part of `bands.0` drawn in
+/// the bands of `bands.1` instead of one colour (SIM-05). The part, the stock
+/// and what is flagged on them are fixed to the workpiece, so they turn with
+/// A in the machine view; the guides stay where they are.
+pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>) -> Scene {
     let mut scene = Scene::default();
     for mesh in &view.meshes {
         let (colour, on_top) = style(mesh.role);
-        scene.add_mesh(&mesh.mesh, &mesh.feature_edges, colour, PART_EDGES);
+        let first = scene.meshes.len();
+        match bands {
+            Some((model, bands)) if mesh.role == SceneRole::Part && mesh.model == Some(model) => {
+                // The edges once, then each band's triangles in its colour.
+                let edges_only = TriangleMesh {
+                    vertices: mesh.mesh.vertices.clone(),
+                    triangles: Vec::new(),
+                };
+                scene.add_mesh(&edges_only, &mesh.feature_edges, colour, PART_EDGES);
+                for (band, triangles) in &bands.bands {
+                    let part = triangles_mesh(&mesh.mesh, triangles);
+                    scene.add_mesh(&part, &[], band_colour(*band), PART_EDGES);
+                }
+            }
+            _ => scene.add_mesh(&mesh.mesh, &mesh.feature_edges, colour, PART_EDGES),
+        }
+        for added in scene.meshes.iter_mut().skip(first) {
+            added.slot = Slot::Part;
+        }
         // Flagged triangles lie on the part's own surface, where their fill
         // fights the part's for depth: their outlines are drawn on top.
         if on_top {
@@ -74,13 +117,18 @@ pub fn to_scene(view: &SceneView) -> Scene {
                 segments,
                 colour,
                 on_top: true,
-                ..LineItem::default()
+                slot: Slot::Part,
             });
         }
     }
     for line in &view.lines {
         let (colour, on_top) = style(line.role);
         scene.add_polyline(&line.points, colour, on_top);
+        if matches!(line.role, SceneRole::Stock | SceneRole::Problem)
+            && let Some(added) = scene.lines.last_mut()
+        {
+            added.slot = Slot::Part;
+        }
     }
     scene
 }
@@ -93,17 +141,16 @@ fn to_color32(c: Colour) -> Color32 {
 /// What the renderer keeps between frames, in egui's callback resources.
 struct Resources {
     renderer: Renderer,
-    generation: u64,
-    overlay_generation: u64,
+    /// The generation of each layer the renderer holds.
+    generations: [u64; Layer::ALL.len()],
 }
 
 /// One frame's draw request.
 struct Callback {
     frame: Frame,
-    /// A new scene to upload, with its generation.
-    scene: Option<(u64, Arc<Scene>)>,
-    /// The overlay and its generation.
-    overlay: (u64, Arc<Scene>),
+    /// Every layer with its generation: the renderer uploads the ones whose
+    /// generation it has not seen.
+    layers: Vec<(Layer, u64, Arc<Scene>)>,
 }
 
 impl egui_wgpu::CallbackTrait for Callback {
@@ -116,16 +163,13 @@ impl egui_wgpu::CallbackTrait for Callback {
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(r) = resources.get_mut::<Resources>() {
-            if let Some((generation, scene)) = &self.scene
-                && *generation != r.generation
-            {
-                r.renderer.set_scene(device, scene);
-                r.generation = *generation;
-            }
-            let (generation, overlay) = &self.overlay;
-            if *generation != r.overlay_generation {
-                r.renderer.set_overlay(device, overlay);
-                r.overlay_generation = *generation;
+            for (layer, generation, scene) in &self.layers {
+                if let Some(seen) = r.generations.get_mut(layer.index())
+                    && *seen != *generation
+                {
+                    r.renderer.set_layer(device, *layer, scene);
+                    *seen = *generation;
+                }
             }
             r.renderer.prepare(device, queue, &self.frame);
         }
@@ -153,8 +197,7 @@ pub fn install(cc: &eframe::CreationContext<'_>) -> bool {
     let renderer = Renderer::new(&state.device, state.target_format, DEPTH_FORMAT, 1);
     state.renderer.write().callback_resources.insert(Resources {
         renderer,
-        generation: 0,
-        overlay_generation: 0,
+        generations: [0; Layer::ALL.len()],
     });
     true
 }
@@ -176,9 +219,13 @@ pub struct Viewport {
     drawn: u64,
     /// The viewport size in physical pixels, at the last frame.
     pixels: [u32; 2],
-    /// Drawn over the scene: highlights (UI-04).
-    overlay: Arc<Scene>,
-    overlay_generation: u64,
+    /// The part coloured by deviation, when asked for (SIM-05).
+    bands: Option<(ModelId, DeviationBands)>,
+    /// The layers besides the scene: highlights, toolpaths, stock, tool.
+    layers: Vec<(Layer, Arc<Scene>, u64)>,
+    /// The transform of the part's slot and of the tool's slot.
+    part_transform: Mat4,
+    tool_transform: Mat4,
     /// Whether the pointer picks triangles of the part (slice 10 item 1).
     picking: bool,
     input: PickInput,
@@ -207,8 +254,10 @@ impl Viewport {
             aspect: 1.0,
             drawn: 0,
             pixels: [0, 0],
-            overlay: Arc::new(Scene::default()),
-            overlay_generation: 0,
+            bands: None,
+            layers: Vec::new(),
+            part_transform: IDENTITY,
+            tool_transform: IDENTITY,
             picking: false,
             input: PickInput::default(),
         }
@@ -216,16 +265,62 @@ impl Viewport {
 
     /// Shows a new scene. With `fit` the camera is fitted to it.
     pub fn set_scene(&mut self, view: SceneView, fit: bool) {
-        self.scene = Arc::new(to_scene(&view));
+        self.scene = Arc::new(to_scene_with(
+            &view,
+            self.bands.as_ref().map(|(m, b)| (*m, b)),
+        ));
         self.view = view;
         self.generation += 1;
         self.fit_pending |= fit;
     }
 
+    /// Colours the part of `model` by its deviation (SIM-05), or back to one
+    /// colour for `None`. The scene is uploaded again.
+    pub fn set_bands(&mut self, bands: Option<(ModelId, DeviationBands)>) {
+        if self.bands == bands {
+            return;
+        }
+        self.bands = bands;
+        self.scene = Arc::new(to_scene_with(
+            &self.view,
+            self.bands.as_ref().map(|(m, b)| (*m, b)),
+        ));
+        self.generation += 1;
+    }
+
     /// Replaces the highlights drawn over the scene.
     pub fn set_overlay(&mut self, overlay: Scene) {
-        self.overlay = Arc::new(overlay);
-        self.overlay_generation += 1;
+        self.set_layer(Layer::Overlay, overlay);
+    }
+
+    /// Replaces one layer: toolpaths, the stock, the tool, the highlights.
+    /// The renderer uploads it on the next frame; the other layers are not
+    /// touched.
+    pub fn set_layer(&mut self, layer: Layer, scene: Scene) {
+        let scene = Arc::new(scene);
+        match self.layers.iter_mut().find(|(l, ..)| *l == layer) {
+            Some((_, old, generation)) => {
+                *old = scene;
+                *generation += 1;
+            }
+            None => self.layers.push((layer, scene, 1)),
+        }
+    }
+
+    /// Turns the workpiece (and what is fixed to it) by `degrees` about the
+    /// rotary axis in the machine view (SIM-02).
+    pub fn set_part_turn(&mut self, degrees: f64) {
+        self.part_transform = if degrees.abs() < 1e-12 {
+            IDENTITY
+        } else {
+            rotation_x(degrees.to_radians())
+        };
+    }
+
+    /// Puts the tool where the playback is: a transform that takes a tool
+    /// built with its tip at the origin and its axis along +Z to its place.
+    pub fn set_tool_transform(&mut self, transform: Mat4) {
+        self.tool_transform = transform;
     }
 
     /// Lets the pointer pick triangles of the part: hover and click are then
@@ -241,6 +336,21 @@ impl Viewport {
     /// What the pointer did in the last frame, once.
     pub fn take_input(&mut self) -> PickInput {
         std::mem::take(&mut self.input)
+    }
+
+    /// The scene a layer holds (tests).
+    #[cfg(test)]
+    pub fn layer(&self, layer: Layer) -> Option<&Scene> {
+        self.layers
+            .iter()
+            .find(|(l, ..)| *l == layer)
+            .map(|(_, s, _)| s.as_ref())
+    }
+
+    /// The transforms of the part's slot and the tool's slot (tests).
+    #[cfg(test)]
+    pub fn transforms(&self) -> (Mat4, Mat4) {
+        (self.part_transform, self.tool_transform)
     }
 
     /// The scene view model shown.
@@ -336,13 +446,16 @@ impl Viewport {
 
         self.pick(ui, &response, rect);
 
-        let frame = Frame::new(self.camera, self.aspect, self.mode);
+        let mut frame = Frame::new(self.camera, self.aspect, self.mode);
+        frame.set_transform(Slot::Part, self.part_transform);
+        frame.set_transform(Slot::Tool, self.tool_transform);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
             Callback {
                 frame,
-                scene: Some((self.generation, Arc::clone(&self.scene))),
-                overlay: (self.overlay_generation, Arc::clone(&self.overlay)),
+                layers: std::iter::once((Layer::Scene, self.generation, Arc::clone(&self.scene)))
+                    .chain(self.layers.iter().map(|(l, s, g)| (*l, *g, Arc::clone(s))))
+                    .collect(),
             },
         ));
         self.drawn = self.generation;
@@ -459,6 +572,45 @@ mod tests {
         assert!(scene.lines[0].on_top);
         // Two triangles, three sides each, two points a side.
         assert_eq!(scene.lines[0].segments.len(), 12);
+    }
+
+    #[test]
+    fn req_sim_05_the_part_is_drawn_in_one_item_for_each_deviation_band() {
+        use openchuck_app::pathview::deviation_bands;
+        let view = cube_scene("bands");
+        let model = view.meshes[0].model.unwrap();
+        // Four triangles overcut, the other eight left thin.
+        let values: Vec<Option<(f64, bool)>> = (0..12)
+            .map(|i| Some(if i < 4 { (-0.5, false) } else { (0.2, false) }))
+            .collect();
+        let bands = deviation_bands(&values, 0.1);
+        let plain = to_scene(&view);
+        let coloured = to_scene_with(&view, Some((model, &bands)));
+        // The plain scene has the part once; the coloured one has its edges
+        // and then a mesh for each band, in the band's colour, all turning
+        // with the workpiece.
+        assert_eq!(plain.meshes.len(), 1);
+        assert_eq!(coloured.meshes.len(), 1 + bands.bands.len());
+        let triangles: usize = coloured.meshes.iter().map(|m| m.indices.len() / 3).sum();
+        assert_eq!(triangles, 12);
+        for (mesh, (band, set)) in coloured.meshes.iter().skip(1).zip(&bands.bands) {
+            assert_eq!(mesh.colour, band_colour(*band));
+            assert_eq!(mesh.indices.len() / 3, set.len());
+            assert_eq!(mesh.slot, Slot::Part);
+        }
+        assert!(coloured.meshes[0].indices.is_empty());
+        assert!(!coloured.meshes[0].feature_edges.is_empty());
+        // The part and what is flagged on it turn with A; the guides do not.
+        assert!(plain.meshes.iter().all(|m| m.slot == Slot::Part));
+        assert!(
+            plain
+                .lines
+                .iter()
+                .all(|l| l.slot == Slot::Part || l.slot == Slot::Fixed)
+        );
+        // A band for another model changes nothing.
+        let other = to_scene_with(&view, Some((ModelId::new(), &bands)));
+        assert_eq!(other.meshes.len(), 1);
     }
 
     /// A scene of the corpus cube with its picker, built through the

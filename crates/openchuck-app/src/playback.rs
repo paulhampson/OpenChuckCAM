@@ -24,7 +24,8 @@ use std::sync::Arc;
 use openchuck_project::Project;
 use openchuck_project::id::OperationId;
 use openchuck_types::geometry::{Point3, Vec3};
-use openchuck_types::ir::{MoveKind, ToolPose};
+pub use openchuck_types::ir::MoveKind;
+use openchuck_types::ir::ToolPose;
 use openchuck_types::kinematics::{
     MachinePosition, RotaryFrame, machine_xyz, tool_axis_in_model, tool_tip_in_model,
 };

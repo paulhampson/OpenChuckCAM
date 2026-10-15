@@ -10,8 +10,8 @@
 //! (the controller moves X, Y, Z and A together), not as a chord.
 //!
 //! **Level of detail (item 8).** A path of millions of moves cannot all be
-//! drawn. [`ToolpathDisplay::lines`] simplifies each run with the
-//! Ramer-Douglas-Peucker rule at one of a few tolerances, from 0 (every
+//! drawn. [`ToolpathDisplay::lines`] simplifies each run (see [`simplify`])
+//! at one of a few tolerances, from 0 (every
 //! point) up to 3 mm, and picks the finest level whose visible points fit a
 //! budget. A level is made the first time it is asked for and kept. The error
 //! of a level is its tolerance, so the picture is never further than that
@@ -245,60 +245,71 @@ impl ToolpathDisplay {
     }
 }
 
-/// Ramer-Douglas-Peucker: the points of `points` that keep every dropped
-/// point within `tolerance` of the line through its neighbours kept. The ends
-/// are always kept. Deterministic.
+/// A simplified copy of `points`: some of them, in order, with the first and
+/// last kept, such that every point is within `tolerance` of the polyline
+/// through the points kept. Linear in the number of points and
+/// deterministic.
+///
+/// This is a sleeve method (Reumann and Witkam), chosen because the usual
+/// Ramer-Douglas-Peucker rule splits a long spiral unevenly and took over a
+/// minute on two million points. From a kept point it takes a direction to
+/// the first point at least `tolerance` away, and goes on while the points
+/// stay within a strip of half-width `tolerance / 3` about that line and do
+/// not turn back along it by more than `tolerance / 4`. Every point dropped
+/// then lies within `tolerance / 3` of that line, and so within `0.72 *
+/// tolerance` of the segment to the last point of the strip (whose own offset
+/// is also within `tolerance / 3`): the stated tolerance holds with room.
 pub fn simplify(points: &[Point3], tolerance: f64) -> Vec<Point3> {
     let n = points.len();
     if n <= 2 || tolerance.is_nan() || tolerance <= 0.0 {
         return points.to_vec();
     }
-    let mut keep = vec![false; n];
-    if let Some(first) = keep.first_mut() {
-        *first = true;
-    }
-    if let Some(last) = keep.last_mut() {
-        *last = true;
-    }
-    let mut stack = vec![(0usize, n - 1)];
-    while let Some((i, j)) = stack.pop() {
-        if j <= i + 1 {
-            continue;
-        }
-        let (Some(&a), Some(&b)) = (points.get(i), points.get(j)) else {
-            continue;
+    let half_width = tolerance / 3.0;
+    let slack = tolerance / 4.0;
+    let mut kept = vec![0usize];
+    let mut i = 0usize;
+    while i + 1 < n {
+        let Some(&start) = points.get(i) else { break };
+        // The first point far enough away to give a direction.
+        let anchor = (i + 1..n).find(|&j| {
+            points
+                .get(j)
+                .is_some_and(|p| p.distance(start) >= tolerance)
+        });
+        let Some(anchor) = anchor else { break };
+        let (Some(&a), true) = (points.get(anchor), anchor > i) else {
+            break;
         };
-        let mut worst = (0.0_f64, i);
-        for (k, &p) in points.iter().enumerate().take(j).skip(i + 1) {
-            let d = distance_to_segment(p, a, b);
-            if d > worst.0 {
-                worst = (d, k);
-            }
+        let along = a - start;
+        let length = along.length();
+        if !(length.is_finite() && length > 0.0) {
+            kept.push(anchor);
+            i = anchor;
+            continue;
         }
-        if worst.0 > tolerance {
-            if let Some(flag) = keep.get_mut(worst.1) {
-                *flag = true;
+        let direction = along * (1.0 / length);
+        let mut last = anchor;
+        let mut farthest = length;
+        for k in anchor + 1..n {
+            let Some(&p) = points.get(k) else { break };
+            let offset = p - start;
+            let s = offset.dot(direction);
+            let h = (offset - direction * s).length();
+            if h > half_width || s < farthest - slack {
+                break;
             }
-            stack.push((i, worst.1));
-            stack.push((worst.1, j));
+            farthest = farthest.max(s);
+            last = k;
         }
+        kept.push(last);
+        i = last;
     }
-    points
-        .iter()
-        .zip(&keep)
-        .filter(|(_, k)| **k)
-        .map(|(p, _)| *p)
+    if kept.last() != Some(&(n - 1)) {
+        kept.push(n - 1);
+    }
+    kept.into_iter()
+        .filter_map(|k| points.get(k).copied())
         .collect()
-}
-
-fn distance_to_segment(p: Point3, a: Point3, b: Point3) -> f64 {
-    let ab = b - a;
-    let length_squared = ab.dot(ab);
-    if length_squared <= 0.0 {
-        return p.distance(a);
-    }
-    let t = ((p - a).dot(ab) / length_squared).clamp(0.0, 1.0);
-    p.distance(a + ab * t)
 }
 
 /// How far a part triangle is from the target, in the bands the viewport
@@ -390,5 +401,59 @@ pub fn deviation_bands(values: &[Option<(f64, bool)>], tolerance: f64) -> Deviat
             .zip(sets)
             .filter(|(_, s)| !s.is_empty())
             .collect(),
+    }
+}
+
+/// A regeneration prepared for display and playback: its timeline and its
+/// toolpath cut into runs.
+#[derive(Debug, Clone)]
+pub struct PlaybackData {
+    /// The moves laid end to end in time.
+    pub timeline: std::sync::Arc<Timeline>,
+    /// The toolpath as runs, with levels of detail.
+    pub display: std::sync::Arc<ToolpathDisplay>,
+}
+
+impl crate::Application {
+    /// Prepares `run` for display and playback as a job (SIM-01, SIM-04):
+    /// linear in the number of moves, so a path of millions of moves does not
+    /// stall the interface.
+    pub fn start_playback_data(
+        &self,
+        run: std::sync::Arc<crate::Regeneration>,
+    ) -> crate::JobHandle<PlaybackData> {
+        let project = self.document.project.clone();
+        self.jobs
+            .submit("prepare display", self.events_tx.clone(), move |context| {
+                let timeline = std::sync::Arc::new(Timeline::new(&project, run)?);
+                context.check_cancelled()?;
+                let display = std::sync::Arc::new(ToolpathDisplay::build(&timeline));
+                Ok(PlaybackData { timeline, display })
+            })
+    }
+
+    /// Chooses the lines of the toolpath to draw, as a job: the groups with
+    /// `visible[group]` true, at the finest level of detail that fits
+    /// `max_points` (item 8). Making a level the first time simplifies every
+    /// run, which takes a while on a path of millions of moves.
+    pub fn start_path_lines(
+        &self,
+        display: std::sync::Arc<ToolpathDisplay>,
+        visible: Vec<bool>,
+        max_points: usize,
+    ) -> crate::JobHandle<PathLines> {
+        self.jobs.submit(
+            "choose path detail",
+            self.events_tx.clone(),
+            move |context| {
+                context.check_cancelled()?;
+                let lines = display.lines(
+                    &|group| visible.get(group).copied().unwrap_or(false),
+                    max_points,
+                );
+                context.check_cancelled()?;
+                Ok(lines)
+            },
+        )
     }
 }
