@@ -85,17 +85,17 @@ pub enum ParameterKind {
         /// The default.
         default: bool,
     },
-    /// A list of angles in degrees, typed as numbers separated by commas,
-    /// semicolons or spaces. May be empty when `default` is.
-    AngleList {
-        /// The default text, possibly empty.
-        default: String,
-    },
     /// One of a fixed list of words.
     Choice {
         /// The allowed words, in display order.
         options: Vec<String>,
         /// The default, one of `options`.
+        default: String,
+    },
+    /// A list of angles in degrees, typed as numbers separated by commas,
+    /// semicolons or spaces. May be empty when `default` is.
+    AngleList {
+        /// The default text, possibly empty.
         default: String,
     },
 }
