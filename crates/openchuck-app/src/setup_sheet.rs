@@ -180,7 +180,12 @@ impl SetupSheet {
             ("Tools used".to_string(), used.len().to_string()),
         ];
         if toolpath.is_some() {
-            let total: f64 = times.values().sum();
+            let total: f64 = project
+                .operations()
+                .iter()
+                .filter(|o| o.enabled)
+                .filter_map(|o| times.get(&o.id.to_string()))
+                .sum();
             job.push(("Programmed time".to_string(), clock(total)));
         }
         sections.push(SheetSection {
@@ -336,9 +341,10 @@ impl SetupSheet {
     }
 
     fn pdf_lines(&self) -> Vec<pdf::Line> {
-        let mut lines = vec![pdf::Line::title(&self.title), pdf::Line::blank()];
+        let mut lines = pdf::Line::title(&self.title);
+        lines.push(pdf::Line::blank());
         for section in &self.sections {
-            lines.push(pdf::Line::heading(&section.heading));
+            lines.extend(pdf::Line::heading(&section.heading));
             match &section.body {
                 SheetBody::Facts(facts) => {
                     let width = facts
@@ -546,19 +552,23 @@ mod pdf {
                 size: BODY_SIZE,
             }
         }
-        pub fn heading(text: &str) -> Self {
-            Self {
-                text: text.chars().take(COLUMNS * 3 / 4).collect(),
-                bold: true,
-                size: 11.0,
-            }
+        /// A heading, wrapped over as many lines as its width needs.
+        pub fn heading(text: &str) -> Vec<Self> {
+            Self::wrapped(text, COLUMNS * 3 / 4, 11.0)
         }
-        pub fn title(text: &str) -> Self {
-            Self {
-                text: text.chars().take(COLUMNS / 2).collect(),
-                bold: true,
-                size: 14.0,
-            }
+        /// The title, wrapped over as many lines as its width needs.
+        pub fn title(text: &str) -> Vec<Self> {
+            Self::wrapped(text, COLUMNS / 2, 14.0)
+        }
+        fn wrapped(text: &str, width: usize, size: f64) -> Vec<Self> {
+            wrap(text, width)
+                .into_iter()
+                .map(|text| Self {
+                    text,
+                    bold: true,
+                    size,
+                })
+                .collect()
         }
     }
 

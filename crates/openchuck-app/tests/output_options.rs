@@ -271,24 +271,48 @@ fn req_gc_05_one_file_per_operation() {
 }
 
 #[test]
-fn req_gc_05_one_file_per_tool_gathers_that_tools_operations() {
+fn req_gc_05_one_file_per_tool_keeps_the_machining_order() {
+    // T1, T2, T1: Touch up A was planned on the stock Finish B leaves, so it
+    // may not move ahead of Finish B into the first tool's file.
     let (dir, mut app) = project("per-tool", false);
     let result = post(&mut app, OutputGrouping::Tool);
     assert_eq!(
         names(&result),
-        ["01-setup-1-t1-4-mm-ball.nc", "02-setup-1-t2-6-mm-ball.nc"]
+        [
+            "01-setup-1-t1-4-mm-ball.nc",
+            "02-setup-1-t2-6-mm-ball.nc",
+            "03-setup-1-t1-4-mm-ball.nc"
+        ]
     );
     assert!(result.reports.iter().all(|r| r.is_clean()));
-    let first = &result.gcode[0].1;
-    assert!(first.contains("(operation Finish A, tool T1 4 mm ball,"));
-    assert!(first.contains("(operation Touch up A, tool T1 4 mm ball,"));
-    assert_eq!(
-        first.matches("T1 M6").count(),
-        1,
-        "one tool change per file"
-    );
-    assert!(!first.contains("T2 M6"));
-    assert!(result.gcode[1].1.contains("T2 M6"));
+    for ((_, text), (operation, tool)) in result.gcode.iter().zip([
+        ("Finish A", "T1 4 mm ball"),
+        ("Finish B", "T2 6 mm ball"),
+        ("Touch up A", "T1 4 mm ball"),
+    ]) {
+        assert!(text.contains(&format!("(operation {operation}, tool {tool},")));
+        assert_eq!(text.matches("(operation ").count(), 1);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_05_one_file_per_tool_gathers_consecutive_operations_of_one_tool() {
+    // With Finish B off, Finish A and Touch up A follow each other on T1.
+    let (dir, mut app) = project("per-tool-run", false);
+    let off = app.project().operations()[1].id;
+    app.execute(Command::SetOperationEnabled {
+        operation: off,
+        enabled: false,
+    })
+    .unwrap();
+    let result = post(&mut app, OutputGrouping::Tool);
+    assert_eq!(names(&result), ["01-setup-1-t1-4-mm-ball.nc"]);
+    assert!(result.reports.iter().all(|r| r.is_clean()));
+    let text = &result.gcode[0].1;
+    assert!(text.contains("(operation Finish A, tool T1 4 mm ball,"));
+    assert!(text.contains("(operation Touch up A, tool T1 4 mm ball,"));
+    assert_eq!(text.matches("T1 M6").count(), 1, "one tool change per file");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -355,7 +379,13 @@ fn req_gc_06_comments_name_the_operation_and_the_tool_by_name_and_number() {
         assert!(line.ends_with(" s)"), "{line}");
     }
     // No identifier leaks into the file: the names are the project's.
-    assert!(!text.contains("op-") && !text.contains('-') || text.lines().all(|l| l.len() < 200));
+    for operation in app.project().operations() {
+        let id = operation.id.to_string();
+        assert!(
+            !text.contains(&id),
+            "operation ID {id} leaks into the G-code"
+        );
+    }
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -679,5 +709,47 @@ fn req_gc_12_req_ui_06_a_disabled_operation_is_off_the_sheet_and_out_of_the_file
     assert!(operations.iter().all(|r| r[1] != "Finish B"));
     let result = post(&mut app, OutputGrouping::Operation);
     assert!(names(&result).iter().all(|n| !n.contains("finish-b")));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_the_programmed_total_counts_enabled_operations_only() {
+    let (dir, mut app) = sheet_project();
+    app.set_post(None);
+    let result = app.regenerate().unwrap();
+    let total = |app: &Application| {
+        let sheet = app.setup_sheet(Some(&result.toolpath));
+        let section = sheet.sections.iter().find(|s| s.heading == "Job").unwrap();
+        let openchuck_app::SheetBody::Facts(facts) = &section.body else {
+            panic!("facts expected");
+        };
+        facts
+            .iter()
+            .find(|(l, _)| l == "Programmed time")
+            .unwrap()
+            .1
+            .clone()
+    };
+    let before = total(&app);
+    let off = app.project().operations()[1].id;
+    app.execute(Command::SetOperationEnabled {
+        operation: off,
+        enabled: false,
+    })
+    .unwrap();
+    assert_ne!(total(&app), before, "the old toolpath still holds Finish B");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_a_long_title_and_heading_wrap_in_the_pdf_and_lose_nothing() {
+    let (dir, mut app) = sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.name =
+        "A very long setup name that would not fit on one line of the sheet and ends here: ZEBRA"
+            .into();
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let text = check_pdf(&app.setup_sheet(None).to_pdf());
+    assert!(text.contains("ZEBRA"), "the end of the heading is kept");
     std::fs::remove_dir_all(dir).unwrap();
 }

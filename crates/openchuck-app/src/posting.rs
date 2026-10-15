@@ -66,8 +66,9 @@ pub enum OutputGrouping {
     Setup,
     /// One file for each operation.
     Operation,
-    /// One file for each tool in each setup, holding every operation that
-    /// tool cuts there, in machining order.
+    /// One file for each run of consecutive operations that use one tool, so
+    /// the machining order is kept and each toolpath still meets the stock
+    /// it was made on.
     Tool,
 }
 
@@ -351,9 +352,12 @@ fn split_units(
             OutputGrouping::Tool => {
                 let mut by_tool: Vec<(String, Vec<ToolpathGroup>)> = Vec::new();
                 for group in groups {
-                    match by_tool.iter_mut().find(|(t, _)| *t == group.tags.tool) {
-                        Some((_, list)) => list.push(group),
-                        None => by_tool.push((group.tags.tool.clone(), vec![group])),
+                    // Only consecutive groups: each toolpath was made on the stock
+                    // the operations before it leave (SIM-06), so the machining
+                    // order must not change.
+                    match by_tool.last_mut() {
+                        Some((t, list)) if *t == group.tags.tool => list.push(group),
+                        _ => by_tool.push((group.tags.tool.clone(), vec![group])),
                     }
                 }
                 for (tag, groups) in by_tool {
