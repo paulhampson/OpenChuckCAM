@@ -61,7 +61,10 @@ use openchuck_types::units::Millimetres;
 /// - 6: operations gain `enabled`, written only when false (UI-06,
 ///   decision record 0029 item 10), and the machine copy in `machine.toml`
 ///   may hold the `id` of the library profile it came from (OI-54, item 16).
-pub const SCHEMA: i64 = 6;
+/// - 7: operations gain the optional `boundary`, `avoid` and `check`
+///   selection set references (OP-02), written only when set (decision
+///   record 0032).
+pub const SCHEMA: i64 = 7;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -81,6 +84,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_3_to_4,
     schema_4_to_5,
     schema_5_to_6,
+    schema_6_to_7,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -131,6 +135,13 @@ fn schema_4_to_5(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
 /// Schema 6 only adds `enabled` to operations, written only when false, so a
 /// schema 5 file needs no change but its number: its operations are enabled.
 fn schema_5_to_6(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 7 only adds optional operation fields (`boundary`, `avoid`,
+/// `check`), which a schema 6 file does not have, so it needs no change but
+/// its number.
+fn schema_6_to_7(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
@@ -247,6 +258,12 @@ struct OperationFile {
     tool: Option<ToolId>,
     #[serde(default)]
     selections: Vec<SelectionSetId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    boundary: Option<SelectionSetId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    avoid: Vec<SelectionSetId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    check: Vec<SelectionSetId>,
     #[serde(default)]
     parameters: BTreeMap<String, ParameterValue>,
     #[serde(default = "enabled_default", skip_serializing_if = "is_enabled")]
@@ -260,6 +277,61 @@ const fn enabled_default() -> bool {
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
 const fn is_enabled(enabled: &bool) -> bool {
     *enabled
+}
+
+/// A hash of everything an operation takes from selections: the sets it uses
+/// in each role and, for each, the model, the model's hash and the selected
+/// geometry. It changes when a set the operation uses is edited or the
+/// operation is pointed at other sets, and not when an unrelated set is
+/// edited or a set is only renamed or moved in the list. The operation's
+/// cache key (architecture section 6) combines it with the operation's other
+/// inputs (UI-05).
+pub fn selection_inputs_hash(
+    project: &Project,
+    operation: OperationId,
+) -> Result<ContentHash, ProjectError> {
+    #[derive(Serialize)]
+    struct Used<'a> {
+        model: ModelId,
+        model_hash: ContentHash,
+        target: &'a SelectionTarget,
+    }
+    #[derive(Serialize)]
+    struct Inputs<'a> {
+        selections: &'a [SelectionSetId],
+        boundary: Option<SelectionSetId>,
+        avoid: &'a [SelectionSetId],
+        check: &'a [SelectionSetId],
+        sets: BTreeMap<String, Used<'a>>,
+    }
+    let o = project
+        .operation(operation)
+        .ok_or_else(|| ProjectError::NotFound {
+            kind: OperationId::KIND,
+            id: operation.to_string(),
+        })?;
+    let sets = o
+        .selection_refs()
+        .filter_map(|id| project.selection_sets().iter().find(|s| s.id == id))
+        .map(|s| {
+            (
+                s.id.to_string(),
+                Used {
+                    model: s.model,
+                    model_hash: s.model_hash,
+                    target: &s.target,
+                },
+            )
+        })
+        .collect();
+    let inputs = Inputs {
+        selections: &o.selections,
+        boundary: o.boundary,
+        avoid: &o.avoid,
+        check: &o.check,
+        sets,
+    };
+    Ok(ContentHash::of_bytes(to_text(&inputs)?.as_bytes()))
 }
 
 /// Every file of `project` as (path relative to the project folder, text),
@@ -332,6 +404,9 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             strategy: o.strategy.clone(),
             tool: o.tool,
             selections: o.selections.clone(),
+            boundary: o.boundary,
+            avoid: o.avoid.clone(),
+            check: o.check.clone(),
             parameters: o.parameters.clone(),
             enabled: o.enabled,
         };
@@ -521,6 +596,9 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                 strategy: f.strategy,
                 tool: f.tool,
                 selections: f.selections,
+                boundary: f.boundary,
+                avoid: f.avoid,
+                check: f.check,
                 parameters: f.parameters,
                 enabled: f.enabled,
             })
@@ -793,7 +871,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 6);
+        assert_eq!(SCHEMA, 7);
         let mut project = Project::new("p");
         project
             .insert(
@@ -802,7 +880,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 6\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 7\n"), "{path}: {text}");
         }
     }
 

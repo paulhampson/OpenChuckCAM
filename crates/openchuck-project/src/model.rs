@@ -357,14 +357,35 @@ pub struct Operation {
     pub strategy: String,
     /// The tool it cuts with, once chosen.
     pub tool: Option<ToolId>,
-    /// The selection sets it machines, in order.
+    /// The selection sets it machines, in order. Empty machines the whole
+    /// part.
     pub selections: Vec<SelectionSetId>,
+    /// A set that bounds where the tool may cut (OP-02, containment
+    /// boundary).
+    pub boundary: Option<SelectionSetId>,
+    /// Sets that are never cut (OP-02, avoid surfaces).
+    pub avoid: Vec<SelectionSetId>,
+    /// Sets the tool must stop short of (OP-02, check surfaces).
+    pub check: Vec<SelectionSetId>,
     /// Parameter values by name, in name order.
     pub parameters: BTreeMap<String, ParameterValue>,
     /// False when the user has disabled it: it stays in the project and the
     /// tree but is left out of regeneration, simulation and posting, as if it
     /// were absent (UI-06; decision record 0029 item 10).
     pub enabled: bool,
+}
+
+impl Operation {
+    /// Every selection set the operation refers to, in any role: the sets it
+    /// machines, its boundary, then its avoid and check sets.
+    pub fn selection_refs(&self) -> impl Iterator<Item = SelectionSetId> + '_ {
+        self.selections
+            .iter()
+            .copied()
+            .chain(self.boundary)
+            .chain(self.avoid.iter().copied())
+            .chain(self.check.iter().copied())
+    }
 }
 
 /// Any item with a stable ID, for the generic edits.
@@ -811,6 +832,16 @@ impl Project {
         self.operations.iter().find(|o| o.id == id)
     }
 
+    /// The operations that use selection set `id` in any role, in order. These
+    /// are the operations to regenerate when the set is edited (UI-05).
+    pub fn operations_using(&self, id: SelectionSetId) -> Vec<OperationId> {
+        self.operations
+            .iter()
+            .filter(|o| o.selection_refs().any(|s| s == id))
+            .map(|o| o.id)
+            .collect()
+    }
+
     /// Whether an item with this ID exists.
     pub fn contains(&self, id: ItemId) -> bool {
         self.index_of(id).is_some()
@@ -1162,8 +1193,8 @@ impl Project {
                 if let Some(tool) = o.tool {
                     require(ItemId::Tool(tool))?;
                 }
-                for set in &o.selections {
-                    require(ItemId::SelectionSet(*set))?;
+                for set in o.selection_refs() {
+                    require(ItemId::SelectionSet(set))?;
                 }
                 for (name, value) in &o.parameters {
                     if let ParameterValue::Number(v) = value
@@ -1208,7 +1239,7 @@ impl Project {
             ItemId::SelectionSet(set) => self
                 .operations
                 .iter()
-                .find(|o| o.selections.contains(&set))
+                .find(|o| o.selection_refs().any(|s| s == set))
                 .map(|o| ItemId::Operation(o.id)),
             ItemId::Operation(_) => None,
         }

@@ -61,6 +61,9 @@ fn operation(id: u128, setup: SetupId) -> Operation {
         strategy: "helical_finish".into(),
         tool: None,
         selections: Vec::new(),
+        boundary: None,
+        avoid: Vec::new(),
+        check: Vec::new(),
         parameters: BTreeMap::from([("stepover".into(), ParameterValue::Number(0.5))]),
     }
 }

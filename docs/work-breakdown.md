@@ -148,7 +148,7 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | --- | --- | --- | --- |
 | 5 | Slice 7 | Simulation settings in `project.toml` | Merged |
 | 6 | A (slice 8) | Operations gain `enabled`, written only when false (UI-06); the machine copy in `machine.toml` gains its library source's `id` ([decision 0029](decisions/0029-slice-8-viewport-and-shell.md) items 10 and 16) | Claimed; in the slice 8 pull request |
-| 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Expected, not yet claimed |
+| 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0032](decisions/0032-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields (the selection kind per model was already in schema 1, decision 0010). In pull request 39 |
 | 8 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
 | 9 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S |
 
@@ -156,7 +156,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main` and lane G took record 0031 and OI-133 to OI-135 (unmerged branches hold 0028, 0030 to 0032 and up to OI-140; the slice 11a branch's 0027 and OI-118 to OI-123 are in its pull request 41; lane B took record 0030 and OI-131, OI-132, and slice 10 took 0032 and OI-136 to OI-140). Next free: record 0033, `OI-141`, project schema 7 (claimed in the table above as expected for lane C).
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Next free: record 0033, `OI-141`, project schema 8.
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -479,6 +479,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Goal:** pick geometry on a mesh, save it as named sets, and make an operation cut only there.
 
+**Status:** in progress. Items 2 to 5 are built headless on branch `claude/slice-10-mesh-selection` (lane C; project schema 7); design in [decision 0032](decisions/0032-slice-10-mesh-selection.md), accepted 14 Oct 2026 (OI-137 to OI-140 open or deferred). Items 1 (picking, which also needs OI-12, the pick budget) and 6 (the selection panel) are lane M: the viewport shell is on `main`, and they start once this lands. Review checklist, headless: the third and fourth boxes are met by the tests named in the record; the first is met without the highlight (the same set comes back with its model hash) and the second through the pipeline cache key (OI-140, closed); the fifth (picking time) and sixth (the visible warning, OI-139) need items 1 and 6. The third and fourth boxes are ticked; the other four stay open until their remaining parts land.
+
 **Requirements:** UI-04 (mesh), UI-05, PRJ-06 (mesh), OP-02
 
 **Design refinement:** the selection model and geometry reference (mesh selections are triangle sets and apply to mesh models only), CPU ray-cast picking against a BVH in `openchuck-geom`, and how region constraints reach `openchuck-path`. Define the behaviour for a reference that cannot be resolved: flag the operation, never silently drop it.
@@ -494,8 +496,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 - [ ] Select, save, close and reopen: the same set is highlighted
 - [ ] Editing a set marks dependent operations for regeneration
-- [ ] Flood fill and select-by-angle give expected counts on a reference mesh
-- [ ] An avoid surface is never cut in the test case
+- [x] Flood fill and select-by-angle give expected counts on a reference mesh (`openchuck-geom/tests/select.rs`, `openchuck-app/tests/selection.rs`)
+- [x] An avoid surface is never cut in the test case (`openchuck-path/tests/region.rs`, `openchuck-app/tests/selection.rs`)
 - [ ] Picking on a 1M-triangle model stays within its time budget
 - [ ] A reference to missing geometry shows a visible warning
 

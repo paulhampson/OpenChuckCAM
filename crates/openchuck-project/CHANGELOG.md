@@ -4,6 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Slice 10 (decision 0032): operations gain `boundary`, `avoid` and `check` selection set references (`Operation::selection_refs`), `Project::operations_using` and `file::selection_inputs_hash`; project folder schema 7, migrated from 6 (a number only).
 - Machine IDs (decision 0029 item 16): `machines::ProfileEntry` (a profile with its optional `id`), `parse_profile_entry`, `load_profile_entry`, `render_profile_entry`, `save_profile_entry`, `builtin_entry`, `list_library_entries`, `validate_machine_id` and `new_machine_id`; profile files schema 2 with `id` beside `[machine]`; the built-in Makera Z1 has a fixed ID; `Project::machine_id` and `set_machine_from`, and `machine.toml` keeps the copy's source ID (project schema 6).
 - Project schema 6 (decision 0029 item 10): `Operation::enabled`, written to the operation's file only when false; the schema 5 to 6 migration changes only the number.
 - Slice 7 (decision 0025): the project holds `SimulationSettings` (`simulation`, `set_simulation`), written to `project.toml` as `[simulation]` only when not the default; project folder schema 5, migrated from 4.

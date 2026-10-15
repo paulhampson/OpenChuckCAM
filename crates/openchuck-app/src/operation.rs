@@ -16,7 +16,7 @@ use std::path::Path;
 use openchuck_path::params::{ParameterKind, names};
 use openchuck_path::{
     AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
-    StrategyInput, SurfaceSource, generate,
+    StrategyInput, SurfaceSource, generate, generate_in_region,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -177,8 +177,9 @@ pub struct OperationPath {
 ///
 /// Fails with a message naming the operation when a piece is missing (the
 /// machine profile, the setup's part or stock, the tool), when the strategy
-/// is unknown, or when the operation is limited to selections, which
-/// arrives with OP-02 (slice 14) and is refused rather than ignored.
+/// is unknown, a selection set it uses cannot be resolved (a changed model, a
+/// missing triangle, an empty set), or its strategy cannot be limited to
+/// selections; each is an error that says which, never a silent drop (OP-02).
 pub fn generate_operation(
     root: &Path,
     project: &Project,
@@ -205,11 +206,15 @@ pub fn generate_operation_on(
         .operation(id)
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
     let strategy = registry.get(&operation.strategy)?;
-    if !operation.selections.is_empty() {
+    let limited = operation.selection_refs().next().is_some();
+    if limited && !strategy.honours_region() {
         return Err(missing(
             operation,
-            "limiting an operation to selections is not built yet (OP-02, slice 14); \
-             remove its selections to machine the whole part",
+            &format!(
+                "the strategy '{}' cannot yet be limited to selections (OP-02); remove \
+                 the operation's selections to machine the whole part",
+                operation.strategy
+            ),
         ));
     }
     let machine = project
@@ -239,9 +244,11 @@ pub fn generate_operation_on(
         .as_ref()
         .ok_or_else(|| missing(operation, "its setup has no stock"))?;
 
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let (mesh, file_hash) = crate::model::placed_mesh_hashed(root, model, context)?;
     context.check_cancelled()?;
     let surface = MeshSurface::new(&mesh)?;
+    let resolved_region = crate::selection::resolve(project, operation, model, file_hash, &mesh)?;
+    let constraint = resolved_region.as_ref().map(|r| r.constraint());
     let analytic = AnalyticStock::from_stock(stock, Some(surface.bounds()))?;
     let stock: &dyn StockModel = carried.unwrap_or(&analytic);
     let profile = snapshot.tool.profile()?;
@@ -261,7 +268,10 @@ pub fn generate_operation_on(
         tags: &tags,
     };
     let resolved = parameter_values(project, operation, registry)?;
-    let path = generate(strategy, &input, &resolved.values, context)?;
+    let path = match &constraint {
+        Some(region) => generate_in_region(strategy, &input, region, &resolved.values, context)?,
+        None => generate(strategy, &input, &resolved.values, context)?,
+    };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
     notes.extend(

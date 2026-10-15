@@ -70,6 +70,7 @@ mod error;
 pub mod helical;
 pub mod parallel;
 pub mod params;
+pub mod region;
 pub mod rotary;
 pub mod stock;
 pub mod strategy;
@@ -85,9 +86,12 @@ pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,
 };
+pub use region::{RegionConstraint, Window};
 pub use rotary::RotaryMapping;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
-pub use strategy::{CutPoint, Pass, Registry, Strategy, StrategyInput, generate};
+pub use strategy::{
+    CutPoint, Pass, Registry, Strategy, StrategyInput, generate, generate_in_region,
+};
 pub use surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
 };

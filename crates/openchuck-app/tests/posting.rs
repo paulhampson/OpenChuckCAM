@@ -102,6 +102,9 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             strategy: "helical_finishing".into(),
             tool: Some(tool_id),
             selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -214,6 +217,9 @@ fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (T
         strategy: "helical_finishing".into(),
         tool: Some(second_id),
         selections: Vec::new(),
+        boundary: None,
+        avoid: Vec::new(),
+        check: Vec::new(),
         parameters: BTreeMap::new(),
     };
     app.execute(Command::Add {

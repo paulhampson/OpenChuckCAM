@@ -49,6 +49,17 @@ pub enum AppError {
     /// No operation has this ID.
     #[error("the project has no operation '{0}'")]
     UnknownOperation(String),
+    /// No selection set has this ID.
+    #[error("the project has no selection set '{0}'")]
+    UnknownSelection(String),
+    /// A selection cannot be made or changed as asked (UI-04, UI-05).
+    #[error("selection '{name}': {reason}")]
+    Selection {
+        /// The set's name.
+        name: String,
+        /// Why not.
+        reason: String,
+    },
     /// An operation cannot be generated as it stands.
     #[error("operation '{name}' cannot be generated: {reason}")]
     Operation {

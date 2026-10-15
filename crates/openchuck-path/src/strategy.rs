@@ -25,6 +25,7 @@ use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
 };
+use crate::region::RegionConstraint;
 use crate::rotary::RotaryMapping;
 use crate::stock::{CollisionOracle, StockModel};
 use crate::surface::SurfaceSource;
@@ -94,6 +95,30 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// ([`ParameterSchema::with_common`]).
     fn schema(&self) -> ParameterSchema;
 
+    /// Whether the strategy limits its cuts to a region
+    /// ([`passes_in_region`](Self::passes_in_region), OP-02). A strategy that
+    /// does not is refused for an operation with selections, rather than
+    /// cutting outside them.
+    fn honours_region(&self) -> bool {
+        false
+    }
+
+    /// As [`passes`](Self::passes), cutting only where `region` allows
+    /// (OP-02). The default refuses, so a strategy that has not been written
+    /// for regions never cuts outside one.
+    fn passes_in_region(
+        &self,
+        _input: &StrategyInput<'_>,
+        _region: &RegionConstraint<'_>,
+        _parameters: &Parameters,
+        _context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        Err(PathError::Strategy(format!(
+            "the strategy '{}' cannot be limited to a region",
+            self.name()
+        )))
+    }
+
     /// The passes for `input` and the resolved `parameters`. Long work
     /// checks `context` for cancellation and reports progress through it.
     fn passes(
@@ -113,11 +138,36 @@ pub fn generate(
     values: &BTreeMap<String, ParameterValue>,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
+    generate_with(strategy, input, None, values, context)
+}
+
+/// As [`generate`], cutting only where `region` allows (OP-02). Fails for a
+/// strategy that does not honour regions.
+pub fn generate_in_region(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    region: &RegionConstraint<'_>,
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
+    generate_with(strategy, input, Some(region), values, context)
+}
+
+fn generate_with(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
     let parameters = strategy.schema().resolve(values)?;
     let common = CommonParameters::read(&parameters)?;
     let entry = EntryParameters::read(&parameters)?;
     context.check_cancelled()?;
-    let passes = strategy.passes(input, &parameters, context)?;
+    let passes = match region {
+        Some(region) => strategy.passes_in_region(input, region, &parameters, context)?,
+        None => strategy.passes(input, &parameters, context)?,
+    };
     context.check_cancelled()?;
     assemble_with_entry(&passes, input, &common, &entry, context)
 }

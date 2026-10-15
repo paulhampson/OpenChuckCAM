@@ -76,6 +76,9 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         strategy: "helical_finishing".into(),
         tool: Some(tool),
         selections: Vec::new(),
+        boundary: None,
+        avoid: Vec::new(),
+        check: Vec::new(),
         parameters,
     }
 }
