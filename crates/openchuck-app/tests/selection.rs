@@ -22,7 +22,7 @@ use openchuck_app::project::{
     Item, Operation, OrderKey, Placement, SelectionTarget, Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
-use openchuck_app::{AppError, Application, Command, RegionRequest, SelectionEdit, Threads};
+use openchuck_app::{AppError, Application, Command, Event, RegionRequest, SelectionEdit, Threads};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
@@ -215,6 +215,30 @@ fn req_ui_04_the_cube_has_the_expected_counts_for_each_way_of_picking() {
         .unwrap_err()
         .to_string();
     assert!(e.contains("triangle 12"), "{e}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_04_req_ui_09_selecting_a_region_is_a_reported_job() {
+    let (dir, app, _, model) = project("region-job");
+    app.drain_events();
+    let request = RegionRequest::ByDirection {
+        direction: UP,
+        max_angle: 90.0,
+    };
+    let picked = app.start_select_region(model, &request).unwrap().wait();
+    assert_eq!(picked.unwrap(), app.select_region(model, &request).unwrap());
+    let events = app.drain_events();
+    assert!(
+        matches!(events.first(), Some(Event::JobStarted { .. })),
+        "{events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Event::JobFinished { error: None, .. })),
+        "{events:?}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

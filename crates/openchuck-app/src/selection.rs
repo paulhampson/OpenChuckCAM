@@ -41,7 +41,7 @@ use openchuck_types::geometry::Vec3;
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::mesh::TriangleMesh;
 
-use crate::{AppError, Application, Command};
+use crate::{AppError, Application, Command, JobHandle};
 
 /// A way to pick triangles of a mesh model (UI-04).
 #[derive(Debug, Clone, PartialEq)]
@@ -94,35 +94,52 @@ fn selection_error(name: &str, reason: impl Into<String>) -> AppError {
 impl Application {
     /// The triangles `request` picks on the mesh model `model`, placed as the
     /// project places it (UI-04). Nothing is stored: save the result with
-    /// [`save_selection`](Self::save_selection).
+    /// [`save_selection`](Self::save_selection). Waits for
+    /// [`start_select_region`](Self::start_select_region).
     pub fn select_region(
         &self,
         model: ModelId,
         request: &RegionRequest,
     ) -> Result<TriangleSet, AppError> {
-        let reference = self.model_ref(model)?;
-        let cancel = CancelToken::new();
-        let context = JobContext::new(&cancel, &NoProgress);
-        let (mesh, _) =
-            crate::model::placed_mesh_hashed(&self.document.location, reference, &context)?;
-        match request {
-            RegionRequest::FloodFill { seeds } => {
-                Ok(select::flood_fill(&mesh, &EdgeMap::new(&mesh)?, seeds)?)
-            }
-            RegionRequest::FloodFillByAngle {
-                seeds,
-                max_edge_angle,
-            } => Ok(select::flood_fill_by_angle(
-                &mesh,
-                &EdgeMap::new(&mesh)?,
-                seeds,
-                *max_edge_angle,
-            )?),
-            RegionRequest::ByDirection {
-                direction,
-                max_angle,
-            } => Ok(select::select_by_direction(&mesh, *direction, *max_angle)?),
-        }
+        self.start_select_region(model, request)?.wait()
+    }
+
+    /// Starts [`select_region`](Self::select_region) as a background job, so
+    /// loading the mesh, building the edge map and filling are cancellable
+    /// and reported through the job events (UI-09, NFR-04). Fails at once if
+    /// the project has no such model.
+    pub fn start_select_region(
+        &self,
+        model: ModelId,
+        request: &RegionRequest,
+    ) -> Result<JobHandle<TriangleSet>, AppError> {
+        let reference = self.model_ref(model)?.clone();
+        let root = self.document.location.clone();
+        let request = request.clone();
+        Ok(self
+            .jobs
+            .submit("select region", self.events_tx.clone(), move |context| {
+                let (mesh, _) = crate::model::placed_mesh_hashed(&root, &reference, context)?;
+                context.check_cancelled()?;
+                Ok(match &request {
+                    RegionRequest::FloodFill { seeds } => {
+                        select::flood_fill(&mesh, &EdgeMap::new(&mesh)?, seeds)?
+                    }
+                    RegionRequest::FloodFillByAngle {
+                        seeds,
+                        max_edge_angle,
+                    } => select::flood_fill_by_angle(
+                        &mesh,
+                        &EdgeMap::new(&mesh)?,
+                        seeds,
+                        *max_edge_angle,
+                    )?,
+                    RegionRequest::ByDirection {
+                        direction,
+                        max_angle,
+                    } => select::select_by_direction(&mesh, *direction, *max_angle)?,
+                })
+            }))
     }
 
     /// Saves `triangles` of the mesh model `model` as a new named set at the
