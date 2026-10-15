@@ -124,8 +124,12 @@ impl SelectionPanel {
     }
 
     /// The scene was built again: its meshes may differ, so the highlights are
-    /// drawn again and the hover is forgotten.
+    /// drawn again and the hover is forgotten. A region pick still running was
+    /// computed from the previous meshes, so it is cancelled.
     pub fn scene_changed(&mut self) {
+        if let Some(pending) = self.pending.take() {
+            pending.handle.cancel();
+        }
         self.hover = None;
         self.dirty = true;
     }
@@ -690,6 +694,37 @@ mod tests {
             overlay_triangles(&panel.overlay(&app, &empty_view).unwrap()),
             0
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_09_a_scene_rebuild_cancels_a_region_pick_in_flight() {
+        use openchuck_app::RegionRequest;
+        use openchuck_app::Threads;
+        let dir = std::env::temp_dir().join(format!("openchuck-ui-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, "stale", Threads::Exactly(2)).unwrap();
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        let (model, _) = app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+        let handle = app
+            .start_select_region(model, &RegionRequest::FloodFill { seeds: vec![0] })
+            .unwrap();
+        let mut panel = SelectionPanel {
+            pending: Some(Pending {
+                handle,
+                model,
+                combine: Combine::Replace,
+            }),
+            ..SelectionPanel::default()
+        };
+        panel.scene_changed();
+        assert!(panel.pending.is_none());
+        // The next frame applies nothing from the old scene.
+        assert!(!panel.frame(&app, PickInput::default()));
+        assert!(panel.working.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
