@@ -35,8 +35,8 @@ use crate::error::{PathError, Result};
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
-use crate::strategy::{Pass, Strategy, StrategyInput};
-use crate::wrap_fit::{Fit, fit_curve};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
+use crate::wrap_fit::{Fit, fit_curve, zone_fits};
 
 pub use crate::wrap_fit::CHORD_FACTOR;
 
@@ -135,13 +135,28 @@ impl Strategy for HelicalFinishing {
         true
     }
 
+    fn honours_leave_zones(&self) -> bool {
+        true
+    }
+
+    fn passes_in_zones(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        zones: &[LeaveZone<'_>],
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        passes(input, region, zones, parameters, context)
+    }
+
     fn passes(
         &self,
         input: &StrategyInput<'_>,
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, parameters, context)
+        passes(input, None, &[], parameters, context)
     }
 
     fn passes_in_region(
@@ -151,7 +166,7 @@ impl Strategy for HelicalFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), parameters, context)
+        passes(input, Some(region), &[], parameters, context)
     }
 }
 
@@ -159,6 +174,7 @@ impl Strategy for HelicalFinishing {
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
+    zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
@@ -214,10 +230,12 @@ fn passes(
         }
         let seeds = seeds as usize;
         let grown = cutter::grow_profile(input.tool, leave)?;
+        let zone_fits = zone_fits(zones, input.tool)?;
         let fit = Fit {
             input,
             drop_profile: &grown,
             leave,
+            zones: &zone_fits,
             x0,
             length,
             start,

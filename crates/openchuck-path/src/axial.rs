@@ -20,8 +20,8 @@ use crate::helical::CONSTRAINED_SPACING;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
-use crate::strategy::{Pass, Strategy, StrategyInput};
-use crate::wrap_fit::{CHORD_FACTOR, Fit, fit_curve};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
+use crate::wrap_fit::{CHORD_FACTOR, Fit, ZoneFit, fit_curve, zone_fits};
 
 /// Axial finishing of the whole model, or of a region.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -115,13 +115,28 @@ impl Strategy for AxialFinishing {
         true
     }
 
+    fn honours_leave_zones(&self) -> bool {
+        true
+    }
+
+    fn passes_in_zones(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        zones: &[LeaveZone<'_>],
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        passes(input, region, zones, parameters, context)
+    }
+
     fn passes(
         &self,
         input: &StrategyInput<'_>,
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, parameters, context)
+        passes(input, None, &[], parameters, context)
     }
 
     fn passes_in_region(
@@ -131,7 +146,7 @@ impl Strategy for AxialFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), parameters, context)
+        passes(input, Some(region), &[], parameters, context)
     }
 }
 
@@ -158,6 +173,7 @@ pub(crate) struct AlongX<'a> {
     input: &'a StrategyInput<'a>,
     region: Option<&'a RegionConstraint<'a>>,
     grown: RevolvedProfile,
+    zones: Vec<ZoneFit<'a>>,
     leave: f64,
     x0: f64,
     x1: f64,
@@ -176,6 +192,7 @@ impl<'a> AlongX<'a> {
     pub(crate) fn read(
         input: &'a StrategyInput<'a>,
         region: Option<&'a RegionConstraint<'a>>,
+        zones: &[LeaveZone<'a>],
         parameters: &Parameters,
     ) -> Result<Self> {
         let tolerance = parameters.number(names::TOLERANCE)?;
@@ -217,6 +234,7 @@ impl<'a> AlongX<'a> {
             input,
             region,
             grown: cutter::grow_profile(input.tool, leave)?,
+            zones: zone_fits(zones, input.tool)?,
             leave,
             x0,
             x1,
@@ -255,6 +273,7 @@ impl<'a> AlongX<'a> {
             input: self.input,
             drop_profile: &self.grown,
             leave: self.leave,
+            zones: &self.zones,
             x0: if backwards { self.x1 } else { self.x0 },
             length: if backwards { -length } else { length },
             start: a.0,
@@ -271,13 +290,14 @@ impl<'a> AlongX<'a> {
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
+    zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     let stepover = parameters.number(names::STEPOVER)?;
     let start = parameters.number(parameter::START_ANGLE)?;
     let height = parameters.number(parameter::SCALLOP)?;
-    let along = AlongX::read(input, region, parameters)?;
+    let along = AlongX::read(input, region, zones, parameters)?;
     let scallop = if height > 0.0 {
         Some((scallop::cusp_radius(input.tool)?, height))
     } else {

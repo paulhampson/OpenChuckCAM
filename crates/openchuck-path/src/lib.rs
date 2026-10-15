@@ -96,7 +96,8 @@ pub use region::{RegionConstraint, Window};
 pub use rotary::RotaryMapping;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, Pass, Registry, Strategy, StrategyInput, generate, generate_in_region,
+    CutPoint, LeaveZone, Pass, Registry, Strategy, StrategyInput, generate, generate_in_region,
+    generate_in_zones,
 };
 pub use surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,

@@ -19,7 +19,7 @@ use crate::params::{
     MAX_ANGLES, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names,
 };
 use crate::region::RegionConstraint;
-use crate::strategy::{Pass, Strategy, StrategyInput};
+use crate::strategy::{LeaveZone, Pass, Strategy, StrategyInput};
 
 /// Indexed finishing of the whole model, or of a region.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -109,13 +109,28 @@ impl Strategy for IndexedFinishing {
         true
     }
 
+    fn honours_leave_zones(&self) -> bool {
+        true
+    }
+
+    fn passes_in_zones(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        zones: &[LeaveZone<'_>],
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        passes(input, region, zones, parameters, context)
+    }
+
     fn passes(
         &self,
         input: &StrategyInput<'_>,
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, None, parameters, context)
+        passes(input, None, &[], parameters, context)
     }
 
     fn passes_in_region(
@@ -125,7 +140,7 @@ impl Strategy for IndexedFinishing {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        passes(input, Some(region), parameters, context)
+        passes(input, Some(region), &[], parameters, context)
     }
 }
 
@@ -150,11 +165,12 @@ fn positions(parameters: &Parameters) -> Result<Vec<f64>> {
 fn passes(
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
+    zones: &[LeaveZone<'_>],
     parameters: &Parameters,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     let angles = positions(parameters)?;
-    let along = AlongX::read(input, region, parameters)?;
+    let along = AlongX::read(input, region, zones, parameters)?;
     along.check_passes(angles.len())?;
     let mut out = Vec::new();
     for (i, a) in angles.iter().enumerate() {

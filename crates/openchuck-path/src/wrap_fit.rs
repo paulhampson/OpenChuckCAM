@@ -14,12 +14,13 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
 
-use crate::cutter::{self, Contact};
+use crate::cutter::{self, Contact, ToolLine};
 use crate::error::Result;
 use crate::parallel;
 use crate::region::RegionConstraint;
 use crate::rotary::AxisPosition;
-use crate::strategy::{CutPoint, Pass, StrategyInput};
+use crate::strategy::{CutPoint, LeaveZone, Pass, StrategyInput};
+use crate::surface::SurfaceSource;
 
 /// The fraction of the toolpath tolerance a move's path-fitting error may
 /// use (decision record 0018 item 12, closing OI-08): 0.4 leaves room for the
@@ -138,6 +139,33 @@ pub(crate) struct Node {
     pub(crate) a: Degrees,
     /// The drop with the (grown) tool.
     pub(crate) contact: Contact,
+    /// The stock to leave the drop was made with.
+    pub(crate) leave: f64,
+}
+
+/// A part of the surface with its own stock to leave, and the tool grown by
+/// it (decision record 0033 item 4).
+pub(crate) struct ZoneFit<'a> {
+    pub(crate) surface: &'a dyn SurfaceSource,
+    pub(crate) leave: f64,
+    pub(crate) profile: RevolvedProfile,
+}
+
+/// Grows the tool for each of `zones`.
+pub(crate) fn zone_fits<'a>(
+    zones: &[LeaveZone<'a>],
+    tool: &RevolvedProfile,
+) -> Result<Vec<ZoneFit<'a>>> {
+    zones
+        .iter()
+        .map(|z| {
+            Ok(ZoneFit {
+                surface: z.surface,
+                leave: z.leave,
+                profile: cutter::grow_profile(tool, z.leave)?,
+            })
+        })
+        .collect()
 }
 
 pub(crate) struct Fit<'a> {
@@ -145,6 +173,10 @@ pub(crate) struct Fit<'a> {
     pub(crate) region: Option<&'a RegionConstraint<'a>>,
     pub(crate) drop_profile: &'a RevolvedProfile,
     pub(crate) leave: f64,
+    /// Parts of the surface with their own stock to leave. Empty means the
+    /// whole surface with `leave`. Otherwise the tool rides the highest of
+    /// the zones' drops, so every part is left its own amount.
+    pub(crate) zones: &'a [ZoneFit<'a>],
     pub(crate) x0: f64,
     pub(crate) length: f64,
     pub(crate) start: f64,
@@ -173,27 +205,52 @@ impl Fit<'_> {
             .input
             .rotary
             .tool_line(Millimetres(x), a, Millimetres(0.0));
-        let contact = self.input.surface.drop_tool(self.drop_profile, &line)?;
+        let (contact, leave, profile) = self.drop(&line)?;
         if let Some(region) = self.region
-            && !region.allows(contact.contact, contact.tip, self.drop_profile, &line)
+            && !region.allows(contact.contact, contact.tip, profile, &line)
         {
             return None;
         }
-        Some(Node { t, a, contact })
+        Some(Node {
+            t,
+            a,
+            contact,
+            leave,
+        })
+    }
+
+    /// The drop onto the surface: the whole surface with the operation's
+    /// stock to leave, or the highest drop of the zones, each with its own.
+    /// "Highest" compares the original tool's tip, the grown tip plus the
+    /// stock to leave along the axis.
+    fn drop(&self, line: &ToolLine) -> Option<(Contact, f64, &RevolvedProfile)> {
+        if self.zones.is_empty() {
+            let c = self.input.surface.drop_tool(self.drop_profile, line)?;
+            return Some((c, self.leave, self.drop_profile));
+        }
+        let mut best: Option<(Contact, f64, &RevolvedProfile)> = None;
+        for zone in self.zones {
+            if let Some(c) = zone.surface.drop_tool(&zone.profile, line)
+                && best.is_none_or(|(b, l, _)| c.offset + zone.leave > b.offset + l)
+            {
+                best = Some((c, zone.leave, &zone.profile));
+            }
+        }
+        best
     }
 
     /// The original tool's tip for a grown-tool drop: it lies `leave` above
     /// the grown tip along the tool axis.
     fn tip(&self, n: &Node) -> Point3 {
         let axis = self.input.rotary.tool_axis(n.a);
-        n.contact.tip + axis.get() * self.leave
+        n.contact.tip + axis.get() * n.leave
     }
 
     /// Where the pass makes a cut.
     pub(crate) fn cut_point(&self, n: &Node) -> CutPoint {
         let tip = self.tip(n);
         let axis = self.input.rotary.tool_axis(n.a);
-        let contact = if self.leave > 0.0 {
+        let contact = if n.leave > 0.0 {
             cutter::cutter_contact(self.input.tool, tip, axis, n.contact.contact)
         } else {
             n.contact.contact
