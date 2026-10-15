@@ -27,13 +27,19 @@ Reasons found in the logs and in the `occt-sys` and `rust-cache` sources (the lo
 
 ## What was checked
 
-- On Linux, a release build of `openchuck-import --features kernel` with `occt-sys`, then a copy of `lib/` and `include/` and a second build and test run with only `OCCT_ROOT` set (see "Local check" below).
+- On Linux, the cold build, the copy of the install and a rebuild and test run with only `OCCT_ROOT` set ("Local check" below): 24 min against 17 s.
 - The workflow and action files parse as YAML. `actionlint` is not installed in the session, so the expressions are unchecked beyond that.
 - Not run: the Windows and macOS paths (`/usr/bin/find`, `cp -R`, the `OCCT_ROOT` path with backslashes on Windows) and the cache save and restore themselves, which only a runner can do.
 
 ## Local check
 
-Not yet recorded: the Linux build and the rebuild against `OCCT_ROOT` alone were started on 15 Oct 2026 and the result is added here when they finish. Until then the `OCCT_ROOT` route rests on `build.rs`, which has accepted it since decision 0027, and which no CI job has used.
+On Linux (the session container, 15 Oct 2026), following the action's steps by hand:
+
+1. `cargo build --release --locked -p openchuck-import --features kernel --lib` with a fresh target directory: 24 min 10 s.
+2. Copy `OCCT/lib` and `OCCT/include` out (301 MB uncompressed) and delete the target directory.
+3. `cargo test --locked -p openchuck-import --features kernel` in a new target directory with only `OCCT_ROOT` set: it compiled the wrapper and the tests and passed all 44 tests in 16.7 s. `occt-sys` is still compiled as a build dependency (a few seconds) but no CMake build runs.
+
+So the `OCCT_ROOT` route, unused by any CI job until now, links and runs the importer correctly. The release build of OpenCASCADE is what the plain cache will hold; the dev-profile jobs link the optimised libraries, which is faster and not a change in behaviour.
 
 ## Consequences
 
