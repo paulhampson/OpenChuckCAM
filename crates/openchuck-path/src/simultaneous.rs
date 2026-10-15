@@ -364,7 +364,16 @@ struct Findings {
     slope: f64,
     slope_at: Option<Point3>,
     tilt: f64,
+    /// The most material any kept move leaves beyond the tolerance, mm.
+    under: f64,
     mesh: bool,
+}
+
+/// The points a move is refined into, and the most material it leaves.
+#[derive(Default)]
+struct Refined {
+    points: Vec<Option<Node>>,
+    under: f64,
 }
 
 fn run(
@@ -499,7 +508,7 @@ fn run(
         );
         let axis = plan.axis_plan(track, lead, max_tilt, &mut findings);
         context.check_cancelled()?;
-        passes.extend(plan.track_passes(track, &axis, &mut findings, context)?);
+        passes.extend(plan.track_passes(track, &axis, lead, &mut findings, context)?);
     }
     context.report(
         "simultaneous finishing: following the surface",
@@ -518,10 +527,22 @@ fn run(
         ));
     }
     if max_tilt > 0.0 {
+        let lead_text = if lead != 0.0 {
+            format!(" plus the {lead} degree lead")
+        } else {
+            String::new()
+        };
         notes.push(format!(
-            "A is smoothed within {max_tilt} degrees of the normal; the largest tilt used is \
-             {:.1} degrees",
+            "A is smoothed within {max_tilt} degrees of the normal{lead_text}; the largest tilt \
+             used is {:.1} degrees from that",
             findings.tilt
+        ));
+    }
+    if findings.under > 0.0 {
+        notes.push(format!(
+            "some moves leave up to {:.4} mm of material, more than the tolerance, because the \
+             surface changes faster than the path can follow",
+            findings.under
         ));
     }
     if findings.mesh {
@@ -777,7 +798,7 @@ impl Plan<'_> {
         a: &Node,
         b: &Node,
         depth: u32,
-        out: &mut Vec<Option<Node>>,
+        out: &mut Refined,
     ) -> Result<()> {
         let t = 0.5 * (a.t + b.t);
         match self.node(track, axis, t) {
@@ -796,25 +817,28 @@ impl Plan<'_> {
                             b.contact.tip.x, b.a.0
                         )));
                     }
+                    if -error > self.tolerance {
+                        out.under = out.under.max(-error);
+                    }
                 }
             }
             None if self.constrained && depth < MAX_DEPTH => {
                 if let Some(left) = self.edge(track, axis, a, t) {
                     self.refine(track, axis, a, &left, depth + 1, out)?;
                 }
-                out.push(None);
+                out.points.push(None);
                 match self.edge(track, axis, b, t) {
                     Some(right) => {
-                        out.push(Some(right));
+                        out.points.push(Some(right));
                         self.refine(track, axis, &right, b, depth + 1, out)?;
                     }
-                    None => out.push(Some(*b)),
+                    None => out.points.push(Some(*b)),
                 }
                 return Ok(());
             }
             None => {}
         }
-        out.push(Some(*b));
+        out.points.push(Some(*b));
         Ok(())
     }
 
@@ -822,6 +846,7 @@ impl Plan<'_> {
         &self,
         track: &Track,
         axis: &AxisPlan,
+        lead: f64,
         findings: &mut Findings,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
@@ -865,21 +890,24 @@ impl Plan<'_> {
         for piece in &pieces {
             context.check_cancelled()?;
             let intervals: Vec<(&Node, &Node)> = piece.iter().zip(piece.iter().skip(1)).collect();
-            let refined: Vec<Result<Vec<Option<Node>>>> =
-                parallel::map_in_order(&intervals, |(a, b)| {
-                    let mut out = Vec::new();
-                    self.refine(track, axis, a, b, 0, &mut out).map(|()| out)
-                });
+            let refined: Vec<Result<Refined>> = parallel::map_in_order(&intervals, |(a, b)| {
+                let mut out = Refined::default();
+                self.refine(track, axis, a, b, 0, &mut out).map(|()| out)
+            });
             let mut points = Vec::new();
+            let offset = lead * track.travel();
+            let mut under = 0.0_f64;
             let mut push = |n: &Node, points: &mut Vec<CutPoint>| {
-                self.note(n, findings);
+                self.note(n, offset, findings);
                 points.push(self.cut_point(n));
             };
             if let Some(first) = piece.first() {
                 push(first, &mut points);
             }
             for steps in refined {
-                for step in steps? {
+                let steps = steps?;
+                under = under.max(steps.under);
+                for step in steps.points {
                     match step {
                         Some(n) => push(&n, &mut points),
                         None => {
@@ -893,6 +921,7 @@ impl Plan<'_> {
                     }
                 }
             }
+            findings.under = findings.under.max(under);
             if !points.is_empty() {
                 passes.push(Pass {
                     points,
@@ -903,13 +932,13 @@ impl Plan<'_> {
         Ok(passes)
     }
 
-    fn note(&self, n: &Node, findings: &mut Findings) {
+    fn note(&self, n: &Node, offset: f64, findings: &mut Findings) {
         let slope = n.normal.get().x.abs().clamp(0.0, 1.0).asin().to_degrees();
         if slope > findings.slope {
             findings.slope = slope;
             findings.slope_at = Some(n.contact.contact);
         }
-        findings.tilt = findings.tilt.max((n.phi - n.phi_n).abs());
+        findings.tilt = findings.tilt.max((n.phi - n.phi_n - offset).abs());
     }
 }
 
