@@ -187,23 +187,22 @@ impl SelectionPanel {
     fn click(&mut self, app: &Application, pick: &ScenePick, combine: Combine) {
         let Some(model) = pick.model else { return };
         self.message = None;
+        // An older region pick must not finish later and overwrite this click.
+        if let Some(old) = self.pending.take() {
+            old.handle.cancel();
+        }
         match self.mode().request(pick) {
             None => self.join(model, combine, TriangleSet::from([pick.triangle])),
-            Some(request) => {
-                if let Some(old) = self.pending.take() {
-                    old.handle.cancel();
+            Some(request) => match app.start_select_region(model, &request) {
+                Ok(handle) => {
+                    self.pending = Some(Pending {
+                        handle,
+                        model,
+                        combine,
+                    });
                 }
-                match app.start_select_region(model, &request) {
-                    Ok(handle) => {
-                        self.pending = Some(Pending {
-                            handle,
-                            model,
-                            combine,
-                        });
-                    }
-                    Err(e) => self.message = Some(e.to_string()),
-                }
-            }
+                Err(e) => self.message = Some(e.to_string()),
+            },
         }
     }
 
@@ -725,6 +724,46 @@ mod tests {
         // The next frame applies nothing from the old scene.
         assert!(!panel.frame(&app, PickInput::default()));
         assert!(panel.working.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_09_a_single_triangle_click_cancels_a_region_pick_in_flight() {
+        use openchuck_app::RegionRequest;
+        use openchuck_app::Threads;
+        use openchuck_app::setup::Point3;
+        let dir = std::env::temp_dir().join(format!("openchuck-ui-click-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, "click", Threads::Exactly(2)).unwrap();
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        let (model, _) = app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+        let handle = app
+            .start_select_region(model, &RegionRequest::FloodFill { seeds: vec![0] })
+            .unwrap();
+        let mut panel = SelectionPanel {
+            pending: Some(Pending {
+                handle,
+                model,
+                combine: Combine::Replace,
+            }),
+            choice: Choice::Triangle,
+            ..SelectionPanel::default()
+        };
+        let pick = ScenePick {
+            mesh: 0,
+            model: Some(model),
+            triangle: 5,
+            distance: 1.0,
+            point: Point3::new(0.0, 0.0, 0.0),
+            normal: None,
+        };
+        panel.click(&app, &pick, Combine::Replace);
+        // The newer click stands alone; the older job cannot overwrite it.
+        assert!(panel.pending.is_none());
+        assert_eq!(panel.working, set(&[5]));
         let _ = std::fs::remove_dir_all(dir);
     }
 }
