@@ -435,3 +435,37 @@ fn req_gc_11_a_toolpath_that_starts_away_from_a_zero_passes_gate_2() {
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_gc_11_two_operations_with_a_turn_between_them_pass_gate_2() {
+    // The rapid from one group's end to the next group's start turns A in
+    // the G-code, and the IR counts that turn too; only the program's first
+    // move, from wherever the controller is, counts on neither side.
+    let (dir, mut app, op) = project("post-two-operations");
+    let mut second = app.project().operation(op).unwrap().clone();
+    second.id = OperationId::new();
+    second.name = "Finish 2".into();
+    second
+        .parameters
+        .insert("start_angle".into(), ParameterValue::Number(100.0));
+    app.execute(Command::Add {
+        item: Item::Operation(second),
+        placement: Placement::End,
+    })
+    .unwrap();
+    for post in ["linuxcnc", "makera-z1"] {
+        with_post(&mut app, post);
+        let result = app.regenerate().unwrap();
+        let groups = &result.toolpath.groups;
+        assert_eq!(groups.len(), 2);
+        let end = groups[0].segments.last().unwrap().end.a.0;
+        assert!(
+            (groups[1].start.a.0 - end).abs() > 1.0,
+            "{end} {}",
+            groups[1].start.a.0
+        );
+        let report = &result.reports[0];
+        assert!(report.is_clean(), "{post}: {report:?}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
