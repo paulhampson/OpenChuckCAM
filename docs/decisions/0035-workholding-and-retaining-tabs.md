@@ -38,3 +38,13 @@ The new requirements: **SET-09** (a gripped length at either end of the stock, w
 - New P1 requirements need tests named after them, in slice 21; the traceability rule applies when slice 21 closes. Slices 12 to 14 close without them.
 - A project without a zone or tab must generate byte-identical G-code.
 - Open items: OI-158 (tab defaults and layout), OI-159 (tool size against tab size), OI-160 (chuck defaults from the machine profile), OI-161 (a cut-off operation), OI-162 (composite surface cost on large meshes).
+
+## Owner's answers (15 Oct 2026)
+
+The record is still proposed; these answers settle open items without accepting the rest.
+
+- **OI-158, default tab length.** At the end next to the chuck, a tab runs from the inner edge of the held region to the start of the model. At the other end it runs from the end of the model to the end of the stock. Any held region is honoured, so a default never enters one. Count, diameters and which end of a frustum faces the part are still open. The defaults need the part's extent, so the application computes them when a tab is added (slice 21c); the stored data stays explicit (decision 0040 item 2).
+- **OI-159, tool against tab.** A tab narrower than the tool is not permitted. It is refused with a message, not left to produce a wrong shape (item 6 changes from "refuse when the generator cannot cut it" to a check when the tool is chosen or the tab edited).
+- **OI-160.** Deferred until COL-04 (P2).
+- **OI-161.** Not a P1 requirement; no cut-off operation is built.
+

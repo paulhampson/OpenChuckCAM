@@ -772,7 +772,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 1. Mapping in `openchuck-app` from the setup to the composite target for generation, the gouge checker's target, the simulation's target and the deviation report; the simulated stock keeps the held region and the tabs (SET-09, OP-21, SIM-05, SIM-06).
 2. Parameter forms and the viewport show the held region and tabs (UI-03, UI-07), with a warning if an operation's selection reaches one.
-3. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
+3. Default tab placement from the part's extent: next to the chuck from the held region's inner edge to the start of the model, at the other end from the model's end to the stock's end, kept out of held regions (decision 0035, owner's answers, OI-158); a tab narrower than the tool is refused (OI-159).
+4. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
 
 **Review checklist**
 
