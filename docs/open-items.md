@@ -76,6 +76,11 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-143 | Non-ASCII characters are written as `?` in the setup sheet's PDF (the built-in font has none); the HTML keeps them. A WinAnsi mapping would cover accented Western letters; other scripts need an embedded font. | [Decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 4 | open | When a user needs it | A font and a decision on embedding |
 | OI-144 | Export UI and CLI options for the grouping, the setup sheet and the tool-number dialog (slice 19 item 4, GC-14 in the UI) are not built: `Application::set_output_grouping` and `Application::setup_sheet` exist with no flag or dialog. | [Decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) open item 5 | open | Slice 19 (still to build) | The slice 8 shell for the UI |
 
+| OI-163 | Selection highlight colours: decision 0037 (proposed, lane M) uses orange for the working selection, green for the chosen set and yellow for hover; the UI specification proposes blue, a swatch per set and a yellow outline, because amber is cut moves and green is the Y axis, link moves and the up-to-date state. | [Decision 0038](decisions/0038-ui-specification-and-requirements.md); UI specification section 17 (D7) | open | With lane M's review | Owner's choice |
+| OI-164 | Typeface: the UI mockups use IBM Plex Sans and Mono (OFL-1.1); egui ships its own fonts, which `deny.toml` already allows. Bundling Plex adds font files and a licence record (NFR-10, NFR-14). | Decision 0038 | open | Lane A or T | Owner's choice |
+| OI-165 | How the export acknowledgement (proposed GC-16) identifies a project on a computer: the canonical project folder path (no schema change; moving or renaming the folder asks again) or a project ID in `project.toml` (a schema change). Recommended: the folder path. | Decision 0038 | proposed | Lane S | Owner's choice |
+| OI-166 | Slice 8 starts at 120% scale (decision 0029); on a 1366 by 768 screen that leaves about 1138 by 640 logical pixels, below the proposed UI-16 size. Choose the default scale from the screen size, or state UI-16 at 100%. | Decision 0038 | open | Lane A | Owner's choice |
+
 ## Closed
 
 | ID | Item | Source | Closed | Settled in |
