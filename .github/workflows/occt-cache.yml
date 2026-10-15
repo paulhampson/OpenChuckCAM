@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Seeds and refreshes the cached OpenCASCADE install that the STEP kernel jobs restore (decision
+# 0034, OI-150; the action is .github/actions/occt). A cache written by a pull request run is read
+# by that pull request only, and GitHub drops a cache nobody used for 7 days. Running here on
+# `main` every day writes the cache every pull request can read and keeps it alive: a hit costs
+# about a minute, a miss builds OpenCASCADE once (23 to 35 minutes) and saves it.
+name: OpenCASCADE cache
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/actions/occt/**"
+      - ".github/workflows/occt-cache.yml"
+      - "Cargo.toml"
+  # Changing the action or this file is checked on the pull request (its cache is its own).
+  pull_request:
+    paths:
+      - ".github/actions/occt/**"
+      - ".github/workflows/occt-cache.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: occt-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # CMake 4 on the Windows and macOS runners rejects OpenCASCADE 7.8.1's
+  # cmake_minimum_required (decision 0003).
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  occt:
+    name: OpenCASCADE install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: occt
+        uses: ./.github/actions/occt
+      - name: Report
+        shell: bash
+        run: echo "cache hit = ${{ steps.occt.outputs.cache-hit }}"
