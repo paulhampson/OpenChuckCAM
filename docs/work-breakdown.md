@@ -1,10 +1,10 @@
 # OpenChuckCAM – Phase 1 Work Breakdown Structure
 
-Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2026 (repository structure, scored dependencies, independent kinematic oracle, traceability), the Software Verification Plan and the Initial Requirements (crates named `openchuck-*`). It covers all 81 P1 requirements (TL-03 and GC-11 moved to P1; TL-11 and GC-14 added by decisions 0014 and 0020) in 21 vertical slices (0–20), preceded by 13 timeboxed spikes. The order follows the architecture's build order: guardrails, spikes, a thin P1 slice (STL, project file, one wrap-family strategy, simulator deviation, both posts, golden files, viewport), then P1 breadth.
+Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2026 (repository structure, scored dependencies, independent kinematic oracle, traceability), the Software Verification Plan and the Initial Requirements (crates named `openchuck-*`). It covers all 83 P1 requirements (TL-03 and GC-11 moved to P1; TL-11 and GC-14 added by decisions 0014 and 0020; SET-09 and OP-21 added by decision 0035) in 23 vertical slices (0–22; slice 21 is added by decision 0035 and slice 22 by the owner's request for a redesigned interface, both run before slice 20), preceded by 13 timeboxed spikes. The order follows the architecture's build order: guardrails, spikes, a thin P1 slice (STL, project file, one wrap-family strategy, simulator deviation, both posts, golden files, viewport), then P1 breadth.
 
 ## P1 assessment
 
-81 of 125 requirements are P1: IMP 6, UI 9, SET 4, TL 8, OP 16, SIM 7, GC 12, PRJ 6, NFR 13 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 44 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, simultaneous finishing of hidden surfaces (OP-20), collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition.
+83 of 127 requirements are P1: IMP 6, UI 9, SET 5, TL 8, OP 17, SIM 7, GC 12, PRJ 6, NFR 13 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 43 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition.
 
 Findings, after reconciling with the architecture:
 
@@ -26,7 +26,7 @@ Findings, after reconciling with the architecture:
 | 14 | Section 13 now records the application crates as AGPL and the authoritative docs as living in the repository under docs/. Still open: whether test data needs Git LFS, and the packaging route for binaries. | Slice 0 records the decisions already taken (AGPL, docs in the repository) and a test-data size policy; the LFS question is revisited if the corpus grows; slice 20 decides the packaging route. |
 | 15 | The survey now scores the release tools (cargo-release 79, release-plz 73, cargo-dist 70, git-cliff 80 for changelogs), but the architecture still asks for an NFR-14 justification before the first release and leaves the packaging route open. | Justified in slice 20 using those scores, with a release gate in xtask that blocks a tag when checks fail. |
 | 16 | The path library, the post and the G-code reader share one machine model, so a replay could agree with a wrong A direction or offset. The architecture and verification plan add a test-only closed-form kinematic oracle, needed before any G-code with A words becomes a golden file. | Built in slice 0, written separately from the shared model. SP-3 is checked against it, and slices 3, 5, 6 and 13 use it. No golden file with A words is accepted before it exists. |
-| 17 | Requirement IDs must appear in test names or attributes, and an xtask traceability report fails CI when a P1 requirement has no test. Switched on from slice 0 it would fail every early build. | Slice 0 builds the convention and the report. The fail rule applies to a P1 requirement when the last slice that touches it closes (see the note under the traceability table), and to all 81 at slice 20. |
+| 17 | Requirement IDs must appear in test names or attributes, and an xtask traceability report fails CI when a P1 requirement has no test. Switched on from slice 0 it would fail every early build. | Slice 0 builds the convention and the report. The fail rule applies to a P1 requirement when the last slice that touches it closes (see the note under the traceability table), and to all 83 at slice 20. |
 | 18 | The verification plan defines five G-code gates: static, replay and LinuxCNC simulator in CI, then an air cut and a first cut on the Z1. The reference job set for gates 4 and 5 and the safe-practice checklist for first machine trials are not yet chosen or written. | Slice 6 builds gates 1 to 3 and chooses the reference job set. Slice 20 runs gates 4 and 5 (your hands-on step) for generated programs, rechecks G93 on the firmware then installed (the SP-12 air cut found it ignored on 1.1.2), and includes the safe-practice checklist reviewed by whoever operates the Z1. |
 | 19 | The plan sets acceptance limits (section 4.1) and reference hardware for the frame-rate check (section 4.2) as starting values, to be revised after the first measurements. | The limits are the pass criteria in the slice checklists. Slices 5, 7 and 8 and the 3-axis test cut revise them, and each change is recorded in the plan. |
 
@@ -85,39 +85,45 @@ These apply to every slice and are not repeated below.
 5. Strategies: 12 and 13 need 5 and 10, and 12 needs the shared entry module, built 15 Oct 2026 as a preliminary change ([decision 0026](decisions/0026-entry-moves.md), accepted; `openchuck-path` `assemble::entry`). 14 needs 7 and the entry module, and its containment (item 5) needs 10. 15 needs 7 and the pipeline of slice 9 (items 1 and 2). 16 needs 10 for mesh feature edges and 11 for B-rep edges. 17 needs SP-11 and 11, because swarf is B-rep only ([decision 0021](decisions/0021-sp-11-swarf.md), OI-96). 18 needs 10 and 11, because holes are found from cylindrical faces.
 6. Close: slice 19 needs 6 (its export dialogs need 8); slice 20 needs everything, but its packaging, air-cut procedure and safe-practice checklist (items 8, 10 and 12) can be written earlier.
 7. Which parts of these slices can run in parallel, what each lane needs, and the order for project schema numbers are in "Parallel work" below.
+8. Slice 21 (workholding and retaining tabs, decision 0035) is added after most of this plan was in progress, so it is split into sub-slices that leave slices 12, 13 and 14 alone: 21a (the setup data) and 21b (the composite target in `openchuck-path`) need nothing merged first; 21c (application wiring, simulation and the UI) needs both, and its roughing and finishing tests need slices 12 and 14. Slice 20 needs slice 21.
+9. Slice 22 (user interface redesign) is one lane, X. It waits for the owner's updated design and for every lane that adds UI to have merged, so the interface is redesigned once and not reworked per lane. Slice 20 needs it.
 
 ## Parallel work
 
 Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below, each of which can run in its own session once what it needs has merged. A lane may be a whole slice or only the part of a slice that does not wait on another lane; the "Slice order and dependencies" list above gives the reasons. Lane letters are for reference in branch names, pull requests and decision records, not requirement or slice numbers.
 
-| Lane | Slice and scope | Wave 0 | Wave 1 | Wave 2 | Wave 3 |
-| --- | --- | --- | --- | --- | --- |
-| A | 8 viewport and application shell (continue `claude/slice-8-viewport-shell`) | ██ | ██ | | |
-| B | 9 items 1 and 2: job manager, pipeline caches (headless) | ██ | | | |
-| C | 10 items 2 to 5: selection model, flood fill, sets, persistence, region constraint (headless) | ██ | | | |
-| D | 11 items 1 to 4, 6, 8, 9: STEP importer, topology, tessellation, B-rep `SurfaceSource`, corpus, CI | ██ | ██ | ██ | |
-| E | 14 rotary roughing, items 1 to 4, 6, 7 | ██ | ██ | | |
-| F | 19 items 1 to 3 and 5: output grouping, comments, setup sheet | ██ | ██ | | |
-| G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist (done 14 Oct 2026, [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md); the release workflow and bundle command are built in lane T) | ██ | | | |
-| H | 12 baseline finishing | ░░ | ██ | | |
-| I | 13 simultaneous 4-axis finishing (closed 15 Oct 2026, [decision 0036](decisions/0036-slice-13-simultaneous-finishing.md)) | ░░ | ██ | ██ | |
-| J | 15 rest machining and pencil clean-up | ░░ | ██ | | |
-| K | 16 edge following on mesh feature edges | ░░ | ██ | | |
-| L | 14 item 5: containment to selected regions | ░░ | ██ | | |
-| M | 10 items 1 and 6: picking, hover, selection panel | ░░ | ░░ | ██ | |
-| N | 9 items 3 to 8: drawing, playback, forms | ░░ | ░░ | ██ | |
-| O | 11 items 5 and 7: viewport faces and edges, B-rep selection storage | ░░ | ░░ | ██ | |
-| P | 16 edge following on B-rep edges | ░░ | ░░ | ░░ | ██ |
-| Q | 17 swarf | ░░ | ░░ | ░░ | ██ |
-| R | 18 radial drilling | ░░ | ░░ | ░░ | ██ |
-| S | 19 item 4: export dialogs and the tool-number dialog | ░░ | ░░ | ░░ | ██ |
-| T | 20 hardening and first release | | | | ██ |
+| Lane | Slice and scope | Wave 0 | Wave 1 | Wave 2 | Wave 3 | Wave 4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | 8 viewport and application shell (continue `claude/slice-8-viewport-shell`) | ██ | ██ | | | |
+| B | 9 items 1 and 2: job manager, pipeline caches (headless) | ██ | | | | |
+| C | 10 items 2 to 5: selection model, flood fill, sets, persistence, region constraint (headless) | ██ | | | | |
+| D | 11 items 1 to 4, 6, 8, 9: STEP importer, topology, tessellation, B-rep `SurfaceSource`, corpus, CI | ██ | ██ | ██ | | |
+| E | 14 rotary roughing, items 1 to 4, 6, 7 | ██ | ██ | | | |
+| F | 19 items 1 to 3 and 5: output grouping, comments, setup sheet | ██ | ██ | | | |
+| G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist (done 14 Oct 2026, [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md); the release workflow and bundle command are built in lane T) | ██ | | | | |
+| H | 12 baseline finishing | ░░ | ██ | | | |
+| I | 13 simultaneous 4-axis finishing (closed 15 Oct 2026, [decision 0036](decisions/0036-slice-13-simultaneous-finishing.md)) | ░░ | ██ | ██ | | |
+| J | 15 rest machining and pencil clean-up | ░░ | ██ | | | |
+| K | 16 edge following on mesh feature edges | ░░ | ██ | | | |
+| L | 14 item 5: containment to selected regions | ░░ | ██ | | | |
+| M | 10 items 1 and 6: picking, hover, selection panel | ░░ | ░░ | ██ | | |
+| N | 9 items 3 to 8: drawing, playback, forms | ░░ | ░░ | ██ | | |
+| O | 11 items 5 and 7: viewport faces and edges, B-rep selection storage | ░░ | ░░ | ██ | | |
+| P | 16 edge following on B-rep edges | ░░ | ░░ | ░░ | ██ | |
+| Q | 17 swarf | ░░ | ░░ | ░░ | ██ | |
+| R | 18 radial drilling | ░░ | ░░ | ░░ | ██ | |
+| S | 19 item 4: export dialogs and the tool-number dialog | ░░ | ░░ | ░░ | ██ | |
+| U | 21a workholding and tab data in the setup (SET-09, OP-21): types, validation, project file, commands | ██ | | | | |
+| V | 21b composite target in `openchuck-path`: cylinder and frustum solids joined to the model's surface | ██ | ██ | | | |
+| W | 21c wiring: application mapping, simulation, deviation, forms | ░░ | ░░ | ██ | | |
+| X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
+| T | 20 hardening and first release | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
 
 | Lane | Needs merged first |
 | --- | --- |
-| A, B, C, D, F, G | Nothing |
+| A, B, C, D, F, G, U, V | Nothing |
 | E | The entry module (decision 0026); item 5 waits for C |
 | H | C and the entry module |
 | I | C |
@@ -131,7 +137,9 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | Q | D (swarf is B-rep only, decision 0021) |
 | R | C and D |
 | S | A and F |
-| T | Everything |
+| W | U and V; its roughing and finishing tests need lanes E and H merged |
+| X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
+| T | Everything, including W and X |
 
 ### Project schema ordering
 
@@ -153,12 +161,13 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | 9 | H (slice 12) | Selection sets gain an optional `stock_to_leave`, written only when set (OP-11 per selection; [decision 0034](decisions/0034-slice-12-baseline-finishing.md) item 4) | Claimed as 10, built as 8 and renumbered to 9 when lane E (pull request 45, schema 8) merged first. Lanes D and O and slice 19 item 4 take the next free numbers when they claim |
 | 10 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
 | 11 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S (was 9; renumbers if E merges first) |
+| next free | U (slice 21a) | Per-setup workholding zones and tabs (SET-09, OP-21) | Needed, not yet claimed: 8 is lane E's and 9 is lane H's (both merged), 10 and 11 are expected by lanes D and O and S. Claim the next number free on `main` and unmerged branches when lane U starts |
 
-The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
+The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Next free after that: record 0037, `OI-158` (an unmerged branch holds OI-154 to OI-158 in its description, so take OI-159 if that branch is still open), project schema 12 (10 and 11 are expected by lanes D and O and S).
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Slice 21 (workholding and retaining tabs, record 0035) took OI-158 to OI-162 and requirement OP-21. Next free after that: record 0037, `OI-163`, project schema 12 (10 and 11 are expected by lanes D, O and S, and lane U needs one more).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -737,6 +746,69 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [ ] The setup sheet lists every tool used with its controller tool number
 - [ ] The sheet opens offline and prints legibly
 
+## Slice 21 – Workholding and retaining tabs
+
+**Status:** not started. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (proposed). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
+
+**Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
+
+**Requirements:** SET-09, OP-21
+
+**Design refinement:** the record's items: the held region and each tab as analytic solids (cylinder, frustum) added to the part for the whole job, where they live (the setup, beside stock), the composite target surface and its determinism, what stock to leave, the gouge checker and the deviation report do with them, and the cut-off.
+
+**21a – Data and setup (lane U)**
+
+1. Types in `openchuck-types`: a held region at each end of the stock (gripped length, optional holding diameter) and a list of tabs (shape: cylinder or frustum; axial position; diameter, or both end diameters for a frustum; for tabs around the axis, count and start angle), validated against the stock and each other (SET-09, OP-21).
+2. Setup fields in `openchuck-project` and the project files, a schema bump taken under "Project schema ordering", migration and fixture, undoable commands (UI-08, PRJ-04, PRJ-05).
+3. CLI `validate` and `report` state the held regions and tabs and refuse impossible ones (NFR-07).
+
+**21b – Composite target (lane V)**
+
+1. In `openchuck-path`, an analytic surface for a cylinder and for a frustum that implements the surface port exactly, with the tool drop, point, normal, distance and ray queries (extending the analytic evaluators of decision 0017).
+2. A composite surface that joins the model's surface and these solids (the highest contact for a drop, the nearest for a distance), without changing the surface port or adding a field to a public struct; deterministic at any thread count (NFR-06).
+3. Tests on the oracle parts with a tab and a held region, against the independent gouge checker.
+
+**21c – Wiring (lane W)**
+
+1. Mapping in `openchuck-app` from the setup to the composite target for generation, the gouge checker's target, the simulation's target and the deviation report; the simulated stock keeps the held region and the tabs (SET-09, OP-21, SIM-05, SIM-06).
+2. Parameter forms and the viewport show the held region and tabs (UI-03, UI-07), with a warning if an operation's selection reaches one.
+3. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
+
+**Review checklist**
+
+- [ ] A held region and each tab validate, persist, migrate and undo; impossible ones are refused with a message
+- [ ] Roughing and finishing on the oracle parts never cut into a held region or a tab, and the independent checker agrees (needs slices 12 and 14)
+- [ ] Links and retracts do not cross a held region
+- [ ] The simulated stock keeps them and the deviation report counts them as part
+- [ ] Results are identical at 1, 2 and N threads
+- [ ] A project without a held region or tab produces byte-identical G-code to before this slice
+
+## Slice 22 – User interface redesign
+
+**Status:** not started. Waits on the owner's updated design, which does not exist in the repository yet. Added 15 Oct 2026 after lanes A, M, N, O, S and W were planned, so the interface is redesigned once, after they have put every screen, panel and dialog in place.
+
+**Goal:** the application's interface follows the updated design, with the same behaviour, requirements and tests.
+
+**Requirements:** none new. It re-verifies UI-01 to UI-09, NFR-02 and NFR-03 (the tests that already name them still pass or are updated with the design), so it is not listed in the traceability table and does not move when those requirements close.
+
+**Needs:** the updated design from the owner (mock-ups or a document); lanes A, M, N, O, S and W merged.
+
+**Design refinement:** first step, before any rework. Record the design as a decision record: the screens and panels, the layout and navigation, the interaction for selecting, operating and playing back, theming and text sizes, and what in the design asks for a feature the requirements do not have. Anything that does is raised, not built (UI-xx requirements change only by agreement, and the architecture's view-model boundary stays: the UI imports no engine crate).
+
+1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new.
+2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the design touches) to the design, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
+3. Update the UI smoke tests and the screenshots in the guide; keep the 1M-triangle frame benchmark and rerun it on the reference machines (NFR-03).
+4. No project format change and no engine change. If the design needs one, it is a separate lane with its own schema claim.
+
+**Review checklist**
+
+- [ ] Every screen, panel and dialog in the design exists, and nothing in the old interface that the requirements need is missing
+- [ ] The UI imports no engine crate, and only `openchuck-ui` and `openchuck-viewport` use egui or wgpu
+- [ ] The UI smoke test passes on Windows, macOS and Linux (NFR-02)
+- [ ] The frame time on 1M triangles still meets NFR-03 on the reference hardware
+- [ ] Undo, redo and the inline errors behave as before (UI-08, UI-07)
+- [ ] Anything the design asks for beyond the requirements is listed as an open item or a requirement proposal, not built
+
 ## Slice 20 – Hardening and first release
 
 **Goal:** a release you can trust, with every P1 requirement traceable to a passing test or a recorded manual check.
@@ -798,5 +870,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 | 18 | OP-10 | – |
 | 19 | GC-05, GC-06, GC-12 | – |
 | 20 | NFR-12 | – |
+| 21 | SET-09, OP-21 | – |
+| 22 | – | – |
 
 **Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19) and NFR-02 (0, 8). The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
