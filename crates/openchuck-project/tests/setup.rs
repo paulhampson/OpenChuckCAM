@@ -122,7 +122,7 @@ fn req_set_01_machine_copy_survives_save_and_load() {
     file::save(&project, &dir).unwrap();
     let text = std::fs::read_to_string(dir.join(file::MACHINE_FILE)).unwrap();
     assert!(
-        text.starts_with("schema = 8\n\n[machine]\nname = \"Makera Z1\"\n"),
+        text.starts_with("schema = 9\n\n[machine]\nname = \"Makera Z1\"\n"),
         "{text}"
     );
     assert_eq!(file::load(&dir).unwrap().machine(), Some(&z1()));
@@ -141,7 +141,7 @@ fn req_set_01_machine_copy_survives_save_and_load() {
     let id_text = std::fs::read_to_string(id_dir.join(file::MACHINE_FILE)).unwrap();
     assert!(
         id_text.starts_with(
-            "schema = 8\nid = \"8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01\"\n\n[machine]\nname = \"Makera Z1\"\n"
+            "schema = 9\nid = \"8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01\"\n\n[machine]\nname = \"Makera Z1\"\n"
         ),
         "{id_text}"
     );

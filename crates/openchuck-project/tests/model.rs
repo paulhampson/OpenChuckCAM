@@ -99,6 +99,7 @@ fn sample() -> Project {
             model_hash: model(1).hash,
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7)])),
             descriptors: Vec::new(),
+            stock_to_leave: None,
         }),
         Placement::End,
     )

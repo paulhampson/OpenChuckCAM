@@ -123,8 +123,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # The STEP kernel (OpenCASCADE, built by occt-sys) takes 8 to 71 minutes cold, so it is cached
-      # per platform and saved even if a later step fails.
+      # The STEP kernel (OpenCASCADE, built by occt-sys) takes 8 to 71 minutes cold, so its install
+      # is cached per platform on its own (decision 0039).
+      - uses: ./.github/actions/occt
       - uses: Swatinem/rust-cache@v2
         with:
           key: step-kernel

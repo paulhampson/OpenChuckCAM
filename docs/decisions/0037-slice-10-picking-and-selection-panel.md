@@ -2,9 +2,9 @@
 
 - **Status:** accepted by the project owner (15 Oct 2026): the pick budget (item 1, option 2 of the options put to them) and the rest of the record as written. It relies on accepted records [0002](0002-sp-2-viewport-spike.md) (picking by CPU ray casts against a BVH), [0029](0029-slice-8-viewport-and-shell.md) (the toolkit-free renderer and the scene view model) and [0032](0032-slice-10-mesh-selection.md) (selection sets, roles, the unresolved-reference errors). Built on branch `claude/lane-m-slice-10-picking` (lane M of the work breakdown's parallel work; it needed lanes A and C, both on `main`).
 - **Date:** 15 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-12 and OI-139 are closed by this record; OI-159 to OI-162 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-12 and OI-139 are closed by this record; OI-170 to OI-173 are new.
 
-Numbering: `main` holds records up to 0033; unmerged branches hold 0034 (lane H), 0035 (the OpenCASCADE cache, and workholding) and 0036 (lane I), and OI-158 is the highest open item number on any branch, so this record takes 0037 and OI-159 to OI-162. It takes no project schema number: a pick is not stored, the sets and roles it edits are the ones schema 7 already holds, and the viewport's state is not in the project.
+Numbering: `main` holds records up to 0039 and OI-169 (workholding took OI-158 to OI-162 and the OpenCASCADE cache OI-169 while this branch was open), and an unmerged branch holds 0038 (the interface specification) and OI-163 to OI-166, so this record keeps 0037 and takes OI-170 to OI-173 (first OI-159 to OI-162). It takes no project schema number: a pick is not stored, the sets and roles it edits are the ones schema 7 already holds, and the viewport's state is not in the project.
 
 ## Context
 
@@ -37,19 +37,19 @@ Work breakdown slice 10 item 1 (ray-cast picking and hover highlight; the viewpo
    - `set_operation_selection(operation, role, set, included)` puts a set in or takes it out of an operation's role (`SelectionRole`: machine, boundary, avoid, check), as one undoable step; a boundary holds one set.
    - `delete_selection(set)` removes a set, refusing while an operation uses it and naming the operations.
 7. **In the interface.** The tree gains a Selections node: "Select on the part…" and one row per set, in red with the reason on hover when it has a problem. Choosing either shows the panel on the right and turns picking on in the viewport; the panel has the click modes with their angle, the working selection (clear, save as a named set), and for the chosen set its model, uses and problem, add, remove or replace with the working selection, rename and delete. An operation's properties start with its selections by role, with a list to add from and a button to take one out; an operation row in the tree shows a red mark when a set it uses has a problem. Every change is an undoable command of the application.
-8. **The visible warning (OI-139, closed).** A set that cannot be used is shown in red in the tree, in the panel with its reason, and on the operations that use it, before any generation. Generation still refuses it with the error of record 0032 item 7. A triangle beyond the end of the model is found only at generation, and there is no offer to select again (OI-161).
+8. **The visible warning (OI-139, closed).** A set that cannot be used is shown in red in the tree, in the panel with its reason, and on the operations that use it, before any generation. Generation still refuses it with the error of record 0032 item 7. A triangle beyond the end of the model is found only at generation, and there is no offer to select again (OI-172).
 
 ## Alternatives considered
 
 - **A 10 ms pick budget (the figure assumed in record 0002):** 500 times the measured cost; it would pass a linear scan.
-- **A budget for the selection algorithms as well:** the figure for flood fill on a million triangles is new and was not measured before today. It is now (below) and is left for the owner to set once the job reuses the scene's mesh (OI-159).
+- **A budget for the selection algorithms as well:** the figure for flood fill on a million triangles is new and was not measured before today. It is now (below) and is left for the owner to set once the job reuses the scene's mesh (OI-170).
 - **Drawing highlights by rebuilding the scene with the selected triangles taken out:** uploads the whole mesh on every hover.
 - **Picking on the GPU with an ID buffer:** needs the window for every test; the CPU hierarchy is testable without one (architecture section 5.8, record 0002).
 - **Computing the file-change warnings in the panel on every frame:** reads and hashes every model file each frame.
 
 ## What the document edits are
 
-Verification plan section 4.1: the pick row. `docs/dependencies.md`: `parry3d-f64` is used by `openchuck-geom` as well. The work breakdown: slice 10 status and checklist, the SP-2 status cell (OI-12 closed), the numbering note. Open items: OI-12 and OI-139 closed, OI-159 to OI-162 added. No change to the requirements or the architecture.
+Verification plan section 4.1: the pick row. `docs/dependencies.md`: `parry3d-f64` is used by `openchuck-geom` as well. The work breakdown: slice 10 status and checklist, the SP-2 status cell (OI-12 closed), the numbering note. Open items: OI-12 and OI-139 closed, OI-170 to OI-173 added. No change to the requirements or the architecture.
 
 ## Evidence
 
@@ -62,8 +62,8 @@ Verification plan section 4.1: the pick row. `docs/dependencies.md`: `parry3d-f6
 ## Open items
 
 - **OI-12 (closed):** the pick budget, item 1.
-- **OI-139 (closed):** the visible warning, item 8; the offer to select again and the triangle-beyond-the-end case are OI-161.
-- **OI-159:** each region click re-reads, places and (for flood fills) builds the edge map of the whole model in its job: 0.3 to 1.7 s at a million triangles. Reuse the scene's placed mesh and cache the edge map per scene, then set a budget for the selection algorithms.
-- **OI-160:** hover shows the one triangle under the pointer, not what the chosen mode would select; highlights have no outline; there is no box or lasso selection and no select by the model's own face groups. Decide after the owner has used the panel.
-- **OI-161:** a triangle beyond the end of the model is found only at generation, and a set with a problem has no "select again" button (record 0032 item 7, OI-139).
-- **OI-162:** the strict budget figures are measured in one cloud container. Run them on the reference machines (4.2) with the NFR-03 run, and measure the picker's memory (it keeps its own copy of each part mesh beside the scene's).
+- **OI-139 (closed):** the visible warning, item 8; the offer to select again and the triangle-beyond-the-end case are OI-172.
+- **OI-170:** each region click re-reads, places and (for flood fills) builds the edge map of the whole model in its job: 0.3 to 1.7 s at a million triangles. Reuse the scene's placed mesh and cache the edge map per scene, then set a budget for the selection algorithms.
+- **OI-171:** hover shows the one triangle under the pointer, not what the chosen mode would select; highlights have no outline; there is no box or lasso selection and no select by the model's own face groups. Decide after the owner has used the panel.
+- **OI-172:** a triangle beyond the end of the model is found only at generation, and a set with a problem has no "select again" button (record 0032 item 7, OI-139).
+- **OI-173:** the strict budget figures are measured in one cloud container. Run them on the reference machines (4.2) with the NFR-03 run, and measure the picker's memory (it keeps its own copy of each part mesh beside the scene's).

@@ -17,7 +17,7 @@ use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::parameter::STEPDOWN;
 use openchuck_path::{
     AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
-    StrategyInput, SurfaceSource, generate, generate_in_region,
+    StrategyInput, SurfaceSource, generate, generate_in_region, generate_in_zones,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -270,15 +270,45 @@ pub fn generate_operation_on(
         tags: &tags,
     };
     let resolved = parameter_values(project, operation, registry)?;
+    // The values as the strategy's schema reads them (a whole number given for
+    // a number is a number), resolved once for everything below.
+    let parameters = strategy.schema().resolve(&resolved.values)?;
     // A straight plunge needs a tool that can cut straight down (OI-117).
-    EntryParameters::read(&strategy.schema().resolve(&resolved.values)?)?
-        .check_tool(snapshot.tool.can_plunge())?;
-    let path = match &constraint {
-        Some(region) => generate_in_region(strategy, &input, region, &resolved.values, context)?,
-        None => generate(strategy, &input, &resolved.values, context)?,
+    EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
+    let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
+    let zones = resolved_region
+        .as_ref()
+        .map_or_else(Vec::new, |r| r.zones(operation_leave));
+    if !zones.is_empty() && !strategy.honours_leave_zones() {
+        return Err(missing(
+            operation,
+            &format!(
+                "the strategy '{}' cannot leave different stock on different selections \
+                 (OP-11); clear the stock to leave of the selection sets",
+                operation.strategy
+            ),
+        ));
+    }
+    let path = if zones.is_empty() {
+        match &constraint {
+            Some(region) => {
+                generate_in_region(strategy, &input, region, &resolved.values, context)?
+            }
+            None => generate(strategy, &input, &resolved.values, context)?,
+        }
+    } else {
+        generate_in_zones(
+            strategy,
+            &input,
+            constraint.as_ref(),
+            &zones,
+            &resolved.values,
+            context,
+        )?
     };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
+    notes.extend(strategy.parameter_warnings(&profile, &parameters));
     notes.extend(
         path.notes
             .iter()

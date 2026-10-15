@@ -79,6 +79,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected |
 | SET-02, SET-04, SET-07 | P2 | T | Integration | Y-axis rotary, custom stock and multiple setups produce correct coordinate systems and starting stock |
 | SET-08 | P2 | T | Unit | A rotary acceleration limit validates and persists; an unset value means no limit; time estimates use it once SIM-08 exists |
+| SET-09 | P1 | T, D | Unit, system | A gripped length and holding diameter validate (inside the stock, not past it, not overlapping each other), persist and migrate; roughing, finishing and links on the oracle parts never cut or cross the held region (independent checker), and the simulated stock keeps it |
 | TL-01, TL-04, TL-05, TL-06 | P1 | T | Unit | Tool library round-trips in its human-readable format; parameters, cutting data and controller mappings validate |
 | TL-02 | P1 | T | Unit | Flat, ball, bull-nose and tapered ball tools give the expected profile geometry |
 | TL-03 | P1 | T | Unit, integration | V-bit, chamfer, drill and custom-profile tools give the expected revolved profile; a custom profile imported from a text file or drawn in the UI is validated and invalid profiles are rejected; the same profile drives tool-centre solving, the independent gouge checker and the simulation sweep and agrees with an equivalent standard tool (SP-13) |
@@ -100,6 +101,8 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | OP-17 | P2 | T, A | System | Adaptive roughing keeps engagement within limits, measured in simulation |
 | OP-18 | P3 | T | Integration | Feature recognition finds known holes, grooves and cylinders in corpus models, when built |
 | OP-19 | P2 | T, A | System | Geodesic-parallel and spiral patterns keep scallop height within the set limit on surfaces with known geodesics (cylinder, cone), measured in simulation, when built |
+| OP-20 | P2 | T, A | System | On parts with undercuts and slot walls, the reachable hidden surfaces are driven and covered, the independent checker reports no gouge, and unreachable surfaces are reported, when built |
+| OP-21 | P1 | T, D | Unit, system | Cylindrical and frustum tabs have their analytic volumes and surfaces; tab placement, count and spacing validate and persist; roughing and finishing on the oracle parts leave each tab whole (independent checker reports no gouge into it); the simulated stock keeps it and the deviation report counts it as part |
 | SIM-01, SIM-02, SIM-04 | P1 | D, T | System | Path display, rapid versus cutting distinction, tool pose with correct A rotation and playback controls checked in the demo script and by pose tests |
 | SIM-03, SIM-06, SIM-07 | P1 | T, A | System | Stock update, including A rotation, matches an independent reference; carry-over between operations; resolution setting changes accuracy as documented |
 | SIM-05 | P1 | T | System | Remaining material and overcut colouring and worst values match reference results on analytic cases |
