@@ -184,11 +184,12 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides: helical finishing (OP-04).
+    /// The strategies this library provides: helical and axial finishing (OP-04).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The name is fixed and the registry is empty, so this cannot fail.
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
+        let _ = registry.register(Arc::new(crate::axial::AxialFinishing));
         registry
     }
 

@@ -34,6 +34,7 @@ use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
+use crate::scallop;
 use crate::strategy::{Pass, Strategy, StrategyInput};
 use crate::wrap_fit::{Fit, fit_curve};
 
@@ -62,6 +63,8 @@ pub mod parameter {
     pub const START_ANGLE: &str = "start_angle";
     /// The largest A step between points, degrees.
     pub const MAX_ANGLE_STEP: &str = "max_angle_step";
+    /// The cusp height a ball-end or bull-nose tool may leave, mm; 0 is off.
+    pub const SCALLOP: &str = "scallop";
 }
 
 impl Strategy for HelicalFinishing {
@@ -110,6 +113,21 @@ impl Strategy for HelicalFinishing {
                     default: Some(5.0),
                 },
             },
+            ParameterSpec {
+                name: parameter::SCALLOP.to_owned(),
+                label: "Scallop height".to_owned(),
+                description: "The largest cusp between turns, for ball-end and bull-nose \
+                              tools. The pitch is the smaller of this and the stepover \
+                              allows. 0 turns it off."
+                    .to_owned(),
+                kind: ParameterKind::Number {
+                    unit: Unit::Millimetres,
+                    min: Some(0.0),
+                    min_exclusive: false,
+                    max: None,
+                    default: Some(0.0),
+                },
+            },
         ])
     }
 
@@ -145,7 +163,14 @@ fn passes(
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
     {
-        let pitch = parameters.number(names::STEPOVER)?;
+        let mut pitch = parameters.number(names::STEPOVER)?;
+        let height = parameters.number(parameter::SCALLOP)?;
+        if height > 0.0 {
+            pitch = pitch.min(scallop::straight_step(
+                scallop::cusp_radius(input.tool)?,
+                height,
+            ));
+        }
         let tolerance = parameters.number(names::TOLERANCE)?;
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
         let sign = if parameters.text(parameter::ROTATION)? == "negative" {

@@ -64,6 +64,7 @@
 #![warn(missing_docs)]
 
 pub mod assemble;
+pub mod axial;
 pub mod brep;
 pub mod cutter;
 mod error;
@@ -72,6 +73,7 @@ pub mod parallel;
 pub mod params;
 pub mod region;
 pub mod rotary;
+mod scallop;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
@@ -79,6 +81,7 @@ pub mod unroll;
 mod wrap_fit;
 
 pub use assemble::{GeneratedPath, PathNote};
+pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
