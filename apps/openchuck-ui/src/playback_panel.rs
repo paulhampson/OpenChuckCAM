@@ -16,7 +16,7 @@ use std::sync::Arc;
 use eframe::egui::{self, Color32, RichText};
 use openchuck_app::pathview::{DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData};
 use openchuck_app::playback::{Cursor, Playback, PoseSample, ToolMeshes, ViewFrame, tool_meshes};
-use openchuck_app::project::id::ModelId;
+use openchuck_app::project::id::{ModelId, SetupId};
 use openchuck_app::stockplay::StockPlayback;
 use openchuck_app::{Application, JobHandle, Regeneration};
 use openchuck_viewport::camera::place;
@@ -118,8 +118,11 @@ pub struct PlaybackPanel {
     tool_dirty: bool,
     stock: StockState,
     bands_on: bool,
-    bands_job: Option<JobHandle<(ModelId, DeviationBands)>>,
+    /// The deviation job running, with the setup it is for.
+    bands_job: Option<(SetupId, JobHandle<(ModelId, DeviationBands)>)>,
     bands: Option<DeviationBands>,
+    /// The setup the bands on screen (or being made) belong to.
+    bands_setup: Option<SetupId>,
     jump_move: usize,
     error: Option<String>,
     /// The layers need clearing before the next run is drawn.
@@ -148,6 +151,7 @@ impl Default for PlaybackPanel {
             bands_on: false,
             bands_job: None,
             bands: None,
+            bands_setup: None,
             jump_move: 1,
             error: None,
             reset_layers: false,
@@ -166,7 +170,7 @@ impl PlaybackPanel {
         if let Some(job) = &self.lines_job {
             job.cancel();
         }
-        if let Some(job) = &self.bands_job {
+        if let Some((_, job)) = &self.bands_job {
             job.cancel();
         }
         if let Some(job) = &self.stock.prepare {
@@ -389,16 +393,45 @@ impl PlaybackPanel {
     }
 
     fn update_bands(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
-        if let Some(job) = &self.bands_job {
+        if !self.bands_on {
+            if let Some((_, job)) = self.bands_job.take() {
+                job.cancel();
+            }
+            self.bands_setup = None;
+            if self.bands.take().is_some() {
+                viewport.set_bands(None);
+            }
+            return false;
+        }
+        // The bands belong to the setup the playback is in: when it changes,
+        // the old bands are dropped and the old job stopped, so the previous
+        // setup's colours are never shown on the next one.
+        let setup = self
+            .run
+            .as_ref()
+            .zip(self.pose())
+            .and_then(|(run, pose)| run.groups.get(pose.group).map(|info| info.setup));
+        if self.bands_setup != setup {
+            if let Some((_, job)) = self.bands_job.take() {
+                job.cancel();
+            }
+            if self.bands.take().is_some() {
+                viewport.set_bands(None);
+            }
+            self.bands_setup = setup;
+        }
+        if let Some((for_setup, job)) = &self.bands_job {
+            let for_setup = *for_setup;
             return match job.try_result() {
                 None => true,
                 Some(result) => {
                     self.bands_job = None;
                     match result {
-                        Ok((model, bands)) => {
+                        Ok((model, bands)) if Some(for_setup) == self.bands_setup => {
                             self.bands = Some(bands.clone());
                             viewport.set_bands(Some((model, bands)));
                         }
+                        Ok(_) => {}
                         Err(e) => {
                             self.error = Some(e.to_string());
                             self.bands_on = false;
@@ -408,17 +441,11 @@ impl PlaybackPanel {
                 }
             };
         }
-        if self.bands_on && self.bands.is_none() {
-            let (Some(run), Some(pose)) = (&self.run, self.pose()) else {
-                return false;
-            };
-            if let Some(info) = run.groups.get(pose.group) {
-                self.bands_job = Some(app.start_deviation_bands(Arc::clone(run), info.setup));
-                return true;
-            }
-        }
-        if !self.bands_on && self.bands.take().is_some() {
-            viewport.set_bands(None);
+        if self.bands.is_none()
+            && let (Some(run), Some(setup)) = (&self.run, setup)
+        {
+            self.bands_job = Some((setup, app.start_deviation_bands(Arc::clone(run), setup)));
+            return true;
         }
         false
     }
@@ -586,13 +613,9 @@ impl PlaybackPanel {
             let can_stock = self.run.as_ref().is_some_and(|r| r.simulation.is_some());
             ui.add_enabled_ui(can_stock, |ui| {
                 self.stock_controls(ui, app, &data);
-                let before = self.bands_on;
                 ui.checkbox(&mut self.bands_on, "Colour the part by deviation")
                     .on_disabled_hover_text("Generate with a simulation first")
                     .on_hover_text("Overcut, on the surface, and material left (SIM-05)");
-                if before && !self.bands_on {
-                    self.bands = self.bands.take();
-                }
             });
             if changed {
                 self.lines_dirty = true;
@@ -867,6 +890,37 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(panel.bands.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Bands belong to the setup playback is in: when it changes, the old
+    /// bands are dropped from the viewport and the old job is stopped.
+    #[test]
+    fn req_sim_05_deviation_bands_do_not_outlive_their_setup() {
+        let (app, mut panel, mut viewport, dir) = prepared("panel-bands-setup");
+        let started = Instant::now();
+        panel.bands_on = true;
+        while panel.frame(&app, &mut viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(panel.bands.is_some() && panel.bands_setup.is_some());
+        let first = panel.bands_setup;
+        // The playback moves into another setup (the run says the group's
+        // setup is a different one): the bands for the first are dropped at
+        // once, and the panel works for the new setup.
+        let mut moved = (**panel.run.as_ref().unwrap()).clone();
+        let other = SetupId::new();
+        moved.groups[0].setup = other;
+        panel.run = Some(Arc::new(moved));
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.bands.is_none(), "the old setup's bands are gone");
+        assert_ne!(panel.bands_setup, first);
+        assert_eq!(panel.bands_setup, Some(other));
+        // Turning the colouring off clears everything.
+        panel.bands_on = false;
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.bands_job.is_none() && panel.bands_setup.is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
