@@ -65,8 +65,11 @@ pub struct Renderer {
     edges: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     lines_on_top: wgpu::RenderPipeline,
+    highlight: wgpu::RenderPipeline,
     meshes: Vec<GpuMesh>,
     line_sets: Vec<GpuLines>,
+    overlay_meshes: Vec<GpuMesh>,
+    overlay_lines: Vec<GpuLines>,
     mode: DisplayMode,
 }
 
@@ -159,6 +162,13 @@ impl Renderer {
             clamp: 0.0,
         };
         let none = wgpu::DepthBiasState::default();
+        // Highlights lie on the part's own surface: pulled forward so they win
+        // the depth test over the pushed-back surface they cover.
+        let pull_forward = wgpu::DepthBiasState {
+            constant: -4,
+            slope_scale: -2.0,
+            clamp: 0.0,
+        };
         let (triangles, line_list) = (
             wgpu::PrimitiveTopology::TriangleList,
             wgpu::PrimitiveTopology::LineList,
@@ -177,16 +187,40 @@ impl Renderer {
             lines_on_top: make(
                 "guides", "vs_line", "fs_line", line_list, Always, false, none,
             ),
+            highlight: make(
+                "highlight",
+                "vs_mesh",
+                "fs_mesh",
+                triangles,
+                LessEqual,
+                false,
+                pull_forward,
+            ),
             layout,
             meshes: Vec::new(),
             line_sets: Vec::new(),
+            overlay_meshes: Vec::new(),
+            overlay_lines: Vec::new(),
             mode: DisplayMode::default(),
         }
     }
 
     /// Replaces the scene, uploading it to the GPU.
     pub fn set_scene(&mut self, device: &wgpu::Device, scene: &Scene) {
-        self.meshes = scene
+        (self.meshes, self.line_sets) = self.upload(device, scene);
+    }
+
+    /// Replaces the overlay, uploading it to the GPU. The overlay is drawn
+    /// over the scene: its meshes win the depth test over the surface they
+    /// lie on (a selection or a hover highlight), and its lines marked
+    /// `on_top` are drawn over everything. Small and quick to replace, so
+    /// moving the pointer does not upload the scene again.
+    pub fn set_overlay(&mut self, device: &wgpu::Device, overlay: &Scene) {
+        (self.overlay_meshes, self.overlay_lines) = self.upload(device, overlay);
+    }
+
+    fn upload(&self, device: &wgpu::Device, scene: &Scene) -> (Vec<GpuMesh>, Vec<GpuLines>) {
+        let meshes = scene
             .meshes
             .iter()
             .filter(|m| !m.positions.is_empty())
@@ -200,7 +234,7 @@ impl Renderer {
                 edges: self.uniform(device, m.edge_colour),
             })
             .collect();
-        self.line_sets = scene
+        let lines = scene
             .lines
             .iter()
             .filter(|l| l.segments.len() >= 2)
@@ -212,6 +246,7 @@ impl Renderer {
                 uniform: self.uniform(device, l.colour),
             })
             .collect();
+        (meshes, lines)
     }
 
     /// Writes the frame's camera to the GPU, and builds the wireframe the
@@ -244,7 +279,10 @@ impl Renderer {
                     index_buffer(device, "wireframe", &wireframe_indices(&mesh.indices));
             }
         }
-        for lines in &self.line_sets {
+        for mesh in &self.overlay_meshes {
+            write(&mesh.fill);
+        }
+        for lines in self.line_sets.iter().chain(&self.overlay_lines) {
             write(&lines.uniform);
         }
     }
@@ -281,9 +319,24 @@ impl Renderer {
                 }
             }
         }
+        // Highlights over the surfaces they cover.
+        for mesh in &self.overlay_meshes {
+            if let Some((buffer, count)) = &mesh.triangles {
+                pass.set_pipeline(&self.highlight);
+                pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
+                pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..*count, 0, 0..1);
+            }
+        }
         // Lines tested against depth first, then the guides drawn over everything.
         for on_top in [false, true] {
-            for lines in self.line_sets.iter().filter(|l| l.on_top == on_top) {
+            for lines in self
+                .line_sets
+                .iter()
+                .chain(&self.overlay_lines)
+                .filter(|l| l.on_top == on_top)
+            {
                 pass.set_pipeline(if on_top {
                     &self.lines_on_top
                 } else {

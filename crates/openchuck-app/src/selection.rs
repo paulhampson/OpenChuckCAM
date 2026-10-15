@@ -27,21 +27,32 @@
 //! setup's part, a triangle the model does not have, a set that selects
 //! nothing, or a face or edge selection on a mesh. Nothing is dropped
 //! silently (verification policy 8).
+//!
+//! **Seeing them (slice 10 items 1 and 6).** [`Application::selection_summaries`]
+//! lists the sets for the selection panel with what each selects, the
+//! operations that use it and any problem that can be seen without reading
+//! the model (UI-05, OP-02); [`Application::set_operation_selection`] puts a
+//! set in or takes it out of one of an operation's four roles; and
+//! [`Application::delete_selection`] removes a set nothing uses. What a click
+//! in the viewport selects is in [`crate::pick`].
 
 use std::collections::BTreeSet;
 
 use openchuck_geom::edges::EdgeMap;
-use openchuck_geom::select::{self, TriangleSet};
+use openchuck_geom::select;
 use openchuck_path::{MeshSurface, RegionConstraint, Window};
-use openchuck_project::id::{ModelId, SelectionSetId};
+use openchuck_project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_project::{
-    ContentHash, Item, ModelRef, Operation, Placement, Project, SelectionSet, SelectionTarget,
+    ContentHash, Item, ItemId, ModelRef, Operation, Placement, Project, SelectionSet,
+    SelectionTarget,
 };
 use openchuck_types::geometry::Vec3;
 use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::mesh::TriangleMesh;
 
 use crate::{AppError, Application, Command, JobHandle};
+
+pub use openchuck_geom::select::TriangleSet;
 
 /// A way to pick triangles of a mesh model (UI-04).
 #[derive(Debug, Clone, PartialEq)]
@@ -82,6 +93,79 @@ pub enum SelectionEdit {
     Replace(TriangleSet),
     /// Renames the set.
     Rename(String),
+}
+
+/// The part an operation gives a selection set (OP-02).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SelectionRole {
+    /// The set is machined: the operation cuts only there.
+    Machine,
+    /// The set bounds where the tool may cut (a window of X and angle).
+    Boundary,
+    /// The set is never cut.
+    Avoid,
+    /// The tool must not touch the set.
+    Check,
+}
+
+impl SelectionRole {
+    /// Every role, in the order the panel lists them.
+    pub const ALL: [Self; 4] = [Self::Machine, Self::Boundary, Self::Avoid, Self::Check];
+
+    /// The role's name for a panel.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Machine => "Machine",
+            Self::Boundary => "Boundary",
+            Self::Avoid => "Avoid",
+            Self::Check => "Check",
+        }
+    }
+
+    /// What the role does, for a tooltip (decision record 0032 item 5).
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Machine => "The operation cuts only on these surfaces.",
+            Self::Boundary => {
+                "The tool may cut only inside the window of X and angle this set spans."
+            }
+            Self::Avoid => "These surfaces are never cut; the tool may pass over them.",
+            Self::Check => "The tool must not touch these surfaces.",
+        }
+    }
+}
+
+/// An operation that uses a selection set, and how.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelectionUse {
+    /// The operation.
+    pub operation: OperationId,
+    /// Its name.
+    pub name: String,
+    /// The roles the set has in it.
+    pub roles: Vec<SelectionRole>,
+}
+
+/// One selection set as the selection panel shows it (slice 10 item 6).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelectionSummary {
+    /// The set.
+    pub id: SelectionSetId,
+    /// Its name.
+    pub name: String,
+    /// The model it was made on.
+    pub model: ModelId,
+    /// That model's path in the project, or `None` if the model is gone.
+    pub model_path: Option<String>,
+    /// What it holds: "triangles", "faces" or "edges".
+    pub kind: &'static str,
+    /// How many.
+    pub count: usize,
+    /// The operations that use it.
+    pub uses: Vec<SelectionUse>,
+    /// Why it cannot be used as it is, worded for the user.
+    pub problem: Option<String>,
 }
 
 fn selection_error(name: &str, reason: impl Into<String>) -> AppError {
@@ -232,6 +316,172 @@ impl Application {
         }
         self.execute(Command::Replace(Item::SelectionSet(edited)))?;
         Ok(self.document.project.operations_using(set))
+    }
+
+    /// Puts `set` in, or takes it out of, `role` of `operation` (OP-02, UI-05).
+    /// One undoable step. A boundary holds one set, so putting one in replaces
+    /// the other, and taking out a set that is not the boundary changes
+    /// nothing. Fails if the operation or set does not exist.
+    pub fn set_operation_selection(
+        &mut self,
+        operation: OperationId,
+        role: SelectionRole,
+        set: SelectionSetId,
+        included: bool,
+    ) -> Result<(), AppError> {
+        if !self
+            .document
+            .project
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == set)
+        {
+            return Err(AppError::UnknownSelection(set.to_string()));
+        }
+        let mut edited = self
+            .document
+            .project
+            .operation(operation)
+            .cloned()
+            .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+        let list = match role {
+            SelectionRole::Machine => &mut edited.selections,
+            SelectionRole::Avoid => &mut edited.avoid,
+            SelectionRole::Check => &mut edited.check,
+            SelectionRole::Boundary => {
+                match (included, edited.boundary == Some(set)) {
+                    (true, _) => edited.boundary = Some(set),
+                    (false, true) => edited.boundary = None,
+                    (false, false) => {}
+                }
+                return self.replace_operation(edited);
+            }
+        };
+        match (included, list.contains(&set)) {
+            (true, false) => list.push(set),
+            (false, true) => list.retain(|s| *s != set),
+            _ => return Ok(()),
+        }
+        self.replace_operation(edited)
+    }
+
+    fn replace_operation(&mut self, edited: Operation) -> Result<(), AppError> {
+        if self.document.project.operation(edited.id) == Some(&edited) {
+            return Ok(());
+        }
+        self.execute(Command::Replace(Item::Operation(edited)))
+    }
+
+    /// Removes selection set `set` (UI-05). Fails, naming the operations, if
+    /// any operation still uses it. Undoable.
+    pub fn delete_selection(&mut self, set: SelectionSetId) -> Result<(), AppError> {
+        let found = self
+            .document
+            .project
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == set)
+            .map(|s| s.name.clone())
+            .ok_or_else(|| AppError::UnknownSelection(set.to_string()))?;
+        let users: Vec<String> = self
+            .document
+            .project
+            .operations_using(set)
+            .into_iter()
+            .filter_map(|id| self.document.project.operation(id).map(|o| o.name.clone()))
+            .collect();
+        if !users.is_empty() {
+            return Err(selection_error(
+                &found,
+                format!(
+                    "it is used by {}; take it out of the operation first",
+                    users.join(", ")
+                ),
+            ));
+        }
+        self.execute(Command::Remove(ItemId::SelectionSet(set)))
+    }
+
+    /// The selection sets for a panel (slice 10 item 6; UI-05): each with what
+    /// it selects, the operations that use it and why, and a problem if one
+    /// can be seen without reading the model. Checked here: the model is in
+    /// the project, the set was made on the version of its file the project
+    /// holds, it selects triangles of a mesh, it selects something, and the
+    /// file on disk is still the one added. A triangle beyond the end of the
+    /// model is found when the operation is generated (decision record 0032
+    /// item 7). Nothing is dropped silently (OI-139).
+    ///
+    /// `file_warnings` is [`model_file_warnings`](Self::model_file_warnings),
+    /// which reads and hashes every model file: a front end calls that when
+    /// a project opens or the user asks, and passes the answer here for each
+    /// redraw.
+    pub fn selection_summaries(&self, file_warnings: &[String]) -> Vec<SelectionSummary> {
+        let project = &self.document.project;
+        let changed = file_warnings;
+        project
+            .selection_sets()
+            .iter()
+            .map(|set| {
+                let model = project.models().iter().find(|m| m.id == set.model);
+                let problem = match (&set.target, model) {
+                    (_, None) => Some("its model is no longer in the project".to_owned()),
+                    (SelectionTarget::Faces(_) | SelectionTarget::Edges(_), Some(_)) => Some(
+                        "it selects faces or edges, which need a STEP model (slice 11)".to_owned(),
+                    ),
+                    (SelectionTarget::Triangles(t), Some(_)) if t.is_empty() => {
+                        Some("it selects no triangles".to_owned())
+                    }
+                    (_, Some(m)) if m.hash != set.model_hash => Some(format!(
+                        "it was made on a different version of '{}'; select again on the current model",
+                        m.path.as_str()
+                    )),
+                    (_, Some(m)) => changed
+                        .iter()
+                        .find(|w| w.starts_with(&format!("'{}' ", m.path.as_str())))
+                        .map(|w| format!("{w}, so the selection may not match it")),
+                };
+                let count = match &set.target {
+                    SelectionTarget::Triangles(t) => t.len(),
+                    SelectionTarget::Faces(f) => f.len(),
+                    SelectionTarget::Edges(e) => e.len(),
+                };
+                let kind = match &set.target {
+                    SelectionTarget::Triangles(_) => "triangles",
+                    SelectionTarget::Faces(_) => "faces",
+                    SelectionTarget::Edges(_) => "edges",
+                };
+                let uses = project
+                    .operations()
+                    .iter()
+                    .filter_map(|o| {
+                        let roles: Vec<SelectionRole> = [
+                            (SelectionRole::Machine, o.selections.contains(&set.id)),
+                            (SelectionRole::Boundary, o.boundary == Some(set.id)),
+                            (SelectionRole::Avoid, o.avoid.contains(&set.id)),
+                            (SelectionRole::Check, o.check.contains(&set.id)),
+                        ]
+                        .into_iter()
+                        .filter_map(|(r, used)| used.then_some(r))
+                        .collect();
+                        (!roles.is_empty()).then(|| SelectionUse {
+                            operation: o.id,
+                            name: o.name.clone(),
+                            roles,
+                        })
+                    })
+                    .collect();
+                SelectionSummary {
+                    id: set.id,
+                    name: set.name.clone(),
+                    model: set.model,
+                    model_path: model.map(|m| m.path.as_str().to_owned()),
+                    kind,
+                    count,
+                    uses,
+                    problem,
+                }
+            })
+            .collect()
     }
 
     fn model_ref(&self, model: ModelId) -> Result<&ModelRef, AppError> {

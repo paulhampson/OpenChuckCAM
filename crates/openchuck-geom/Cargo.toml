@@ -13,6 +13,7 @@ authors.workspace = true
 
 [dependencies]
 openchuck-types.workspace = true
+parry3d-f64.workspace = true
 
 [dev-dependencies]
 openchuck-testkit.workspace = true

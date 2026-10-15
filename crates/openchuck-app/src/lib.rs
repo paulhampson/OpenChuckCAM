@@ -33,6 +33,7 @@ mod jobs;
 pub mod library;
 pub mod model;
 pub mod operation;
+pub mod pick;
 mod pipeline;
 mod posting;
 pub mod scene;
@@ -70,7 +71,9 @@ pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use pipeline::Regeneration;
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PostSelection};
-pub use selection::{RegionRequest, SelectionEdit};
+pub use selection::{
+    RegionRequest, SelectionEdit, SelectionRole, SelectionSummary, SelectionUse, TriangleSet,
+};
 pub use setup_sheet::{SetupSheet, SheetBody, SheetSection};
 pub use simulation::{OperationSimulation, SetupSimulation, SimulationReport};
 
