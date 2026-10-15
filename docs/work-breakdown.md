@@ -1,10 +1,10 @@
 # OpenChuckCAM – Phase 1 Work Breakdown Structure
 
-Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2026 (repository structure, scored dependencies, independent kinematic oracle, traceability), the Software Verification Plan and the Initial Requirements (crates named `openchuck-*`). It covers all 81 P1 requirements (TL-03 and GC-11 moved to P1; TL-11 and GC-14 added by decisions 0014 and 0020) in 21 vertical slices (0–20), preceded by 13 timeboxed spikes. The order follows the architecture's build order: guardrails, spikes, a thin P1 slice (STL, project file, one wrap-family strategy, simulator deviation, both posts, golden files, viewport), then P1 breadth.
+Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2026 (repository structure, scored dependencies, independent kinematic oracle, traceability), the Software Verification Plan and the Initial Requirements (crates named `openchuck-*`). It covers all 91 P1 requirements (TL-03 and GC-11 moved to P1; TL-11 and GC-14 added by decisions 0014 and 0020; UI-10 to UI-16, GC-15, GC-16 and NFR-15 added by [decision 0038](decisions/0038-ui-specification-and-requirements.md)) in 21 vertical slices (0–20), preceded by 13 timeboxed spikes. The order follows the architecture's build order: guardrails, spikes, a thin P1 slice (STL, project file, one wrap-family strategy, simulator deviation, both posts, golden files, viewport), then P1 breadth.
 
 ## P1 assessment
 
-81 of 124 requirements are P1: IMP 6, UI 9, SET 4, TL 8, OP 16, SIM 7, GC 12, PRJ 6, NFR 13 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 43 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition.
+91 of 144 requirements are P1: IMP 6, UI 16, SET 4, TL 8, OP 16, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
 
 Findings, after reconciling with the architecture:
 
@@ -157,7 +157,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-148 on `main` first, so lane E's open items are OI-150 to OI-153. Unmerged branches also hold records 0034 to 0037 and OI-154 to OI-162, and the UI specification (decision 0038, proposed) takes record 0038 and OI-163 to OI-166. Next free after that: record 0039, `OI-167`, project schema 11 (9 and 10 are expected by lanes D and O and S). Interface lanes (A, M, N, O, S, T) read [docs/ui-design/ui-specification.md](ui-design/ui-specification.md), proposed with decision 0038, as guidance.
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-148 on `main` first, so lane E's open items are OI-150 to OI-153. Unmerged branches also hold records 0034 to 0037 and OI-154 to OI-162, and the UI specification (decision 0038, accepted) took record 0038 and OI-163 to OI-166. Next free after that: record 0039, `OI-167`, project schema 11 (9 and 10 are expected by lanes D and O and S). Interface lanes (A, M, N, O, S, T) follow [docs/ui-design/ui-specification.md](ui-design/ui-specification.md), accepted with decision 0038.
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -425,7 +425,9 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Goal:** a cross-platform window where you open a project, see the model with the machine setup, and move around it.
 
-**Requirements:** UI-01, UI-02, UI-03, UI-06, UI-07, NFR-02, NFR-03
+**Requirements:** UI-01, UI-02, UI-03, UI-06, UI-07, UI-10, UI-13, UI-14, UI-15, UI-16, NFR-02, NFR-03, NFR-15
+
+**Interface specification:** [docs/ui-design/ui-specification.md](ui-design/ui-specification.md) ([decision 0038](decisions/0038-ui-specification-and-requirements.md), accepted 15 Oct 2026), including its differences from what is built (section 17, D1 to D11).
 
 **Spike inputs:** SP-2 (egui, wgpu, 1M triangles).
 
@@ -438,6 +440,10 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 5. Parameter forms generated from strategy and tool schemas, with units, validation and defaults (UI-07), and a custom-profile editor with live preview: add, move and delete line and arc segments, with the same validation as file import.
 6. Import dialog with the check report; model transform and orientation controls; undo and redo menu.
 7. Scripted 60-second camera-path benchmark on the 1M-triangle model, run on the physical reference machines, with a software-rendered smoke test in CI because hosted runners typically have no real GPU (native rendering is used wherever a runner offers it) (NFR-03).
+8. Workflow steps with their availability and reasons, the footer and its primary action, and the window layout: resizable and collapsible panels, usable at 1366 by 768 (UI-10, UI-16; specification sections 3 to 5 and 10).
+9. Machine value provenance icons with tooltips on hover and focus, replacing the list of unconfirmed values (UI-13; specification section 8, D8).
+10. Keyboard map, focus order and tooltips on focus; legibility, scale and contrast (UI-14, NFR-15; specification sections 14 and 16; checked again in slice 20).
+11. Per-user settings in the configuration folder: layout, scale, theme, units, recent projects, acknowledgements (UI-15; specification section 13).
 
 **Progress:** started 14 Oct 2026 ([decision 0029](decisions/0029-slice-8-viewport-and-shell.md), proposed) on egui and wgpu, as accepted in decision 0002. Built on `claude/slice-8-viewport-shell`: items 1 and 2 (camera, standard views, both projections, shaded, feature-edge and wireframe display, a toolkit-free renderer with offscreen render tests, the scene view model with stock, rotary axis, A+ arrow and work coordinate system), item 3 (window, menus, new, open, save, unsaved-change handling) item 4 (the project tree; operations enabled, disabled, reordered and duplicated through undoable commands; project schema 6, OI-128 closed) item 5 (parameter forms from the strategy schemas and the tool dimensions, with units, ranges, defaults and value sources, invalid values refused with the project unchanged; the custom-profile editor with live preview, which completes TL-03) item 6 (the import dialog with the check report, tessellation statement, unit question and a preview with problems highlighted, OI-51 closed; model unit and placement controls; undo and redo menu; changed model files listed on open, OI-45 closed; OI-52 closed, fixed thresholds kept). Item 7: the product benchmark `openchuck-ui --bench` is built (its hardware run is the owner's) and the `ui-smoke` CI job is added (first runs pending, OI-129). Native file dialogs (OI-127), the default library folders (OI-53) and the machine copy compared with its library source (OI-54) are built. The owner's local run on Windows (14 Oct 2026) passed the benchmark on non-reference hardware and the visual check; five checklist items are ticked (the frame-time item on the owner's decision). Still to do: the first CI runs of the `ui-smoke` job (OI-129), and the macOS launch (the remaining checklist item). OI-130 is closed (the import dialog opens in its own window). OI-14 is deferred to slice 11.
 **Review checklist**
@@ -447,6 +453,11 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [x] Only `openchuck-ui` and `openchuck-viewport` depend on egui and wgpu, and the UI imports no engine crate. *`cargo xtask deps` passes; `openchuck-ui` depends only on `openchuck-app`, `openchuck-viewport`, `eframe` and `rfd`.*
 - [x] The A-axis direction on the asymmetric test part matches the documented convention. *Owner's visual check V2 (14 Oct 2026); `req_set_01_req_ui_03_a_arrow_follows_the_documented_convention`.*
 - [x] Tree reorder, enable, disable and duplicate are all undoable. *`req_ui_06_duplicate_and_reorder_are_undoable`, `req_ui_06_disabled_operations_are_skipped_and_saved`, and the undo property test.*
+- [ ] Every step shows why it is unavailable when its inputs do not exist, and the footer's primary action follows the specification's rule (UI-10)
+- [ ] Each machine value shows its provenance on hover and keyboard focus (UI-13)
+- [ ] Every menu command has a shortcut or menu path, and a keyboard-only run reaches all five steps (UI-14)
+- [ ] Layout, scale and theme survive a restart; nothing is written to the project folder (UI-15)
+- [ ] The reference screens at 1366 by 768 have no overlapping overlays or clipped text (UI-16, NFR-15)
 - [x] An invalid parameter shows an inline error and leaves the project unchanged. *`req_ui_07_invalid_parameter_is_refused_and_leaves_the_project_unchanged`, the tool equivalent, and the inline error in the properties panel.*
 
 ## Slice 9 – Toolpath and simulation display, playback and background jobs
@@ -455,7 +466,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Progress:** items 1 and 2 are built headless (14 Oct 2026; [decision 0030](decisions/0030-slice-9-pipeline-cache.md), accepted): the job manager existed from slice 0, and the pipeline now keeps an in-memory cache with chained keys, so editing operation N regenerates N and later operations only. Open: OI-131 (cache on disk) and OI-132 (simulation checkpoints cached, with items 5 and 6).
 
-**Requirements:** SIM-01, SIM-02, SIM-04, UI-09, NFR-04
+**Requirements:** SIM-01, SIM-02, SIM-04, UI-09, UI-11, UI-12, NFR-04
 
 **Design refinement:** job manager and event stream behaviour, operation pipeline caches keyed by a hash of the operation's inputs and the engine version, invalidation of operation N and everything after it, and level of detail for long paths.
 
@@ -467,6 +478,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 6. Playback: play, pause, step, speed, jump to an operation or move, using simulator checkpoints (SIM-04).
 7. Operation add, edit, generate and regenerate flow in the UI.
 8. Level of detail for paths with millions of segments.
+9. Item states in the tree with their legend, and the messages panel collecting import, setup, file, generation and job messages with their actions (UI-11, UI-12; specification sections 6 and 9).
 
 **Review checklist**
 
@@ -475,6 +487,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [ ] Editing operation N invalidates only N and later operations; unchanged operations reuse their cache
 - [ ] The A rotation shown matches the post output and the LinuxCNC replay
 - [ ] Jumping to move N shows the same position as the corresponding G-code line
+- [ ] Stale, running, error, warning and off states show in the tree with a visible legend, and each message names its source and fixing action (UI-11, UI-12)
 
 ## Slice 10 – Geometry selection on meshes
 
@@ -713,7 +726,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Status:** in progress. Lane F (items 1, 2, 3 and 5) is built on branch `claude/awesome-sagan-wqv9bz`; design in [decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) (accepted 15 Oct 2026). Item 4 (export UI and CLI options, the tool-number dialog) is not built, so the slice stays open and GC-05, GC-06, GC-12 and GC-14 are not yet closed in `xtask/traceability.toml`. Open items OI-92 (narrowed), OI-143 and OI-144.
 
-**Requirements:** GC-05, GC-06, GC-12 (GC-14 in the UI)
+**Requirements:** GC-05, GC-06, GC-12, GC-15, GC-16 (GC-14 in the UI)
 
 **Depends on:** slice 6. Items 1 to 3 and 5 are headless; the export dialogs of item 4 need slice 8.
 
@@ -722,7 +735,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 1. Output as one file for the project, or one per setup, operation or tool (GC-05).
 2. Comments naming the operation and tool (GC-06).
 3. Setup sheet as HTML and PDF listing tools, operations and stock, built as a module in `openchuck-app` (GC-12).
-4. Export UI and CLI options, including the tool-number dialog (GC-14; the application side is built in slice 6).
+4. Export UI and CLI options, including the tool-number dialog (GC-14; the application side is built in slice 6), the checks that block writing (GC-15) and the safety acknowledgement kept per project on each computer (GC-16), as specification section 11.6 describes.
 5. Golden files for each grouping and a snapshot of the setup sheet content.
 
 **Review checklist**
@@ -731,6 +744,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 - [ ] Comments are present and deterministic
 - [ ] The setup sheet lists every tool used with its controller tool number
 - [ ] The sheet opens offline and prints legibly
+- [ ] Writing is refused with a stale or failed enabled operation; the acknowledgement is asked once per project per computer and never stored in the project (GC-15, GC-16)
 
 ## Slice 20 – Hardening and first release
 
@@ -780,8 +794,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 | 5 | OP-01, OP-11, OP-13, OP-14, OP-15, OP-16 | SP-3, SP-4, SP-7, SP-9, SP-13 |
 | 6 | GC-02, GC-03, GC-04, GC-07, GC-09, GC-10, GC-11, GC-14 | SP-3, SP-5, SP-10, SP-12 |
 | 7 | SIM-03, SIM-05, SIM-06, SIM-07 | SP-6, SP-13 |
-| 8 | UI-01, UI-02, UI-03, UI-06, UI-07, NFR-02, NFR-03 | SP-2 |
-| 9 | SIM-01, SIM-02, SIM-04, UI-09, NFR-04 | – |
+| 8 | UI-01, UI-02, UI-03, UI-06, UI-07, UI-10, UI-13, UI-14, UI-15, UI-16, NFR-02, NFR-03, NFR-15 | SP-2 |
+| 9 | SIM-01, SIM-02, SIM-04, UI-09, UI-11, UI-12, NFR-04 | – |
 | 10 | UI-04, UI-05, PRJ-06, OP-02 | – |
 | 11 | IMP-02, IMP-06, NFR-13 | SP-1, SP-9 |
 | 12 | OP-04 | SP-7 |
@@ -791,7 +805,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 | 16 | OP-08 | SP-7 |
 | 17 | OP-07 | SP-11 |
 | 18 | OP-10 | – |
-| 19 | GC-05, GC-06, GC-12 | – |
+| 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
 
-**Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19) and NFR-02 (0, 8). The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
+**Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19) and NFR-02 (0, 8). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.

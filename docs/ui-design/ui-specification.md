@@ -1,9 +1,9 @@
 # OpenChuckCAM user interface specification
 
-- **Status:** proposed, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). Until it is accepted, this is guidance, not authority. Where it disagrees with an accepted decision record, the record wins; the known differences from what slice 8 built are listed in section 17.
+- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions.
 - **Date:** 15 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
-- **Proposed requirements:** this specification needs requirements that `requirements.md` does not yet hold. They are proposed in decision 0038 and marked *(proposed)* here, with IDs reserved there (UI-10 to UI-24, SIM-11 to SIM-13, GC-15, GC-16, NFR-15).
+- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release.
 
 ## 1. Purpose and scope
 
@@ -15,7 +15,7 @@ It does not change what the engine does. Requirements stay in `requirements.md`,
 - Every edit to the project is a command, and undoable (UI-08).
 - Long work runs as a job, never on the UI thread (UI-09, NFR-04).
 
-Each element below names the requirement it serves. An element that serves only a proposed requirement is not part of the first release until that requirement is accepted.
+Each element below names the requirement it serves. An element that serves only a P2 requirement is not part of the first release.
 
 **Boards in the design canvas**
 
@@ -32,7 +32,7 @@ Each element below names the requirement it serves. An element that serves only 
 | Undo history (popover) | 12.3 |
 | Operations at 1366 × 768 | 3 |
 
-Every workspace board has a dark and a light theme (its Tweaks panel on the canvas).
+Every workspace board has a dark and a light theme (its Tweaks panel on the canvas). Rendered images of the boards are in [mockups/](mockups/), listed in section 20.
 
 ## 2. Users and design principles
 
@@ -55,7 +55,7 @@ Sizes are logical pixels at 100% scale. Slice 8 starts at 120% (decision 0029, o
 
 | Region | Size | Contents |
 | --- | --- | --- |
-| Title bar | 32 high | Menus (File, Edit, View, Project, Tools, Help); project name and save state; command search *(proposed, UI-17)*; Undo, Redo, Undo history *(proposed, UI-22)* |
+| Title bar | 32 high | Menus (File, Edit, View, Project, Tools, Help); project name and save state; command search *(UI-17)*; Undo, Redo, Undo history *(UI-22)* |
 | Workflow bar | 44 high | The five steps (section 4) on the left; actions that start something new or change context on the right (New operation, Duplicate, Add setup, Import model, Simulate from). Nothing that moves the job forward is here (section 5) |
 | Project panel | 264 wide (200 to 400) | The project tree (section 6) and its status legend |
 | Viewport toolbar | 44 high | View controls (section 7.1). A strip, not an overlay |
@@ -66,9 +66,9 @@ Sizes are logical pixels at 100% scale. Slice 8 starts at 120% (decision 0029, o
 | Footer | 48 high | Status on the left; display settings and the step's actions on the right, primary right-most (section 10) |
 
 - **Splitters** are 5 pixels with a grip mark. Double-clicking one resets its panel to the default size.
-- **Collapsing.** The project panel, the inspector and the dock collapse with the chevron in their headers, or Ctrl 1, Ctrl 2 and Ctrl 3. A collapsed side panel leaves a 28-pixel rail with its icon. *(proposed, UI-16)*
-- **Smallest window.** Everything stays usable at 1366 × 768 logical pixels: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size, the dock and then the inspector collapse first. *(proposed, UI-16)*
-- **Remembered layout.** Panel sizes, collapsed panels, open sections, scale and theme are remembered per user on the computer, never in the project (section 13). *(proposed, UI-15)*
+- **Collapsing.** The project panel, the inspector and the dock collapse with the chevron in their headers, or Ctrl 1, Ctrl 2 and Ctrl 3. A collapsed side panel leaves a 28-pixel rail with its icon. *(UI-16)*
+- **Smallest window.** Everything stays usable at 1366 × 768 logical pixels: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size, the dock and then the inspector collapse first. *(UI-16)*
+- **Remembered layout.** Panel sizes, collapsed panels, open sections, scale and theme are remembered per user on the computer, never in the project (section 13). *(UI-15)*
 - **Dialogs.**
   - Modal dialogs (open, new, unsaved changes, errors) stay inside the main window.
   - Tool windows (import, tool library, export) open in their own operating-system window where the platform allows, through the `floating` helper of decision 0029 item 17, and inside the main window where it does not.
@@ -93,7 +93,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 - An unavailable step is dimmed, and its tooltip gives the reason.
 - Alt 1 to Alt 5 open the steps.
 
-*(proposed, UI-10)*
+*(UI-10)*
 
 ## 5. The primary action
 
@@ -149,7 +149,7 @@ A disabled operation's name is struck through and muted. It is skipped everywher
 
 **Context menu** (right click or the menu key): Rename, Duplicate, Enable or Disable, Delete, Show in view, and Generate (operations).
 
-**Status marks** *(proposed, UI-11)*:
+**Status marks** *(UI-11)*:
 
 | State | Mark | Applies to | Meaning |
 | --- | --- | --- | --- |
@@ -177,9 +177,9 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | Standard views: Front, Top, Iso (all seven in the View menu and on the view cube) | Model, Setup | UI-02 |
 | Fit (F) | All | UI-02 |
 | Show or hide (V): part, stock, rotary axis and work axes, selections, toolpaths by operation | All | UI-03, SIM-01 |
-| Section plane (S) | All | *(proposed, UI-21)* |
-| Measure (M): distance, angle, radius about the rotary axis | All | *(proposed, UI-21)* |
-| Turn part to A [angle] Turn: turns the part in the view only, never the program; a chip "View turned to A −53.20°" shows while it is turned, and Fit resets it | All | *(proposed, UI-21)* |
+| Section plane (S) | All | *(UI-21)* |
+| Measure (M): distance, angle, radius about the rotary axis | All | *(UI-21)* |
+| Turn part to A [angle] Turn: turns the part in the view only, never the program; a chip "View turned to A −53.20°" shows while it is turned, and Fit resets it | All | *(UI-21)* |
 | Show: Stock, Part + path, Both | Simulate | SIM-03, SIM-05 |
 | Show findings | Model | IMP-04 |
 
@@ -225,8 +225,8 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Rapid moves | Grey `#9aa6b5` | Dotted |
 | Entry and exit moves | Lilac `#e8b6ff` | Solid |
 | Tool | Grey body, lilac tip | |
-| Working selection | Blue `#3d8bff` at 40% | Fill (OI-163) |
-| Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163) |
+| Working selection | Blue `#3d8bff` at 40% | Fill (OI-163, settled) |
+| Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
 | Saved set | Its own swatch from a fixed set of eight | Fill when shown |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
@@ -242,8 +242,8 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 
 1. **Header.** The name in an editable field, and a status chip in the words of the status mark.
 2. **Error banner,** when the item is in error. It gives what cannot be done, why, and the actions that fix it (the "Inspector: operation in error" board).
-3. **Result summary** of an operation: moves, cut length, A travel, A unwinds and programmed time, in a two-by-two (or two-by-three) grid of large numbers. Programmed time is labelled "programmed time" and is not the SIM-08 estimate (decision 0028 item 3). *(proposed, SIM-13)*
-4. **Basic and Advanced switch.** *(proposed, UI-19)* Without it, every field is shown, grouped.
+3. **Result summary** of an operation: moves, cut length, A travel, A unwinds and programmed time, in a two-by-two (or two-by-three) grid of large numbers. Programmed time is labelled "programmed time" and is not the SIM-08 estimate (decision 0028 item 3). *(SIM-13)*
+4. **Basic and Advanced switch.** *(UI-19)* Without it, every field is shown, grouped.
 5. **Sections.** Collapsible, with their open state remembered per item kind. For an operation:
    - Geometry: Cut on, Contain within, Avoid and Check, the roles of decision 0032 item 5, with a list to add from and a button to remove;
    - Tool and feeds;
@@ -258,12 +258,12 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 - **Hint and source.** An empty field shows the value that applies as a hint, with its source: the operation, the tool's cutting data for the stock material, or the strategy default.
 - **Committing.** A value is applied when the field loses focus or on Enter. Esc puts back the last applied text. Each applied value is one undoable command.
 - **Refusals.** A refused value stays in its field with a red border, and the reason in red under it ("Must not exceed the tool diameter (3.0 mm). Not applied."). The project and the undo history are unchanged.
-- **Reset.** A value the operation sets has a reset button (↺) in the label column. *(proposed, UI-19)* It also has a 6-pixel accent dot before its label.
-- **Derived values** are read-only, with how they were worked out under them, for example "0.020 mm × 2 flutes × 14000 rpm". *(proposed, UI-19)*
-- **Typed units.** A field accepts a number with a unit ("0.005 in"), converts it, and says "Stored as 0.127 mm". *(proposed, UI-18)*
+- **Reset.** A value the operation sets has a reset button (↺) in the label column. *(UI-19)* It also has a 6-pixel accent dot before its label.
+- **Derived values** are read-only, with how they were worked out under them, for example "0.020 mm × 2 flutes × 14000 rpm". *(UI-19)*
+- **Typed units.** A field accepts a number with a unit ("0.005 in"), converts it, and says "Stored as 0.127 mm". *(UI-18)*
 - **Choices** are drop-down lists. Two to four exclusive choices are a segmented control. Flags are check boxes.
 
-**Status icons in the machine panel** *(proposed, UI-13; data from decision 0011 item 8, `provenance`)*:
+**Status icons in the machine panel** *(UI-13; data from decision 0011 item 8, `provenance`)*:
 
 - **Placement.** Each machine value has a 20-pixel icon at the right end of its label, so the icons line up in one column.
 - **The three icons:**
@@ -281,7 +281,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 
 **Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5).
 
-**Messages** *(proposed, UI-12)*:
+**Messages** *(UI-12)*:
 
 - **Rows.** Each row has:
   - a severity icon (error, red triangle; warning, amber triangle; information, blue "i");
@@ -314,7 +314,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 
 - **Left:** the current job with its spinner and percentage, or "Ready", then a short note about the step ("edits are applied when you leave a field; undo with Ctrl Z"). After it comes the G-code notice in short form: "Verify G-code before running it" (NFR-12; decision 0029 item 8 shows it in the status bar).
 - **Right**, left to right:
-  - the display units switch, "mm | in" *(proposed, UI-18)*; with P1 only it reads "mm · deg" and cannot be changed;
+  - the display units switch, "mm | in" *(UI-18)*; with P1 only it reads "mm · deg" and cannot be changed;
   - the tolerance of the selected operation or setup;
   - machine warnings in amber, linking to Setup;
   - a separator;
@@ -330,7 +330,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
   - a drop zone for a model file;
   - "Import model…" and "Open project…";
   - the five steps, one line each;
-  - recent projects *(proposed, UI-23)*.
+  - recent projects *(UI-23)*.
 - **The footer** primary is "Import model…".
 
 ### 11.2 Model, and the import dialog
@@ -411,7 +411,7 @@ Boards 3 and 3b.
 - **New operation.** Choose a strategy from the menu; the new operation takes the selection and the last tool used. A strategy that cannot honour a region (decision 0032 item 6) is listed with "ignores selections" and cannot take one.
 - **An operation in error** (board 3b):
   - **Banner:** "This operation can't be generated", then the cause in one sentence, for example "The selection 'Lettering' no longer matches the model. 12 of its 40 edges were not found after the model file changed".
-  - **Actions:** "Reselect in the view" (primary in the banner) and "Show missing". "Use the N matching edges" is *(proposed, UI-24)*.
+  - **Actions:** "Reselect in the view" (primary in the banner) and "Show missing". "Use the N matching edges" is *(UI-24)*.
   - **The broken field** has a red border and shows the count found ("28 of 40").
   - **A closing line** says export is blocked while the operation is in error, and that turning it off lets the others export.
 - **Footer** primary: section 5. While generation runs with an operation in error, "Continue to simulate" is disabled, with its reason in the tooltip.
@@ -437,13 +437,13 @@ Board 4 (SIM-01 to SIM-07).
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
-- **The probe** *(proposed, SIM-11)*. Hovering the stock shows a tooltip: the deviation with its sign and unit ("Overcut −0.004 mm"), the position (X and A), and the operation and move that left it.
+- **The probe** *(SIM-11)*. Hovering the stock shows a tooltip: the deviation with its sign and unit ("Overcut −0.004 mm"), the position (X and A), and the operation and move that left it.
 
 **Results inspector:**
 
 - colour by (Deviation, Remaining, Overcut);
 - worst values after the current operation: largest overcut, largest material left, the share within tolerance;
-- "Go to overcut" and "Go to largest left" *(proposed, SIM-11)*;
+- "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - a deviation histogram in the same colours;
 - a table by operation (overcut, left, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
@@ -454,7 +454,7 @@ Board 4 (SIM-01 to SIM-07).
 - **Speed:** 1×, 10×, 100× or Max.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
-- **G-code panel** (300 wide) *(proposed, SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
+- **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
 
 **Footer** primary: section 5.
 
@@ -474,7 +474,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S (OI-144).
    - One row per tool: library tool, used in, and program number.
    - The machine's range is shown.
    - "Keep as saved", "Renumber in order of use" or "By hand". Duplicates are refused, and the choice is saved in the project.
-3. **Checks before writing** *(proposed, GC-15)*:
+3. **Checks before writing** *(GC-15)*:
    - Writing is blocked while an enabled operation is stale or in error.
    - Operations not simulated, and unconfirmed machine values, give warnings.
    - Disabled operations are listed as not posted.
@@ -485,7 +485,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S (OI-144).
 - the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time;
 - a preview of the first lines.
 
-**Safety notice band** (NFR-12; *proposed, GC-16*):
+**Safety notice band** (NFR-12; GC-16):
 
 - **Always shown** at export, in an amber box. The text is fixed: "Verify this G-code before you run it. It was produced from your project and has not been tested on your machine. Check the origin, axis height, tool lengths, A direction and unwinding at the controller, and run an air cut first."
 - **The tick box** "I will verify this G-code before running it on a machine" must be ticked before the first export of a project on a computer.
@@ -529,7 +529,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
 
 ### 12.3 Undo history
 
-*(proposed, UI-22)*. A popover from the title bar (Ctrl H).
+*(UI-22)*. A popover from the title bar (Ctrl H).
 
 - **Rows,** newest first: the command in words with its item, and the time.
 - **Marks.** The current state is highlighted. Undone steps are italic, marked "undone".
@@ -538,7 +538,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
 
 ## 13. Per-user settings
 
-*(proposed, UI-15)*
+*(UI-15)*
 
 - **Kept per user on the computer, never in the project:**
   - window and panel layout;
@@ -550,7 +550,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
 - **Where.** The platform configuration folder of decision 0029 item 15: `OpenChuckCAM/` beside `machines/` and `tools/`, under `$XDG_CONFIG_HOME` (else `~/.config`), `%APPDATA%` or `~/Library/Application Support`.
 - **Format.** One `settings.toml`, written with the `toml` crate already in the workspace. Not eframe persistence, which would bring the `directories` crate that decision 0029 declined.
 - **When the file is bad.** A missing or unreadable file gives defaults and a message, never a crash (NFR-07).
-- **How a project is identified** for the acknowledgement is OI-165.
+- **How a project is identified** for the acknowledgement: by its canonical folder path on that computer (OI-165, closed). Moving or renaming the folder asks again; no project file changes.
 
 ## 14. Visual design
 
@@ -580,7 +580,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
 
 ### 14.2 Themes
 
-Dark is the default. The light theme *(proposed, UI-20)* changes the panels, bars and dialogs. The viewport keeps its dark gradient (`#2c3139` to `#1b1e23`) and dark overlays in both themes, so the colour roles of 7.4 keep their contrast.
+Dark is the default. The light theme *(UI-20)* changes the panels, bars and dialogs. The viewport keeps its dark gradient (`#2c3139` to `#1b1e23`) and dark overlays in both themes, so the colour roles of 7.4 keep their contrast.
 
 ### 14.3 Type and size
 
@@ -611,7 +611,7 @@ Dark is the default. The light theme *(proposed, UI-20)* changes the panels, bar
 
 ## 16. Keyboard and accessibility
 
-*(proposed, UI-14 and NFR-15)*
+*(UI-14 and NFR-15)*
 
 | Keys | Command |
 | --- | --- |
@@ -642,7 +642,7 @@ On macOS, Ctrl is Command.
 
 ## 17. Differences from the current build
 
-Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, proposed) built or proposed some things differently. This specification resolves each as follows; the resolution needs the owner's agreement through decision 0038.
+Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, proposed) built or proposed some things differently. The owner agreed these resolutions with decision 0038 (15 Oct 2026); each is work for the lane named in the work breakdown.
 
 | # | Built or proposed | This specification | Resolution |
 | --- | --- | --- | --- |
@@ -652,7 +652,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | D4 | Inch display is not part of P1 (0029 item 11) | The "mm \| in" switch is P2 (UI-18); with P1 only the footer reads "mm · deg" | As 0029 |
 | D5 | A disabled operation's name is struck through (0029 item 10) | Struck through and muted | Keep strike-through; the mockups show muted only |
 | D6 | Placement steps have no enable flag (decision 0010 item 6) | No enable box on a step | The Model board's boxes are dropped |
-| D7 | Highlights: working selection orange, chosen set green, hover yellow (0037 item 5) | Working selection blue, each set its own swatch, hover yellow outline | OI-163; decided with lane M |
+| D7 | Highlights: working selection orange, chosen set green, hover yellow (0037 item 5) | Working selection blue, each set its own swatch, hover yellow outline | Agreed (OI-163 closed); lane M changes decision 0037's colours |
 | D8 | The machine panel lists the values not yet confirmed (0029 item 16) | A provenance icon on each value with a tooltip (UI-13) | Replace the list with the icons |
 | D9 | A tree mark for partly unconfirmed machine values used the stale diamond (the Setup and Model boards) | A Warning mark (amber triangle outline); the diamond means only stale results | Fix the boards when next edited |
 | D10 | Steps, the footer primary action and the messages dock are not built | Sections 4, 5 and 9 | New work for lane A or T (decision 0038) |
@@ -683,7 +683,32 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 
 Tracked in [open-items.md](../open-items.md):
 
-- **OI-163:** selection highlight colours (D7).
-- **OI-164:** the typeface.
-- **OI-165:** how the export acknowledgement identifies a project on a computer.
-- **OI-166:** the default scale (120%) against the smallest window (1366 × 768).
+- **OI-163 (closed 15 Oct 2026):** selection highlight colours are the ones in section 7.4 (D7).
+- **OI-164 (open):** the typeface. egui's bundled fonts are used until it is decided.
+- **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
+- **OI-166 (open):** the default scale (120%) against the smallest window (1366 × 768).
+
+## 20. Rendered mockups
+
+Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
+
+| Image | Board | Section |
+| --- | --- | --- |
+| [00-new-project.png](mockups/00-new-project.png) | New project (empty state) | 11.1 |
+| [01-model.png](mockups/01-model.png) | Model | 11.2 |
+| [01b-import-dialog.png](mockups/01b-import-dialog.png) | Import dialog | 11.2 |
+| [02-setup.png](mockups/02-setup.png) | Setup, with a status tooltip open on keyboard focus | 11.3 |
+| [03-operations.png](mockups/03-operations.png) | Operations: one operation generating, one in error | 11.4 |
+| [03b-operation-error.png](mockups/03b-operation-error.png) | Inspector for an operation in error | 11.4 |
+| [04-simulate.png](mockups/04-simulate.png) | Simulate, with the deviation probe | 11.5 |
+| [05-export-dialog.png](mockups/05-export-dialog.png) | Post and export | 11.6 |
+| [10-tool-library.png](mockups/10-tool-library.png) | Tool library and profile editor | 12.1 |
+| [11-selection-sets.png](mockups/11-selection-sets.png) | Selection sets tab | 12.2 |
+| [12-undo-history.png](mockups/12-undo-history.png) | Undo history | 12.3 |
+| [13-operations-1366x768.png](mockups/13-operations-1366x768.png) | Operations at 1366 × 768 | 3 |
+| [14-operations-light.png](mockups/14-operations-light.png) | Operations, light theme | 14.2 |
+| [15-simulate-light.png](mockups/15-simulate-light.png) | Simulate, light theme | 14.2 |
+
+![Operations step](mockups/03-operations.png)
+
+Known gaps in the images: the footer omits the short G-code notice of section 10 (D2), and the tree check boxes are drawn without a tick.

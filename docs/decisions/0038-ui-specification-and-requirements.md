@@ -1,9 +1,9 @@
 # 0038: User interface specification, and the requirements it needs
 
-- **Status:** proposed. For the project owner's review. Nothing in `requirements.md`, `architecture.md` or `verification-plan.md` is changed by this record until it is accepted (CLAUDE.md: propose a document change and wait for agreement).
+- **Status:** accepted by the project owner (15 Oct 2026): the specification, the requirements and their priorities, the verification rows, the resolutions of the specification's section 17 (D1 to D11), and the recommendations on OI-163 and OI-165. OI-164 and OI-166 had no recommendation and stay open.
 - **Date:** 15 Oct 2026.
 - **Branch:** `claude/compassionate-pascal-se4cct`. This is a documentation change, not a lane of the work breakdown's parallel plan; it informs lanes A, M, N, O, S and T.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-163 to OI-166 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-163 and OI-165 are closed by this record's acceptance; OI-164 and OI-166 are open.
 
 Numbering: `main` holds records up to 0033 and OI-153; unmerged branches hold records 0034 to 0037 and OI-154 to OI-162. This record therefore takes 0038 and OI-163 to OI-166. Unmerged branches also hold requirement IDs OP-20, OP-21 and SET-09, so the IDs proposed here avoid the OP and SET families. It takes no project schema number: nothing proposed here is stored in the project.
 
@@ -43,7 +43,7 @@ They do not cover several things that the design needs, and that a desktop CAM t
 
 Requirements section 7 also assumes "inch display and input are a user setting" with no requirement ID.
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **Adopt the user interface specification** as the guidance for the interface lanes. On acceptance its status becomes "accepted", and it ranks with the decision records below the architecture (`docs/README.md` precedence 5). Where it disagrees with an accepted record, the record wins until one of them is changed, and section 17 of the specification lists the known differences with their proposed resolutions (D1 to D11).
 2. **Add these requirements to `requirements.md`** (IDs reserved now, never reused). P1 is proposed only where the first release needs it to be usable or safe.
@@ -88,7 +88,7 @@ Requirements section 7 also assumes "inch display and input are a user setting" 
    | NFR-15 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200% |
    | P2 rows (UI-17 to UI-24, SIM-11 to SIM-13) | T or D | | Added when each is scheduled |
 
-4. **Where the work goes** (for the work breakdown on acceptance):
+4. **Where the work goes.** As placed in the work breakdown on acceptance: UI-10, UI-13, UI-14, UI-15, UI-16 and NFR-15 in slice 8 (items 8 to 11), with UI-14 and NFR-15 closing at slice 20; UI-11 and UI-12 in slice 9 (item 9); GC-15 and GC-16 in slice 19 (item 4). The proposal was:
    - UI-10, UI-11, UI-12, UI-15 and UI-16, and the footer and primary-action rules: lane A (the rest of slice 8) or a new interface lane after it.
    - UI-13: lane A (the machine panel).
    - UI-14 and NFR-15: slice 8 for the shell, checked again in slice 20.
@@ -107,19 +107,21 @@ Requirements section 7 also assumes "inch display and input are a user setting" 
 
 ## Consequences
 
-- **On acceptance:**
+- **Made with the acceptance (15 Oct 2026):**
   - `requirements.md` gains the rows above. Sections 3.2, 3.3, 3.6, 3.7 and 5 are touched, and the requirement counts in the work breakdown change.
   - `verification-plan.md` gains the rows above.
-  - `docs/ui-design/ui-specification.md` changes status to accepted.
-- **The specification's differences from the build (section 17)** become work for the lanes named in item 4. D1 changes a colour in the slice 8 viewport.
+  - `docs/ui-design/ui-specification.md` is accepted, with rendered mockups in `docs/ui-design/mockups/`.
+  - The work breakdown's slices 8, 9 and 19, its traceability table and counts (91 of 144 requirements P1), and `xtask/traceability.toml` (UI-14 and NFR-15 close at slice 20).
+  - Requirements section 7's inch assumption now cites UI-18.
+- **The specification's differences from the build (section 17)** are work for the lanes named in item 4. D1 changes a colour in the slice 8 viewport. D7 means lane M changes the highlight colours of its proposed decision 0037.
 - **No new dependency.** Settings use `toml`, already in the workspace, in the configuration folder of decision 0029 item 15. Bundling the mockups' typeface would need one (OI-164).
-- **Nothing proposed is stored in the project,** so no schema number is needed (OI-165 recommends that the acknowledgement be keyed by the project folder).
+- **Nothing added is stored in the project,** so no schema number is needed: the acknowledgement is keyed by the project folder path (OI-165).
 
 ## Open items
 
 | ID | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| OI-163 | Selection highlight colours: decision 0037 (proposed) uses orange for the working selection, green for the chosen set and yellow for hover. The specification proposes blue, per-set swatches and a yellow outline, because amber is cut moves and green is the Y axis, link moves and the up-to-date state | With lane M's review | Owner's choice |
+| OI-163 | **Closed 15 Oct 2026: the specification's colours.** Selection highlight colours: decision 0037 (proposed) uses orange for the working selection, green for the chosen set and yellow for hover. The specification proposes blue, per-set swatches and a yellow outline, because amber is cut moves and green is the Y axis, link moves and the up-to-date state | With lane M's review | Owner's choice |
 | OI-164 | Typeface: the mockups use IBM Plex Sans and Mono (OFL-1.1); egui ships its own fonts, which `deny.toml` allows. Bundling Plex adds font files and a licence record (NFR-10, NFR-14) | Lane A or T | Owner's choice |
-| OI-165 | How the export acknowledgement (GC-16) identifies a project on a computer: the canonical project folder path (no schema change; moving or renaming the folder asks again) or a project ID in `project.toml` (a schema change). Recommended: the folder path | Lane S | Owner's choice |
+| OI-165 | **Closed 15 Oct 2026: the folder path.** How the export acknowledgement (GC-16) identifies a project on a computer: the canonical project folder path (no schema change; moving or renaming the folder asks again) or a project ID in `project.toml` (a schema change). Recommended: the folder path | Lane S | Owner's choice |
 | OI-166 | Slice 8 starts at 120% scale; at that scale a 1366 by 768 screen gives about 1138 by 640 logical pixels, below the UI-16 size. Choose the default scale from the screen size, or set UI-16 at 100% | Lane A | Owner's choice |

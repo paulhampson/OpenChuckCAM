@@ -12,7 +12,7 @@ The documents in `docs/` define the project. Read the relevant ones before you d
 | Where does this code go? What may depend on what? | [docs/architecture.md](docs/architecture.md) |
 | What do I build next, and when is a task done? | [docs/work-breakdown.md](docs/work-breakdown.md) |
 | How is this requirement verified? What tests are needed? | [docs/verification-plan.md](docs/verification-plan.md) |
-| How should a screen look and behave? | [docs/ui-design/ui-specification.md](docs/ui-design/ui-specification.md) (proposed, decision 0038) |
+| How should a screen look and behave? | [docs/ui-design/ui-specification.md](docs/ui-design/ui-specification.md) (decision 0038) |
 | Which crate should I use for this? | [docs/crate-selection.md](docs/crate-selection.md), and the crate selection section of the architecture |
 | Was this decided after the documents were written? | [docs/decisions/](docs/decisions/) |
 
