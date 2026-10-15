@@ -561,19 +561,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 12\n", "schema = 12\nspeed = 3\n"),
+            |t| t.replace("schema = 10\n", "schema = 10\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 12\n", ""),
+            |t| t.replace("schema = 10\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 12", "schema = 13"),
+            |t| t.replace("schema = 10", "schema = 11"),
             "newer OpenChuckCAM",
         ),
         (
@@ -616,7 +616,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 12\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 10\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -727,14 +727,14 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 12\n"), "{path}");
+        assert!(text.starts_with("schema = 10\n"), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
         let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect::<String>()
-            .replace("schema = 1\n", "schema = 12\n");
+            .replace("schema = 1\n", "schema = 10\n");
         if path.starts_with("setups/") {
             old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
         }
@@ -962,7 +962,7 @@ fn req_op_11_nfr_07_bad_stock_to_leave_is_refused_and_schema_7_still_loads() {
     for (path, text) in file::render(&q).unwrap() {
         std::fs::write(
             old.join(&path),
-            text.replacen("schema = 12", "schema = 7", 1),
+            text.replacen("schema = 10", "schema = 7", 1),
         )
         .unwrap();
     }
@@ -1036,7 +1036,7 @@ fn req_prj_04_req_tl_04_centre_cutting_round_trips_and_older_files_load_without_
 
     // A schema 7 project loads, and its tool states nothing.
     let old = copy_tree_with(&base, "centre-schema7", |_, text| {
-        text.replace("schema = 12", "schema = 7")
+        text.replace("schema = 10", "schema = 7")
     });
     let loaded = file::load(&old).unwrap();
     assert_eq!(loaded.tools().first().unwrap().tool.centre_cutting, None);
@@ -1054,13 +1054,13 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
                     "flute_count = 2\n",
                     &format!("flute_count = 2\ncentre_cutting = {value}\n"),
                 )
-                .replace("schema = 12", schema)
+                .replace("schema = 10", schema)
             } else {
                 text.to_owned()
             }
         }
     };
-    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 12"));
+    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 10"));
     let err = file::load(&bad).unwrap_err().to_string();
     assert!(
         err.contains("000000000014") && err.contains("centre_cutting"),
