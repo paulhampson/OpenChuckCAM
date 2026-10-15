@@ -34,7 +34,7 @@ The new requirements: **SET-09** (a gripped length at either end of the stock, w
 ## Consequences
 
 - `docs/requirements.md` gains SET-09 and OP-20 (done with this record); the verification plan gains rows for both (done); the work breakdown gains slice 21, lanes U, V and W, the traceability row, the P1 count of 83 of 126 (done).
-- The architecture needs a small change to be accepted before slice 21c: the setup (section 5.6) holds a workholding zone and tabs, and the surface port (section 5.2) has a composite implementation. That edit is proposed and waits for agreement.
+- The architecture is updated at the project owner's direction: sections 5.2 (the composite `SurfaceSource`), 5.6 (workholding and tabs in the setup), the pipeline's setup step, the coverage table and section 13 (made with this record).
 - New P1 requirements need tests named after them, in slice 21; the traceability rule applies when slice 21 closes. Slices 12 to 14 close without them.
 - A project without a zone or tab must generate byte-identical G-code.
 - Open items: OI-153 (tab defaults and layout), OI-154 (tool size against tab size), OI-155 (chuck defaults from the machine profile), OI-156 (a cut-off operation), OI-157 (composite surface cost on large meshes).
