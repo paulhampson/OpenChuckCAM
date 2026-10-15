@@ -43,6 +43,8 @@ pub struct OperationSimulation {
 /// The simulation of one setup's operations, in machining order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetupSimulation {
+    /// The setup's ID: names are not unique.
+    pub id: SetupId,
     /// The setup's name.
     pub setup: String,
     /// Material volume before the first operation, in cubic millimetres.
@@ -150,6 +152,7 @@ impl SetupState {
             None => None,
         };
         Ok(SetupSimulation {
+            id: self.id,
             setup: self.name,
             initial_volume: self.initial_volume,
             final_volume: stock.volume(),

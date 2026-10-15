@@ -79,7 +79,10 @@ impl Strategy for Line {
                     })
             })
             .collect();
-        Ok(vec![Pass { points }])
+        Ok(vec![Pass {
+            points,
+            stock: None,
+        }])
     }
 }
 
