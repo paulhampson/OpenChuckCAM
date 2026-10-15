@@ -270,16 +270,15 @@ pub fn generate_operation_on(
         tags: &tags,
     };
     let resolved = parameter_values(project, operation, registry)?;
+    // The values as the strategy's schema reads them (a whole number given for
+    // a number is a number), resolved once for everything below.
+    let parameters = strategy.schema().resolve(&resolved.values)?;
     // A straight plunge needs a tool that can cut straight down (OI-117).
-    EntryParameters::read(&strategy.schema().resolve(&resolved.values)?)?
-        .check_tool(snapshot.tool.can_plunge())?;
-    let zones = resolved_region.as_ref().map_or_else(Vec::new, |r| {
-        let leave = match resolved.values.get(names::STOCK_TO_LEAVE) {
-            Some(openchuck_path::ParameterValue::Number(v)) => *v,
-            _ => 0.0,
-        };
-        r.zones(leave)
-    });
+    EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
+    let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
+    let zones = resolved_region
+        .as_ref()
+        .map_or_else(Vec::new, |r| r.zones(operation_leave));
     if !zones.is_empty() && !strategy.honours_leave_zones() {
         return Err(missing(
             operation,
@@ -309,9 +308,7 @@ pub fn generate_operation_on(
     };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
-    if let Ok(parameters) = strategy.schema().resolve(&resolved.values) {
-        notes.extend(strategy.parameter_warnings(&profile, &parameters));
-    }
+    notes.extend(strategy.parameter_warnings(&profile, &parameters));
     notes.extend(
         path.notes
             .iter()

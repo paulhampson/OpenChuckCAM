@@ -589,9 +589,11 @@ fn req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations() {
         .unwrap();
     set_roles(&mut app, op, |o| {
         o.selections = vec![roof];
+        // A whole number, as a hand-edited project file may hold it: it is
+        // still the operation's 1 mm.
         o.parameters.insert(
             "stock_to_leave".into(),
-            openchuck_app::project::ParameterValue::Number(1.0),
+            openchuck_app::project::ParameterValue::Integer(1),
         );
     });
     let gaps = |app: &mut Application| -> Vec<f64> {
@@ -621,6 +623,12 @@ fn req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations() {
     // The ball is 2 mm in radius on a 10 mm face, so the part of the face
     // clear of the 1 mm beside the edges is a middle strip: some cuts keep
     // the selection's own 0.3 mm (the path has few points on a flat strip).
+    // Beside an edge the rest of the part is left the operation's 1 mm (not
+    // 0, as when a whole-number value was read as no value).
+    assert!(
+        g.iter().any(|g| (*g - 1.0).abs() < 2e-3),
+        "no cut rides the rest of the part at 1 mm"
+    );
     let own = g.iter().filter(|g| (**g - 0.3).abs() < 2e-3).count();
     assert!(own >= 3, "{own} of {} cuts keep 0.3 mm", g.len());
     // Bad amounts are refused; clearing goes back to the operation's.
