@@ -4,6 +4,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Slice 13 (decision 0033): `simultaneous` with `SimultaneousFinishing` (`simultaneous_finishing`: spiral and axial drive patterns, the tool axis on the smoothed surface normal within a lead angle and a largest tilt, A smoothed by the taut string with the fewest reversals, the normal-offset fast path seeding the drop for convex tools, a gouge check at the middle of every machine move) and `taut_string`; `Registry::builtin` holds it; `Strategy::passes_with_notes` (provided) and `StrategyOutput`, whose notes `generate` adds to the path's notes. No field was added to a public struct.
 - Version 0.6.0 with the library family (`PostJob` and `ConvertOptions` in `openchuck-post` gain `operation_names`, a breaking change; decision 0028).
 - Slice 10 (decision 0032): `RegionConstraint` and `Window` (OP-02); `Strategy::honours_region` and `Strategy::passes_in_region` (defaults refuse) and `generate_in_region`; helical finishing honours regions. No field was added to a public struct.
 

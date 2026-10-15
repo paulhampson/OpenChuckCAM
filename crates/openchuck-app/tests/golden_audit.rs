@@ -38,7 +38,7 @@ use openchuck_app::gcode::{
 use openchuck_app::setup::{ARange, builtin};
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge, min_clearance};
 use openchuck_testkit::oracle::{OracleMachine, model_tip};
-use openchuck_testkit::parts::{Cone, HelicalGroove, RadialPart, Sphere};
+use openchuck_testkit::parts::{Cone, HelicalGroove, LobedVase, RadialPart, Sphere};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::tool::{Tool, ToolShape};
 use openchuck_types::units::Millimetres;
@@ -268,6 +268,11 @@ fn dist(a: Point3, b: Point3) -> f64 {
 struct Job {
     name: &'static str,
     part: Box<dyn RadialPart>,
+    /// The largest A step of a cutting move: the job's 5 degree angle step
+    /// for helical finishing, where A is the drive angle; more for
+    /// simultaneous finishing, where A follows the normal and turns faster
+    /// than the drive point on a lobe's flank (decision record 0033).
+    max_a_step: f64,
 }
 
 fn jobs() -> Vec<Job> {
@@ -280,6 +285,7 @@ fn jobs() -> Vec<Job> {
                 pitch: 12.0,
                 depth: 1.5,
             }),
+            max_a_step: 5.0,
         },
         Job {
             name: "cone",
@@ -288,10 +294,24 @@ fn jobs() -> Vec<Job> {
                 end_radius: 5.0,
                 length: 30.0,
             }),
+            max_a_step: 5.0,
         },
         Job {
             name: "sphere",
             part: Box::new(Sphere { radius: 10.0 }),
+            max_a_step: 5.0,
+        },
+        Job {
+            name: "lobed",
+            part: Box::new(LobedVase {
+                base: 10.0,
+                wave: 1.5,
+                wave_length: 40.0,
+                lobe: 1.0,
+                lobes: 3,
+                length: 20.0,
+            }),
+            max_a_step: 10.0,
         },
     ]
 }
@@ -307,6 +327,7 @@ fn audit_geometry(
     replayed: &openchuck_app::gcode::Replay,
     post: Post,
     part: &dyn RadialPart,
+    max_a_step: f64,
 ) -> Vec<Point3> {
     let ball = Tool {
         shape: ToolShape::BallEnd,
@@ -324,13 +345,12 @@ fn audit_geometry(
         "{name}: only {} cutting moves",
         cuts.len()
     );
-    // A is continuous: no step over the 5 degrees the job asks for, never reversing.
-    const MAX_A_STEP: f64 = 5.0;
+    // A is continuous: no step over what the job allows, never reversing.
     let mut direction = 0.0_f64;
     for m in &cuts {
         let da = m.to[3] - m.from[3];
         assert!(
-            da.abs() <= MAX_A_STEP + 1e-6,
+            da.abs() <= max_a_step + 1e-6,
             "{name} line {}: A steps {da}",
             m.line
         );
@@ -485,7 +505,13 @@ fn req_gc_09_req_gc_10_req_nfr_08_reference_job_golden_files_pass_the_audit() {
             audit_conventions(&file, &text, post);
             let replayed = audit_static(&file, &text, post);
             println!("{file}:");
-            contacts.push(audit_geometry(&file, &replayed, post, job.part.as_ref()));
+            contacts.push(audit_geometry(
+                &file,
+                &replayed,
+                post,
+                job.part.as_ref(),
+                job.max_a_step,
+            ));
         }
         // Agreement: the two posts reach the same tool positions on the exact surface.
         assert_eq!(

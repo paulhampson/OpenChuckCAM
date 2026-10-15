@@ -20,7 +20,7 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, assemble_with_entry};
+use crate::assemble::{GeneratedPath, PathNote, assemble_with_entry};
 use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
@@ -47,6 +47,17 @@ pub struct CutPoint {
 pub struct Pass {
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
+}
+
+/// A strategy's passes with what it found worth telling the user, as
+/// sentences (decision record 0033 item 9). The notes are added to the
+/// generated path's notes, against its first segment.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StrategyOutput {
+    /// The passes, as [`Strategy::passes`] gives them.
+    pub passes: Vec<Pass>,
+    /// Notes about the whole toolpath.
+    pub notes: Vec<String>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -119,6 +130,26 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         )))
     }
 
+    /// The passes, limited to `region` when given, with notes for the user.
+    /// The default runs [`passes`](Self::passes) or
+    /// [`passes_in_region`](Self::passes_in_region) and has no notes.
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let passes = match region {
+            Some(region) => self.passes_in_region(input, region, parameters, context)?,
+            None => self.passes(input, parameters, context)?,
+        };
+        Ok(StrategyOutput {
+            passes,
+            notes: Vec::new(),
+        })
+    }
+
     /// The passes for `input` and the resolved `parameters`. Long work
     /// checks `context` for cancellation and reports progress through it.
     fn passes(
@@ -164,12 +195,22 @@ fn generate_with(
     let common = CommonParameters::read(&parameters)?;
     let entry = EntryParameters::read(&parameters)?;
     context.check_cancelled()?;
-    let passes = match region {
-        Some(region) => strategy.passes_in_region(input, region, &parameters, context)?,
-        None => strategy.passes(input, &parameters, context)?,
-    };
+    let output = strategy.passes_with_notes(input, region, &parameters, context)?;
     context.check_cancelled()?;
-    assemble_with_entry(&passes, input, &common, &entry, context)
+    let mut path = assemble_with_entry(&output.passes, input, &common, &entry, context)?;
+    if !output.notes.is_empty() {
+        let mut notes: Vec<PathNote> = output
+            .notes
+            .into_iter()
+            .map(|message| PathNote {
+                segment: 0,
+                message,
+            })
+            .collect();
+        notes.append(&mut path.notes);
+        path.notes = notes;
+    }
+    Ok(path)
 }
 
 /// The strategies a host offers, by name.
@@ -184,11 +225,13 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides: helical finishing (OP-04).
+    /// The strategies this library provides: helical finishing (OP-04) and
+    /// simultaneous 4-axis finishing (OP-05, OP-06).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
-        // The name is fixed and the registry is empty, so this cannot fail.
+        // The names are fixed and distinct, so these cannot fail.
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
+        let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         registry
     }
 

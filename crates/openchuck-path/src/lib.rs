@@ -20,7 +20,8 @@
 //! parameters against its schema and hands the passes to the shared services
 //! in [`assemble`]: A-axis management (OP-15), linking (OP-14) and contact
 //! feed with segment durations (OP-13). Strategies are found by name in a
-//! [`Registry`] (OP-16); the library's own is [`HelicalFinishing`]. Tool-centre
+//! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`] and
+//! [`SimultaneousFinishing`]. Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -72,6 +73,7 @@ pub mod parallel;
 pub mod params;
 pub mod region;
 pub mod rotary;
+pub mod simultaneous;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
@@ -88,9 +90,10 @@ pub use params::{
 };
 pub use region::{RegionConstraint, Window};
 pub use rotary::RotaryMapping;
+pub use simultaneous::SimultaneousFinishing;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, Pass, Registry, Strategy, StrategyInput, generate, generate_in_region,
+    CutPoint, Pass, Registry, Strategy, StrategyInput, StrategyOutput, generate, generate_in_region,
 };
 pub use surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
