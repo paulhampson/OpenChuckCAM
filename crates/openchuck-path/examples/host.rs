@@ -62,7 +62,10 @@ impl Strategy for OneRing {
                 })
             })
             .collect();
-        Ok(vec![Pass { points }])
+        Ok(vec![Pass {
+            points,
+            stock: None,
+        }])
     }
 }
 

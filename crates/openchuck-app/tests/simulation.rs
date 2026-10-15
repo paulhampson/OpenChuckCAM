@@ -61,7 +61,10 @@ impl Strategy for FineRing {
                 })
             })
             .collect();
-        Ok(vec![Pass { points }])
+        Ok(vec![Pass {
+            points,
+            stock: None,
+        }])
     }
 }
 

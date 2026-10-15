@@ -26,12 +26,11 @@
 
 use std::f64::consts::{FRAC_PI_2, TAU};
 
-use openchuck_types::geometry::UnitVec3;
 use openchuck_types::ir::MoveKind;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use super::{Builder, EPS};
+use super::{Builder, EPS, View};
 use crate::cutter::{self, ToolLine};
 use crate::error::{PathError, Result};
 use crate::helical::CHORD_FACTOR;
@@ -95,6 +94,7 @@ impl Entry {
         &self,
         b: &mut Builder<'_>,
         input: &StrategyInput<'_>,
+        stock: View<'_>,
         common: &CommonParameters,
         pass: usize,
         points: &[CutPoint],
@@ -103,10 +103,10 @@ impl Entry {
             return Ok(());
         };
         match self.style {
-            EntryStyle::Plunge => plunge(b, input, common, head),
-            EntryStyle::Lead => self.lead_in(b, input, common, pass, head, points),
-            EntryStyle::Ramp => self.ramp(b, input, common, pass, head, points),
-            EntryStyle::Helix => self.helix(b, input, common, pass, head, points),
+            EntryStyle::Plunge => plunge(b, stock, common, head),
+            EntryStyle::Lead => self.lead_in(b, input, stock, common, pass, head, points),
+            EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points),
+            EntryStyle::Helix => self.helix(b, input, stock, common, pass, head, points),
         }
     }
 
@@ -172,6 +172,7 @@ impl Entry {
         &self,
         b: &mut Builder<'_>,
         input: &StrategyInput<'_>,
+        stock: View<'_>,
         common: &CommonParameters,
         pass: usize,
         head: &CutPoint,
@@ -211,7 +212,7 @@ impl Entry {
             let tip = b.rotary.to_model(above, head.a);
             let pose = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, pose, None, None)?;
-            let stop = stop_height(b, input, common, start.height);
+            let stop = stop_height(b, stock, common, start.height);
             rapid_to(b, stop)?;
             let tip = b.rotary.to_model(start, head.a);
             let pose = b.pose(tip, head.a);
@@ -247,6 +248,7 @@ impl Entry {
         &self,
         b: &mut Builder<'_>,
         input: &StrategyInput<'_>,
+        stock: View<'_>,
         common: &CommonParameters,
         pass: usize,
         head: &CutPoint,
@@ -254,10 +256,10 @@ impl Entry {
     ) -> Result<()> {
         let name = "ramp";
         let goal = b.rotary.to_axis(head.tip, head.a);
-        let top = stop_height(b, input, common, goal.height);
+        let top = stop_height(b, stock, common, goal.height);
         let rise = top - goal.height;
         if rise <= EPS {
-            return plunge(b, input, common, head);
+            return plunge(b, stock, common, head);
         }
         let d = direction_at_start(b, points).ok_or_else(|| no_direction(pass, name))?;
         let run = rise / self.ramp_tan;
@@ -289,8 +291,7 @@ impl Entry {
         let pose = b.pose(tip, head.a);
         b.push(MoveKind::Rapid, pose, None, None)?;
         let travel = here.height - top;
-        let down = tool_down(b, head.a)?;
-        if let Some(hit) = input.stock.ray_entry(b.pose.tip, down, travel)
+        if let Some(hit) = super::footprint_entry(b, stock, b.at(), head.a, here.height, travel)
             && hit < travel - 1e-6
         {
             return Err(PathError::Strategy(format!(
@@ -310,6 +311,7 @@ impl Entry {
         &self,
         b: &mut Builder<'_>,
         input: &StrategyInput<'_>,
+        stock: View<'_>,
         common: &CommonParameters,
         pass: usize,
         head: &CutPoint,
@@ -317,10 +319,10 @@ impl Entry {
     ) -> Result<()> {
         let name = "helix";
         let goal = b.rotary.to_axis(head.tip, head.a);
-        let top = stop_height(b, input, common, goal.height);
+        let top = stop_height(b, stock, common, goal.height);
         let rise = top - goal.height;
         if rise <= EPS {
-            return plunge(b, input, common, head);
+            return plunge(b, stock, common, head);
         }
         // Any tangent will do when the pass has no direction.
         let d = direction_at_start(b, points).unwrap_or((1.0, 0.0));
@@ -442,28 +444,13 @@ fn no_direction(pass: usize, name: &str) -> PathError {
     ))
 }
 
-fn tool_down(b: &Builder<'_>, a: Degrees) -> Result<UnitVec3> {
-    let axis = b.rotary.tool_axis(a);
-    UnitVec3::new(-axis.get()).map_err(PathError::from)
-}
-
 /// The height a rapid descent over the line the tool is on stops at: the
 /// approach distance above where the stock begins on that line (or above the
 /// goal, whichever is higher), and never above where the tool is.
-fn stop_height(
-    b: &Builder<'_>,
-    input: &StrategyInput<'_>,
-    common: &CommonParameters,
-    goal: f64,
-) -> f64 {
+fn stop_height(b: &Builder<'_>, stock: View<'_>, common: &CommonParameters, goal: f64) -> f64 {
     let here = b.at();
-    let Ok(down) = tool_down(b, b.pose.a) else {
-        return here.height;
-    };
     let travel = (here.height - goal).max(0.0);
-    let entry_height = input
-        .stock
-        .ray_entry(b.pose.tip, down, travel)
+    let entry_height = super::footprint_entry(b, stock, here, b.pose.a, here.height, travel)
         .map(|d| here.height - d);
     let stop = goal.max(entry_height.unwrap_or(f64::NEG_INFINITY)) + common.approach_distance.0;
     stop.min(here.height)
@@ -484,12 +471,12 @@ fn rapid_to(b: &mut Builder<'_>, height: f64) -> Result<()> {
 /// feed.
 fn plunge(
     b: &mut Builder<'_>,
-    input: &StrategyInput<'_>,
+    stock: View<'_>,
     common: &CommonParameters,
     target: &CutPoint,
 ) -> Result<()> {
     let goal = b.rotary.to_axis(target.tip, target.a);
-    let stop = stop_height(b, input, common, goal.height);
+    let stop = stop_height(b, stock, common, goal.height);
     rapid_to(b, stop)?;
     let end = b.pose(target.tip, target.a);
     b.push(MoveKind::Plunge, end, None, Some(common.plunge_feed))
