@@ -2,7 +2,7 @@
 
 - **Status:** accepted by the project owner (14 Oct 2026), items 1 to 8 as written, including the proposed meanings of avoid surface, check surface and containment boundary. OI-136 is closed. It relies on accepted records [0008](0008-slice-1-project-model.md) (selection sets, schema), [0010](0010-slice-2-stl-import.md) (triangle numbering; the model kind) and [0018](0018-slice-5-pathing-core.md) (the strategy interface; helical finishing). Built on branch `claude/slice-10-mesh-selection` (lane C of the work breakdown's parallel work).
 - **Date:** 14 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-136 is closed with this record, OI-137 to OI-140 are new and open or deferred; OI-12 (pick budget) is still open and belongs to item 1, which this record does not cover.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-136 is closed with this record, OI-137 to OI-139 are new and open or deferred, and OI-140 was closed once slice 9 landed; OI-12 (pick budget) is still open and belongs to item 1, which this record does not cover.
 
 Numbering: first written as record 0026 with OI-117 to OI-121, then renumbered twice as `main` and other branches took numbers. Unmerged branches hold records 0028, 0030 and 0031 and OI-118 to OI-126 and OI-131 to OI-135, so this record takes 0032 and OI-136 to OI-140, and project schema 7 (6 went to slice 8, decision 0029).
 
@@ -49,4 +49,4 @@ None to the requirements or the architecture. The work breakdown status line for
 - **OI-137:** the containment boundary is a bounding window (X interval and angular arc) in this slice; a boundary drawn as a curve on the unrolled surface, and an offset boundary, wait for slice 12.
 - **OI-138:** a region constraint is only seen where the tool is dropped: features of a selection narrower than 0.1 mm of path may be missed. Decide whether 0.1 mm is right once slice 12 builds region offsets, which do not sample.
 - **OI-139:** the warning for a reference that cannot be resolved is an error from generation; slice 10 item 6 and the UI show it beside the set and the operation, and may offer to re-select.
-- **OI-140:** the pipeline has no operation cache yet, so editing a set takes effect on the next regeneration and "marks dependent operations" is a query (`operations_using`) and a hash (`selection_inputs_hash`); slice 9's cache uses them.
+- **OI-140:** closed 15 Oct 2026: slice 9's cache (decision 0030) arrived on `main`, and `cache::operation_key` now includes `selection_inputs_hash`, so editing a set invalidates the operations that use it (and, by the chained key, the later ones). `operations_using` remains the query.

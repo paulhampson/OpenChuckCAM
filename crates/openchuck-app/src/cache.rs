@@ -217,7 +217,7 @@ fn feed<T: serde::Serialize + ?Sized>(
 /// The key of `operation`, given the key of the operation before it (`None`
 /// for the first). It covers the operation, its setup, the machine, its
 /// tool snapshot, its part's reference and the part file's contents as
-/// hashed at the start of the run, the strategy's name and the engine
+/// hashed at the start of the run, the selection sets it uses, the strategy's name and the engine
 /// version.
 ///
 /// A missing piece is hashed as absent: generation then fails with its own
@@ -252,5 +252,12 @@ pub(crate) fn operation_key(
         .and_then(|h| h.as_ref())
         .map(|h| h.as_bytes().to_vec());
     feed(&mut bytes, "model file", &file)?;
+    // The sets the operation uses in each role (UI-05): editing one changes
+    // the key. A set that cannot be read is hashed as absent; generation then
+    // stops with its own message and failures are never cached.
+    let sets = openchuck_project::file::selection_inputs_hash(project, operation.id)
+        .ok()
+        .map(|h| h.as_bytes().to_vec());
+    feed(&mut bytes, "selections", &sets)?;
     Ok(ContentHash::of_bytes(&bytes))
 }
