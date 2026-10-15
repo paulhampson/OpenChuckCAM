@@ -150,6 +150,7 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | 6 | A (slice 8) | Operations gain `enabled`, written only when false (UI-06); the machine copy in `machine.toml` gains its library source's `id` ([decision 0029](decisions/0029-slice-8-viewport-and-shell.md) items 10 and 16) | Claimed; in the slice 8 pull request |
 | 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0032](decisions/0032-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields (the selection kind per model was already in schema 1, decision 0010). In pull request 39 |
 | 8 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
+| 10 | H (slice 12) | Selection sets gain an optional `stock_to_leave`, written only when set (OP-11 per selection; [decision 0033](decisions/0033-slice-12-baseline-finishing.md) item 4) | Claimed; not yet built |
 | 9 | F or S (slice 19) | Export grouping and the confirmed tool numbers' presentation, if they are stored in the project (GC-05, GC-14) | Expected only if stored; decide in design refinement |
 
 The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
@@ -539,6 +540,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 **Requirements:** OP-04 (completes slice 5 work); continues OP-11
 
 **Depends on:** slices 5 and 10; the entry moves of [decision 0026](decisions/0026-entry-moves.md) (OI-80) for item 5; the stronger offset result check (OI-82) once regions come from meshes.
+
+**Status:** design refinement accepted ([decision 0033](decisions/0033-slice-12-baseline-finishing.md), 15 Oct 2026, lane H); no items built yet.
 
 **Design refinement:** how each strategy parameterises stepover and scallop, how region constraints enter the unrolled 2D development, and what the indexed form outputs for positioning moves.
 
