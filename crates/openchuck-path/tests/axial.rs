@@ -233,3 +233,116 @@ fn req_op_04_axial_leaves_no_gouge_and_no_uncovered_surface_on_a_cone() {
     let c = coverage(&outline, &part, &all, (mid - 3.0, mid + 3.0), 0.2, 0.03);
     assert_eq!(c.uncovered, 0, "{c:?}");
 }
+
+#[test]
+fn req_op_11_lead_entry_works_on_all_three_finishing_strategies() {
+    use openchuck_path::indexed::parameter as indexed_parameter;
+    use openchuck_path::{HelicalFinishing, IndexedFinishing, Strategy};
+    let part = Cylinder {
+        radius: 15.0,
+        length: 20.0,
+    };
+    let f = fixture(&part, 41, 720, &ball(6.0));
+    let outline = Outline::new(&f.tool);
+    let lead = [(names::ENTRY, ParameterValue::Text("lead".into()))];
+    let strategies: Vec<(&dyn Strategy, Vec<(&str, ParameterValue)>)> = vec![
+        (&AxialFinishing, vec![(names::STEPOVER, num(3.0))]),
+        (
+            &IndexedFinishing,
+            vec![(indexed_parameter::COUNT, ParameterValue::Integer(4))],
+        ),
+        (&HelicalFinishing, vec![(names::STEPOVER, num(5.0))]),
+    ];
+    for (strategy, extra) in strategies {
+        let mut v = values(3.0, &lead);
+        for (k, x) in extra {
+            v.insert(k.to_owned(), x);
+        }
+        let path = run(|ctx| generate(strategy, &f.input(), &v, ctx))
+            .unwrap_or_else(|e| panic!("{}: {e}", strategy.name()));
+        let kinds: Vec<MoveKind> = path.group.segments.iter().map(|s| s.kind).collect();
+        let lead_in = kinds.iter().filter(|k| **k == MoveKind::LeadIn).count();
+        let lead_out = kinds.iter().filter(|k| **k == MoveKind::LeadOut).count();
+        assert!(
+            lead_in >= 1 && lead_out >= 1,
+            "{}: {lead_in} {lead_out}",
+            strategy.name()
+        );
+        // No move of the whole path cuts into the part.
+        let poses: Vec<Pose> = path
+            .group
+            .segments
+            .iter()
+            .filter(|s| !matches!(s.kind, MoveKind::Rapid | MoveKind::Linking))
+            .map(|s| Pose {
+                tip: s.end.tip,
+                axis: s.end.axis.get(),
+            })
+            .collect();
+        let g = max_gouge(&outline, &part, &poses, 0.15);
+        assert!(g.depth <= 0.003, "{}: gouge {}", strategy.name(), g.depth);
+    }
+}
+
+mod property {
+    use super::*;
+    use openchuck_path::HelicalFinishing;
+    use proptest::prelude::*;
+
+    /// Distance in the development (X, R times the angle in radians) from
+    /// (`x`, `theta` degrees) to the nearest cutting point of `path`, with R the
+    /// part's largest radius.
+    fn nearest(path: &GeneratedPath, r: f64, x: f64, theta: f64) -> f64 {
+        path.group
+            .segments
+            .iter()
+            .filter(|s| s.kind == MoveKind::Cutting)
+            .map(|s| {
+                let da = (s.end.a.0 - theta).rem_euclid(360.0);
+                let da = da.min(360.0 - da).to_radians() * r;
+                (s.end.tip.x - x).hypot(da)
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(12))]
+
+        /// OP-04: every point of the surface lies within the stepover of an
+        /// axial or helical path, on cones of any slope.
+        #[test]
+        fn req_op_04_every_surface_point_is_within_the_stepover_of_the_path(
+            r0 in 8.0..14.0f64,
+            r1 in 8.0..14.0f64,
+            stepover in 0.8..3.0f64,
+            start in -180.0..180.0f64,
+            probes in proptest::collection::vec((0.0..1.0f64, 0.0..360.0f64), 12),
+        ) {
+            let length = 20.0;
+            let part = Cone { start_radius: r0, end_radius: r1, length };
+            let f = fixture(&part, 21, 360, &ball(4.0));
+            let r = r0.max(r1);
+            let axial_path = axial(
+                &f,
+                &values(stepover, &[
+                    (parameter::START_ANGLE, num(start)),
+                    (parameter::MAX_X_STEP, num(0.5)),
+                ]),
+            );
+            let mut hv = values(stepover, &[]);
+            hv.insert(
+                openchuck_path::helical::parameter::START_ANGLE.to_owned(),
+                num(start),
+            );
+            let helical_path =
+                run(|ctx| generate(&HelicalFinishing, &f.input(), &hv, ctx)).unwrap();
+            for (u, theta) in probes {
+                let x = u * length;
+                for (what, path) in [("axial", &axial_path), ("helical", &helical_path)] {
+                    let d = nearest(path, r, x, theta);
+                    prop_assert!(d <= stepover, "{what}: ({x}, {theta}) is {d} from the path");
+                }
+            }
+        }
+    }
+}
