@@ -1,6 +1,6 @@
 # 0037: Slice 10 items 1 and 6: picking, hover and the selection panel; the pick budget (OI-12)
 
-- **Status:** the pick budget (item 1) is accepted by the project owner (15 Oct 2026, option 2 of the options put to them). The rest is proposed, for the owner's review with the pull request. It relies on accepted records [0002](0002-sp-2-viewport-spike.md) (picking by CPU ray casts against a BVH), [0029](0029-slice-8-viewport-and-shell.md) (the toolkit-free renderer and the scene view model) and [0032](0032-slice-10-mesh-selection.md) (selection sets, roles, the unresolved-reference errors). Built on branch `claude/lane-m-slice-10-picking` (lane M of the work breakdown's parallel work; it needed lanes A and C, both on `main`).
+- **Status:** accepted by the project owner (15 Oct 2026): the pick budget (item 1, option 2 of the options put to them) and the rest of the record as written. It relies on accepted records [0002](0002-sp-2-viewport-spike.md) (picking by CPU ray casts against a BVH), [0029](0029-slice-8-viewport-and-shell.md) (the toolkit-free renderer and the scene view model) and [0032](0032-slice-10-mesh-selection.md) (selection sets, roles, the unresolved-reference errors). Built on branch `claude/lane-m-slice-10-picking` (lane M of the work breakdown's parallel work; it needed lanes A and C, both on `main`).
 - **Date:** 15 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-12 and OI-139 are closed by this record; OI-159 to OI-162 are new.
 
