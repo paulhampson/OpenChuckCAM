@@ -541,7 +541,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Depends on:** slices 5 and 10; the entry moves of [decision 0026](decisions/0026-entry-moves.md) (OI-80) for item 5; the stronger offset result check (OI-82) once regions come from meshes.
 
-**Status:** design refinement accepted ([decision 0033](decisions/0033-slice-12-baseline-finishing.md), 15 Oct 2026, lane H); no items built yet.
+**Status:** design refinement accepted ([decision 0033](decisions/0033-slice-12-baseline-finishing.md), 15 Oct 2026, lane H); items 1 to 4 and 6 built on `claude/lane-h-slice-12-baseline-finishing` (axial, indexed, scallop, per-selection stock to leave, `lead` entry, golden files); region offsets (OP-02, OI-137 and OI-138) not built; gate 3 for the new programs runs in CI.
 
 **Design refinement:** how each strategy parameterises stepover and scallop, how region constraints enter the unrolled 2D development, and what the indexed form outputs for positioning moves.
 
@@ -554,10 +554,10 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Review checklist**
 
-- [ ] A property test shows every point of the selected region lies within stepover of the path
+- [x] A property test shows every point of the selected region lies within stepover of the path (whole-part case on cones: `req_op_04_every_surface_point_is_within_the_stepover_of_the_path`; the region case waits on region offsets)
 - [ ] The independent checker reports no gouging beyond tolerance on the reference parts
-- [ ] Indexed positions land on the exact requested angles
-- [ ] Per-selection stock to leave is respected
+- [x] Indexed positions land on the exact requested angles (`req_op_04_indexed_positions_land_on_the_requested_angles_in_order`)
+- [x] Per-selection stock to leave is respected (`req_op_11_each_zone_is_left_its_own_stock_with_all_three_strategies`, `req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations`)
 - [ ] All three replay cleanly in the LinuxCNC simulator
 
 ## Slice 13 – True simultaneous 4-axis finishing

@@ -245,7 +245,8 @@ fn req_op_11_lead_entry_works_on_all_three_finishing_strategies() {
     let f = fixture(&part, 41, 720, &ball(6.0));
     let outline = Outline::new(&f.tool);
     let lead = [(names::ENTRY, ParameterValue::Text("lead".into()))];
-    let strategies: Vec<(&dyn Strategy, Vec<(&str, ParameterValue)>)> = vec![
+    type Case<'a> = (&'a dyn Strategy, Vec<(&'a str, ParameterValue)>);
+    let strategies: Vec<Case<'_>> = vec![
         (&AxialFinishing, vec![(names::STEPOVER, num(3.0))]),
         (
             &IndexedFinishing,

@@ -70,6 +70,10 @@ pub struct GeneratedPath {
 
 const EPS: f64 = 1e-9;
 
+/// How much longer, in millimetres, positions written to three decimals can
+/// make a move: half a unit in each of two end points on three axes.
+const WRITTEN_ALLOWANCE: f64 = 0.002;
+
 struct Builder<'a> {
     rotary: RotaryMapping,
     max_feeds: MaxFeeds,
@@ -131,12 +135,36 @@ impl Builder<'_> {
                 limits.rapid_rotary.0,
             )
         };
+        // The F word is the speed along the straight line of the linear axes, so
+        // that line, not just each axis, must stay within the limit the
+        // checker applies: the linear limit if X or Y moves, otherwise Z's. The
+        // post works the feed out from positions rounded to the written
+        // decimals, which can lengthen a short move by a few thousandths of a
+        // millimetre, so fed moves are timed for that much more (decision
+        // record 0033, as built).
+        let (dx, dy, dz) = (
+            (to.along - from.along).abs(),
+            (to.across - from.across).abs(),
+            (to.height - from.height).abs(),
+        );
+        let allowance = if kind.is_fed() {
+            WRITTEN_ALLOWANCE
+        } else {
+            0.0
+        };
+        let line = (dx * dx + dy * dy + dz * dz).sqrt();
+        let line_limit = if dx > EPS || dy > EPS { linear } else { z };
         let axis_time = 60.0
             * [
-                (to.along - from.along).abs() / linear,
-                (to.across - from.across).abs() / linear,
-                (to.height - from.height).abs() / z,
+                dx / linear,
+                dy / linear,
+                dz / z,
                 da / rotary,
+                if line > EPS {
+                    (line + allowance) / line_limit
+                } else {
+                    0.0
+                },
             ]
             .into_iter()
             .fold(0.0, f64::max);

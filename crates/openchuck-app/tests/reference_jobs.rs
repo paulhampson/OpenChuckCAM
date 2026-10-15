@@ -33,6 +33,18 @@ struct Job {
     name: &'static str,
     part: Box<dyn RadialPart>,
     radius: f64,
+    strategy: &'static str,
+    /// Parameters beyond the tool's cutting data.
+    parameters: Vec<(&'static str, ParameterValue)>,
+}
+
+/// The cone of the `cone` job.
+fn cone_part() -> Box<dyn RadialPart> {
+    Box::new(Cone {
+        start_radius: 10.0,
+        end_radius: 5.0,
+        length: 30.0,
+    })
 }
 
 fn jobs() -> Vec<Job> {
@@ -46,20 +58,51 @@ fn jobs() -> Vec<Job> {
                 depth: 1.5,
             }),
             radius: 12.0,
+            strategy: "helical_finishing",
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         Job {
             name: "cone",
-            part: Box::new(Cone {
-                start_radius: 10.0,
-                end_radius: 5.0,
-                length: 30.0,
-            }),
+            part: cone_part(),
             radius: 10.0,
+            strategy: "helical_finishing",
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         Job {
             name: "sphere",
             part: Box::new(Sphere { radius: 10.0 }),
             radius: 10.0,
+            strategy: "helical_finishing",
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
+        },
+        // Slice 12 baseline finishing (decision 0033): axial, indexed, and
+        // axial with lead-in and lead-out, on the cone.
+        Job {
+            name: "cone_axial",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "axial_finishing",
+            parameters: vec![("max_x_step", ParameterValue::Number(3.0))],
+        },
+        Job {
+            name: "cone_indexed",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "indexed_finishing",
+            parameters: vec![
+                ("angles", ParameterValue::Text("0, 90, 180, 270".into())),
+                ("max_x_step", ParameterValue::Number(3.0)),
+            ],
+        },
+        Job {
+            name: "cone_axial_lead",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "axial_finishing",
+            parameters: vec![
+                ("max_x_step", ParameterValue::Number(3.0)),
+                ("entry", ParameterValue::Text("lead".into())),
+            ],
         },
     ]
 }
@@ -144,8 +187,11 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
         },
         cutting_data,
     };
-    let mut parameters = BTreeMap::new();
-    parameters.insert("max_angle_step".to_owned(), ParameterValue::Number(5.0));
+    let parameters: BTreeMap<String, ParameterValue> = job
+        .parameters
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
     for item in [
         Item::Setup(setup),
         Item::Tool(snapshot),
@@ -155,7 +201,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
             order: OrderKey::default(),
             name: "Finish".into(),
             setup: setup_id,
-            strategy: "helical_finishing".into(),
+            strategy: job.strategy.into(),
             tool: Some(tool_id),
             selections: Vec::new(),
             boundary: None,

@@ -560,3 +560,95 @@ fn req_gc_09_req_gc_10_req_nfr_08_small_part_golden_files_match_their_closed_for
         );
     }
 }
+
+/// The baseline finishing jobs of slice 12 (decision 0033), on the cone of
+/// the `cone` job.
+const BASELINE_JOBS: [&str; 3] = ["cone_axial", "cone_indexed", "cone_axial_lead"];
+
+/// Fed moves that run along X: the cuts of an axial or indexed pass, and its
+/// lead arcs.
+fn x_moves(r: &openchuck_app::gcode::Replay) -> Vec<Move> {
+    r.moves()
+        .filter(|m| {
+            m.motion != Motion::Rapid && m.feed.is_some() && (m.to[0] - m.from[0]).abs() > 1e-9
+        })
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn req_op_04_baseline_finishing_golden_files_pass_the_audit() {
+    let part = Cone {
+        start_radius: 10.0,
+        end_radius: 5.0,
+        length: 30.0,
+    };
+    let ball = Tool {
+        shape: ToolShape::BallEnd,
+        diameter: Millimetres(2.0 * BALL_RADIUS),
+        flute_length: Millimetres(8.0),
+        overall_length: Millimetres(40.0),
+        shank_diameter: Millimetres(3.0),
+        flute_count: 2,
+        material: None,
+    };
+    let outline = Outline::new(&ball.profile().unwrap());
+    for name in BASELINE_JOBS {
+        let mut ends = Vec::new();
+        for (post, file) in [
+            (Post::Z1, format!("reference/{name}_makera-z1.nc")),
+            (Post::LinuxCnc, format!("reference/{name}_linuxcnc.ngc")),
+        ] {
+            let (_, text) = golden(&file);
+            audit_conventions(&file, &text, post);
+            let replayed = audit_static(&file, &text, post);
+            let moves = x_moves(&replayed);
+            assert!(moves.len() > 30, "{file}: only {} moves", moves.len());
+            // Within an axial or indexed pass A does not move.
+            for m in &moves {
+                if name != "cone_axial_lead" {
+                    assert!(
+                        (m.to[3] - m.from[3]).abs() < 1e-6,
+                        "{file} line {}: A moves in a pass",
+                        m.line
+                    );
+                }
+            }
+            let poses: Vec<Pose> = moves
+                .iter()
+                .map(|m| {
+                    let (tip, axis) = model_pose(&m.to);
+                    Pose { tip, axis }
+                })
+                .collect();
+            let gouge = max_gouge(&outline, &part, &poses, 0.25);
+            assert!(gouge.depth <= 0.02, "{file}: gouge {:.4} mm", gouge.depth);
+            let mut clearances: Vec<f64> = poses
+                .iter()
+                .step_by(4)
+                .map(|p| min_clearance(&outline, &part, p, 0.25))
+                .collect();
+            clearances.sort_by(f64::total_cmp);
+            assert!(
+                clearances[0] >= -0.02,
+                "{file}: clearance {:.4}",
+                clearances[0]
+            );
+            println!(
+                "{file}: {} fed moves along X, deepest gouge {:.4} mm, minimum clearance {:.4} mm",
+                moves.len(),
+                gouge.depth,
+                clearances[0]
+            );
+            ends.push(poses);
+        }
+        // The two posts reach the same tool positions.
+        assert_eq!(ends[0].len(), ends[1].len(), "{name}");
+        let worst = ends[0]
+            .iter()
+            .zip(&ends[1])
+            .map(|(a, b)| dist(a.tip, b.tip))
+            .fold(0.0, f64::max);
+        assert!(worst <= 0.005, "{name}: the posts differ by {worst:.4} mm");
+    }
+}
