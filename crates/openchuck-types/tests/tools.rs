@@ -26,6 +26,7 @@ fn tool(shape: ToolShape) -> Tool {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: Some("carbide".into()),
+        centre_cutting: None,
     }
 }
 
@@ -241,6 +242,7 @@ fn req_tl_02_req_tl_03_impossible_values_are_rejected() {
         (
             Tool {
                 material: Some(" ".into()),
+                centre_cutting: None,
                 ..tool(ToolShape::FlatEnd)
             },
             "tool.material",
@@ -484,4 +486,19 @@ proptest::proptest! {
             }
         }
     }
+}
+
+#[test]
+fn req_tl_04_a_stated_centre_cutting_flag_overrides_the_shape() {
+    let mut t = tool(ToolShape::FlatEnd);
+    assert!(t.can_plunge());
+    t.centre_cutting = Some(false);
+    assert!(!t.can_plunge());
+    let mut c = tool(custom(vec![line(3.0, 0.0), line(3.0, 6.0)]));
+    assert!(
+        !c.can_plunge(),
+        "a custom profile states nothing about its centre"
+    );
+    c.centre_cutting = Some(true);
+    assert!(c.can_plunge());
 }

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Seeds and refreshes the cached OpenCASCADE install that the STEP kernel jobs restore (decision
-# 0035, OI-153; the action is .github/actions/occt). A cache written by a pull request run is read
+# 0039, OI-169; the action is .github/actions/occt). A cache written by a pull request run is read
 # by that pull request only, and GitHub drops a cache nobody used for 7 days. Running here on
 # `main` every day writes the cache every pull request can read and keeps it alive: a hit costs
 # about a minute, a miss builds OpenCASCADE once (23 to 35 minutes) and saves it.

@@ -1,8 +1,8 @@
-# 0035: Cache the OpenCASCADE install on its own
+# 0039: Cache the OpenCASCADE install on its own
 
 - **Status:** proposed (15 Oct 2026). Built on branch `claude/occt-install-cache` at the owner's request; the first CI runs on the branch and on `main` are the check, and the record becomes accepted when they show the hit rate in item 6.
 - **Date:** 15 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-153 is new (numbers 0033 to 0034 and OI-150 to OI-152 are claimed by the unmerged lane E, H and I branches). This amends the CI route of [decision 0027](0027-slice-11a-step-import.md) item 9 (closed OI-20) and the cache advice of [decision 0003](0003-step-kernel-route.md); it changes no requirement and no crate. Lane D (kernel CI); no project schema number.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-169 is new (first written as 0034 and OI-150, then 0035 and OI-153 as lanes H and E took those; 0039 and OI-169 are the next free across `main` and the unmerged branches on 15 Oct 2026). This amends the CI route of [decision 0027](0027-slice-11a-step-import.md) item 9 (closed OI-20) and the cache advice of [decision 0003](0003-step-kernel-route.md); it changes no requirement and no crate. Lane D (kernel CI); no project schema number.
 
 ## Context
 
@@ -51,5 +51,5 @@ So the `OCCT_ROOT` route, unused by any CI job until now, links and runs the imp
 ## Alternatives considered
 
 - **Keep `rust-cache` and loosen its key** (`cache-directories`, a fixed `key`): its key still hashes the manifests, and the OpenCASCADE sources are unpacked with new timestamps each run, so CMake may rebuild a restored build directory.
-- **Prebuilt libraries published as release assets:** no eviction and usable for local builds, but it adds a publishing workflow and a download that must be checksummed. Kept as the next step if the hit rate in OI-153 is poor.
+- **Prebuilt libraries published as release assets:** no eviction and usable for local builds, but it adds a publishing workflow and a download that must be checksummed. Kept as the next step if the hit rate in OI-169 is poor.
 - **`sccache` around the C++ compiler:** needs compiler wrappers inside the `cmake` crate and is awkward with MSVC.

@@ -112,9 +112,26 @@ pub struct Tool {
     /// material, which keys the cutting data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
+    /// Whether the cutting end can cut straight down (a centre-cutting end
+    /// mill, a drill) or must enter by ramping or a helix (OI-117, decision
+    /// 0033). `None` means "not stated": [`Tool::can_plunge`] then follows
+    /// the shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centre_cutting: Option<bool>,
 }
 
 impl Tool {
+    /// True when the tool may enter the material by a straight plunge: the
+    /// stated `centre_cutting`, or when it is not stated, the shape's usual
+    /// behaviour. End mills, ball ends, drills, V-bits and chamfer tools are
+    /// taken as able to plunge; a custom profile is not, because nothing says
+    /// what its centre does. A user who knows better states it.
+    #[must_use]
+    pub fn can_plunge(&self) -> bool {
+        self.centre_cutting
+            .unwrap_or(!matches!(self.shape, ToolShape::Custom { .. }))
+    }
+
     /// Fails if a dimension is not finite, not positive, inconsistent, or the
     /// shape cannot be built (see [`Tool::profile`]).
     pub fn validate(&self) -> Result<()> {

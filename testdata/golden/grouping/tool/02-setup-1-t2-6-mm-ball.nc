@@ -1,12 +1,12 @@
 (golden - Setup 1 - T2 6 mm ball)
 G90 G21 G17
 G54
-(operation Finish B, tool T2 6 mm ball, about 18 s)
+(operation Finish B, tool T2 6 mm ball, about 19 s)
 M5
 T2 M6
 S10000 M3
 G0 X0.000 Y0.000 Z50.000 A0.000
-Z6.001
+Z9.984
 G1 Z5.000 F150.0
 X0.026 Z5.004 A1.875 F486.0
 X0.052 Z5.017 A3.750 F484.2

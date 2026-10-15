@@ -182,6 +182,10 @@ pub fn compare(
         unwind: bool,
         fed: Option<f64>,
         group: usize,
+        /// The program's first move, from wherever the controller is to the
+        /// first group's start pose: the IR counts no A travel for it, so
+        /// neither does the G-code. Later group starts count on both sides.
+        start: bool,
     }
     let mut expected: Vec<Expected> = Vec::new();
     let mut ir_travel = 0.0;
@@ -201,6 +205,7 @@ pub fn compare(
                 unwind: false,
                 fed: None,
                 group: g,
+                start: before.is_none(),
             });
         }
         for segment in &group.segments {
@@ -223,6 +228,7 @@ pub fn compare(
                     unwind,
                     fed,
                     group: g,
+                    start: false,
                 });
             }
             prev = to;
@@ -271,7 +277,7 @@ pub fn compare(
         out.max_position_error = out.max_position_error.max(position_error);
         out.max_a_error = out.max_a_error.max(a_error);
         out.poses += 1;
-        if !(e.unwind) {
+        if !(e.unwind || e.start) {
             out.gcode_a_travel += (mv.to[3] - mv.from[3]).abs();
         }
         if e.unwind && !whole_turns(mv.to[3] - mv.from[3]) {

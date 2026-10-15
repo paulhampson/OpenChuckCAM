@@ -62,7 +62,10 @@ impl Strategy for OneRing {
                 })
             })
             .collect();
-        Ok(vec![Pass { points }])
+        Ok(vec![Pass {
+            points,
+            stock: None,
+        }])
     }
 }
 
@@ -107,6 +110,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
     .profile()?;
     let machine = MachineProfile::example_x_rotary();

@@ -88,6 +88,7 @@ fn sample() -> Project {
                 shank_diameter: Millimetres(6.0),
                 flute_count: 2,
                 material: None,
+                centre_cutting: None,
             },
             controller: ControllerMapping::numbered(1),
             cutting_data: Default::default(),
@@ -104,6 +105,7 @@ fn sample() -> Project {
             model_hash: model(1).hash,
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7), FaceId(12)])),
             descriptors: Vec::new(),
+            stock_to_leave: None,
         }),
         Placement::End,
     )
@@ -494,6 +496,7 @@ fn with_roles() -> Project {
             model_hash: model(1).hash,
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(n as u32)])),
             descriptors: Vec::new(),
+            stock_to_leave: None,
         })
     };
     for n in [31, 32, 33] {
@@ -558,19 +561,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 7\n", "schema = 7\nspeed = 3\n"),
+            |t| t.replace("schema = 9\n", "schema = 9\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 7\n", ""),
+            |t| t.replace("schema = 9\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 7", "schema = 9"),
+            |t| t.replace("schema = 9", "schema = 10"),
             "newer OpenChuckCAM",
         ),
         (
@@ -613,7 +616,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 7\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 9\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -724,14 +727,14 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 7\n"), "{path}");
+        assert!(text.starts_with("schema = 9\n"), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
         let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect::<String>()
-            .replace("schema = 1\n", "schema = 7\n");
+            .replace("schema = 1\n", "schema = 9\n");
         if path.starts_with("setups/") {
             old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
         }
@@ -869,6 +872,7 @@ fn req_prj_06_selections_match_the_model_kind() {
         model_hash: model.hash,
         target,
         descriptors: Vec::new(),
+        stock_to_leave: None,
     };
     let stl = placed_model();
     let step = model(1);
@@ -906,4 +910,168 @@ fn req_prj_06_selections_match_the_model_kind() {
     let err = project.replace(Item::Model(renamed)).unwrap_err();
     assert!(err.to_string().contains("by face and edge"), "{err}");
     assert_eq!(project.models()[0], stl);
+}
+
+/// `with_roles` with a stock to leave on the boundary set.
+fn with_leave(leave: Option<f64>) -> Project {
+    let mut p = with_roles();
+    let mut set = p
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == SelectionSetId::from_u128(31))
+        .unwrap()
+        .clone();
+    set.stock_to_leave = leave;
+    p.replace(Item::SelectionSet(set)).unwrap();
+    p
+}
+
+#[test]
+fn req_op_11_prj_06_stock_to_leave_on_a_set_survives_save_and_load() {
+    let dir = temp_dir("leave-roundtrip");
+    let p = with_leave(Some(0.25));
+    file::save(&p, &dir).unwrap();
+    let text =
+        std::fs::read_to_string(dir.join("selections/00000000-0000-0000-0000-00000000001f.toml"))
+            .unwrap();
+    assert!(text.contains("stock_to_leave = 0.25\n"), "{text}");
+    assert_eq!(file::load(&dir).unwrap(), p);
+    // Written only when set: a set without one has no line, so unchanged
+    // files stay byte for byte unchanged.
+    for (path, text) in file::render(&with_leave(None)).unwrap() {
+        assert!(!text.contains("stock_to_leave"), "{path}");
+    }
+}
+
+#[test]
+fn req_op_11_nfr_07_bad_stock_to_leave_is_refused_and_schema_7_still_loads() {
+    let dir = temp_dir("leave-bad");
+    let p = with_leave(Some(0.25));
+    file::save(&p, &dir).unwrap();
+    let path = dir.join("selections/00000000-0000-0000-0000-00000000001f.toml");
+    let good = std::fs::read_to_string(&path).unwrap();
+    for bad in ["-0.5", "nan"] {
+        std::fs::write(&path, good.replace("0.25", bad)).unwrap();
+        let err = file::load(&dir).unwrap_err();
+        assert!(err.to_string().contains("stock_to_leave"), "{bad}: {err}");
+    }
+    // A schema 7 folder (no such field anywhere) loads unchanged.
+    let old = temp_dir("leave-schema-7");
+    let q = with_leave(None);
+    file::save(&q, &old).unwrap();
+    for (path, text) in file::render(&q).unwrap() {
+        std::fs::write(
+            old.join(&path),
+            text.replacen("schema = 9", "schema = 7", 1),
+        )
+        .unwrap();
+    }
+    assert_eq!(file::load(&old).unwrap(), q);
+}
+
+#[test]
+fn req_op_11_nfr_07_a_bad_stock_to_leave_cannot_be_put_in_the_project() {
+    for bad in [-0.5, f64::NAN, f64::INFINITY] {
+        let mut p = with_roles();
+        let mut set = p
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == SelectionSetId::from_u128(31))
+            .unwrap()
+            .clone();
+        set.stock_to_leave = Some(bad);
+        let err = p.replace(Item::SelectionSet(set.clone())).unwrap_err();
+        assert!(err.to_string().contains("stock_to_leave"), "{bad}: {err}");
+        // Zero is allowed.
+        set.stock_to_leave = Some(0.0);
+        p.replace(Item::SelectionSet(set)).unwrap();
+    }
+}
+
+/// The tool snapshot file of `sample()` and its text.
+const TOOL_FILE: &str = "tools/00000000-0000-0000-0000-000000000014.toml";
+
+fn copy_tree_with(
+    base: &BTreeMap<String, String>,
+    name: &str,
+    edit: impl Fn(&str, &str) -> String,
+) -> PathBuf {
+    let dir = temp_dir(name);
+    for (path, text) in base {
+        let target = dir.join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, edit(path, text)).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn req_prj_04_req_tl_04_centre_cutting_round_trips_and_older_files_load_without_it() {
+    let base_dir = temp_dir("centre-base");
+    file::save(&sample(), &base_dir).unwrap();
+    let base = read_tree(&base_dir);
+    let tool_text = base.get(TOOL_FILE).unwrap();
+    assert!(
+        !tool_text.contains("centre_cutting"),
+        "unset is not written: {tool_text}"
+    );
+
+    // A stated value is read and written back byte for byte.
+    let stated = copy_tree_with(&base, "centre-stated", |path, text| {
+        if path == TOOL_FILE {
+            text.replace(
+                "flute_count = 2\n",
+                "flute_count = 2\ncentre_cutting = false\n",
+            )
+        } else {
+            text.to_owned()
+        }
+    });
+    let loaded = file::load(&stated).unwrap();
+    let tool = loaded.tools().first().unwrap();
+    assert_eq!(tool.tool.centre_cutting, Some(false));
+    let again = temp_dir("centre-resaved");
+    file::save(&loaded, &again).unwrap();
+    assert_eq!(read_tree(&again), read_tree(&stated));
+
+    // A schema 7 project loads, and its tool states nothing.
+    let old = copy_tree_with(&base, "centre-schema7", |_, text| {
+        text.replace("schema = 9", "schema = 7")
+    });
+    let loaded = file::load(&old).unwrap();
+    assert_eq!(loaded.tools().first().unwrap().tool.centre_cutting, None);
+}
+
+#[test]
+fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file() {
+    let base_dir = temp_dir("centre-bad-base");
+    file::save(&sample(), &base_dir).unwrap();
+    let base = read_tree(&base_dir);
+    let add = |value: &'static str, schema: &'static str| {
+        move |path: &str, text: &str| {
+            if path == TOOL_FILE {
+                text.replace(
+                    "flute_count = 2\n",
+                    &format!("flute_count = 2\ncentre_cutting = {value}\n"),
+                )
+                .replace("schema = 9", schema)
+            } else {
+                text.to_owned()
+            }
+        }
+    };
+    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 9"));
+    let err = file::load(&bad).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000014") && err.contains("centre_cutting"),
+        "{err}"
+    );
+
+    // The field did not exist in schema 7: its presence there is not guessed at.
+    let early = copy_tree_with(&base, "centre-early", add("false", "schema = 7"));
+    let err = file::load(&early).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000014") && err.contains("centre_cutting"),
+        "{err}"
+    );
 }

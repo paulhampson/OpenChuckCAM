@@ -39,6 +39,7 @@ fn tool(diameter: f64) -> Tool {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 
@@ -237,6 +238,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                         faces.into_iter().map(FaceId).collect::<BTreeSet<_>>(),
                     ),
                     descriptors: Vec::new(),
+                    stock_to_leave: None,
                 }),
                 placement: Placement::End,
             }

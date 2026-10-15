@@ -38,7 +38,7 @@ use openchuck_app::gcode::{
 use openchuck_app::setup::{ARange, builtin};
 use openchuck_testkit::gouge::{Outline, Pose, max_gouge, min_clearance};
 use openchuck_testkit::oracle::{OracleMachine, model_tip};
-use openchuck_testkit::parts::{Cone, HelicalGroove, RadialPart, Sphere};
+use openchuck_testkit::parts::{Cone, HelicalGroove, LobedVase, RadialPart, Sphere};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::tool::{Tool, ToolShape};
 use openchuck_types::units::Millimetres;
@@ -268,6 +268,11 @@ fn dist(a: Point3, b: Point3) -> f64 {
 struct Job {
     name: &'static str,
     part: Box<dyn RadialPart>,
+    /// The largest A step of a cutting move: the job's 5 degree angle step
+    /// for helical finishing, where A is the drive angle; more for
+    /// simultaneous finishing, where A follows the normal and turns faster
+    /// than the drive point on a lobe's flank (decision record 0036).
+    max_a_step: f64,
 }
 
 fn jobs() -> Vec<Job> {
@@ -280,6 +285,7 @@ fn jobs() -> Vec<Job> {
                 pitch: 12.0,
                 depth: 1.5,
             }),
+            max_a_step: 5.0,
         },
         Job {
             name: "cone",
@@ -288,10 +294,24 @@ fn jobs() -> Vec<Job> {
                 end_radius: 5.0,
                 length: 30.0,
             }),
+            max_a_step: 5.0,
         },
         Job {
             name: "sphere",
             part: Box::new(Sphere { radius: 10.0 }),
+            max_a_step: 5.0,
+        },
+        Job {
+            name: "lobed",
+            part: Box::new(LobedVase {
+                base: 10.0,
+                wave: 1.5,
+                wave_length: 40.0,
+                lobe: 1.0,
+                lobes: 3,
+                length: 20.0,
+            }),
+            max_a_step: 10.0,
         },
     ]
 }
@@ -307,6 +327,7 @@ fn audit_geometry(
     replayed: &openchuck_app::gcode::Replay,
     post: Post,
     part: &dyn RadialPart,
+    max_a_step: f64,
 ) -> Vec<Point3> {
     let ball = Tool {
         shape: ToolShape::BallEnd,
@@ -316,6 +337,7 @@ fn audit_geometry(
         shank_diameter: Millimetres(3.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     };
     let outline = Outline::new(&ball.profile().unwrap());
     let cuts = cutting_moves(replayed);
@@ -324,13 +346,12 @@ fn audit_geometry(
         "{name}: only {} cutting moves",
         cuts.len()
     );
-    // A is continuous: no step over the 5 degrees the job asks for, never reversing.
-    const MAX_A_STEP: f64 = 5.0;
+    // A is continuous: no step over what the job allows, never reversing.
     let mut direction = 0.0_f64;
     for m in &cuts {
         let da = m.to[3] - m.from[3];
         assert!(
-            da.abs() <= MAX_A_STEP + 1e-6,
+            da.abs() <= max_a_step + 1e-6,
             "{name} line {}: A steps {da}",
             m.line
         );
@@ -485,7 +506,13 @@ fn req_gc_09_req_gc_10_req_nfr_08_reference_job_golden_files_pass_the_audit() {
             audit_conventions(&file, &text, post);
             let replayed = audit_static(&file, &text, post);
             println!("{file}:");
-            contacts.push(audit_geometry(&file, &replayed, post, job.part.as_ref()));
+            contacts.push(audit_geometry(
+                &file,
+                &replayed,
+                post,
+                job.part.as_ref(),
+                job.max_a_step,
+            ));
         }
         // Agreement: the two posts reach the same tool positions on the exact surface.
         assert_eq!(
@@ -558,5 +585,98 @@ fn req_gc_09_req_gc_10_req_nfr_08_small_part_golden_files_match_their_closed_for
         println!(
             "{file}: 24 cutting moves match their closed forms; every move takes 1 s under the controller's rule"
         );
+    }
+}
+
+/// The baseline finishing jobs of slice 12 (decision 0034), on the cone of
+/// the `cone` job.
+const BASELINE_JOBS: [&str; 3] = ["cone_axial", "cone_indexed", "cone_axial_lead"];
+
+/// Fed moves that run along X: the cuts of an axial or indexed pass, and its
+/// lead arcs.
+fn x_moves(r: &openchuck_app::gcode::Replay) -> Vec<Move> {
+    r.moves()
+        .filter(|m| {
+            m.motion != Motion::Rapid && m.feed.is_some() && (m.to[0] - m.from[0]).abs() > 1e-9
+        })
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn req_op_04_baseline_finishing_golden_files_pass_the_audit() {
+    let part = Cone {
+        start_radius: 10.0,
+        end_radius: 5.0,
+        length: 30.0,
+    };
+    let ball = Tool {
+        shape: ToolShape::BallEnd,
+        diameter: Millimetres(2.0 * BALL_RADIUS),
+        flute_length: Millimetres(8.0),
+        overall_length: Millimetres(40.0),
+        shank_diameter: Millimetres(3.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    };
+    let outline = Outline::new(&ball.profile().unwrap());
+    for name in BASELINE_JOBS {
+        let mut ends = Vec::new();
+        for (post, file) in [
+            (Post::Z1, format!("reference/{name}_makera-z1.nc")),
+            (Post::LinuxCnc, format!("reference/{name}_linuxcnc.ngc")),
+        ] {
+            let (_, text) = golden(&file);
+            audit_conventions(&file, &text, post);
+            let replayed = audit_static(&file, &text, post);
+            let moves = x_moves(&replayed);
+            assert!(moves.len() > 30, "{file}: only {} moves", moves.len());
+            // Within an axial or indexed pass A does not move.
+            for m in &moves {
+                if name != "cone_axial_lead" {
+                    assert!(
+                        (m.to[3] - m.from[3]).abs() < 1e-6,
+                        "{file} line {}: A moves in a pass",
+                        m.line
+                    );
+                }
+            }
+            let poses: Vec<Pose> = moves
+                .iter()
+                .map(|m| {
+                    let (tip, axis) = model_pose(&m.to);
+                    Pose { tip, axis }
+                })
+                .collect();
+            let gouge = max_gouge(&outline, &part, &poses, 0.25);
+            assert!(gouge.depth <= 0.02, "{file}: gouge {:.4} mm", gouge.depth);
+            let mut clearances: Vec<f64> = poses
+                .iter()
+                .step_by(4)
+                .map(|p| min_clearance(&outline, &part, p, 0.25))
+                .collect();
+            clearances.sort_by(f64::total_cmp);
+            assert!(
+                clearances[0] >= -0.02,
+                "{file}: clearance {:.4}",
+                clearances[0]
+            );
+            println!(
+                "{file}: {} fed moves along X, deepest gouge {:.4} mm, minimum clearance {:.4} mm",
+                moves.len(),
+                gouge.depth,
+                clearances[0]
+            );
+            ends.push(poses);
+        }
+        // The two posts reach the same tool positions.
+        assert_eq!(ends[0].len(), ends[1].len(), "{name}");
+        let worst = ends[0]
+            .iter()
+            .zip(&ends[1])
+            .map(|(a, b)| dist(a.tip, b.tip))
+            .fold(0.0, f64::max);
+        assert!(worst <= 0.005, "{name}: the posts differ by {worst:.4} mm");
     }
 }

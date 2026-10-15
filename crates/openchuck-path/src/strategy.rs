@@ -20,7 +20,7 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, assemble_with_entry};
+use crate::assemble::{GeneratedPath, PathNote, assemble_with_entry};
 use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
@@ -42,11 +42,46 @@ pub struct CutPoint {
     pub contact: Point3,
 }
 
+/// The material as it is when a pass starts, for a strategy that removes
+/// material in stages (rotary roughing, decision record 0033). The shared
+/// services use it for the pass's entry, its leave and the link from the
+/// pass before it (OP-14), in place of the setup's stock, which does not
+/// know what the operation itself has already cut.
+#[derive(Clone)]
+pub struct PassStock(pub Arc<dyn StockModel>);
+
+impl std::fmt::Debug for PassStock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq for PassStock {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// A run of cut points cut without lifting the tool.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Pass {
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
+    /// The material when this pass starts, if the strategy tracks it. Passes
+    /// that have it are linked without a retract to the clearance cylinder
+    /// where the link is clear of it (decision record 0033 item 6).
+    pub stock: Option<PassStock>,
+}
+
+/// A strategy's passes with what it found worth telling the user, as
+/// sentences (decision record 0036 item 9). The notes are added to the
+/// generated path's notes, against its first segment.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StrategyOutput {
+    /// The passes, as [`Strategy::passes`] gives them.
+    pub passes: Vec<Pass>,
+    /// Notes about the whole toolpath.
+    pub notes: Vec<String>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -82,6 +117,26 @@ impl std::fmt::Debug for StrategyInput<'_> {
     }
 }
 
+/// A part of the surface that is left its own stock to leave in place of the
+/// operation's (OP-11 per selection; decision record 0034 item 4). The
+/// zones given to a strategy partition the part: where they overlap the
+/// largest amount applies, so the host assigns each triangle to one.
+#[derive(Clone, Copy)]
+pub struct LeaveZone<'a> {
+    /// The part of the surface.
+    pub surface: &'a dyn SurfaceSource,
+    /// The stock to leave on it, in millimetres.
+    pub leave: f64,
+}
+
+impl std::fmt::Debug for LeaveZone<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LeaveZone")
+            .field("leave", &self.leave)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A machining strategy (OP-16).
 pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// The registry name an operation stores (`helical_finishing`). Stable:
@@ -94,6 +149,13 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// The parameters, including the common ones
     /// ([`ParameterSchema::with_common`]).
     fn schema(&self) -> ParameterSchema;
+
+    /// Things to tell the user about `parameters` for `tool` that do not stop
+    /// the operation: a setting the strategy cannot use with this tool and
+    /// ignores, for example. The host shows them with the operation's notes.
+    fn parameter_warnings(&self, _tool: &RevolvedProfile, _parameters: &Parameters) -> Vec<String> {
+        Vec::new()
+    }
 
     /// Whether the strategy limits its cuts to a region
     /// ([`passes_in_region`](Self::passes_in_region), OP-02). A strategy that
@@ -119,6 +181,50 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         )))
     }
 
+    /// The passes, limited to `region` when given, with notes for the user.
+    /// The default runs [`passes`](Self::passes) or
+    /// [`passes_in_region`](Self::passes_in_region) and has no notes.
+    fn passes_with_notes(
+        &self,
+        input: &StrategyInput<'_>,
+        region: Option<&RegionConstraint<'_>>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<StrategyOutput> {
+        let passes = match region {
+            Some(region) => self.passes_in_region(input, region, parameters, context)?,
+            None => self.passes(input, parameters, context)?,
+        };
+        Ok(StrategyOutput {
+            passes,
+            notes: Vec::new(),
+        })
+    }
+
+    /// Whether the strategy leaves each zone its own stock to leave
+    /// ([`passes_in_zones`](Self::passes_in_zones)). A strategy that does not
+    /// is refused for zones, rather than leaving the wrong amount.
+    fn honours_leave_zones(&self) -> bool {
+        false
+    }
+
+    /// As [`passes_in_region`](Self::passes_in_region), or as
+    /// [`passes`](Self::passes) without a region, leaving each of `zones` its
+    /// own stock to leave. The default refuses.
+    fn passes_in_zones(
+        &self,
+        _input: &StrategyInput<'_>,
+        _region: Option<&RegionConstraint<'_>>,
+        _zones: &[LeaveZone<'_>],
+        _parameters: &Parameters,
+        _context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        Err(PathError::Strategy(format!(
+            "the strategy '{}' cannot leave different stock on different selections",
+            self.name()
+        )))
+    }
+
     /// The passes for `input` and the resolved `parameters`. Long work
     /// checks `context` for cancellation and reports progress through it.
     fn passes(
@@ -138,7 +244,7 @@ pub fn generate(
     values: &BTreeMap<String, ParameterValue>,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
-    generate_with(strategy, input, None, values, context)
+    generate_with(strategy, input, None, &[], values, context)
 }
 
 /// As [`generate`], cutting only where `region` allows (OP-02). Fails for a
@@ -150,26 +256,70 @@ pub fn generate_in_region(
     values: &BTreeMap<String, ParameterValue>,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
-    generate_with(strategy, input, Some(region), values, context)
+    generate_with(strategy, input, Some(region), &[], values, context)
+}
+
+/// As [`generate`] or [`generate_in_region`], leaving each of `zones` its own
+/// stock to leave (OP-11 per selection; decision record 0034 item 4). The
+/// zones cover the part; the operation's own value is only the default for a
+/// host that gives none. The entry checks use the largest amount, so an entry
+/// never comes closer to any part than its stock to leave. Fails for a
+/// strategy that does not honour zones, or for a negative or non-finite
+/// amount.
+pub fn generate_in_zones(
+    strategy: &dyn Strategy,
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    zones: &[LeaveZone<'_>],
+    values: &BTreeMap<String, ParameterValue>,
+    context: &JobContext<'_>,
+) -> Result<GeneratedPath> {
+    generate_with(strategy, input, region, zones, values, context)
 }
 
 fn generate_with(
     strategy: &dyn Strategy,
     input: &StrategyInput<'_>,
     region: Option<&RegionConstraint<'_>>,
+    zones: &[LeaveZone<'_>],
     values: &BTreeMap<String, ParameterValue>,
     context: &JobContext<'_>,
 ) -> Result<GeneratedPath> {
     let parameters = strategy.schema().resolve(values)?;
-    let common = CommonParameters::read(&parameters)?;
+    let mut common = CommonParameters::read(&parameters)?;
     let entry = EntryParameters::read(&parameters)?;
+    if let Some(bad) = zones.iter().find(|z| !z.leave.is_finite() || z.leave < 0.0) {
+        return Err(PathError::Strategy(format!(
+            "a stock to leave of {} mm is not zero or more",
+            bad.leave
+        )));
+    }
     context.check_cancelled()?;
-    let passes = match region {
-        Some(region) => strategy.passes_in_region(input, region, &parameters, context)?,
-        None => strategy.passes(input, &parameters, context)?,
+    let (passes, notes) = if zones.is_empty() {
+        let output = strategy.passes_with_notes(input, region, &parameters, context)?;
+        (output.passes, output.notes)
+    } else {
+        let most = zones
+            .iter()
+            .fold(common.stock_to_leave.0, |m, z| m.max(z.leave));
+        common.stock_to_leave = openchuck_types::units::Millimetres(most);
+        let passes = strategy.passes_in_zones(input, region, zones, &parameters, context)?;
+        (passes, Vec::new())
     };
     context.check_cancelled()?;
-    assemble_with_entry(&passes, input, &common, &entry, context)
+    let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
+    if !notes.is_empty() {
+        let mut notes: Vec<PathNote> = notes
+            .into_iter()
+            .map(|message| PathNote {
+                segment: 0,
+                message,
+            })
+            .collect();
+        notes.append(&mut path.notes);
+        path.notes = notes;
+    }
+    Ok(path)
 }
 
 /// The strategies a host offers, by name.
@@ -184,11 +334,17 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides: helical finishing (OP-04).
+    /// The strategies this library provides: helical, axial and indexed
+    /// finishing (OP-04), rotary roughing (OP-03) and simultaneous 4-axis
+    /// finishing (OP-05, OP-06).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
-        // The name is fixed and the registry is empty, so this cannot fail.
+        // The names are fixed and distinct, so these cannot fail.
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
+        let _ = registry.register(Arc::new(crate::axial::AxialFinishing));
+        let _ = registry.register(Arc::new(crate::indexed::IndexedFinishing));
+        let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
+        let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         registry
     }
 

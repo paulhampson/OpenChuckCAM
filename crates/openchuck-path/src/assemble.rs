@@ -46,8 +46,8 @@ use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 use crate::error::{PathError, Result};
 use crate::params::{CommonParameters, EntryParameters, Retract};
 use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwind_turns, unwrap_continuous};
-use crate::stock::CollisionOracle;
-use crate::strategy::{CutPoint, Pass, StrategyInput};
+use crate::stock::{CollisionOracle, StockModel};
+use crate::strategy::{CutPoint, Pass, PassStock, StrategyInput};
 use openchuck_types::machine::MaxFeeds;
 
 /// Something the user should know about a generated toolpath.
@@ -70,8 +70,16 @@ pub struct GeneratedPath {
 
 const EPS: f64 = 1e-9;
 
+/// How much longer, in millimetres, positions written to three decimals can
+/// make a move: half a unit in each of two end points on three axes.
+const WRITTEN_ALLOWANCE: f64 = 0.002;
+
 struct Builder<'a> {
     rotary: RotaryMapping,
+    /// The tool's cutting radius, for probing under a link.
+    tool_radius: f64,
+    /// The tool's profile, for the cutter-surface check of a finishing pass.
+    profile: &'a openchuck_types::tool::profile::RevolvedProfile,
     max_feeds: MaxFeeds,
     collision: &'a dyn CollisionOracle,
     pose: ToolPose,
@@ -131,12 +139,36 @@ impl Builder<'_> {
                 limits.rapid_rotary.0,
             )
         };
+        // The F word is the speed along the straight line of the linear axes, so
+        // that line, not just each axis, must stay within the limit the
+        // checker applies: the linear limit if X or Y moves, otherwise Z's. The
+        // post works the feed out from positions rounded to the written
+        // decimals, which can lengthen a short move by a few thousandths of a
+        // millimetre, so fed moves are timed for that much more (decision
+        // record 0034, as built).
+        let (dx, dy, dz) = (
+            (to.along - from.along).abs(),
+            (to.across - from.across).abs(),
+            (to.height - from.height).abs(),
+        );
+        let allowance = if kind.is_fed() {
+            WRITTEN_ALLOWANCE
+        } else {
+            0.0
+        };
+        let line = (dx * dx + dy * dy + dz * dz).sqrt();
+        let line_limit = if dx > EPS || dy > EPS { linear } else { z };
         let axis_time = 60.0
             * [
-                (to.along - from.along).abs() / linear,
-                (to.across - from.across).abs() / linear,
-                (to.height - from.height).abs() / z,
+                dx / linear,
+                dy / linear,
+                dz / z,
                 da / rotary,
+                if line > EPS {
+                    (line + allowance) / line_limit
+                } else {
+                    0.0
+                },
             ]
             .into_iter()
             .fold(0.0, f64::max);
@@ -240,6 +272,7 @@ pub fn assemble_with_entry(
 
     // A-axis management: continuous within a pass, fitted by whole turns.
     let mut placed: Vec<Vec<CutPoint>> = Vec::new();
+    let mut stocks: Vec<Option<PassStock>> = Vec::new();
     let mut previous = Degrees(0.0);
     for (i, pass) in passes.iter().enumerate() {
         if pass.points.is_empty() {
@@ -269,6 +302,7 @@ pub fn assemble_with_entry(
             previous = last.a;
         }
         placed.push(points);
+        stocks.push(pass.stock.clone());
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
         return Err(PathError::Strategy(
@@ -291,6 +325,8 @@ pub fn assemble_with_entry(
     };
     let mut b = Builder {
         rotary,
+        tool_radius: input.tool.cutting_radius(),
+        profile: input.tool,
         max_feeds: input.max_feeds,
         collision: input.collision,
         pose: start,
@@ -307,16 +343,31 @@ pub fn assemble_with_entry(
         let Some(head) = points.first() else {
             continue;
         };
+        let stock = view(&stocks, i, input);
         if i > 0 {
-            leave(&mut b, input, common, link_height)?;
-            b.retract(link_height)?;
+            // A pass that tracks its stock may be linked at a height just
+            // above that stock, where the whole link is clear of it, instead
+            // of at the clearance cylinder (OP-14, decision record 0033).
+            let local = match stocks.get(i).and_then(Option::as_ref) {
+                Some(_) => local_link_height(&b, stock.stock, common, head, link_height),
+                None => None,
+            };
+            let height = local.unwrap_or(link_height);
+            leave(&mut b, view(&stocks, i - 1, input), common, height)?;
+            b.retract(height)?;
             let target = rotary.to_axis(head.tip, head.a);
-            let height = b.at().height.max(link_height);
-            let tip = rotary.to_model(AxisPosition { height, ..target }, head.a);
+            let at = b.at().height.max(height);
+            let tip = rotary.to_model(
+                AxisPosition {
+                    height: at,
+                    ..target
+                },
+                head.a,
+            );
             let end = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, end, None, None)?;
         }
-        entry.enter(&mut b, input, common, i, points)?;
+        entry.enter(&mut b, input, stock, common, i, points)?;
         let contacts = smoothed_contacts(points);
         b.contact = contacts.first().copied().unwrap_or(head.contact);
         for (p, c) in points.iter().zip(&contacts).skip(1) {
@@ -326,7 +377,12 @@ pub fn assemble_with_entry(
         entry.exit(&mut b, common, input, i, points)?;
     }
 
-    leave(&mut b, input, common, safe_height)?;
+    leave(
+        &mut b,
+        view(&stocks, stocks.len().saturating_sub(1), input),
+        common,
+        safe_height,
+    )?;
     b.retract(safe_height)?;
     let turns = unwind_turns(b.pose.a);
     if turns.abs() > EPS {
@@ -369,13 +425,79 @@ pub fn smoothed_contacts(points: &[CutPoint]) -> Vec<Point3> {
         .collect()
 }
 
+/// How many parallel lines [`swept_entry`] casts round the cutter at each of
+/// [`SWEPT_RINGS`] radii.
+const SWEPT_RAYS: u32 = 32;
+
+/// How many radii out to the cutting radius [`swept_entry`] samples.
+const SWEPT_RINGS: u32 = 4;
+
+/// The distance the tool tip, at `tip`, can move along `direction` (the way
+/// the tool moves, a unit vector along its axis) before the cutter first meets
+/// material, no further than `max_distance`; `None` when it stays clear.
+///
+/// A line through the tool tip alone can miss stock that the body of the
+/// cutter would hit, such as a stock end beside a lead arc outside the part.
+/// So lines are cast from the cutter's own surface: at each of
+/// [`SWEPT_RINGS`] radii out to the cutting radius, [`SWEPT_RAYS`] parallel
+/// lines start at the point of the profile at that radius (its height above
+/// the tip) and the least entry counts. A flat tool's profile is flat, so it
+/// behaves as a cylinder; a ball is narrow near its tip. The cutter may reach
+/// material by at most `radius * (1 - cos(pi / SWEPT_RAYS))` between two
+/// lines, 0.007 mm for a 1.5 mm radius.
+///
+/// **Resolution.** Material is found only if one of these lines meets it, so a
+/// stock whose overlap with the cutter's footprint is thinner than the spacing
+/// of the lines (about 0.2 times the cutting radius, 0.3 mm for a 1.5 mm
+/// radius) can be missed. The stock models are convex solids that contain the
+/// part (a cylinder, or the part's bounding box), so such a sliver is only the
+/// rim of the footprint, where the miss is the 0.007 mm above. `None` means no
+/// line met material, and the caller then descends to the approach distance
+/// above the goal; it is not a measured clearance.
+pub(crate) fn swept_entry(
+    stock: &dyn crate::stock::StockModel,
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tip: Point3,
+    direction: openchuck_types::geometry::UnitVec3,
+    max_distance: f64,
+) -> Option<f64> {
+    let mut best = stock.ray_entry(tip, direction, max_distance);
+    let radius = profile.cutting_radius();
+    if !(radius.is_finite() && radius > 0.0) {
+        return best;
+    }
+    // Up the tool axis is against the way it moves.
+    let up = -direction.get();
+    // Two directions across the tool axis: along the rotary axis (model X)
+    // and the one perpendicular to both.
+    let along = openchuck_types::geometry::Vec3::new(1.0, 0.0, 0.0);
+    let across = up.cross(along);
+    let len = across.length();
+    if len < 1e-9 {
+        return best;
+    }
+    let across = across * (1.0 / len);
+    for ring in 1..=SWEPT_RINGS {
+        let d = radius * f64::from(ring) / f64::from(SWEPT_RINGS);
+        let rise = profile.height_at(d).unwrap_or(0.0);
+        for k in 0..SWEPT_RAYS {
+            let angle = std::f64::consts::TAU * f64::from(k) / f64::from(SWEPT_RAYS);
+            let origin = tip + up * rise + along * (d * angle.cos()) + across * (d * angle.sin());
+            if let Some(e) = stock.ray_entry(origin, direction, max_distance) {
+                best = Some(best.map_or(e, |b| b.min(e)));
+            }
+        }
+    }
+    best
+}
+
 /// Leaves the cut along the tool axis at the plunge feed until the tool tip
 /// is the approach distance above the stock on that line (the stock model
 /// may not know what this operation has cut), so the rapid retract that
 /// follows starts in the clear.
 fn leave(
     b: &mut Builder<'_>,
-    input: &StrategyInput<'_>,
+    stock: View<'_>,
     common: &CommonParameters,
     height: f64,
 ) -> Result<()> {
@@ -383,10 +505,7 @@ fn leave(
     if here.height >= height - EPS {
         return Ok(());
     }
-    let axis = b.rotary.tool_axis(b.pose.a);
-    let down = openchuck_types::geometry::UnitVec3::new(-axis.get()).map_err(PathError::from)?;
-    let top = b.rotary.to_model(AxisPosition { height, ..here }, b.pose.a);
-    let Some(d) = input.stock.ray_entry(top, down, height - here.height) else {
+    let Some(d) = footprint_entry(b, stock, here, b.pose.a, height, height - here.height) else {
         return Ok(());
     };
     let clear = (height - d + common.approach_distance.0).min(height);
@@ -402,4 +521,129 @@ fn leave(
     );
     let end = b.pose(tip, b.pose.a);
     b.push(MoveKind::Linking, end, None, Some(common.plunge_feed))
+}
+
+/// The stock a pass sees: the setup's stock, probed along the tool axis only
+/// (as finishing always has), or the pass's own stock, probed across the
+/// tool's whole width (decision record 0033 item 6).
+#[derive(Clone, Copy)]
+pub(crate) struct View<'a> {
+    stock: &'a dyn StockModel,
+    wide: bool,
+}
+
+/// The distance down from `from_height` at which the tool, held at `at` with
+/// its axis at angle `a`, first meets `stock` anywhere under its footprint,
+/// no further than `travel`: the tool's whole width is probed, not only its
+/// axis, so a rapid never clips stock beside the line it comes down on.
+fn footprint_entry(
+    b: &Builder<'_>,
+    stock: View<'_>,
+    at: AxisPosition,
+    a: Degrees,
+    from_height: f64,
+    travel: f64,
+) -> Option<f64> {
+    let down = openchuck_types::geometry::UnitVec3::new(-b.rotary.tool_axis(a).get()).ok()?;
+    if !stock.wide {
+        // A finishing pass against the setup's stock: the cutter's own
+        // surface is probed, not the tool axis alone, so a rapid beside the
+        // stock (a lead arc outside the part, next to the stock end) never
+        // puts the cutter into it (decision record 0034, as built).
+        let tip = b.rotary.to_model(
+            AxisPosition {
+                height: from_height,
+                ..at
+            },
+            a,
+        );
+        return swept_entry(stock.stock, b.profile, tip, down, travel);
+    }
+    let mut nearest: Option<f64> = None;
+    let probes = &FOOTPRINT[..];
+    for &(u, v) in probes {
+        let origin = b.rotary.to_model(
+            AxisPosition {
+                along: at.along + u * b.tool_radius,
+                across: at.across + v * b.tool_radius,
+                height: from_height,
+            },
+            a,
+        );
+        if let Some(d) = stock.stock.ray_entry(origin, down, travel) {
+            nearest = Some(nearest.map_or(d, |n| n.min(d)));
+        }
+    }
+    nearest
+}
+
+/// The most samples one local link is checked at.
+const MAX_LINK_SAMPLES: usize = 2_000;
+
+/// Offsets across the tool's footprint, as fractions of its radius, at which
+/// the stock is probed under each sample of a link.
+const FOOTPRINT: [(f64, f64); 9] = [
+    (0.0, 0.0),
+    (1.0, 0.0),
+    (-1.0, 0.0),
+    (0.0, 1.0),
+    (0.0, -1.0),
+    (0.7, 0.7),
+    (0.7, -0.7),
+    (-0.7, 0.7),
+    (-0.7, -0.7),
+];
+
+/// The height for a link from where the tool is to the start of the next
+/// pass that is clear of `stock` along the whole straight move, when that is
+/// lower than the retract height (OP-14). The tool's tip is held the
+/// approach distance above the highest stock under its footprint at any
+/// sample. `None` when the link needs the retract height anyway.
+fn local_link_height(
+    b: &Builder<'_>,
+    stock: &dyn StockModel,
+    common: &CommonParameters,
+    head: &CutPoint,
+    link_height: f64,
+) -> Option<f64> {
+    let from = b.at();
+    let to = b.rotary.to_axis(head.tip, head.a);
+    let radius = 0.5 * b.tool_radius;
+    if radius <= 0.0 {
+        return None;
+    }
+    let reach = (to.along - from.along).hypot(to.across - from.across);
+    let turn = (head.a.0 - b.pose.a.0).abs().to_radians() * link_height;
+    let steps = (((reach + turn) / radius).ceil() as usize).clamp(1, MAX_LINK_SAMPLES);
+    let mut top = f64::NEG_INFINITY;
+    for k in 0..=steps {
+        let f = k as f64 / steps as f64;
+        let a = Degrees(b.pose.a.0 + f * (head.a.0 - b.pose.a.0));
+        let at = AxisPosition {
+            along: from.along + f * (to.along - from.along),
+            across: from.across + f * (to.across - from.across),
+            height: link_height,
+        };
+        let wide = View { stock, wide: true };
+        if let Some(d) = footprint_entry(b, wide, at, a, link_height, 2.0 * link_height.abs() + 1.0)
+        {
+            top = top.max(link_height - d);
+        }
+    }
+    let height = top.max(from.height).max(to.height) + common.approach_distance.0;
+    (height < link_height - EPS).then_some(height)
+}
+
+/// The stock pass `i` sees.
+fn view<'a>(stocks: &'a [Option<PassStock>], i: usize, input: &'a StrategyInput<'a>) -> View<'a> {
+    match stocks.get(i).and_then(Option::as_ref) {
+        Some(s) => View {
+            stock: s.0.as_ref(),
+            wide: true,
+        },
+        None => View {
+            stock: input.stock,
+            wide: false,
+        },
+    }
 }

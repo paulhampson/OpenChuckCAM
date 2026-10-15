@@ -87,19 +87,20 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | TL-08, TL-09 | P2 | T | Unit | Holder and collet assembly, and material library pre-fill tested when built |
 | TL-10 | P3 | T | Unit | LinuxCNC tool table import on sample tables, when built |
 | OP-01, OP-02 | P1 | T | Integration | An operation regenerates identically; toolpath stays within selected faces, containment boundary and avoid or check surfaces |
-| OP-03 | P1 | T, A | System | Indexed and continuous roughing remove stock down to stock-to-leave and never leave more than that; remaining stock is respected |
+| OP-03 | P1 | T, A | System | Indexed and continuous roughing remove stock down to stock-to-leave and never leave more than that (the simulated leftover is measured against it, with the places the tool cannot reach reported); remaining stock is respected, so a second run over the first's result cuts nothing; both forms reach the same envelope to within the stepover's scallop (decision 0033) |
 | OP-04 | P1 | T | Integration | Helical, axial and indexed finishing on analytic cylinders and cones match exact path and stepover |
 | OP-05, OP-06 | P1 | T, A | Unit, system | Kinematic round trip: forward kinematics of each XYZA point gives the intended tool tip; tool axis stays within lead and tilt limits |
 | OP-07, OP-08, OP-09, OP-10 | P1 | T | Integration | Swarf contact deviation on ruled surfaces; curve following on projected chains; rest machining clears only leftover material; radial holes at correct indexed A and depth |
 | OP-11 | P1 | T | Unit | Each common parameter changes the toolpath as specified; stock to leave applies per operation and per selection; each entry style (plunge, lead, ramp, helix) meets its geometry, clearance and surface checks (decision 0026) |
 | OP-12 | P1 | T, A | System | Property tests and simulation show no overcut beyond tolerance for the tool, and for the holder where defined |
 | OP-13 | P1 | T, A | Integration | Feed at the cutter contact point matches the programmed feed within a set band on simultaneous moves; compensated feed is the default; G93 appears only when the post-processor enables it; a round trip through the G-code reader confirms the feed values |
-| OP-14 | P1 | T | Integration | Linking moves use clearance geometry and never cross stock or part |
+| OP-14 | P1 | T | Integration | Linking moves use clearance geometry and never cross stock or part; links between roughing passes that stay below the clearance cylinder are checked against the stock the operation has left, and the simulation finds no rapid move that cuts (decision 0033) |
 | OP-15 | P1 | T | Unit | A-axis range limits, reversal count, wrap-around at the 0/360 seam and unwinding checked on generated sequences |
 | OP-16 | P1 | I, T | Design, unit | Design review of the strategy interface; a stub strategy plugs in with no change to other crates, and its parameter schema renders in the panel with no UI change |
 | OP-17 | P2 | T, A | System | Adaptive roughing keeps engagement within limits, measured in simulation |
 | OP-18 | P3 | T | Integration | Feature recognition finds known holes, grooves and cylinders in corpus models, when built |
 | OP-19 | P2 | T, A | System | Geodesic-parallel and spiral patterns keep scallop height within the set limit on surfaces with known geodesics (cylinder, cone), measured in simulation, when built |
+| OP-20 | P2 | T, A | System | On parts with undercuts and slot walls, the reachable hidden surfaces are driven and covered, the independent checker reports no gouge, and unreachable surfaces are reported, when built |
 | SIM-01, SIM-02, SIM-04 | P1 | D, T | System | Path display, rapid versus cutting distinction, tool pose with correct A rotation and playback controls checked in the demo script and by pose tests |
 | SIM-03, SIM-06, SIM-07 | P1 | T, A | System | Stock update, including A rotation, matches an independent reference; carry-over between operations; resolution setting changes accuracy as documented |
 | SIM-05 | P1 | T | System | Remaining material and overcut colouring and worst values match reference results on analytic cases |

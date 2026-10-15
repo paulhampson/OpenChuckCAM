@@ -39,6 +39,7 @@ fn tool() -> Tool {
         shank_diameter: Millimetres(6.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 
@@ -98,6 +99,7 @@ fn sample() -> Project {
             model_hash: model(1).hash,
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7)])),
             descriptors: Vec::new(),
+            stock_to_leave: None,
         }),
         Placement::End,
     )

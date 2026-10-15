@@ -319,6 +319,10 @@ pub struct SelectionSet {
     pub target: SelectionTarget,
     /// Reserved for P2 re-matching (PRJ-07); empty in P1.
     pub descriptors: Vec<Descriptor>,
+    /// Material to leave on this selection, in millimetres, in place of the
+    /// operation's stock to leave where the set is a machined region (OP-11,
+    /// decision record 0034 item 4). `None` uses the operation's value.
+    pub stock_to_leave: Option<f64>,
 }
 
 /// A parameter value of an operation. The strategy's parameter schema (OP-16)
@@ -1172,6 +1176,13 @@ impl Project {
                     .find(|m| m.id == s.model)
                     .and_then(ModelRef::kind);
                 check_selection_kind(s, kind)?;
+                if s.stock_to_leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("selection set {}.stock_to_leave", s.id),
+                        "stock_to_leave must be a number of millimetres, zero or more",
+                    )
+                    .into());
+                }
                 for (i, d) in s.descriptors.iter().enumerate() {
                     let field = format!("selection set {}.descriptors[{i}]", s.id);
                     d.position.validate(&format!("{field}.position"))?;
