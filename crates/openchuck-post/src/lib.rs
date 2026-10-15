@@ -21,9 +21,7 @@ mod program;
 mod render;
 
 pub use builtin::{builtin, builtin_ids};
-pub use convert::{
-    ConvertOptions, ToolSetting, round_written, to_machine_program, to_machine_program_named,
-};
+pub use convert::{ConvertOptions, ToolSetting, round_written, to_machine_program};
 pub use definition::{MAX_FILE_BYTES, PostDefinition, SCHEMA};
 pub use engine::fixed_str;
 pub use error::{PostError, Result};

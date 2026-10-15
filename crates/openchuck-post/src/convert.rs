@@ -40,6 +40,10 @@ pub struct ConvertOptions<F> {
     /// feeds are worked out from positions rounded this way, and a move that
     /// rounds to no motion is dropped. `None` keeps full precision.
     pub decimals: Option<(u32, u32)>,
+    /// Display names of operations by the IR's operation tag, written in the
+    /// comments that name each operation (GC-06). A tag with no name is
+    /// written as it is.
+    pub operation_names: BTreeMap<String, String>,
 }
 
 /// `value` rounded to `decimals` places as the post writes it (ties to even
@@ -55,17 +59,6 @@ pub fn round_written(value: f64, decimals: u32) -> f64 {
 pub fn to_machine_program<F: AsRotaryFrame>(
     toolpath: &Toolpath,
     options: &ConvertOptions<F>,
-) -> Result<MachineProgram> {
-    to_machine_program_named(toolpath, options, &BTreeMap::new())
-}
-
-/// As [`to_machine_program`], with the display names of operations by the
-/// IR's operation tag for the comments that name each operation (GC-06). A
-/// tag with no name is written as it is.
-pub fn to_machine_program_named<F: AsRotaryFrame>(
-    toolpath: &Toolpath,
-    options: &ConvertOptions<F>,
-    operation_names: &BTreeMap<String, String>,
 ) -> Result<MachineProgram> {
     toolpath.validate()?;
     if let Some(max) = options.max_feed
@@ -123,7 +116,8 @@ pub fn to_machine_program_named<F: AsRotaryFrame>(
             });
         }
         let seconds: f64 = group.segments.iter().map(|s| s.duration.0).sum();
-        let operation = operation_names
+        let operation = options
+            .operation_names
             .get(&group.tags.operation)
             .unwrap_or(&group.tags.operation);
         program.steps.push(Step::Comment {

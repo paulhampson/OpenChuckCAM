@@ -706,7 +706,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Goal:** export G-code in the groupings a shop uses, and a printable job summary.
 
-**Status:** in progress. Lane F (items 1, 2, 3 and 5) is built on branch `claude/awesome-sagan-wqv9bz`; design in [decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) (proposed, waits for the owner). Item 4 (export UI and CLI options, the tool-number dialog) is not built, so the slice stays open and GC-05, GC-06, GC-12 and GC-14 are not yet closed in `xtask/traceability.toml`. Open items OI-92 (narrowed), OI-141 to OI-144.
+**Status:** in progress. Lane F (items 1, 2, 3 and 5) is built on branch `claude/awesome-sagan-wqv9bz`; design in [decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) (accepted 15 Oct 2026). Item 4 (export UI and CLI options, the tool-number dialog) is not built, so the slice stays open and GC-05, GC-06, GC-12 and GC-14 are not yet closed in `xtask/traceability.toml`. Open items OI-92 (narrowed), OI-143 and OI-144.
 
 **Requirements:** GC-05, GC-06, GC-12 (GC-14 in the UI)
 

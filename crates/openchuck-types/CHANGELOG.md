@@ -4,7 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
-- **Breaking (0.5.0):** the B-rep face record (slice 11a, decisions 0017 and 0027). `brep::BrepFace` gains `body`, `geometry` (a `Surface`: plane, cylinder, cone, sphere, torus with a `Frame`, or a clamped rational `BSplinePatch`), `reversed`, `uv_bounds` and `trims`; `BrepEdge` gains `vertices`; `BrepModel` gains `vertices` and `tessellation` (`TessellationSettings`). New: `VertexId`, `BrepVertex`, `Frame`, `UvPoint`, `TrimLoop`, `BrepModel::validate` and `joined_tessellation`. The family version moves from 0.4.0 to 0.5.0 for it, as the semver check requires (OI-141).
+- **Breaking (0.5.0):** the B-rep face record (slice 11a, decisions 0017 and 0027). `brep::BrepFace` gains `body`, `geometry` (a `Surface`: plane, cylinder, cone, sphere, torus with a `Frame`, or a clamped rational `BSplinePatch`), `reversed`, `uv_bounds` and `trims`; `BrepEdge` gains `vertices`; `BrepModel` gains `vertices` and `tessellation` (`TessellationSettings`). New: `VertexId`, `BrepVertex`, `Frame`, `UvPoint`, `TrimLoop`, `BrepModel::validate` and `joined_tessellation`. The family version moves from 0.4.0 to 0.5.0 for it, as the semver check requires (OI-123).
 
 - Slice 7 (decision 0025): the `simulation` module, `SimulationSettings` (default cell 0.1 mm, finest 0.025, coarsest 1.0) with its relative time and memory.
 - **Breaking (0.4.0):** `machine::MachineProfile` has a new public field, `max_tool_number` (the highest tool number the controller accepts, 1000 by default, `DEFAULT_MAX_TOOL_NUMBER`; GC-14, decision 0020 item 12). Profile files without it read as 1000.

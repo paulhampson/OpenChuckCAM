@@ -10,7 +10,7 @@ use serde::Serialize;
 use openchuck_types::ir::Toolpath;
 use openchuck_types::kinematics::RotaryFrame;
 
-use crate::convert::{ConvertOptions, ToolSetting, to_machine_program_named};
+use crate::convert::{ConvertOptions, ToolSetting, to_machine_program};
 use crate::definition::PostDefinition;
 use crate::engine;
 use crate::error::{PostError, Result};
@@ -26,6 +26,10 @@ pub struct PostJob {
     pub tools: BTreeMap<String, ToolSetting>,
     /// The program title, written as a comment.
     pub title: String,
+    /// Display names of operations by the IR's operation tag, written in the
+    /// comments that name each operation (GC-06). A tag with no name is
+    /// written as it is.
+    pub operation_names: BTreeMap<String, String>,
     /// A revision identifier for the header, when supplied (VC-06).
     pub revision: Option<String>,
     /// The setup's work offset register (`G54` to `G59`), which replaces the
@@ -159,20 +163,6 @@ impl PostProcessor for TemplatePost {
     }
 
     fn post(&self, toolpath: &Toolpath, job: &PostJob) -> Result<PostOutput> {
-        self.post_named(toolpath, job, &BTreeMap::new())
-    }
-}
-
-impl TemplatePost {
-    /// As [`PostProcessor::post`], with the display names of operations by
-    /// the IR's operation tag for the comments that name each operation
-    /// (GC-06). A tag with no name is written as it is.
-    pub fn post_named(
-        &self,
-        toolpath: &Toolpath,
-        job: &PostJob,
-        operation_names: &BTreeMap<String, String>,
-    ) -> Result<PostOutput> {
         let d = &self.definition;
         let convert = ConvertOptions {
             frame: job.frame,
@@ -180,8 +170,9 @@ impl TemplatePost {
             max_feed: d.options.max_feed,
             tools: job.tools.clone(),
             decimals: Some((d.options.decimals.pos, d.options.decimals.a)),
+            operation_names: job.operation_names.clone(),
         };
-        let mut program = to_machine_program_named(toolpath, &convert, operation_names)?;
+        let mut program = to_machine_program(toolpath, &convert)?;
         for step in &mut program.steps {
             match step {
                 Step::Comment { text } => *text = sanitise_comment(text),

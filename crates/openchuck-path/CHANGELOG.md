@@ -4,7 +4,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
-- Version 0.5.0 with the library family (the B-rep face record in `openchuck-types` is a breaking change, OI-141).
+- Version 0.5.0 with the library family (the B-rep face record in `openchuck-types` is a breaking change, OI-123).
 
 - Slice 11, item 6 (IMP-02, decision 0017): `brep` with `ExactFace` (a `ParametricFace` from a `BrepFace`: closed-form plane, cylinder, cone, sphere and torus, and a clamped rational B-spline evaluator with a damped closest-point solver that survives singular poles, OI-72) and `BrepSurface` (a `SurfaceSource` over the faces of a `BrepModel` or a selection of them; tool drops fall back to the tessellation, OI-81 stays open).
 - Entry moves (decision 0026): `assemble::assemble_with_entry`, `EntryStyle` and `EntryParameters` (plunge, lead, ramp and helix; `EntryParameters::PLUNGE`, `EntryParameters::read`), and the common parameters `entry`, `ramp_angle`, `helix_diameter` and `lead_radius`. `generate` uses them; `assemble` is unchanged and plunges.

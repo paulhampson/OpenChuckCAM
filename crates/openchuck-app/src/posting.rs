@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 use openchuck_gcode::{CheckConfig, Dialect, TimingRule, Tolerances};
 use openchuck_post::{
-    FeedMode, FeedRule, PostDefinition, PostJob, TemplatePost, ToolSetting, UnwindMode, builtin,
-    builtin_ids,
+    FeedMode, FeedRule, PostDefinition, PostJob, PostProcessor, TemplatePost, ToolSetting,
+    UnwindMode, builtin, builtin_ids,
 };
 use openchuck_project::Project;
 use openchuck_types::ir::{Toolpath, ToolpathGroup};
@@ -464,6 +464,7 @@ pub(crate) fn post_toolpath(
         let job = PostJob {
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
+            operation_names: operation_names.clone(),
             title: match &label {
                 Some((title, _)) => format!("{} - {} - {title}", project.name(), setup.name),
                 None => format!("{} - {}", project.name(), setup.name),
@@ -473,7 +474,7 @@ pub(crate) fn post_toolpath(
         };
         let part = Toolpath { groups };
         let output = post
-            .post_named(&part, &job, &operation_names)
+            .post(&part, &job)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;
         if output.clamped_feeds > 0 {
             notes.push(format!(
