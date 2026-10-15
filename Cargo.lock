@@ -605,6 +605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2188,6 +2197,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "occt-sys"
+version = "7.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d2199ccf5331d261cf293abbc6b6b6ca1eb7187ef2113c181c49f9365cd9ae"
+dependencies = [
+ "cmake",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2207,7 +2225,7 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "openchuck-app"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "openchuck-gcode",
  "openchuck-geom",
@@ -2225,7 +2243,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-benches"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "criterion",
  "openchuck-geom",
@@ -2236,7 +2254,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2246,7 +2264,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-gcode"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "openchuck-types",
  "serde",
@@ -2256,7 +2274,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-geom"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "openchuck-testkit",
  "openchuck-types",
@@ -2265,19 +2283,23 @@ dependencies = [
 
 [[package]]
 name = "openchuck-import"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
+ "cc",
+ "occt-sys",
  "openchuck-geom",
  "openchuck-testkit",
  "openchuck-types",
  "proptest",
+ "serde",
+ "serde_json",
  "stl_io",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "openchuck-path"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cavalier_contours",
  "openchuck-testkit",
@@ -2291,7 +2313,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-post"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "minijinja",
  "openchuck-testkit",
@@ -2303,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-project"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -2317,7 +2339,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-sim"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "openchuck-path",
  "openchuck-testkit",
@@ -2327,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-testkit"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -2337,7 +2359,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "insta",
  "proptest",
@@ -2348,7 +2370,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-ui"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "eframe",
  "openchuck-app",
@@ -2358,7 +2380,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-viewport"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "openchuck-types",
  "wgpu",
@@ -4423,7 +4445,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "cargo_metadata",
