@@ -65,7 +65,10 @@ impl Strategy for OneRing {
                 })
             })
             .collect();
-        Ok(vec![Pass { points }])
+        Ok(vec![Pass {
+            points,
+            stock: None,
+        }])
     }
 }
 
@@ -78,6 +81,7 @@ fn ball() -> Tool {
         shank_diameter: Millimetres(4.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 
@@ -901,5 +905,75 @@ fn req_nfr_04_disabling_an_operation_regenerates_those_after_it_and_enabling_reu
     let r = app.regenerate().unwrap();
     assert!(r.generated.is_empty(), "{:?}", r.generated);
     assert_eq!(r.reused, ids);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_03_req_op_11_roughing_runs_from_a_project_and_takes_its_stepdown_from_the_cutting_data() {
+    let (dir, mut app, op) = project("roughing");
+    assert!(app.strategies().get("rotary_roughing").is_ok());
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "rotary_roughing".into();
+    app.execute(Command::Replace(Item::Operation(operation.clone())))
+        .unwrap();
+    // The tool's default stepdown for oak (1.0 mm) is filled in.
+    let resolved = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    assert_eq!(
+        resolved.values.get("stepdown"),
+        Some(&openchuck_path::ParameterValue::Number(1.0))
+    );
+    let result = app.regenerate().unwrap();
+    let group = &result.toolpath.groups[0];
+    assert!(group.segments.iter().any(|s| s.kind == MoveKind::Cutting));
+    assert!(group.segments.iter().all(|s| s.end.tip.is_finite()));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_11_a_plunge_is_refused_for_a_tool_that_states_it_cannot_cut_straight_down() {
+    let (dir, mut app, op) = project("centre-cutting");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "rotary_roughing".into();
+    app.execute(Command::Replace(Item::Operation(operation.clone())))
+        .unwrap();
+    let mut snapshot = app
+        .project()
+        .tools()
+        .iter()
+        .find(|t| Some(t.id) == operation.tool)
+        .unwrap()
+        .clone();
+    snapshot.tool.centre_cutting = Some(false);
+    app.execute(Command::Replace(Item::Tool(snapshot))).unwrap();
+    let err = app.regenerate().unwrap_err().to_string();
+    assert!(err.contains("cannot cut straight down"), "{err}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_11_a_missing_stepdown_is_explained_like_the_other_cutting_data() {
+    let (dir, mut app, op) = project("stepdown-missing");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "rotary_roughing".into();
+    for (name, value) in [
+        (names::FEED, 400.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::STEPOVER, 1.0),
+    ] {
+        operation
+            .parameters
+            .insert(name.to_owned(), ParameterValue::Number(value));
+    }
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    set_material(&mut app, Some("pine"));
+    let text = app.regenerate().unwrap_err().to_string();
+    for part in [
+        "stepdown",
+        "no cutting data for the material 'pine'",
+        "'4 mm ball'",
+    ] {
+        assert!(text.contains(part), "{part}: {text}");
+    }
     std::fs::remove_dir_all(&dir).unwrap();
 }

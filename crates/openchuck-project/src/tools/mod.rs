@@ -119,6 +119,7 @@ mod tests {
                 shank_diameter: Millimetres(6.0),
                 flute_count: 2,
                 material: Some("carbide".into()),
+                centre_cutting: None,
             },
             cutting_data: CuttingTable::from([(
                 "oak".to_owned(),
@@ -143,6 +144,7 @@ mod tests {
                     tip_diameter: Millimetres(0.2),
                 },
                 material: None,
+                centre_cutting: None,
                 ..flat(0).tool
             },
             cutting_data: CuttingTable::new(),

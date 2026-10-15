@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! True simultaneous 4-axis finishing: A varies continuously with X, Y and Z
 //! to keep the tool near the surface normal (OP-05, OP-06; work breakdown
-//! slice 13; decision record 0033).
+//! slice 13; decision record 0036).
 //!
 //! **Tool-axis policy.** The rotary axis is the model X axis, and a vertical
 //! tool can only lie in the plane perpendicular to it at any A (requirements,
@@ -886,6 +886,7 @@ impl Plan<'_> {
                             if !points.is_empty() {
                                 passes.push(Pass {
                                     points: std::mem::take(&mut points),
+                                    stock: None,
                                 });
                             }
                         }
@@ -893,7 +894,10 @@ impl Plan<'_> {
                 }
             }
             if !points.is_empty() {
-                passes.push(Pass { points });
+                passes.push(Pass {
+                    points,
+                    stock: None,
+                });
             }
         }
         Ok(passes)
@@ -910,7 +914,7 @@ impl Plan<'_> {
 }
 
 /// The tool-axis angles for the samples `(t, target)` inside the band
-/// `target +/- width` (decision record 0033 item 5), with the fewest
+/// `target +/- width` (decision record 0036 item 5), with the fewest
 /// reversals any path in the band can have and, within that, as close to
 /// the targets as possible. Exact targets for a band of width 0.
 ///

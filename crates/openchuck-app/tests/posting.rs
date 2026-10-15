@@ -34,6 +34,7 @@ fn ball() -> Tool {
         shank_diameter: Millimetres(4.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     }
 }
 
@@ -418,7 +419,7 @@ fn req_gc_04_a_post_with_a_reversed_b_axis_still_passes_the_gate_checks() {
 fn req_gc_11_a_toolpath_that_starts_away_from_a_zero_passes_gate_2() {
     // The first move takes A from where the controller is to the group's
     // start; the IR counts no A travel for it, and the comparison must not
-    // either (decision record 0033: found on the lobed reference job).
+    // either (decision record 0036: found on the lobed reference job).
     let (dir, mut app, op) = project("post-start-angle");
     app.execute(Command::SetParameter {
         operation: op,

@@ -3,7 +3,7 @@
 //! work breakdown slice 6 item 12; decision record 0020 item 8): small
 //! analytic parts, each machined with a 3 mm ball in oak on the Makera Z1
 //! profile, by helical finishing, and one by simultaneous 4-axis finishing
-//! (decision record 0033 item 12). Every job posts with both shipped posts, passes
+//! (decision record 0036 item 12). Every job posts with both shipped posts, passes
 //! gates 1 and 2, and matches its golden file. Gate 3 replays the LinuxCNC
 //! programs in the simulator; gates 4 and 5 are run on the machine by the
 //! operator (slice 20).
@@ -173,6 +173,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
             shank_diameter: Millimetres(3.0),
             flute_count: 2,
             material: None,
+            centre_cutting: None,
         },
         controller: ControllerMapping {
             number: 1,

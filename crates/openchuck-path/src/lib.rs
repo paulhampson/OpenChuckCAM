@@ -53,6 +53,7 @@
 //!     shank_diameter: Millimetres(6.0),
 //!     flute_count: 2,
 //!     material: None,
+//!     centre_cutting: None,
 //! }
 //! .profile()?;
 //! let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
@@ -68,11 +69,13 @@ pub mod assemble;
 pub mod brep;
 pub mod cutter;
 mod error;
+pub mod field;
 pub mod helical;
 pub mod parallel;
 pub mod params;
 pub mod region;
 pub mod rotary;
+pub mod roughing;
 pub mod simultaneous;
 pub mod stock;
 pub mod strategy;
@@ -83,6 +86,7 @@ pub use assemble::{GeneratedPath, PathNote};
 pub use brep::{BrepSurface, ExactFace};
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
+pub use field::HeightStock;
 pub use helical::HelicalFinishing;
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
@@ -90,10 +94,12 @@ pub use params::{
 };
 pub use region::{RegionConstraint, Window};
 pub use rotary::RotaryMapping;
+pub use roughing::RotaryRoughing;
 pub use simultaneous::SimultaneousFinishing;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, Pass, Registry, Strategy, StrategyInput, StrategyOutput, generate, generate_in_region,
+    CutPoint, Pass, PassStock, Registry, Strategy, StrategyInput, StrategyOutput, generate,
+    generate_in_region,
 };
 pub use surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,

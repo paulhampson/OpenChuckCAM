@@ -61,7 +61,10 @@ impl Strategy for FineRing {
                 })
             })
             .collect();
-        Ok(vec![Pass { points }])
+        Ok(vec![Pass {
+            points,
+            stock: None,
+        }])
     }
 }
 
@@ -121,6 +124,7 @@ fn project(name: &str, ops: usize, threads: usize) -> (PathBuf, Application) {
                 shank_diameter: Millimetres(4.0),
                 flute_count: 2,
                 material: None,
+                centre_cutting: None,
             },
             controller: ControllerMapping {
                 number: 1,

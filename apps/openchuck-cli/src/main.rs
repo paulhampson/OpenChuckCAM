@@ -587,7 +587,8 @@ fn run(cli: Cli) -> Result<()> {
             let report = result
                 .simulation
                 .context("the pipeline returned no simulation report")?;
-            let failures = print_simulation(&report);
+            let leaves = roughing_leaves(app.project());
+            let failures = print_simulation(&report, &leaves, settings.cell.0);
             println!("simulated in {seconds:.1} s");
             if failures > 0 {
                 anyhow::bail!("{failures} problem(s) found in the simulation above");
@@ -1066,7 +1067,11 @@ fn find_library_tool<'a>(
 /// TL-11).
 /// Prints a simulation report and returns how many problems it shows:
 /// overcut places and rapid moves that cut.
-fn print_simulation(report: &SimulationReport) -> usize {
+fn print_simulation(
+    report: &SimulationReport,
+    leaves: &std::collections::BTreeMap<SetupId, f64>,
+    cell: f64,
+) -> usize {
     let mut failures = 0;
     if report.setups.is_empty() {
         println!("  no operations to simulate");
@@ -1115,6 +1120,15 @@ fn print_simulation(report: &SimulationReport) -> usize {
             Some(p) => println!("      deepest overcut: {:.4} mm at {}", -p.value, at(p)),
             None => println!("      no overcut"),
         }
+        if let Some(&leave) = leaves.get(&setup.id) {
+            // A roughing operation ends the setup: how near its stock to
+            // leave the part is (slice 14 item 7).
+            let l = d.leftover(leave, 2.0 * cell);
+            println!("{}", leftover_line(&l));
+            if let Some(p) = &l.worst_above {
+                println!("      most beyond it: {:.4} mm at {}", p.value, at(p));
+            }
+        }
         if d.overcut_count > 0 {
             failures += d.overcut_places.len();
             println!(
@@ -1127,6 +1141,50 @@ fn print_simulation(report: &SimulationReport) -> usize {
         }
     }
     failures
+}
+
+/// The stock to leave of each setup whose last enabled operation is rotary
+/// roughing, by setup name.
+fn roughing_leaves(
+    project: &openchuck_app::project::Project,
+) -> std::collections::BTreeMap<SetupId, f64> {
+    let mut last: std::collections::BTreeMap<SetupId, Option<f64>> =
+        std::collections::BTreeMap::new();
+    for op in project.operations().iter().filter(|o| o.enabled) {
+        if project.setup(op.setup).is_none() {
+            continue;
+        }
+        let leave = (op.strategy == openchuck_app::path::roughing::NAME).then(|| {
+            match op
+                .parameters
+                .get(openchuck_app::path::params::names::STOCK_TO_LEAVE)
+            {
+                Some(openchuck_app::project::ParameterValue::Number(n)) => *n,
+                Some(openchuck_app::project::ParameterValue::Integer(n)) => *n as f64,
+                _ => 0.0,
+            }
+        });
+        last.insert(op.setup, leave);
+    }
+    last.into_iter()
+        .filter_map(|(k, v)| v.map(|v| (k, v)))
+        .collect()
+}
+
+/// The line `simulate` prints for a roughing leftover (slice 14 item 7).
+fn leftover_line(l: &openchuck_app::sim::Leftover) -> String {
+    format!(
+        "    roughing leftover against {} mm to leave (within {:.2} mm): {:.1} % at it, {} above, \
+         {} below; least {:.3}, mean {:.3}, most {:.3} mm",
+        l.leave,
+        l.tolerance,
+        100.0 * l.at_leave(),
+        l.above,
+        l.below,
+        l.least,
+        l.mean,
+        l.most
+    )
 }
 
 fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: bool) -> Result<()> {
@@ -1743,5 +1801,108 @@ mod tests {
         assert_eq!(read_answer(None, "\n"), Some(LengthUnit::Millimetre));
         assert_eq!(read_answer(None, " M \n"), Some(LengthUnit::Metre));
         assert_eq!(read_answer(None, "y\n"), None);
+    }
+
+    fn operation(
+        setup: SetupId,
+        name: &str,
+        strategy: &str,
+        leave: Option<f64>,
+        enabled: bool,
+    ) -> openchuck_app::project::Operation {
+        use openchuck_app::project::{OrderKey, ParameterValue, id::OperationId};
+        openchuck_app::project::Operation {
+            id: OperationId::new(),
+            order: OrderKey::default(),
+            name: name.to_owned(),
+            setup,
+            strategy: strategy.to_owned(),
+            tool: None,
+            selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
+            parameters: leave
+                .map(|v| ("stock_to_leave".to_owned(), ParameterValue::Number(v)))
+                .into_iter()
+                .collect(),
+            enabled,
+        }
+    }
+
+    #[test]
+    fn req_op_03_the_leftover_report_is_for_setups_that_end_in_rotary_roughing() {
+        let mut project = openchuck_app::project::Project::new("p");
+        let (a, b, c) = (SetupId::new(), SetupId::new(), SetupId::new());
+        for (id, name) in [
+            (a, "ends rough"),
+            (b, "ends finish"),
+            (c, "disabled finish"),
+        ] {
+            project
+                .insert(Item::Setup(Setup::new(id, name)), Placement::End)
+                .unwrap();
+        }
+        for op in [
+            operation(a, "rough a", "rotary_roughing", Some(0.5), true),
+            operation(b, "rough b", "rotary_roughing", Some(0.5), true),
+            operation(b, "finish b", "helical_finishing", None, true),
+            operation(c, "rough c", "rotary_roughing", None, true),
+            operation(c, "finish c", "helical_finishing", None, false),
+        ] {
+            project.insert(Item::Operation(op), Placement::End).unwrap();
+        }
+        let leaves = roughing_leaves(&project);
+        // A disabled operation is left out; an unset stock to leave is 0.
+        assert_eq!(leaves.len(), 2);
+        assert_eq!(leaves.get(&a), Some(&0.5));
+        assert_eq!(leaves.get(&c), Some(&0.0));
+        assert_eq!(leaves.get(&b), None);
+    }
+
+    #[test]
+    fn req_op_03_setups_with_the_same_name_keep_their_own_stock_to_leave() {
+        let mut project = openchuck_app::project::Project::new("p");
+        let (a, b) = (SetupId::new(), SetupId::new());
+        for id in [a, b] {
+            project
+                .insert(Item::Setup(Setup::new(id, "twin")), Placement::End)
+                .unwrap();
+        }
+        for (id, leave) in [(a, 0.2), (b, 0.7)] {
+            project
+                .insert(
+                    Item::Operation(operation(id, "rough", "rotary_roughing", Some(leave), true)),
+                    Placement::End,
+                )
+                .unwrap();
+        }
+        let leaves = roughing_leaves(&project);
+        assert_eq!((leaves.get(&a), leaves.get(&b)), (Some(&0.2), Some(&0.7)));
+    }
+
+    #[test]
+    fn req_op_03_the_leftover_line_states_the_share_at_the_stock_to_leave() {
+        let l = openchuck_app::sim::Leftover {
+            leave: 0.5,
+            tolerance: 0.2,
+            samples: 10,
+            mean: 0.55,
+            least: 0.45,
+            most: 0.9,
+            below: 1,
+            above: 2,
+            worst_above: None,
+        };
+        let line = leftover_line(&l);
+        for part in [
+            "roughing leftover against 0.5 mm to leave",
+            "within 0.20 mm",
+            "70.0 % at it",
+            "2 above, 1 below",
+            "least 0.450, mean 0.550, most 0.900",
+        ] {
+            assert!(line.contains(part), "{part}: {line}");
+        }
     }
 }

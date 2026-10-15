@@ -271,7 +271,7 @@ struct Job {
     /// The largest A step of a cutting move: the job's 5 degree angle step
     /// for helical finishing, where A is the drive angle; more for
     /// simultaneous finishing, where A follows the normal and turns faster
-    /// than the drive point on a lobe's flank (decision record 0033).
+    /// than the drive point on a lobe's flank (decision record 0036).
     max_a_step: f64,
 }
 
@@ -337,6 +337,7 @@ fn audit_geometry(
         shank_diameter: Millimetres(3.0),
         flute_count: 2,
         material: None,
+        centre_cutting: None,
     };
     let outline = Outline::new(&ball.profile().unwrap());
     let cuts = cutting_moves(replayed);

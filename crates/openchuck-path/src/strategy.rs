@@ -42,15 +42,39 @@ pub struct CutPoint {
     pub contact: Point3,
 }
 
+/// The material as it is when a pass starts, for a strategy that removes
+/// material in stages (rotary roughing, decision record 0033). The shared
+/// services use it for the pass's entry, its leave and the link from the
+/// pass before it (OP-14), in place of the setup's stock, which does not
+/// know what the operation itself has already cut.
+#[derive(Clone)]
+pub struct PassStock(pub Arc<dyn StockModel>);
+
+impl std::fmt::Debug for PassStock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq for PassStock {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// A run of cut points cut without lifting the tool.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Pass {
     /// The points, in cutting order.
     pub points: Vec<CutPoint>,
+    /// The material when this pass starts, if the strategy tracks it. Passes
+    /// that have it are linked without a retract to the clearance cylinder
+    /// where the link is clear of it (decision record 0033 item 6).
+    pub stock: Option<PassStock>,
 }
 
 /// A strategy's passes with what it found worth telling the user, as
-/// sentences (decision record 0033 item 9). The notes are added to the
+/// sentences (decision record 0036 item 9). The notes are added to the
 /// generated path's notes, against its first segment.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct StrategyOutput {
@@ -225,12 +249,14 @@ impl Registry {
         Self::default()
     }
 
-    /// The strategies this library provides: helical finishing (OP-04) and
-    /// simultaneous 4-axis finishing (OP-05, OP-06).
+    /// The strategies this library provides: helical finishing (OP-04),
+    /// rotary roughing (OP-03) and simultaneous 4-axis finishing (OP-05,
+    /// OP-06).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
+        let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
         let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         registry
     }

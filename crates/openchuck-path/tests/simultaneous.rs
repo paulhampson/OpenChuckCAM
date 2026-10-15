@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Simultaneous 4-axis finishing (OP-05, OP-06, with OP-12, OP-13, OP-15;
-//! work breakdown slice 13 and its review checklist; decision record 0033).
+//! work breakdown slice 13 and its review checklist; decision record 0036).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,
