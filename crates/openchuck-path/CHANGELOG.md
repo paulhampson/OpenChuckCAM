@@ -4,6 +4,8 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Slice 10 (decision 0032): `RegionConstraint` and `Window` (OP-02); `Strategy::honours_region` and `Strategy::passes_in_region` (defaults refuse) and `generate_in_region`; helical finishing honours regions. No field was added to a public struct.
+
 - Version 0.5.0 with the library family (the B-rep face record in `openchuck-types` is a breaking change, OI-123).
 
 - Slice 11, item 6 (IMP-02, decision 0017): `brep` with `ExactFace` (a `ParametricFace` from a `BrepFace`: closed-form plane, cylinder, cone, sphere and torus, and a clamped rational B-spline evaluator with a damped closest-point solver that survives singular poles, OI-72) and `BrepSurface` (a `SurfaceSource` over the faces of a `BrepModel` or a selection of them; tool drops fall back to the tessellation, OI-81 stays open).

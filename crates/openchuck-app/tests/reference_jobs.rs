@@ -158,6 +158,9 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
             strategy: "helical_finishing".into(),
             tool: Some(tool_id),
             selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
             parameters,
         }),
     ] {

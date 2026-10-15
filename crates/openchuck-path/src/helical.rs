@@ -37,6 +37,7 @@ use crate::cutter::{self, Contact};
 use crate::error::{PathError, Result};
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
+use crate::region::RegionConstraint;
 use crate::rotary::AxisPosition;
 use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput};
 
@@ -49,6 +50,14 @@ pub const CHORD_FACTOR: f64 = 0.4;
 /// How many times a move may be halved (the smallest step is the seed step
 /// divided by 2^10).
 const MAX_DEPTH: u32 = 10;
+
+/// The furthest apart, in millimetres of path at the part's largest radius,
+/// that the points of a helix are when a region constraint applies.
+pub const CONSTRAINED_SPACING: f64 = 0.1;
+
+/// How many times the limit of the allowed region is bisected (the seed step
+/// divided by 2^12).
+const EDGE_STEPS: u32 = 12;
 
 /// Most points one strategy run may make; a larger job is refused rather
 /// than run out of memory (NFR-07).
@@ -120,12 +129,38 @@ impl Strategy for HelicalFinishing {
         ])
     }
 
+    fn honours_region(&self) -> bool {
+        true
+    }
+
     fn passes(
         &self,
         input: &StrategyInput<'_>,
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
+        passes(input, None, parameters, context)
+    }
+
+    fn passes_in_region(
+        &self,
+        input: &StrategyInput<'_>,
+        region: &RegionConstraint<'_>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        passes(input, Some(region), parameters, context)
+    }
+}
+
+/// The passes of helical finishing, limited to `region` when given.
+fn passes(
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    parameters: &Parameters,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    {
         let pitch = parameters.number(names::STEPOVER)?;
         let tolerance = parameters.number(names::TOLERANCE)?;
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
@@ -135,7 +170,7 @@ impl Strategy for HelicalFinishing {
             1.0
         };
         let start = parameters.number(parameter::START_ANGLE)?;
-        let step = parameters.number(parameter::MAX_ANGLE_STEP)?;
+        let mut step = parameters.number(parameter::MAX_ANGLE_STEP)?;
 
         let bounds = input.surface.bounds();
         let (x0, x1) = (bounds.min.x, bounds.max.x);
@@ -144,6 +179,17 @@ impl Strategy for HelicalFinishing {
             return Err(PathError::Strategy(
                 "the part has no length along the rotary axis to finish".to_owned(),
             ));
+        }
+        // A region constraint can only be seen where the tool is dropped, so
+        // its points are never further apart than `CONSTRAINED_SPACING` of
+        // path: a feature of the selection narrower than that may be missed.
+        if region.is_some_and(|r| !r.is_empty()) {
+            let radius = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
+                .into_iter()
+                .fold(0.0_f64, |r, v| r.max(v.abs()));
+            if radius > 0.0 {
+                step = step.min((CONSTRAINED_SPACING / radius).to_degrees());
+            }
         }
         let turns = length / pitch;
         let total_angle = 360.0 * turns;
@@ -169,6 +215,8 @@ impl Strategy for HelicalFinishing {
             sign,
             total_angle,
             chord: CHORD_FACTOR * tolerance,
+            region,
+            constrained: region.is_some_and(|r| !r.is_empty()),
         };
 
         context.report(
@@ -180,14 +228,31 @@ impl Strategy for HelicalFinishing {
         let nodes: Vec<Option<Node>> = parallel::map_in_order(&ts, |t| fit.node(*t));
         context.check_cancelled()?;
 
-        // Runs of consecutive nodes where the tool is over the part.
+        // Runs of consecutive nodes where the tool may cut. With a region
+        // constraint a run reaches out to where the tool stops being allowed
+        // to cut, not just to its last seed.
         let mut pieces: Vec<Vec<Node>> = Vec::new();
         let mut current: Vec<Node> = Vec::new();
-        for node in nodes {
+        for (i, node) in nodes.iter().enumerate() {
             match node {
-                Some(n) => current.push(n),
+                Some(n) => {
+                    if current.is_empty()
+                        && fit.constrained
+                        && let Some(previous) = i.checked_sub(1).and_then(|p| ts.get(p))
+                        && let Some(edge) = fit.edge(n, *previous)
+                    {
+                        current.push(edge);
+                    }
+                    current.push(*n);
+                }
                 None => {
-                    if !current.is_empty() {
+                    if let Some(last) = current.last().copied() {
+                        if fit.constrained
+                            && let Some(next) = ts.get(i)
+                            && let Some(edge) = fit.edge(&last, *next)
+                        {
+                            current.push(edge);
+                        }
                         pieces.push(std::mem::take(&mut current));
                     }
                 }
@@ -206,19 +271,32 @@ impl Strategy for HelicalFinishing {
         for (k, piece) in pieces.iter().enumerate() {
             context.check_cancelled()?;
             let intervals: Vec<(&Node, &Node)> = piece.iter().zip(piece.iter().skip(1)).collect();
-            let refined: Vec<Vec<Node>> = parallel::map_in_order(&intervals, |(a, b)| {
+            let refined: Vec<Vec<Option<Node>>> = parallel::map_in_order(&intervals, |(a, b)| {
                 let mut out = Vec::new();
                 fit.refine(a, b, 0, &mut out);
                 out
             });
+            // A `None` marks a gap where the tool may not cut: the pass ends
+            // there and the next one starts after it.
             let mut points = Vec::new();
             if let Some(first) = piece.first() {
                 points.push(fit.cut_point(first));
             }
-            for run in refined {
-                points.extend(run.iter().map(|n| fit.cut_point(n)));
+            for step in refined.iter().flatten() {
+                match step {
+                    Some(n) => points.push(fit.cut_point(n)),
+                    None => {
+                        if !points.is_empty() {
+                            passes.push(Pass {
+                                points: std::mem::take(&mut points),
+                            });
+                        }
+                    }
+                }
             }
-            passes.push(Pass { points });
+            if !points.is_empty() {
+                passes.push(Pass { points });
+            }
             context.report(
                 "helical finishing: fitting the path",
                 k as u64 + 1,
@@ -241,6 +319,7 @@ struct Node {
 
 struct Fit<'a> {
     input: &'a StrategyInput<'a>,
+    region: Option<&'a RegionConstraint<'a>>,
     drop_profile: &'a RevolvedProfile,
     leave: f64,
     x0: f64,
@@ -249,6 +328,8 @@ struct Fit<'a> {
     sign: f64,
     total_angle: f64,
     chord: f64,
+    /// Whether a region constraint limits where the tool may cut (OP-02).
+    constrained: bool,
 }
 
 impl Fit<'_> {
@@ -270,6 +351,11 @@ impl Fit<'_> {
             .rotary
             .tool_line(Millimetres(x), a, Millimetres(0.0));
         let contact = self.input.surface.drop_tool(self.drop_profile, &line)?;
+        if let Some(region) = self.region
+            && !region.allows(contact.contact, contact.tip, self.drop_profile, &line)
+        {
+            return None;
+        }
         Some(Node { t, a, contact })
     }
 
@@ -318,19 +404,57 @@ impl Fit<'_> {
         }
     }
 
+    /// The node nearest to parameter `bad_t` where the tool may still cut,
+    /// found by bisection from `from`, which may cut, towards `bad_t`, where
+    /// it may not. `None` when the limit is already at `from`.
+    fn edge(&self, from: &Node, bad_t: f64) -> Option<Node> {
+        let (mut good, mut bad) = (from.t, bad_t);
+        let mut best = None;
+        for _ in 0..EDGE_STEPS {
+            let mid = 0.5 * (good + bad);
+            match self.node(mid) {
+                Some(n) => {
+                    good = mid;
+                    best = Some(n);
+                }
+                None => bad = mid,
+            }
+        }
+        best
+    }
+
     /// Bisects the move `a` to `b` until the straight machine path is within
     /// the chord tolerance at its middle; pushes the points after `a`, ending
     /// with `b`. Where the middle has no material under it (the surface falls
     /// away between two points that touch it) the move is accepted as it is.
-    fn refine(&self, a: &Node, b: &Node, depth: u32, out: &mut Vec<Node>) {
-        if depth < MAX_DEPTH
-            && let Some(mid) = self.node(0.5 * (a.t + b.t))
-            && self.deviation(a, b, &mid) > self.chord
-        {
-            self.refine(a, &mid, depth + 1, out);
-            self.refine(&mid, b, depth + 1, out);
-            return;
+    /// Where a region constraint forbids cutting at the middle, the move is
+    /// cut short at the limits on each side and a `None` marks the gap.
+    fn refine(&self, a: &Node, b: &Node, depth: u32, out: &mut Vec<Option<Node>>) {
+        if depth < MAX_DEPTH {
+            let t = 0.5 * (a.t + b.t);
+            match self.node(t) {
+                Some(mid) if self.deviation(a, b, &mid) > self.chord => {
+                    self.refine(a, &mid, depth + 1, out);
+                    self.refine(&mid, b, depth + 1, out);
+                    return;
+                }
+                None if self.constrained => {
+                    if let Some(left) = self.edge(a, t) {
+                        self.refine(a, &left, depth + 1, out);
+                    }
+                    out.push(None);
+                    match self.edge(b, t) {
+                        Some(right) => {
+                            out.push(Some(right));
+                            self.refine(&right, b, depth + 1, out);
+                        }
+                        None => out.push(Some(*b)),
+                    }
+                    return;
+                }
+                _ => {}
+            }
         }
-        out.push(*b);
+        out.push(Some(*b));
     }
 }
