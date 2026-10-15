@@ -295,6 +295,55 @@ fn radial_mesh<P: RadialPart + ?Sized>(part: &P, rings: u32, around: u32) -> Tri
     }
 }
 
+/// A closed surface of revolution about X from a profile of `(x, radius)`
+/// points, in increasing X and joined by straight lines, with `around`
+/// vertices per ring. Two points at the same X make a wall (an annulus), so a
+/// stepped shaft has a true inside corner. The first and last points are
+/// capped; their radius must be above zero.
+pub fn revolve(profile: &[(f64, f64)], around: u32) -> TriangleMesh {
+    let around = around.max(3);
+    let mut vertices = Vec::new();
+    let mut triangles = Vec::new();
+    let mut starts = Vec::new();
+    for &(x, r) in profile {
+        starts.push(u32::try_from(vertices.len()).unwrap_or(u32::MAX));
+        for j in 0..around {
+            let angle = std::f64::consts::TAU * f64::from(j) / f64::from(around);
+            vertices.push(Point3::new(x, r * angle.cos(), r * angle.sin()));
+        }
+    }
+    for pair in starts.windows(2) {
+        let &[a, b] = pair else { continue };
+        for j in 0..around {
+            let k = (j + 1) % around;
+            triangles.push([a + j, b + k, b + j]);
+            triangles.push([a + j, a + k, b + k]);
+        }
+    }
+    for (ring, x, outward_positive) in [
+        (starts.first().copied(), profile.first(), false),
+        (starts.last().copied(), profile.last(), true),
+    ]
+    .into_iter()
+    .filter_map(|(s, p, o)| Some((s?, p?.0, o)))
+    {
+        let centre = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
+        vertices.push(Point3::new(x, 0.0, 0.0));
+        for j in 0..around {
+            let k = (j + 1) % around;
+            if outward_positive {
+                triangles.push([centre, ring + j, ring + k]);
+            } else {
+                triangles.push([centre, ring + k, ring + j]);
+            }
+        }
+    }
+    TriangleMesh {
+        vertices,
+        triangles,
+    }
+}
+
 /// The standard set of analytic parts with modest dimensions (millimetres).
 pub fn standard_parts() -> Vec<Box<dyn RadialPart>> {
     vec![

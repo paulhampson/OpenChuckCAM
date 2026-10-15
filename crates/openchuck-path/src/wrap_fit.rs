@@ -210,6 +210,11 @@ pub(crate) struct Fit<'a> {
     /// the strategy's own largest step (angle or X), so thinning only removes
     /// the extra points that finer seeding added. Infinite for no limit.
     pub(crate) max_dt: f64,
+    /// Where the tool is wanted: when given, a drop whose contact it rejects
+    /// is not cut. Rest machining uses it to cut only where material is left
+    /// (decision record 0040 item 3). The caller also sets `constrained`, so
+    /// the limits of the wanted places are found by bisection.
+    pub(crate) wanted: Option<&'a (dyn Fn(Point3) -> bool + Send + Sync)>,
 }
 
 impl Fit<'_> {
@@ -264,6 +269,11 @@ impl Fit<'_> {
         let (contact, leave, profile) = self.drop(&line)?;
         if let Some(region) = self.region
             && !region.allows(contact.contact, contact.tip, profile, &line)
+        {
+            return None;
+        }
+        if let Some(wanted) = self.wanted
+            && !wanted(contact.contact)
         {
             return None;
         }

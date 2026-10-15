@@ -103,7 +103,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist (done 14 Oct 2026, [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md); the release workflow and bundle command are built in lane T) | ██ | | | | |
 | H | 12 baseline finishing | ░░ | ██ | | | |
 | I | 13 simultaneous 4-axis finishing (closed 15 Oct 2026, [decision 0036](decisions/0036-slice-13-simultaneous-finishing.md)) | ░░ | ██ | ██ | | |
-| J | 15 rest machining and pencil clean-up | ░░ | ██ | | | |
+| J | 15 rest machining and pencil clean-up (built 15 Oct 2026 on `claude/lane-j-slice-15-rest-machining`, [decision 0040](decisions/0040-slice-15-rest-and-pencil.md), proposed) | ░░ | ██ | | | |
 | K | 16 edge following on mesh feature edges | ░░ | ██ | | | |
 | L | 14 item 5: containment to selected regions | ░░ | ██ | | | |
 | M | 10 items 1 and 6: picking, hover, selection panel | ░░ | ░░ | ██ | | |
@@ -167,7 +167,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Slice 21 (workholding and retaining tabs, record 0035) took OI-158 to OI-162 and requirement OP-21. Next free after that: record 0037, `OI-163`, project schema 12 (10 and 11 are expected by lanes D, O and S, and lane U needs one more).
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Slice 21 (workholding and retaining tabs, record 0035) took OI-158 to OI-162 and requirement OP-21. Lane J (slice 15) took record 0040 and OI-170 to OI-174 (0037 to 0039 and OI-159 to OI-169 are held on unmerged branches by lanes M and N, the UI specification and the OCCT install cache) and no schema number. Next free after that: record 0041 (0037 to 0039 will be taken when those branches merge), `OI-163`, project schema 12 (10 and 11 are expected by lanes D, O and S, and lane U needs one more).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -643,12 +643,14 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 4. Ordering and dependency handling between operations, using the pipeline invalidation from slice 9.
 5. Tests on parts with tight inside corners.
 
+**Status:** lane J built items 1 to 5 on `claude/lane-j-slice-15-rest-machining` ([decision 0040](decisions/0040-slice-15-rest-and-pencil.md), proposed, 15 Oct 2026). Remaining material is found through the `StockModel` port from the carried stock; `rest_machining` is helical finishing cut only where material is left; `pencil_finishing` follows concave mesh creases. Not built: selections (OI-171), indexed and simultaneous rest forms (OI-170), pencil side passes (OI-173). OI-172 and OI-174 are open. The slice closes when the owner accepts the record.
+
 **Review checklist**
 
-- [ ] The rest operation cuts only where material remains above the threshold
-- [ ] Worst remaining value drops after the rest operation
-- [ ] Pencil paths follow the crease within tolerance without gouging
-- [ ] Nothing to clean gives a clear message, not an empty or odd path
+- [x] The rest operation cuts only where material remains above the threshold (a Ø1 ball after a Ø6 ball cuts X 9.5 to 13.0 of a 24 mm part; stock at the part has no sample)
+- [x] Worst remaining value drops after the rest operation (1.22 to 0.24 mm; 1.86 to 0.35 mm at a true wall; no overcut)
+- [x] Pencil paths follow the crease within tolerance without gouging (within 0.02 mm of the closed form; no overcut in the simulation)
+- [x] Nothing to clean gives a clear message, not an empty or odd path (an error naming the threshold; OI-172 asks whether it should stop the run)
 
 ## Slice 16 – Edge and curve following
 

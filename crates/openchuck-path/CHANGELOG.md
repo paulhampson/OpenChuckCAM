@@ -4,6 +4,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Slice 15 (decision 0040): `rest` with `RestMachining` (`rest_machining`) and `RemainingMap` (remaining material found through `StockModel` by probing the stock near samples of the target), `pencil` with `PencilFinishing` (`pencil_finishing`), `Crease` and `concave_creases`; `Strategy::needs_earlier_operations` (provided, default false); `Registry::builtin` holds both. No field was added to a public struct.
 - Slice 13 (decision 0036): `simultaneous` with `SimultaneousFinishing` (`simultaneous_finishing`: spiral and axial drive patterns, the tool axis on the smoothed surface normal within a lead angle and a largest tilt, A smoothed by the taut string with the fewest reversals, the normal-offset fast path seeding the drop for convex tools, a gouge check at the middle of every machine move) and `taut_string`; `Registry::builtin` holds it; `Strategy::passes_with_notes` (provided) and `StrategyOutput`, whose notes `generate` adds to the path's notes. No field was added to a public struct.
 - Version 0.7.0 with the library family (`Tool` gains `centre_cutting` and `Pass` gains `stock`, breaking changes; decision 0033).
 - **Breaking (0.7.0):** `Pass` has a new public field, `stock: Option<PassStock>` (the material when the pass starts). New: `RotaryRoughing` (`rotary_roughing`, OP-03), `HeightStock` (`field`), `EntryParameters::check_tool`, and local links and width-wide entry probes for passes that carry a stock (decision 0033).

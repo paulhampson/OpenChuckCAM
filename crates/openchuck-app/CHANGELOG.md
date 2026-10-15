@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Slice 15 (decision 0040): `rest_machining` and `pencil_finishing` are offered; an operation whose strategy cleans up earlier operations' material (`Strategy::needs_earlier_operations`) says in its notes when no earlier operation of its setup has cut.
 - `JobHandle::try_result` remembers that it has handed the result over, so a poll right after it returns the documented lost-job error rather than `None`: the worker drops its end of the channel only after sending, and a poll in between read as still running (the race behind `req_nfr_04_scene_job_can_be_polled`).
 - Version 0.7.0 with the library family. `rotary_roughing` is offered; the tool's stepdown fills the operation's; a plunge is refused for a tool that cannot cut straight down; `SetupSimulation::id`; `path` re-export (decision 0033).
 - Slice 10 (decision 0032): `selection` module: `Application::select_region`, `save_selection`, `edit_selection`, `RegionRequest`, `SelectionEdit`; operations limited to selection sets, with unresolved references refused by name (UI-04, UI-05, PRJ-06, OP-02).

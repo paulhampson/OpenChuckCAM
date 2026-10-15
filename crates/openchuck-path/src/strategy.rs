@@ -157,6 +157,14 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         Vec::new()
     }
 
+    /// Whether the strategy works on the material earlier operations left
+    /// (rest machining, pencil clean-up; OP-09). The host says so in the
+    /// operation's notes when no earlier operation of the setup has made the
+    /// stock it is given, because the strategy then sees the setup's own stock.
+    fn needs_earlier_operations(&self) -> bool {
+        false
+    }
+
     /// Whether the strategy limits its cuts to a region
     /// ([`passes_in_region`](Self::passes_in_region), OP-02). A strategy that
     /// does not is refused for an operation with selections, rather than
@@ -336,7 +344,8 @@ impl Registry {
 
     /// The strategies this library provides: helical, axial and indexed
     /// finishing (OP-04), rotary roughing (OP-03) and simultaneous 4-axis
-    /// finishing (OP-05, OP-06).
+    /// finishing (OP-05, OP-06), and rest machining and pencil clean-up
+    /// (OP-09).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
@@ -345,6 +354,8 @@ impl Registry {
         let _ = registry.register(Arc::new(crate::indexed::IndexedFinishing));
         let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
         let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
+        let _ = registry.register(Arc::new(crate::rest::RestMachining));
+        let _ = registry.register(Arc::new(crate::pencil::PencilFinishing));
         registry
     }
 

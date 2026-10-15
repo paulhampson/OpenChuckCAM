@@ -309,6 +309,17 @@ pub fn generate_operation_on(
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
     notes.extend(strategy.parameter_warnings(&profile, &parameters));
+    // Rest machining and pencil clean-up work on what earlier operations
+    // left (OP-09, SIM-06); against the setup's own stock the whole part has
+    // material left, which is rarely what was meant.
+    if carried.is_none() && strategy.needs_earlier_operations() {
+        notes.push(format!(
+            "{} cleans up material that earlier operations left, and no earlier operation of \
+             this setup has cut: the setup's own stock is taken, so all of the part counts as \
+             having material left",
+            strategy.label()
+        ));
+    }
     notes.extend(
         path.notes
             .iter()
