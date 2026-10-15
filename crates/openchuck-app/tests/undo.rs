@@ -237,6 +237,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                         faces.into_iter().map(FaceId).collect::<BTreeSet<_>>(),
                     ),
                     descriptors: Vec::new(),
+                    stock_to_leave: None,
                 }),
                 placement: Placement::End,
             }

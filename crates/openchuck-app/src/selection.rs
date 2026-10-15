@@ -177,6 +177,7 @@ impl Application {
             model_hash: hash,
             target: SelectionTarget::Triangles(triangles),
             descriptors: Vec::new(),
+            stock_to_leave: None,
         };
         self.execute(Command::Add {
             item: Item::SelectionSet(set),

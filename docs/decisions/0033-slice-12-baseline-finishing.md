@@ -59,3 +59,10 @@ Verification plan row OP-04: "Helical, axial and indexed finishing on analytic c
 - **OI-147:** closed: `scallop` is in, for ball and bull-nose only; other profiles refuse it.
 - **OI-148:** `lead` on an axial pass that starts on the end face of the part: needs air beyond the end (item 6).
 - **OI-137, OI-138:** proposed to close by item 5 when it is built and accepted.
+
+## As built
+
+- **Schema 8, not 10 (item 4).** The record claimed 10 because the work breakdown expected 8 and 9 for lanes D, O, F and S. None of those lanes has claimed or built a number, and the migration chain needs each step, so the field is built as **schema 8** (`SelectionSet::stock_to_leave`, `Option<f64>` in millimetres, written only when set, zero or more, refused otherwise). The work breakdown's table now shows 8 for this lane and moves the other expected rows down by one; a lane that merges later takes the next free number (the rule in "Project schema ordering"). This is a deviation from the number in the accepted text, raised for the owner.
+- **Axial and indexed finishing** are built (`axial.rs`, `indexed.rs`), with the fitting in `wrap_fit.rs` shared with helical finishing, whose output is unchanged. `scallop` is a parameter of helical and axial finishing (not of indexed, which has no stepover); the pitch or pass count is the smaller of the stepover's and the scallop's. The indexed strategy keeps the common `stepover` in its schema with a default and a note that it is not used.
+- **A new parameter kind, `AngleList`** (text of angles in degrees, comma, semicolon or space separated, at most 720), carries the indexed angles; the form shows it as a text field (`FieldKind::Text`). Both enums are `non_exhaustive`.
+- The axial and indexed passes are the same X-fitted passes: per-selection stock to leave, region offsets and the entry wiring are the next steps.

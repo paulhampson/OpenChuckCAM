@@ -319,6 +319,10 @@ pub struct SelectionSet {
     pub target: SelectionTarget,
     /// Reserved for P2 re-matching (PRJ-07); empty in P1.
     pub descriptors: Vec<Descriptor>,
+    /// Material to leave on this selection, in millimetres, in place of the
+    /// operation's stock to leave where the set is a machined region (OP-11,
+    /// decision record 0033 item 4). `None` uses the operation's value.
+    pub stock_to_leave: Option<f64>,
 }
 
 /// A parameter value of an operation. The strategy's parameter schema (OP-16)

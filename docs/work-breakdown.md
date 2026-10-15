@@ -149,9 +149,9 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | 5 | Slice 7 | Simulation settings in `project.toml` | Merged |
 | 6 | A (slice 8) | Operations gain `enabled`, written only when false (UI-06); the machine copy in `machine.toml` gains its library source's `id` ([decision 0029](decisions/0029-slice-8-viewport-and-shell.md) items 10 and 16) | Claimed; in the slice 8 pull request |
 | 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0032](decisions/0032-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields (the selection kind per model was already in schema 1, decision 0010). In pull request 39 |
-| 8 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
-| 10 | H (slice 12) | Selection sets gain an optional `stock_to_leave`, written only when set (OP-11 per selection; [decision 0033](decisions/0033-slice-12-baseline-finishing.md) item 4) | Claimed; not yet built |
-| 9 | F or S (slice 19) | Export grouping and the confirmed tool numbers' presentation, if they are stored in the project (GC-05, GC-14) | Expected only if stored; decide in design refinement |
+| 8 | H (slice 12) | Selection sets gain an optional `stock_to_leave`, written only when set (OP-11 per selection; [decision 0033](decisions/0033-slice-12-baseline-finishing.md) item 4) | Claimed as 10 and built as 8, the next number that keeps the migration chain whole (7 is on `main`; no lane has claimed 8 or 9). Lanes D, O, F and S, which expect 8 and 9, take the next free numbers when they claim |
+| 9 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
+| 10 | F or S (slice 19) | Export grouping and the confirmed tool numbers' presentation, if they are stored in the project (GC-05, GC-14) | Expected only if stored; decide in design refinement |
 
 The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
 

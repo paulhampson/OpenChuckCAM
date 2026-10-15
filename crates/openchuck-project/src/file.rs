@@ -64,7 +64,9 @@ use openchuck_types::units::Millimetres;
 /// - 7: operations gain the optional `boundary`, `avoid` and `check`
 ///   selection set references (OP-02), written only when set (decision
 ///   record 0032).
-pub const SCHEMA: i64 = 7;
+/// - 8: selection sets gain the optional `stock_to_leave` (OP-11, per
+///   selection), written only when set (decision record 0033 item 4).
+pub const SCHEMA: i64 = 8;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -85,6 +87,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_4_to_5,
     schema_5_to_6,
     schema_6_to_7,
+    schema_7_to_8,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -142,6 +145,12 @@ fn schema_5_to_6(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
 /// `check`), which a schema 6 file does not have, so it needs no change but
 /// its number.
 fn schema_6_to_7(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 8 only adds the optional `stock_to_leave` to selection sets, which
+/// a schema 7 file does not have, so it needs no change but its number.
+fn schema_7_to_8(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
@@ -244,6 +253,8 @@ struct SelectionFile {
     target: SelectionTarget,
     #[serde(default)]
     descriptors: Vec<Descriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stock_to_leave: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -391,6 +402,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             model_hash: s.model_hash,
             target: s.target.clone(),
             descriptors: s.descriptors.clone(),
+            stock_to_leave: s.stock_to_leave,
         };
         files.insert(item_path(FileKind::SelectionSet, &s.id), to_text(&file)?);
     }
@@ -573,6 +585,13 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
             .into_iter()
             .map(|(path, f)| {
                 check_name(&path, &f.id)?;
+                if f.stock_to_leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                    return Err(ProjectError::BadFile {
+                        path: path.clone(),
+                        reason: "stock_to_leave must be a number of millimetres, zero or more"
+                            .to_owned(),
+                    });
+                }
                 Ok(SelectionSet {
                     id: f.id,
                     order: f.order,
@@ -581,6 +600,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                     model_hash: f.model_hash,
                     target: f.target,
                     descriptors: f.descriptors,
+                    stock_to_leave: f.stock_to_leave,
                 })
             })
             .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -871,7 +891,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 7);
+        assert_eq!(SCHEMA, 8);
         let mut project = Project::new("p");
         project
             .insert(
@@ -880,7 +900,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 7\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 8\n"), "{path}: {text}");
         }
     }
 
