@@ -128,7 +128,7 @@ pub fn parameter_values(
         }
     }
     // A required value that neither the operation nor the cutting data gives.
-    let missing: Vec<&str> = [names::FEED, names::PLUNGE_FEED, names::STEPOVER]
+    let missing: Vec<&str> = [names::FEED, names::PLUNGE_FEED, names::STEPOVER, STEPDOWN]
         .into_iter()
         .filter(|name| {
             !values.contains_key(*name)

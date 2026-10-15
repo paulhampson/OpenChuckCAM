@@ -148,10 +148,24 @@ fn schema_6_to_7(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
-/// Schema 8 only adds the optional `centre_cutting` tool field, written only
-/// when set, so a schema 7 file needs no change but its number: its tools
-/// state nothing and follow their shape.
-fn schema_7_to_8(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+/// Schema 8 adds the optional `centre_cutting` tool field, written only when
+/// set, so a schema 7 file needs no change but its number: its tools state
+/// nothing and follow their shape. A schema 7 tool file that already holds the
+/// field was not written by any version that knew it, so it is refused rather
+/// than guessed at.
+fn schema_7_to_8(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let stated = kind == FileKind::Tool
+        && table
+            .get("tool")
+            .and_then(toml::Value::as_table)
+            .is_some_and(|t| t.contains_key("centre_cutting"));
+    if stated {
+        return Err(
+            "this schema 7 tool file has `centre_cutting`, a field schema 8 introduced; \
+             remove it, or set `schema = 8` if the file was written for schema 8"
+                .to_owned(),
+        );
+    }
     Ok(())
 }
 

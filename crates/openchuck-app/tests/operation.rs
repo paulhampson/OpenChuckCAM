@@ -923,3 +923,31 @@ fn req_op_11_a_plunge_is_refused_for_a_tool_that_states_it_cannot_cut_straight_d
     assert!(err.contains("cannot cut straight down"), "{err}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_op_11_a_missing_stepdown_is_explained_like_the_other_cutting_data() {
+    let (dir, mut app, op) = project("stepdown-missing");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "rotary_roughing".into();
+    for (name, value) in [
+        (names::FEED, 400.0),
+        (names::PLUNGE_FEED, 150.0),
+        (names::STEPOVER, 1.0),
+    ] {
+        operation
+            .parameters
+            .insert(name.to_owned(), ParameterValue::Number(value));
+    }
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    set_material(&mut app, Some("pine"));
+    let text = app.regenerate().unwrap_err().to_string();
+    for part in [
+        "stepdown",
+        "no cutting data for the material 'pine'",
+        "'4 mm ball'",
+    ] {
+        assert!(text.contains(part), "{part}: {text}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}

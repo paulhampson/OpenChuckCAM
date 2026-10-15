@@ -908,3 +908,91 @@ fn req_prj_06_selections_match_the_model_kind() {
     assert!(err.to_string().contains("by face and edge"), "{err}");
     assert_eq!(project.models()[0], stl);
 }
+
+/// The tool snapshot file of `sample()` and its text.
+const TOOL_FILE: &str = "tools/00000000-0000-0000-0000-000000000014.toml";
+
+fn copy_tree_with(
+    base: &BTreeMap<String, String>,
+    name: &str,
+    edit: impl Fn(&str, &str) -> String,
+) -> PathBuf {
+    let dir = temp_dir(name);
+    for (path, text) in base {
+        let target = dir.join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, edit(path, text)).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn req_prj_04_req_tl_04_centre_cutting_round_trips_and_older_files_load_without_it() {
+    let base_dir = temp_dir("centre-base");
+    file::save(&sample(), &base_dir).unwrap();
+    let base = read_tree(&base_dir);
+    let tool_text = base.get(TOOL_FILE).unwrap();
+    assert!(
+        !tool_text.contains("centre_cutting"),
+        "unset is not written: {tool_text}"
+    );
+
+    // A stated value is read and written back byte for byte.
+    let stated = copy_tree_with(&base, "centre-stated", |path, text| {
+        if path == TOOL_FILE {
+            text.replace(
+                "flute_count = 2\n",
+                "flute_count = 2\ncentre_cutting = false\n",
+            )
+        } else {
+            text.to_owned()
+        }
+    });
+    let loaded = file::load(&stated).unwrap();
+    let tool = loaded.tools().first().unwrap();
+    assert_eq!(tool.tool.centre_cutting, Some(false));
+    let again = temp_dir("centre-resaved");
+    file::save(&loaded, &again).unwrap();
+    assert_eq!(read_tree(&again), read_tree(&stated));
+
+    // A schema 7 project loads, and its tool states nothing.
+    let old = copy_tree_with(&base, "centre-schema7", |_, text| {
+        text.replace("schema = 8", "schema = 7")
+    });
+    let loaded = file::load(&old).unwrap();
+    assert_eq!(loaded.tools().first().unwrap().tool.centre_cutting, None);
+}
+
+#[test]
+fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file() {
+    let base_dir = temp_dir("centre-bad-base");
+    file::save(&sample(), &base_dir).unwrap();
+    let base = read_tree(&base_dir);
+    let add = |value: &'static str, schema: &'static str| {
+        move |path: &str, text: &str| {
+            if path == TOOL_FILE {
+                text.replace(
+                    "flute_count = 2\n",
+                    &format!("flute_count = 2\ncentre_cutting = {value}\n"),
+                )
+                .replace("schema = 8", schema)
+            } else {
+                text.to_owned()
+            }
+        }
+    };
+    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 8"));
+    let err = file::load(&bad).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000014") && err.contains("centre_cutting"),
+        "{err}"
+    );
+
+    // The field did not exist in schema 7: its presence there is not guessed at.
+    let early = copy_tree_with(&base, "centre-early", add("false", "schema = 7"));
+    let err = file::load(&early).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000014") && err.contains("centre_cutting"),
+        "{err}"
+    );
+}

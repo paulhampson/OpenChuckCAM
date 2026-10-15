@@ -1124,17 +1124,7 @@ fn print_simulation(
             // A roughing operation ends the setup: how near its stock to
             // leave the part is (slice 14 item 7).
             let l = d.leftover(leave, 2.0 * cell);
-            println!(
-                "    roughing leftover against {leave} mm to leave (within {:.2} mm): {:.1} % at it, \
-                 {} above, {} below; least {:.3}, mean {:.3}, most {:.3} mm",
-                l.tolerance,
-                100.0 * l.at_leave(),
-                l.above,
-                l.below,
-                l.least,
-                l.mean,
-                l.most
-            );
+            println!("{}", leftover_line(&l));
             if let Some(p) = &l.worst_above {
                 println!("      most beyond it: {:.4} mm at {}", p.value, at(p));
             }
@@ -1179,6 +1169,22 @@ fn roughing_leaves(
     last.into_iter()
         .filter_map(|(k, v)| v.map(|v| (k, v)))
         .collect()
+}
+
+/// The line `simulate` prints for a roughing leftover (slice 14 item 7).
+fn leftover_line(l: &openchuck_app::sim::Leftover) -> String {
+    format!(
+        "    roughing leftover against {} mm to leave (within {:.2} mm): {:.1} % at it, {} above, \
+         {} below; least {:.3}, mean {:.3}, most {:.3} mm",
+        l.leave,
+        l.tolerance,
+        100.0 * l.at_leave(),
+        l.above,
+        l.below,
+        l.least,
+        l.mean,
+        l.most
+    )
 }
 
 fn run_library(path: &Path, action: LibraryAction, threads: Threads, create: bool) -> Result<()> {
@@ -1795,5 +1801,90 @@ mod tests {
         assert_eq!(read_answer(None, "\n"), Some(LengthUnit::Millimetre));
         assert_eq!(read_answer(None, " M \n"), Some(LengthUnit::Metre));
         assert_eq!(read_answer(None, "y\n"), None);
+    }
+
+    fn operation(
+        setup: SetupId,
+        name: &str,
+        strategy: &str,
+        leave: Option<f64>,
+        enabled: bool,
+    ) -> openchuck_app::project::Operation {
+        use openchuck_app::project::{OrderKey, ParameterValue, id::OperationId};
+        openchuck_app::project::Operation {
+            id: OperationId::new(),
+            order: OrderKey::default(),
+            name: name.to_owned(),
+            setup,
+            strategy: strategy.to_owned(),
+            tool: None,
+            selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
+            parameters: leave
+                .map(|v| ("stock_to_leave".to_owned(), ParameterValue::Number(v)))
+                .into_iter()
+                .collect(),
+            enabled,
+        }
+    }
+
+    #[test]
+    fn req_op_03_the_leftover_report_is_for_setups_that_end_in_rotary_roughing() {
+        let mut project = openchuck_app::project::Project::new("p");
+        let (a, b, c) = (SetupId::new(), SetupId::new(), SetupId::new());
+        for (id, name) in [
+            (a, "ends rough"),
+            (b, "ends finish"),
+            (c, "disabled finish"),
+        ] {
+            project
+                .insert(Item::Setup(Setup::new(id, name)), Placement::End)
+                .unwrap();
+        }
+        for op in [
+            operation(a, "rough a", "rotary_roughing", Some(0.5), true),
+            operation(b, "rough b", "rotary_roughing", Some(0.5), true),
+            operation(b, "finish b", "helical_finishing", None, true),
+            operation(c, "rough c", "rotary_roughing", None, true),
+            operation(c, "finish c", "helical_finishing", None, false),
+        ] {
+            project.insert(Item::Operation(op), Placement::End).unwrap();
+        }
+        let leaves = roughing_leaves(&project);
+        // A disabled operation is left out; an unset stock to leave is 0.
+        assert_eq!(
+            leaves.into_iter().collect::<Vec<_>>(),
+            [
+                ("disabled finish".to_owned(), 0.0),
+                ("ends rough".to_owned(), 0.5)
+            ]
+        );
+    }
+
+    #[test]
+    fn req_op_03_the_leftover_line_states_the_share_at_the_stock_to_leave() {
+        let l = openchuck_app::sim::Leftover {
+            leave: 0.5,
+            tolerance: 0.2,
+            samples: 10,
+            mean: 0.55,
+            least: 0.45,
+            most: 0.9,
+            below: 1,
+            above: 2,
+            worst_above: None,
+        };
+        let line = leftover_line(&l);
+        for part in [
+            "roughing leftover against 0.5 mm to leave",
+            "within 0.20 mm",
+            "70.0 % at it",
+            "2 above, 1 below",
+            "least 0.450, mean 0.550, most 0.900",
+        ] {
+            assert!(line.contains(part), "{part}: {line}");
+        }
     }
 }
