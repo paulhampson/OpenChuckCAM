@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Version 0.7.0 with the library family. `rotary_roughing` is offered; the tool's stepdown fills the operation's; a plunge is refused for a tool that cannot cut straight down; `SetupSimulation::id`; `path` re-export (decision 0033).
 - Slice 10 (decision 0032): `selection` module: `Application::select_region`, `save_selection`, `edit_selection`, `RegionRequest`, `SelectionEdit`; operations limited to selection sets, with unresolved references refused by name (UI-04, UI-05, PRJ-06, OP-02).
 - `Application::start_select_region`: region selection as a background job (UI-09); `select_region` waits for it.
 - `Application::start_prepare_model` and `add_prepared_model` (with `model::PreparedModel`): a model is read, hashed and checked as a job and added as one undoable step, so a front end never waits on a large file; `add_model_with` uses them.
