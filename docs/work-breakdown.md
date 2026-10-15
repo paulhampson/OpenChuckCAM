@@ -149,15 +149,16 @@ The project folder has one schema number for every file ([decision 0008](decisio
 | 5 | Slice 7 | Simulation settings in `project.toml` | Merged |
 | 6 | A (slice 8) | Operations gain `enabled`, written only when false (UI-06); the machine copy in `machine.toml` gains its library source's `id` ([decision 0029](decisions/0029-slice-8-viewport-and-shell.md) items 10 and 16) | Claimed; in the slice 8 pull request |
 | 7 | C (slice 10) | Operation references to selection sets: containment, avoid and check surfaces (OP-02); selection kind per model | Claimed and built on `claude/slice-10-mesh-selection` ([decision 0032](decisions/0032-slice-10-mesh-selection.md)): the operation's `boundary`, `avoid` and `check` fields (the selection kind per model was already in schema 1, decision 0010). In pull request 39 |
-| 8 | E (slice 14) | Tools gain `centre_cutting` (optional), in tool library files and in the project's tool snapshots (OI-117; decision 0033) | Claimed and built on `claude/slice-14-rotary-roughing` (pull request 45). Lane D and O take 9 if they merge after it |
-| 9 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed (was 8; renumbers if E merges first) |
-| 10 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S (was 9; renumbers if E merges first) |
+| 8 | E (slice 14) | Tools gain `centre_cutting` (optional), in tool library files and in the project's tool snapshots (OI-117; decision 0033) | Claimed and built on `claude/slice-14-rotary-roughing` (pull request 45). Lane H takes 9, then lanes D and O and slice 19 item 4 follow |
+| 9 | H (slice 12) | Selection sets gain an optional `stock_to_leave`, written only when set (OP-11 per selection; [decision 0034](decisions/0034-slice-12-baseline-finishing.md) item 4) | Claimed as 10, built as 8 and renumbered to 9 when lane E (pull request 45, schema 8) merged first. Lanes D and O and slice 19 item 4 take the next free numbers when they claim |
+| 10 | D and O (slice 11) | B-rep face and edge selections relative to the model's content hash (PRJ-06); STEP units override | Expected, not yet claimed |
+| 11 | S (slice 19 item 4) | Export grouping, if the dialogs store it in the project (GC-05). Lane F (items 1 to 3 and 5) stores nothing and takes no number ([decision 0028](decisions/0028-slice-19-output-options-and-setup-sheet.md) item 5) | Expected only if stored; decide in lane S (was 9; renumbers if E merges first) |
 
 The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to change the format: caches live in the cache folder (PRJ-03), strategy settings are operation parameters, and the UI is not expected to store its view state in the project. A lane that finds it needs a bump adds a row. Lane K and lane P may need a row if edge chains are stored as a new selection kind.
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Next free after that: record 0037, `OI-158` (an unmerged branch holds OI-154 to OI-157), project schema 11 (9 and 10 are expected by lanes D and O and S).
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Next free after that: record 0037, `OI-158` (an unmerged branch holds OI-154 to OI-158 in its description, so take OI-159 if that branch is still open), project schema 12 (10 and 11 are expected by lanes D and O and S).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -541,6 +542,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Depends on:** slices 5 and 10; the entry moves of [decision 0026](decisions/0026-entry-moves.md) (OI-80) for item 5; the stronger offset result check (OI-82) once regions come from meshes.
 
+**Status:** design refinement accepted ([decision 0034](decisions/0034-slice-12-baseline-finishing.md), 15 Oct 2026, lane H); items 1 to 4 and 6 built on `claude/lane-h-slice-12-baseline-finishing` (axial, indexed, scallop, per-selection stock to leave, `lead` entry, golden files); region offsets built (OP-02: a selection is found through its offset, OI-138 closed; the containment boundary as a curve, OI-137, is not); gate 3 for the new programs runs in CI.
+
 **Design refinement:** how each strategy parameterises stepover and scallop, how region constraints enter the unrolled 2D development, and what the indexed form outputs for positioning moves.
 
 1. Helical finishing on a selected region (spiral around the axis).
@@ -552,10 +555,10 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Review checklist**
 
-- [ ] A property test shows every point of the selected region lies within stepover of the path
+- [x] A property test shows every point of the selected region lies within stepover of the path (whole-part case on cones: `req_op_04_every_surface_point_is_within_the_stepover_of_the_path`; the region case is covered by `req_op_02_req_op_04_a_band_narrower_than_the_old_spacing_is_cut_on_every_pass`)
 - [ ] The independent checker reports no gouging beyond tolerance on the reference parts
-- [ ] Indexed positions land on the exact requested angles
-- [ ] Per-selection stock to leave is respected
+- [x] Indexed positions land on the exact requested angles (`req_op_04_indexed_positions_land_on_the_requested_angles_in_order`)
+- [x] Per-selection stock to leave is respected (`req_op_11_each_zone_is_left_its_own_stock_with_all_three_strategies`, `req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations`)
 - [ ] All three replay cleanly in the LinuxCNC simulator
 
 ## Slice 13 – True simultaneous 4-axis finishing

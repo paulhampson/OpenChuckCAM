@@ -15,6 +15,10 @@ All use the same tool and material: a 3 mm ball end mill (2 flutes, 8 mm flute l
 
 `cargo test -p openchuck-app --test reference_jobs` posts each job with both shipped posts, requires gates 1 and 2 to pass, checks the output is identical at 1 and 4 threads, and compares it with the golden files (`OPENCHUCK_BLESS=1` rewrites them; review the diff). The operation id in the comment line is replaced by `<id>` in the golden files.
 
+## Baseline finishing jobs (slice 12)
+
+Three more jobs run on the `cone` part with the same tool, material and Z1 profile, one for each new strategy ([decision 0034](decisions/0034-slice-12-baseline-finishing.md)): `cone_axial` (axial finishing, stepover 2 mm, zig-zag), `cone_indexed` (indexed finishing at 0, 90, 180 and 270 degrees) and `cone_axial_lead` (axial finishing with `lead` entry). Golden files `testdata/golden/reference/cone_axial_*`, `cone_indexed_*` and `cone_axial_lead_*` for both posts. `cargo test -p openchuck-app --test reference_jobs` checks gates 1 and 2 and the golden files; `--test golden_audit` (`req_op_04_baseline_finishing_golden_files_pass_the_audit`) checks conventions, that A does not move within a pass, no gouge (deepest 0.0026 mm) and that the two posts reach the same positions. **Gate 3 (the LinuxCNC replay) has not been run for these programs**: `cargo xtask replay` picks them up from the folder and CI runs it; the session that built them had no Docker daemon. Gates 4 and 5 are not run.
+
 ## Assumptions to settle before gates 4 and 5
 
 - **Axis height.** The owner gave the chuck centre as 45 mm above the bed (13 Oct 2026). The Z1 profile takes the bed at the bottom of the Z travel (-100), so the axis is at machine Z -55, and the safe Z is 50 mm above the axis (5 mm below the top of the travel). That reading of "the bed" is an assumption (OI-60). **Measure the axis height on the machine and rerun the jobs before any trial.** A wrong value moves every Z.

@@ -235,7 +235,7 @@ fn req_tl_04_req_tl_05_req_tl_06_snapshot_file_holds_every_value() {
     let files = file::render(&project).unwrap();
     let text = &files[&format!("tools/{id}.toml")];
     for line in [
-        "schema = 8",
+        "schema = 9",
         "name = \"6 mm flat\"",
         "overall_length = 50.0",
         "flute_count = 2",

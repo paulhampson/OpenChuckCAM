@@ -37,8 +37,17 @@ struct Job {
     strategy: &'static str,
     /// Mesh stations along X and round the axis.
     mesh: (u32, u32),
-    /// The largest angle step, degrees.
-    step: f64,
+    /// Parameters beyond the tool's cutting data.
+    parameters: Vec<(&'static str, ParameterValue)>,
+}
+
+/// The cone of the `cone` job.
+fn cone_part() -> Box<dyn RadialPart> {
+    Box::new(Cone {
+        start_radius: 10.0,
+        end_radius: 5.0,
+        length: 30.0,
+    })
 }
 
 fn jobs() -> Vec<Job> {
@@ -54,19 +63,15 @@ fn jobs() -> Vec<Job> {
             radius: 12.0,
             strategy: "helical_finishing",
             mesh: (121, 144),
-            step: 5.0,
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         Job {
             name: "cone",
-            part: Box::new(Cone {
-                start_radius: 10.0,
-                end_radius: 5.0,
-                length: 30.0,
-            }),
+            part: cone_part(),
             radius: 10.0,
             strategy: "helical_finishing",
             mesh: (121, 144),
-            step: 5.0,
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         Job {
             name: "sphere",
@@ -74,7 +79,7 @@ fn jobs() -> Vec<Job> {
             radius: 10.0,
             strategy: "helical_finishing",
             mesh: (121, 144),
-            step: 5.0,
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
         },
         // A, Y and Z all move with X: the tool follows a normal that leaves
         // the plane through the axis (OP-05, OP-06).
@@ -96,7 +101,39 @@ fn jobs() -> Vec<Job> {
             // Points evenly spaced: path fitting halves moves where the ball
             // rolls over a lobe, and the contact smoothing of the shared
             // services weighs points by count, not spacing (OI-77).
-            step: 2.0,
+            parameters: vec![("max_angle_step", ParameterValue::Number(2.0))],
+        },
+        // Slice 12 baseline finishing (decision 0034): axial, indexed, and
+        // axial with lead-in and lead-out, on the cone.
+        Job {
+            name: "cone_axial",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "axial_finishing",
+            mesh: (121, 144),
+            parameters: vec![("max_x_step", ParameterValue::Number(3.0))],
+        },
+        Job {
+            name: "cone_indexed",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "indexed_finishing",
+            mesh: (121, 144),
+            parameters: vec![
+                ("angles", ParameterValue::Text("0, 90, 180, 270".into())),
+                ("max_x_step", ParameterValue::Number(3.0)),
+            ],
+        },
+        Job {
+            name: "cone_axial_lead",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "axial_finishing",
+            mesh: (121, 144),
+            parameters: vec![
+                ("max_x_step", ParameterValue::Number(3.0)),
+                ("entry", ParameterValue::Text("lead".into())),
+            ],
         },
     ]
 }
@@ -182,11 +219,11 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
         },
         cutting_data,
     };
-    let mut parameters = BTreeMap::new();
-    parameters.insert(
-        "max_angle_step".to_owned(),
-        ParameterValue::Number(job.step),
-    );
+    let parameters: BTreeMap<String, ParameterValue> = job
+        .parameters
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
     for item in [
         Item::Setup(setup),
         Item::Tool(snapshot),

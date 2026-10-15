@@ -80,6 +80,7 @@ Tests named after the requirement IDs, in `crates/openchuck-path/tests/simultane
 - **OP-16, OP-02:** built in, common parameters first, honours regions; on a cylinder limited to its upper half the cuts stay on the region and reach its edge within 0.05 mm; through the application it runs from a project and the mesh note reaches `Regeneration::notes`.
 - **GC-09, GC-10, GC-11:** the `lobed` reference job passes gates 1 and 2 with both posts, is identical at 1 and N threads, matches its golden files and passes their audit (item 12); a helical toolpath starting at A 30 passes gate 2.
 - **Test times** (one test thread, uninstrumented, AGENTS.md): every test of `simultaneous.rs` but one is under a minute (the longest 60 s, the contact feed); the independent checker on four parts takes 93 s and is listed as long-running in `.config/nextest.toml` (the existing filter already selects it).
+- **Merge with lane H ([decision 0034](0034-slice-12-baseline-finishing.md)):** its fix, which judges the cutter and not the tool tip on the rapid descent and retract of a finishing pass, moved two heights in each `lobed` program by 0.03 mm (the approach Z14.182 to Z14.211 and the plunge to feed Z14.200 to Z14.228; no other line changed). The golden files were re-blessed; they still pass the audit and `cargo xtask golden`. Gate 3 for the re-blessed programs runs in CI.
 
 ## Review checklist of slice 13
 

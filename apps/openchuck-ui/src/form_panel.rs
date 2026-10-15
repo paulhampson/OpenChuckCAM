@@ -172,6 +172,11 @@ fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> 
         FieldKind::Integer { .. } => {
             edit = text_field(ui, field, state, "");
         }
+        FieldKind::Text => {
+            if let Some(e) = text_field(ui, field, state, "") {
+                edit = Some(e);
+            }
+        }
         FieldKind::Flag => {
             let mut on = matches!(field.value, Some(ParameterValue::Flag(true)));
             if ui.checkbox(&mut on, "").on_hover_text(&tip).changed() {

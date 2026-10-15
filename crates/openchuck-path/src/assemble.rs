@@ -70,10 +70,16 @@ pub struct GeneratedPath {
 
 const EPS: f64 = 1e-9;
 
+/// How much longer, in millimetres, positions written to three decimals can
+/// make a move: half a unit in each of two end points on three axes.
+const WRITTEN_ALLOWANCE: f64 = 0.002;
+
 struct Builder<'a> {
     rotary: RotaryMapping,
     /// The tool's cutting radius, for probing under a link.
     tool_radius: f64,
+    /// The tool's profile, for the cutter-surface check of a finishing pass.
+    profile: &'a openchuck_types::tool::profile::RevolvedProfile,
     max_feeds: MaxFeeds,
     collision: &'a dyn CollisionOracle,
     pose: ToolPose,
@@ -133,12 +139,36 @@ impl Builder<'_> {
                 limits.rapid_rotary.0,
             )
         };
+        // The F word is the speed along the straight line of the linear axes, so
+        // that line, not just each axis, must stay within the limit the
+        // checker applies: the linear limit if X or Y moves, otherwise Z's. The
+        // post works the feed out from positions rounded to the written
+        // decimals, which can lengthen a short move by a few thousandths of a
+        // millimetre, so fed moves are timed for that much more (decision
+        // record 0034, as built).
+        let (dx, dy, dz) = (
+            (to.along - from.along).abs(),
+            (to.across - from.across).abs(),
+            (to.height - from.height).abs(),
+        );
+        let allowance = if kind.is_fed() {
+            WRITTEN_ALLOWANCE
+        } else {
+            0.0
+        };
+        let line = (dx * dx + dy * dy + dz * dz).sqrt();
+        let line_limit = if dx > EPS || dy > EPS { linear } else { z };
         let axis_time = 60.0
             * [
-                (to.along - from.along).abs() / linear,
-                (to.across - from.across).abs() / linear,
-                (to.height - from.height).abs() / z,
+                dx / linear,
+                dy / linear,
+                dz / z,
                 da / rotary,
+                if line > EPS {
+                    (line + allowance) / line_limit
+                } else {
+                    0.0
+                },
             ]
             .into_iter()
             .fold(0.0, f64::max);
@@ -296,6 +326,7 @@ pub fn assemble_with_entry(
     let mut b = Builder {
         rotary,
         tool_radius: input.tool.cutting_radius(),
+        profile: input.tool,
         max_feeds: input.max_feeds,
         collision: input.collision,
         pose: start,
@@ -394,6 +425,72 @@ pub fn smoothed_contacts(points: &[CutPoint]) -> Vec<Point3> {
         .collect()
 }
 
+/// How many parallel lines [`swept_entry`] casts round the cutter at each of
+/// [`SWEPT_RINGS`] radii.
+const SWEPT_RAYS: u32 = 32;
+
+/// How many radii out to the cutting radius [`swept_entry`] samples.
+const SWEPT_RINGS: u32 = 4;
+
+/// The distance the tool tip, at `tip`, can move along `direction` (the way
+/// the tool moves, a unit vector along its axis) before the cutter first meets
+/// material, no further than `max_distance`; `None` when it stays clear.
+///
+/// A line through the tool tip alone can miss stock that the body of the
+/// cutter would hit, such as a stock end beside a lead arc outside the part.
+/// So lines are cast from the cutter's own surface: at each of
+/// [`SWEPT_RINGS`] radii out to the cutting radius, [`SWEPT_RAYS`] parallel
+/// lines start at the point of the profile at that radius (its height above
+/// the tip) and the least entry counts. A flat tool's profile is flat, so it
+/// behaves as a cylinder; a ball is narrow near its tip. The cutter may reach
+/// material by at most `radius * (1 - cos(pi / SWEPT_RAYS))` between two
+/// lines, 0.007 mm for a 1.5 mm radius.
+///
+/// **Resolution.** Material is found only if one of these lines meets it, so a
+/// stock whose overlap with the cutter's footprint is thinner than the spacing
+/// of the lines (about 0.2 times the cutting radius, 0.3 mm for a 1.5 mm
+/// radius) can be missed. The stock models are convex solids that contain the
+/// part (a cylinder, or the part's bounding box), so such a sliver is only the
+/// rim of the footprint, where the miss is the 0.007 mm above. `None` means no
+/// line met material, and the caller then descends to the approach distance
+/// above the goal; it is not a measured clearance.
+pub(crate) fn swept_entry(
+    stock: &dyn crate::stock::StockModel,
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tip: Point3,
+    direction: openchuck_types::geometry::UnitVec3,
+    max_distance: f64,
+) -> Option<f64> {
+    let mut best = stock.ray_entry(tip, direction, max_distance);
+    let radius = profile.cutting_radius();
+    if !(radius.is_finite() && radius > 0.0) {
+        return best;
+    }
+    // Up the tool axis is against the way it moves.
+    let up = -direction.get();
+    // Two directions across the tool axis: along the rotary axis (model X)
+    // and the one perpendicular to both.
+    let along = openchuck_types::geometry::Vec3::new(1.0, 0.0, 0.0);
+    let across = up.cross(along);
+    let len = across.length();
+    if len < 1e-9 {
+        return best;
+    }
+    let across = across * (1.0 / len);
+    for ring in 1..=SWEPT_RINGS {
+        let d = radius * f64::from(ring) / f64::from(SWEPT_RINGS);
+        let rise = profile.height_at(d).unwrap_or(0.0);
+        for k in 0..SWEPT_RAYS {
+            let angle = std::f64::consts::TAU * f64::from(k) / f64::from(SWEPT_RAYS);
+            let origin = tip + up * rise + along * (d * angle.cos()) + across * (d * angle.sin());
+            if let Some(e) = stock.ray_entry(origin, direction, max_distance) {
+                best = Some(best.map_or(e, |b| b.min(e)));
+            }
+        }
+    }
+    best
+}
+
 /// Leaves the cut along the tool axis at the plunge feed until the tool tip
 /// is the approach distance above the stock on that line (the stock model
 /// may not know what this operation has cut), so the rapid retract that
@@ -448,12 +545,22 @@ fn footprint_entry(
     travel: f64,
 ) -> Option<f64> {
     let down = openchuck_types::geometry::UnitVec3::new(-b.rotary.tool_axis(a).get()).ok()?;
+    if !stock.wide {
+        // A finishing pass against the setup's stock: the cutter's own
+        // surface is probed, not the tool axis alone, so a rapid beside the
+        // stock (a lead arc outside the part, next to the stock end) never
+        // puts the cutter into it (decision record 0034, as built).
+        let tip = b.rotary.to_model(
+            AxisPosition {
+                height: from_height,
+                ..at
+            },
+            a,
+        );
+        return swept_entry(stock.stock, b.profile, tip, down, travel);
+    }
     let mut nearest: Option<f64> = None;
-    let probes = if stock.wide {
-        &FOOTPRINT[..]
-    } else {
-        &FOOTPRINT[..1]
-    };
+    let probes = &FOOTPRINT[..];
     for &(u, v) in probes {
         let origin = b.rotary.to_model(
             AxisPosition {
