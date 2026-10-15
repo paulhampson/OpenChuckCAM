@@ -156,7 +156,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main` and lane G took record 0031 and OI-133 to OI-135 (unmerged branches hold 0028, 0030 and up to OI-132; the slice 11a branch's 0027 and OI-118 to OI-123 are in its pull request 41). Next free: record 0032, `OI-136`, project schema 7 (claimed in the table above as expected for lane C).
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main` and lane G took record 0031 and OI-133 to OI-135 (unmerged branches hold 0028, 0030 to 0032 and up to OI-140; the slice 11a branch's 0027 and OI-118 to OI-123 are in its pull request 41; lane B took record 0030 and OI-131, OI-132, and slice 10 took 0032 and OI-136 to OI-140). Next free: record 0033, `OI-141`, project schema 7 (claimed in the table above as expected for lane C).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -451,6 +451,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 ## Slice 9 – Toolpath and simulation display, playback and background jobs
 
 **Goal:** generate and simulate without freezing the UI, then review exactly what was generated.
+
+**Progress:** items 1 and 2 are built headless (14 Oct 2026; [decision 0030](decisions/0030-slice-9-pipeline-cache.md), accepted): the job manager existed from slice 0, and the pipeline now keeps an in-memory cache with chained keys, so editing operation N regenerates N and later operations only. Open: OI-131 (cache on disk) and OI-132 (simulation checkpoints cached, with items 5 and 6).
 
 **Requirements:** SIM-01, SIM-02, SIM-04, UI-09, NFR-04
 

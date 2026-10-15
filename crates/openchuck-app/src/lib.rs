@@ -24,6 +24,7 @@
 
 #![warn(missing_docs)]
 
+mod cache;
 mod command;
 mod error;
 pub mod form;
@@ -50,6 +51,7 @@ use openchuck_project::{
 };
 use setup::{PartExtent, SetupReport};
 
+pub use cache::DEFAULT_CACHE_VERSIONS;
 pub use command::{Command, duplicate_operation};
 pub use error::AppError;
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
@@ -143,6 +145,7 @@ pub struct Application {
     /// [`Application::is_modified`]. Behind a lock so `save` can stay `&self`.
     saved: std::sync::Mutex<Project>,
     jobs: JobManager,
+    cache: cache::PipelineCache,
     strategies: Registry,
     post: Option<PostSelection>,
     events_tx: Sender<Event>,
@@ -185,6 +188,7 @@ impl Application {
             },
             history: History::default(),
             jobs: JobManager::new(threads)?,
+            cache: cache::PipelineCache::default(),
             strategies: Registry::builtin(),
             post: None,
             events_tx,
@@ -604,6 +608,7 @@ impl Application {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
+        let cache = self.cache.clone();
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
                 pipeline::regenerate(
@@ -612,6 +617,7 @@ impl Application {
                     &strategies,
                     post.as_ref(),
                     simulate,
+                    &cache,
                     context,
                 )
             })
@@ -620,6 +626,23 @@ impl Application {
     /// Regenerates, simulates and waits for the result.
     pub fn simulate(&self) -> Result<Regeneration, AppError> {
         self.start_simulate().wait()
+    }
+
+    /// How many generated results are kept for each operation, so that
+    /// going back to an earlier state (an undo, a parameter toggled back)
+    /// reuses a result instead of regenerating. At least the latest one is
+    /// useful; 0 turns the cache off. The default is
+    /// [`DEFAULT_CACHE_VERSIONS`].
+    pub fn cache_versions(&self) -> usize {
+        self.cache.versions()
+    }
+
+    /// Sets how many results are kept for each operation (see
+    /// [`Application::cache_versions`]). Results beyond the new number are
+    /// dropped at once, oldest first. Each is a whole toolpath, so a higher
+    /// number costs memory on long paths.
+    pub fn set_cache_versions(&self, count: usize) {
+        self.cache.set_versions(count);
     }
 
     /// Chooses the post that turns toolpaths into G-code (GC-02, OI-88).
@@ -639,7 +662,10 @@ impl Application {
         &mut self,
         strategy: std::sync::Arc<dyn Strategy>,
     ) -> Result<(), AppError> {
-        Ok(self.strategies.register(strategy)?)
+        self.strategies.register(strategy)?;
+        // A new strategy may replace what a cached result was made with.
+        self.cache.clear();
+        Ok(())
     }
 
     /// Regenerates and waits for the result.
