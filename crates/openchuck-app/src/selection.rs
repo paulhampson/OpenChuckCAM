@@ -341,21 +341,38 @@ impl Application {
         set: SelectionSetId,
         included: bool,
     ) -> Result<(), AppError> {
-        if !self
+        let found = self
             .document
             .project
             .selection_sets()
             .iter()
-            .any(|s| s.id == set)
-        {
-            return Err(AppError::UnknownSelection(set.to_string()));
-        }
+            .find(|s| s.id == set)
+            .ok_or_else(|| AppError::UnknownSelection(set.to_string()))?;
         let mut edited = self
             .document
             .project
             .operation(operation)
             .cloned()
             .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+        // A set made on another model can never be resolved against this
+        // operation's part (generation refuses it), so it is not put in.
+        // Taking one out is always allowed.
+        if included
+            && let Some(part) = self
+                .document
+                .project
+                .setup(edited.setup)
+                .and_then(|s| s.part)
+            && found.model != part
+        {
+            return Err(AppError::Selection {
+                name: found.name.clone(),
+                reason: format!(
+                    "it was made on a different model from the part of the setup of '{}'",
+                    edited.name
+                ),
+            });
+        }
         let list = match role {
             SelectionRole::Machine => &mut edited.selections,
             SelectionRole::Avoid => &mut edited.avoid,

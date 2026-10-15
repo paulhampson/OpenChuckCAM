@@ -276,3 +276,27 @@ fn req_op_02_a_set_made_on_another_version_of_the_model_shows_a_warning() {
     assert!(problem.contains("select again"), "{problem}");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn req_op_02_a_set_from_another_model_is_not_put_in_an_operation() {
+    let (dir, mut app, op, model) = project("othermodel");
+    let cube = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/cube_ascii.stl");
+    std::fs::copy(cube, dir.join("models/other.stl")).unwrap();
+    let (other, _) = app.add_model(&dir.join("models/other.stl"), None).unwrap();
+    assert_ne!(other, model);
+    let foreign = app.save_selection("Foreign", other, set(&[2, 3])).unwrap();
+    let own = app.save_selection("Own", model, set(&[2, 3])).unwrap();
+
+    let before = app.project().clone();
+    let error = app
+        .set_operation_selection(op, SelectionRole::Machine, foreign, true)
+        .unwrap_err();
+    assert!(error.to_string().contains("different model"), "{error}");
+    assert_eq!(*app.project(), before);
+    app.set_operation_selection(op, SelectionRole::Machine, own, true)
+        .unwrap();
+    // Taking a set out is never refused.
+    app.set_operation_selection(op, SelectionRole::Machine, foreign, false)
+        .unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}
