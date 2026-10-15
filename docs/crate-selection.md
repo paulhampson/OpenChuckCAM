@@ -28,7 +28,7 @@ Supporting layers added after the architecture review (judgment from the scores,
 | IDs and content hashes | uuid (99), blake3 (93) | sha2 (85) | Order keys: write them in-house; fractional\_index (64) is the only crate and is a reference |
 | Post templates | minijinja (94) | handlebars (93), tera (90) | Runtime templates users can edit; askama (85) compiles them in |
 | Post scripting (P2) | Spike rhai (90) | starlark (84), mlua (94) | Fit over rank: rhai is pure Rust, starlark is built to be deterministic, mlua needs a C compiler |
-| Setup sheet | HTML from the template engine; printpdf (90) when a PDF is required | typst (88) | typst is heavy; genpdf (53) is abandoned |
+| Setup sheet | In-house HTML and PDF writers from one document model (decision 0028); printpdf (90) or pdf-writer (75) if layout quality matters | typst (88) | typst is heavy; genpdf (53) is abandoned |
 | Embedded Git | git2 (96) | gix (79) | gix's own status file lists checkout, merge and restore as not done |
 | NURBS evaluation | In-house, pure Rust, from plain data (decision 0017); analytic surfaces in-house | curvo (71), tried by SP-9 and not adopted | Matches in accuracy but its closest point takes 2.4 ms (20 times the in-house code), its ray tool is experimental and untrimmed and it panics on periodic input; brepkit-math (66) is AGPL |
 | Python and C bindings | pyo3 (99) with maturin (82); cbindgen (84) | uniffi (81), diplomat (82) | Standard routes |
@@ -428,7 +428,7 @@ Scores for the crates above:
 
 ## Setup sheets and PDF output
 
-GC-12 asks for a setup sheet as HTML or PDF. HTML needs no extra crate: it is the same template engine as the posts, and the user can print it to PDF from a browser. A PDF crate is only needed if the app must write the file itself.
+GC-12 asks for a setup sheet as HTML or PDF. HTML needs no extra crate, and the user can print it to PDF from a browser. A PDF crate is only needed if the app must write the file itself.
 
 | Crate | What it gives you | Status seen | Catch |
 | --- | --- | --- | --- |
@@ -448,7 +448,7 @@ Scores for the crates above:
 | krilla | 4 | 2 | 4 | 4.3 | 3 | 5 | **74** |
 | genpdf | 1 | 4 | 2 | 3.3 | 2 | 5 | **53** |
 
-`printpdf` (90) is the pragmatic choice for a plain tabular setup sheet. `typst` (88) gives much better output (real typesetting) and ranks first if features are weighted more heavily, but it is a large dependency and ties the sheet to Typst's release pace. `genpdf` (53) has had no release for over five years. Recommendation, as judgment: ship HTML first, add `printpdf` when the PDF requirement is firm, and look at `typst` only if layout quality becomes a user complaint.
+`printpdf` (90) was the pragmatic crate choice for a plain tabular setup sheet, and `typst` (88) gives much better output but is a large dependency. **Decision 0028 (accepted 15 Oct 2026) builds neither:** the sheet is written in `openchuck-app` from one document model, as HTML with an escaping helper and as a PDF by about 150 lines of in-house code (PDF 1.4, A4, the built-in Courier fonts, nothing embedded, no date or identifier, so the bytes repeat). `printpdf` 0.12.8 locks 105 packages even with default features off. `printpdf` and `pdf-writer` (75) stay the fallbacks behind the same document model if layout quality becomes a user complaint; `typst` only then. `genpdf` (53) has had no release for over five years.
 
 ## Embedded version control
 

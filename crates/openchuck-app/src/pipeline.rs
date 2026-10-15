@@ -78,7 +78,10 @@ pub(crate) fn regenerate(
     location: &Path,
     project: &Project,
     registry: &Registry,
-    post: Option<&crate::posting::PostSelection>,
+    post: Option<(
+        &crate::posting::PostSelection,
+        crate::posting::OutputGrouping,
+    )>,
     simulate: bool,
     cache: &PipelineCache,
     context: &JobContext<'_>,
@@ -207,10 +210,10 @@ pub(crate) fn regenerate(
         ));
     }
     regeneration.toolpath.validate()?;
-    if let Some(selection) = post {
+    if let Some((selection, grouping)) = post {
         context.check_cancelled()?;
         let (files, reports, notes) =
-            crate::posting::post_toolpath(project, &regeneration.toolpath, selection)?;
+            crate::posting::post_toolpath(project, &regeneration.toolpath, selection, grouping)?;
         regeneration.gcode = files;
         regeneration.reports = reports;
         regeneration.notes.extend(notes);
