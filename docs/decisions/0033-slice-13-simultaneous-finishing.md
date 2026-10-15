@@ -1,8 +1,8 @@
 # 0033: Slice 13 design refinement: simultaneous 4-axis finishing
 
-- **Status:** proposed (15 Oct 2026). Built and tested on branch `claude/lane-i-slice-13-simultaneous` (lane I of the work breakdown's parallel work). Items 2, 3, 5 and 6 (the tool-axis policy and the meaning of lead and tilt, the A smoothing, the defaults, and building no climb) need the owner's agreement (OI-145, OI-146). It relies on accepted records [0012](0012-sp-13-tool-profiles.md) (one revolved profile, the generic drop-cutter, the normal-offset fast path), [0015](0015-sp-4-ray-cast-sweep.md) (SP-4: the tool-axis policy, smoothed normals, determinism), [0018](0018-slice-5-pathing-core.md) (the pathing core: ports, drop-cutter for any line, A-axis management, path fitting, contact feed), [0026](0026-entry-moves.md) (entry moves) and [0032](0032-slice-10-mesh-selection.md) (region constraints).
+- **Status:** proposed (15 Oct 2026). Built and tested on branch `claude/lane-i-slice-13-simultaneous` (lane I of the work breakdown's parallel work). The owner accepted item 3, the meaning of lead and tilt with its defaults, on 15 Oct 2026 (OI-145 closed). Items 2, 5 and 6 (the tool-axis policy, the A smoothing, and building no climb for meshes) still need the owner's agreement (OI-146). It relies on accepted records [0012](0012-sp-13-tool-profiles.md) (one revolved profile, the generic drop-cutter, the normal-offset fast path), [0015](0015-sp-4-ray-cast-sweep.md) (SP-4: the tool-axis policy, smoothed normals, determinism), [0018](0018-slice-5-pathing-core.md) (the pathing core: ports, drop-cutter for any line, A-axis management, path fitting, contact feed), [0026](0026-entry-moves.md) (entry moves) and [0032](0032-slice-10-mesh-selection.md) (region constraints).
 - **Date:** 15 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-67 is proposed closed by item 4; OI-66 progresses; OI-65, OI-77 and OI-81 stay open; OI-145 to OI-148 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-67 is proposed closed by item 4; OI-66 progresses; OI-65, OI-77 and OI-81 stay open; OI-145 to OI-148 are new, and OI-145 is closed (item 3 accepted).
 
 Numbering: records up to 0032 and OI-01 to OI-140 are on `main`; the unmerged slice 19 branch (`claude/awesome-sagan-wqv9bz`) holds record 0028 and OI-141 to OI-144. This record takes 0033 and OI-145 to OI-148. It takes **no project schema number**: the strategy's settings are operation parameters (work breakdown, "Project schema ordering", rule 3).
 
@@ -14,7 +14,7 @@ Work breakdown slice 13 (true simultaneous 4-axis finishing) covers OP-05, OP-06
 | --- | --- | --- |
 | 1. Drive curves on selected surfaces, exact `SurfaceSource` where available | Item 1 | Built; exact faces give the drive points and normals, the drop still uses their tessellation (OI-81) |
 | 2. Tool-centre solving for every profile | Item 6 | Built and checked for all eight tool types |
-| 3. A near the normal within lead and tilt limits (OP-06) | Items 2, 3 | Built; meaning proposed (OI-145) |
+| 3. A near the normal within lead and tilt limits (OP-06) | Items 2, 3 | Built; meaning accepted 15 Oct 2026 (OI-145 closed) |
 | 4. Smooth continuous A, limits, reversals minimised (OP-15) | Item 5 | Built |
 | 5. Gouge protection, fix-up or rejection; STL tolerance stated | Items 7, 9 | Built |
 | 6. Feed compensation verified against the analytic value (OP-13) | Item 8 | Built (the shared services), measured |
@@ -28,7 +28,7 @@ Work breakdown slice 13 (true simultaneous 4-axis finishing) covers OP-05, OP-06
 
    A **drive point** is where a ray from outside the part towards the axis first meets the surface, through `SurfaceSource::cast_ray`, so the same code serves meshes and exact faces. Exact faces give their own normal; a mesh gives the smoothed normal of item 4. This is SP-4's "step A, cast along X" read as the surface sampled at stations round and along the axis. A surface a ray from outside cannot see (an undercut, the far wall of a slot narrower than the ray's reach) is not driven; the tool could not reach most of it at a vertical tool axis either (OI-148).
 2. **Tool-axis policy (OP-06; decision 0015 item 3).** At a drive point with outward normal `n`, the best axis A allows is `n`'s part in the plane perpendicular to X, at polar angle `phi_n` (from +Y towards +Z). The tool axis is given the target angle `phi_n + lead * travel`, where `travel` is +1 or -1 as the track moves round the axis, and `A = sense * (90 - phi)`. The part of `n` along X, the **X-slope angle**, cannot be removed by any A; the largest is reported in a note (item 9), as decision 0015 asks.
-3. **Lead and tilt, as proposed meanings (OI-145).** A rotary axis leaves one degree of freedom for the tool axis, the angle in the plane perpendicular to X, so "lead" and "tilt" are two uses of it:
+3. **Lead and tilt (OI-145; accepted by the owner, 15 Oct 2026).** A rotary axis leaves one degree of freedom for the tool axis, the angle in the plane perpendicular to X, so "lead" and "tilt" are two uses of it:
    - `lead_angle` (degrees, -30 to 30, default 0) leans the tool axis from the normal towards the direction of travel round the axis (for example to keep a ball's centre off the cut). It applies to the spiral; axial passes travel along X, where A cannot lean the tool, and a non-zero lead is refused for them with a message.
    - `max_tilt` (degrees, 0 to 30, default 10) is the most the tool axis may leave its target (the normal plus the lead) so that A turns smoothly with fewer reversals (item 5). 0 follows the normal exactly.
 
@@ -90,7 +90,7 @@ Tests named after the requirement IDs, in `crates/openchuck-path/tests/simultane
 
 ## Consequences
 
-- No change to `requirements.md` or `architecture.md`. Item 3 gives OP-06's lead and tilt a meaning the requirement leaves open; it is proposed, not edited in (OI-145). Item 6 departs from accepted decision 0015 item 2 by not building the climb (OI-146).
+- No change to `requirements.md` or `architecture.md`. Item 3 gives OP-06's lead and tilt a meaning the requirement leaves open; the owner accepted it (OI-145), and this record is where it is written down, so `requirements.md` is not edited. Item 6 departs from accepted decision 0015 item 2 by not building the climb (OI-146).
 - `openchuck-path`: new module `simultaneous`, `Strategy::passes_with_notes`, `StrategyOutput`, `Registry::builtin` holds two strategies. Additions only.
 - `openchuck-testkit`: `LobedVase`.
 - `openchuck-app`: no code change; the reference job set gains `lobed` and its golden programs, and the audit's A-step limit is per job.
@@ -102,7 +102,7 @@ Tests named after the requirement IDs, in `crates/openchuck-path/tests/simultane
 
 | # | Item | Decide in | Needs |
 | --- | --- | --- | --- |
-| 1 | The meaning of OP-06's lead and tilt limits on a rotary axis, and the defaults (lead 0, `max_tilt` 10, both up to 30 degrees), as item 3 proposes. (OI-145) | Owner's review of this record | |
+| 1 | The meaning of OP-06's lead and tilt limits on a rotary axis, and the defaults (lead 0, `max_tilt` 10, both up to 30 degrees), as item 3 proposes. Accepted by the owner, 15 Oct 2026. (OI-145) | Closed | |
 | 2 | Not building the climb of accepted decision 0015 item 2 for meshes (item 6): the exact, exhaustive drop is used instead, at 2.4 to 3 times the climb's time per pose for a ball tool (about even to 1.8 times for a flat); the climb stays a candidate for exact faces (OI-81). Decide whether the speed matters before a time budget exists. (OI-146) | Owner's review of this record | |
 | 3 | Gate 3 replay of the `lobed` reference job in the LinuxCNC simulator (checklist item 5). (OI-147) | This pull request's CI | The gate 3 job |
 | 4 | Drive points come from rays from outside the part, so surfaces hidden from such a ray (undercuts, the far wall of a narrow slot) are not driven, and the climb's concave cases (OI-66) are untested. Decide whether a closest-point or offset-surface drive is needed for P1, with a corpus of concave features. (OI-148) | Before slice 13 closes, with OI-66 | A corpus with concave pockets and thin walls |

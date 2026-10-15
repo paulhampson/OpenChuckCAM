@@ -561,7 +561,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, T) are not expected to
 
 **Goal:** A varies continuously with X, Y and Z to follow the surface, with the tool held near the surface normal.
 
-**Status:** built on branch `claude/lane-i-slice-13-simultaneous` (lane I), design in [decision 0033](decisions/0033-slice-13-simultaneous-finishing.md) (proposed): items 1 to 7 as the record's table says, with the drop on exact faces still using their tessellation (OI-81). The meaning of lead and tilt (OI-145) and not building SP-4's climb (OI-146) wait on the owner; the gate 3 replay of the new `lobed` reference job waits on CI (OI-147); drive points hidden from a ray from outside (OI-148, with OI-66) are open. Not closed: the checklist is ticked below only for what the record shows. No project schema number.
+**Status:** built on branch `claude/lane-i-slice-13-simultaneous` (lane I), design in [decision 0033](decisions/0033-slice-13-simultaneous-finishing.md) (proposed): items 1 to 7 as the record's table says, with the drop on exact faces still using their tessellation (OI-81). The meaning of lead and tilt is accepted (OI-145, closed 15 Oct 2026); not building SP-4's climb for meshes (OI-146) waits on the owner; the gate 3 replay of the new `lobed` reference job waits on CI (OI-147); drive points hidden from a ray from outside (OI-148, with OI-66) are open. Not closed: the checklist is ticked below only for what the record shows. No project schema number.
 
 **Requirements:** OP-05, OP-06, OP-12
 
