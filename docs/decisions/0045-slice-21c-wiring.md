@@ -1,6 +1,6 @@
 # 0045: Slice 21c design refinement: wiring workholding and tabs into the application (SET-09, OP-21)
 
-- **Status:** accepted by the project owner (16 Oct 2026), relayed by the orchestrator session at the owner's instruction (decision 0049). The owner accepted it with all six choices as built except item 4, which was changed so the command line refuses too (made in this record and the code), and decided OI-209 (below). Built on `claude/lane-w-slice-21c-wiring` (lane W). It refines [decision 0035](0035-workholding-and-retaining-tabs.md) (accepted, with the owner's answers) and [decision 0041](0041-slice-21a-workholding-data.md) (accepted), and it builds on [decision 0042](0042-slice-21b-composite-target.md), which is **still proposed** (the owner is reviewing it): this record relies on 0042 as guidance, not as authority, and the lane's code uses the `Solid` and `CompositeSurface` types it describes. It adds nothing to the requirements or the architecture.
+- **Status:** accepted by the project owner (16 Oct 2026), relayed by the orchestrator session at the owner's instruction (decision 0049). The owner accepted it with all six choices as built except item 4, which was changed so the command line refuses too (made in this record and the code), and decided OI-209 (below). Built on `claude/lane-w-slice-21c-wiring` (lane W). It refines [decision 0035](0035-workholding-and-retaining-tabs.md) (accepted, with the owner's answers) and [decision 0041](0041-slice-21a-workholding-data.md) (accepted), and it builds on [decision 0042](0042-slice-21b-composite-target.md) (accepted 16 Oct 2026): the lane's code uses the `Solid` and `CompositeSurface` types it describes. It adds nothing to the requirements or the architecture.
 - **Date:** 16 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-195 to OI-198 and OI-209; OI-180 closes.
 
@@ -39,7 +39,7 @@ Slice 21c connects the setup's `[workholding]` data (21a, merged) to the composi
 
 - `docs/work-breakdown.md`: slice 21 status, checklist, the lane W row, the numbers paragraph. `docs/open-items.md`: OI-195 to OI-198 and OI-209 added; OI-180 closed. `docs/verification-plan.md`: the SET-09 and OP-21 rows name the tests. Decision index.
 - New public items: `openchuck-app::workholding`, `Application::start_default_tabs`, `check_workholding`, `start_workholding_warnings`, `SceneRole::HeldRegion` and `Tab`. No field is added to a public struct of the library family, and `openchuck-path` and `openchuck-types` are unchanged.
-- Lane W relies on decision 0042 while it is proposed.
+- Lane W builds on decision 0042 (accepted).
 
 ## Open items
 
