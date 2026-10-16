@@ -345,7 +345,7 @@ impl Registry {
     /// The strategies this library provides: helical, axial and indexed
     /// finishing (OP-04), rotary roughing (OP-03) and simultaneous 4-axis
     /// finishing (OP-05, OP-06), and rest machining and pencil clean-up
-    /// (OP-09).
+    /// (OP-09), and edge and curve following (OP-08).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
@@ -356,6 +356,7 @@ impl Registry {
         let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         let _ = registry.register(Arc::new(crate::rest::RestMachining));
         let _ = registry.register(Arc::new(crate::pencil::PencilFinishing));
+        let _ = registry.register(Arc::new(crate::edge_following::EdgeFollowing::default()));
         registry
     }
 
