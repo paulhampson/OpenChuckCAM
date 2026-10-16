@@ -5,8 +5,9 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{self, Color32, PointerButton, Rect, Sense, pos2};
+use eframe::egui::{self, Color32, Modifiers, PointerButton, Rect, Sense, pos2};
 use eframe::egui_wgpu;
+use openchuck_app::pick::ScenePick;
 use openchuck_app::scene::{SceneRole, SceneView};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
@@ -92,6 +93,7 @@ fn to_color32(c: Colour) -> Color32 {
 struct Resources {
     renderer: Renderer,
     generation: u64,
+    overlay_generation: u64,
 }
 
 /// One frame's draw request.
@@ -99,6 +101,8 @@ struct Callback {
     frame: Frame,
     /// A new scene to upload, with its generation.
     scene: Option<(u64, Arc<Scene>)>,
+    /// The overlay and its generation.
+    overlay: (u64, Arc<Scene>),
 }
 
 impl egui_wgpu::CallbackTrait for Callback {
@@ -116,6 +120,11 @@ impl egui_wgpu::CallbackTrait for Callback {
             {
                 r.renderer.set_scene(device, scene);
                 r.generation = *generation;
+            }
+            let (generation, overlay) = &self.overlay;
+            if *generation != r.overlay_generation {
+                r.renderer.set_overlay(device, overlay);
+                r.overlay_generation = *generation;
             }
             r.renderer.prepare(device, queue, &self.frame);
         }
@@ -144,6 +153,7 @@ pub fn install(cc: &eframe::CreationContext<'_>) -> bool {
     state.renderer.write().callback_resources.insert(Resources {
         renderer,
         generation: 0,
+        overlay_generation: 0,
     });
     true
 }
@@ -165,6 +175,21 @@ pub struct Viewport {
     drawn: u64,
     /// The viewport size in physical pixels, at the last frame.
     pixels: [u32; 2],
+    /// Drawn over the scene: highlights (UI-04).
+    overlay: Arc<Scene>,
+    overlay_generation: u64,
+    /// Whether the pointer picks triangles of the part (slice 10 item 1).
+    picking: bool,
+    input: PickInput,
+}
+
+/// What the pointer did over the part in the last frame (UI-04).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PickInput {
+    /// The triangle under the pointer.
+    pub hover: Option<ScenePick>,
+    /// The triangle clicked, and the keys held.
+    pub click: Option<(ScenePick, Modifiers)>,
 }
 
 impl Viewport {
@@ -181,6 +206,10 @@ impl Viewport {
             aspect: 1.0,
             drawn: 0,
             pixels: [0, 0],
+            overlay: Arc::new(Scene::default()),
+            overlay_generation: 0,
+            picking: false,
+            input: PickInput::default(),
         }
     }
 
@@ -190,6 +219,27 @@ impl Viewport {
         self.view = view;
         self.generation += 1;
         self.fit_pending |= fit;
+    }
+
+    /// Replaces the highlights drawn over the scene.
+    pub fn set_overlay(&mut self, overlay: Scene) {
+        self.overlay = Arc::new(overlay);
+        self.overlay_generation += 1;
+    }
+
+    /// Lets the pointer pick triangles of the part: hover and click are then
+    /// reported by [`take_input`](Self::take_input) and a click no longer
+    /// only orbits.
+    pub fn set_picking(&mut self, on: bool) {
+        self.picking = on;
+        if !on {
+            self.input = PickInput::default();
+        }
+    }
+
+    /// What the pointer did in the last frame, once.
+    pub fn take_input(&mut self) -> PickInput {
+        std::mem::take(&mut self.input)
     }
 
     /// The scene view model shown.
@@ -283,6 +333,8 @@ impl Viewport {
             }
         }
 
+        self.pick(ui, &response, rect);
+
         let frame = Frame {
             camera: self.camera,
             aspect: self.aspect,
@@ -293,10 +345,40 @@ impl Viewport {
             Callback {
                 frame,
                 scene: Some((self.generation, Arc::clone(&self.scene))),
+                overlay: (self.overlay_generation, Arc::clone(&self.overlay)),
             },
         ));
         self.drawn = self.generation;
         self.draw_labels(ui, rect);
+    }
+
+    /// Hover and click picking (UI-04): the pointer becomes a ray, the scene's
+    /// picker finds the triangle, and the shell is told. Not run while the
+    /// pointer is dragging the camera.
+    fn pick(&mut self, ui: &egui::Ui, response: &egui::Response, rect: Rect) {
+        self.input = PickInput::default();
+        if !self.picking || response.dragged() {
+            return;
+        }
+        let Some(picker) = self.view.picking.picker() else {
+            return;
+        };
+        let Some(pointer) = response.hover_pos() else {
+            return;
+        };
+        let ndc = [
+            f64::from((pointer.x - rect.left()) / rect.width()) * 2.0 - 1.0,
+            1.0 - f64::from((pointer.y - rect.top()) / rect.height()) * 2.0,
+        ];
+        let (origin, direction) = self.camera.ray(ndc, self.aspect);
+        let Ok(Some(hit)) = picker.pick(origin, direction) else {
+            return;
+        };
+        self.input.hover = Some(hit);
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        if response.clicked_by(PointerButton::Primary) {
+            self.input.click = Some((hit, ui.input(|i| i.modifiers)));
+        }
     }
 
     /// Draws the scene's labels ("A+", the work axes) at their projected points.
@@ -368,6 +450,7 @@ mod tests {
         let view = SceneView {
             meshes: vec![SceneMesh {
                 role: SceneRole::Problem,
+                model: None,
                 mesh: mesh(),
                 feature_edges: Vec::new(),
             }],
@@ -379,6 +462,94 @@ mod tests {
         assert!(scene.lines[0].on_top);
         // Two triangles, three sides each, two points a side.
         assert_eq!(scene.lines[0].segments.len(), 12);
+    }
+
+    /// A scene of the corpus cube with its picker, built through the
+    /// application as the shell does.
+    fn cube_scene(name: &str) -> SceneView {
+        use openchuck_app::{Application, Threads};
+        let dir =
+            std::env::temp_dir().join(format!("openchuck-ui-pick-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+        let view = app.start_scene(None).wait().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        view
+    }
+
+    /// Runs one frame with the viewport filling a 400 by 400 screen and the
+    /// pointer at `pointer`, with a primary click when `click`.
+    fn frame(viewport: &mut Viewport, ctx: &egui::Context, pointer: egui::Pos2, click: bool) {
+        // egui hit-tests against the widgets of the previous frame, so a
+        // frame with the pointer there and no click comes first.
+        run_frame(viewport, ctx, vec![egui::Event::PointerMoved(pointer)]);
+        let _ = viewport.take_input();
+        let mut events = vec![egui::Event::PointerMoved(pointer)];
+        if click {
+            events.push(egui::Event::ModifiersChanged(Modifiers::SHIFT));
+            for pressed in [true, false] {
+                events.push(egui::Event::PointerButton {
+                    pos: pointer,
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers: Modifiers::SHIFT,
+                });
+            }
+        }
+        run_frame(viewport, ctx, events);
+    }
+
+    fn run_frame(viewport: &mut Viewport, ctx: &egui::Context, events: Vec<egui::Event>) {
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(
+                pos2(0.0, 0.0),
+                egui::vec2(400.0, 400.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| viewport.show(ui));
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn req_ui_04_the_pointer_picks_the_triangle_it_is_over_and_a_click_reports_the_keys() {
+        let view = cube_scene("pointer");
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_picking(true);
+        // Looking down from +Z, the middle of the view is the cube's top face.
+        viewport.set_view(StandardView::Top);
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), false);
+        let hover = viewport
+            .take_input()
+            .hover
+            .expect("the cube is under the pointer");
+        assert!((hover.normal.unwrap().z - 1.0).abs() < 1e-9, "{hover:?}");
+        // The front view looks along +Y at the face with normal -Y.
+        viewport.set_view(StandardView::Front);
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), false);
+        let front = viewport.take_input().hover.unwrap();
+        assert!((front.normal.unwrap().y + 1.0).abs() < 1e-9, "{front:?}");
+        // The corner of the window is empty space.
+        frame(&mut viewport, &ctx, pos2(2.0, 2.0), false);
+        assert_eq!(viewport.take_input().hover, None);
+        // A click carries the triangle and the modifiers held.
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), true);
+        let input = viewport.take_input();
+        let (pick, modifiers) = input.click.expect("a click");
+        assert_eq!(Some(pick), input.hover);
+        assert!(modifiers.shift);
+        // With picking off nothing is reported.
+        viewport.set_picking(false);
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), true);
+        assert_eq!(viewport.take_input(), PickInput::default());
     }
 
     mod fixtures {

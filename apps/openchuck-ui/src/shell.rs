@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::project::ItemId;
-use openchuck_app::project::id::{ModelId, OperationId, SetupId, ToolId};
+use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::scene::SceneView;
 use openchuck_app::tool_edit;
 use openchuck_app::tools::{self, ToolProfile};
@@ -23,6 +23,7 @@ use crate::form_panel::{self, FormState};
 use crate::import_panel::{ImportAction, ImportSession};
 use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
+use crate::selection_panel::{self, SelectionPanel};
 use crate::tool_panel;
 use crate::viewport::Viewport;
 
@@ -90,6 +91,11 @@ pub struct Shell {
     machine_panel: Option<MachinePanel>,
     /// Typed text and refused values in the parameter form.
     form: FormState,
+    /// Picking triangles and the selection sets (slice 10).
+    selection: SelectionPanel,
+    /// What `model_file_warnings` said when the project opened, for the
+    /// selection warnings; reading every model file is not done per frame.
+    file_warnings: Vec<String>,
 }
 
 impl Shell {
@@ -111,6 +117,8 @@ impl Shell {
             model_panel: None,
             machine_panel: None,
             form: FormState::default(),
+            selection: SelectionPanel::default(),
+            file_warnings: Vec::new(),
         };
         if let Some(folder) = folder {
             shell.open(folder);
@@ -170,6 +178,8 @@ impl Shell {
         self.status = format!("Opened {}", app.location().display());
         // Model files changed or missing since they were added (PRJ-02, OI-45).
         let warnings = app.model_file_warnings();
+        self.file_warnings.clone_from(&warnings);
+        self.selection.clear();
         if !warnings.is_empty() {
             self.dialog = Some(Dialog::Error(format!(
                 "Some model files do not match the project:\n{}\n\nThe toolpaths will use the files \
@@ -211,7 +221,10 @@ impl Shell {
                 match result {
                     // While importing, the viewport shows the import preview.
                     Ok(_) if self.import.is_some() => {}
-                    Ok(view) => self.viewport.set_scene(view, fit),
+                    Ok(view) => {
+                        self.viewport.set_scene(view, fit);
+                        self.selection.scene_changed();
+                    }
                     Err(AppError::Engine(e)) if e.to_string().contains("cancel") => {}
                     Err(e) => self.status = format!("The view could not be built: {e}"),
                 }
@@ -427,17 +440,55 @@ impl Shell {
                         }
                     }
                 });
+            let summaries = app.selection_summaries(&self.file_warnings);
+            egui::CollapsingHeader::new(format!("Selections ({})", summaries.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    let on_part = self.selected == Some(Selection::Picking);
+                    if ui
+                        .selectable_label(on_part, "Select on the part…")
+                        .on_hover_text("Pick triangles in the view and save them as sets")
+                        .clicked()
+                    {
+                        command = Some(TreeAction::SelectPicking);
+                    }
+                    for s in &summaries {
+                        let selected = self.selected == Some(Selection::Set(s.id));
+                        let text = egui::RichText::new(format!("{} ({})", s.name, s.count));
+                        let text = if s.problem.is_some() {
+                            text.color(egui::Color32::from_rgb(230, 80, 80))
+                        } else {
+                            text
+                        };
+                        let row = ui.selectable_label(selected, text);
+                        if let Some(problem) = &s.problem {
+                            row.clone().on_hover_text(format!("⚠ {problem}"));
+                        }
+                        if row.clicked() {
+                            command = Some(TreeAction::SelectSet(s.id));
+                        }
+                    }
+                });
             egui::CollapsingHeader::new(format!("Operations ({})", project.operations().len()))
                 .default_open(true)
                 .show(ui, |ui| {
                     let count = project.operations().len();
                     for (index, o) in project.operations().iter().enumerate() {
+                        let warning = summaries
+                            .iter()
+                            .find(|s| {
+                                s.problem.is_some() && s.uses.iter().any(|u| u.operation == o.id)
+                            })
+                            .map(|s| {
+                                format!("{}: {}", s.name, s.problem.clone().unwrap_or_default())
+                            });
                         if let Some(c) = operation_row(
                             ui,
                             index,
                             count,
                             o,
                             self.selected == Some(Selection::Operation(o.id)),
+                            warning.as_deref(),
                         ) {
                             command = Some(c);
                         }
@@ -481,6 +532,15 @@ impl Shell {
                 self.select(Selection::Model(id));
                 return;
             }
+            TreeAction::SelectPicking => {
+                self.select(Selection::Picking);
+                return;
+            }
+            TreeAction::SelectSet(id) => {
+                self.selection.show_set(Some(id));
+                self.select(Selection::Set(id));
+                return;
+            }
             TreeAction::SelectMachine => {
                 if self.selected != Some(Selection::Machine) {
                     self.machine_panel = Some(MachinePanel::default());
@@ -510,7 +570,28 @@ impl Shell {
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
             Some(Selection::Model(id)) => self.model_properties(ui, id),
             Some(Selection::Machine) => self.machine_properties(ui),
+            Some(Selection::Picking | Selection::Set(_)) => self.selection_properties(ui),
             None => {}
+        }
+    }
+
+    /// Picking triangles and the selection sets (UI-04, UI-05).
+    fn selection_properties(&mut self, ui: &mut egui::Ui) {
+        let Some(app) = &mut self.app else { return };
+        let summaries = app.selection_summaries(&self.file_warnings);
+        if let Some(Selection::Set(id)) = self.selected
+            && !summaries.iter().any(|s| s.id == id)
+        {
+            self.selected = Some(Selection::Picking);
+        }
+        let error = egui::ScrollArea::vertical()
+            .show(ui, |ui| {
+                self.selection
+                    .show(ui, app, &summaries, self.viewport.view())
+            })
+            .inner;
+        if let Some(error) = error {
+            self.dialog = Some(Dialog::Error(error));
         }
     }
 
@@ -626,6 +707,9 @@ impl Shell {
             return;
         };
         ui.heading(&operation.name);
+        let summaries = app.selection_summaries(&self.file_warnings);
+        let roles = selection_panel::operation_roles(ui, app, id, &summaries);
+        ui.separator();
         let edit = match app.parameter_form(id) {
             Ok(form) => {
                 ui.weak(format!("Strategy: {}", form.strategy));
@@ -644,6 +728,23 @@ impl Shell {
                 .set_parameter(id, &edit.name, edit.value)
                 .map_err(|e| e.to_string());
             self.form.result(&edit.name, result);
+        }
+        if let Some(error) = roles {
+            self.dialog = Some(Dialog::Error(error));
+        }
+    }
+
+    /// Hands the pointer's picks to the selection panel and draws its
+    /// highlights (slice 10 item 1).
+    fn pick_frame(&mut self, ctx: &egui::Context) {
+        let input = self.viewport.take_input();
+        let Some(app) = &self.app else { return };
+        if self.selection.frame(app, input) {
+            ctx.request_repaint();
+        }
+        if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
+            self.viewport.set_overlay(overlay);
+            ctx.request_repaint();
         }
     }
 
@@ -938,6 +1039,10 @@ enum TreeAction {
     SelectModel(ModelId),
     /// Show the project's machine.
     SelectMachine,
+    /// Pick triangles on the part.
+    SelectPicking,
+    /// Show this selection set.
+    SelectSet(SelectionSetId),
 }
 
 /// What the properties panel shows.
@@ -947,6 +1052,10 @@ enum Selection {
     Tool(ToolId),
     Model(ModelId),
     Machine,
+    /// Picking on the part, and the selection sets (slice 10).
+    Picking,
+    /// A selection set, picking on the part as well.
+    Set(SelectionSetId),
 }
 
 /// One operation in the tree: enable box, name, and move up, move down and
@@ -957,6 +1066,7 @@ fn operation_row(
     count: usize,
     o: &openchuck_app::project::Operation,
     selected: bool,
+    warning: Option<&str>,
 ) -> Option<TreeAction> {
     let mut action = None;
     ui.horizontal(|ui| {
@@ -981,6 +1091,10 @@ fn operation_row(
         };
         if ui.selectable_label(selected, name).clicked() {
             action = Some(TreeAction::Select(o.id));
+        }
+        if let Some(warning) = warning {
+            ui.colored_label(egui::Color32::from_rgb(230, 80, 80), "⚠")
+                .on_hover_text(format!("A selection set cannot be used: {warning}"));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let id = ItemId::Operation(o.id);
@@ -1031,9 +1145,14 @@ impl eframe::App for Shell {
                 .default_size(320.0)
                 .show(ui, |ui| self.properties(ui));
         }
+        self.viewport.set_picking(matches!(
+            self.selected,
+            Some(Selection::Picking | Selection::Set(_))
+        ));
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.viewport.show(ui));
+        self.pick_frame(&ctx);
         self.import_frame(&ctx);
         self.dialogs(&ctx);
     }

@@ -152,6 +152,7 @@ These are starting values, chosen before there is anything to measure. They are 
 | Gouge | OP-12 | Zero overcut beyond the tolerance |
 | Simulation against reference | SIM-03, SIM-05 | Within one simulation cell at the chosen resolution, and no worse than 0.02 mm at the finest setting the user may choose, 0.025 mm (the default is 0.1 mm; decisions 0022 and 0025; measured 0.0187 mm) |
 | Feed on simultaneous moves | OP-13 | Effective feed at the cutter contact within ±2% of programmed |
+| Picking | UI-04 | On a model of 1 million triangles, a ray cast at most 1 ms at the 95th percentile (1,024 rays on a fixed grid) and the hierarchy built in at most 2 s, once per scene, off the interface thread. On hosted CI, whose runners are noisy, five times these figures; the strict figures are checked locally and on the reference machines of 4.2 (OI-12, [decision 0037](decisions/0037-slice-10-picking-and-selection-panel.md); measured 4.4 µs and 1.0 s) |
 | Determinism | GC-07, NFR-06 | Zero difference, byte for byte, at 1, 2 and all threads |
 | Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; at least 24 cumulative CPU hours per parser with no unresolved crash for release |
 | Performance regression | NFR-03, NFR-04 | Flag at 10% on the median of several runs, on a dedicated runner |
