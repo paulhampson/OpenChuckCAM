@@ -103,7 +103,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist (done 14 Oct 2026, [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md); the release workflow and bundle command are built in lane T) | ██ | | | | |
 | H | 12 baseline finishing | ░░ | ██ | | | |
 | I | 13 simultaneous 4-axis finishing (closed 15 Oct 2026, [decision 0036](decisions/0036-slice-13-simultaneous-finishing.md)) | ░░ | ██ | ██ | | |
-| J | 15 rest machining and pencil clean-up (built 15 Oct 2026 on `claude/lane-j-slice-15-rest-machining`, [decision 0044](decisions/0044-slice-15-rest-and-pencil.md), proposed) | ░░ | ██ | | | |
+| J | 15 rest machining and pencil clean-up (built 15 Oct 2026 on `claude/lane-j-slice-15-rest-machining`, [decision 0044](decisions/0044-slice-15-rest-and-pencil.md), accepted) | ░░ | ██ | | | |
 | K | 16 edge following on mesh feature edges | ░░ | ██ | | | |
 | L | 14 item 5: containment to selected regions | ░░ | ██ | | | |
 | M | 10 items 1 and 6: picking, hover, selection panel | ░░ | ░░ | ██ | | |
@@ -643,7 +643,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 4. Ordering and dependency handling between operations, using the pipeline invalidation from slice 9.
 5. Tests on parts with tight inside corners.
 
-**Status:** lane J built items 1 to 5 on `claude/lane-j-slice-15-rest-machining` ([decision 0044](decisions/0044-slice-15-rest-and-pencil.md), proposed, 15 Oct 2026). Remaining material is found through the `StockModel` port from the carried stock; `rest_machining` is helical finishing cut only where material is left; `pencil_finishing` follows concave mesh creases. Not built: selections (OI-190), indexed and simultaneous rest forms (OI-189), pencil side passes (OI-192). OI-191 and OI-193 are open. The slice closes when the owner accepts the record.
+**Status:** lane J built items 1 to 5 on `claude/lane-j-slice-15-rest-machining` ([decision 0044](decisions/0044-slice-15-rest-and-pencil.md), accepted 16 Oct 2026). Remaining material is found through the `StockModel` port from the carried stock; `rest_machining` is helical finishing cut only where material is left; `pencil_finishing` follows concave mesh creases. Not built: selections (OI-190), indexed and simultaneous rest forms (OI-189), pencil side passes (OI-192). OI-191 and OI-193 are open. The record is accepted, so the slice is closed; OI-189 to OI-193 carry the follow-ups.
 
 **Review checklist**
 

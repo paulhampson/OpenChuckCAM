@@ -1,6 +1,6 @@
 # 0044: Slice 15 design refinement: rest machining and pencil clean-up (lane J)
 
-- **Status:** proposed (15 Oct 2026), built on `claude/lane-j-slice-15-rest-machining`. Nothing in it changes a requirement, the architecture or a file format; the choices a reviewer is most likely to want to change are items 1, 3, 5 and 8.
+- **Status:** accepted by the project owner (16 Oct 2026, on their instruction in the session that built it). Built on `claude/lane-j-slice-15-rest-machining`. Nothing in it changes a requirement, the architecture or a file format. Its open items (OI-189 to OI-193) stay open for the owner's later choices.
 - **Date:** 15 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-189 to OI-193 are new; OI-113 and OI-150 progress.
 
