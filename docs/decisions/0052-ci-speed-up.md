@@ -212,6 +212,23 @@ At 19:35 eight pull requests were open, all with CI running or queued, and four 
 
 **The fast-checks job** (Option 8, pull request 64) ran in 6.6 min with every check passing. By step: `cargo xtask trace` 175 s, semver check 59 s, `cargo about` 54 s, `cargo deny` 32 s, repository checks `deps` 14 s, `cargo audit` 6 s, rustfmt 1 s. `xtask trace` compiles every test target of the workspace to list the tests; a cheaper listing is a candidate for a later option (it is the largest single step, on a job that is not on the critical path). A deliberate-failure run on a throwaway pull request (run 38957436177) showed the consolidation behaves as required: the `xtask records` step failed, the other repository checks still ran, conditionally skipped steps were skipped, the last step named the failure, `Fast checks` failed, and `CI required checks` failed with `Required jobs did not pass: fast-checks (failure)`.
 
+## Later decisions and results (16 Oct 2026, evening)
+
+**Merge queue: not available.** A GitHub merge queue would remove the update-and-rerun step before each merge, but it is not offered on a repository under a personal account (owner checked, 16 Oct 2026). The manual ordering stays: the orchestrator session releases each pull request in turn to update from `main`.
+
+**Draft-pull-request gate (draft gate item): accepted by the project owner (16 Oct 2026), relayed by the orchestrator session at the owner's instruction (decision 0049).** Accepted as proposed, in six points:
+1. `pull_request` also triggers on `ready_for_review`. `changes` and `Fast checks` always run; every heavy job (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke, fuzz) is conditioned on the pull request not being a draft. Pushes to `main` are unaffected.
+2. The `CI required checks` aggregator **fails on a draft** (a draft cannot merge). On a ready pull request or a push it requires `success` from every heavy job whose path filter is true and accepts `skipped` only when the filter is false, so a heavy job skipped on a ready pull request fails the run (stricter than today).
+3. Marking a draft ready always starts a full run on the current head (the trigger), and the per-pull-request concurrency group keeps only the newest run.
+4. The pull request that builds it is opened ready, to exercise the stricter aggregator; a throwaway draft pull request shows the draft path (only `changes` and `Fast checks` run).
+5. Expected saving: 14 of the 30 runs created on 16 Oct 2026 up to 19:34 UTC were cancelled by a newer push; a draft run is about 2 jobs against 17 to 31. A pull request with three pushes before it is ready saves about two full runs (about 300 runner minutes).
+6. It is built after pull requests 72 and 74 have merged, so that it does not add another update-and-rerun cycle to them.
+
+**Measured results of the accepted options.**
+- Option 3 (Gate 3 in three shares, pull request 74, run 38959733906): the three legs took 7.3, 7.4 and 7.7 min (replay 6.6 to 6.9 min) against 20.1 to 23.9 min on one runner. Gate 3 is no longer the longest job; Build and test (18 to 25 min) and Coverage trend (22 to 26 min) are.
+- Option 7 (fuzz in three jobs, pull request 72, run 38957532037): 4.2, 4.9 and 4.1 min, about 13.2 runner minutes against about 25 for nine legs, and 3 slots instead of 9.
+- Option 8 (fast checks in one job, pull request 64): `Fast checks` ran 6.8 min on the final run, in place of six jobs; merged 16 Oct 2026. Option 1 (pull request 65) merged the same day.
+
 ## Open items
 
 | # | Item | Needed from |
