@@ -303,6 +303,9 @@ jobs:
       # Exact evaluation against the kernel itself (decision 0017: the SP-9 comparison, kept).
       - name: Exact surfaces against the kernel
         run: cargo test --locked -p openchuck-app --features kernel-tests --test step_exact
+      # B-rep edges of the corpus as edge chains (OP-08, decision 0053); needs the worker built above.
+      - name: B-rep edge chains of the STEP corpus
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 

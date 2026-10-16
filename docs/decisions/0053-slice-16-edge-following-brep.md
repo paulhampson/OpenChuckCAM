@@ -47,7 +47,7 @@ Tests in `crates/openchuck-path/tests/brep_edge_following.rs` (hand-built B-rep,
 | Shortest chain, chosen edges, bad input | `req_op_08_brep_short_chains_are_dropped_by_the_shortest_length`, `req_op_08_brep_chosen_edges_are_the_only_ones_followed_and_a_bad_id_is_refused`, `req_op_08_brep_a_part_with_no_real_edge_says_so` |
 | Engraved depth is constant on a curved B-rep surface, closed and open chains (item 5; checklist) | `req_op_08_brep_engraved_depth_is_constant_on_a_curved_surface_closed_chains`, `req_op_08_brep_engraved_depth_is_constant_along_an_open_helix_on_a_curved_surface` |
 | Identical results at 1, 2 and N threads | `req_nfr_06_req_op_08_brep_edge_following_is_identical_at_1_2_and_n_threads` |
-| A STEP corpus part | `crates/openchuck-app/tests/brep_edges_step.rs` (kernel; see its tests for the parts and counts) |
+| STEP corpus parts (kernel; the step-kernel CI job runs them) | `req_op_08_step_a_box_has_twelve_open_chains`, `req_op_08_step_seams_poles_and_degenerate_edges_are_no_edges` (cylinder, cone, sphere, torus, revolved spline), `req_op_08_step_the_boundaries_of_fillets_are_edges_only_at_crease_angle_zero` (filleted box: none by default, 48 at 0), `req_op_08_step_chains_are_the_same_on_every_call`, `req_op_08_step_a_rotary_blank_is_engraved_along_its_b_rep_edges_at_constant_depth` (all in `crates/openchuck-app/tests/brep_edges_step.rs`; each runs in under 3 s) |
 | Edge selections persist across save and load | **Not built here and not claimed:** it waits for lane O (OI-204) |
 
 ## Consequences

@@ -261,9 +261,18 @@ fn is_seam(face: &ExactFace, polyline: &[Point3]) -> bool {
             let across_v = opposite(v, lo.v, hi.v).map(|v2| Uv { u, v: v2 });
             [across_u, across_v].into_iter().flatten().any(|uv| {
                 face.point_normal(uv)
-                    .is_some_and(|q| q.point.distance(p) <= SEAM)
+                    .is_some_and(|q| q.point.distance(c.point.point) <= SEAM)
             })
         })
+}
+
+/// Sets the last point to the first, so a closed chain repeats it exactly.
+fn close(points: &mut [Point3]) {
+    if let Some(f) = points.first().copied()
+        && let Some(l) = points.last_mut()
+    {
+        *l = f;
+    }
 }
 
 fn weld(p: Point3) -> [i64; 3] {
@@ -286,11 +295,7 @@ fn chain_edges(edges: &[&EdgeData]) -> Vec<EdgeChain> {
         };
         if weld(*first) == weld(*last) {
             let mut points = e.polyline.clone();
-            if let Some(f) = points.first().copied() {
-                if let Some(l) = points.last_mut() {
-                    *l = f;
-                }
-            }
+            close(&mut points);
             chains.push(EdgeChain {
                 points,
                 closed: true,
@@ -336,11 +341,7 @@ fn chain_edges(edges: &[&EdgeData]) -> Vec<EdgeChain> {
                 break;
             };
             if Some(end) == start_key {
-                if let Some(f) = points.first().copied() {
-                    if let Some(l) = points.last_mut() {
-                        *l = f;
-                    }
-                }
+                close(&mut points);
                 return EdgeChain {
                     points,
                     closed: true,
