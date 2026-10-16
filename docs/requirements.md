@@ -89,6 +89,21 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-07 | Parameter panels with units, validation and sensible defaults. | P1 |
 | UI-08 | Undo and redo for all edits to the project. | P1 |
 | UI-09 | Run toolpath generation and simulation off the UI thread, with progress reporting and cancellation. | P1 |
+| UI-10 | Organise the work as ordered steps (model, setup, operations, simulate, post and export) that the user can move between at any time. A step whose inputs do not exist yet is unavailable and says why. | P1 |
+| UI-11 | Show the state of each model, setup, selection set and operation (up to date, stale, running, error, warning, off) in the project tree, by shape as well as colour, with a legend that stays visible. An item in error says why and how to fix it. | P1 |
+| UI-12 | Collect errors, warnings and information from import, setup checks, file checks, generation and jobs in one messages panel, by severity, each naming its source and offering the action that fixes it. | P1 |
+| UI-13 | Show, for each machine profile value, whether it is confirmed on the machine, taken from a vendor profile, or an unconfirmed placeholder, with how to confirm it. | P1 |
+| UI-14 | Every command is available from the menus and the keyboard, every control can be used with the keyboard, and anything shown on hover is also shown on keyboard focus. | P1 |
+| UI-15 | Keep per-user settings on the computer (window layout, scale, theme, display units, recent projects, export acknowledgements), never in the project. | P1 |
+| UI-16 | The window is usable at 1366 by 768 logical pixels at 100% scale, and its panels can be resized and collapsed. | P1 |
+| UI-17 | A command search that finds any command by name and runs it. | P2 |
+| UI-18 | Display and enter lengths in inches as a user setting, and accept a unit typed with a value; values are stored in millimetres. | P2 |
+| UI-19 | Parameter forms group settings as basic and advanced, mark values that differ from their default with a way to reset them, and show derived values with how they were worked out. | P2 |
+| UI-20 | A light theme beside the dark one. | P2 |
+| UI-21 | Measure distances, angles and radii in the viewport, cut the view with a section plane, and turn the part to a chosen A angle in the view without changing the program. | P2 |
+| UI-22 | Show the undo history and let the user return to any step in it. | P2 |
+| UI-23 | A start page with recent projects, and import by dropping a file on the window. | P2 |
+| UI-24 | When a selection set no longer matches its model, offer to select again, to show what is missing, and to keep the part that still matches. | P2 |
 
 ### 3.3 Machine, stock and setup
 
@@ -162,6 +177,9 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | SIM-08 | Estimate machining time per operation and in total from feeds, rapids and tool changes. | P2 |
 | SIM-09 | Load exported G-code into the simulator and run it, to check the post-processor output as well as the internal toolpath. | P3 |
 | SIM-10 | Adjust feed rates using the tool engagement measured in the simulation, for faster cuts at a steady tool load. | P3 |
+| SIM-11 | Read the deviation at any point of the simulated stock by pointing at it, with the operation and move that left it, and go to the worst overcut and the most material left. | P2 |
+| SIM-12 | Show the posted G-code beside playback, following the current move. | P2 |
+| SIM-13 | Summarise each generated operation: moves, cut length, A travel, A unwinds and programmed time. | P2 |
 
 ### 3.7 G-code generation and post-processing
 
@@ -181,6 +199,8 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | GC-12 | Export a setup sheet (tools, operations, stock and estimated times) as HTML or PDF; times appear once SIM-08 is available. | P1 |
 | GC-13 | An embedded scripting language for post-processors, for logic that text templates cannot express. | P2 |
 | GC-14 | Before G-code is written, show the tool numbers the program will use and let the user confirm them, renumber automatically in operation order, or renumber by hand. The chosen numbers are saved in the project, so the next post gives the same output. | P1 |
+| GC-15 | Refuse to write G-code while an enabled operation is stale or in error, and warn when an operation has not been simulated, listing the checks before writing. | P1 |
+| GC-16 | Before the first export of a project on a computer, the user confirms that they will verify the G-code before running it. The confirmation is kept on that computer, not in the project, so another computer asks again; the notice itself is shown at every export. | P1 |
 
 ### 3.8 Project files
 
@@ -270,6 +290,7 @@ Technology choices (crates, geometry kernel, rendering stack) are made in the ar
 | NFR-12 | The software states clearly that generated G-code must be verified by the user before it is run on a machine. | P1 |
 | NFR-13 | Bindings to C++ libraries, for example for STEP import, are acceptable where they are the best-maintained option, provided they build on Windows, macOS and Linux. | P1 |
 | NFR-14 | Choose dependencies for long-term health: well featured, actively maintained, thoroughly documented, tested with CI, and used by several mature open-source projects. Newer crates, and crates with a high proportion of AI-generated contribution, count as a risk that must be justified. | P1 |
+| NFR-15 | The interface is legible and accessible: text at least 12 pixels at 100% scale, scaling from 80% to 200%, contrast of 4.5:1 for text and 3:1 for meaningful graphics, no state shown by colour alone, and colour maps that differ in lightness. | P1 |
 
 ## 6. Suggested additional features for decision
 
@@ -309,7 +330,7 @@ Decisions are settled and already reflected in the requirements. The assumptions
 
 - The A axis rotates the workpiece about the machine X axis, with a vertical tool axis (Z).
 - The target is a milling machine with a rotary axis programmed in degrees; the Makera Z1 is the reference machine, and G93 inverse-time feed is unsupported (confirmed by the SP-12 air cut, decision 0007).
-- The internal unit is millimetres; inch display and input are a user setting.
+- The internal unit is millimetres; inch display and input are a user setting (UI-18, P2; decision 0038).
 - Work is for a single user on a single machine at a time; there is no multi-user collaboration.
 - Threading, turning and 5-axis tool orientation are not needed.
 
