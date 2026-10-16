@@ -306,6 +306,61 @@ impl Camera {
     }
 }
 
+/// The identity matrix.
+pub const IDENTITY: Mat4 = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
+/// The right-handed rotation by `radians` about the X axis.
+pub fn rotation_x(radians: f64) -> Mat4 {
+    let (s, c) = radians.sin_cos();
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, c, s, 0.0],
+        [0.0, -s, c, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}
+
+/// The rigid transform that puts an object built with its origin at the
+/// origin and its axis along +Z at `origin`, with its axis along `axis`
+/// (a vector that need not be a unit vector; zero keeps +Z). Turns about the
+/// axis are free: the rotation is the shortest one from +Z.
+pub fn place(origin: [f64; 3], axis: [f64; 3]) -> Mat4 {
+    let z = normalise(axis);
+    let z = if length(z) > 0.0 { z } else { [0.0, 0.0, 1.0] };
+    // A vector not parallel to z to build the other two axes from.
+    let helper = if z[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
+    let x = normalise(cross(helper, z));
+    let y = cross(z, x);
+    [
+        [x[0], x[1], x[2], 0.0],
+        [y[0], y[1], y[2], 0.0],
+        [z[0], z[1], z[2], 0.0],
+        [origin[0], origin[1], origin[2], 1.0],
+    ]
+}
+
+/// The inverse of a rigid transform (a rotation and a translation): the
+/// rotation's transpose, and the translation turned back.
+pub fn rigid_inverse(m: &Mat4) -> Mat4 {
+    let [c0, c1, c2, c3] = *m;
+    let dot = |c: [f64; 4]| c[0] * c3[0] + c[1] * c3[1] + c[2] * c3[2];
+    [
+        [c0[0], c1[0], c2[0], 0.0],
+        [c0[1], c1[1], c2[1], 0.0],
+        [c0[2], c1[2], c2[2], 0.0],
+        [-dot(c0), -dot(c1), -dot(c2), 1.0],
+    ]
+}
+
 /// `a * b`.
 pub fn multiply(a: &Mat4, b: &Mat4) -> Mat4 {
     let mut out = [[0.0; 4]; 4];

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Workholding and retaining tabs of a setup (SET-09, OP-21; decision records
-//! 0035 and 0040).
+//! 0035 and 0041).
 //!
 //! Positions are along the rotary axis (model X), in the model frame, like
 //! the stock's. A **held region** is the length of the stock the chuck grips
@@ -149,7 +149,7 @@ impl Workholding {
 /// fit the stock. A stock that needs the part (the bounding-box offset) or is
 /// not available yet is not checked for extent. Whether a tab lies between
 /// the held region and the part's far end needs the part, so it is not checked
-/// here (OI-174).
+/// here (OI-180).
 pub fn validate_workholding(
     workholding: &Workholding,
     stock: Option<&Stock>,

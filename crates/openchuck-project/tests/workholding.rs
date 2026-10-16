@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Held regions and retaining tabs in the setup (SET-09, OP-21; decision
-//! records 0035 and 0040).
+//! records 0035 and 0041).
 
 // Test code may unwrap, index and panic (NFR-07 applies to library code).
 #![allow(

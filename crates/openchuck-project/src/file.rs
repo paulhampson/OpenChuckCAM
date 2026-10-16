@@ -70,7 +70,7 @@ use openchuck_types::workholding::Workholding;
 /// - 9: selection sets gain the optional `stock_to_leave` (OP-11, per
 ///   selection), written only when set (decision record 0034 item 4).
 /// - 10: setups gain the optional `[workholding]` table, written only when
-///   it holds a held region or a tab (SET-09, OP-21, decision record 0040).
+///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
 pub const SCHEMA: i64 = 10;
 
 /// Name of the machine profile file in the project folder.

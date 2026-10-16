@@ -48,7 +48,7 @@ These answers settle the open items below; the record is accepted with them.
   - *Protected regions.* A default never enters a held region or a region the user has excluded (an avoid selection set, OP-02).
   - *Diameter.* The smaller of 10 mm and half the part's diameter at the tab's position (the local diameter).
   - *Shape.* A frustum, with its small end attached to the model.
-  The defaults need the part's extent, so the application computes them when a tab is added (slice 21c); the stored data stays explicit (decision 0040 item 2).
+  The defaults need the part's extent, so the application computes them when a tab is added (slice 21c); the stored data stays explicit (decision 0041 item 2).
 - **OI-159, tool against tab.** A tab narrower than the tool is not permitted. It is refused with a message, not left to produce a wrong shape (item 6 changes from "refuse when the generator cannot cut it" to a check when the tool is chosen or the tab edited).
 - **OI-160.** Deferred until COL-04 (P2).
 - **OI-161.** Not a P1 requirement; no cut-off operation is built.

@@ -19,7 +19,7 @@ use crate::AppError;
 use crate::simulation::{SetupState, SimulationReport};
 
 /// The setup, stock and machine an operation's simulation needs.
-fn setup_parts<'a>(
+pub(crate) fn setup_parts<'a>(
     project: &'a Project,
     operation: &openchuck_project::Operation,
 ) -> Result<
@@ -48,11 +48,31 @@ fn setup_parts<'a>(
 }
 use crate::cache::PipelineCache;
 
+/// What the application knows about one group of the toolpath that the
+/// neutral IR does not carry (the IR's tags are names, which are not unique):
+/// the operation and setup it came from and the tool as the simulation
+/// sweeps it. One per group, in the same order as `Regeneration::toolpath`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupInfo {
+    /// The operation that made the group.
+    pub operation: OperationId,
+    /// The setup it belongs to.
+    pub setup: openchuck_project::id::SetupId,
+    /// The tool's revolved profile.
+    pub tool: openchuck_types::tool::RevolvedProfile,
+    /// The bounds of the setup's placed part (bounding-box stock needs them
+    /// when the stock is built again for playback).
+    pub part_bounds: openchuck_types::geometry::Aabb,
+}
+
 /// The result of regenerating a project.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Regeneration {
     /// The toolpath of every operation, in machining order.
     pub toolpath: Toolpath,
+    /// Where each group of `toolpath` came from, in the same order
+    /// (playback and the display of toolpaths by operation, SIM-01, SIM-04).
+    pub groups: Vec<GroupInfo>,
     /// Generated G-code files as (file name, contents), in output order.
     pub gcode: Vec<(String, String)>,
     /// Notes about the toolpaths, each naming its operation, in order.
@@ -66,6 +86,10 @@ pub struct Regeneration {
     /// Operations whose toolpath came from the cache because nothing it
     /// depends on, including the operations before it, changed.
     pub reused: Vec<OperationId>,
+    /// The project the run was made from. Stock playback and the deviation
+    /// colours read the stock, the cell size and the part from here, so they
+    /// match the run even if the project has been edited since.
+    pub project: Arc<Project>,
 }
 
 /// Regenerates every enabled operation of `project` (in the folder
@@ -92,7 +116,10 @@ pub(crate) fn regenerate(
     let total = operations.len() as u64;
     context.report("regenerate", 0, Some(total));
     let settings = project.simulation();
-    let mut regeneration = Regeneration::default();
+    let mut regeneration = Regeneration {
+        project: Arc::new(project.clone()),
+        ..Regeneration::default()
+    };
     let mut setups: Vec<SetupState> = Vec::new();
     // Disabled operations keep their cached results, so enabling one again
     // can reuse them; only removed operations are dropped.
@@ -180,6 +207,12 @@ pub(crate) fn regenerate(
             }
         }
         regeneration.toolpath.groups.push(path.group.clone());
+        regeneration.groups.push(GroupInfo {
+            operation: operation.id,
+            setup: operation.setup,
+            tool: path.tool.clone(),
+            part_bounds: path.part_bounds,
+        });
         context.report("regenerate", i as u64 + 1, Some(total));
     }
     if simulate {
@@ -197,7 +230,9 @@ pub(crate) fn regenerate(
                 Some(model) => Some(crate::model::placed_mesh(location, model, context)?),
                 None => None,
             };
-            report.setups.push(state.finish(mesh.as_ref(), settings)?);
+            report
+                .setups
+                .push(state.finish(mesh.as_ref(), settings, context)?);
         }
         regeneration.simulation = Some(report);
     }

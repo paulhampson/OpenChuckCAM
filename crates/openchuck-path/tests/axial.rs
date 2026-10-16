@@ -342,19 +342,44 @@ mod property {
     use proptest::prelude::*;
 
     /// Distance in the development (X, R times the angle in radians) from
-    /// (`x`, `theta` degrees) to the nearest cutting point of `path`, with R the
-    /// part's largest radius.
+    /// (`x`, `theta` degrees) to the nearest point of the cutting moves of
+    /// `path`, with R the part's largest radius. The cutter travels along each
+    /// move, so a move counts along its whole length, not only at its ends;
+    /// the turn is unwrapped so a point is found across the 360 degree seam.
     fn nearest(path: &GeneratedPath, r: f64, x: f64, theta: f64) -> f64 {
-        path.group
-            .segments
-            .iter()
-            .filter(|s| s.kind == MoveKind::Cutting)
-            .map(|s| {
-                let da = (s.end.a.0 - theta).rem_euclid(360.0);
-                let da = da.min(360.0 - da).to_radians() * r;
-                (s.end.tip.x - x).hypot(da)
-            })
-            .fold(f64::INFINITY, f64::min)
+        let mut from = path.group.start;
+        let mut best = f64::INFINITY;
+        for s in &path.group.segments {
+            let (a, b) = (from, s.end);
+            from = s.end;
+            if s.kind != MoveKind::Cutting {
+                continue;
+            }
+            let (a0, a1) = (a.a.0, b.a.0);
+            let first = ((a0.min(a1) - theta) / 360.0).floor() as i64 - 1;
+            let last = ((a0.max(a1) - theta) / 360.0).ceil() as i64 + 1;
+            let (p0, p1) = (
+                [a.tip.x, r * a0.to_radians()],
+                [b.tip.x, r * a1.to_radians()],
+            );
+            for k in first..=last {
+                let probe = [x, r * (theta + 360.0 * k as f64).to_radians()];
+                best = best.min(distance_to_segment(probe, p0, p1));
+            }
+        }
+        best
+    }
+
+    /// Distance from `p` to the segment `a` to `b`, in a plane.
+    fn distance_to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let length2 = dx * dx + dy * dy;
+        let t = if length2 > 0.0 {
+            (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        (p[0] - (a[0] + t * dx)).hypot(p[1] - (a[1] + t * dy))
     }
 
     proptest! {
