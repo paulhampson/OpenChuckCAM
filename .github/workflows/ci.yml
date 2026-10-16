@@ -15,9 +15,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels the older run of that pull request: the newer commit is the
+# one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
+# replaced while it waits: its group is its own run, so every merged commit keeps a complete result
+# (and its cache and coverage artifacts), even if several manual runs target one commit
+# (decision 0052, Option 1).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
