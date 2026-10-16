@@ -168,7 +168,7 @@ fn jobs() -> Vec<Job> {
         // held 4 mm at the start and 2 mm at the end, with a retaining tab
         // between each held region and the part. The tabs continue the part's
         // outline, so the target has no wall for the tool to climb: a wall
-        // makes the path fitter bisect down to micro-moves (OI-194).
+        // makes the path fitter bisect down to micro-moves (OI-209).
         Job {
             name: "cone_held_tabs",
             part: cone_part(),

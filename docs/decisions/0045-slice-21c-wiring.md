@@ -2,9 +2,9 @@
 
 - **Status:** proposed (16 Oct 2026). Built on `claude/lane-w-slice-21c-wiring` (lane W). It refines [decision 0035](0035-workholding-and-retaining-tabs.md) (accepted, with the owner's answers) and [decision 0041](0041-slice-21a-workholding-data.md) (accepted), and it builds on [decision 0042](0042-slice-21b-composite-target.md), which is **still proposed**: this record relies on 0042 as guidance, not as authority, and the lane's code uses the `Solid` and `CompositeSurface` types it describes. This record is proposed until the owner accepts it. It adds nothing to the requirements or the architecture.
 - **Date:** 16 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-194 to OI-198; OI-180 closes.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-195 to OI-198 and OI-209; OI-180 closes.
 
-Numbering: on 16 Oct 2026 the orchestrator assigned record 0045 and OI-194 to OI-198 to lane W. Lane W takes no project schema number (it changes no file format).
+Numbering: on 16 Oct 2026 the orchestrator assigned record 0045 and OI-195 to OI-198 and OI-209 to lane W. Lane W takes no project schema number (it changes no file format).
 
 ## Context
 
@@ -25,7 +25,7 @@ Slice 21c connects the setup's `[workholding]` data (21a, merged) to the composi
 7. **Selections that reach a held region or tab** (UI-03) are a warning, not a refusal: a selection set the operation cuts in (role `selections`) with a triangle corner inside or on a solid gets a note in the regeneration notes and under the operation's form (`start_workholding_warnings`, a job). They are never cut, so the selection cuts less than it names.
 8. **Viewport and forms** (UI-03, UI-07). The scene gains `SceneRole::HeldRegion` and `SceneRole::Tab`, shaded beside the part. Selecting a setup opens the workholding form: held regions (length, optional diameter), each tab (shape, position, length, diameters, on or around the axis), the reason a draft cannot be stored under it, "Add tab", "Add default tabs", "Check against the part and tools", "Apply" (one undoable edit) and "Revert".
 9. **Command line.** `openchuck-cli setup` gains `--held-start`, `--held-end` (`LENGTH` or `LENGTH,DIAMETER` or `none`), repeatable `--tab` (`cylinder=X_START,LENGTH,DIAMETER` or `frustum=X_START,LENGTH,START_DIAMETER,END_DIAMETER`, with `@COUNT,START_ANGLE,RADIAL_OFFSET` for tabs around the axis), `--clear-tabs` and `--default-tabs`.
-10. **The example in the golden set** is `cone_held_tabs`: the cone in stock as wide as its wide end, held 4 mm and 2 mm, with a cylinder tab at the head and a frustum tab at the tail that continue the outline, so the target has no wall for the tool to climb. A wall (a tab narrower than the part's end face, or a shoulder against a wider held region) makes the helical path fitter bisect down to micro-moves, and the first trial, of a layout like the owner's default (a tab with its small end on the part's wide end face), failed gates 1 and 2 on them (OI-194). The golden audit checks the file against the exact outline, exempting the contact feed within 2.5 mm of the concave kink where the tab meets the part's narrow end.
+10. **The example in the golden set** is `cone_held_tabs`: the cone in stock as wide as its wide end, held 4 mm and 2 mm, with a cylinder tab at the head and a frustum tab at the tail that continue the outline, so the target has no wall for the tool to climb. A wall (a tab narrower than the part's end face, or a shoulder against a wider held region) makes the helical path fitter bisect down to micro-moves, and the first trial, of a layout like the owner's default (a tab with its small end on the part's wide end face), failed gates 1 and 2 on them (OI-209). The golden audit checks the file against the exact outline, exempting the contact feed within 2.5 mm of the concave kink where the tab meets the part's narrow end.
 11. **Verification.** The independent checker (surface of revolution) is applied to the part with its on-axis held regions and tabs: no pose of roughing or finishing goes more than 0.02 mm into it. Tabs around the axis are not a surface of revolution, so the simulation checks them (OI-197).
 
 ## Alternatives considered
@@ -37,13 +37,13 @@ Slice 21c connects the setup's `[workholding]` data (21a, merged) to the composi
 
 ## Consequences
 
-- `docs/work-breakdown.md`: slice 21 status, checklist, the lane W row, the numbers paragraph. `docs/open-items.md`: OI-194 to OI-198 added; OI-180 closed. `docs/verification-plan.md`: the SET-09 and OP-21 rows name the tests. Decision index.
+- `docs/work-breakdown.md`: slice 21 status, checklist, the lane W row, the numbers paragraph. `docs/open-items.md`: OI-195 to OI-198 and OI-209 added; OI-180 closed. `docs/verification-plan.md`: the SET-09 and OP-21 rows name the tests. Decision index.
 - New public items: `openchuck-app::workholding`, `Application::start_default_tabs`, `check_workholding`, `start_workholding_warnings`, `SceneRole::HeldRegion` and `Tab`. No field is added to a public struct of the library family, and `openchuck-path` and `openchuck-types` are unchanged.
 - Lane W relies on decision 0042 while it is proposed.
 
 ## Open items
 
-- **OI-194** (important): a wall in the target makes helical finishing produce micro-moves that fail gates 1 and 2.
+- **OI-209** (important): a wall in the target makes helical finishing produce micro-moves that fail gates 1 and 2.
 - **OI-195:** held regions on box, bounding-box or imported stock need a holding diameter.
 - **OI-196:** the deviation target decides interior faces at the centroid, inside corners the tool cannot reach read as material left, and rest machining and pencil clean-up were not tried against the composite, whose tessellation keeps the faces inside the union.
 - **OI-197:** the independent checker covers surfaces of revolution only; tabs around the axis are checked by the simulation.
