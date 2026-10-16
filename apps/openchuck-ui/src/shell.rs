@@ -859,7 +859,8 @@ impl Shell {
             ctx.request_repaint();
         }
         // Q, W and E choose the click; Esc leaves picking (specification 15).
-        if matches!(self.selected, Some(Selection::Picking | Selection::Set(_)))
+        if self.dialog.is_none()
+            && matches!(self.selected, Some(Selection::Picking | Selection::Set(_)))
             && self.selection.keys(ctx)
         {
             self.selected = None;

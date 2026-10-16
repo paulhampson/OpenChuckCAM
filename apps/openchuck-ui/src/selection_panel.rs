@@ -451,7 +451,8 @@ impl SelectionPanel {
     /// Chooses what a click selects from a key (Q, W, E; specification
     /// section 15), and reports Esc. Returns true when Esc asks to leave
     /// picking; a region pick still running is cancelled first and keeps
-    /// picking on. Does nothing while a text field has the keyboard.
+    /// picking on. Does nothing while a text field has the keyboard; the
+    /// caller skips it while a dialog is open.
     pub fn keys(&mut self, ctx: &egui::Context) -> bool {
         if ctx.egui_wants_keyboard_input() {
             return false;
@@ -735,6 +736,10 @@ impl SelectionPanel {
         summary: &SelectionSummary,
         triangles: TriangleSet,
     ) {
+        // A region pick still running would overwrite what is loaded.
+        if let Some(pending) = self.pending.take() {
+            pending.handle.cancel();
+        }
         self.working = triangles;
         self.working_model = Some(summary.model);
         self.working_hash = recorded_hash(app, summary.model);
