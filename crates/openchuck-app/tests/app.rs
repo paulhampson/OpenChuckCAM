@@ -101,3 +101,18 @@ fn req_nfr_07_a_panicking_job_becomes_an_error() {
     let (tx, _rx) = std::sync::mpsc::channel();
     assert!(manager.submit("ok", tx, |_| Ok(1)).wait().is_ok());
 }
+
+#[test]
+fn req_ui_09_cancellation_is_told_by_kind_not_by_wording() {
+    use openchuck_app::AppError;
+    assert!(AppError::Engine(openchuck_types::Error::Cancelled).is_cancelled());
+    assert!(AppError::Path(openchuck_path::PathError::Cancelled).is_cancelled());
+    // An operation the user named "Cancel test" that fails for another reason
+    // is a failure, and its message is kept.
+    let failed = AppError::Operation {
+        name: "Cancel test".to_owned(),
+        reason: "its setup has no stock".to_owned(),
+    };
+    assert!(failed.to_string().contains("Cancel"));
+    assert!(!failed.is_cancelled());
+}

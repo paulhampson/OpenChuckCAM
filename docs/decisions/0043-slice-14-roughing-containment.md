@@ -1,10 +1,10 @@
-# 0040: Slice 14 item 5: containment of rotary roughing to selected regions (lane L)
+# 0043: Slice 14 item 5: containment of rotary roughing to selected regions (lane L)
 
 - **Status:** accepted by the project owner (15 Oct 2026) for the attribution rule (item 1), the check-surface rule (item 3) and bisection of the region's edge (item 4), "as is for now": the rule is kept while the edge behaviour on slopes (the evidence below) is watched. The rest follows from these choices and stands until the pull request is reviewed. It relies on accepted records [0032](0032-slice-10-mesh-selection.md) (the region constraint, OP-02) and [0033](0033-slice-14-rotary-roughing.md) (rotary roughing).
 - **Date:** 15 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-175 and OI-176 were raised and closed in this record. OI-137 (the boundary as a curve) is unchanged.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-187 and OI-188 were raised and closed in this record. OI-137 (the boundary as a curve) is unchanged.
 
-Numbering: the next free record (0037 and 0039 are on `main`, 0038 is held by unmerged branches), `OI-175` (OI-170 to OI-174 are held by lane M and others) and no project schema number (no file changes: the operation's `boundary`, `avoid`, `check` and `selections` fields are schema 7's).
+Numbering: record 0043 (0040 went to lane N, 0041 to lane U and 0042 to lane V; first written as 0040), `OI-187` and `OI-188` (first OI-170 and OI-171, then OI-175 and OI-176, renumbered as lanes M and N took those) and no project schema number (no file changes: the operation's `boundary`, `avoid`, `check` and `selections` fields are schema 7's).
 
 ## Context
 
@@ -33,5 +33,5 @@ Work breakdown slice 14 item 5, "Containment to selected regions (OP-02)", is la
 
 ## Open items
 
-- **OI-175 (closed, 15 Oct 2026):** the region's edge was found only to the node spacing. Item 4 finds it by bisection.
-- **OI-176 (closed, 15 Oct 2026):** a check surface left a site uncut where the part's floor rested on it. Item 3 raises the floor instead.
+- **OI-187 (closed, 15 Oct 2026):** the region's edge was found only to the node spacing. Item 4 finds it by bisection.
+- **OI-188 (closed, 15 Oct 2026):** a check surface left a site uncut where the part's floor rested on it. Item 3 raises the floor instead.

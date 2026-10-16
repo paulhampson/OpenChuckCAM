@@ -44,6 +44,7 @@ use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable};
 use openchuck_types::units::Millimetres;
+use openchuck_types::workholding::Workholding;
 
 /// The project folder schema version this build writes and reads.
 ///
@@ -68,7 +69,9 @@ use openchuck_types::units::Millimetres;
 ///   set (OI-117, decision record 0033).
 /// - 9: selection sets gain the optional `stock_to_leave` (OP-11, per
 ///   selection), written only when set (decision record 0034 item 4).
-pub const SCHEMA: i64 = 9;
+/// - 10: setups gain the optional `[workholding]` table, written only when
+///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
+pub const SCHEMA: i64 = 10;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -91,6 +94,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_6_to_7,
     schema_7_to_8,
     schema_8_to_9,
+    schema_9_to_10,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -178,6 +182,12 @@ fn schema_8_to_9(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
+/// Schema 10 adds the optional `[workholding]` table to setup files, which a
+/// schema 9 file does not have, so it needs no change but its number.
+fn schema_9_to_10(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
 /// The kinds of file in a project folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FileKind {
@@ -250,6 +260,8 @@ struct SetupFile {
     stock: Option<Stock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     clearance: Option<Clearance>,
+    #[serde(default, skip_serializing_if = "Workholding::is_empty")]
+    workholding: Workholding,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -404,6 +416,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             work_offset: s.frame.work_offset,
             stock: s.stock.clone(),
             clearance: s.clearance,
+            workholding: s.workholding.clone(),
         };
         files.insert(item_path(FileKind::Setup, &s.id), to_text(&file)?);
     }
@@ -590,6 +603,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                     work_offset: f.work_offset,
                 },
                 clearance: f.clearance,
+                workholding: f.workholding,
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -918,7 +932,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 9);
+        assert_eq!(SCHEMA, 10);
         let mut project = Project::new("p");
         project
             .insert(
@@ -927,7 +941,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 9\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 10\n"), "{path}: {text}");
         }
     }
 

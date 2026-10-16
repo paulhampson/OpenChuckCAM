@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Limiting rotary roughing to selected regions, with a containment boundary
 //! and avoid and check surfaces (OP-02; work breakdown slice 14 item 5,
-//! decision record 0040).
+//! decision record 0043).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,
@@ -127,7 +127,7 @@ fn req_op_02_roughing_stays_on_the_selected_region() {
         assert!(lo >= 10.0 - 1e-3, "{form}: lowest cut at x = {lo}");
         assert!(lo <= 10.0 + 1.0, "{form}: the cut stops short at x = {lo}");
         // The first point of a pass is on the edge itself, found by
-        // bisection, not on the last node before it (OI-175).
+        // bisection, not on the last node before it (OI-187).
         let path = rough(&f, form, &region).unwrap();
         let first = path
             .group

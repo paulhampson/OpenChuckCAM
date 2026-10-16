@@ -49,5 +49,6 @@ pub mod stock;
 pub mod tool;
 pub mod transform;
 pub mod units;
+pub mod workholding;
 
 pub use error::{Error, Result};

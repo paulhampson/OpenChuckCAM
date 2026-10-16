@@ -20,8 +20,8 @@ use openchuck_app::project::id::SetupId;
 use openchuck_app::project::{Item, ModelCheck, Placement, Setup};
 use openchuck_app::setup::{
     ARange, Aabb, Clearance, Confirmation, MachineProfile, Millimetres, Point3, ProfileEntry,
-    SetupReport, Stock, WorkOffsetRegister, a_direction, builtin, builtin_entry, builtin_keys,
-    list_library, load_profile_entry,
+    SetupReport, Stock, TabLayout, TabShape, WorkOffsetRegister, Workholding, a_direction, builtin,
+    builtin_entry, builtin_keys, list_library, load_profile_entry,
 };
 use openchuck_app::simulation::{DEFAULT_CELL, SimulationSettings};
 use openchuck_app::tools::{
@@ -1463,6 +1463,58 @@ fn print_machine(profile: &MachineProfile) {
     }
 }
 
+/// Prints the held regions and tabs of a setup (SET-09, OP-21).
+fn print_workholding(w: &Workholding) {
+    if w.is_empty() {
+        println!("holding:    none");
+        return;
+    }
+    for (name, region) in [("start", &w.start), ("end", &w.end)] {
+        let Some(r) = region else { continue };
+        let across = r.diameter.map_or("the stock's diameter".to_owned(), |d| {
+            format!("diameter {} mm", d.0)
+        });
+        println!(
+            "holding:    held at the {name} of the stock for {} mm, {across}; never machined",
+            r.length.0
+        );
+    }
+    for (i, t) in w.tabs.iter().enumerate() {
+        let shape = match t.shape {
+            TabShape::Cylinder { diameter } => format!("cylinder, diameter {} mm", diameter.0),
+            TabShape::Frustum {
+                start_diameter,
+                end_diameter,
+            } => format!(
+                "frustum, diameter {} mm at X {} to {} mm at X {}",
+                start_diameter.0,
+                t.x_start.0,
+                end_diameter.0,
+                t.x_start.0 + t.length.0
+            ),
+            _ => "unknown shape".to_owned(),
+        };
+        let layout = match t.layout {
+            TabLayout::OnAxis => "on the axis".to_owned(),
+            TabLayout::AroundAxis {
+                count,
+                start_angle,
+                radial_offset,
+            } => format!(
+                "{count} around the axis at {} mm from it, first at {} degrees",
+                radial_offset.0, start_angle.0
+            ),
+            _ => "unknown layout".to_owned(),
+        };
+        println!(
+            "tab {}:      {shape}, X {} to {} mm, {layout}",
+            i + 1,
+            t.x_start.0,
+            t.x_start.0 + t.length.0
+        );
+    }
+}
+
 /// Prints a setup and its checks (SET-03, SET-05, SET-06).
 fn print_setup(app: &Application, report: &SetupReport) {
     println!("setup:      {} ({})", report.name, report.setup);
@@ -1494,6 +1546,7 @@ fn print_setup(app: &Application, report: &SetupReport) {
         Some(_) => "imported (not available yet)".to_owned(),
     };
     println!("stock:      {stock}");
+    print_workholding(&setup.workholding);
     println!(
         "material:   {}",
         setup.material.as_deref().unwrap_or("not set")

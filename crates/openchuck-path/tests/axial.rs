@@ -342,19 +342,44 @@ mod property {
     use proptest::prelude::*;
 
     /// Distance in the development (X, R times the angle in radians) from
-    /// (`x`, `theta` degrees) to the nearest cutting point of `path`, with R the
-    /// part's largest radius.
-    fn nearest(path: &GeneratedPath, r: f64, x: f64, theta: f64) -> f64 {
-        path.group
-            .segments
-            .iter()
-            .filter(|s| s.kind == MoveKind::Cutting)
-            .map(|s| {
-                let da = (s.end.a.0 - theta).rem_euclid(360.0);
-                let da = da.min(360.0 - da).to_radians() * r;
-                (s.end.tip.x - x).hypot(da)
-            })
-            .fold(f64::INFINITY, f64::min)
+    /// (`x`, `theta` degrees) to the nearest point of the cutting moves of
+    /// `path`, with R the part's largest radius. The cutter travels along each
+    /// move, so a move counts along its whole length, not only at its ends;
+    /// the turn is unwrapped so a point is found across the 360 degree seam.
+    pub(super) fn nearest(path: &GeneratedPath, r: f64, x: f64, theta: f64) -> f64 {
+        let mut from = path.group.start;
+        let mut best = f64::INFINITY;
+        for s in &path.group.segments {
+            let (a, b) = (from, s.end);
+            from = s.end;
+            if s.kind != MoveKind::Cutting {
+                continue;
+            }
+            let (a0, a1) = (a.a.0, b.a.0);
+            let first = ((a0.min(a1) - theta) / 360.0).floor() as i64 - 1;
+            let last = ((a0.max(a1) - theta) / 360.0).ceil() as i64 + 1;
+            let (p0, p1) = (
+                [a.tip.x, r * a0.to_radians()],
+                [b.tip.x, r * a1.to_radians()],
+            );
+            for k in first..=last {
+                let probe = [x, r * (theta + 360.0 * k as f64).to_radians()];
+                best = best.min(distance_to_segment(probe, p0, p1));
+            }
+        }
+        best
+    }
+
+    /// Distance from `p` to the segment `a` to `b`, in a plane.
+    fn distance_to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let length2 = dx * dx + dy * dy;
+        let t = if length2 > 0.0 {
+            (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        (p[0] - (a[0] + t * dx)).hypot(p[1] - (a[1] + t * dy))
     }
 
     proptest! {
@@ -395,6 +420,87 @@ mod property {
                     prop_assert!(d <= stepover, "{what}: ({x}, {theta}) is {d} from the path");
                 }
             }
+        }
+    }
+}
+
+/// OP-04: the ends of a part are within the stepover of an axial or helical
+/// path. The last turn of a helix stops at the end of the part, so the ends are
+/// where the gap is widest (just under one pitch); they are checked on a fixed
+/// set of parts and every degree of A, not left to the random probes of the
+/// property test, which met them only by chance (a failure in CI at
+/// `r0 = 8`, `r1 = 13.9095`, `stepover = 0.97188`, `start = -169.4`, probe at
+/// `x = 19.934`, 50.8 degrees, was this and not a flaw of either path).
+#[test]
+fn req_op_04_the_ends_of_a_part_are_within_the_stepover_of_the_path() {
+    use openchuck_path::HelicalFinishing;
+    // (r0, r1, stepover, start angle): the reported case first, then steep
+    // and shallow cones, the widest and the narrowest stepover, and starts
+    // either side of the seam.
+    let cases = [
+        (
+            8.0,
+            13.909_514_619_978_863,
+            0.971_875_737_810_104_7,
+            -169.401_701_445_534_7,
+        ),
+        (14.0, 8.0, 0.8, 0.0),
+        (8.0, 14.0, 3.0, 179.0),
+        (11.0, 11.0, 1.7, -180.0),
+        (9.3, 12.1, 2.2, 90.0),
+    ];
+    let length = 20.0;
+    for (r0, r1, stepover, start) in cases {
+        let part = Cone {
+            start_radius: r0,
+            end_radius: r1,
+            length,
+        };
+        let f = fixture(&part, 21, 360, &ball(4.0));
+        let r = r0.max(r1);
+        let axial_path = axial(
+            &f,
+            &values(
+                stepover,
+                &[
+                    (parameter::START_ANGLE, num(start)),
+                    (parameter::MAX_X_STEP, num(0.5)),
+                ],
+            ),
+        );
+        let mut hv = values(stepover, &[]);
+        hv.insert(
+            openchuck_path::helical::parameter::START_ANGLE.to_owned(),
+            num(start),
+        );
+        let helical_path = run(|ctx| generate(&HelicalFinishing, &f.input(), &hv, ctx)).unwrap();
+        for (what, path) in [("axial", &axial_path), ("helical", &helical_path)] {
+            let mut worst = (0.0f64, 0.0f64, 0.0f64);
+            for x in [
+                0.0,
+                0.01,
+                0.066,
+                0.25,
+                length - 0.25,
+                length - 0.066,
+                length - 0.01,
+                length,
+            ] {
+                for degree in 0..360 {
+                    let theta = f64::from(degree) + 0.5;
+                    let d = property::nearest(path, r, x, theta);
+                    if d > worst.0 {
+                        worst = (d, x, theta);
+                    }
+                }
+            }
+            assert!(
+                worst.0 <= stepover * (1.0 + 1e-9),
+                "{what} r0 {r0} r1 {r1} stepover {stepover} start {start}: ({}, {}) is {} from the path",
+                worst.1,
+                worst.2,
+                worst.0
+            );
         }
     }
 }

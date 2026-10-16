@@ -52,6 +52,9 @@ pub enum AppError {
     /// No selection set has this ID.
     #[error("the project has no selection set '{0}'")]
     UnknownSelection(String),
+    /// Playback cannot be set up as asked (SIM-02, SIM-04).
+    #[error("playback: {0}")]
+    Playback(String),
     /// A selection cannot be made or changed as asked (UI-04, UI-05).
     #[error("selection '{name}': {reason}")]
     Selection {
@@ -89,4 +92,18 @@ pub enum AppError {
     /// The job stopped without a result.
     #[error("the job '{0}' stopped without a result")]
     JobLost(String),
+}
+
+impl AppError {
+    /// Whether the job was cancelled on request (UI-09), as opposed to
+    /// failing. Decided by the kind of error, never by its words: an
+    /// operation's name appears in messages and is the user's to choose.
+    pub fn is_cancelled(&self) -> bool {
+        matches!(
+            self,
+            Self::Engine(openchuck_types::Error::Cancelled)
+                | Self::Path(openchuck_path::PathError::Cancelled)
+                | Self::Import(openchuck_import::ImportError::Cancelled)
+        )
+    }
 }

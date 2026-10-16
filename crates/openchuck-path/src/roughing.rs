@@ -30,7 +30,7 @@
 //! tool radii and the stock to leave at each end. Stock beyond that is not
 //! touched.
 //!
-//! **Regions (OP-02, slice 14 item 5, decision 0040).** Roughing cuts away
+//! **Regions (OP-02, slice 14 item 5, decision 0043).** Roughing cuts away
 //! from the surface, so a [`RegionConstraint`] is applied to the part under
 //! the tool: a site (X, A and the offset across the axis) is attributed to the
 //! cutter contact of the tool dropped on the whole part with its stock to
@@ -423,7 +423,7 @@ impl<'a> Job<'a> {
         if let Some(region) = self.region {
             // A check surface keeps the tool above it rather than excluding
             // the site: the floor is the higher of the part's and the check
-            // surface's (decision 0040 item 3).
+            // surface's (decision 0043 item 3).
             if let Some(check) = region.check
                 && let Some(touch) = check.drop_tool(&self.grown, &line)
             {
@@ -566,7 +566,7 @@ impl<'a> Job<'a> {
     ///
     /// Within a region the run is carried on to the edge of the allowed
     /// region at either end (`ends`), found by bisection, so a cut reaches
-    /// the edge and not only the last node before it (OI-175).
+    /// the edge and not only the last node before it (OI-187).
     fn run_points(
         &self,
         run: (usize, usize),

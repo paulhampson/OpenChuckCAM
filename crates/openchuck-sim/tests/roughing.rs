@@ -354,7 +354,7 @@ fn req_sim_05_leftover_counts_samples_against_a_stock_to_leave() {
     assert_eq!((l.samples, l.at_leave()), (0, 1.0));
 }
 
-/// Roughing a cone within a selected region (OP-02, decision 0040 item 1):
+/// Roughing a cone within a selected region (OP-02, decision 0043 item 1):
 /// the flank under the tool is what the site is tied to, so the edge of the
 /// region falls on a slope. Inside the region the stock to leave is uniform,
 /// outside the stock is untouched, and across the edge nothing is overcut.

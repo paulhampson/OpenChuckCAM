@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 9\n"), "{text}");
+    assert!(text.starts_with("schema = 10\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -824,4 +824,99 @@ fn req_sim_07_cli_sets_the_simulation_cell_and_refuses_one_out_of_range() {
     assert_eq!(out.code, Some(1), "{}", out.stdout);
     assert!(out.stderr.contains("0.025"), "{}", out.stderr);
     assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+}
+
+#[test]
+fn req_set_09_req_op_21_cli_reports_and_refuses_workholding() {
+    let project = empty_project("holding");
+    let p = project.to_str().unwrap();
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--stock",
+        "cylinder=40,100,0",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&args(&["report", p]));
+    assert!(out.stdout.contains("holding:    none"), "{}", out.stdout);
+
+    let file = std::fs::read_dir(project.join("setups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let original = std::fs::read_to_string(&file).unwrap();
+    let held = "\n[workholding.start]\nlength = 15.0\n\n\
+                [[workholding.tabs]]\nx_start = 80.0\nlength = 6.0\n\
+                shape = { type = \"frustum\", start_diameter = 8.0, end_diameter = 3.0 }\n\
+                layout = { type = \"on_axis\" }\n";
+    std::fs::write(&file, format!("{original}{held}")).unwrap();
+    let out = run(&args(&["validate", p]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    let out = run(&args(&["report", p]));
+    assert!(
+        out.stdout
+            .contains("held at the start of the stock for 15 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("tab 1:") && out.stdout.contains("frustum"),
+        "{}",
+        out.stdout
+    );
+
+    // A tab that reaches into the held region is refused, not a crash.
+    std::fs::write(
+        &file,
+        format!("{original}{held}").replace("x_start = 80.0", "x_start = 10.0"),
+    )
+    .unwrap();
+    let out = run(&args(&["validate", p]));
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("held region"), "{}", out.stderr);
+}
+
+#[test]
+fn req_set_09_req_op_21_cli_reports_the_end_region_and_tabs_around_the_axis() {
+    let project = empty_project("holding-end");
+    let p = project.to_str().unwrap();
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--stock",
+        "cylinder=40,100,0",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let file = std::fs::read_dir(project.join("setups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let original = std::fs::read_to_string(&file).unwrap();
+    let held = "\n[workholding.end]\nlength = 12.0\ndiameter = 30.0\n\n\
+                [[workholding.tabs]]\nx_start = 20.0\nlength = 5.0\n\
+                shape = { type = \"cylinder\", diameter = 4.0 }\n\
+                layout = { type = \"around_axis\", count = 3, start_angle = 30.0, radial_offset = 10.0 }\n";
+    std::fs::write(&file, format!("{original}{held}")).unwrap();
+    let out = run(&args(&["report", p]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .contains("held at the end of the stock for 12 mm, diameter 30 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("3 around the axis at 10 mm from it, first at 30 degrees"),
+        "{}",
+        out.stdout
+    );
 }
