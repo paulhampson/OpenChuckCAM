@@ -122,10 +122,18 @@ jobs:
               # The fuzz job itself, so a change to it is run by its own pull request.
               - '.github/workflows/ci.yml'
 
+  # The simulator runs in real time, so the golden programs (22 minutes one after another) are
+  # dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
+  # Option 3). Every program is in exactly one share (unit-tested in xtask), a share with no
+  # programs fails, and `needs: gate3` in the aggregator waits for all three.
   gate3:
-    name: Gate 3 (LinuxCNC simulator)
+    name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 3)
     needs: changes
     if: needs.changes.outputs.gate3 == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -152,11 +160,11 @@ jobs:
       # Every LinuxCNC golden program runs in the headless XYZA simulator and is compared
       # with the replay of the same file (verification plan section 6, gate 3).
       - name: Replay the golden programs in LinuxCNC
-        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --keep-reports target/replay
+        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --shard "${{ matrix.shard }}/3" --keep-reports target/replay
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gate3-reports
+          name: gate3-reports-${{ matrix.shard }}
           path: target/replay
           if-no-files-found: ignore
 
