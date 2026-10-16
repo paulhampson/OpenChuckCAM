@@ -189,7 +189,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 
 | Place | Box | Steps |
 | --- | --- | --- |
-| Top left | Selection tools: Select one, Flood fill, By angle, Same direction, Box *(Box is OI-160)* | Operations, while picking |
+| Top left | Selection tools: Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)* | Operations, while picking |
 | Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid | Operations |
 | Top right | View cube; clicking a face gives that standard view | All with a 3D view |
 | Top right, under the cube | Axis triad: X red, Y green, Z blue | All with a 3D view |
