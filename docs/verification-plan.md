@@ -76,6 +76,21 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | UI-06, UI-07 | P1 | T, D | Integration | Project tree operations (reorder, enable, disable, duplicate) and parameter validation tested on view-models; units and defaults checked in the demo script |
 | UI-08 | P1 | T | Unit | Property test: any random edit sequence followed by full undo returns the original project byte for byte; redo restores the edited one |
 | UI-09, NFR-04 | P1 | T | System | UI thread stays responsive during generation and simulation (measured frame gaps); progress is reported; cancel stops work; multi-core speed-up measured |
+| UI-10 | P1 | T, D | Integration | View-model test: each step's availability and reason for an empty project, a model only, a setup, and a generated operation; the demo script walks the steps |
+| UI-11 | P1 | T | Integration | View-model test: an edit to operation N marks N and later operations stale; a running job, an error from an unresolved selection set, a warning and a disabled operation each give their state |
+| UI-12 | P1 | T | Integration | A seeded file change, mesh finding, setup check and generation error each give one message with its source and action, sorted by severity; fixing the cause removes the message |
+| UI-13 | P1 | T | Unit | The machine panel view model gives confirmed, vendor or unconfirmed for each field from the profile's `provenance`, and unconfirmed for an unlisted field |
+| UI-14 | P1 | I, D | System | Inspection that every menu command has a shortcut or menu path; a keyboard-only demo script through the five steps, with tooltips opened by focus |
+| UI-15 | P1 | T | Unit | Settings round-trip in the configuration folder; a missing or damaged file gives defaults and a message; nothing is written to the project folder |
+| UI-16 | P1 | D | System | Screenshots of the reference screens at 1366 by 768 logical pixels at 100% scale: no overlay overlaps another and no text is clipped; panels resize and collapse |
+| UI-17 | P2 | T | Integration | Command search finds each menu command by name and runs it |
+| UI-18 | P2 | T | Unit | Inch display round-trips to millimetres; a value typed with a unit converts exactly; an unknown unit is refused with a message |
+| UI-19 | P2 | T | Integration | The form view model groups basic and advanced fields from the schema, flags values that differ from their default, resets them, and gives derived values that match their formula |
+| UI-20 | P2 | A, D | System | Contrast analysis of the light theme tokens; demo of both themes |
+| UI-21 | P2 | T, D | Integration | Measurements agree with analytic parts; the section plane is demonstrated; turning the part to an A angle in the view leaves the posted G-code byte for byte the same |
+| UI-22 | P2 | T | Integration | Returning to a history step gives the same project as the same number of undo or redo steps |
+| UI-23 | P2 | D | System | Demo of the recent project list and of importing a dropped file |
+| UI-24 | P2 | T | Integration | A set with missing triangles offers to select again; keeping the part that matches saves a set against the current model with only those triangles, as one undoable step |
 | SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected |
 | SET-02, SET-04, SET-07 | P2 | T | Integration | Y-axis rotary, custom stock and multiple setups produce correct coordinate systems and starting stock |
 | SET-08 | P2 | T | Unit | A rotary acceleration limit validates and persists; an unset value means no limit; time estimates use it once SIM-08 exists |
@@ -108,12 +123,17 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | SIM-05 | P1 | T | System | Remaining material and overcut colouring and worst values match reference results on analytic cases |
 | SIM-08 | P2 | T | Unit | Estimated time matches hand calculation from feeds, rapids and tool changes |
 | SIM-09, SIM-10 | P3 | T | System | Exported G-code runs in the in-app simulator; engagement-based feed adjustment, when built |
+| SIM-11 | P2 | T | System | The probed deviation equals the deviation at that point on analytic cases and names the move that left it; going to the worst overcut and the most material left shows those points |
+| SIM-12 | P2 | T | Integration | The line shown for move N is the line the post writes for move N |
+| SIM-13 | P2 | T | Unit | Each summary value equals the sum over the operation's IR moves |
 | GC-01, GC-02, GC-03, GC-04 | P1 | T, I | Integration | Neutral intermediate form has no controller types; several post-processors selectable per machine profile; template edits take effect without recompiling; every post option changes the output as specified |
 | GC-05, GC-06, GC-11, GC-12 | P1 | T | Integration | One-file and per-setup, operation or tool output; comment headers; setup sheet in HTML or PDF with correct tools, stock and operations; the command-line run regenerates the same G-code as the UI |
 | GC-07, NFR-06 | P1 | T | System | Same project and post-processor give byte-identical G-code and toolpaths on repeat runs and with 1, 2 and many threads on each platform; the golden files are compared on all three platforms |
 | GC-09 | P1 | T, D | Integration, acceptance | Golden-file tests, simulator pass, then the gated trial on the Makera Z1 (section 6) |
 | GC-10 | P1 | T | Integration | Verification post-processor output runs to completion in the LinuxCNC simulator; end position and A angle match the plan |
 | GC-14 | P1 | T | Integration | Confirming keeps the project's numbers; automatic renumbering gives T1, T2 and so on in order of first use by the operations; manual renumbering refuses a number used twice; the chosen numbers are saved and a second post gives byte-identical G-code |
+| GC-15 | P1 | T | Integration | Export is refused with a stale or failed enabled operation, allowed with a warning when an operation is not simulated, and lists disabled operations as not posted |
+| GC-16 | P1 | T | Integration | The acknowledgement is asked once per project in a settings folder, not asked again in that folder, asked again with a fresh folder, and never written to the project |
 | GC-08, GC-13 | P2 | T | Integration | Limit, feed and number checks fire on seeded faults; scripting hook gives output templates cannot |
 | PRJ-01, PRJ-03, PRJ-05 | P1 | T | Unit, integration | Saving twice is byte-identical; a small edit gives a small diff; no generated data in the file; two branches editing different items merge cleanly |
 | PRJ-02, PRJ-06 | P1 | T | Integration | Model files stay separate with relative paths; a changed model is detected by hash; selections survive save and load |
@@ -139,6 +159,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | NFR-12 | P1 | D, I | System | The notice is shown at export in the UI, printed by the CLI and available as an optional post header comment; export tests and a CLI scenario check each |
 | NFR-13 | P1 | T | System | Wrapped C++ libraries build and pass tests on Windows, macOS and Linux |
 | NFR-14 | P1 | A, I | Design | Each dependency has a recorded review against the health criteria, with a written justification for newer crates and those with high AI contribution |
+| NFR-15 | P1 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200%; inspection that no state is shown by colour alone |
 
 ### 4.1 Acceptance limits
 
