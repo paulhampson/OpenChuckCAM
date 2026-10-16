@@ -641,10 +641,10 @@ impl SelectionPanel {
                         1 => SelectionEdit::Remove(triangles),
                         _ => SelectionEdit::Replace(triangles),
                     };
-                    if let Err(e) = app.edit_selection(set.id, which) {
-                        error = Some(e.to_string());
+                    match app.edit_selection(set.id, which) {
+                        Ok(_) => self.dirty = true,
+                        Err(e) => error = Some(e.to_string()),
                     }
-                    self.dirty = true;
                 }
             }
         });
