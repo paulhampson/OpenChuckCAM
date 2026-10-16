@@ -319,6 +319,8 @@ fn validate_tab(tab: &Tab, field: &str) -> Result<()> {
 /// The head zone and the tail zone, where tabs may lie: from the inner edge
 /// of the held region (or the end of the stock) to the part, and from the
 /// part to the inner edge of the other held region (or end of the stock).
+/// A zone is never inverted: where a held region reaches into the part, the
+/// zone on that side is empty (low equals high), so no tab fits in it.
 /// `None` when the stock's extent is not known.
 pub fn tab_zones(
     workholding: &Workholding,
@@ -329,7 +331,11 @@ pub fn tab_zones(
     let (held_start, held_end) = workholding.held_intervals((bounds.min.x, bounds.max.x));
     let head_from = held_start.map_or(bounds.min.x, |(_, hi)| hi);
     let tail_to = held_end.map_or(bounds.max.x, |(lo, _)| lo);
-    Some(((head_from, part.bounds.min.x), (part.bounds.max.x, tail_to)))
+    let (part_lo, part_hi) = (part.bounds.min.x, part.bounds.max.x);
+    Some((
+        (head_from.min(part_lo), part_lo),
+        (part_hi, tail_to.max(part_hi)),
+    ))
 }
 
 /// Tabs on a rotary part are restricted to the head and tail zones (OP-21,
@@ -417,6 +423,29 @@ mod tests {
             found[0],
             SetupWarningKind::TabOutsideEndZones { tab: 1, .. }
         ));
+        // A held region reaching into the part leaves an empty zone, not an
+        // inverted one, and no tab fits in it.
+        let deep = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(40.0),
+                diameter: None,
+            }),
+            ..Workholding::default()
+        };
+        let (head, _) = tab_zones(&deep, &stock, &part).unwrap();
+        assert!(head.0 <= head.1, "{head:?}");
+        assert_eq!(
+            check_tab_zones(
+                &Workholding {
+                    tabs: vec![tab(31.0, 5.0)],
+                    ..deep
+                },
+                Some(&stock),
+                Some(&part)
+            )
+            .len(),
+            1
+        );
         // Nothing is checked without the part.
         assert!(check_tab_zones(&w(vec![tab(40.0, 5.0)]), Some(&stock), None).is_empty());
     }

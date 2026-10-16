@@ -879,3 +879,44 @@ fn req_set_09_req_op_21_cli_reports_and_refuses_workholding() {
     assert_ne!(out.code, Some(0));
     assert!(out.stderr.contains("held region"), "{}", out.stderr);
 }
+
+#[test]
+fn req_set_09_req_op_21_cli_reports_the_end_region_and_tabs_around_the_axis() {
+    let project = empty_project("holding-end");
+    let p = project.to_str().unwrap();
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--stock",
+        "cylinder=40,100,0",
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let file = std::fs::read_dir(project.join("setups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let original = std::fs::read_to_string(&file).unwrap();
+    let held = "\n[workholding.end]\nlength = 12.0\ndiameter = 30.0\n\n\
+                [[workholding.tabs]]\nx_start = 20.0\nlength = 5.0\n\
+                shape = { type = \"cylinder\", diameter = 4.0 }\n\
+                layout = { type = \"around_axis\", count = 3, start_angle = 30.0, radial_offset = 10.0 }\n";
+    std::fs::write(&file, format!("{original}{held}")).unwrap();
+    let out = run(&args(&["report", p]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .contains("held at the end of the stock for 12 mm, diameter 30 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("3 around the axis at 10 mm from it, first at 30 degrees"),
+        "{}",
+        out.stdout
+    );
+}
