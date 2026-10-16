@@ -11,10 +11,11 @@
 use std::collections::BTreeMap;
 
 use openchuck_path::params::names;
+use openchuck_path::region::RegionConstraint;
 use openchuck_path::roughing::parameter;
 use openchuck_path::{
     AcceptAll, GeneratedPath, MeshSurface, ParameterValue, RotaryMapping, RotaryRoughing,
-    StrategyInput, SurfaceSource, generate,
+    StrategyInput, SurfaceSource, generate, generate_in_region,
 };
 use openchuck_sim::{DeviationOptions, DexelStock, Simulator, compare};
 use openchuck_testkit::parts::{Cone, Cylinder, RadialPart};
@@ -121,6 +122,30 @@ impl Rig {
             tags: &self.tags,
         };
         generate(&RotaryRoughing, &input, v, &ctx)
+    }
+
+    fn generate_in(
+        &self,
+        stock: &DexelStock,
+        region: &RegionConstraint<'_>,
+        v: &BTreeMap<String, ParameterValue>,
+    ) -> openchuck_path::Result<GeneratedPath> {
+        let cancel = CancelToken::new();
+        let ctx = JobContext::new(&cancel, &NoProgress);
+        let input = StrategyInput {
+            surface: &self.surface,
+            stock,
+            collision: &AcceptAll,
+            tool: &self.profile,
+            rotary: RotaryMapping::of_profile(&self.machine),
+            clearance: Clearance {
+                radius: Millimetres(self.stock_radius + 5.0),
+                safe_z: Millimetres(self.stock_radius + 15.0),
+            },
+            max_feeds: self.machine.max_feeds,
+            tags: &self.tags,
+        };
+        generate_in_region(&RotaryRoughing, &input, region, v, &ctx)
     }
 
     /// Simulates `path` on `stock`, returning the stock and the removed volume.
@@ -327,4 +352,77 @@ fn req_sim_05_leftover_counts_samples_against_a_stock_to_leave() {
     };
     let l = none.leftover(0.5, 0.05);
     assert_eq!((l.samples, l.at_leave()), (0, 1.0));
+}
+
+/// Roughing a cone within a selected region (OP-02, decision 0040 item 1):
+/// the flank under the tool is what the site is tied to, so the edge of the
+/// region falls on a slope. Inside the region the stock to leave is uniform,
+/// outside the stock is untouched, and across the edge nothing is overcut.
+#[test]
+fn req_op_02_roughing_a_cone_within_a_region_leaves_the_stock_to_leave_inside_and_stock_outside() {
+    let part = Cone {
+        start_radius: 8.0,
+        end_radius: 12.0,
+        length: 30.0,
+    };
+    let rig = Rig::new(&part, 15.0, &tool(ToolShape::BallEnd, 4.0));
+    let edge = 15.0;
+    let target = &rig.target;
+    let triangles = (0..target.triangles.len())
+        .filter(|&t| {
+            target
+                .triangle(t)
+                .unwrap()
+                .into_iter()
+                .all(|c| c.x >= edge - 1e-6)
+        })
+        .map(|t| target.triangles[t])
+        .collect();
+    let selected = MeshSurface::new(&openchuck_types::mesh::TriangleMesh {
+        vertices: target.vertices.clone(),
+        triangles,
+    })
+    .unwrap();
+    let region = RegionConstraint {
+        region: Some(&selected),
+        ..Default::default()
+    };
+    let v = values(&[(names::STEPOVER, num(1.5)), (parameter::STEPDOWN, num(2.5))]);
+    let path = rig.generate_in(&rig.stock(), &region, &v).unwrap();
+    let (stock, faults) = rig.simulate(rig.stock(), &path);
+    assert!(faults.is_empty(), "{faults:?}");
+
+    let (least_in, most_in) = leftover(&rig, &stock, edge + 4.0, 26.0);
+    let (least_out, _) = leftover(&rig, &stock, 3.0, edge - 6.0);
+    let (least_edge, most_edge) = leftover(&rig, &stock, edge - 6.0, edge + 4.0);
+    eprintln!(
+        "inside {least_in:.3} to {most_in:.3}; outside from {least_out:.3}; \
+         edge band {least_edge:.3} to {most_edge:.3}"
+    );
+    // The edge falls on the slope, and a 4 mm ball is cut where its contact
+    // is in the region: the leftover tapers from the stock to leave at about
+    // a tool radius past the edge to the whole stock about a tool diameter
+    // before it (measured: 0.61 at 14.4, 0.47 at 15.0, 2.1 at 12.0 for an
+    // edge at 15.0).
+    let (_, past) = leftover(&rig, &stock, edge + 1.5, edge + 4.0);
+    assert!(
+        past < 0.5 + 0.25,
+        "not at the stock to leave 1.5 mm in: {past}"
+    );
+    let (before, _) = leftover(&rig, &stock, edge - 3.0, edge - 2.4);
+    assert!(
+        before > 2.0,
+        "cut more than 2.4 mm before the edge: {before}"
+    );
+    // Inside: the stock to leave, as for the whole part.
+    assert!(least_in > 0.5 - 2.0 * CELL, "overcut inside: {least_in}");
+    assert!(most_in < 0.5 + 0.25, "left too much inside: {most_in}");
+    // Outside: the stock stands, at least 3 mm over a cone of 8 to 12 mm
+    // radius in a 15 mm stock.
+    assert!(least_out > 2.9, "cut outside the region: {least_out}");
+    // Across the edge nothing is cut below the stock to leave.
+    assert!(
+        least_edge > 0.5 - 2.0 * CELL,
+        "overcut at the edge: {least_edge}"
+    );
 }
