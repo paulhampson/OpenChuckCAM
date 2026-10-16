@@ -71,6 +71,23 @@ fn parse_shard(text: &str) -> Result<(usize, usize)> {
     Ok((i, n))
 }
 
+/// Share `index` of `count` of `programs`, refusing a count that leaves a share with no program
+/// (that share would pass without checking anything) before any share is built.
+fn select_share(programs: &[PathBuf], index: usize, count: usize) -> Result<Vec<PathBuf>> {
+    if count > programs.len() {
+        bail!(
+            "{count} shares for {} programs would leave a share with nothing to run: use at most {} shares",
+            programs.len(),
+            programs.len()
+        );
+    }
+    let mine = shard_programs(programs, index, count);
+    if mine.is_empty() {
+        bail!("share {index}/{count} has no programs: use fewer shares");
+    }
+    Ok(mine)
+}
+
 /// Deals `programs` over `count` shares, longest first onto the share with the least expected
 /// time (ties by name, so every runner computes the same shares from the same files), and
 /// returns share `index` (1-based). Every program is in exactly one share.
@@ -231,14 +248,7 @@ pub fn check(root: &Path, options: &Options) -> Result<Findings> {
         None => programs,
         Some(text) => {
             let (index, count) = parse_shard(text)?;
-            let mine = shard_programs(&programs, index, count);
-            // A share with nothing to run would pass without checking anything.
-            if mine.is_empty() {
-                bail!(
-                    "share {index}/{count} has no programs ({} programs in all): use fewer shares",
-                    programs.len()
-                );
-            }
+            let mine = select_share(&programs, index, count)?;
             println!(
                 "share {index}/{count}: {} of {} programs",
                 mine.len(),
@@ -452,6 +462,15 @@ mod tests {
                 "share {index} takes {time} s of {total} s"
             );
         }
+    }
+
+    #[test]
+    fn gate_3_more_shares_than_programs_is_refused_before_any_share_is_built() {
+        let list = all_known();
+        assert!(select_share(&list, 1, list.len()).is_ok());
+        assert!(select_share(&list, 1, list.len() + 1).is_err());
+        // A huge count must not be allocated.
+        assert!(select_share(&list, 1, 1_000_000_000).is_err());
     }
 
     #[test]
