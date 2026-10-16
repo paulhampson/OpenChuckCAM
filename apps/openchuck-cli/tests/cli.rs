@@ -1006,6 +1006,8 @@ fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
     assert!(out.stderr.contains("tab 1"), "{}", out.stderr);
     assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
     let out = run(&args(&["report", p]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
     assert!(!out.stdout.contains("tab 1:"), "{}", out.stdout);
     // The default tabs come from the part: one at the head, one at the tail.
     let out = run(&args(&["setup", p, "Setup 1", "--default-tabs"]));

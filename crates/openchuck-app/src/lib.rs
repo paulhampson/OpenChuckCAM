@@ -292,67 +292,51 @@ impl Application {
     /// What is wrong with `draft` as the workholding of `setup`, from the
     /// part and the tools, which the setup's own validation cannot see: tabs
     /// outside the head and tail zones (OI-180) and tabs narrower than a tool
-    /// of the setup's operations (OI-159). A front end calls it before it
+    /// of the setup's operations (OI-159). A front end runs it before it
     /// stores an edit; generation refuses the same things. Empty when there
-    /// is nothing wrong or no part to check against. Reads the part, so a
-    /// large model takes time.
-    pub fn check_workholding(
+    /// is nothing wrong or no part to check against. Reads and places the
+    /// part, so it runs as a job.
+    pub fn start_check_workholding(
         &self,
         setup: openchuck_project::id::SetupId,
         draft: &openchuck_types::workholding::Workholding,
-    ) -> Result<Vec<String>, AppError> {
-        let mut edited = self
-            .document
-            .project
-            .setup(setup)
-            .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?
-            .clone();
-        edited.workholding = draft.clone();
-        self.check_setup_workholding(&edited)
+    ) -> JobHandle<Vec<String>> {
+        let document = self.document.clone();
+        let draft = draft.clone();
+        self.jobs.submit(
+            "check workholding",
+            self.events_tx.clone(),
+            move |context| {
+                let mut edited = document
+                    .project
+                    .setup(setup)
+                    .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?
+                    .clone();
+                edited.workholding = draft;
+                workholding::findings_of(&document.location, &document.project, &edited, context)
+            },
+        )
     }
 
-    /// As [`Application::check_workholding`], for `s` as it would be stored,
-    /// which need not be in the project yet (a setup being added from the
-    /// command line). Its operations are those of the project with its ID.
+    /// As [`Application::start_check_workholding`], for `s` as it would be
+    /// stored, which need not be in the project yet (a setup being added from
+    /// the command line), waiting for the result. For a front end that may
+    /// block, such as the command line; an interface starts the job instead.
     pub fn check_setup_workholding(
         &self,
         s: &openchuck_project::Setup,
     ) -> Result<Vec<String>, AppError> {
-        let project = &self.document.project;
-        let (setup, draft) = (s.id, &s.workholding);
-        let Some(part) = s.part else {
-            return Ok(Vec::new());
-        };
-        let extent = self.inspect_model(part)?.extent;
-        let mut found: Vec<String> =
-            openchuck_types::workholding::check_tab_zones(draft, s.stock.as_ref(), extent.as_ref())
-                .into_iter()
-                .map(|kind| {
-                    setup::SetupWarning {
-                        kind,
-                        unconfirmed: Vec::new(),
-                    }
-                    .to_string()
-                })
-                .collect();
-        for operation in project.operations().iter().filter(|o| o.setup == setup) {
-            let Some(snapshot) = operation
-                .tool
-                .and_then(|id| project.tools().iter().find(|t| t.id == id))
-            else {
-                continue;
-            };
-            let Ok(profile) = snapshot.tool.profile() else {
-                continue;
-            };
-            found.extend(workholding::narrow_tab_note(
-                draft,
-                2.0 * profile.cutting_radius(),
-                &snapshot.name,
-                &operation.name,
-            ));
-        }
-        Ok(found)
+        let document = self.document.clone();
+        let s = s.clone();
+        self.jobs
+            .submit(
+                "check workholding",
+                self.events_tx.clone(),
+                move |context| {
+                    workholding::findings_of(&document.location, &document.project, &s, context)
+                },
+            )
+            .wait()
     }
 
     /// Notes about the selections of `operation` that reach a held region or a
@@ -588,25 +572,7 @@ impl Application {
             // A tab narrower than a tool that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
-            for operation in project.operations().iter().filter(|o| o.setup == s.id) {
-                let Some(snapshot) = operation
-                    .tool
-                    .and_then(|id| project.tools().iter().find(|t| t.id == id))
-                else {
-                    continue;
-                };
-                let Ok(profile) = snapshot.tool.profile() else {
-                    continue;
-                };
-                if let Some(note) = workholding::narrow_tab_note(
-                    &s.workholding,
-                    2.0 * profile.cutting_radius(),
-                    &snapshot.name,
-                    &operation.name,
-                ) {
-                    notes.push(note);
-                }
-            }
+            notes.extend(workholding::narrow_tab_notes(project, s));
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),

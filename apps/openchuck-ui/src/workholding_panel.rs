@@ -28,9 +28,21 @@ pub struct WorkholdingPanel {
     draft: Workholding,
     /// The default tabs being computed.
     defaults: Option<JobHandle<Vec<Tab>>>,
+    /// A check against the part and tools that is running.
+    checking: Option<Checking>,
     /// What the last check of the setup said.
     findings: Vec<String>,
     message: Option<String>,
+}
+
+/// A running check of a draft against the part and the tools. It reads the
+/// part, so it is a job, not a call in the frame.
+struct Checking {
+    job: JobHandle<Vec<String>>,
+    /// True to store the draft if the check finds nothing.
+    apply: bool,
+    /// The draft as it was when the check started.
+    draft: Workholding,
 }
 
 impl std::fmt::Debug for WorkholdingPanel {
@@ -49,6 +61,7 @@ impl WorkholdingPanel {
             base: setup.workholding.clone(),
             draft: setup.workholding.clone(),
             defaults: None,
+            checking: None,
             findings: Vec::new(),
             message: None,
         }
@@ -77,6 +90,7 @@ impl WorkholdingPanel {
         );
         ui.separator();
         self.poll_defaults(ui.ctx());
+        let command = self.poll_check(ui.ctx(), setup);
 
         held(ui, "Held at the start of the stock", &mut self.draft.start);
         held(ui, "Held at the end of the stock", &mut self.draft.end);
@@ -132,14 +146,17 @@ impl WorkholdingPanel {
             ui.label(RichText::new(m).color(ERROR));
         }
         let changed = self.draft != self.base;
-        let mut command = None;
+        let idle = self.checking.is_none();
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(changed && invalid.is_none(), egui::Button::new("Apply"))
+                .add_enabled(
+                    changed && invalid.is_none() && idle,
+                    egui::Button::new("Apply"),
+                )
                 .on_hover_text("Store the held regions and tabs in the setup (it can be undone)")
                 .clicked()
             {
-                command = self.apply(app, setup);
+                self.start_check(app, true);
             }
             if ui
                 .add_enabled(changed, egui::Button::new("Revert"))
@@ -148,17 +165,14 @@ impl WorkholdingPanel {
                 self.draft = self.base.clone();
             }
             if ui
-                .button("Check against the part and tools")
+                .add_enabled(idle, egui::Button::new("Check against the part and tools"))
                 .on_hover_text("Tabs lie in the head or tail zone and are wider than the tools")
                 .clicked()
             {
-                self.findings = match app.check_workholding(self.setup, &self.draft) {
-                    Ok(found) if found.is_empty() => {
-                        vec!["The tabs are in the head and tail zones and wide enough.".to_owned()]
-                    }
-                    Ok(found) => found,
-                    Err(e) => vec![e.to_string()],
-                };
+                self.start_check(app, false);
+            }
+            if !idle {
+                ui.spinner();
             }
         });
         for f in &self.findings {
@@ -167,24 +181,62 @@ impl WorkholdingPanel {
         command
     }
 
-    /// The command that stores the draft in the setup, or `None` with the
-    /// reason in the panel's message. Tabs outside the head and tail zones,
-    /// and tabs narrower than a tool the setup uses, are refused here, as they
-    /// are when generating (OI-159, OI-180).
-    fn apply(&mut self, app: &Application, setup: &Setup) -> Option<Command> {
-        match app.check_workholding(self.setup, &self.draft) {
-            Ok(found) if found.is_empty() => {
+    /// Starts checking the draft against the part and the tools: tabs outside
+    /// the head and tail zones, and tabs narrower than a tool the setup uses,
+    /// are refused when stored, as they are when generating (OI-159, OI-180).
+    fn start_check(&mut self, app: &Application, apply: bool) {
+        self.message = None;
+        self.checking = Some(Checking {
+            job: app.start_check_workholding(self.setup, &self.draft),
+            apply,
+            draft: self.draft.clone(),
+        });
+    }
+
+    /// Takes the result of a finished check. Returns the command that stores
+    /// the draft the check was made on, if it was asked to and found nothing.
+    fn poll_check(&mut self, ctx: &egui::Context, setup: &Setup) -> Option<Command> {
+        let checking = self.checking.as_ref()?;
+        let Some(result) = checking.job.try_result() else {
+            ctx.request_repaint();
+            return None;
+        };
+        let Checking { apply, draft, .. } = self.checking.take()?;
+        self.finish_check(result.map_err(|e| e.to_string()), apply, draft, setup)
+    }
+
+    /// Records what a check found. With `apply` and no findings, the command
+    /// that stores `draft` in the setup; otherwise `None`, with the reason in
+    /// the panel's message (applying) or findings (checking).
+    fn finish_check(
+        &mut self,
+        result: Result<Vec<String>, String>,
+        apply: bool,
+        draft: Workholding,
+        setup: &Setup,
+    ) -> Option<Command> {
+        match result {
+            Ok(found) if found.is_empty() && apply => {
                 let mut edited = setup.clone();
-                edited.workholding = self.draft.clone();
+                edited.workholding = draft;
                 self.message = None;
                 Some(Command::Replace(Item::Setup(edited)))
             }
-            Ok(found) => {
+            Ok(found) if apply => {
                 self.message = Some(found.join("\n"));
                 None
             }
+            Ok(found) if found.is_empty() => {
+                self.findings =
+                    vec!["The tabs are in the head and tail zones and wide enough.".to_owned()];
+                None
+            }
+            Ok(found) => {
+                self.findings = found;
+                None
+            }
             Err(e) => {
-                self.message = Some(e.to_string());
+                self.message = Some(e);
                 None
             }
         }
@@ -370,6 +422,13 @@ mod tests {
         }
     }
 
+    /// The check of the panel's draft, run as the panel runs it (a job).
+    fn check(app: &Application, panel: &WorkholdingPanel) -> Result<Vec<String>, String> {
+        app.start_check_workholding(panel.setup, &panel.draft)
+            .wait()
+            .map_err(|e| e.to_string())
+    }
+
     #[test]
     fn req_set_09_req_op_21_the_panel_stores_a_valid_draft_and_refuses_the_rest() {
         let (dir, mut app, _, setup_id) = cube_project("workholding-panel");
@@ -382,7 +441,9 @@ mod tests {
             diameter: None,
         });
         panel.draft.tabs = vec![tab(-6.0, 1.0, 4.0)];
-        let command = panel.apply(&app, &setup).expect("a valid draft");
+        let command = panel
+            .finish_check(check(&app, &panel), true, panel.draft.clone(), &setup)
+            .expect("a valid draft");
         app.execute(command).unwrap();
         assert_eq!(
             app.project().setup(setup_id).unwrap().workholding,
@@ -400,12 +461,20 @@ mod tests {
 
         // A tab across the part is not in the head or the tail zone.
         panel.draft.tabs = vec![tab(-1.0, 2.0, 6.0)];
-        assert!(panel.apply(&app, &setup).is_none());
+        assert!(
+            panel
+                .finish_check(check(&app, &panel), true, panel.draft.clone(), &setup)
+                .is_none()
+        );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("tab 1"), "{message}");
         // A tab narrower than the 4 mm tool is refused, naming the operation.
         panel.draft.tabs = vec![tab(-6.0, 1.0, 3.0)];
-        assert!(panel.apply(&app, &setup).is_none());
+        assert!(
+            panel
+                .finish_check(check(&app, &panel), true, panel.draft.clone(), &setup)
+                .is_none()
+        );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("narrower than the tool"), "{message}");
         assert!(message.contains("Finish"), "{message}");

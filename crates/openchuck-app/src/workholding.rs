@@ -199,8 +199,8 @@ pub fn selection_reach_notes(
 }
 
 /// The note for the first tab narrower than a tool of `tool_diameter`, naming
-/// the operation that uses it, or `None` (OI-159). Used when checking a setup.
-pub(crate) fn narrow_tab_note(
+/// the operation that uses it, or `None` (OI-159).
+fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
     tool_name: &str,
@@ -216,6 +216,67 @@ pub(crate) fn narrow_tab_note(
             )
         })
     })
+}
+
+/// A note for each operation of `setup` whose tool is wider than a tab of the
+/// setup (OI-159). Operations without a tool, or with a profile that cannot be
+/// built, are skipped; generation reports those.
+pub(crate) fn narrow_tab_notes(
+    project: &openchuck_project::Project,
+    setup: &openchuck_project::Setup,
+) -> Vec<String> {
+    project
+        .operations()
+        .iter()
+        .filter(|o| o.setup == setup.id)
+        .filter_map(|operation| {
+            let snapshot = operation
+                .tool
+                .and_then(|id| project.tools().iter().find(|t| t.id == id))?;
+            let profile = snapshot.tool.profile().ok()?;
+            narrow_tab_note(
+                &setup.workholding,
+                2.0 * profile.cutting_radius(),
+                &snapshot.name,
+                &operation.name,
+            )
+        })
+        .collect()
+}
+
+/// What is wrong with the workholding of `setup` as it would be stored: tabs
+/// outside the head and tail zones (OI-180), then tabs narrower than a tool of
+/// its operations (OI-159). Reads and places the part for its extent; empty
+/// when the setup has no part.
+pub(crate) fn findings_of(
+    root: &std::path::Path,
+    project: &openchuck_project::Project,
+    setup: &openchuck_project::Setup,
+    context: &openchuck_types::job::JobContext<'_>,
+) -> Result<Vec<String>, AppError> {
+    let extent = match setup
+        .part
+        .and_then(|id| project.models().iter().find(|m| m.id == id))
+    {
+        Some(model) => {
+            let mesh = crate::model::placed_mesh(root, model, context)?;
+            openchuck_geom::part_extent(&mesh)
+        }
+        None => return Ok(Vec::new()),
+    };
+    let mut found: Vec<String> =
+        check_tab_zones(&setup.workholding, setup.stock.as_ref(), extent.as_ref())
+            .into_iter()
+            .map(|kind| {
+                openchuck_types::setup::SetupWarning {
+                    kind,
+                    unconfirmed: Vec::new(),
+                }
+                .to_string()
+            })
+            .collect();
+    found.extend(narrow_tab_notes(project, setup));
+    Ok(found)
 }
 
 /// [`selection_reach_notes`] for `operation` of `project`, reading and placing
