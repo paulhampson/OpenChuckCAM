@@ -453,3 +453,36 @@ fn req_ui_08_new_command_clears_redo_and_failed_command_is_not_recorded() {
     assert!(app.project().setups().is_empty());
     assert!(!app.can_undo());
 }
+
+#[test]
+fn req_ui_08_req_set_09_req_op_21_workholding_edit_undoes_and_redoes() {
+    use openchuck_app::setup::{HeldRegion, Workholding};
+    let mut app = open_app("workholding");
+    let id = SetupId::from_u128(1);
+    app.execute(Command::Add {
+        item: Item::Setup(Setup::new(id, "Setup 1")),
+        placement: Placement::End,
+    })
+    .unwrap();
+    let mut setup = app.project().setup(id).unwrap().clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(40.0),
+        length: Millimetres(100.0),
+        x_start: Millimetres(0.0),
+    });
+    app.execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    setup.workholding = Workholding {
+        start: Some(HeldRegion {
+            length: Millimetres(15.0),
+            diameter: None,
+        }),
+        ..Workholding::default()
+    };
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(app.project().setup(id).unwrap().workholding.start.is_some());
+    assert!(app.undo().unwrap());
+    assert!(app.project().setup(id).unwrap().workholding.is_empty());
+    assert!(app.redo().unwrap());
+    assert!(app.project().setup(id).unwrap().workholding.start.is_some());
+}
