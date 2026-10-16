@@ -826,24 +826,48 @@ fn req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread(
 
 /// Slice 9 review checklist: "Cancel stops within a stated time and leaves no
 /// partial result" (decision record 0040 item 8: 2 s at the default cell).
+/// The cancel is asked at several points of the run, because the time it takes
+/// depends on which stage the run is in: one asked early lands in path
+/// generation, one asked later while the stock is cut, and the longest stage
+/// must watch the flag too.
 #[test]
 fn req_ui_09_cancel_stops_a_run_within_two_seconds_and_leaves_no_partial_result() {
     let (dir, app, _) = project("cancel");
+    // How long the whole run takes on this machine, to judge a stop against:
+    // a stop that waits for a stage to end takes about as long as the stage.
     app.set_cache_versions(0);
-    let job = app.start_simulate();
-    std::thread::sleep(Duration::from_millis(20));
-    let asked = Instant::now();
-    job.cancel();
-    let result = job.wait();
-    let took = asked.elapsed();
-    // The run may have finished before the cancel landed (a tiny job); if it
-    // did not, it is an error that says so and gives no result.
-    match result {
-        Ok(_) => {}
-        Err(e) => assert!(e.to_string().contains("cancel"), "{e}"),
+    let started = Instant::now();
+    app.start_simulate().wait().unwrap();
+    let whole = started.elapsed();
+    let mut worst = Duration::ZERO;
+    for delay in [0u64, 20, 60, 150, 400, 900] {
+        app.set_cache_versions(0);
+        let job = app.start_simulate();
+        std::thread::sleep(Duration::from_millis(delay));
+        let asked = Instant::now();
+        job.cancel();
+        let result = job.wait();
+        let took = asked.elapsed();
+        worst = worst.max(took);
+        // The run may have finished before the cancel landed (a tiny job); if
+        // it did not, it is an error that says so and gives no result.
+        match result {
+            Ok(_) => {}
+            Err(e) => assert!(e.is_cancelled(), "{e}"),
+        }
+        assert!(
+            took < Duration::from_secs(2),
+            "cancel asked at {delay} ms took {took:?}"
+        );
     }
-    eprintln!("cancel: stopped in {took:?}");
-    assert!(took < Duration::from_secs(2), "cancel took {took:?}");
+    eprintln!("cancel: worst stop {worst:?}, whole run {whole:?}");
+    // Whatever the machine's speed, a cancel is far quicker than the run it
+    // stops; this holds where the absolute limit above would not catch a stage
+    // that ignores the flag.
+    assert!(
+        worst < whole / 4,
+        "the worst stop {worst:?} is not far below the whole run {whole:?}"
+    );
     // And the application is still good: a second run completes normally.
     app.regenerate().unwrap();
     let _ = std::fs::remove_dir_all(dir);

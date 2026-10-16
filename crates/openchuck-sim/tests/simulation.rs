@@ -11,12 +11,12 @@ use std::f64::consts::PI;
 use std::sync::Mutex;
 
 use openchuck_sim::{
-    DeviationOptions, DexelStock, Simulator, ToolSolid, compare, cut_spans, stock_mesh,
-    triangle_values,
+    DeviationOptions, DexelStock, Pose, Simulator, ToolSolid, compare, compare_cancellable,
+    cut_spans, stock_mesh, triangle_values,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::Error;
-use openchuck_types::geometry::{Aabb, Point3};
+use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress, Progress, ProgressSink};
 use openchuck_types::simulation::SimulationSettings;
@@ -610,6 +610,59 @@ fn req_nfr_04_simulation_reports_progress_and_can_be_cancelled() {
     let ctx = JobContext::new(&cancelled, &NoProgress);
     let mut sim = Simulator::new(make(), &m, None);
     assert_eq!(sim.run_group(&g, &profile, &ctx), Err(Error::Cancelled));
+}
+
+/// A batch of poses can take over a second to cut, so the cut watches the
+/// cancel flag itself instead of waiting for the end of the batch, and so
+/// does the comparison with the part (UI-09, NFR-04).
+#[test]
+#[allow(clippy::float_cmp)] // the same code path must give the same bits
+fn req_nfr_04_cutting_and_comparing_stop_when_cancelled() {
+    let profile = ball(4.0);
+    let tool = ToolSolid::new(&profile);
+    let poses: Vec<Pose> = (0..256)
+        .map(|i| Pose {
+            tip: Point3::new(-10.0 + i as f64 * 0.08, 0.0, 0.0),
+            axis: Vec3::new(0.0, 0.0, 1.0),
+        })
+        .collect();
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+
+    // Not cancelled, it cuts exactly as `cut` does.
+    let free = CancelToken::new();
+    let (mut watched, mut plain) = (make(), make());
+    let removed = watched.cut_cancellable(&tool, &poses, &free).unwrap();
+    assert!(removed > 0.0);
+    assert_eq!(removed, plain.cut(&tool, &poses));
+    assert_eq!(watched.volume(), plain.volume());
+
+    // Cancelled before it starts, it gives up at once and cuts nothing.
+    let cancelled = CancelToken::new();
+    cancelled.cancel();
+    let mut stopped = make();
+    assert_eq!(
+        stopped.cut_cancellable(&tool, &poses, &cancelled),
+        Err(Error::Cancelled)
+    );
+    assert_eq!(stopped.volume(), make().volume());
+
+    // The comparison with the part stops too.
+    let target = Cylinder {
+        radius: 10.0,
+        length: 16.0,
+    };
+    let mesh = target.mesh(41, 60);
+    let options = DeviationOptions::for_cell(0.2);
+    let ctx = JobContext::new(&cancelled, &NoProgress);
+    assert_eq!(
+        compare_cancellable(&watched, &mesh, &options, &ctx),
+        Err(Error::Cancelled)
+    );
+    let ctx = JobContext::new(&free, &NoProgress);
+    assert_eq!(
+        compare_cancellable(&watched, &mesh, &options, &ctx).unwrap(),
+        compare(&watched, &mesh, &options).unwrap()
+    );
 }
 
 #[test]

@@ -13,6 +13,7 @@
 //! plan section 4.1), so an overcut counts as one only beyond the cell.
 
 use openchuck_types::geometry::{Point3, Vec3};
+use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::{Error, Result};
 use rayon::prelude::*;
@@ -88,6 +89,24 @@ pub fn compare(
     target: &TriangleMesh,
     options: &DeviationOptions,
 ) -> Result<Deviation> {
+    let never = CancelToken::new();
+    compare_cancellable(
+        stock,
+        target,
+        options,
+        &JobContext::new(&never, &NoProgress),
+    )
+}
+
+/// [`compare`] that stops with [`Error::Cancelled`] soon after `context` is
+/// cancelled: the comparison is the longest stretch of a simulation run, and
+/// a cancelled run must stop within the stated time (UI-09).
+pub fn compare_cancellable(
+    stock: &DexelStock,
+    target: &TriangleMesh,
+    options: &DeviationOptions,
+    context: &JobContext<'_>,
+) -> Result<Deviation> {
     target.validate()?;
     for (name, v) in [
         ("spacing", options.spacing),
@@ -100,19 +119,20 @@ pub fn compare(
             ));
         }
     }
+    context.check_cancelled()?;
     let samples = surface_samples(target, options.spacing);
-    let points: Vec<DeviationPoint> = samples
+    context.check_cancelled()?;
+    let chunks: Vec<Vec<DeviationPoint>> = samples
         .par_chunks(CHUNK)
         .map(|chunk| {
-            chunk
+            context.check_cancelled()?;
+            Ok(chunk
                 .iter()
                 .map(|&(p, n)| measure(stock, p, n, options))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>())
         })
-        .collect::<Vec<_>>()
-        .into_iter()
-        .flatten()
-        .collect();
+        .collect::<Result<_>>()?;
+    let points: Vec<DeviationPoint> = chunks.into_iter().flatten().collect();
     let mut worst_remaining: Option<DeviationPoint> = None;
     let mut worst_overcut: Option<DeviationPoint> = None;
     for p in &points {

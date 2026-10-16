@@ -230,7 +230,9 @@ pub(crate) fn regenerate(
                 Some(model) => Some(crate::model::placed_mesh(location, model, context)?),
                 None => None,
             };
-            report.setups.push(state.finish(mesh.as_ref(), settings)?);
+            report
+                .setups
+                .push(state.finish(mesh.as_ref(), settings, context)?);
         }
         regeneration.simulation = Some(report);
     }
