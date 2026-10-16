@@ -65,6 +65,8 @@ const TOL: f64 = 1e-6;
 struct Wall<'a> {
     face: &'a BrepFace,
     origin: Point3,
+    x: Vec3,
+    y: Vec3,
     z: Vec3,
     radius: f64,
     /// The range of the face's axis coordinate, ascending.
@@ -93,11 +95,7 @@ pub fn find_holes(model: &BrepModel) -> Vec<Hole> {
         if let Some(t) = taken.get_mut(i) {
             *t = true;
         }
-        let round: f64 = group
-            .iter()
-            .map(|w| w.face.uv_bounds[1] - w.face.uv_bounds[0])
-            .sum();
-        if round < std::f64::consts::TAU - 1e-6 {
+        if covered_turn(&group) < std::f64::consts::TAU - 1e-6 {
             continue;
         }
         if let Some(hole) = hole_of(model, &group) {
@@ -106,6 +104,53 @@ pub fn find_holes(model: &BrepModel) -> Vec<Hole> {
     }
     holes.sort_by_key(|h| h.faces.first().copied());
     holes
+}
+
+/// How much of a turn around the first wall's axis the group's faces cover,
+/// counting overlaps once: each face's `u` interval is placed in the first
+/// face's frame, merged, and summed.
+fn covered_turn(group: &[&Wall<'_>]) -> f64 {
+    use std::f64::consts::TAU;
+    let Some(first) = group.first() else {
+        return 0.0;
+    };
+    let hand = |w: &Wall<'_>| {
+        if w.x.cross(w.y).dot(w.z) < 0.0 {
+            -1.0
+        } else {
+            1.0
+        }
+    };
+    let mut spans: Vec<(f64, f64)> = Vec::new();
+    for w in group {
+        let [u0, u1, _, _] = w.face.uv_bounds;
+        let sign = w.z.dot(first.z).signum() * hand(w) * hand(first);
+        let start = w.x.dot(first.y).atan2(w.x.dot(first.x));
+        let (a, b) = if sign > 0.0 {
+            (start + u0, start + u1)
+        } else {
+            (start - u1, start - u0)
+        };
+        let width = (b - a).min(TAU);
+        let a = a.rem_euclid(TAU);
+        if a + width > TAU {
+            spans.push((a, TAU));
+            spans.push((0.0, a + width - TAU));
+        } else {
+            spans.push((a, a + width));
+        }
+    }
+    spans.sort_by(|p, q| p.0.total_cmp(&q.0));
+    let mut total = 0.0;
+    let mut end = f64::NEG_INFINITY;
+    for (a, b) in spans {
+        let a = a.max(end);
+        if b > a {
+            total += b - a;
+        }
+        end = end.max(b);
+    }
+    total
 }
 
 /// The cylinder `face` as the wall of a hole, if it is one.
@@ -143,6 +188,8 @@ fn wall(face: &BrepFace) -> Option<Wall<'_>> {
     Some(Wall {
         face,
         origin: frame.origin,
+        x: frame.x,
+        y: frame.y,
         z: frame.z,
         radius: *radius,
         t0: v0,

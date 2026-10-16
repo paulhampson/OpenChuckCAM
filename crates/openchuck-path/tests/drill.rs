@@ -273,6 +273,18 @@ fn req_op_10_a_convex_cylinder_and_a_mesh_have_no_holes() {
 }
 
 #[test]
+fn req_op_10_overlapping_partial_walls_are_not_a_full_round_hole() {
+    let mut spec = HoleSpec::blind(10.0, polar(90.0), DIAMETER, 5.0);
+    spec.split = true;
+    let (mut model, built) = drilled_blank(RADIUS, LENGTH, &[spec]);
+    assert_eq!(find_holes(&model).len(), 1);
+    // Both halves now cover the same half turn: together they are half a hole.
+    let first = model.faces[built[0].walls[0].0 as usize].uv_bounds;
+    model.faces[built[0].walls[1].0 as usize].uv_bounds = first;
+    assert!(find_holes(&model).is_empty());
+}
+
+#[test]
 fn req_op_10_a_face_selection_picks_the_holes_and_the_composite_keeps_them() {
     let specs = several();
     let (model, built) = drilled_blank(RADIUS, LENGTH, &specs);
