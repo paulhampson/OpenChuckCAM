@@ -156,6 +156,8 @@ impl Application {
                 let mut done = 0u64;
                 context.report("prepare playback", 0, Some(total));
                 let mut setups = Vec::new();
+                // Every setup's simulator is kept, so the limit is on the total.
+                let mut kept_bytes = 0usize;
                 for (id, groups) in plan {
                     let first = groups
                         .first()
@@ -181,17 +183,12 @@ impl Application {
                         .sum();
                     let every = (moves / CHECKPOINTS_WITHIN).max(MIN_CHECKPOINT_SPACING);
                     let copies = groups.len() + 2 + moves / every;
-                    let bytes = copies.saturating_mul(stock.memory_bytes());
-                    if bytes > MAX_CHECKPOINT_BYTES {
-                        return Err(AppError::Playback(format!(
-                            "stock playback of this setup would keep {copies} copies of a stock \
-                             of {:.0} MB, over the {:.0} MB allowed; make the simulation cell \
-                             coarser (now {} mm) or play the toolpath without the stock",
-                            stock.memory_bytes() as f64 / 1e6,
-                            MAX_CHECKPOINT_BYTES as f64 / 1e6,
-                            settings.cell.0
-                        )));
-                    }
+                    kept_bytes = add_checkpoint_bytes(
+                        kept_bytes,
+                        copies,
+                        stock.memory_bytes(),
+                        settings.cell.0,
+                    )?;
                     let mut simulator = Simulator::new(stock, machine, Some(every));
                     for g in &groups {
                         context.check_cancelled()?;
@@ -270,8 +267,54 @@ impl Application {
     }
 }
 
+/// Adds the checkpoints of one more setup (`copies` copies of a stock of
+/// `stock_bytes`) to the `kept` bytes of the setups before it, and refuses
+/// when the total passes [`MAX_CHECKPOINT_BYTES`]: all the setups' simulators
+/// stay in memory together.
+fn add_checkpoint_bytes(
+    kept: usize,
+    copies: usize,
+    stock_bytes: usize,
+    cell: f64,
+) -> Result<usize, AppError> {
+    let total = kept.saturating_add(copies.saturating_mul(stock_bytes));
+    if total > MAX_CHECKPOINT_BYTES {
+        return Err(AppError::Playback(format!(
+            "stock playback would keep at least {:.0} MB of checkpoints across the setups \
+             ({copies} copies of a stock of {:.0} MB in the setup being added), over the {:.0} MB \
+             allowed; make the simulation cell coarser (now {cell} mm) or play the toolpath \
+             without the stock",
+            total as f64 / 1e6,
+            stock_bytes as f64 / 1e6,
+            MAX_CHECKPOINT_BYTES as f64 / 1e6,
+        )));
+    }
+    Ok(total)
+}
+
 /// The operation a group came from, for a legend; kept here so a front end
 /// need not reach into the run.
 pub fn group_operation(run: &Regeneration, group: usize) -> Option<OperationId> {
     run.groups.get(group).map(|g| g.operation)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn req_nfr_04_the_checkpoint_limit_counts_every_setup_together() {
+        let half = MAX_CHECKPOINT_BYTES / 2 + 1;
+        // Each setup alone is within the limit ...
+        let first = add_checkpoint_bytes(0, 1, half, 0.1).unwrap();
+        assert_eq!(first, half);
+        // ... but the second one takes the total over it.
+        let error = add_checkpoint_bytes(first, 1, half, 0.1).unwrap_err();
+        assert!(error.to_string().contains("across the setups"), "{error}");
+        // A total exactly at the limit is allowed, and huge counts do not wrap.
+        assert!(add_checkpoint_bytes(0, 1, MAX_CHECKPOINT_BYTES, 0.1).is_ok());
+        assert!(add_checkpoint_bytes(0, usize::MAX, 2, 0.1).is_err());
+    }
 }
