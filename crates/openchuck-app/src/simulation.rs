@@ -11,7 +11,7 @@
 
 use openchuck_project::id::SetupId;
 use openchuck_sim::{
-    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare,
+    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_cancellable,
 };
 use openchuck_types::geometry::Aabb;
 use openchuck_types::ir::ToolpathGroup;
@@ -141,13 +141,15 @@ impl SetupState {
         self,
         part: Option<&openchuck_types::mesh::TriangleMesh>,
         settings: SimulationSettings,
+        context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<SetupSimulation, AppError> {
         let stock = self.simulator.into_stock();
         let deviation = match part {
-            Some(mesh) => Some(compare(
+            Some(mesh) => Some(compare_cancellable(
                 &stock,
                 mesh,
                 &DeviationOptions::for_cell(settings.cell.0),
+                context,
             )?),
             None => None,
         };
@@ -162,5 +164,13 @@ impl SetupState {
             deviation,
             stock,
         })
+    }
+}
+
+impl SetupSimulation {
+    /// The stock left, as a closed mesh for the viewport (SIM-03, SIM-05).
+    /// Quads do not share vertices, so the mesh is blocky at the cell size.
+    pub fn stock_mesh(&self) -> openchuck_types::mesh::TriangleMesh {
+        openchuck_sim::stock_mesh(&self.stock)
     }
 }

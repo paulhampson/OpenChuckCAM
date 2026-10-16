@@ -562,6 +562,35 @@ impl openchuck_path::Strategy for Careless {
 }
 
 #[test]
+fn req_op_02_rotary_roughing_removes_stock_only_above_its_selected_region() {
+    let (dir, mut app, op, model) = project("roughing-region");
+    set_roles(&mut app, op, |o| o.strategy = "rotary_roughing".into());
+    let free = cuts(&app.regenerate().unwrap().toolpath.groups[0]);
+    assert!(!free.is_empty());
+
+    let roof = app
+        .save_selection("Top", model, top_face(&app, model))
+        .unwrap();
+    set_roles(&mut app, op, |o| o.selections = vec![roof]);
+    let limited = app.regenerate().unwrap().toolpath.groups[0].clone();
+    let cut = cuts(&limited);
+    assert!(!cut.is_empty());
+    assert!(cut.len() < free.len());
+    // The ball rides above the roof: its centre lies within the angular reach
+    // of the top face (45 to 135 degrees about X), with a tool radius of room.
+    for (tip, centre) in &cut {
+        let angle = centre.z.atan2(centre.y).to_degrees();
+        assert!(
+            (30.0..=150.0).contains(&angle),
+            "tip {tip:?} is cutting away from the top face (angle {angle})"
+        );
+    }
+    // Deterministic (GC-07).
+    assert_eq!(app.regenerate().unwrap().toolpath.groups[0], limited);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted() {
     let (dir, mut app, op, model) = project("careless");
     app.register_strategy(std::sync::Arc::new(Careless))

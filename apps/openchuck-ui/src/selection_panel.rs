@@ -12,12 +12,13 @@
 
 use eframe::egui::{self, Color32, Modifiers, RichText};
 use openchuck_app::pick::{PickMode, ScenePick};
+use openchuck_app::project::ContentHash;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_app::scene::{SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
     Application, JobHandle, SelectionEdit, SelectionRole, SelectionSummary, TriangleSet,
 };
-use openchuck_viewport::{Colour, Scene};
+use openchuck_viewport::{Colour, Scene, Slot};
 
 use crate::viewport::PickInput;
 
@@ -82,6 +83,10 @@ pub struct SelectionPanel {
     direction_angle: f64,
     working: TriangleSet,
     working_model: Option<ModelId>,
+    /// The hash the project recorded for `working_model` when the working
+    /// selection began. Triangle numbers mean the file they were picked on, so
+    /// if the project accepts a changed file the selection is dropped.
+    working_hash: Option<ContentHash>,
     name: String,
     rename: String,
     pending: Option<Pending>,
@@ -101,6 +106,7 @@ impl Default for SelectionPanel {
             direction_angle: 10.0,
             working: TriangleSet::new(),
             working_model: None,
+            working_hash: None,
             name: String::new(),
             rename: String::new(),
             pending: None,
@@ -158,6 +164,7 @@ impl SelectionPanel {
     /// Takes in what the pointer did over the part, and finished fills.
     /// Returns true while a fill is running, so the frame is drawn again.
     pub fn frame(&mut self, app: &Application, input: PickInput) -> bool {
+        self.drop_stale_working(app);
         let hovered = input.hover.map(|h| (h.mesh, h.triangle));
         if hovered != self.hover.map(|h| (h.mesh, h.triangle)) {
             self.dirty = true;
@@ -176,7 +183,7 @@ impl SelectionPanel {
                     return false;
                 };
                 match result {
-                    Ok(picked) => self.join(model, combine, picked),
+                    Ok(picked) => self.join(model, combine, picked, recorded_hash(app, model)),
                     Err(e) => self.message = Some(e.to_string()),
                 }
                 false
@@ -192,7 +199,12 @@ impl SelectionPanel {
             old.handle.cancel();
         }
         match self.mode().request(pick) {
-            None => self.join(model, combine, TriangleSet::from([pick.triangle])),
+            None => self.join(
+                model,
+                combine,
+                TriangleSet::from([pick.triangle]),
+                recorded_hash(app, model),
+            ),
             Some(request) => match app.start_select_region(model, &request) {
                 Ok(handle) => {
                     self.pending = Some(Pending {
@@ -206,17 +218,48 @@ impl SelectionPanel {
         }
     }
 
-    fn join(&mut self, model: ModelId, combine: Combine, picked: TriangleSet) {
+    /// `hash` is what the project records for `model` now; the selection keeps
+    /// the one it began with.
+    fn join(
+        &mut self,
+        model: ModelId,
+        combine: Combine,
+        picked: TriangleSet,
+        hash: Option<ContentHash>,
+    ) {
         // A selection is on one model; picking on another starts again.
         if self.working_model != Some(model) {
             self.working.clear();
             self.working_model = Some(model);
+            self.working_hash = hash;
         }
         combine.apply(&mut self.working, picked);
         if self.working.is_empty() {
             self.working_model = None;
+            self.working_hash = None;
         }
         self.dirty = true;
+    }
+
+    /// Drops the working selection when the project no longer holds the model
+    /// file it was picked on: the numbers would name other triangles, and
+    /// saving them would stamp the new file's hash on the wrong ones. Undo,
+    /// a new placement or another setup leave the hash alone, so they keep it.
+    fn drop_stale_working(&mut self, app: &Application) {
+        let Some(model) = self.working_model else {
+            return;
+        };
+        if recorded_hash(app, model) == self.working_hash {
+            return;
+        }
+        self.working.clear();
+        self.working_model = None;
+        self.working_hash = None;
+        self.dirty = true;
+        self.message = Some(
+            "The model file changed, so the working selection was cleared; select again."
+                .to_owned(),
+        );
     }
 
     /// The highlights to draw over the scene when they changed since the last
@@ -254,6 +297,10 @@ impl SelectionPanel {
             let one = TriangleSet::from([hover.triangle]);
             scene.add_mesh(&triangles_mesh(&part.mesh, &one), &[], HOVER, NO_EDGES);
         }
+        // The highlights are on the workpiece, which turns with A.
+        for mesh in &mut scene.meshes {
+            mesh.slot = Slot::Part;
+        }
         Some(scene)
     }
 
@@ -290,6 +337,7 @@ impl SelectionPanel {
         view: &SceneView,
     ) -> Option<String> {
         let mut error = None;
+        self.drop_stale_working(app);
         ui.heading("Selection");
         if view.picking.picker().is_none() {
             ui.label("There is no part to select on. Choose a setup with a part.");
@@ -475,7 +523,7 @@ impl SelectionPanel {
                 ),
                 (
                     "Replace with selection",
-                    "Make this set the working selection",
+                    "Replace this set's triangles with the working selection",
                     2,
                 ),
             ] {
@@ -526,6 +574,15 @@ impl SelectionPanel {
         }
         error
     }
+}
+
+/// What the project records as the hash of `model`'s file, if it has the model.
+fn recorded_hash(app: &Application, model: ModelId) -> Option<ContentHash> {
+    app.project()
+        .models()
+        .iter()
+        .find(|m| m.id == model)
+        .map(|m| m.hash)
 }
 
 /// The selections section of an operation's properties (OP-02): for each
@@ -632,14 +689,14 @@ mod tests {
     fn req_ui_04_picking_on_another_model_starts_a_new_selection() {
         let mut panel = SelectionPanel::default();
         let (a, b) = (ModelId::new(), ModelId::new());
-        panel.join(a, Combine::Replace, set(&[1, 2]));
-        panel.join(a, Combine::Add, set(&[3]));
+        panel.join(a, Combine::Replace, set(&[1, 2]), None);
+        panel.join(a, Combine::Add, set(&[3]), None);
         assert_eq!(panel.working, set(&[1, 2, 3]));
-        panel.join(b, Combine::Add, set(&[9]));
+        panel.join(b, Combine::Add, set(&[9]), None);
         assert_eq!(panel.working, set(&[9]));
         assert_eq!(panel.working_model, Some(b));
         // Taking away everything leaves no model.
-        panel.join(b, Combine::Remove, set(&[9]));
+        panel.join(b, Combine::Remove, set(&[9]), None);
         assert!(panel.working.is_empty());
         assert_eq!(panel.working_model, None);
     }
@@ -760,6 +817,80 @@ mod tests {
         // The newer click stands alone; the older job cannot overwrite it.
         assert!(panel.pending.is_none());
         assert_eq!(panel.working, set(&[5]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A project with the corpus cube added, and its model.
+    fn cube_project(name: &str) -> (std::path::PathBuf, Application, ModelId) {
+        use openchuck_app::Threads;
+        let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, name, Threads::Exactly(2)).unwrap();
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        let (model, _) = app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+        (dir, app, model)
+    }
+
+    /// Triangle numbers mean the file they were picked on, so a working
+    /// selection does not survive the project accepting a changed file; the
+    /// edits that leave the file alone (undo, a placement) keep it (UI-04,
+    /// UI-05, PRJ-02).
+    #[test]
+    fn req_ui_04_the_working_selection_is_dropped_when_the_model_file_changes() {
+        use openchuck_app::Command;
+        use openchuck_app::model::TransformStep;
+        use openchuck_app::project::Item;
+        let (dir, mut app, model) = cube_project("stale-working");
+        let mut panel = SelectionPanel::default();
+        let hash = recorded_hash(&app, model);
+        assert!(hash.is_some());
+        panel.join(model, Combine::Replace, set(&[1, 2]), hash);
+        panel.drop_stale_working(&app);
+        assert_eq!(panel.working, set(&[1, 2]));
+
+        // A new placement does not change the file, and keeps the selection.
+        app.execute(Command::SetModelTransform {
+            model,
+            transform: vec![TransformStep::CentreOnRotaryAxis],
+        })
+        .unwrap();
+        panel.drop_stale_working(&app);
+        assert_eq!(panel.working, set(&[1, 2]));
+        assert_eq!(panel.working_model, Some(model));
+        // So does undoing it.
+        assert!(app.undo().unwrap());
+        panel.drop_stale_working(&app);
+        assert_eq!(panel.working, set(&[1, 2]));
+
+        // Accepting a changed file drops it, and says why.
+        let mut edited = app.project().models()[0].clone();
+        edited.hash = ContentHash::of_bytes(b"another version");
+        app.execute(Command::Replace(Item::Model(edited))).unwrap();
+        panel.drop_stale_working(&app);
+        assert!(panel.working.is_empty());
+        assert_eq!(panel.working_model, None);
+        assert_eq!(panel.working_hash, None);
+        assert!(
+            panel
+                .message
+                .as_deref()
+                .is_some_and(|m| m.contains("changed"))
+        );
+        // Starting again works on the new hash.
+        let new_hash = recorded_hash(&app, model);
+        assert_ne!(new_hash, hash);
+        panel.join(model, Combine::Replace, set(&[7]), new_hash);
+        panel.drop_stale_working(&app);
+        assert_eq!(panel.working, set(&[7]));
+
+        // A model that is no longer in the project drops it too.
+        let gone = ModelId::new();
+        panel.join(gone, Combine::Replace, set(&[3]), Some(new_hash.unwrap()));
+        panel.drop_stale_working(&app);
+        assert!(panel.working.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 }

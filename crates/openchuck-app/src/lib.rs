@@ -33,14 +33,18 @@ mod jobs;
 pub mod library;
 pub mod model;
 pub mod operation;
+pub mod opflow;
+pub mod pathview;
 pub mod pick;
 mod pipeline;
+pub mod playback;
 mod posting;
 pub mod scene;
 pub mod selection;
 pub mod setup;
 mod setup_sheet;
 pub mod simulation;
+pub mod stockplay;
 pub mod tool_edit;
 pub mod tools;
 
@@ -69,7 +73,8 @@ pub use openchuck_path::{Registry, Strategy};
 pub use openchuck_project as project;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
-pub use pipeline::Regeneration;
+pub use opflow::StrategyChoice;
+pub use pipeline::{GroupInfo, Regeneration};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PostSelection};
 pub use selection::{
     RegionRequest, SelectionEdit, SelectionRole, SelectionSummary, SelectionUse, TriangleSet,
@@ -460,6 +465,19 @@ impl Application {
                     (Vec::new(), None)
                 }
             };
+            let mut warnings = warnings;
+            warnings.extend(
+                openchuck_types::workholding::check_tab_zones(
+                    &s.workholding,
+                    s.stock.as_ref(),
+                    part.as_ref(),
+                )
+                .into_iter()
+                .map(|kind| setup::SetupWarning {
+                    kind,
+                    unconfirmed: Vec::new(),
+                }),
+            );
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),

@@ -30,6 +30,7 @@ use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable, Tool};
 use openchuck_types::transform::TransformStep;
 use openchuck_types::units::LengthUnit;
+use openchuck_types::workholding::{Workholding, validate_workholding};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ProjectError;
@@ -225,6 +226,8 @@ pub struct Setup {
     /// The setup's own clearance geometry; `None` uses the machine
     /// profile's (SET-06).
     pub clearance: Option<Clearance>,
+    /// The held regions and retaining tabs (SET-09, OP-21); empty by default.
+    pub workholding: Workholding,
 }
 
 impl Setup {
@@ -241,6 +244,7 @@ impl Setup {
             material: None,
             frame: SetupFrame::default(),
             clearance: None,
+            workholding: Workholding::default(),
         }
     }
 }
@@ -1156,11 +1160,12 @@ impl Project {
                     )
                     .into());
                 }
-                Ok(validate_setup(
-                    &s.frame,
+                let field = format!("setup {}", s.id);
+                validate_setup(&s.frame, s.stock.as_ref(), s.clearance.as_ref(), &field)?;
+                Ok(validate_workholding(
+                    &s.workholding,
                     s.stock.as_ref(),
-                    s.clearance.as_ref(),
-                    &format!("setup {}", s.id),
+                    &field,
                 )?)
             }
             Item::Tool(t) => Ok(openchuck_types::tool::validate_entry(

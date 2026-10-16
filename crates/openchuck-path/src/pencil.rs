@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Pencil clean-up: one pass along each concave crease of the part, where the
 //! tool rests in the corner touching both faces (OP-09; work breakdown slice
-//! 15 item 3; decision record 0041 item 5).
+//! 15 item 3; decision record 0044 item 5).
 //!
 //! **Creases** are the edges of the part's mesh between two faces that meet
 //! at a concave angle of at least `crease_angle`: the far corner of one
