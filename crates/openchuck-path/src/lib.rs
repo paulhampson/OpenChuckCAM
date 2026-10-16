@@ -71,6 +71,7 @@
 pub mod assemble;
 pub mod axial;
 pub mod brep;
+pub mod brep_edges;
 mod candidates;
 mod composite;
 pub mod curves;
@@ -99,6 +100,7 @@ mod wrap_fit;
 pub use assemble::{GeneratedPath, PathNote};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
+pub use brep_edges::BrepEdges;
 pub use composite::CompositeSurface;
 pub use curves::{CurveSource, EdgeChain, MeshFeatureEdges};
 pub use cutter::{Contact, ToolLine};
