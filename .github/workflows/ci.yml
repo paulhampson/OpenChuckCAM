@@ -15,9 +15,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels the older run of that pull request: the newer commit is the
+# one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
+# replaced while it waits: its group is its own run, so every merged commit keeps a complete result
+# (and its cache and coverage artifacts), even if several manual runs target one commit
+# (decision 0052, Option 1).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -152,17 +157,6 @@ jobs:
           name: gate3-reports
           path: target/replay
           if-no-files-found: ignore
-
-  fmt:
-    name: rustfmt
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - run: cargo fmt --all --check
 
   build-test:
     name: Build and test (${{ matrix.os }})
@@ -338,94 +332,90 @@ jobs:
             cargo test --locked -p "$crate"
           done
 
-  repository-checks:
-    name: Repository checks (xtask)
+  # The checks of about two minutes or less that are not specific to an operating system share
+  # one Linux job that runs beside the long jobs, so a code change needs one runner for them
+  # instead of six (decision 0052, Option 8). Each check is its own step and keeps the condition
+  # its job had: `rust` for all but the repository checks (`rust` or `records`), and the semver
+  # check only on a pull request. Every step after the first check runs even when an earlier one
+  # failed (`if: always()`), so one run names every failing check; the last step fails the job if
+  # a check that was due did not succeed, so a wrong condition cannot pass quietly. There is no
+  # `continue-on-error`: a failed step fails the job, which fails `CI required checks`.
+  fast-checks:
+    name: Fast checks (rustfmt, xtask, deny, audit, notices, semver)
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUST: ${{ needs.changes.outputs.rust }}
+      RECORDS: ${{ needs.changes.outputs.records }}
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
-      - uses: Swatinem/rust-cache@v2
-      - name: Dependency rules (architecture sections 4 and 12)
-        run: cargo xtask deps
-      - name: SPDX headers and crate licences (NFR-10)
-        run: cargo xtask licences
-      - name: Dependency pins and records (NFR-14)
-        run: cargo xtask records
-      - name: Test-data size policy
-        run: cargo xtask testdata
-      - name: Traceability report
-        run: cargo xtask trace --report target/traceability.md
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: traceability-report
-          path: target/traceability.md
-
-  cargo-deny:
-    name: cargo deny (licences, advisories, sources)
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
-
-  cargo-audit:
-    name: cargo audit
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
-      - run: cargo audit --deny warnings
-
-  licence-notices:
-    name: Licence notices (cargo about)
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-about
-      - run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
-      - uses: actions/upload-artifact@v7
-        with:
-          name: third-party-notices
-          path: THIRD-PARTY-NOTICES.html
-
-  semver:
-    name: Semver check (library family)
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
+          # The semver check compares with the pull request's base commit.
           fetch-depth: 0
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-semver-checks
+          key: fast-checks
+      - uses: taiki-e/install-action@v2
+        if: needs.changes.outputs.rust == 'true'
+        with:
+          tool: cargo-audit,cargo-about,cargo-semver-checks
+      - name: rustfmt
+        id: fmt
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo fmt --all --check
+      - name: Dependency rules (architecture sections 4 and 12)
+        id: deps
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask deps
+      - name: SPDX headers and crate licences (NFR-10)
+        id: licences
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask licences
+      - name: Dependency pins and records (NFR-14)
+        id: records
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask records
+      - name: Test-data size policy
+        id: testdata
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask testdata
+      - name: Traceability report
+        id: trace
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask trace --report target/traceability.md
+      - uses: actions/upload-artifact@v7
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        with:
+          name: traceability-report
+          path: target/traceability.md
+          if-no-files-found: ignore
+      - name: cargo deny (licences, advisories, sources)
+        id: deny
+        if: always() && needs.changes.outputs.rust == 'true'
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - name: cargo audit
+        id: audit
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo audit --deny warnings
+      - name: Licence notices (cargo about)
+        id: about
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
+      - uses: actions/upload-artifact@v7
+        if: always() && needs.changes.outputs.rust == 'true'
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.html
+          if-no-files-found: ignore
       # Compares the public API with the pull request's base (INT-07). Crates
       # that do not exist on the base yet are skipped.
       - name: cargo semver-checks
+        id: semver
+        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
         shell: bash
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -437,6 +427,47 @@ jobs:
               echo "$crate is new in this change; no baseline"
             fi
           done
+      # Fails the job when a check that was due did not succeed. A step skipped by a wrong
+      # condition, or cancelled, counts as not run here, so it cannot read as a pass.
+      - name: Every check that was due ran and passed
+        if: always()
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          FMT: ${{ steps.fmt.outcome }}
+          DEPS: ${{ steps.deps.outcome }}
+          LICENCES: ${{ steps.licences.outcome }}
+          RECORDS_STEP: ${{ steps.records.outcome }}
+          TESTDATA: ${{ steps.testdata.outcome }}
+          TRACE: ${{ steps.trace.outcome }}
+          DENY: ${{ steps.deny.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+          ABOUT: ${{ steps.about.outcome }}
+          SEMVER: ${{ steps.semver.outcome }}
+        run: |
+          bad=""
+          # check NAME DUE OUTCOME: DUE is "true" when the check should have run.
+          check() {
+            echo "$1: due=$2 outcome=$3"
+            if [ "$2" = true ] && [ "$3" != success ]; then bad="$bad, $1 ($3)"; fi
+          }
+          repo=false; if [ "$RUST" = true ] || [ "$RECORDS" = true ]; then repo=true; fi
+          check rustfmt "$RUST" "$FMT"
+          check "xtask deps" "$repo" "$DEPS"
+          check "xtask licences" "$repo" "$LICENCES"
+          check "xtask records" "$repo" "$RECORDS_STEP"
+          check "xtask testdata" "$repo" "$TESTDATA"
+          check "xtask trace" "$repo" "$TRACE"
+          check "cargo deny" "$RUST" "$DENY"
+          check "cargo audit" "$RUST" "$AUDIT"
+          check "cargo about" "$RUST" "$ABOUT"
+          semver=false; if [ "$RUST" = true ] && [ "$EVENT" = pull_request ]; then semver=true; fi
+          check "cargo semver-checks" "$semver" "$SEMVER"
+          if [ -n "$bad" ]; then
+            echo "::error title=Fast checks did not pass::${bad#, }"
+            exit 1
+          fi
+          echo "Every check that was due ran and passed."
 
   fuzz-smoke:
     name: Fuzz smoke (1 minute per target)
@@ -562,16 +593,11 @@ jobs:
     needs:
       - changes
       - gate3
-      - fmt
       - build-test
       - ui-smoke
       - step-kernel
       - libraries-alone
-      - repository-checks
-      - cargo-deny
-      - cargo-audit
-      - licence-notices
-      - semver
+      - fast-checks
       - fuzz-smoke
       - coverage
     runs-on: ubuntu-latest
