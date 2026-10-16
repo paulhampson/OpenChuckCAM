@@ -806,21 +806,23 @@ impl SelectionPanel {
                     .add(button)
                     .on_hover_text(format!("Show this set in {}", hex(rgb)))
                     .clicked()
-                    && let Err(e) =
-                        app.edit_selection(summary.id, SelectionEdit::Colour(Some(hex(rgb))))
                 {
-                    error = Some(e.to_string());
+                    match app.edit_selection(summary.id, SelectionEdit::Colour(Some(hex(rgb)))) {
+                        Ok(_) => self.dirty = true,
+                        Err(e) => error = Some(e.to_string()),
+                    }
                 }
             }
             if ui
                 .add_enabled(summary.colour.is_some(), egui::Button::new("Default"))
                 .on_hover_text("Take the swatch of the set's place in the list")
                 .clicked()
-                && let Err(e) = app.edit_selection(summary.id, SelectionEdit::Colour(None))
             {
-                error = Some(e.to_string());
+                match app.edit_selection(summary.id, SelectionEdit::Colour(None)) {
+                    Ok(_) => self.dirty = true,
+                    Err(e) => error = Some(e.to_string()),
+                }
             }
-            self.dirty = true;
         });
         let used = !summary.uses.is_empty();
         if ui
