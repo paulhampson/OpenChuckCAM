@@ -22,8 +22,8 @@
 //! parameters against its schema and hands the passes to the shared services
 //! in [`assemble`]: A-axis management (OP-15), linking (OP-14) and contact
 //! feed with segment durations (OP-13). Strategies are found by name in a
-//! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`] and
-//! [`SimultaneousFinishing`]. Tool-centre
+//! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`],
+//! [`SimultaneousFinishing`], [`RestMachining`] and [`PencilFinishing`]. Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -79,7 +79,9 @@ pub mod helical;
 pub mod indexed;
 pub mod parallel;
 pub mod params;
+pub mod pencil;
 pub mod region;
+pub mod rest;
 pub mod rotary;
 pub mod roughing;
 mod scallop;
@@ -104,7 +106,9 @@ pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,
 };
+pub use pencil::PencilFinishing;
 pub use region::{RegionConstraint, Window};
+pub use rest::{RemainingMap, RestMachining};
 pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;
 pub use simultaneous::SimultaneousFinishing;

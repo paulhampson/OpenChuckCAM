@@ -263,6 +263,7 @@ fn passes(
             spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
             thin: false,
             max_dt: 1.0 / seeds as f64,
+            wanted: None,
         };
 
         fit_region(&fit, seeds, "helical finishing", context)
