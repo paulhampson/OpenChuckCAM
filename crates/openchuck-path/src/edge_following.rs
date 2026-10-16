@@ -361,6 +361,12 @@ impl Strategy for EdgeFollowing {
         };
         let chains = source.chains(input.surface)?;
         if chains.is_empty() {
+            if self.source.is_some() {
+                return Err(PathError::Strategy(
+                    "edge following has no edge to follow: the operation's own edges gave no chain"
+                        .to_owned(),
+                ));
+            }
             return Err(PathError::Strategy(format!(
                 "edge following has no edge to follow: the part has no edge turning {} degrees \
                  or more and at least {} mm long; lower {} or {}",

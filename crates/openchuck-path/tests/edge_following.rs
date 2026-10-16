@@ -724,3 +724,22 @@ fn req_nfr_06_req_op_08_edge_following_is_identical_at_1_2_and_n_threads() {
     .unwrap();
     assert_eq!(runs.len(), 4);
 }
+
+#[test]
+fn req_op_08_a_custom_source_with_no_chains_does_not_blame_the_crease_angle() {
+    #[derive(Debug)]
+    struct Nothing;
+    impl CurveSource for Nothing {
+        fn chains(&self, _: &dyn SurfaceSource) -> openchuck_path::Result<Vec<EdgeChain>> {
+            Ok(Vec::new())
+        }
+    }
+    let f = cylinder();
+    let strategy = EdgeFollowing::with_source(std::sync::Arc::new(Nothing));
+    let parameters = strategy.schema().resolve(&values(&[])).unwrap();
+    let e = run(|ctx| strategy.passes(&f.input(), &parameters, ctx))
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("no edge to follow"), "{e}");
+    assert!(!e.contains("crease_angle"), "{e}");
+}
