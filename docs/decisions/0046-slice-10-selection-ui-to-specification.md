@@ -5,7 +5,7 @@
 - **Branch:** `claude/lane-m-slice-10-picking` (lane M). It needs lanes A and C, both on `main`, and the specification of 0038 (pull request 58).
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-199 to OI-202 are new; OI-171 is narrowed (the outline is built).
 
-Numbering: this record takes 0046 and OI-199 to OI-202 from the orchestrator's assignment. It takes **no project schema number**: nothing here is stored in the project (the colour of a set is derived, OI-199).
+Numbering: this record takes 0046 and OI-199 to OI-202 from the orchestrator's assignment, and **project schema 11** for the stored set colour (item 2; the owner chose to store it). The claims table in the work breakdown shifts the expected lanes D and O to 12 and lane S to 13.
 
 ## Context
 
@@ -14,7 +14,7 @@ Slice 10 is closed and its picking, hover and panel are on `main` (record 0037).
 ## Decision
 
 1. **Colours (specification 7.4; amends 0037 item 5 as 0038 says).** Working selection: blue `#3d8bff` at 40%, a fill. Hovered triangle: a yellow `#ffe066` outline, the three sides of the triangle drawn as a closed line over the surface (depth-tested, so the part hides it where it is behind). A saved set that is shown: its swatch at 40%, a fill. The orange and green of 0037 are gone.
-2. **Swatches.** The eight swatches are a fixed list (`#2d6cb5`, `#a04a46`, `#7d5bb5`, `#3f9c8a`, `#b58a2d`, `#6f9a3a`, `#b5568f`, `#7a8591`; the first three are the mockup's). A set takes the swatch at its place in the project's list of sets, so up to eight sets are told apart and the ninth repeats the first. None is the working blue, the hover yellow or the avoid red. The colour is derived, not stored: no schema number (OI-199 for a colour the user picks).
+2. **Swatches.** The eight swatches are a fixed list (`#2d6cb5`, `#a04a46`, `#7d5bb5`, `#3f9c8a`, `#b58a2d`, `#6f9a3a`, `#b5568f`, `#7a8591`; the first three are the mockup's). A set takes the swatch at its place in the project's list of sets, so up to eight sets are told apart and the ninth repeats the first. None is the working blue, the hover yellow or the avoid red. **The colour can be chosen and is stored (owner's decision, 16 Oct 2026):** the set file gains an optional `colour`, `#rrggbb` in lower case, written only when chosen (project schema 11; older projects migrate with no change and keep the default swatch). The details of a set offer the eight swatches and "Default". A colour does not change what an operation cuts, so editing it does not mark operations stale. A free colour picker is not built (OI-199).
 3. **The tools box (specification 7.2).** While picking, a box over the top left of the viewport has Select one, Flood fill, By angle and Same direction, the current one marked, each with its tooltip. These are the four modes of 0037 item 4 (flood fill is the connected shell; by angle is the smooth patch). The panel no longer repeats them as radio buttons. Box selection is not built (OI-201).
 4. **Keys (specification 15; UI-14).** While picking and when no text field has the keyboard: Q Select one, W Flood fill, E By angle; Esc cancels a region pick that is running and, if none is, leaves picking. Same direction has no key in the specification and gets none.
 5. **The Selection sets panel (specification 12.2).** A toolbar and a table:
@@ -27,9 +27,9 @@ Slice 10 is closed and its picking, hover and panel are on `main` (record 0037).
 
 | Choice | Impact | Options |
 | --- | --- | --- |
-| Swatch by place in the list (item 2) | Deleting a set shifts the colour of those after it; no schema number | A stored colour (a project schema number, the user can pick one); a colour from the set's ID (stable, but two sets may share one) |
-| Panel stays on the right (item 6) | The seven-column table scrolls sideways in a 320-pixel panel | Wait for the dock; build a minimal bottom dock with this one tab (would collide with lane A or T) |
-| "Select in view" loads the set into the working selection (item 5) | The specification does not say what the action does | Only show the set (the row click already does); select the set's operations |
+| Swatch by place in the list as the default, a chosen colour stored (item 2) | **Decided by the owner (16 Oct 2026): store it.** A set without a stored colour still shifts when sets before it are deleted | A free RGB picker (OI-199) |
+| Panel stays on the right (item 6) | **Decided by the owner (16 Oct 2026): stays on the right.** The seven-column table scrolls sideways in a 320-pixel panel (OI-200) | |
+| "Select in view" loads the set into the working selection (item 5) | **Decided by the owner (16 Oct 2026): as built.** | |
 | Hover outline is one pixel (item 1) | Thin on a high-resolution screen | A wider line needs a quad-based line in the renderer (OI-202) |
 | Same direction has no key (item 4) | Reached by the box or the panel only | R, or another key; the specification's table lists only Q, W, E, B |
 | The specification points Box selection at "OI-160" | OI-160 on `main` is the workholding defaults of 0035 | Orchestrator or owner to correct the specification's reference; this record uses OI-201 |
@@ -42,11 +42,11 @@ Slice 10 is closed and its picking, hover and panel are on `main` (record 0037).
 
 ## Evidence
 
-`openchuck-ui` tests: `req_ui_04_hover_is_a_yellow_outline_and_the_working_selection_a_blue_fill` (the overlay holds a blue translucent fill and a closed yellow loop of three sides), `req_ui_05_the_swatches_are_eight_and_none_is_a_highlight_colour`, `req_ui_04_keys_q_w_e_choose_how_a_click_selects` (the keys, and Esc leaving picking), and the existing `req_ui_05_a_saved_set_is_highlighted_again_after_the_project_is_reopened` now checking the swatch fill.
+`openchuck-ui` tests: `req_ui_04_hover_is_a_yellow_outline_and_the_working_selection_a_blue_fill` (the overlay holds a blue translucent fill and a closed yellow loop of three sides), `req_ui_05_the_swatches_are_eight_and_none_is_a_highlight_colour`, `req_ui_05_a_chosen_colour_replaces_the_default_swatch`, and in `openchuck-project` `req_ui_05_prj_06_a_chosen_set_colour_survives_save_and_load_and_is_optional`, `req_ui_05_nfr_07_a_bad_set_colour_cannot_be_put_in_the_project` and `req_prj_04_a_schema_10_project_loads_with_default_set_colours`, `req_ui_04_keys_q_w_e_choose_how_a_click_selects` (the keys, and Esc leaving picking), and the existing `req_ui_05_a_saved_set_is_highlighted_again_after_the_project_is_reopened` now checking the swatch fill.
 
 ## Open items
 
-- **OI-199:** the colour of a set is derived from its place in the list; letting the user choose one needs a project schema number (ask the orchestrator).
+- **OI-199:** a free colour (any RGB) for a set; the stored colour is chosen from the eight swatches.
 - **OI-200:** move the Selection sets panel into the dock tab when the dock exists (D10, lane A or T).
 - **OI-201:** box selection (the B key and the box tool); the specification calls it OI-160, which is a different item on `main`.
 - **OI-202:** the hover outline is one pixel wide; draw it wider on high-resolution screens if the owner finds it hard to see.

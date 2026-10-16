@@ -54,9 +54,23 @@ fn swatch(index: usize) -> [u8; 3] {
         .unwrap_or_default()
 }
 
-/// The fill colour of a swatch.
-fn swatch_fill(index: usize) -> Colour {
-    let [r, g, b] = swatch(index);
+/// The colour of a set: the one the user chose (`#rrggbb`), or the default
+/// swatch of its place in the list.
+fn set_rgb(chosen: Option<&str>, index: usize) -> [u8; 3] {
+    chosen
+        .and_then(|c| {
+            let byte = |i: usize| u8::from_str_radix(c.get(i..i + 2)?, 16).ok();
+            Some([byte(1)?, byte(3)?, byte(5)?])
+        })
+        .unwrap_or_else(|| swatch(index))
+}
+
+fn hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+}
+
+/// The fill colour of a set's colour.
+fn rgb_fill([r, g, b]: [u8; 3]) -> Colour {
     [
         f32::from(r) / 255.0,
         f32::from(g) / 255.0,
@@ -375,16 +389,16 @@ impl SelectionPanel {
             && let Some(set) = self.shown_triangles(app)
             && let Some(part) = part_of(model)
         {
-            let index = app
-                .project()
-                .selection_sets()
+            let sets = app.project().selection_sets();
+            let index = sets
                 .iter()
                 .position(|s| Some(s.id) == self.shown)
                 .unwrap_or(0);
+            let chosen = sets.get(index).and_then(|s| s.colour.as_deref());
             scene.add_mesh(
                 &triangles_mesh(&part.mesh, &set),
                 &[],
-                swatch_fill(index),
+                rgb_fill(set_rgb(chosen, index)),
                 NO_EDGES,
             );
         }
@@ -663,7 +677,7 @@ impl SelectionPanel {
                     ui.end_row();
                     for (index, summary) in summaries.iter().enumerate() {
                         let chosen = self.shown == Some(summary.id);
-                        let [r, g, b] = swatch(index);
+                        let [r, g, b] = set_rgb(summary.colour.as_deref(), index);
                         let (rect, _) =
                             ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
                         ui.painter()
@@ -771,6 +785,34 @@ impl SelectionPanel {
             {
                 error = Some(e.to_string());
             }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Colour");
+            for rgb in SWATCHES {
+                let current = summary.colour.as_deref() == Some(hex(rgb).as_str());
+                let (r, g, b) = (rgb[0], rgb[1], rgb[2]);
+                let button = egui::Button::new(if current { "✓" } else { "  " })
+                    .fill(Color32::from_rgb(r, g, b))
+                    .min_size(egui::vec2(18.0, 18.0));
+                if ui
+                    .add(button)
+                    .on_hover_text(format!("Show this set in {}", hex(rgb)))
+                    .clicked()
+                    && let Err(e) =
+                        app.edit_selection(summary.id, SelectionEdit::Colour(Some(hex(rgb))))
+                {
+                    error = Some(e.to_string());
+                }
+            }
+            if ui
+                .add_enabled(summary.colour.is_some(), egui::Button::new("Default"))
+                .on_hover_text("Take the swatch of the set's place in the list")
+                .clicked()
+                && let Err(e) = app.edit_selection(summary.id, SelectionEdit::Colour(None))
+            {
+                error = Some(e.to_string());
+            }
+            self.dirty = true;
         });
         let used = !summary.uses.is_empty();
         if ui
@@ -970,6 +1012,16 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_05_a_chosen_colour_replaces_the_default_swatch() {
+        assert_eq!(set_rgb(None, 1), swatch(1));
+        assert_eq!(set_rgb(Some("#102030"), 1), [0x10, 0x20, 0x30]);
+        // A malformed stored value falls back to the swatch, never a panic.
+        assert_eq!(set_rgb(Some("#12"), 2), swatch(2));
+        assert_eq!(set_rgb(Some("zzzzzzz"), 2), swatch(2));
+        assert_eq!(hex([0x2d, 0x6c, 0xb5]), "#2d6cb5");
+    }
+
+    #[test]
     fn req_ui_04_hover_is_a_yellow_outline_and_the_working_selection_a_blue_fill() {
         use openchuck_app::project::id::ModelId;
         let (dir, app, model) = cube_project("hover-outline");
@@ -1054,7 +1106,7 @@ mod tests {
             scene.meshes[0]
                 .colour
                 .iter()
-                .zip(swatch_fill(0))
+                .zip(rgb_fill(swatch(0)))
                 .all(|(a, b)| (a - b).abs() < 1e-6)
         );
         // Nothing changed since: nothing to draw again.
