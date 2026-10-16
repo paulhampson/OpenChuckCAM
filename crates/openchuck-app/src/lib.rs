@@ -465,6 +465,19 @@ impl Application {
                     (Vec::new(), None)
                 }
             };
+            let mut warnings = warnings;
+            warnings.extend(
+                openchuck_types::workholding::check_tab_zones(
+                    &s.workholding,
+                    s.stock.as_ref(),
+                    part.as_ref(),
+                )
+                .into_iter()
+                .map(|kind| setup::SetupWarning {
+                    kind,
+                    unconfirmed: Vec::new(),
+                }),
+            );
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),
