@@ -410,7 +410,12 @@ impl<'a> Job<'a> {
                     && r.boundary
                         .is_none_or(|b| b.contains(self.cut_point(site, self.r_top).tip))
             });
-            return (None, allowed);
+            // A check surface beyond the part still keeps the tool above it.
+            let floor = self.region.and_then(|r| r.check).and_then(|check| {
+                let touch = check.drop_tool(&self.grown, &line)?;
+                Some(self.rotary.to_axis(touch.tip, Degrees(site.a)).height + self.leave)
+            });
+            return (floor, allowed);
         };
         let height = |tip| self.rotary.to_axis(tip, Degrees(site.a)).height + self.leave;
         let mut floor = height(contact.tip);

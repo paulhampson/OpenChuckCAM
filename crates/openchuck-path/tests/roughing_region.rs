@@ -281,3 +281,39 @@ fn req_op_02_a_check_surface_keeps_roughing_above_it_and_beside_it_is_still_cut(
         );
     }
 }
+
+#[test]
+fn req_op_02_a_check_surface_beyond_the_part_still_keeps_roughing_above_it() {
+    let mesh = cylinder();
+    let mut f = fixture(&mesh);
+    // Stock that runs well past the part's end, so there is material to cut
+    // where the part is not under the tool.
+    f.stock = openchuck_path::AnalyticStock::Cylinder {
+        radius: RADIUS + 5.0,
+        x_start: -1.0,
+        x_end: 31.0,
+    };
+    // A wider, longer cylinder than the part, checked only past the part's end.
+    let wide = Cylinder {
+        radius: 12.0,
+        length: 30.0,
+    }
+    .mesh(61, 360);
+    let beyond =
+        MeshSurface::new(&pick(&wide, |c| (22.0 - 1e-9..28.0 + 1e-9).contains(&c.x))).unwrap();
+    let region = RegionConstraint {
+        check: Some(&beyond),
+        ..Default::default()
+    };
+    for form in ["continuous", "indexed"] {
+        let tips = cut_tips(&rough(&f, form, &region).unwrap());
+        let over: Vec<f64> = tips
+            .iter()
+            .filter(|p| p.x > 22.3 && p.x < 27.7)
+            .map(|p| p.y.hypot(p.z))
+            .collect();
+        assert!(!over.is_empty(), "{form}: nothing is cut over the surface");
+        let lowest = over.iter().copied().fold(f64::MAX, f64::min);
+        assert!(lowest >= 12.5 - 0.05, "{form}: tool at radius {lowest}");
+    }
+}
