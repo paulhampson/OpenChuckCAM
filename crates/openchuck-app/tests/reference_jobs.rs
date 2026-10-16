@@ -23,7 +23,9 @@ use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::project::{
     Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
 };
-use openchuck_app::setup::{Millimetres, Stock, builtin};
+use openchuck_app::setup::{
+    HeldRegion, Millimetres, Stock, Tab, TabLayout, TabShape, Workholding, builtin,
+};
 use openchuck_app::{Application, Command, PostSelection, Threads};
 use openchuck_testkit::parts::{Cone, HelicalGroove, LobedVase, RadialPart, Sphere};
 use openchuck_types::mesh::TriangleMesh;
@@ -39,6 +41,12 @@ struct Job {
     mesh: (u32, u32),
     /// Parameters beyond the tool's cutting data.
     parameters: Vec<(&'static str, ParameterValue)>,
+    /// How far the stock runs past the part at each end, in millimetres.
+    margin: f64,
+    /// How much wider the stock is than the part's widest, in millimetres.
+    oversize: f64,
+    /// The setup's held regions and tabs (SET-09, OP-21).
+    workholding: Workholding,
 }
 
 /// The cone of the `cone` job.
@@ -64,6 +72,9 @@ fn jobs() -> Vec<Job> {
             strategy: "helical_finishing",
             mesh: (121, 144),
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
         },
         Job {
             name: "cone",
@@ -72,6 +83,9 @@ fn jobs() -> Vec<Job> {
             strategy: "helical_finishing",
             mesh: (121, 144),
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
         },
         Job {
             name: "sphere",
@@ -80,6 +94,9 @@ fn jobs() -> Vec<Job> {
             strategy: "helical_finishing",
             mesh: (121, 144),
             parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
         },
         // A, Y and Z all move with X: the tool follows a normal that leaves
         // the plane through the axis (OP-05, OP-06).
@@ -102,6 +119,9 @@ fn jobs() -> Vec<Job> {
             // rolls over a lobe, and the contact smoothing of the shared
             // services weighs points by count, not spacing (OI-77).
             parameters: vec![("max_angle_step", ParameterValue::Number(2.0))],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
         },
         // Slice 12 baseline finishing (decision 0034): axial, indexed, and
         // axial with lead-in and lead-out, on the cone.
@@ -112,6 +132,9 @@ fn jobs() -> Vec<Job> {
             strategy: "axial_finishing",
             mesh: (121, 144),
             parameters: vec![("max_x_step", ParameterValue::Number(3.0))],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
         },
         Job {
             name: "cone_indexed",
@@ -123,6 +146,9 @@ fn jobs() -> Vec<Job> {
                 ("angles", ParameterValue::Text("0, 90, 180, 270".into())),
                 ("max_x_step", ParameterValue::Number(3.0)),
             ],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
         },
         Job {
             name: "cone_axial_lead",
@@ -134,8 +160,63 @@ fn jobs() -> Vec<Job> {
                 ("max_x_step", ParameterValue::Number(3.0)),
                 ("entry", ParameterValue::Text("lead".into())),
             ],
+            margin: 1.0,
+            oversize: 2.0,
+            workholding: Workholding::default(),
+        },
+        // Slice 21 (decision 0035): the cone in stock as wide as its wide end,
+        // held 4 mm at the start and 2 mm at the end, with a retaining tab
+        // between each held region and the part. The tabs continue the part's
+        // outline, so the target has no wall for the tool to climb: a wall
+        // makes the path fitter bisect down to micro-moves (OI-194).
+        Job {
+            name: "cone_held_tabs",
+            part: cone_part(),
+            radius: 10.0,
+            strategy: "helical_finishing",
+            mesh: (121, 144),
+            parameters: vec![("max_angle_step", ParameterValue::Number(5.0))],
+            margin: 12.0,
+            oversize: 0.0,
+            workholding: cone_workholding(),
         },
     ]
+}
+
+/// The held regions and tabs of the `cone_held_tabs` job: stock X -12 to 42,
+/// diameter 20, part X 0 to 30 (diameter 20 to 10).
+pub fn cone_workholding() -> Workholding {
+    Workholding {
+        start: Some(HeldRegion {
+            length: Millimetres(4.0),
+            diameter: None,
+        }),
+        end: Some(HeldRegion {
+            length: Millimetres(2.0),
+            diameter: None,
+        }),
+        tabs: vec![
+            // Head: a cylinder the size of the part's wide end.
+            Tab {
+                x_start: Millimetres(-8.0),
+                length: Millimetres(8.0),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(20.0),
+                },
+                layout: TabLayout::OnAxis,
+            },
+            // Tail: a frustum from the part's narrow end out to the stock.
+            Tab {
+                x_start: Millimetres(30.0),
+                length: Millimetres(10.0),
+                shape: TabShape::Frustum {
+                    start_diameter: Millimetres(10.0),
+                    end_diameter: Millimetres(20.0),
+                },
+                layout: TabLayout::OnAxis,
+            },
+        ],
+    }
 }
 
 fn write_stl(mesh: &TriangleMesh, path: &Path) {
@@ -182,10 +263,11 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
     setup.part = Some(model);
     setup.material = Some("oak".into());
     setup.stock = Some(Stock::Cylinder {
-        diameter: Millimetres(2.0 * job.radius + 2.0),
-        length: Millimetres(x1 - x0 + 2.0),
-        x_start: Millimetres(x0 - 1.0),
+        diameter: Millimetres(2.0 * job.radius + job.oversize),
+        length: Millimetres(x1 - x0 + 2.0 * job.margin),
+        x_start: Millimetres(x0 - job.margin),
     });
+    setup.workholding = job.workholding.clone();
     let tool_id = ToolId::new();
     let mut cutting_data = BTreeMap::new();
     cutting_data.insert(

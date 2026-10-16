@@ -29,6 +29,7 @@ mod shell;
 mod testing;
 mod tool_panel;
 mod viewport;
+mod workholding_panel;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();

@@ -47,6 +47,7 @@ pub mod simulation;
 pub mod stockplay;
 pub mod tool_edit;
 pub mod tools;
+pub mod workholding;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -271,6 +272,97 @@ impl Application {
             })
     }
 
+    /// The default retaining tabs of `setup` (OP-21, decision 0035 item 4 and
+    /// the owner's answers to OI-158), as explicit tabs to add to its
+    /// workholding: one in the head zone and one in the tail zone, computed
+    /// from the part's extent. The setup is not changed; the front end shows
+    /// them and replaces the setup, which can be undone (decision 0045 item
+    /// 3). Reads and places the part, so it runs as a job.
+    pub fn start_default_tabs(
+        &self,
+        setup: openchuck_project::id::SetupId,
+    ) -> JobHandle<Vec<openchuck_types::workholding::Tab>> {
+        let document = self.document.clone();
+        self.jobs
+            .submit("default tabs", self.events_tx.clone(), move |context| {
+                workholding::default_tabs_of(&document.location, &document.project, setup, context)
+            })
+    }
+
+    /// What is wrong with `draft` as the workholding of `setup`, from the
+    /// part and the tools, which the setup's own validation cannot see: tabs
+    /// outside the head and tail zones (OI-180) and tabs narrower than a tool
+    /// of the setup's operations (OI-159). A front end calls it before it
+    /// stores an edit; generation refuses the same things. Empty when there
+    /// is nothing wrong or no part to check against. Reads the part, so a
+    /// large model takes time.
+    pub fn check_workholding(
+        &self,
+        setup: openchuck_project::id::SetupId,
+        draft: &openchuck_types::workholding::Workholding,
+    ) -> Result<Vec<String>, AppError> {
+        let project = &self.document.project;
+        let s = project
+            .setup(setup)
+            .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?;
+        let Some(part) = s.part else {
+            return Ok(Vec::new());
+        };
+        let extent = self.inspect_model(part)?.extent;
+        let mut found: Vec<String> =
+            openchuck_types::workholding::check_tab_zones(draft, s.stock.as_ref(), extent.as_ref())
+                .into_iter()
+                .map(|kind| {
+                    setup::SetupWarning {
+                        kind,
+                        unconfirmed: Vec::new(),
+                    }
+                    .to_string()
+                })
+                .collect();
+        for operation in project.operations().iter().filter(|o| o.setup == setup) {
+            let Some(snapshot) = operation
+                .tool
+                .and_then(|id| project.tools().iter().find(|t| t.id == id))
+            else {
+                continue;
+            };
+            let Ok(profile) = snapshot.tool.profile() else {
+                continue;
+            };
+            found.extend(workholding::narrow_tab_note(
+                draft,
+                2.0 * profile.cutting_radius(),
+                &snapshot.name,
+                &operation.name,
+            ));
+        }
+        Ok(found)
+    }
+
+    /// Notes about the selections of `operation` that reach a held region or a
+    /// tab of its setup (SET-09, OP-21; UI-03): those are never machined, so
+    /// the selection cuts less than it names there. Reads and places the part,
+    /// so it runs as a job. Empty when the setup holds nothing.
+    pub fn start_workholding_warnings(
+        &self,
+        operation: openchuck_project::id::OperationId,
+    ) -> JobHandle<Vec<String>> {
+        let document = self.document.clone();
+        self.jobs.submit(
+            "workholding warnings",
+            self.events_tx.clone(),
+            move |context| {
+                workholding::reach_warnings_of(
+                    &document.location,
+                    &document.project,
+                    operation,
+                    context,
+                )
+            },
+        )
+    }
+
     /// Checks every model file against its recorded content hash (PRJ-02).
     pub fn check_models(&self) -> Result<Vec<(ModelId, ModelCheck)>, AppError> {
         self.document
@@ -478,6 +570,28 @@ impl Application {
                     unconfirmed: Vec::new(),
                 }),
             );
+            // A tab narrower than a tool that operations of the setup use is
+            // refused when they are generated (OI-159); say so here, when the
+            // tab or the tool is chosen.
+            for operation in project.operations().iter().filter(|o| o.setup == s.id) {
+                let Some(snapshot) = operation
+                    .tool
+                    .and_then(|id| project.tools().iter().find(|t| t.id == id))
+                else {
+                    continue;
+                };
+                let Ok(profile) = snapshot.tool.profile() else {
+                    continue;
+                };
+                if let Some(note) = workholding::narrow_tab_note(
+                    &s.workholding,
+                    2.0 * profile.cutting_radius(),
+                    &snapshot.name,
+                    &operation.name,
+                ) {
+                    notes.push(note);
+                }
+            }
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),
