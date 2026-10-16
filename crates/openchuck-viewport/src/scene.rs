@@ -35,6 +35,35 @@ impl DisplayMode {
     }
 }
 
+/// Which moving frame an item is drawn in. The front end sets one transform
+/// per slot for each frame (`Frame::transforms`), so an item that moves does
+/// not have to be uploaded again: the tool follows the playback position, and
+/// in the machine view the workpiece turns with A.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Slot {
+    /// Fixed in the view.
+    #[default]
+    Fixed,
+    /// Fixed to the workpiece, which turns with A in the machine view.
+    Part,
+    /// Fixed to the tool, which follows the playback position.
+    Tool,
+}
+
+impl Slot {
+    /// Number of slots.
+    pub const COUNT: usize = 3;
+
+    /// The slot's index into `Frame::transforms`.
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Fixed => 0,
+            Self::Part => 1,
+            Self::Tool => 2,
+        }
+    }
+}
+
 /// A triangle mesh to draw.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeshItem {
@@ -48,6 +77,11 @@ pub struct MeshItem {
     pub colour: Colour,
     /// Colour of the edges.
     pub edge_colour: Colour,
+    /// The moving frame it is drawn in.
+    pub slot: Slot,
+    /// Drawn after the opaque items, blended with what is behind it and
+    /// without hiding it, such as the remaining stock around the part.
+    pub translucent: bool,
 }
 
 /// Lines to draw.
@@ -60,6 +94,8 @@ pub struct LineItem {
     /// Drawn over everything, for guides such as the rotary axis and the work
     /// coordinate system that would otherwise hide inside the part.
     pub on_top: bool,
+    /// The moving frame it is drawn in.
+    pub slot: Slot,
 }
 
 /// Everything the renderer draws.
@@ -100,6 +136,8 @@ impl Scene {
                 .collect(),
             colour,
             edge_colour,
+            slot: Slot::Fixed,
+            translucent: false,
         });
     }
 
@@ -113,6 +151,7 @@ impl Scene {
             segments,
             colour,
             on_top,
+            slot: Slot::Fixed,
         });
     }
 

@@ -342,38 +342,44 @@ mod property {
     use proptest::prelude::*;
 
     /// Distance in the development (X, R times the angle in radians) from
-    /// (`x`, `theta` degrees) to the path as the machine drives it, with R the
-    /// part's largest radius. The machine moves in a straight line between two
-    /// points, so the distance is to the cutting moves, not to their end points:
-    /// at 5 degrees between points, measuring to the nearest point alone reads
-    /// up to 1.2 times too far, which only showed at the ends of a part, where
-    /// the last turn stops a pitch short of the probe.
+    /// (`x`, `theta` degrees) to the nearest point of the cutting moves of
+    /// `path`, with R the part's largest radius. The cutter travels along each
+    /// move, so a move counts along its whole length, not only at its ends;
+    /// the turn is unwrapped so a point is found across the 360 degree seam.
     pub(super) fn nearest(path: &GeneratedPath, r: f64, x: f64, theta: f64) -> f64 {
-        let mut prev = path.group.start;
+        let mut from = path.group.start;
         let mut best = f64::INFINITY;
         for s in &path.group.segments {
-            if s.kind == MoveKind::Cutting {
-                let (a, b) = (prev, s.end);
-                // A is unwrapped, so try the probe on the turns either side of
-                // the one nearest the middle of the move.
-                let turn = (0.5 * (a.a.0 + b.a.0) - theta) / 360.0;
-                for k in [turn.round() - 1.0, turn.round(), turn.round() + 1.0] {
-                    let p = (x, (theta + 360.0 * k).to_radians() * r);
-                    let from = (a.tip.x, a.a.0.to_radians() * r);
-                    let to = (b.tip.x, b.a.0.to_radians() * r);
-                    let (dx, dy) = (to.0 - from.0, to.1 - from.1);
-                    let l2 = dx * dx + dy * dy;
-                    let u = if l2 > 0.0 {
-                        (((p.0 - from.0) * dx + (p.1 - from.1) * dy) / l2).clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    best = best.min((from.0 + u * dx - p.0).hypot(from.1 + u * dy - p.1));
-                }
+            let (a, b) = (from, s.end);
+            from = s.end;
+            if s.kind != MoveKind::Cutting {
+                continue;
             }
-            prev = s.end;
+            let (a0, a1) = (a.a.0, b.a.0);
+            let first = ((a0.min(a1) - theta) / 360.0).floor() as i64 - 1;
+            let last = ((a0.max(a1) - theta) / 360.0).ceil() as i64 + 1;
+            let (p0, p1) = (
+                [a.tip.x, r * a0.to_radians()],
+                [b.tip.x, r * a1.to_radians()],
+            );
+            for k in first..=last {
+                let probe = [x, r * (theta + 360.0 * k as f64).to_radians()];
+                best = best.min(distance_to_segment(probe, p0, p1));
+            }
         }
         best
+    }
+
+    /// Distance from `p` to the segment `a` to `b`, in a plane.
+    fn distance_to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let length2 = dx * dx + dy * dy;
+        let t = if length2 > 0.0 {
+            (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        (p[0] - (a[0] + t * dx)).hypot(p[1] - (a[1] + t * dy))
     }
 
     proptest! {
