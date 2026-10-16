@@ -10,7 +10,9 @@
 //! breakdown slice 3 review checklist, "visually in slice 8").
 
 use openchuck_geom::display::{DEFAULT_CREASE_DEGREES, feature_edges};
-use openchuck_project::id::SetupId;
+use std::collections::BTreeSet;
+
+use openchuck_project::id::{ModelId, SetupId};
 use openchuck_project::{ModelRef, Project};
 use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::job::JobContext;
@@ -21,8 +23,8 @@ use openchuck_types::stock::Stock;
 use openchuck_types::units::Degrees;
 
 use crate::AppError;
-
 use crate::model::placed_mesh;
+use crate::pick::{Picking, ScenePicker};
 /// The triangle mesh type the scene holds, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
 pub use openchuck_types::mesh::TriangleMesh as Mesh;
@@ -55,6 +57,9 @@ pub enum SceneRole {
 pub struct SceneMesh {
     /// What it shows.
     pub role: SceneRole,
+    /// The model the mesh shows, for the part of a scene built from the
+    /// project; `None` for a preview or a check overlay.
+    pub model: Option<ModelId>,
     /// The triangles, in the model frame.
     pub mesh: TriangleMesh,
     /// Feature edges as vertex index pairs (`openchuck_geom::display`).
@@ -99,6 +104,8 @@ pub struct SceneView {
     pub a_direction: Option<String>,
     /// Things the user should know: no machine, a part that cannot be read.
     pub notes: Vec<String>,
+    /// Ray-cast picking on the part meshes (UI-04); empty for a preview.
+    pub picking: Picking,
 }
 
 /// Segments used to draw a circle.
@@ -152,6 +159,7 @@ pub(crate) fn build_scene(
                 let feature_edges = feature_edges(&mesh, DEFAULT_CREASE_DEGREES)?;
                 view.meshes.push(SceneMesh {
                     role: SceneRole::Part,
+                    model: Some(model.id),
                     mesh,
                     feature_edges,
                 });
@@ -160,6 +168,16 @@ pub(crate) fn build_scene(
                 .notes
                 .push(format!("'{}' cannot be shown: {e}", model.path.as_str())),
         }
+    }
+
+    // The hierarchy for picking is built here, in the job, so the interface
+    // thread never waits for it (NFR-04; decision record 0036).
+    context.check_cancelled()?;
+    match ScenePicker::build(&view.meshes) {
+        Ok(picker) => view.picking = Picking::new(picker),
+        Err(e) => view
+            .notes
+            .push(format!("the part cannot be picked on: {e}")),
     }
 
     let mut bounds = part.map(|p| p.bounds);
@@ -379,6 +397,41 @@ fn merge_extent(a: Option<PartExtent>, b: Option<PartExtent>) -> Option<PartExte
     }
 }
 
+/// The triangles `triangles` of `mesh` as a mesh of their own, with only the
+/// vertices they use, for drawing a selection or a hover over the part
+/// (UI-04). Triangles the mesh does not have are left out.
+pub fn triangles_mesh(mesh: &TriangleMesh, triangles: &BTreeSet<u32>) -> TriangleMesh {
+    let mut index = std::collections::BTreeMap::new();
+    let mut out = TriangleMesh {
+        vertices: Vec::new(),
+        triangles: Vec::new(),
+    };
+    for &t in triangles {
+        let Some(corners) = mesh.triangles.get(t as usize) else {
+            continue;
+        };
+        let mut mapped = [0u32; 3];
+        let mut complete = true;
+        for (slot, &vertex) in mapped.iter_mut().zip(corners) {
+            let next = out.vertices.len();
+            match mesh.vertices.get(vertex as usize) {
+                Some(&p) => {
+                    let id = *index.entry(vertex).or_insert_with(|| {
+                        out.vertices.push(p);
+                        next as u32
+                    });
+                    *slot = id;
+                }
+                None => complete = false,
+            }
+        }
+        if complete {
+            out.triangles.push(mapped);
+        }
+    }
+    out
+}
+
 /// The scene of one placed model on its own, before it joins a setup: the
 /// model with its feature edges, the triangles and edges `report` lists as
 /// problems, and the rotary axis for orientation (OI-51; decision record
@@ -416,6 +469,7 @@ pub(crate) fn model_scene(
             .collect();
         view.meshes.push(SceneMesh {
             role: SceneRole::Problem,
+            model: None,
             mesh: TriangleMesh {
                 vertices: mesh.vertices.clone(),
                 triangles,
@@ -453,6 +507,7 @@ pub(crate) fn model_scene(
         0,
         SceneMesh {
             role: SceneRole::Part,
+            model: None,
             mesh,
             feature_edges,
         },

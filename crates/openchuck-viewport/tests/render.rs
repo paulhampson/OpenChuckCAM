@@ -99,6 +99,17 @@ fn render(
     scene: &Scene,
     frame: &Frame,
 ) -> Vec<[u8; 4]> {
+    render_over(device, queue, scene, None, frame)
+}
+
+/// Renders `scene` with an overlay drawn over it.
+fn render_over(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    scene: &Scene,
+    overlay: Option<&Scene>,
+    frame: &Frame,
+) -> Vec<[u8; 4]> {
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
@@ -129,6 +140,9 @@ fn render(
     });
     let mut renderer = Renderer::new(device, FORMAT, DEPTH, 1);
     renderer.set_scene(device, scene);
+    if let Some(overlay) = overlay {
+        renderer.set_overlay(device, overlay);
+    }
     renderer.prepare(device, queue, frame);
     let (view, depth_view) = (
         target.create_view(&wgpu::TextureViewDescriptor::default()),
@@ -324,6 +338,48 @@ fn req_ui_03_guides_draw_over_the_part() {
     };
     assert!(blue_in_middle(true) > 0);
     assert_eq!(blue_in_middle(false), 0);
+}
+
+/// The triangles `which` of `mesh` as a mesh of their own, on the same
+/// vertices.
+fn some(mesh: &TriangleMesh, which: &[usize]) -> TriangleMesh {
+    TriangleMesh {
+        vertices: mesh.vertices.clone(),
+        triangles: which.iter().map(|&t| mesh.triangles[t]).collect(),
+    }
+}
+
+#[test]
+fn req_ui_04_an_overlay_wins_over_the_surface_it_covers_and_not_over_what_hides_it() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let block = block([-10.0; 3], [10.0; 3]);
+    let mut scene = Scene::default();
+    scene.add_mesh(&block, &[], RED, BLACK);
+    let f = frame(
+        StandardView::Front,
+        Projection::Orthographic,
+        DisplayMode::Shaded,
+        &scene,
+    );
+    let (red, blue) = halves(&render(&device, &queue, &scene, &f));
+    assert!(red[0] + red[1] > 500 && blue == [0, 0]);
+
+    // The front face (triangles 4 and 5, at y = -10) painted blue: it covers
+    // the red face it lies on, with no speckle where the two are coplanar.
+    let mut front = Scene::default();
+    front.add_mesh(&some(&block, &[4, 5]), &[], BLUE, BLACK);
+    let (red, blue) = halves(&render_over(&device, &queue, &scene, Some(&front), &f));
+    assert!(blue[0] + blue[1] > 500, "blue {blue:?}");
+    assert_eq!(red, [0, 0], "red left {red:?}");
+
+    // The back face (triangles 6 and 7, at y = +10) is hidden by the block.
+    let mut back = Scene::default();
+    back.add_mesh(&some(&block, &[6, 7]), &[], BLUE, BLACK);
+    let (red, blue) = halves(&render_over(&device, &queue, &scene, Some(&back), &f));
+    assert_eq!(blue, [0, 0], "blue shows through {blue:?}");
+    assert!(red[0] + red[1] > 500);
 }
 
 /// The block's twelve edges, by vertex index.

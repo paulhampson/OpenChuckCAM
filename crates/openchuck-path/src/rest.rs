@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Rest machining: clean up the material an earlier, larger tool could not
-//! reach (OP-09; work breakdown slice 15; decision record 0040).
+//! reach (OP-09; work breakdown slice 15; decision record 0041).
 //!
 //! **Remaining material** is found from the stock the setup has when the
 //! operation starts, which is the simulated stock the earlier operations left

@@ -212,7 +212,7 @@ pub(crate) struct Fit<'a> {
     pub(crate) max_dt: f64,
     /// Where the tool is wanted: when given, a drop whose contact it rejects
     /// is not cut. Rest machining uses it to cut only where material is left
-    /// (decision record 0040 item 3). The caller also sets `constrained`, so
+    /// (decision record 0041 item 3). The caller also sets `constrained`, so
     /// the limits of the wanted places are found by bisection.
     pub(crate) wanted: Option<&'a (dyn Fn(Point3) -> bool + Send + Sync)>,
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Remaining-material detection, crease finding and the parameters of rest
 //! machining and pencil clean-up (OP-09, OP-16; work breakdown slice 15;
-//! decision record 0040). The strategies against the simulated stock are in
+//! decision record 0041). The strategies against the simulated stock are in
 //! `crates/openchuck-sim/tests/rest.rs`.
 #![allow(
     clippy::unwrap_used,

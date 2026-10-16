@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Rest machining and pencil clean-up against the simulated stock (OP-09,
-//! SIM-06; work breakdown slice 15 review checklist; decision record 0040).
+//! SIM-06; work breakdown slice 15 review checklist; decision record 0041).
 #![allow(
     clippy::unwrap_used,
     clippy::panic,
