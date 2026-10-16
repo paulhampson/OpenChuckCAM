@@ -217,6 +217,14 @@ impl WorkholdingPanel {
     ) -> Option<Command> {
         match result {
             Ok(found) if found.is_empty() && apply => {
+                // Edited or reverted while the check ran: what was checked is
+                // not what is on screen, so store nothing.
+                if draft != self.draft {
+                    self.message = Some(
+                        "The draft changed while it was being checked; apply it again.".to_owned(),
+                    );
+                    return None;
+                }
                 let mut edited = setup.clone();
                 edited.workholding = draft;
                 self.message = None;
@@ -468,6 +476,15 @@ mod tests {
         );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("tab 1"), "{message}");
+        // A draft edited or reverted while a clean check ran is not stored.
+        let checked = Workholding::default();
+        assert!(
+            panel
+                .finish_check(Ok(Vec::new()), true, checked, &setup)
+                .is_none()
+        );
+        let message = panel.message.clone().unwrap();
+        assert!(message.contains("changed while"), "{message}");
         // A tab narrower than the 4 mm tool is refused, naming the operation.
         panel.draft.tabs = vec![tab(-6.0, 1.0, 3.0)];
         assert!(
