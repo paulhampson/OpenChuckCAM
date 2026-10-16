@@ -11,11 +11,12 @@ use std::f64::consts::PI;
 use std::sync::Mutex;
 
 use openchuck_sim::{
-    DeviationOptions, DexelStock, Simulator, ToolSolid, compare, cut_spans, stock_mesh,
+    DeviationOptions, DexelStock, Pose, Simulator, ToolSolid, compare, compare_cancellable,
+    cut_spans, stock_mesh, triangle_values,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::Error;
-use openchuck_types::geometry::{Aabb, Point3};
+use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress, Progress, ProgressSink};
 use openchuck_types::simulation::SimulationSettings;
@@ -289,6 +290,61 @@ fn req_sim_03_the_groove_does_not_depend_on_where_the_part_has_turned() {
 }
 
 #[test]
+fn req_sim_05_triangle_values_put_the_overcut_on_the_triangles_it_is_on() {
+    let m = machine();
+    let profile = ball(4.0);
+    let target = Cylinder {
+        radius: 10.0,
+        length: 16.0,
+    };
+    let mut poses = turning_poses(&m, &Cyl(10.0), 2.0, (0.0, 16.0), 0.5, 3.0);
+    for k in 0..40 {
+        let p = &mut poses[16 * 120 + k];
+        let a = p.a.0;
+        *p = turned_pose(&m, 8.0, 9.5, a);
+    }
+    let g = group("gouge", &poses, MoveKind::Cutting);
+    let stock = DexelStock::from_stock(&cylinder_stock(26.0, -2.0, 20.0), None, 0.1).unwrap();
+    let (sim, _) = run(stock, &[(&g, &profile)]);
+    let mesh = target.mesh(161, 180);
+    let options = DeviationOptions::for_cell(0.1);
+    let d = compare(sim.stock(), &mesh, &options).unwrap();
+    let values = triangle_values(&d, &mesh, options.spacing).unwrap();
+    assert_eq!(values.len(), mesh.triangles.len());
+    // The triangles with the deepest overcut are the ones at the dip, and
+    // the value is the worst of their samples.
+    let (deepest, deepest_value) = values
+        .iter()
+        .enumerate()
+        .filter_map(|(i, v)| v.map(|v| (i, v.0)))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .unwrap();
+    let [a, b, c] = mesh.triangle(deepest).unwrap();
+    let x = (a.x + b.x + c.x) / 3.0;
+    assert!((x - 8.0).abs() <= 2.0 + 0.1, "centroid x {x}");
+    assert!((-deepest_value - 0.5).abs() <= 0.12, "{deepest_value}");
+    assert!(
+        (deepest_value - d.worst_overcut.unwrap().value).abs() < 1e-12,
+        "the worst triangle carries the worst sample"
+    );
+    // Away from the dip no triangle is overcut beyond the limit.
+    for (i, v) in values.iter().enumerate() {
+        let [a, b, c] = mesh.triangle(i).unwrap();
+        let x = (a.x + b.x + c.x) / 3.0;
+        if let Some((value, _)) = v
+            && !(3.0..=13.0).contains(&x)
+            && x > 0.5
+            && x < 15.5
+        {
+            assert!(-value <= options.overcut_limit, "{i} at x {x}: {value}");
+        }
+    }
+    // A comparison made at another spacing does not fit this mesh.
+    assert!(triangle_values(&d, &mesh, 0.01).is_err());
+    assert!(triangle_values(&d, &target.mesh(20, 20), options.spacing).is_err());
+}
+
+#[test]
 fn req_sim_05_a_gouging_path_is_reported_as_overcut_with_a_location() {
     let m = machine();
     let profile = ball(4.0);
@@ -554,6 +610,59 @@ fn req_nfr_04_simulation_reports_progress_and_can_be_cancelled() {
     let ctx = JobContext::new(&cancelled, &NoProgress);
     let mut sim = Simulator::new(make(), &m, None);
     assert_eq!(sim.run_group(&g, &profile, &ctx), Err(Error::Cancelled));
+}
+
+/// A batch of poses can take over a second to cut, so the cut watches the
+/// cancel flag itself instead of waiting for the end of the batch, and so
+/// does the comparison with the part (UI-09, NFR-04).
+#[test]
+#[allow(clippy::float_cmp)] // the same code path must give the same bits
+fn req_nfr_04_cutting_and_comparing_stop_when_cancelled() {
+    let profile = ball(4.0);
+    let tool = ToolSolid::new(&profile);
+    let poses: Vec<Pose> = (0..256)
+        .map(|i| Pose {
+            tip: Point3::new(-10.0 + i as f64 * 0.08, 0.0, 0.0),
+            axis: Vec3::new(0.0, 0.0, 1.0),
+        })
+        .collect();
+    let make = || DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+
+    // Not cancelled, it cuts exactly as `cut` does.
+    let free = CancelToken::new();
+    let (mut watched, mut plain) = (make(), make());
+    let removed = watched.cut_cancellable(&tool, &poses, &free).unwrap();
+    assert!(removed > 0.0);
+    assert_eq!(removed, plain.cut(&tool, &poses));
+    assert_eq!(watched.volume(), plain.volume());
+
+    // Cancelled before it starts, it gives up at once and cuts nothing.
+    let cancelled = CancelToken::new();
+    cancelled.cancel();
+    let mut stopped = make();
+    assert_eq!(
+        stopped.cut_cancellable(&tool, &poses, &cancelled),
+        Err(Error::Cancelled)
+    );
+    assert_eq!(stopped.volume(), make().volume());
+
+    // The comparison with the part stops too.
+    let target = Cylinder {
+        radius: 10.0,
+        length: 16.0,
+    };
+    let mesh = target.mesh(41, 60);
+    let options = DeviationOptions::for_cell(0.2);
+    let ctx = JobContext::new(&cancelled, &NoProgress);
+    assert_eq!(
+        compare_cancellable(&watched, &mesh, &options, &ctx),
+        Err(Error::Cancelled)
+    );
+    let ctx = JobContext::new(&free, &NoProgress);
+    assert_eq!(
+        compare_cancellable(&watched, &mesh, &options, &ctx).unwrap(),
+        compare(&watched, &mesh, &options).unwrap()
+    );
 }
 
 #[test]

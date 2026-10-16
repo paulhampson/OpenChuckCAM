@@ -33,7 +33,10 @@ mod sample;
 mod simulation;
 mod span;
 
-pub use deviation::{Deviation, DeviationOptions, DeviationPoint, Leftover, compare};
+pub use deviation::{
+    Deviation, DeviationOptions, DeviationPoint, Leftover, compare, compare_cancellable,
+    triangle_values,
+};
 pub use dexel::{DexelStock, MAX_COLUMNS, Pose};
 pub use display::stock_mesh;
 pub use sample::{MAX_SAMPLES_PER_MOVE, Sampling, sample_move};

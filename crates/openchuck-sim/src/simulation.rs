@@ -16,9 +16,10 @@ use crate::dexel::{DexelStock, Pose};
 use crate::sample::{Sampling, must_not_cut, sample_move};
 use crate::span::ToolSolid;
 
-/// Poses cut in one batch between cancellation checks and progress reports.
-/// Fixed, so batching never changes the result (it would not anyway: span
-/// endpoints depend only on the pose and the column).
+/// Poses cut in one batch between progress reports. Fixed, so batching never
+/// changes the result (it would not anyway: span endpoints depend only on the
+/// pose and the column). The cancel flag is also watched inside the cut
+/// ([`DexelStock::cut_cancellable`]), as one batch can take over a second.
 pub const BATCH_POSES: usize = 32_768;
 
 /// Removal below this, in cubic millimetres, is rounding, not a cut.
@@ -252,7 +253,7 @@ impl Simulator {
             if must_not_cut(segment.kind) {
                 self.flush(&tool, &mut batch, &mut result, context, total)?;
                 sample_move(&self.frame, &prev, &segment.end, &sampling, &mut batch);
-                let removed = self.cut_batch(&tool, &mut batch, &mut result);
+                let removed = self.cut_batch(&tool, &mut batch, &mut result, context)?;
                 if removed > VOLUME_EPSILON {
                     result.rapid_cuts.push(RapidCut {
                         segment: i,
@@ -289,12 +290,13 @@ impl Simulator {
         tool: &ToolSolid,
         batch: &mut Vec<Pose>,
         result: &mut GroupResult,
-    ) -> f64 {
-        let removed = self.stock.cut(tool, batch);
+        context: &JobContext<'_>,
+    ) -> Result<f64> {
+        let removed = self.stock.cut_cancellable(tool, batch, context.cancel)?;
         result.poses += batch.len();
         result.removed_volume += removed;
         batch.clear();
-        removed
+        Ok(removed)
     }
 
     fn flush(
@@ -307,7 +309,7 @@ impl Simulator {
     ) -> Result<()> {
         context.check_cancelled()?;
         if !batch.is_empty() {
-            self.cut_batch(tool, batch, result);
+            self.cut_batch(tool, batch, result, context)?;
         }
         context.report("simulate", result.moves as u64, Some(total));
         Ok(())
