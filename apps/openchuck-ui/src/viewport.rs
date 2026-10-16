@@ -323,6 +323,11 @@ impl Viewport {
         self.tool_transform = transform;
     }
 
+    /// Whether picking is on.
+    pub fn is_picking(&self) -> bool {
+        self.picking
+    }
+
     /// Lets the pointer pick triangles of the part: hover and click are then
     /// reported by [`take_input`](Self::take_input) and a click no longer
     /// only orbits.
