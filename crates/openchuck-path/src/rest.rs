@@ -113,6 +113,7 @@ impl RemainingMap {
             (longest / spacing).ceil().clamp(1.0, 400.0) as usize
         };
         loop {
+            context.check_cancelled()?;
             let total: f64 = mesh
                 .triangles
                 .iter()
@@ -123,6 +124,16 @@ impl RemainingMap {
                 .sum();
             if total <= MAX_SAMPLES {
                 break;
+            }
+            // Every triangle is already down to one sample: a coarser
+            // spacing cannot help, and fewer samples than triangles would
+            // miss whole faces.
+            if total <= mesh.triangles.len() as f64 {
+                return Err(PathError::Strategy(format!(
+                    "remaining-material detection needs at least one sample per triangle, and \
+                     the part has {} triangles, more than the {MAX_SAMPLES:.0} allowed",
+                    mesh.triangles.len()
+                )));
             }
             spacing *= 1.25;
         }

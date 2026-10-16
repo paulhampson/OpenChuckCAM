@@ -192,3 +192,113 @@ fn req_op_09_detection_refuses_nonsense_without_panicking() {
     }
     assert!(surface.bounds().max.x > 0.0);
 }
+
+/// Stock everywhere but in balls: the material an earlier operation cleaned
+/// out round some points.
+#[derive(Debug)]
+struct Holed {
+    centres: Vec<openchuck_types::geometry::Point3>,
+    radius: f64,
+}
+
+impl openchuck_path::StockModel for Holed {
+    fn contains(&self, p: openchuck_types::geometry::Point3) -> bool {
+        self.centres.iter().all(|c| p.distance(*c) > self.radius)
+    }
+
+    fn ray_entry(
+        &self,
+        _origin: openchuck_types::geometry::Point3,
+        _direction: openchuck_types::geometry::UnitVec3,
+        _max_distance: f64,
+    ) -> Option<f64> {
+        None
+    }
+
+    fn max_radius(&self) -> Option<f64> {
+        Some(20.0)
+    }
+}
+
+#[test]
+fn req_op_09_a_closed_crease_clean_at_its_start_is_not_joined_across_the_gap() {
+    use openchuck_path::{AcceptAll, RotaryMapping, StrategyInput};
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::ir::PathTags;
+    use openchuck_types::machine::{Clearance, MachineProfile};
+    use openchuck_types::tool::{Tool, ToolShape};
+
+    let surface = MeshSurface::new(&revolve(&SHAFT, 90)).unwrap();
+    // The ring's first vertex is at angle 0: (12, 6, 0). The stock is gone
+    // there and half way round, so the crease is clean at its start and in
+    // the middle: two stretches that must not be joined across the start.
+    let stock = Holed {
+        centres: vec![Point3::new(12.0, 6.0, 0.0), Point3::new(12.0, -6.0, 0.0)],
+        radius: 2.5,
+    };
+    let tool = Tool {
+        shape: ToolShape::BallEnd,
+        diameter: Millimetres(1.0),
+        flute_length: Millimetres(10.0),
+        overall_length: Millimetres(40.0),
+        shank_diameter: Millimetres(1.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    }
+    .profile()
+    .unwrap();
+    let machine = MachineProfile::example_x_rotary();
+    let tags = PathTags {
+        operation: "op".to_owned(),
+        setup: "setup".to_owned(),
+        tool: "tool".to_owned(),
+    };
+    let input = StrategyInput {
+        surface: &surface,
+        stock: &stock,
+        collision: &AcceptAll,
+        tool: &tool,
+        rotary: RotaryMapping::of_profile(&machine),
+        clearance: Clearance {
+            radius: Millimetres(19.0),
+            safe_z: Millimetres(29.0),
+        },
+        max_feeds: machine.max_feeds,
+        tags: &tags,
+    };
+    let values: BTreeMap<String, ParameterValue> =
+        [("feed", 400.0), ("plunge_feed", 200.0), ("stepover", 1.0)]
+            .into_iter()
+            .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+            .collect();
+    let parameters = PencilFinishing.schema().resolve(&values).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let passes = PencilFinishing.passes(&input, &parameters, &ctx).unwrap();
+    assert_eq!(passes.len(), 2, "two stretches of crease have material");
+    for pass in &passes {
+        for pair in pass.points.windows(2) {
+            let jump = pair[0].tip.distance(pair[1].tip);
+            assert!(
+                jump < 1.0,
+                "a pass jumps {jump} mm across the clean stretch"
+            );
+        }
+    }
+}
+
+#[test]
+fn req_op_09_a_part_with_more_triangles_than_samples_allowed_is_refused_not_looped_on() {
+    // 2.4 million triangles: more than the 2 million samples allowed, with
+    // one sample each at the least.
+    let mesh = revolve(&[(0.0, 6.0), (12.0, 6.0)], 600_000);
+    assert!(mesh.triangles.len() > 2_000_000);
+    let surface = MeshSurface::new(&mesh).unwrap();
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    let err = RemainingMap::detect(&surface, &cylinder(15.0), 0.15, 0.5, 1.0, &ctx)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("at least one sample per triangle"), "{err}");
+}

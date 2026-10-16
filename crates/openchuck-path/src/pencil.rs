@@ -531,12 +531,18 @@ impl Strategy for PencilFinishing {
             context.check_cancelled()?;
             let placed: Vec<Option<CutPoint>> =
                 parallel::map_in_order(points, |(c, t)| placement.rest(*c, *t));
+            let last_index = placed.len().saturating_sub(1);
             let mut run: Vec<CutPoint> = Vec::new();
             let mut runs: Vec<Vec<CutPoint>> = Vec::new();
-            for point in placed {
+            let (mut from_start, mut to_end) = (false, false);
+            for (i, point) in placed.into_iter().enumerate() {
                 let wanted = point.filter(|p| map.as_ref().is_none_or(|m| m.near(p.contact)));
                 match wanted {
-                    Some(p) => run.push(p),
+                    Some(p) => {
+                        from_start |= i == 0;
+                        to_end |= i == last_index;
+                        run.push(p);
+                    }
                     None => {
                         if !run.is_empty() {
                             runs.push(std::mem::take(&mut run));
@@ -547,9 +553,11 @@ impl Strategy for PencilFinishing {
             if !run.is_empty() {
                 runs.push(run);
             }
-            // A closed crease cut all the way round is one pass from its
-            // start back to it; one cut across its start joins its ends.
-            if crease.closed && runs.len() > 1 {
+            // A closed crease's last sample is its first. When both are cut,
+            // the run that ends at the end and the one that starts at the
+            // start are one stretch across the start; when either is not, the
+            // gap between them must stay a gap.
+            if crease.closed && runs.len() > 1 && from_start && to_end {
                 let first = runs.remove(0);
                 if let Some(last) = runs.last_mut() {
                     last.extend(first.into_iter().skip(1));
