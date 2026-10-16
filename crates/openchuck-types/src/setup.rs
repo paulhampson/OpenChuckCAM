@@ -213,16 +213,6 @@ pub enum SetupWarningKind {
     },
     /// Some of the part lies outside the stock.
     PartOutsideStock,
-    /// A retaining tab is not in the head zone (between the held region and
-    /// the start of the part) or the tail zone (between the end of the part
-    /// and the end of the stock); on a rotary part tabs are restricted to
-    /// those zones (OP-21, decision record 0035).
-    TabOutsideEndZones {
-        /// Position of the tab in the setup's list, from 1.
-        tab: usize,
-        /// The tab's X extent.
-        x: (f64, f64),
-    },
     /// A position is outside the machine's travel.
     OutsideTravel {
         /// What it is, in words.
@@ -235,6 +225,16 @@ pub enum SetupWarningKind {
         min: f64,
         /// The travel on that axis.
         max: f64,
+    },
+    /// A retaining tab is not in the head zone (between the held region and
+    /// the start of the part) or the tail zone (between the end of the part
+    /// and the end of the stock); on a rotary part tabs are restricted to
+    /// those zones (OP-21, decision record 0035).
+    TabOutsideEndZones {
+        /// Position of the tab in the setup's list, from 1.
+        tab: usize,
+        /// The tab's X extent.
+        x: (f64, f64),
     },
 }
 
