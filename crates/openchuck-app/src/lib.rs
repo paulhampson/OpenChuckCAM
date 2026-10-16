@@ -301,10 +301,25 @@ impl Application {
         setup: openchuck_project::id::SetupId,
         draft: &openchuck_types::workholding::Workholding,
     ) -> Result<Vec<String>, AppError> {
-        let project = &self.document.project;
-        let s = project
+        let mut edited = self
+            .document
+            .project
             .setup(setup)
-            .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?;
+            .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?
+            .clone();
+        edited.workholding = draft.clone();
+        self.check_setup_workholding(&edited)
+    }
+
+    /// As [`Application::check_workholding`], for `s` as it would be stored,
+    /// which need not be in the project yet (a setup being added from the
+    /// command line). Its operations are those of the project with its ID.
+    pub fn check_setup_workholding(
+        &self,
+        s: &openchuck_project::Setup,
+    ) -> Result<Vec<String>, AppError> {
+        let project = &self.document.project;
+        let (setup, draft) = (s.id, &s.workholding);
         let Some(part) = s.part else {
             return Ok(Vec::new());
         };

@@ -893,6 +893,15 @@ fn run(cli: Cli) -> Result<()> {
                 edited.workholding.tabs.push(parse_tab(text)?);
             }
             let id = edited.id;
+            // Tabs outside the head and tail zones, and tabs narrower than a
+            // tool the setup uses, are refused as they are when generating
+            // (OI-159, OI-180; decision 0045 item 4).
+            let refuse_findings = |app: &Application, setup: &Setup| -> Result<()> {
+                let found = app.check_setup_workholding(setup)?;
+                anyhow::ensure!(found.is_empty(), "{}", found.join("\n"));
+                Ok(())
+            };
+            refuse_findings(&app, &edited)?;
             if default_tabs {
                 // Computed from the setup as it stands once the other
                 // options are applied (the held regions fix the zones).
@@ -900,6 +909,7 @@ fn run(cli: Cli) -> Result<()> {
                 app.execute(Command::Replace(Item::Setup(probe)))?;
                 let added = app.start_default_tabs(id).wait()?;
                 edited.workholding.tabs.extend(added);
+                refuse_findings(&app, &edited)?;
             }
             let command = if new.is_some() {
                 Command::Add {

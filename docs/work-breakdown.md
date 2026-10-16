@@ -94,7 +94,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 16 to 18 | Not started | |
 | 19 output options and setup sheet | In progress | Item 4, export dialogs (lane S) |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
-| 21 workholding and retaining tabs | Built, pending merge | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation, deviation, forms and the command line, is built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), proposed; OI-195 to OI-198 and OI-209) |
+| 21 workholding and retaining tabs | Built, pending merge | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation, deviation, forms and the command line, is built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), accepted 16 Oct 2026; OI-195 to OI-198 and OI-209) |
 | 22 user interface redesign | Not started | The interface design is a proposal on a branch; waits for the UI lanes |
 
 ## Slice order and dependencies
@@ -136,7 +136,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | S | 19 item 4: export dialogs and the tool-number dialog | ░░ | ░░ | ░░ | ██ | |
 | U | 21a workholding and tab data in the setup (SET-09, OP-21): types, validation, project file, commands | ██ | | | | |
 | V | 21b composite target in `openchuck-path`: cylinder and frustum solids joined to the model's surface | ██ | ██ | | | |
-| W | 21c wiring: application mapping, simulation, deviation, forms (built 16 Oct 2026 on `claude/lane-w-slice-21c-wiring`, [decision 0045](decisions/0045-slice-21c-wiring.md), proposed) | ░░ | ░░ | ██ | | |
+| W | 21c wiring: application mapping, simulation, deviation, forms (built 16 Oct 2026 on `claude/lane-w-slice-21c-wiring`, [decision 0045](decisions/0045-slice-21c-wiring.md), accepted) | ░░ | ░░ | ██ | | |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -771,7 +771,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 ## Slice 21 – Workholding and retaining tabs
 
-**Status:** 21a built and merged (lane U, [decision 0041](decisions/0041-slice-21a-workholding-data.md), accepted, pull request 55); 21b built and merged by lane V ([decision 0042](decisions/0042-slice-21b-composite-target.md), proposed; OI-185 open, OI-162 measured); 21c built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), proposed; OI-195 to OI-198 and OI-209 open, OI-180 closed): the held regions and tabs join the target of every operation, the simulation keeps them, the deviation report counts them as part, the setup form, the viewport and `openchuck-cli setup` edit them, default tabs are computed on request, and the `cone_held_tabs` job is in the golden set. The slice closes when the pull request merges. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
+**Status:** 21a built and merged (lane U, [decision 0041](decisions/0041-slice-21a-workholding-data.md), accepted, pull request 55); 21b built and merged by lane V ([decision 0042](decisions/0042-slice-21b-composite-target.md), proposed; OI-185 open, OI-162 measured); 21c built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), accepted 16 Oct 2026; OI-195 to OI-198 and OI-209 open, OI-180 closed): the held regions and tabs join the target of every operation, the simulation keeps them, the deviation report counts them as part, the setup form, the viewport and `openchuck-cli setup` edit them, default tabs are computed on request, and the `cone_held_tabs` job is in the golden set. **Default tabs depend on OI-209**: the owner decided (16 Oct 2026) that path assembly merges the micro-moves from a bisected wall into one move, in a separate follow-up lane, before default tabs are offered to users, because a default tab's small end meets the part's end face (a wall). The slice is not closed here; the owner closes it. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 

@@ -999,6 +999,14 @@ fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
     assert_ne!(out.code, Some(0));
     assert!(out.stderr.contains("held region"), "{}", out.stderr);
     assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+    // A tab across the part is outside the head and tail zones: refused when
+    // editing, and nothing is stored (decision 0045 item 4).
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=-1,2,4"]));
+    assert_ne!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(out.stderr.contains("tab 1"), "{}", out.stderr);
+    assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+    let out = run(&args(&["report", p]));
+    assert!(!out.stdout.contains("tab 1:"), "{}", out.stdout);
     // The default tabs come from the part: one at the head, one at the tail.
     let out = run(&args(&["setup", p, "Setup 1", "--default-tabs"]));
     assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
