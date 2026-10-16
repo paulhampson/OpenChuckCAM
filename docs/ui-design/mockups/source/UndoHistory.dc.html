@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Undo history</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.w{--p:#23262b;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--hd:#c3c9d1;--ac:#5aa9ff;--sel:#264466;--seltx:#fff;width:360px;height:480px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border:1px solid #4a5059;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.w.light{--p:#fff;--ln:#c9ced5;--ln2:#e2e5e9;--tx:#1d2125;--mu:#56606b;--hd:#2f363d;--ac:#1d6ad0;--sel:#d4e5fb;--seltx:#0b2a52}
+.w *{box-sizing:border-box}
+.m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.mu{color:var(--mu)}
+.it{display:grid;grid-template-columns:16px 1fr 56px;gap:8px;align-items:center;padding:0 12px;height:34px;border-bottom:1px solid var(--ln2)}
+.it.cur{background:var(--sel);color:var(--seltx);box-shadow:inset 2px 0 0 var(--ac)}
+.it.red{color:var(--mu);font-style:italic}
+.dot{width:8px;height:8px;border-radius:4px;border:1.5px solid currentColor}
+.it.cur .dot{background:currentColor}
+</style>
+</helmet>
+<div class="w {{theme}}">
+  <div style="height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--ln)"><span style="font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--hd)">UNDO HISTORY</span><span class="mu">Click a step to go back to it</span></div>
+  <div style="flex:1;overflow:hidden">
+    <div class="it red"><span class="dot"></span><span>Change A step to 4.0° (op 2)</span><span class="mu m" style="text-align:right">undone</span></div>
+    <div class="it cur"><span class="dot"></span><span style="font-weight:500">Set stock to leave 0.005 in (op 2)</span><span class="m" style="text-align:right">14:32</span></div>
+    <div class="it"><span class="dot"></span><span>Set spindle 14000 rpm (op 2)</span><span class="mu m" style="text-align:right">14:31</span></div>
+    <div class="it"><span class="dot"></span><span>Turn on operation 4</span><span class="mu m" style="text-align:right">14:28</span></div>
+    <div class="it"><span class="dot"></span><span>Add operation 4 · Engrave</span><span class="mu m" style="text-align:right">14:25</span></div>
+    <div class="it"><span class="dot"></span><span>Edit selection set “Groove floor”</span><span class="mu m" style="text-align:right">14:20</span></div>
+    <div class="it"><span class="dot"></span><span>Move operation 3 above 4</span><span class="mu m" style="text-align:right">14:12</span></div>
+    <div class="it"><span class="dot"></span><span>Set safe Z 50.0 mm (setup 1)</span><span class="mu m" style="text-align:right">14:05</span></div>
+    <div class="it"><span class="dot"></span><span>Add placement step: centre on axis</span><span class="mu m" style="text-align:right">13:58</span></div>
+    <div class="it"><span class="dot"></span><span>Open project</span><span class="mu m" style="text-align:right">13:55</span></div>
+  </div>
+  <div class="mu" style="padding:8px 12px;border-top:1px solid var(--ln);line-height:1.45">Ctrl Z undo · Ctrl Y redo. A new edit after undoing discards the undone steps.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":360,"height":480}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'dark' };
+}
+}
+</script>
+</body>
+</html>
