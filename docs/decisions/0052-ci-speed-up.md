@@ -1,8 +1,8 @@
 # 0052: Where the CI time goes, and how to shorten it without weakening a check
 
-- **Status:** proposed (16 Oct 2026). Nothing here is built. The project owner accepts; acceptance is relayed under [decision 0049](0049-relayed-acceptance-of-records.md), and only the options the owner names are then implemented, one pull request each, on `claude/ci-speed-up-implementation`.
+- **Status:** accepted by the project owner (16 Oct 2026), relayed by the orchestrator session at the owner's instruction ([decision 0049](0049-relayed-acceptance-of-records.md)); the relay was confirmed in this session by the user. The accepted options are listed under *Owner's decisions*; Options 6(c) and 9 are not accepted. Nothing is built yet. Each accepted option is implemented as its own pull request, in the order given there, on `claude/ci-speed-up-implementation` branches.
 - **Date:** 16 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-221 to OI-225 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-221 to OI-225 are new; the owner's decisions are recorded against them.
 
 Numbering: this record takes 0052 and OI-221 to OI-225, assigned by the orchestrator session across `main` and the unmerged branches. It uses no project schema number. Lane: one-off CI speed-up (record branch `docs/decision-0052-ci-speed-up`).
 
@@ -115,9 +115,15 @@ Recommendation: (a), then measure; (c) only if the owner prefers it.
 
 Run the nine targets in three jobs of three (each: one toolchain install, one `cargo-fuzz` install, one build with `rust-cache` for the `fuzz` workspace, then three one-minute runs), keeping the 1 minute per target of the verification plan (NFR-07). Estimated: wall clock about 6 min against 3 min, off the critical path; runner minutes about 25 down to about 13; slots 9 down to 3. **Risk:** low; the failure annotation and corpus seeding stay per target. Nine named results become three; the failing target is named in the annotation as now.
 
-### Option 8: Fold the small checks together (F7)
+### Option 8: Fold the fast checks into one Linux job that runs beside the long jobs (F7; accepted, replaces the earlier "not recommended")
 
-`rustfmt` (0.2 min), `cargo audit` (0.3), `cargo deny` (0.8), `cargo about` (1.2) and `semver` (1.1) could share one or two jobs (Linux, the same cache). Saves slots, not time, and merges five check names into one or two. Not recommended now: the gain is small, the names are useful in a failure, and Options 7 and 3 free more slots per risk. Owner may raise it later.
+The owner asked for this to cut demand on runners: `rustfmt` (0.2 min), `cargo audit` (0.3), `cargo deny` (0.8), `cargo about` (1.2), the semver check (1.1) and the repository checks of `xtask` (1.9) share **one** Linux job, `Fast checks`, which has no `needs` beyond `changes` and so runs at the same time as the long jobs. Its length (about 6 to 8 minutes in one sequence, with one checkout, one toolchain and one cache) is well inside the 20 to 27 minutes of the jobs it runs beside. Other fast checks of about two minutes or less that are not OS-specific join it when found. Rules for the change:
+
+- **Every check still runs wherever it runs today.** Each check keeps its own condition as a step condition (`rust` for `rustfmt`, `cargo audit`, `cargo deny`, `cargo about` and the semver check, which also needs the `pull_request` event; `rust` or `records` for the repository checks). The job runs when `rust` or `records` is true.
+- **A failure names its check and hides no other.** Each check is its own step with a clear name, and every later step has `if: always()` plus its condition, so all run and the job fails at the end if any step failed. There is no `continue-on-error`.
+- **A step cannot be skipped by mistake.** A final step reads the outcome of every check step and fails the job when a check whose condition was true did not succeed, so a wrong condition cannot pass vacuously.
+- **OS-specific jobs stay apart:** UI smoke test, STEP kernel, Build and test, Each library alone.
+- **`CI required checks` keeps its name and its rule.** Its `needs` list loses the six merged jobs and gains `fast-checks`; the job is skipped only when the path filter turns it off, as now.
 
 ### Option 9: Raise the runner limit (F8, OI-224)
 
@@ -127,6 +133,35 @@ The queue at peak is a plan limit, not a workflow flaw. GitHub's larger or paid 
 
 Two things the implementation needs and this session could not measure: (1) how much of the long tail is contention (run the ten longest tests alone on a 4-vCPU runner against inside the full run; set `threads-required` in nextest for the multi-threaded ones if it helps; this may shorten Build and test with no sharding at all); (2) the Actions cache list (sizes, ages, hits per branch) and the number of concurrent jobs at the queue peaks; needs a token that can read `actions/caches` and `actions/runs`.
 
+## Owner's decisions (16 Oct 2026, relayed by the orchestrator session under decision 0049)
+
+The owner said: "Accept 0052 recommendations. Can we consolidate fast running checks into a scenario where they only use a single runner in parallel with longer jobs. This would help with queuing as it will bring down demand on runners." That accepts the recommendation list below, in this order, and adds the consolidation (Option 8, now accepted):
+
+| Order | Accepted | Pull request |
+| --- | --- | --- |
+| 1 | Option 8 (fast checks in one job), Option 1 (`main` never cancelled) and Option 5 (nextest in Each library alone): no risk, and the first removes slots | one pull request each |
+| 2 | Option 7 (fuzz in three jobs) | one |
+| 3 | Option 3 (Gate 3 in three shards, with the partition checks) | one |
+| 4 | The OI-224 measurement, then Option 6(a) (the long-test list brought up to date; **the coverage baseline shifts once, and the owner agrees**) and Option 4 (nextest sharded, Linux and Windows first, macOS only if its queue allows) | one each |
+| - | Option 2 as (a) plus (d): keep cancelling superseded pull request runs; lanes batch docs-only commits | no change to the workflow |
+| - | **Not accepted, stays with the owner:** Option 6(c) (coverage on `main` only) and Option 9 (larger runners) | - |
+
+### Runner slots: what each accepted option adds or removes
+
+Counted on a code pull request that runs every job (31 jobs today, the figure of 16 Oct: `changes`, Gate 3, rustfmt, Build and test x3, UI smoke x3, STEP kernel x3, Each library alone x3, repository checks, cargo deny, cargo audit, cargo about, semver, fuzz x9, coverage, `CI required checks`).
+
+| Option | Slots | Jobs after |
+| --- | --- | --- |
+| 8 Fast checks in one job (six jobs become one) | -5 | 26 |
+| 1 `main` never cancelled | 0 (more `main` runs finish, so a little more total demand) | 26 |
+| 5 nextest in Each library alone | 0 | 26 |
+| 7 Fuzz in three jobs (nine become three) | -6 | 20 |
+| 3 Gate 3 in three shards | +2 | 22 |
+| 4 nextest sharded in two (Linux, Windows, macOS) | +3 (+2 without macOS) | 25 (24) |
+| 6(a) Long-test list | 0 | 25 (24) |
+
+Net: 31 to 25 jobs (24 if macOS is not sharded), 6 or 7 fewer slots than today, even with every shard. The macOS count is 4 jobs today (Build and test, UI smoke, Each library alone, STEP kernel) and 5 with a macOS shard; macOS has the lowest concurrency cap, so the macOS shard is the last step and is taken only if the measured macOS queue allows. The short jobs also leave the first minutes of a run: the 15 jobs that start together today (fast checks, fuzz) become 6.
+
 ## Recommendation for the owner
 
 In this order, one pull request each, measuring after each:
@@ -135,7 +170,9 @@ In this order, one pull request each, measuring after each:
 2. **Option 3** (Gate 3 in three shards, with the partition checks). The largest saving for the least risk.
 3. **Measurement of OI-224**, then **Option 6(a)** (the long-test list; owner agrees the baseline shift) and **Option 4** (shard nextest, Linux and Windows first, then macOS if its queue allows).
 4. **Option 7** (three fuzz jobs) to give back some of the slots that Options 3 and 4 use.
-5. Hold **Option 2** at (a) plus (d), **Option 6(c)** and **Option 9** for the owner.
+5. Hold **Option 2** at (a) plus (d); **Option 6(c)** and **Option 9** stay with the owner.
+
+The owner accepted this list and added Option 8 at the front (see *Owner's decisions*).
 
 Expected result for a code pull request once 1 to 4 are done: critical path of about 15 to 17 min (floor: the longest test, 8 min, plus build and setup) against 26 to 33 now, with about 5 more slots used by sharding (2 for Gate 3, up to 3 for Build and test) and 6 fewer by the fuzz change. These are estimates; the first runs after each change give the real numbers, which the implementing pull requests report.
 
@@ -153,16 +190,16 @@ Expected result for a code pull request once 1 to 4 are done: critical path of a
 
 ## Consequences
 
-- No workflow, test or document other than the registers changes with this record.
-- If accepted, `ci.yml` (and `xtask/src/replay.rs` and `.config/nextest.toml` for the matching options) change on `claude/ci-speed-up-implementation`, one pull request per option. The verification plan section 8 text on tests over a minute is unchanged; Option 6(a) brings `.config/nextest.toml` into line with it.
+- This record changes no workflow, test or document other than the registers. The workflow changes follow as pull requests.
+- `ci.yml` (and `xtask/src/replay.rs` and `.config/nextest.toml` for the matching options) change on `claude/ci-speed-up-implementation`, one pull request per option. The verification plan section 8 text on tests over a minute is unchanged; Option 6(a) brings `.config/nextest.toml` into line with it.
 - The open items below track the choices.
 
 ## Open items
 
 | # | Item | Needed from |
 | --- | --- | --- |
-| OI-221 | What a pull request run does when a docs-only push arrives (Option 2) and whether `main` runs are never cancelled (Option 1). | Owner |
-| OI-222 | Whether Gate 3 (Option 3) and the nextest run (Option 4) may be sharded, and the shard counts; macOS shards only if its queue allows. | Owner |
-| OI-223 | Coverage: update the long-test list (Option 6a), move the trend to `main` (6c), or shard the instrumented run (6d). | Owner |
-| OI-224 | Measure the long tests alone against in the full run (contention), re-measure the long-test list on a hosted runner, and decide whether to pay for larger runners (Option 9). | Measurement, then owner |
-| OI-225 | The Actions cache and concurrency data this session could not read (cache sizes and ages, concurrent jobs at the peaks); needs a token that reads `actions/caches` and `actions/runs`. | Owner or orchestrator |
+| OI-221 | What a pull request run does when a docs-only push arrives (Option 2) and whether `main` runs are never cancelled (Option 1). | Decided: Option 2 as (a) plus (d); Option 1 accepted |
+| OI-222 | Whether Gate 3 (Option 3) and the nextest run (Option 4) may be sharded, and the shard counts; macOS shards only if its queue allows. | Decided: Gate 3 in three shards; nextest in two, Linux and Windows first, macOS if its queue allows |
+| OI-223 | Coverage: update the long-test list (Option 6a), move the trend to `main` (6c), or shard the instrumented run (6d). | Decided: 6(a), the baseline shift agreed; 6(c) not accepted; 6(d) not wanted |
+| OI-224 | Measure the long tests alone against in the full run (contention), re-measure the long-test list on a hosted runner, and decide whether to pay for larger runners (Option 9). | Measurement accepted as the first step of order 4; larger runners not accepted |
+| OI-225 | The Actions cache and concurrency data this session could not read (cache sizes and ages, concurrent jobs at the peaks); needs a token that reads `actions/caches` and `actions/runs`. | Owner or orchestrator; still open |
