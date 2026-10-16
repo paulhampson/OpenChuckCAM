@@ -283,7 +283,7 @@ impl PlaybackPanel {
                             self.detail = Some((lines.points, lines.full_points, lines.tolerance));
                             viewport.set_layer(Layer::Paths, paths_scene(&lines));
                         }
-                        Err(e) if e.to_string().contains("cancel") => {}
+                        Err(e) if e.is_cancelled() => {}
                         Err(e) => self.error = Some(e.to_string()),
                     }
                 }
@@ -360,7 +360,7 @@ impl PlaybackPanel {
                             viewport.set_layer(Layer::Stock, scene);
                             stock.shown = Some(done);
                         }
-                        Err(e) if e.to_string().contains("cancel") => {}
+                        Err(e) if e.is_cancelled() => {}
                         Err(e) => stock.error = Some(e.to_string()),
                     }
                 }

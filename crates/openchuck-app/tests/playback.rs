@@ -1011,3 +1011,35 @@ fn req_nfr_04_a_path_of_two_million_moves_is_displayed_within_its_budget() {
     }
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Stock playback and the colours read the run's own project, so an edit made
+/// after the run cannot put the old toolpath on a different stock (SIM-04,
+/// SIM-05; verification policy 8).
+#[test]
+fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
+    let (dir, mut app, _) = project("stock-edited");
+    let run = Arc::new(app.simulate().unwrap());
+    let t = Arc::new(Timeline::new(app.project(), Arc::clone(&run)).unwrap());
+    let before = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let first = app
+        .start_stock_at(&before, Cursor::default())
+        .wait()
+        .unwrap();
+
+    // The stock is made much bigger after the run.
+    let mut setup = app.project().setups()[0].clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(40.0),
+        length: Millimetres(30.0),
+        x_start: Millimetres(-15.0),
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+
+    let after = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
+    let second = app
+        .start_stock_at(&after, Cursor::default())
+        .wait()
+        .unwrap();
+    assert_eq!(first, second, "the stock shown changed with the project");
+    let _ = std::fs::remove_dir_all(dir);
+}

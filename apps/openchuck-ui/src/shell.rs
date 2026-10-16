@@ -237,7 +237,7 @@ impl Shell {
                         self.viewport.set_scene(view, fit);
                         self.selection.scene_changed();
                     }
-                    Err(AppError::Engine(e)) if e.to_string().contains("cancel") => {}
+                    Err(e) if e.is_cancelled() => {}
                     Err(e) => self.status = format!("The view could not be built: {e}"),
                 }
             }

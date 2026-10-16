@@ -289,7 +289,7 @@ impl RunPanel {
                         self.show_results = true;
                         Some(run)
                     }
-                    Err(e) if e.to_string().contains("cancel") => {
+                    Err(e) if e.is_cancelled() => {
                         self.last_error =
                             Some("Cancelled. Nothing was kept from that run.".to_owned());
                         None

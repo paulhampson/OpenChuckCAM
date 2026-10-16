@@ -93,3 +93,17 @@ pub enum AppError {
     #[error("the job '{0}' stopped without a result")]
     JobLost(String),
 }
+
+impl AppError {
+    /// Whether the job was cancelled on request (UI-09), as opposed to
+    /// failing. Decided by the kind of error, never by its words: an
+    /// operation's name appears in messages and is the user's to choose.
+    pub fn is_cancelled(&self) -> bool {
+        matches!(
+            self,
+            Self::Engine(openchuck_types::Error::Cancelled)
+                | Self::Path(openchuck_path::PathError::Cancelled)
+                | Self::Import(openchuck_import::ImportError::Cancelled)
+        )
+    }
+}

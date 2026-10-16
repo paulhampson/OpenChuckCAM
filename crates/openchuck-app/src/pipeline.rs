@@ -86,6 +86,10 @@ pub struct Regeneration {
     /// Operations whose toolpath came from the cache because nothing it
     /// depends on, including the operations before it, changed.
     pub reused: Vec<OperationId>,
+    /// The project the run was made from. Stock playback and the deviation
+    /// colours read the stock, the cell size and the part from here, so they
+    /// match the run even if the project has been edited since.
+    pub project: Arc<Project>,
 }
 
 /// Regenerates every enabled operation of `project` (in the folder
@@ -112,7 +116,10 @@ pub(crate) fn regenerate(
     let total = operations.len() as u64;
     context.report("regenerate", 0, Some(total));
     let settings = project.simulation();
-    let mut regeneration = Regeneration::default();
+    let mut regeneration = Regeneration {
+        project: Arc::new(project.clone()),
+        ..Regeneration::default()
+    };
     let mut setups: Vec<SetupState> = Vec::new();
     // Disabled operations keep their cached results, so enabling one again
     // can reuse them; only removed operations are dropped.

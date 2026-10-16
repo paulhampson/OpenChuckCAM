@@ -134,10 +134,12 @@ impl Application {
     /// to coarsen, when the checkpoints would need more than
     /// [`MAX_CHECKPOINT_BYTES`] for a setup.
     pub fn start_stock_playback(&self, timeline: Arc<Timeline>) -> JobHandle<StockPlayback> {
-        let project = self.document.project.clone();
         self.jobs
             .submit("prepare playback", self.events_tx.clone(), move |context| {
                 let run = Arc::clone(timeline.run());
+                // The run's own project, not the current one: the stock, the
+                // cell size and the machine must be those the run was made with.
+                let project = Arc::clone(&run.project);
                 let settings = project.simulation();
                 let machine = project
                     .machine()
@@ -252,11 +254,12 @@ impl Application {
                 let deviation = result.deviation.as_ref().ok_or_else(|| {
                     AppError::Playback("this setup has no part to compare with".to_owned())
                 })?;
-                let model = document
+                // The part as the run was made with it (see `Regeneration::project`).
+                let model = run
                     .project
                     .setup(setup)
                     .and_then(|s| s.part)
-                    .and_then(|id| document.project.models().iter().find(|m| m.id == id))
+                    .and_then(|id| run.project.models().iter().find(|m| m.id == id))
                     .ok_or_else(|| AppError::Playback("the setup has no part".to_owned()))?;
                 let mesh = crate::model::placed_mesh(&document.location, model, context)?;
                 let options = DeviationOptions::for_cell(report.settings.cell.0);
