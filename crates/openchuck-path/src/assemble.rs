@@ -162,11 +162,13 @@ impl Builder<'_> {
             0.0
         };
         let line = (dx * dx + dy * dy + dz * dz).sqrt();
-        // A move that changes X and Y by less than a written unit may be
-        // written with neither, and is then checked against Z's limit
-        // (decision record 0050).
+        // A move that changes X or Y by less than a written unit may be
+        // written with or without that change, so it is checked against
+        // either limit: it is timed for the lower (decision record 0050).
         let line_limit = if dx >= WRITTEN_UNIT || dy >= WRITTEN_UNIT {
             linear
+        } else if dx > EPS || dy > EPS {
+            linear.min(z)
         } else {
             z
         };
@@ -779,5 +781,20 @@ mod tests {
         let written_z = 2.294;
         let f = 60.0 * written_z / seconds;
         assert!(f <= machine.max_feeds.z.0, "F{f:.3}");
+        // On a machine whose Z is faster than its linear axes, X may be
+        // written as changing by a unit, and the linear limit then applies.
+        let mut fast_z = machine.max_feeds;
+        fast_z.z = FeedRate(2.0 * fast_z.linear.0);
+        b.max_feeds = fast_z;
+        b.segments.clear();
+        b.pose = ToolPose {
+            tip: from.tip,
+            axis: rotary.tool_axis(from.a),
+            a: from.a,
+        };
+        b.push(MoveKind::Cutting, end, Some(to.tip), Some(FeedRate(1.0e6)))
+            .unwrap();
+        let f = 60.0 * (written_z.hypot(0.001)) / b.segments[0].duration.0;
+        assert!(f <= fast_z.linear.0, "F{f:.3}");
     }
 }
