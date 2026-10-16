@@ -80,13 +80,16 @@ fn rgb_fill([r, g, b]: [u8; 3]) -> Colour {
 }
 
 /// What a key chooses (specification section 15): Q one triangle, W flood
-/// fill (connected shell), E select by angle (smooth patch). B, box
-/// selection, is not built (OI-171).
+/// fill (connected shell), E select by angle (smooth patch). R, same
+/// direction, is added by the owner (decision 0046 item 4); the
+/// specification lists only Q, W, E and B. B, box selection, is not built
+/// (OI-201).
 fn choice_for_key(key: egui::Key) -> Option<Choice> {
     match key {
         egui::Key::Q => Some(Choice::Triangle),
         egui::Key::W => Some(Choice::Connected),
         egui::Key::E => Some(Choice::Smooth),
+        egui::Key::R => Some(Choice::Direction),
         _ => None,
     }
 }
@@ -129,7 +132,7 @@ impl Choice {
             Self::Triangle => Some(egui::Key::Q),
             Self::Connected => Some(egui::Key::W),
             Self::Smooth => Some(egui::Key::E),
-            Self::Direction => None,
+            Self::Direction => Some(egui::Key::R),
         }
     }
 
@@ -458,7 +461,7 @@ impl SelectionPanel {
             return false;
         }
         let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key));
-        for key in [egui::Key::Q, egui::Key::W, egui::Key::E] {
+        for key in [egui::Key::Q, egui::Key::W, egui::Key::E, egui::Key::R] {
             if pressed(key)
                 && let Some(choice) = choice_for_key(key)
             {
@@ -530,7 +533,7 @@ impl SelectionPanel {
         ui.weak("Meshes are selected by triangle; STEP models by face and edge.");
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("Click: {}.", self.choice.name().to_lowercase()));
-            ui.weak("Choose in the box on the view, or press Q, W or E.");
+            ui.weak("Choose in the box on the view, or press Q, W, E or R.");
         });
         ui.add(
             egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
@@ -962,11 +965,14 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_04_keys_q_w_e_choose_how_a_click_selects() {
+    fn req_ui_04_keys_q_w_e_r_choose_how_a_click_selects() {
         assert_eq!(choice_for_key(egui::Key::Q), Some(Choice::Triangle));
         assert_eq!(choice_for_key(egui::Key::W), Some(Choice::Connected));
         assert_eq!(choice_for_key(egui::Key::E), Some(Choice::Smooth));
+        assert_eq!(choice_for_key(egui::Key::R), Some(Choice::Direction));
         assert_eq!(choice_for_key(egui::Key::B), None);
+        // Every way a click selects has a key, shown in its tooltip label.
+        assert!(Choice::ALL.iter().all(|c| c.key().is_some()));
         // Every key the tools box shows is one that chooses that tool.
         for choice in Choice::ALL {
             if let Some(key) = choice.key() {
