@@ -677,3 +677,34 @@ fn req_nfr_06_the_composite_drop_is_identical_at_1_2_and_n_threads() {
     assert_eq!(results[0], results[1]);
     assert_eq!(results[0], results[2]);
 }
+
+#[test]
+fn req_op_21_a_small_tool_through_a_large_solid_finds_the_top_among_several_narrow_windows() {
+    // A tool of 1 mm on a cylinder of radius 20: the angles where a section
+    // comes within its reach are about a degree wide, narrower than the
+    // sampling step, and a line through the cylinder has two of them (where it
+    // enters and where it leaves). The tool rests on the upper one.
+    let c = Solid::cylinder(Point3::ORIGIN, dir(1.0, 0.0, 0.0), 30.0, 20.0).unwrap();
+    let mesh = MeshSurface::new(&c.mesh(2880)).unwrap();
+    let p = profile(ToolShape::BallEnd, 1.0);
+    for tilt in [0.5f64, 1.0, 2.0, 2.2, 3.0, 4.0] {
+        for y0 in [0.0, 0.1, 0.25, -0.2] {
+            let t = tilt.to_radians();
+            let line = ToolLine {
+                origin: Point3::new(15.0, y0, 0.0),
+                axis: dir(0.0, t.sin(), t.cos()),
+            };
+            let want = mesh.drop_tool(&p, &line).unwrap();
+            let got = c
+                .drop_tool(&p, &line)
+                .unwrap_or_else(|| panic!("tilt {tilt} y0 {y0}: the solid was not reached"));
+            let diff = got.offset - want.offset;
+            assert!(
+                (-1e-9..2e-3).contains(&diff),
+                "tilt {tilt} y0 {y0}: {} against the mesh {}",
+                got.offset,
+                want.offset
+            );
+        }
+    }
+}

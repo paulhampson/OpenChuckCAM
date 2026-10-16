@@ -529,8 +529,9 @@ struct Arc {
 
 /// The arcs of `theta` where `distance(theta)` (the section's distance from
 /// the tool line) is within `reach`. A full turn when every sample is, else
-/// the runs found, with their ends located by bisection; a window too narrow
-/// to hold a sample is found by minimising the distance.
+/// the runs found, with their ends located by bisection, and a window too
+/// narrow to hold a sample, found by minimising the distance about each
+/// sampled local minimum.
 fn reachable_arcs(distance: &impl Fn(f64) -> f64, reach: f64) -> Vec<Arc> {
     const N: usize = 72;
     let step = TAU / N as f64;
@@ -556,27 +557,6 @@ fn reachable_arcs(distance: &impl Fn(f64) -> f64, reach: f64) -> Vec<Arc> {
         }
         good
     };
-    if !(0..N).any(ok) {
-        let k = ds
-            .iter()
-            .enumerate()
-            .fold(
-                (0, f64::INFINITY),
-                |b, (i, d)| if *d < b.1 { (i, *d) } else { b },
-            )
-            .0;
-        let (lo, hi) = (at(k) - step, at(k) + step);
-        let neg = |theta: f64| -distance(theta);
-        let theta = golden(&neg, lo, hi, 1e-13);
-        if distance(theta) > reach {
-            return Vec::new();
-        }
-        return vec![Arc {
-            from: boundary(lo, theta),
-            to: boundary(hi, theta),
-            full: false,
-        }];
-    }
     let mut arcs = Vec::new();
     for k in 0..N {
         if ok(k) && !ok(k + N - 1) {
@@ -587,6 +567,28 @@ fn reachable_arcs(distance: &impl Fn(f64) -> f64, reach: f64) -> Vec<Arc> {
             arcs.push(Arc {
                 from: boundary(at(k) - step, at(k)),
                 to: boundary(at(e) + step, at(e)),
+                full: false,
+            });
+        }
+    }
+    // A window too narrow to hold a sample lies about a local minimum of the
+    // distance: a line through the solid has one where it enters and one where
+    // it leaves, and a small tool on a large solid sees each as a window
+    // narrower than the step. Each sampled local minimum that is not already
+    // in an arc is refined.
+    let before = |k: usize| ds.get((k + N - 1) % N).copied().unwrap_or(f64::INFINITY);
+    let after = |k: usize| ds.get((k + 1) % N).copied().unwrap_or(f64::INFINITY);
+    for (k, d) in ds.iter().enumerate() {
+        if ok(k) || *d > before(k) || *d > after(k) {
+            continue;
+        }
+        let (lo, hi) = (at(k) - step, at(k) + step);
+        let neg = |theta: f64| -distance(theta);
+        let theta = golden(&neg, lo, hi, 1e-13);
+        if distance(theta) <= reach {
+            arcs.push(Arc {
+                from: boundary(lo, theta),
+                to: boundary(hi, theta),
                 full: false,
             });
         }
