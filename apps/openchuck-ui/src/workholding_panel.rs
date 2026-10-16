@@ -50,6 +50,27 @@ struct Checking {
     apply: bool,
     /// The draft as it was when the check started.
     draft: Workholding,
+    /// What the check reads besides the draft, as it was then.
+    inputs: String,
+}
+
+/// What a check of `setup`'s workholding depends on besides the draft: its
+/// part and stock, and the tools of its operations. A check made on other
+/// inputs is stale.
+fn check_inputs(app: &Application, setup: &Setup) -> String {
+    let project = app.project();
+    let tools: Vec<_> = project
+        .operations()
+        .iter()
+        .filter(|o| o.setup == setup.id)
+        .map(|o| {
+            let tool = o
+                .tool
+                .and_then(|id| project.tools().iter().find(|t| t.id == id));
+            (o.id, tool.map(|t| &t.tool))
+        })
+        .collect();
+    format!("{:?} {:?} {:?}", setup.part, setup.stock, tools)
 }
 
 impl std::fmt::Debug for WorkholdingPanel {
@@ -172,7 +193,7 @@ impl WorkholdingPanel {
                 .on_hover_text("Store the held regions and tabs in the setup (it can be undone)")
                 .clicked()
             {
-                self.start_check(app, true);
+                self.start_check(app, setup, true);
             }
             if ui
                 .add_enabled(changed, egui::Button::new("Revert"))
@@ -185,7 +206,7 @@ impl WorkholdingPanel {
                 .on_hover_text("Tabs lie in the head or tail zone and are wider than the tools")
                 .clicked()
             {
-                self.start_check(app, false);
+                self.start_check(app, setup, false);
             }
             if !idle {
                 ui.spinner();
@@ -196,30 +217,48 @@ impl WorkholdingPanel {
         }
         // After the controls, so a draft edited or reverted this frame is
         // the draft the finished check is compared with.
-        self.poll_check(ui.ctx(), setup)
+        self.poll_check(ui.ctx(), app, setup)
     }
 
     /// Starts checking the draft against the part and the tools: tabs outside
     /// the head and tail zones, and tabs narrower than a tool the setup uses,
     /// are refused when stored, as they are when generating (OI-159, OI-180).
-    fn start_check(&mut self, app: &Application, apply: bool) {
+    fn start_check(&mut self, app: &Application, setup: &Setup, apply: bool) {
         self.message = None;
         self.checking = Some(Checking {
             job: app.start_check_workholding(self.setup, &self.draft),
             apply,
             draft: self.draft.clone(),
+            inputs: check_inputs(app, setup),
         });
     }
 
     /// Takes the result of a finished check. Returns the command that stores
     /// the draft the check was made on, if it was asked to and found nothing.
-    fn poll_check(&mut self, ctx: &egui::Context, setup: &Setup) -> Option<Command> {
+    fn poll_check(
+        &mut self,
+        ctx: &egui::Context,
+        app: &Application,
+        setup: &Setup,
+    ) -> Option<Command> {
         let checking = self.checking.as_ref()?;
         let Some(result) = checking.job.try_result() else {
             ctx.request_repaint();
             return None;
         };
-        let Checking { apply, draft, .. } = self.checking.take()?;
+        let Checking {
+            apply,
+            draft,
+            inputs,
+            ..
+        } = self.checking.take()?;
+        // The part, the stock or a tool changed since the check started (the
+        // panel is polled only while it is shown): the result is stale.
+        if inputs != check_inputs(app, setup) {
+            self.message =
+                Some("The part, stock or tools changed while checking; check again.".to_owned());
+            return None;
+        }
         self.finish_check(result.map_err(|e| e.to_string()), apply, draft, setup)
     }
 
@@ -507,6 +546,19 @@ mod tests {
         );
         let message = panel.message.clone().unwrap();
         assert!(message.contains("tab 1"), "{message}");
+        // A change to the stock is a change to what a check depends on.
+        let before = check_inputs(&app, &setup);
+        let mut moved = setup.clone();
+        moved.stock = Some(openchuck_app::setup::Stock::Cylinder {
+            diameter: Millimetres(22.0),
+            length: Millimetres(14.0),
+            x_start: Millimetres(-7.0),
+        });
+        app.execute(Command::Replace(Item::Setup(moved))).unwrap();
+        let after_setup = app.project().setup(setup_id).unwrap().clone();
+        assert_ne!(before, check_inputs(&app, &after_setup));
+        app.undo().unwrap();
+        assert_eq!(before, check_inputs(&app, &setup));
         // A draft edited or reverted while a clean check ran is not stored.
         let checked = Workholding::default();
         assert!(
