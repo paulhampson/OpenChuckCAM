@@ -149,7 +149,7 @@ impl Workholding {
 /// fit the stock. A stock that needs the part (the bounding-box offset) or is
 /// not available yet is not checked for extent. Whether a tab lies between
 /// the held region and the part's far end needs the part, so it is not checked
-/// here (OI-169).
+/// here (OI-174).
 pub fn validate_workholding(
     workholding: &Workholding,
     stock: Option<&Stock>,
