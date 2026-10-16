@@ -95,7 +95,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 17 and 18 | Not started | |
 | 19 output options and setup sheet | In progress | Item 4, export dialogs (lane S) |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
-| 21 workholding and retaining tabs | In progress | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation and the UI, is not started on `main`; the fix for walls in the target that default tabs need (OI-209) is built by lane Y on `claude/lane-y-wall-micro-moves` ([decision 0050](decisions/0050-walls-merge-micro-moves.md), proposed) |
+| 21 workholding and retaining tabs | In progress | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation and the UI, is not started on `main`; the fix for walls in the target that default tabs need (OI-209) is built by lane Y on `claude/lane-y-wall-micro-moves` ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction) |
 | 22 user interface redesign | Not started | The interface design is a proposal on a branch; waits for the UI lanes |
 
 ## Slice order and dependencies
@@ -138,7 +138,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | U | 21a workholding and tab data in the setup (SET-09, OP-21): types, validation, project file, commands | ██ | | | | |
 | V | 21b composite target in `openchuck-path`: cylinder and frustum solids joined to the model's surface | ██ | ██ | | | |
 | W | 21c wiring: application mapping, simulation, deviation, forms | ░░ | ░░ | ██ | | |
-| Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), proposed; built on `claude/lane-y-wall-micro-moves`) | ░░ | ░░ | ██ | | |
+| Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; built on `claude/lane-y-wall-micro-moves`) | ░░ | ░░ | ██ | | |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -790,7 +790,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 ## Slice 21 – Workholding and retaining tabs
 
-**Status:** 21a built and merged (lane U, [decision 0041](decisions/0041-slice-21a-workholding-data.md), accepted, pull request 55); 21b built by lane V on `claude/lane-v-slice-21b-composite-target` ([decision 0042](decisions/0042-slice-21b-composite-target.md), proposed; items 1 and 2 and the oracle-part tests of item 3 done, the independent checker used for the parts about the rotary axis only; OI-162 measured, OI-185 new); 21c not started. Walls in the target (a tab narrower than the part's end face, a held region wider than the part) made helical finishing fail gates 1 and 2 on micro-moves (OI-209, lane W); lane Y fixes it in path assembly on `claude/lane-y-wall-micro-moves` ([decision 0050](decisions/0050-walls-merge-micro-moves.md), proposed; OI-211 to OI-213 new), which default tabs depend on. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
+**Status:** 21a built and merged (lane U, [decision 0041](decisions/0041-slice-21a-workholding-data.md), accepted, pull request 55); 21b built by lane V on `claude/lane-v-slice-21b-composite-target` ([decision 0042](decisions/0042-slice-21b-composite-target.md), proposed; items 1 and 2 and the oracle-part tests of item 3 done, the independent checker used for the parts about the rotary axis only; OI-162 measured, OI-185 new); 21c not started. Walls in the target (a tab narrower than the part's end face, a held region wider than the part) made helical finishing fail gates 1 and 2 on micro-moves (OI-209, lane W); lane Y fixes it in path assembly on `claude/lane-y-wall-micro-moves` ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; OI-211 to OI-213 new), which default tabs depend on. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 
