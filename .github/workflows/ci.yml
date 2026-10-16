@@ -168,30 +168,67 @@ jobs:
           path: target/replay
           if-no-files-found: ignore
 
+  # Linux and Windows split the test run over two jobs (decision 0052, Option 4):
+  # `--partition hash:I/N` gives each test to one share by a hash of its name, so a
+  # new test never moves the others. macOS stays one job while its runner queue is
+  # the longest. Shard 1 also runs clippy, the doctests and the examples, which the
+  # other shards would only repeat. The partition check below fails a job whose
+  # shares are empty or do not add up to the full list, so no test goes unrun.
   build-test:
-    name: Build and test (${{ matrix.os }})
+    name: Build and test (${{ matrix.os }}, shard ${{ matrix.shard }} of ${{ matrix.shards }})
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - { os: ubuntu-latest, shard: 1, shards: 2 }
+          - { os: ubuntu-latest, shard: 2, shards: 2 }
+          - { os: windows-latest, shard: 1, shards: 2 }
+          - { os: windows-latest, shard: 2, shards: 2 }
+          - { os: macos-latest, shard: 1, shards: 1 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: shard-${{ matrix.shard }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
       - name: clippy (deny warnings, unwrap and unchecked indexing)
+        if: matrix.shard == 1
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Check the test partition
+        shell: bash
+        env:
+          SHARDS: ${{ matrix.shards }}
+        run: |
+          total=$(cargo nextest list --workspace --locked --message-format oneline | wc -l)
+          sum=0
+          for i in $(seq 1 "$SHARDS"); do
+            n=$(cargo nextest list --workspace --locked --message-format oneline --partition "hash:$i/$SHARDS" | wc -l)
+            echo "share $i of $SHARDS: $n tests"
+            if [ "$n" -eq 0 ]; then
+              echo "::error title=Empty test share::share $i of $SHARDS has no tests"
+              exit 1
+            fi
+            sum=$((sum + n))
+          done
+          echo "full list: $total tests, shares add up to $sum"
+          if [ "$sum" -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::the $SHARDS shares hold $sum tests, the full list $total"
+            exit 1
+          fi
       - name: Tests
-        run: cargo nextest run --workspace --locked --no-fail-fast
+        run: cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail --partition "hash:${{ matrix.shard }}/${{ matrix.shards }}"
       - name: Doctests
+        if: matrix.shard == 1
         run: cargo test --workspace --doc --locked
       - name: Examples run
+        if: matrix.shard == 1
         run: |
           cargo run --locked -p openchuck-types --example kinematics
           cargo run --locked -p openchuck-geom --example check_and_place
