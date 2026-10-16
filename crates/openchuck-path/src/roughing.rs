@@ -615,6 +615,7 @@ impl<'a> Job<'a> {
         Pass {
             points: sites.iter().map(|(s, t)| self.cut_point(*s, *t)).collect(),
             stock: Some(stock.clone()),
+            rapids: Vec::new(),
         }
     }
 

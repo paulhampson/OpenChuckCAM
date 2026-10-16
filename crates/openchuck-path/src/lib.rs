@@ -23,7 +23,8 @@
 //! in [`assemble`]: A-axis management (OP-15), linking (OP-14) and contact
 //! feed with segment durations (OP-13). Strategies are found by name in a
 //! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`],
-//! [`SimultaneousFinishing`], [`RestMachining`] and [`PencilFinishing`]. Tool-centre
+//! [`SimultaneousFinishing`], [`RestMachining`], [`PencilFinishing`] and
+//! [`RadialDrilling`]. Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -73,9 +74,11 @@ pub mod brep;
 mod candidates;
 mod composite;
 pub mod cutter;
+pub mod drill;
 mod error;
 pub mod field;
 pub mod helical;
+pub mod holes;
 pub mod indexed;
 pub mod parallel;
 pub mod params;
@@ -98,9 +101,11 @@ pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use composite::CompositeSurface;
 pub use cutter::{Contact, ToolLine};
+pub use drill::RadialDrilling;
 pub use error::{PathError, Result};
 pub use field::HeightStock;
 pub use helical::HelicalFinishing;
+pub use holes::{Hole, HoleEnd, find_holes};
 pub use indexed::IndexedFinishing;
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,

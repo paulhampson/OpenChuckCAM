@@ -915,6 +915,7 @@ impl Plan<'_> {
                                 passes.push(Pass {
                                     points: std::mem::take(&mut points),
                                     stock: None,
+                                    rapids: Vec::new(),
                                 });
                             }
                         }
@@ -926,6 +927,7 @@ impl Plan<'_> {
                 passes.push(Pass {
                     points,
                     stock: None,
+                    rapids: Vec::new(),
                 });
             }
         }
