@@ -91,7 +91,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 13 simultaneous 4-axis finishing | Closed (15 Oct 2026) | |
 | 14 rotary roughing | In progress | One checklist box: every OP-11 parameter has a test; per-selection stock to leave is still refused for roughing ([decision 0043](decisions/0043-slice-14-roughing-containment.md) item 5). Containment (item 5, lane L) is merged |
 | 15 rest machining and pencil clean-up | Closed (16 Oct 2026) | Follow-ups OI-189 to OI-193 |
-| 16 edge and curve following | In progress | Lane K built the mesh feature edge side ([decision 0047](decisions/0047-slice-16-edge-following-mesh.md), proposed); B-rep edges (lane P) and stored edge selections (OI-204) are open |
+| 16 edge and curve following | In progress | Lane K built the mesh feature edge side ([decision 0047](decisions/0047-slice-16-edge-following-mesh.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction); B-rep edges (lane P) and stored edge selections (OI-204) are open |
 | 17 and 18 | Not started | |
 | 19 output options and setup sheet | In progress | Item 4, export dialogs (lane S) |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
@@ -684,7 +684,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 **Design refinement:** the `CurveSource` trait, the projection method, and how A and tool axis behave along a curve. This is a wrap-family strategy and reuses the unrolled-development approach from SP-7.
 
-**Status:** lane K built the mesh feature edge side on `claude/lane-k-slice-16-mesh-edges` ([decision 0047](decisions/0047-slice-16-edge-following-mesh.md), proposed): the `CurveSource` seam and `MeshFeatureEdges` (item 1 for meshes), the radial projection and depth (item 2), A and the tool axis along the curve (item 3), engrave and carve with levels and V-bit width following depth (item 4), and tests on open and closed chains on a curved surface (item 5). The slice is not closed: the B-rep half of item 1 is lane P's, and a stored edge selection (the "persist across save and load" box) needs a new selection kind and a project schema number (OI-204). Follow-ups OI-205 to OI-208. It takes no schema number.
+**Status:** lane K built the mesh feature edge side on `claude/lane-k-slice-16-mesh-edges` ([decision 0047](decisions/0047-slice-16-edge-following-mesh.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction): the `CurveSource` seam and `MeshFeatureEdges` (item 1 for meshes), the radial projection and depth (item 2), A and the tool axis along the curve (item 3), engrave and carve with levels and V-bit width following depth (item 4), and tests on open and closed chains on a curved surface (item 5). The slice is not closed: the B-rep half of item 1 is lane P's, and a stored edge selection (the "persist across save and load" box) needs a new selection kind and a project schema number (OI-204). Follow-ups OI-205 to OI-208. It takes no schema number.
 
 1. Edge chains from B-rep edges and mesh feature edges as curve sources.
 2. Projection onto the surface, with depth control.
