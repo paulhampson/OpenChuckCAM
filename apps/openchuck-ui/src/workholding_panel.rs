@@ -27,12 +27,19 @@ pub struct WorkholdingPanel {
     /// The workholding being edited.
     draft: Workholding,
     /// The default tabs being computed.
-    defaults: Option<JobHandle<Vec<Tab>>>,
+    defaults: Option<Defaults>,
     /// A check against the part and tools that is running.
     checking: Option<Checking>,
     /// What the last check of the setup said.
     findings: Vec<String>,
     message: Option<String>,
+}
+
+/// The default tabs being computed, from the stored setup, for the draft that
+/// asked for them.
+struct Defaults {
+    job: JobHandle<Vec<Tab>>,
+    draft: Workholding,
 }
 
 /// A running check of a draft against the part and the tools. It reads the
@@ -90,7 +97,6 @@ impl WorkholdingPanel {
         );
         ui.separator();
         self.poll_defaults(ui.ctx());
-        let command = self.poll_check(ui.ctx(), setup);
 
         held(ui, "Held at the start of the stock", &mut self.draft.start);
         held(ui, "Held at the end of the stock", &mut self.draft.end);
@@ -112,22 +118,32 @@ impl WorkholdingPanel {
                 self.draft.tabs.push(new_tab(setup));
             }
             let busy = self.defaults.is_some();
-            ui.add_enabled_ui(!busy && self.draft.tabs.is_empty(), |ui| {
-                if ui
-                    .button("Add default tabs")
-                    .on_hover_text(
-                        "One tab at the head and one at the tail, frustums with the small end \
+            // The default tabs fit the stored held regions, so they are
+            // offered only while the draft has the same ones.
+            let held_unchanged =
+                self.draft.start == self.base.start && self.draft.end == self.base.end;
+            ui.add_enabled_ui(
+                !busy && held_unchanged && self.draft.tabs.is_empty(),
+                |ui| {
+                    if ui
+                        .button("Add default tabs")
+                        .on_hover_text(
+                            "One tab at the head and one at the tail, frustums with the small end \
                          on the part, sized from the part",
-                    )
-                    .clicked()
-                {
-                    // The held regions fix the zones, so compute from the
-                    // draft's regions as stored; apply those first if they
-                    // changed.
-                    self.message = None;
-                    self.defaults = Some(app.start_default_tabs(self.setup));
-                }
-            });
+                        )
+                        .clicked()
+                    {
+                        // The held regions fix the zones, so compute from the
+                        // draft's regions as stored; apply those first if they
+                        // changed.
+                        self.message = None;
+                        self.defaults = Some(Defaults {
+                            job: app.start_default_tabs(self.setup),
+                            draft: self.draft.clone(),
+                        });
+                    }
+                },
+            );
             if busy {
                 ui.spinner();
             }
@@ -178,7 +194,9 @@ impl WorkholdingPanel {
         for f in &self.findings {
             ui.label(RichText::new(f).color(NOTE));
         }
-        command
+        // After the controls, so a draft edited or reverted this frame is
+        // the draft the finished check is compared with.
+        self.poll_check(ui.ctx(), setup)
     }
 
     /// Starts checking the draft against the part and the tools: tabs outside
@@ -252,11 +270,24 @@ impl WorkholdingPanel {
 
     /// Adds the default tabs to the draft when their job has finished.
     fn poll_defaults(&mut self, ctx: &egui::Context) {
-        let Some(job) = &self.defaults else { return };
-        match job.try_result() {
+        let Some(defaults) = &self.defaults else {
+            return;
+        };
+        match defaults.job.try_result() {
             None => ctx.request_repaint(),
             Some(result) => {
-                self.defaults = None;
+                let Some(Defaults { draft, .. }) = self.defaults.take() else {
+                    return;
+                };
+                // Edited while the job ran: the tabs were computed for another
+                // draft, so add none.
+                if draft != self.draft {
+                    self.message = Some(
+                        "The draft changed while default tabs were being computed; try again."
+                            .to_owned(),
+                    );
+                    return;
+                }
                 match result {
                     Ok(tabs) if tabs.is_empty() => {
                         self.message = Some(
