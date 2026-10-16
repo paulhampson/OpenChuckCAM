@@ -16,7 +16,6 @@ The NFR-14 record for every third-party crate the workspace declares. Each row g
 
 | Crate | Version | Score | Licence | Used in | Justification |
 | --- | --- | --- | --- | --- | --- |
-| `serde` | 1.0.229 | 93 | MIT OR Apache-2.0 | All crates | Serialisation for plain data across boundaries (INT-02, GC-01). Architecture section 7, supporting layers. |
 | `serde_json` | 1.0.152 | 97 | MIT OR Apache-2.0 | `openchuck-app` (pipeline cache keys, decision 0030), tests and fuzzing; the shared plain-data form. Not used for project files (decision 0006) | JSON text form of shared data. Built with `float_roundtrip`, because without it a double does not always survive a save and load exactly (found by the IR round-trip property test; NFR-05, NFR-06). |
 | `thiserror` | 2.0.21 | 94 | MIT OR Apache-2.0 | Libraries and `openchuck-app` | Typed errors in libraries (architecture section 7, errors and logging). |
 | `anyhow` | 1.0.104 | 96 | MIT OR Apache-2.0 | `openchuck-cli`, `xtask` | Error reporting in applications only. |
