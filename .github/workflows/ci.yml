@@ -114,6 +114,8 @@ jobs:
               - 'crates/openchuck-geom/**'
               - 'crates/openchuck-import/**'
               - 'testdata/stl/**'
+              # The fuzz job itself, so a change to it is run by its own pull request.
+              - '.github/workflows/ci.yml'
 
   gate3:
     name: Gate 3 (LinuxCNC simulator)
@@ -438,15 +440,26 @@ jobs:
             fi
           done
 
+  # Nine targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three
+  # that share a toolchain install, a cargo-fuzz install and a build cache, instead of nine jobs
+  # that each set up and build from scratch (decision 0052, Option 7). Every target still gets its
+  # own minute and its own seeded corpus; a failing target is named in the annotation and does not
+  # stop the others in its job from running.
   fuzz-smoke:
-    name: Fuzz smoke (1 minute per target)
+    name: Fuzz smoke, 1 minute per target (${{ matrix.group.name }})
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
+        group:
+          - name: A
+            targets: machine_profile_json machine_profile_toml toolpath_ir_json
+          - name: B
+            targets: project_files stl_import tool_library_toml
+          - name: C
+            targets: tool_profile_toml gcode_reader post_definition
     steps:
       - uses: actions/checkout@v7
         with:
@@ -455,42 +468,55 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: fuzz-smoke
       - name: Seed the STL corpus from testdata
-        if: matrix.target == 'stl_import'
+        if: contains(format(' {0} ', matrix.group.targets), ' stl_import ')
         run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
       - name: Seed the machine profile corpus from the built-in profiles
-        if: matrix.target == 'machine_profile_toml'
+        if: contains(format(' {0} ', matrix.group.targets), ' machine_profile_toml ')
         run: mkdir -p fuzz/corpus/machine_profile_toml && cp crates/openchuck-project/machines/*.toml fuzz/corpus/machine_profile_toml/
       - name: Seed the tool library corpus
-        if: matrix.target == 'tool_library_toml'
+        if: contains(format(' {0} ', matrix.group.targets), ' tool_library_toml ')
         run: mkdir -p fuzz/corpus/tool_library_toml && cp testdata/tools/library/*.toml testdata/tools/library/tool-sets/*.toml testdata/tools/broken/*.toml fuzz/corpus/tool_library_toml/
       - name: Seed the tool profile corpus
-        if: matrix.target == 'tool_profile_toml'
+        if: contains(format(' {0} ', matrix.group.targets), ' tool_profile_toml ')
         run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
       - name: Seed the G-code corpus
-        if: matrix.target == 'gcode_reader'
+        if: contains(format(' {0} ', matrix.group.targets), ' gcode_reader ')
         run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
       - name: Seed the post definition corpus
-        if: matrix.target == 'post_definition'
+        if: contains(format(' {0} ', matrix.group.targets), ' post_definition ')
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
-      - name: Fuzz for one minute
+      - name: Fuzz each target for one minute
         shell: bash
         env:
-          TARGET: ${{ matrix.target }}
+          TARGETS: ${{ matrix.group.targets }}
         run: |
-          set +e
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time=60 > fuzz.log 2>&1
-          code=$?
-          set -e
-          cat fuzz.log
-          # On failure, the end of the output becomes an annotation on the
-          # check page, so the cause is visible without opening the log.
-          if [ "$code" != 0 ]; then
-            tail -n 25 fuzz.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
-            echo "::error title=Fuzz $TARGET failed (exit $code)::$(cat tail.txt)"
-            exit "$code"
+          failed=""
+          for target in $TARGETS; do
+            echo "::group::Fuzz $target"
+            set +e
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 > "fuzz-$target.log" 2>&1
+            code=$?
+            set -e
+            cat "fuzz-$target.log"
+            echo "::endgroup::"
+            # On failure, the end of the output becomes an annotation on the
+            # check page, so the cause is visible without opening the log.
+            if [ "$code" != 0 ]; then
+              tail -n 25 "fuzz-$target.log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+              echo "::error title=Fuzz $target failed (exit $code)::$(cat tail.txt)"
+              failed="$failed $target"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "Failed targets:$failed"
+            exit 1
           fi
 
   coverage:
