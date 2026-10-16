@@ -32,3 +32,5 @@ default-filter = '''
   | test(~a_gouging_path_is_reported_as_overcut)
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
 '''
+
+# Throwaway demonstration of the draft gate; never merged.
