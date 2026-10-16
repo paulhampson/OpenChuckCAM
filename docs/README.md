@@ -12,6 +12,7 @@ These documents are the source of truth for the project. They live in the reposi
 | [dependencies.md](dependencies.md) | The NFR-14 record of every third-party dependency: pinned version, survey score, licence and justification, and the pin and upgrade policy. |
 | [open-items.md](open-items.md) | The register of open items raised by decision records and slice reviews, with their state. |
 | [decisions/](decisions/) | Decision records for choices made after these documents were written. |
+| [ui-design/](ui-design/) | The user interface specification: layout, workflow, states, wording and visual tokens of the desktop application. Accepted with decision 0038; it ranks with the decision records (precedence 5). Rendered mockups are in `ui-design/mockups/`. |
 
 ## Precedence
 

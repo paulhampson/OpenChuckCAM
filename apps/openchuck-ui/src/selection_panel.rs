@@ -967,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_04_keys_q_w_e_r_choose_how_a_click_selects() {
+    fn req_ui_14_keys_q_w_e_r_choose_how_a_click_selects() {
         assert_eq!(choice_for_key(egui::Key::Q), Some(Choice::Triangle));
         assert_eq!(choice_for_key(egui::Key::W), Some(Choice::Connected));
         assert_eq!(choice_for_key(egui::Key::E), Some(Choice::Smooth));

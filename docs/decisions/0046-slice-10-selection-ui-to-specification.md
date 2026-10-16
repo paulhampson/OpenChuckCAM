@@ -42,7 +42,7 @@ Slice 10 is closed and its picking, hover and panel are on `main` (record 0037).
 
 ## Evidence
 
-`openchuck-ui` tests: `req_ui_04_hover_is_a_yellow_outline_and_the_working_selection_a_blue_fill` (the overlay holds a blue translucent fill and a closed yellow loop of three sides), `req_ui_05_the_swatches_are_eight_and_none_is_a_highlight_colour`, `req_ui_05_a_chosen_colour_replaces_the_default_swatch`, and in `openchuck-project` `req_ui_05_prj_06_a_chosen_set_colour_survives_save_and_load_and_is_optional`, `req_ui_05_nfr_07_a_bad_set_colour_cannot_be_put_in_the_project` and `req_prj_04_a_schema_10_project_loads_with_default_set_colours`, `req_ui_04_keys_q_w_e_r_choose_how_a_click_selects` (the keys, every tool having one, and Esc leaving picking), and the existing `req_ui_05_a_saved_set_is_highlighted_again_after_the_project_is_reopened` now checking the swatch fill.
+`openchuck-ui` tests: `req_ui_04_hover_is_a_yellow_outline_and_the_working_selection_a_blue_fill` (the overlay holds a blue translucent fill and a closed yellow loop of three sides), `req_ui_05_the_swatches_are_eight_and_none_is_a_highlight_colour`, `req_ui_05_a_chosen_colour_replaces_the_default_swatch`, and in `openchuck-project` `req_ui_05_prj_06_a_chosen_set_colour_survives_save_and_load_and_is_optional`, `req_ui_05_nfr_07_a_bad_set_colour_cannot_be_put_in_the_project` and `req_prj_04_a_schema_10_project_loads_with_default_set_colours`, `req_ui_14_keys_q_w_e_r_choose_how_a_click_selects` (the keys, every tool having one, and Esc leaving picking), and the existing `req_ui_05_a_saved_set_is_highlighted_again_after_the_project_is_reopened` now checking the swatch fill.
 
 ## Open items
 
