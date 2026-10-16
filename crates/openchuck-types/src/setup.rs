@@ -226,6 +226,16 @@ pub enum SetupWarningKind {
         /// The travel on that axis.
         max: f64,
     },
+    /// A retaining tab is not in the head zone (between the held region and
+    /// the start of the part) or the tail zone (between the end of the part
+    /// and the end of the stock); on a rotary part tabs are restricted to
+    /// those zones (OP-21, decision record 0035).
+    TabOutsideEndZones {
+        /// Position of the tab in the setup's list, from 1.
+        tab: usize,
+        /// The tab's X extent.
+        x: (f64, f64),
+    },
 }
 
 impl std::fmt::Display for SetupWarning {
@@ -247,6 +257,13 @@ impl std::fmt::Display for SetupWarning {
                 f,
                 "the safe cylinder (radius {:.3} mm) does not enclose the part (radius {:.3} mm)",
                 radius.0, part.0
+            )?,
+            SetupWarningKind::TabOutsideEndZones { tab, x } => write!(
+                f,
+                "tab {tab} (X {:.3} to {:.3}) is not at the head or the tail: a tab must lie between \
+                 the held region and the start of the part, or between the end of the part and the \
+                 end of the stock",
+                x.0, x.1
             )?,
             SetupWarningKind::PartOutsideStock => {
                 f.write_str("some of the part lies outside the stock")?
