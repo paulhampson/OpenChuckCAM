@@ -92,6 +92,12 @@ pub enum ParameterKind {
         /// The default, one of `options`.
         default: String,
     },
+    /// A list of angles in degrees, typed as numbers separated by commas,
+    /// semicolons or spaces. May be empty when `default` is.
+    AngleList {
+        /// The default text, possibly empty.
+        default: String,
+    },
 }
 
 /// One parameter of a strategy.
@@ -218,6 +224,15 @@ fn resolve_one(spec: &ParameterSpec, value: Option<&ParameterValue>) -> Result<P
             Some(ParameterValue::Flag(b)) => Ok(ParameterValue::Flag(*b)),
             Some(_) => Err(wrong("true or false")),
         },
+        ParameterKind::AngleList { default } => {
+            let v = match value {
+                None => default.clone(),
+                Some(ParameterValue::Text(t)) => t.clone(),
+                Some(_) => return Err(wrong("a list of angles in degrees")),
+            };
+            parse_angles(&v).map_err(|reason| PathError::parameter(name, reason))?;
+            Ok(ParameterValue::Text(v))
+        }
         ParameterKind::Choice { options, default } => {
             let v = match value {
                 None => default.clone(),
@@ -236,7 +251,39 @@ fn resolve_one(spec: &ParameterSpec, value: Option<&ParameterValue>) -> Result<P
     }
 }
 
+/// The most angles one list may hold.
+pub const MAX_ANGLES: usize = 720;
+
+/// Reads a list of angles in degrees: numbers separated by commas,
+/// semicolons or spaces. Empty text is an empty list.
+pub fn parse_angles(text: &str) -> std::result::Result<Vec<f64>, String> {
+    let mut out = Vec::new();
+    for word in text
+        .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
+        .filter(|w| !w.is_empty())
+    {
+        let v = word
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| format!("'{word}' is not an angle in degrees"))?;
+        out.push(v);
+    }
+    if out.len() > MAX_ANGLES {
+        return Err(format!(
+            "{} angles is more than the {MAX_ANGLES} allowed",
+            out.len()
+        ));
+    }
+    Ok(out)
+}
+
 impl Parameters {
+    /// The list of angles called `name`, in degrees.
+    pub fn angles(&self, name: &str) -> Result<Vec<f64>> {
+        parse_angles(self.text(name)?).map_err(|reason| PathError::parameter(name, reason))
+    }
+
     /// The value called `name`.
     pub fn get(&self, name: &str) -> Option<&ParameterValue> {
         self.0.get(name)

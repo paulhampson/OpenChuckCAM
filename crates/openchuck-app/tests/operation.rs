@@ -25,6 +25,7 @@ use openchuck_app::project::{
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
 use openchuck_app::{AppError, Application, Command, Threads};
 use openchuck_path::params::names;
+use openchuck_path::rest::parameter;
 use openchuck_path::{CutPoint, ParameterSchema, Parameters, Pass, Strategy, StrategyInput};
 use openchuck_types::ir::MoveKind;
 use openchuck_types::job::JobContext;
@@ -383,6 +384,32 @@ fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_nam
     }
     assert_eq!(first_cut_feed(&app), 200.0);
     assert!(app.regenerate().unwrap().notes.is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_05_req_op_01_simultaneous_finishing_runs_from_a_project_with_the_builtin_strategy() {
+    let (dir, mut app, op) = project("simultaneous");
+    assert!(app.strategies().get("simultaneous_finishing").is_ok());
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "simultaneous_finishing".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let result = app.regenerate().unwrap();
+    let group = &result.toolpath.groups[0];
+    let cutting: Vec<_> = group
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .collect();
+    assert!(cutting.len() > 500, "{}", cutting.len());
+    assert!(group.segments.iter().all(|s| s.end.tip.is_finite()));
+    // The part is a mesh, and the notes say the tolerance is judged on it.
+    assert!(
+        result.notes.iter().any(|n| n.contains("against the mesh")),
+        "{:?}",
+        result.notes
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -900,6 +927,85 @@ fn req_op_03_req_op_11_roughing_runs_from_a_project_and_takes_its_stepdown_from_
     let group = &result.toolpath.groups[0];
     assert!(group.segments.iter().any(|s| s.kind == MoveKind::Cutting));
     assert!(group.segments.iter().all(|s| s.end.tip.is_finite()));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_09_rest_machining_says_when_no_earlier_operation_has_cut() {
+    let (dir, mut app, op) = project("rest-alone");
+    assert!(app.strategies().get("rest_machining").is_ok());
+    assert!(app.strategies().get("pencil_finishing").is_ok());
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "rest_machining".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let result = app.regenerate().unwrap();
+    assert!(
+        result
+            .notes
+            .iter()
+            .any(|n| n.contains("no earlier operation of this setup has cut")),
+        "{:?}",
+        result.notes
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_09_req_sim_06_rest_machining_after_an_operation_is_generated_on_its_stock() {
+    let (dir, mut app, op) = project("rest-after");
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let mut rest = app.project().operation(op).unwrap().clone();
+    rest.id = OperationId::new();
+    rest.name = "Rest".into();
+    rest.strategy = "rest_machining".into();
+    app.execute(Command::Add {
+        item: Item::Operation(rest),
+        placement: Placement::End,
+    })
+    .unwrap();
+    // The rest operation is made against the stock the first one left, so
+    // it does not say that nothing has cut before it.
+    let first = app.regenerate().unwrap();
+    assert_eq!(first.generated.len(), 2);
+    assert!(
+        first
+            .notes
+            .iter()
+            .any(|n| n.contains("rest machining:") && n.contains("material left")),
+        "{:?}",
+        first.notes
+    );
+    assert!(
+        first
+            .notes
+            .iter()
+            .all(|n| !n.contains("no earlier operation")),
+        "{:?}",
+        first.notes
+    );
+
+    // Ordering and dependency (slice 15 item 4): editing the operation before
+    // it makes the rest operation again; editing the rest operation leaves the
+    // one before it alone.
+    let ids: Vec<OperationId> = app.project().operations().iter().map(|o| o.id).collect();
+    app.execute(Command::SetParameter {
+        operation: ids[0],
+        name: names::STOCK_TO_LEAVE.into(),
+        value: Some(ParameterValue::Number(0.3)),
+    })
+    .unwrap();
+    let after_first = app.regenerate().unwrap();
+    assert_eq!(after_first.generated, ids);
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.2)),
+    })
+    .unwrap();
+    let after_rest = app.regenerate().unwrap();
+    assert_eq!(after_rest.reused, [ids[0]]);
+    assert_eq!(after_rest.generated, [ids[1]]);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

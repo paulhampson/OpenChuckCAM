@@ -7,11 +7,15 @@
 
 use openchuck_path::StockModel;
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
+use openchuck_types::job::CancelToken;
 use openchuck_types::stock::Stock;
 use openchuck_types::{Error, Result};
 use rayon::prelude::*;
 
 use crate::span::{ToolSolid, cut_spans, subtract};
+
+/// Poses between looks at the cancel flag while cutting.
+const WATCH_EVERY: usize = 16;
 
 /// One tool position for the sweep, in the model frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -371,6 +375,31 @@ impl DexelStock {
     /// because span endpoints depend only on the pose and the column, not on
     /// the order. Returns the volume removed.
     pub fn cut(&mut self, tool: &ToolSolid, poses: &[Pose]) -> f64 {
+        self.cut_watching(tool, poses, None)
+    }
+
+    /// [`DexelStock::cut`] that gives up soon after `cancel` is cancelled and
+    /// returns [`Error::Cancelled`]. A batch of poses can take over a second
+    /// to cut, so the flag is watched while cutting, not only between
+    /// batches (UI-09). After an error the stock is partly cut and must be
+    /// dropped.
+    pub fn cut_cancellable(
+        &mut self,
+        tool: &ToolSolid,
+        poses: &[Pose],
+        cancel: &CancelToken,
+    ) -> Result<f64> {
+        let removed = self.cut_watching(tool, poses, Some(cancel));
+        cancel.check()?;
+        Ok(removed)
+    }
+
+    fn cut_watching(
+        &mut self,
+        tool: &ToolSolid,
+        poses: &[Pose],
+        cancel: Option<&CancelToken>,
+    ) -> f64 {
         if poses.is_empty() {
             return 0.0;
         }
@@ -389,7 +418,11 @@ impl DexelStock {
                 let x = x0 + (i as f64 + 0.5) * cx;
                 let mut removed = 0.0;
                 let mut scratch: Vec<[f64; 2]> = Vec::new();
-                for p in &prepared {
+                for (n, p) in prepared.iter().enumerate() {
+                    // A relaxed load every few poses: cheap beside the cut.
+                    if n % WATCH_EVERY == 0 && cancel.is_some_and(CancelToken::is_cancelled) {
+                        break;
+                    }
                     if x < p.lo[0] || x > p.hi[0] {
                         continue;
                     }

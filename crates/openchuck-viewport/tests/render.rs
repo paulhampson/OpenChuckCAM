@@ -19,8 +19,11 @@ use std::task::{Context, Poll, Waker};
 
 use openchuck_types::geometry::Point3;
 use openchuck_types::mesh::TriangleMesh;
+use openchuck_viewport::camera::{IDENTITY, multiply, place, rigid_inverse, rotation_x};
 use openchuck_viewport::wgpu;
-use openchuck_viewport::{Camera, DisplayMode, Frame, Projection, Renderer, Scene, StandardView};
+use openchuck_viewport::{
+    Camera, DisplayMode, Frame, Layer, Projection, Renderer, Scene, Slot, StandardView,
+};
 
 const SIZE: u32 = 64;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -99,6 +102,30 @@ fn render(
     scene: &Scene,
     frame: &Frame,
 ) -> Vec<[u8; 4]> {
+    render_over(device, queue, scene, None, frame)
+}
+
+/// Renders `scene` with an overlay drawn over it.
+fn render_over(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    scene: &Scene,
+    overlay: Option<&Scene>,
+    frame: &Frame,
+) -> Vec<[u8; 4]> {
+    render_layers(device, queue, scene, overlay, &[], frame)
+}
+
+/// Renders `scene`, an overlay and more layers, each in its own slot of the
+/// renderer.
+fn render_layers(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    scene: &Scene,
+    overlay: Option<&Scene>,
+    layers: &[(Layer, &Scene)],
+    frame: &Frame,
+) -> Vec<[u8; 4]> {
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
@@ -129,6 +156,12 @@ fn render(
     });
     let mut renderer = Renderer::new(device, FORMAT, DEPTH, 1);
     renderer.set_scene(device, scene);
+    if let Some(overlay) = overlay {
+        renderer.set_overlay(device, overlay);
+    }
+    for (layer, extra) in layers {
+        renderer.set_layer(device, *layer, extra);
+    }
     renderer.prepare(device, queue, frame);
     let (view, depth_view) = (
         target.create_view(&wgpu::TextureViewDescriptor::default()),
@@ -200,11 +233,7 @@ fn frame(view: StandardView, projection: Projection, mode: DisplayMode, scene: &
     let (min, max) = scene.bounds().unwrap();
     camera.fit(min, max, 1.0);
     camera.set_view(view);
-    Frame {
-        camera,
-        aspect: 1.0,
-        mode,
-    }
+    Frame::new(camera, 1.0, mode)
 }
 
 /// Red and blue pixels on the left and right halves.
@@ -324,6 +353,164 @@ fn req_ui_03_guides_draw_over_the_part() {
     };
     assert!(blue_in_middle(true) > 0);
     assert_eq!(blue_in_middle(false), 0);
+}
+
+/// The triangles `which` of `mesh` as a mesh of their own, on the same
+/// vertices.
+fn some(mesh: &TriangleMesh, which: &[usize]) -> TriangleMesh {
+    TriangleMesh {
+        vertices: mesh.vertices.clone(),
+        triangles: which.iter().map(|&t| mesh.triangles[t]).collect(),
+    }
+}
+
+#[test]
+fn req_ui_04_an_overlay_wins_over_the_surface_it_covers_and_not_over_what_hides_it() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let block = block([-10.0; 3], [10.0; 3]);
+    let mut scene = Scene::default();
+    scene.add_mesh(&block, &[], RED, BLACK);
+    let f = frame(
+        StandardView::Front,
+        Projection::Orthographic,
+        DisplayMode::Shaded,
+        &scene,
+    );
+    let (red, blue) = halves(&render(&device, &queue, &scene, &f));
+    assert!(red[0] + red[1] > 500 && blue == [0, 0]);
+
+    // The front face (triangles 4 and 5, at y = -10) painted blue: it covers
+    // the red face it lies on, with no speckle where the two are coplanar.
+    let mut front = Scene::default();
+    front.add_mesh(&some(&block, &[4, 5]), &[], BLUE, BLACK);
+    let (red, blue) = halves(&render_over(&device, &queue, &scene, Some(&front), &f));
+    assert!(blue[0] + blue[1] > 500, "blue {blue:?}");
+    assert_eq!(red, [0, 0], "red left {red:?}");
+
+    // The back face (triangles 6 and 7, at y = +10) is hidden by the block.
+    let mut back = Scene::default();
+    back.add_mesh(&some(&block, &[6, 7]), &[], BLUE, BLACK);
+    let (red, blue) = halves(&render_over(&device, &queue, &scene, Some(&back), &f));
+    assert_eq!(blue, [0, 0], "blue shows through {blue:?}");
+    assert!(red[0] + red[1] > 500);
+}
+
+#[test]
+fn req_sim_02_an_item_in_a_slot_is_drawn_where_the_slots_transform_puts_it() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A red block in the part slot and a blue one in the tool slot, both
+    // built around the origin. Fixed, they overlap in the middle.
+    let mut part = Scene::default();
+    part.add_mesh(&block([-5.0; 3], [5.0; 3]), &[], RED, BLACK);
+    part.meshes[0].slot = Slot::Part;
+    let mut tool = Scene::default();
+    tool.add_mesh(&block([-5.0; 3], [5.0; 3]), &[], BLUE, BLACK);
+    tool.meshes[0].slot = Slot::Tool;
+    // Fit to where the blocks will be, 25 mm either side of the origin.
+    let mut wide = Scene::default();
+    wide.add_mesh(
+        &block([-40.0, -5.0, -5.0], [40.0, 5.0, 5.0]),
+        &[],
+        BLACK,
+        BLACK,
+    );
+    let mut f = frame(
+        StandardView::Front,
+        Projection::Orthographic,
+        DisplayMode::Shaded,
+        &wide,
+    );
+    f.transforms[Slot::Part.index()] = place([-25.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    f.transforms[Slot::Tool.index()] = place([25.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    let pixels = render_layers(&device, &queue, &part, None, &[(Layer::Tool, &tool)], &f);
+    let (red, blue) = halves(&pixels);
+    // Front view: X to the right. The part moved to -X (left), the tool to +X.
+    assert!(red[0] > 20 && red[1] == 0, "red {red:?}");
+    assert!(blue[1] > 20 && blue[0] == 0, "blue {blue:?}");
+}
+
+#[test]
+fn req_sim_02_a_turned_item_shades_by_its_own_normals() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A block turned half a turn about X looks the same as the block itself,
+    // lit the same way, because the eye is carried into its frame: the
+    // pixels match exactly.
+    let mut scene = Scene::default();
+    scene.add_mesh(&block([-10.0; 3], [10.0; 3]), &[], RED, BLACK);
+    let still = frame(
+        StandardView::Isometric,
+        Projection::Perspective,
+        DisplayMode::Shaded,
+        &scene,
+    );
+    let before = render(&device, &queue, &scene, &still);
+    let mut turned_scene = scene.clone();
+    turned_scene.meshes[0].slot = Slot::Part;
+    let mut turned = still;
+    turned.transforms[Slot::Part.index()] = rotation_x(std::f64::consts::PI);
+    let after = render(&device, &queue, &turned_scene, &turned);
+    // Rotating the block half a turn about X maps it onto itself, but the
+    // picture is only the same if the shading uses the item's own frame.
+    // Mirror image across the camera is not expected: compare the red area.
+    let area = |p: &[[u8; 4]]| p.iter().filter(|c| c[0] > 40 && c[1] < 10).count();
+    assert!(area(&before) > 300);
+    assert_eq!(area(&before), area(&after));
+}
+
+#[test]
+fn req_sim_05_a_translucent_mesh_blends_over_what_is_behind_it() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A red opaque block with a larger blue translucent one around it. The
+    // opaque block shows through; the glass is drawn after it whichever is
+    // listed first.
+    let mut part = Scene::default();
+    part.add_mesh(&block([-5.0; 3], [5.0; 3]), &[], RED, BLACK);
+    let mut glass = Scene::default();
+    glass.add_mesh(
+        &block([-10.0; 3], [10.0; 3]),
+        &[],
+        [0.0, 0.0, 1.0, 0.4],
+        BLACK,
+    );
+    glass.meshes[0].translucent = true;
+    let f = frame(
+        StandardView::Front,
+        Projection::Orthographic,
+        DisplayMode::Shaded,
+        &glass,
+    );
+    let pixels = render_layers(&device, &queue, &glass, None, &[(Layer::Stock, &part)], &f);
+    let centre = pixels[(SIZE as usize / 2) * SIZE as usize + SIZE as usize / 2];
+    // Red shows through, tinted blue; the glass alone would be blue-white.
+    assert!(centre[0] > 100 && centre[2] > 50, "{centre:?}");
+    let edge = pixels[(SIZE as usize / 2) * SIZE as usize + SIZE as usize / 4];
+    assert!(edge[2] > edge[0], "glass only: {edge:?}");
+}
+
+#[test]
+fn req_sim_02_matrix_helpers_are_rigid_and_invert() {
+    let m = multiply(&place([3.0, -2.0, 7.0], [0.0, 1.0, 1.0]), &rotation_x(0.7));
+    let product = multiply(&m, &rigid_inverse(&m));
+    for (i, column) in product.iter().enumerate() {
+        for (j, value) in column.iter().enumerate() {
+            let want = if i == j { 1.0 } else { 0.0 };
+            assert!((value - want).abs() < 1e-12, "{product:?}");
+        }
+    }
+    // place() takes +Z onto the axis and the origin to the point.
+    let p = place([1.0, 2.0, 3.0], [0.0, 1.0, 0.0]);
+    let axis = [p[2][0], p[2][1], p[2][2]];
+    assert!((axis[1] - 1.0).abs() < 1e-12 && axis[0].abs() < 1e-12);
+    assert!((p[3][0] - 1.0).abs() + (p[3][1] - 2.0).abs() + (p[3][2] - 3.0).abs() < 1e-12);
+    assert!((IDENTITY[0][0] - 1.0).abs() < 1e-12);
 }
 
 /// The block's twelve edges, by vertex index.

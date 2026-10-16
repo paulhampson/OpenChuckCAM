@@ -150,7 +150,7 @@ impl ImportSession {
                         self.error = None;
                         self.fresh = true;
                     }
-                    Err(AppError::Engine(e)) if e.to_string().contains("cancel") => {}
+                    Err(e) if e.is_cancelled() => {}
                     Err(e) => {
                         self.preview = None;
                         self.error = Some(e.to_string());

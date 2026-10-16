@@ -25,6 +25,9 @@ pub use openchuck_types::setup::{
 };
 pub use openchuck_types::stock::Stock;
 pub use openchuck_types::units::Millimetres;
+pub use openchuck_types::workholding::{
+    HeldRegion, Tab, TabLayout, TabShape, Workholding, validate_workholding,
+};
 
 use openchuck_project::id::SetupId;
 

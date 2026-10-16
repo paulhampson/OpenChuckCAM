@@ -9,7 +9,8 @@
 //! - [`transform`]: translate, rotate, scale and mirror with the winding kept
 //!   outward, and orientation to the rotary axis (IMP-05).
 //! - [`select`]: flood fill, select-by-angle and select-by-direction on
-//!   triangles (UI-04). Ray-cast picking follows in slice 10 item 1.
+//!   triangles (UI-04).
+//! - [`pick`]: ray-cast picking against a bounding volume hierarchy (UI-04).
 //! - [`display`]: feature edges for the viewport's edge display (UI-02).
 //!
 //! Everything here is format independent and single-threaded, so results are
@@ -45,6 +46,7 @@
 pub mod check;
 pub mod display;
 pub mod edges;
+pub mod pick;
 pub mod select;
 pub mod transform;
 

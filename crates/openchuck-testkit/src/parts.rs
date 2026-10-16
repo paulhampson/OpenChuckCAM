@@ -83,6 +83,69 @@ pub struct RuledHyperboloid {
     pub twist: f64,
 }
 
+/// The analytic part of spike SP-4 (decision record 0015):
+/// `r(x, angle) = base + wave sin(2 pi x / wave_length) + lobe cos(lobes angle)`.
+/// With no lobe it is a vase whose profile is an S-curve along X; with lobes
+/// its normal leaves the plane through the axis, so the best tool axis is not
+/// the one through the axis (OP-06).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LobedVase {
+    /// Mean radius.
+    pub base: f64,
+    /// Amplitude of the S-curve along X.
+    pub wave: f64,
+    /// Wave length of the S-curve.
+    pub wave_length: f64,
+    /// Amplitude of the lobes round the axis.
+    pub lobe: f64,
+    /// Number of lobes.
+    pub lobes: u32,
+    /// Length along X, starting at x = 0.
+    pub length: f64,
+}
+
+impl LobedVase {
+    /// The exact outward unit normal at `(x, angle)`, from the partial
+    /// derivatives of the radius in closed form.
+    pub fn normal(&self, x: f64, angle: f64) -> [f64; 3] {
+        let tau = std::f64::consts::TAU;
+        let r = self.radius_at(x, angle);
+        let dr_dx = self.wave * tau / self.wave_length * (tau * x / self.wave_length).cos();
+        let n = f64::from(self.lobes);
+        let dr_da = -self.lobe * n * (n * angle).sin();
+        let (s, c) = angle.sin_cos();
+        // Surface p(x, a) = (x, r c, r s); normal = p_a x p_x, outward.
+        let pa = [0.0, dr_da * c - r * s, dr_da * s + r * c];
+        let px = [1.0, dr_dx * c, dr_dx * s];
+        let v = [
+            pa[1] * px[2] - pa[2] * px[1],
+            pa[2] * px[0] - pa[0] * px[2],
+            pa[0] * px[1] - pa[1] * px[0],
+        ];
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        [v[0] / l, v[1] / l, v[2] / l]
+    }
+}
+
+impl RadialPart for LobedVase {
+    fn name(&self) -> &'static str {
+        if self.lobe == 0.0 {
+            "vase"
+        } else {
+            "lobed_vase"
+        }
+    }
+    fn x_range(&self) -> (f64, f64) {
+        (0.0, self.length)
+    }
+    fn radius_at(&self, x: f64, angle: f64) -> f64 {
+        let tau = std::f64::consts::TAU;
+        self.base
+            + self.wave * (tau * x / self.wave_length).sin()
+            + self.lobe * (f64::from(self.lobes) * angle).cos()
+    }
+}
+
 impl RadialPart for Cylinder {
     fn name(&self) -> &'static str {
         "cylinder"
@@ -225,6 +288,55 @@ fn radial_mesh<P: RadialPart + ?Sized>(part: &P, rings: u32, around: u32) -> Tri
     if let (Some(&first), Some(&last)) = (ring_starts.first(), ring_starts.last()) {
         cap(first, x0, false);
         cap(last, x1, true);
+    }
+    TriangleMesh {
+        vertices,
+        triangles,
+    }
+}
+
+/// A closed surface of revolution about X from a profile of `(x, radius)`
+/// points, in increasing X and joined by straight lines, with `around`
+/// vertices per ring. Two points at the same X make a wall (an annulus), so a
+/// stepped shaft has a true inside corner. The first and last points are
+/// capped; their radius must be above zero.
+pub fn revolve(profile: &[(f64, f64)], around: u32) -> TriangleMesh {
+    let around = around.max(3);
+    let mut vertices = Vec::new();
+    let mut triangles = Vec::new();
+    let mut starts = Vec::new();
+    for &(x, r) in profile {
+        starts.push(u32::try_from(vertices.len()).unwrap_or(u32::MAX));
+        for j in 0..around {
+            let angle = std::f64::consts::TAU * f64::from(j) / f64::from(around);
+            vertices.push(Point3::new(x, r * angle.cos(), r * angle.sin()));
+        }
+    }
+    for pair in starts.windows(2) {
+        let &[a, b] = pair else { continue };
+        for j in 0..around {
+            let k = (j + 1) % around;
+            triangles.push([a + j, b + k, b + j]);
+            triangles.push([a + j, a + k, b + k]);
+        }
+    }
+    for (ring, x, outward_positive) in [
+        (starts.first().copied(), profile.first(), false),
+        (starts.last().copied(), profile.last(), true),
+    ]
+    .into_iter()
+    .filter_map(|(s, p, o)| Some((s?, p?.0, o)))
+    {
+        let centre = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
+        vertices.push(Point3::new(x, 0.0, 0.0));
+        for j in 0..around {
+            let k = (j + 1) % around;
+            if outward_positive {
+                triangles.push([centre, ring + j, ring + k]);
+            } else {
+                triangles.push([centre, ring + k, ring + j]);
+            }
+        }
     }
     TriangleMesh {
         vertices,

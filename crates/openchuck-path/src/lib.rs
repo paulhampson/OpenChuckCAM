@@ -11,6 +11,8 @@
 //!
 //! - [`SurfaceSource`]: points, normals, rays, distances and tool drops on
 //!   the selected surfaces. [`MeshSurface`] implements it for meshes.
+//!   [`CompositeSurface`] joins a model's source to analytic [`Solid`]s (a
+//!   held region, retaining tabs) so strategies treat them as part.
 //! - [`StockModel`]: the material still to be cut. [`AnalyticStock`] covers
 //!   cylinder and box stock.
 //! - [`CollisionOracle`]: whether a move is allowed. [`AcceptAll`] relies on
@@ -20,7 +22,8 @@
 //! parameters against its schema and hands the passes to the shared services
 //! in [`assemble`]: A-axis management (OP-15), linking (OP-14) and contact
 //! feed with segment durations (OP-13). Strategies are found by name in a
-//! [`Registry`] (OP-16); the library's own is [`HelicalFinishing`]. Tool-centre
+//! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`],
+//! [`SimultaneousFinishing`], [`RestMachining`] and [`PencilFinishing`]. Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -65,37 +68,55 @@
 #![warn(missing_docs)]
 
 pub mod assemble;
+pub mod axial;
 pub mod brep;
+mod candidates;
+mod composite;
 pub mod cutter;
 mod error;
 pub mod field;
 pub mod helical;
+pub mod indexed;
 pub mod parallel;
 pub mod params;
+pub mod pencil;
 pub mod region;
+pub mod rest;
 pub mod rotary;
 pub mod roughing;
+mod scallop;
+pub mod simultaneous;
+mod solid;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
 pub mod unroll;
+mod wrap_fit;
 
 pub use assemble::{GeneratedPath, PathNote};
+pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
+pub use composite::CompositeSurface;
 pub use cutter::{Contact, ToolLine};
 pub use error::{PathError, Result};
 pub use field::HeightStock;
 pub use helical::HelicalFinishing;
+pub use indexed::IndexedFinishing;
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
     ParameterValue, Parameters, Unit,
 };
+pub use pencil::PencilFinishing;
 pub use region::{RegionConstraint, Window};
+pub use rest::{RemainingMap, RestMachining};
 pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;
+pub use simultaneous::SimultaneousFinishing;
+pub use solid::Solid;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, Pass, PassStock, Registry, Strategy, StrategyInput, generate, generate_in_region,
+    CutPoint, LeaveZone, Pass, PassStock, Registry, Strategy, StrategyInput, StrategyOutput,
+    generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,

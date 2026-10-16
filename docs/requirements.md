@@ -117,6 +117,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | SET-06 | Define clearance geometry (a safe cylinder around the axis plus a safe Z) used by retracts and rapid links. | P1 |
 | SET-07 | Multiple setups per project (for example re-gripping or flipping the part), each with its own coordinate system and starting stock. | P2 |
 | SET-08 | Optionally define a maximum acceleration for the rotary axis in the machine profile. Where it is set, time estimates (SIM-08) and motion smoothing use it; where it is not, no limit is assumed. Maximum feed rates stay in SET-01. | P2 |
+| SET-09 | Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth), with an optional holding diameter. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock. | P1 |
 
 ### 3.4 Tool management
 
@@ -159,6 +160,8 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | OP-17 | Adaptive (constant-engagement) roughing for rotary parts. | P2 |
 | OP-18 | Feature recognition: detect holes, grooves and cylindrical features on the model and propose operations for them. | P3 |
 | OP-19 | Alternative surface-covering patterns for finishing: geodesic-parallel (constant scallop height) and spiral, selectable per operation, with scallop height as the stepover control. | P2 |
+| OP-20 | Simultaneous 4-axis finishing of surfaces that a ray from outside the part towards the rotary axis does not meet first, such as undercuts and the far walls of slots and pockets, wherever the tool can still reach them (for example by closest-point or offset-surface drive curves); surfaces the tool cannot reach are reported. | P2 |
+| OP-21 | Retaining tabs: keep the machined part joined to the stock so it cannot drop or shift before the final cut-off, and so it can be removed from the stock easily. A tab is shaped as a cylinder or as a frustum (a cone with a flat end), set by its position along the axis, its diameter (both end diameters for a frustum) and, for tabs around the axis, how many there are and where. Operations leave the tab uncut, and the simulation keeps it. | P1 |
 
 ### 3.6 Visualisation and material removal simulation
 

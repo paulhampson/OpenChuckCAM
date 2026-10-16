@@ -27,8 +27,21 @@
 //! the stock that is really there (OP-14).
 //!
 //! The roughing covers the part's length along the rotary axis plus three
-//! tool radii and the stock to leave at each end. Stock beyond that is not touched, and there is no
-//! containment to selections yet (OP-02, slice 14 item 5).
+//! tool radii and the stock to leave at each end. Stock beyond that is not
+//! touched.
+//!
+//! **Regions (OP-02, slice 14 item 5, decision 0043).** Roughing cuts away
+//! from the surface, so a [`RegionConstraint`] is applied to the part under
+//! the tool: a site (X, A and the offset across the axis) is attributed to the
+//! cutter contact of the tool dropped on the whole part with its stock to
+//! leave, the same contact at every layer. A site is cut only where
+//! [`RegionConstraint::allows`] says that contact may be cut, so material
+//! above the selected region, inside the boundary and off the avoid surfaces
+//! is removed and the rest is left. The tool is still dropped on the whole
+//! part, so it never gouges the unselected geometry beside the region. A
+//! stretch of path between two cut nodes is kept only if every finer node
+//! between them is allowed as well; otherwise the nodes are cut as separate
+//! passes and the shared services link them.
 
 use std::sync::Arc;
 
@@ -42,6 +55,7 @@ use crate::field::HeightStock;
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
+use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, RotaryMapping};
 use crate::strategy::{CutPoint, Pass, PassStock, Strategy, StrategyInput};
 
@@ -68,11 +82,86 @@ pub mod parameter {
 /// a quarter of their spacing where the tool follows the part.
 const SUB: usize = 4;
 
+/// Halvings when the edge of a region is found between two nodes.
+const EDGE_STEPS: usize = 12;
+
 /// Most layers one operation may have.
 const MAX_LAYERS: usize = 5_000;
 
 /// Most nodes one layer may have.
 const MAX_NODES: f64 = 2.0e6;
+
+/// Where a line of nodes meets the edge of the allowed region: whether each
+/// fine node is allowed, and the edge found between neighbours that differ.
+/// Without a region, both are empty and a run is not extended.
+struct RunEnds<'e> {
+    allowed: &'e [bool],
+    edges: &'e [Option<(Site, Option<f64>)>],
+}
+
+impl RunEnds<'_> {
+    /// The edge point, if there is one between nodes `f` and `f + 1`.
+    fn edge(&self, f: usize, level: f64) -> Option<(Site, f64)> {
+        let (site, floor) = self.edges.get(f).copied().flatten()?;
+        Some((site, floor.map_or(level, |v| v.max(level))))
+    }
+
+    /// The points before the run's first node `from` back to the edge of the
+    /// region, if the region ends within a coarse step; in path order.
+    fn before(
+        &self,
+        from: usize,
+        level: f64,
+        tip: &impl Fn(usize) -> f64,
+        site: &impl Fn(usize) -> Site,
+    ) -> Vec<(Site, f64)> {
+        let mut out = Vec::new();
+        for k in 1..=SUB {
+            let Some(f) = from.checked_sub(k) else { break };
+            match self.allowed.get(f) {
+                Some(true) => out.push((site(f), tip(f))),
+                Some(false) => {
+                    // Between `f` (not allowed) and `f + 1` (allowed).
+                    if let Some(edge) = self.edge(f, level) {
+                        out.push(edge);
+                        out.reverse();
+                        return out;
+                    }
+                    break;
+                }
+                None => break,
+            }
+        }
+        Vec::new()
+    }
+
+    /// The points after the run's last node `from` on to the edge of the
+    /// region, if the region ends within a coarse step.
+    fn after(
+        &self,
+        from: usize,
+        level: f64,
+        tip: &impl Fn(usize) -> f64,
+        site: &impl Fn(usize) -> Site,
+    ) -> Vec<(Site, f64)> {
+        let mut out = Vec::new();
+        for k in 1..=SUB {
+            let f = from + k;
+            match self.allowed.get(f) {
+                Some(true) => out.push((site(f), tip(f))),
+                Some(false) => {
+                    if let Some(edge) = self.edge(f - 1, level) {
+                        out.push(edge);
+                        return out;
+                    }
+                    break;
+                }
+                None => break,
+            }
+        }
+        Vec::new()
+    }
+}
 
 /// Rotary roughing of the whole model: bulk removal down to the stock to
 /// leave, in indexed and continuous forms.
@@ -180,29 +269,61 @@ impl Strategy for RotaryRoughing {
         ])
     }
 
+    fn honours_region(&self) -> bool {
+        true
+    }
+
     fn passes(
         &self,
         input: &StrategyInput<'_>,
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        let job = Job::new(input, parameters)?;
-        match parameters.text(parameter::FORM)? {
-            "indexed" => job.indexed(parameters, context),
-            _ => job.continuous(parameters, context),
-        }
-        .and_then(|passes| {
-            if passes.is_empty() {
-                Err(PathError::Strategy(format!(
+        rough(input, None, parameters, context)
+    }
+
+    fn passes_in_region(
+        &self,
+        input: &StrategyInput<'_>,
+        region: &RegionConstraint<'_>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        rough(input, Some(region), parameters, context)
+    }
+}
+
+fn rough(
+    input: &StrategyInput<'_>,
+    region: Option<&RegionConstraint<'_>>,
+    parameters: &Parameters,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    let job = Job::new(input, region, parameters)?;
+    match parameters.text(parameter::FORM)? {
+        "indexed" => job.indexed(parameters, context),
+        _ => job.continuous(parameters, context),
+    }
+    .and_then(|passes| {
+        if passes.is_empty() {
+            Err(PathError::Strategy(if job.region.is_some() {
+                format!(
+                    "rotary roughing has no cut to make for this selection: no material stands \
+                     more than {} mm above the part with its stock to leave where the \
+                     selection, boundary and avoid surfaces allow a cut",
+                    job.min_cut
+                )
+            } else {
+                format!(
                     "rotary roughing has no cut to make: no material stands more than {} mm \
                      above the part with its stock to leave",
                     job.min_cut
-                )))
-            } else {
-                Ok(passes)
-            }
-        })
-    }
+                )
+            }))
+        } else {
+            Ok(passes)
+        }
+    })
 }
 
 /// One cut position: model X, A (degrees) and the offset across the axis.
@@ -215,6 +336,7 @@ struct Site {
 
 struct Job<'a> {
     input: &'a StrategyInput<'a>,
+    region: Option<&'a RegionConstraint<'a>>,
     rotary: RotaryMapping,
     grown: RevolvedProfile,
     radius: f64,
@@ -230,7 +352,11 @@ struct Job<'a> {
 }
 
 impl<'a> Job<'a> {
-    fn new(input: &'a StrategyInput<'a>, p: &Parameters) -> Result<Self> {
+    fn new(
+        input: &'a StrategyInput<'a>,
+        region: Option<&'a RegionConstraint<'a>>,
+        p: &Parameters,
+    ) -> Result<Self> {
         let radius = input.tool.cutting_radius();
         let leave = p.number(names::STOCK_TO_LEAVE)?;
         let tolerance = p.number(names::TOLERANCE)?;
@@ -251,6 +377,7 @@ impl<'a> Job<'a> {
         }
         Ok(Self {
             input,
+            region: region.filter(|r| !r.is_empty()),
             rotary: input.rotary,
             grown: cutter::grow_profile(input.tool, leave)?,
             radius,
@@ -267,15 +394,88 @@ impl<'a> Job<'a> {
     }
 
     /// The lowest the tool's tip may go at `site`, along the tool axis, with
-    /// the stock to leave; `None` where the part is not under the tool.
-    fn floor(&self, site: Site) -> Option<f64> {
+    /// the stock to leave, and whether the region lets the site be cut. The
+    /// floor is `None` where the part is not under the tool.
+    fn probe(&self, site: Site) -> (Option<f64>, bool) {
         let line = self.rotary.tool_line(
             openchuck_types::units::Millimetres(site.x),
             Degrees(site.a),
             openchuck_types::units::Millimetres(site.across),
         );
-        let contact = self.input.surface.drop_tool(&self.grown, &line)?;
-        Some(self.rotary.to_axis(contact.tip, Degrees(site.a)).height + self.leave)
+        let Some(contact) = self.input.surface.drop_tool(&self.grown, &line) else {
+            // Over no part: there is nothing to attribute the site to, so a
+            // selected region excludes it, and a boundary decides by where it is.
+            let allowed = self.region.is_none_or(|r| {
+                r.region.is_none()
+                    && r.boundary
+                        .is_none_or(|b| b.contains(self.cut_point(site, self.r_top).tip))
+            });
+            // A check surface beyond the part still keeps the tool above it.
+            let floor = self.region.and_then(|r| r.check).and_then(|check| {
+                let touch = check.drop_tool(&self.grown, &line)?;
+                Some(self.rotary.to_axis(touch.tip, Degrees(site.a)).height + self.leave)
+            });
+            return (floor, allowed);
+        };
+        let height = |tip| self.rotary.to_axis(tip, Degrees(site.a)).height + self.leave;
+        let mut floor = height(contact.tip);
+        let mut allowed = true;
+        if let Some(region) = self.region {
+            // A check surface keeps the tool above it rather than excluding
+            // the site: the floor is the higher of the part's and the check
+            // surface's (decision 0043 item 3).
+            if let Some(check) = region.check
+                && let Some(touch) = check.drop_tool(&self.grown, &line)
+            {
+                floor = floor.max(height(touch.tip));
+            }
+            let without_check = RegionConstraint {
+                check: None,
+                ..*region
+            };
+            allowed = without_check.allows(contact.contact, contact.tip, &self.grown, &line);
+        }
+        (Some(floor), allowed)
+    }
+
+    /// Where `allowed` changes between neighbouring fine nodes `f` and
+    /// `f + 1`, the site between them found by bisection, with its floor.
+    /// The edge of a region does not depend on the layer, so this is done
+    /// once for a line of nodes. Empty without a region.
+    fn edges(
+        &self,
+        allowed: &[bool],
+        site: &impl Fn(f64) -> Site,
+    ) -> Vec<Option<(Site, Option<f64>)>> {
+        if self.region.is_none() {
+            return Vec::new();
+        }
+        allowed
+            .windows(2)
+            .enumerate()
+            .map(|(f, pair)| {
+                let (&here, &next) = (pair.first()?, pair.get(1)?);
+                if here == next {
+                    return None;
+                }
+                // Keep `lo` on the allowed side and `hi` on the other.
+                let (mut lo, mut hi) = if here {
+                    (f as f64, (f + 1) as f64)
+                } else {
+                    ((f + 1) as f64, f as f64)
+                };
+                for _ in 0..EDGE_STEPS {
+                    let mid = 0.5 * (lo + hi);
+                    if self.probe(site(mid)).1 {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                let at = site(lo);
+                Some((at, self.probe(at).0))
+            })
+            .collect()
     }
 
     /// The layer levels from the top of the stock to `bottom`, equal steps no
@@ -363,24 +563,31 @@ impl<'a> Job<'a> {
 
     /// The points of one run of coarse nodes `first..=last`: the nodes, with
     /// the path between them refined where the tool follows the part.
+    ///
+    /// Within a region the run is carried on to the edge of the allowed
+    /// region at either end (`ends`), found by bisection, so a cut reaches
+    /// the edge and not only the last node before it (OI-187).
     fn run_points(
         &self,
-        first: usize,
-        last: usize,
+        run: (usize, usize),
         level: f64,
         floors: &[Option<f64>],
         site: &impl Fn(usize) -> Site,
+        ends: &RunEnds<'_>,
     ) -> Vec<(Site, f64)> {
+        let (first, last) = run;
         let tip = |f: usize| -> f64 {
             match floors.get(f).copied().flatten() {
                 Some(v) => v.max(level),
                 None => level,
             }
         };
-        let mut out = vec![(site(first * SUB), tip(first * SUB))];
+        let mut out = ends.before(first * SUB, level, &tip, site);
+        out.push((site(first * SUB), tip(first * SUB)));
         for i in first..last {
             self.refine(i * SUB, (i + 1) * SUB, &tip, site, &mut out);
         }
+        out.extend(ends.after(last * SUB, level, &tip, site));
         out
     }
 
@@ -411,8 +618,9 @@ impl<'a> Job<'a> {
         }
     }
 
-    /// Splits the nodes `0..=count` into runs where `active` is true.
-    fn runs(active: &[bool]) -> Vec<(usize, usize)> {
+    /// Splits the nodes `0..=count` into runs where `active` is true and
+    /// `joined(i)` says the stretch from node `i` to the next may be cut.
+    fn runs(active: &[bool], joined: impl Fn(usize) -> bool) -> Vec<(usize, usize)> {
         let mut runs = Vec::new();
         let mut start = None;
         for (i, on) in active.iter().enumerate() {
@@ -421,6 +629,10 @@ impl<'a> Job<'a> {
                 (false, Some(s)) => {
                     runs.push((s, i - 1));
                     start = None;
+                }
+                (true, Some(s)) if !joined(i - 1) => {
+                    runs.push((s, i - 1));
+                    start = Some(i);
                 }
                 _ => {}
             }
@@ -450,20 +662,29 @@ impl<'a> Job<'a> {
         }
         let coarse = nodes as usize;
         let fine = coarse * SUB;
-        let site = move |f: usize| {
-            let t = f as f64 / fine as f64;
+        let site_at = move |f: f64| {
+            let t = f / fine as f64;
             Site {
                 x: x0 + length * t,
                 a: self.start + 360.0 * turns * t,
                 across: 0.0,
             }
         };
+        let site = move |f: usize| site_at(f as f64);
 
         context.report("rotary roughing: finding the part", 0, Some(fine as u64));
         let indices: Vec<usize> = (0..=fine).collect();
-        let floors: Vec<Option<f64>> = parallel::map_in_order(&indices, |f| self.floor(site(*f)));
+        let probes: Vec<(Option<f64>, bool)> =
+            parallel::map_in_order(&indices, |f| self.probe(site(*f)));
+        let floors: Vec<Option<f64>> = probes.iter().map(|p| p.0).collect();
+        let allowed: Vec<bool> = probes.iter().map(|p| p.1).collect();
         context.check_cancelled()?;
-        let bottom = self.bottom(&floors)?;
+        let edges = self.edges(&allowed, &site_at);
+        let ends = RunEnds {
+            allowed: if edges.is_empty() { &[] } else { &allowed },
+            edges: &edges,
+        };
+        let bottom = self.bottom(floors.iter().zip(&allowed))?;
         let levels = self.levels(bottom)?;
         let mut field = self.field(bottom)?;
         context.check_cancelled()?;
@@ -487,10 +708,14 @@ impl<'a> Job<'a> {
                     .map_or(*level, |v| v.max(*level));
                 field.excess(self.input.tool, s.x, s.a, s.across, tip)
             });
-            let active: Vec<bool> = excess.iter().map(|e| *e > self.min_cut).collect();
+            let active: Vec<bool> = excess
+                .iter()
+                .enumerate()
+                .map(|(i, e)| *e > self.min_cut && allowed.get(i * SUB).copied().unwrap_or(false))
+                .collect();
             let mut layer = Vec::new();
-            for (first, last) in Self::runs(&active) {
-                let sites = self.run_points(first, last, *level, &floors, &site);
+            for (first, last) in Self::runs(&active, |i| Self::joined(&allowed, i)) {
+                let sites = self.run_points((first, last), *level, &floors, &site, &ends);
                 passes.push(self.pass(&sites, &snapshot));
                 layer.push(sites);
             }
@@ -527,8 +752,8 @@ impl<'a> Job<'a> {
                 ),
             });
         }
-        let at = |position: usize, line: usize, f: usize| Site {
-            x: x0 + length * f as f64 / fine as f64,
+        let at = |position: usize, line: usize, f: f64| Site {
+            x: x0 + length * f / fine as f64,
             a: self.start + index * position as f64,
             across: if lines == 0 {
                 0.0
@@ -539,17 +764,30 @@ impl<'a> Job<'a> {
 
         // The floor of every line of every position, once.
         let mut floors: Vec<Vec<Option<f64>>> = Vec::new();
+        let mut allowed: Vec<Vec<bool>> = Vec::new();
         let indices: Vec<usize> = (0..=fine).collect();
         for position in 0..positions {
             for line in 0..=lines {
                 context.check_cancelled()?;
-                floors.push(parallel::map_in_order(&indices, |f| {
-                    self.floor(at(position, line, *f))
-                }));
+                let probes: Vec<(Option<f64>, bool)> =
+                    parallel::map_in_order(&indices, |f| self.probe(at(position, line, *f as f64)));
+                floors.push(probes.iter().map(|p| p.0).collect());
+                allowed.push(probes.iter().map(|p| p.1).collect());
             }
         }
-        let flat: Vec<Option<f64>> = floors.iter().flatten().copied().collect();
-        let bottom = self.bottom(&flat)?;
+        // The edge of the region on each line, once: it does not depend on the layer.
+        let mut all_edges = Vec::new();
+        for position in 0..positions {
+            for line in 0..=lines {
+                let site_at = |f: f64| at(position, line, f);
+                let line_allowed = allowed
+                    .get(position * (lines + 1) + line)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                all_edges.push(self.edges(line_allowed, &site_at));
+            }
+        }
+        let bottom = self.bottom(floors.iter().flatten().zip(allowed.iter().flatten()))?;
         let levels = self.levels(bottom)?;
         let mut field = self.field(bottom)?;
 
@@ -564,7 +802,8 @@ impl<'a> Job<'a> {
                         .get(position * (lines + 1) + line)
                         .map(Vec::as_slice)
                         .unwrap_or_default();
-                    let site = |f: usize| at(position, line, f);
+                    let site_at = |f: f64| at(position, line, f);
+                    let site = |f: usize| site_at(f as f64);
                     let excess: Vec<f64> = parallel::map_in_order(&coarse_nodes, |i| {
                         let s = site(i * SUB);
                         let tip = line_floors
@@ -574,9 +813,28 @@ impl<'a> Job<'a> {
                             .map_or(*level, |v| v.max(*level));
                         field.excess(self.input.tool, s.x, s.a, s.across, tip)
                     });
-                    let active: Vec<bool> = excess.iter().map(|e| *e > self.min_cut).collect();
-                    for (first, last) in Self::runs(&active) {
-                        let sites = self.run_points(first, last, *level, line_floors, &site);
+                    let line_allowed = allowed
+                        .get(position * (lines + 1) + line)
+                        .map(Vec::as_slice)
+                        .unwrap_or_default();
+                    let edges = all_edges
+                        .get(position * (lines + 1) + line)
+                        .map(Vec::as_slice)
+                        .unwrap_or_default();
+                    let ends = RunEnds {
+                        allowed: if edges.is_empty() { &[] } else { line_allowed },
+                        edges,
+                    };
+                    let active: Vec<bool> = excess
+                        .iter()
+                        .enumerate()
+                        .map(|(i, e)| {
+                            *e > self.min_cut && line_allowed.get(i * SUB).copied().unwrap_or(false)
+                        })
+                        .collect();
+                    for (first, last) in Self::runs(&active, |i| Self::joined(line_allowed, i)) {
+                        let sites =
+                            self.run_points((first, last), *level, line_floors, &site, &ends);
                         passes.push(self.pass(&sites, &snapshot));
                         self.apply(&mut field, &sites);
                     }
@@ -591,19 +849,30 @@ impl<'a> Job<'a> {
         Ok(passes)
     }
 
-    /// The lowest the tool goes: the lowest floor, never below the axis.
-    fn bottom(&self, floors: &[Option<f64>]) -> Result<f64> {
+    /// Whether every fine node from coarse node `i` to the next may be cut.
+    fn joined(allowed: &[bool], i: usize) -> bool {
+        allowed
+            .get(i * SUB..=(i + 1) * SUB)
+            .is_some_and(|w| w.iter().all(|a| *a))
+    }
+
+    /// The lowest the tool goes where the region allows a cut: the lowest
+    /// floor, never below the axis.
+    fn bottom<'f>(&self, floors: impl Iterator<Item = (&'f Option<f64>, &'f bool)>) -> Result<f64> {
         floors
-            .iter()
-            .flatten()
-            .copied()
+            .filter(|(_, allowed)| **allowed)
+            .filter_map(|(floor, _)| *floor)
             .reduce(f64::min)
             .map(|b| b.max(0.0))
             .ok_or_else(|| {
-                PathError::Strategy(
+                PathError::Strategy(if self.region.is_some() {
+                    "the selection is nowhere under the tool, so there is no floor to rough \
+                     down to"
+                        .to_owned()
+                } else {
                     "the part is nowhere under the tool, so there is no floor to rough down to"
-                        .to_owned(),
-                )
+                        .to_owned()
+                })
             })
     }
 }

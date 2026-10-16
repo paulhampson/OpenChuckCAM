@@ -5,6 +5,7 @@
 - **Branch:** `claude/compassionate-pascal-se4cct`. This is a documentation change, not a lane of the work breakdown's parallel plan; it informs lanes A, M, N, O, S and T.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-163 and OI-165 are closed by this record's acceptance, and OI-166 and OI-164 on 15 Oct 2026 (amendments below).
 - **Amendment (15 Oct 2026, owner):** the default scale stays 120% (OI-166). UI-16 therefore states its 1366 by 768 at 100% scale, in `requirements.md`, the verification plan, the work breakdown's slice 8 and the specification's section 3; on a 1366 by 768 screen the user reduces the scale once, and it is remembered (UI-15).
+- **Amendment (16 Oct 2026, merge with `main`):** decision 0037 was accepted on 15 Oct 2026 with the orange, green and yellow highlight colours. With OI-163 closed in favour of this specification, this record amends 0037 item 5: working selection blue, a swatch per set, hover a yellow outline (specification section 7.4, D7). Decision 0040 (accepted) colours the simulated part in six bands by triangle; the specification's continuous scale with tolerance-based thresholds differs. That is not decided and is OI-194 (specification D12); until then 0040's bands stand.
 - **Amendment (15 Oct 2026, owner):** the typeface is IBM Plex Sans and Mono (OI-164). The licence is the SIL Open Font License 1.1 with the Reserved Font Name "Plex" (Copyright 2017 IBM Corp.), which allows the fonts to be bundled or embedded with the AGPL application as a separate work. Conditions: ship the unmodified font files with IBM's copyright line and the OFL text (`LICENSES/OFL-1.1.txt`, and a line in the release and nightly notices, which `cargo about` does not produce for files that are not crates); do not subset or otherwise modify them, since a modified font may not be called "Plex"; never sell them on their own; load them from the application, never from Google Fonts at run time (NFR-09). Recorded in `docs/dependencies.md` (bundled assets) and specification section 14.3; the bundling and notices are slice 8 item 10.
 
 Numbering: `main` holds records up to 0033 and OI-153; unmerged branches hold records 0034 to 0037 and OI-154 to OI-162. This record therefore takes 0038 and OI-163 to OI-166. Unmerged branches also hold requirement IDs OP-20, OP-21 and SET-09, so the IDs proposed here avoid the OP and SET families. It takes no project schema number: nothing proposed here is stored in the project.
@@ -90,7 +91,7 @@ Requirements section 7 also assumes "inch display and input are a user setting" 
    | NFR-15 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200% |
    | P2 rows (UI-17 to UI-24, SIM-11 to SIM-13) | T or D | | Added when each is scheduled |
 
-4. **Where the work goes.** As placed in the work breakdown on acceptance: UI-10, UI-13, UI-14, UI-15, UI-16 and NFR-15 in slice 8 (items 8 to 11), with UI-14 and NFR-15 closing at slice 20; UI-11 and UI-12 in slice 9 (item 9); GC-15 and GC-16 in slice 19 (item 4). The proposal was:
+4. **Where the work goes.** As placed in the work breakdown on acceptance: UI-10 to UI-16 and NFR-15 in slice 8 (items 8 to 12), with UI-14 and NFR-15 closing at slice 20 (UI-11 and UI-12 were first placed in slice 9, and moved to slice 8 on 16 Oct 2026 because slice 9 closed before they were built); GC-15 and GC-16 in slice 19 (item 4). The proposal was:
    - UI-10, UI-11, UI-12, UI-15 and UI-16, and the footer and primary-action rules: lane A (the rest of slice 8) or a new interface lane after it.
    - UI-13: lane A (the machine panel).
    - UI-14 and NFR-15: slice 8 for the shell, checked again in slice 20.
@@ -113,7 +114,7 @@ Requirements section 7 also assumes "inch display and input are a user setting" 
   - `requirements.md` gains the rows above. Sections 3.2, 3.3, 3.6, 3.7 and 5 are touched, and the requirement counts in the work breakdown change.
   - `verification-plan.md` gains the rows above.
   - `docs/ui-design/ui-specification.md` is accepted, with rendered mockups in `docs/ui-design/mockups/`.
-  - The work breakdown's slices 8, 9 and 19, its traceability table and counts (91 of 144 requirements P1), and `xtask/traceability.toml` (UI-14 and NFR-15 close at slice 20).
+  - The work breakdown's slices 8 and 19 (first 8, 9 and 19; see item 4), its traceability table and counts (91 of 144 requirements P1), and `xtask/traceability.toml` (UI-14 and NFR-15 close at slice 20).
   - Requirements section 7's inch assumption now cites UI-18.
 - **The specification's differences from the build (section 17)** are work for the lanes named in item 4. D1 changes a colour in the slice 8 viewport. D7 means lane M changes the highlight colours of its proposed decision 0037.
 - **No new dependency.** Settings use `toml`, already in the workspace, in the configuration folder of decision 0029 item 15. Bundling the mockups' typeface would need one (OI-164).

@@ -2280,6 +2280,7 @@ version = "0.7.0"
 dependencies = [
  "openchuck-testkit",
  "openchuck-types",
+ "parry3d-f64",
  "proptest",
 ]
 

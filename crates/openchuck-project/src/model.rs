@@ -30,6 +30,7 @@ use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable, Tool};
 use openchuck_types::transform::TransformStep;
 use openchuck_types::units::LengthUnit;
+use openchuck_types::workholding::{Workholding, validate_workholding};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ProjectError;
@@ -225,6 +226,8 @@ pub struct Setup {
     /// The setup's own clearance geometry; `None` uses the machine
     /// profile's (SET-06).
     pub clearance: Option<Clearance>,
+    /// The held regions and retaining tabs (SET-09, OP-21); empty by default.
+    pub workholding: Workholding,
 }
 
 impl Setup {
@@ -241,6 +244,7 @@ impl Setup {
             material: None,
             frame: SetupFrame::default(),
             clearance: None,
+            workholding: Workholding::default(),
         }
     }
 }
@@ -319,6 +323,10 @@ pub struct SelectionSet {
     pub target: SelectionTarget,
     /// Reserved for P2 re-matching (PRJ-07); empty in P1.
     pub descriptors: Vec<Descriptor>,
+    /// Material to leave on this selection, in millimetres, in place of the
+    /// operation's stock to leave where the set is a machined region (OP-11,
+    /// decision record 0034 item 4). `None` uses the operation's value.
+    pub stock_to_leave: Option<f64>,
 }
 
 /// A parameter value of an operation. The strategy's parameter schema (OP-16)
@@ -1152,11 +1160,12 @@ impl Project {
                     )
                     .into());
                 }
-                Ok(validate_setup(
-                    &s.frame,
+                let field = format!("setup {}", s.id);
+                validate_setup(&s.frame, s.stock.as_ref(), s.clearance.as_ref(), &field)?;
+                Ok(validate_workholding(
+                    &s.workholding,
                     s.stock.as_ref(),
-                    s.clearance.as_ref(),
-                    &format!("setup {}", s.id),
+                    &field,
                 )?)
             }
             Item::Tool(t) => Ok(openchuck_types::tool::validate_entry(
@@ -1172,6 +1181,13 @@ impl Project {
                     .find(|m| m.id == s.model)
                     .and_then(ModelRef::kind);
                 check_selection_kind(s, kind)?;
+                if s.stock_to_leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("selection set {}.stock_to_leave", s.id),
+                        "stock_to_leave must be a number of millimetres, zero or more",
+                    )
+                    .into());
+                }
                 for (i, d) in s.descriptors.iter().enumerate() {
                     let field = format!("selection set {}.descriptors[{i}]", s.id);
                     d.position.validate(&format!("{field}.position"))?;

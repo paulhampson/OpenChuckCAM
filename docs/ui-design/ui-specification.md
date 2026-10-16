@@ -426,7 +426,7 @@ Board 4 (SIM-01 to SIM-07).
 
 **Viewport:**
 
-- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue:
+- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12):
 
   | Range | Colour | Meaning |
   | --- | --- | --- |
@@ -652,11 +652,12 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | D4 | Inch display is not part of P1 (0029 item 11) | The "mm \| in" switch is P2 (UI-18); with P1 only the footer reads "mm · deg" | As 0029 |
 | D5 | A disabled operation's name is struck through (0029 item 10) | Struck through and muted | Keep strike-through; the mockups show muted only |
 | D6 | Placement steps have no enable flag (decision 0010 item 6) | No enable box on a step | The Model board's boxes are dropped |
-| D7 | Highlights: working selection orange, chosen set green, hover yellow (0037 item 5) | Working selection blue, each set its own swatch, hover yellow outline | Agreed (OI-163 closed); lane M changes decision 0037's colours |
+| D7 | Highlights: working selection orange, chosen set green, hover yellow (decision 0037 item 5, accepted 15 Oct 2026) | Working selection blue, each set its own swatch, hover yellow outline | Agreed (OI-163 closed); decision 0038 amends 0037 item 5, and the built overlay colours change with the slice 8 interface items |
 | D8 | The machine panel lists the values not yet confirmed (0029 item 16) | A provenance icon on each value with a tooltip (UI-13) | Replace the list with the icons |
 | D9 | A tree mark for partly unconfirmed machine values used the stale diamond (the Setup and Model boards) | A Warning mark (amber triangle outline); the diamond means only stale results | Fix the boards when next edited |
 | D10 | Steps, the footer primary action and the messages dock are not built | Sections 4, 5 and 9 | New work for lane A or T (decision 0038) |
 | D11 | Size and scale are not remembered (0029, owner's run, observation 1) | Remembered per user (UI-15) | New work |
+| D12 | The part is coloured in six bands by the worst deviation per triangle: overcut deeper than one cell, within one cell, up to 0.25 mm left, 0.25 to 1 mm, more than 1 mm or only a bound, not measured, with a legend giving each band's triangle count (decision 0040 item 10, accepted) | A diverging scale ordered by lightness with its thresholds at the operation's tolerance, +0.10 and +0.50 mm (section 11.5) | Open (OI-194). Until it is decided, decision 0040's bands stand; the colours of section 11.5 apply to them (overcut magenta, on the surface grey, material left in blues by depth, not measured hatched) |
 
 ## 18. Traceability
 
@@ -687,6 +688,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-164 (closed 15 Oct 2026):** the typeface is IBM Plex Sans and Mono, bundled under the OFL (section 14.3).
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
 - **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
+- **OI-194 (open):** the deviation display: decision 0040's six bands by triangle against this specification's continuous scale (D12).
 
 ## 20. Rendered mockups
 

@@ -22,7 +22,11 @@ mod form_panel;
 mod import_panel;
 mod machine_panel;
 mod model_panel;
+mod playback_panel;
+mod run_panel;
+mod selection_panel;
 mod shell;
+mod testing;
 mod tool_panel;
 mod viewport;
 

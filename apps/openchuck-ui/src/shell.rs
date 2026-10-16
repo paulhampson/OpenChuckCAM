@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::project::ItemId;
-use openchuck_app::project::id::{ModelId, OperationId, SetupId, ToolId};
+use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::scene::SceneView;
 use openchuck_app::tool_edit;
 use openchuck_app::tools::{self, ToolProfile};
@@ -23,6 +23,9 @@ use crate::form_panel::{self, FormState};
 use crate::import_panel::{ImportAction, ImportSession};
 use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
+use crate::playback_panel::PlaybackPanel;
+use crate::run_panel::RunPanel;
+use crate::selection_panel::{self, SelectionPanel};
 use crate::tool_panel;
 use crate::viewport::Viewport;
 
@@ -35,6 +38,8 @@ const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z)
 const REDO: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::Z);
 const REDO_ALT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y);
+const GENERATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
+const SIMULATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F5);
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
@@ -90,6 +95,15 @@ pub struct Shell {
     machine_panel: Option<MachinePanel>,
     /// Typed text and refused values in the parameter form.
     form: FormState,
+    /// Picking triangles and the selection sets (slice 10).
+    selection: SelectionPanel,
+    /// Adding operations and generating (slice 9 item 7).
+    run: RunPanel,
+    /// The toolpath display and playback (slice 9).
+    play: PlaybackPanel,
+    /// What `model_file_warnings` said when the project opened, for the
+    /// selection warnings; reading every model file is not done per frame.
+    file_warnings: Vec<String>,
 }
 
 impl Shell {
@@ -111,6 +125,10 @@ impl Shell {
             model_panel: None,
             machine_panel: None,
             form: FormState::default(),
+            selection: SelectionPanel::default(),
+            run: RunPanel::default(),
+            play: PlaybackPanel::default(),
+            file_warnings: Vec::new(),
         };
         if let Some(folder) = folder {
             shell.open(folder);
@@ -170,6 +188,10 @@ impl Shell {
         self.status = format!("Opened {}", app.location().display());
         // Model files changed or missing since they were added (PRJ-02, OI-45).
         let warnings = app.model_file_warnings();
+        self.file_warnings.clone_from(&warnings);
+        self.selection.clear();
+        self.run.clear();
+        self.play.clear();
         if !warnings.is_empty() {
             self.dialog = Some(Dialog::Error(format!(
                 "Some model files do not match the project:\n{}\n\nThe toolpaths will use the files \
@@ -211,11 +233,21 @@ impl Shell {
                 match result {
                     // While importing, the viewport shows the import preview.
                     Ok(_) if self.import.is_some() => {}
-                    Ok(view) => self.viewport.set_scene(view, fit),
-                    Err(AppError::Engine(e)) if e.to_string().contains("cancel") => {}
+                    Ok(view) => {
+                        self.viewport.set_scene(view, fit);
+                        self.selection.scene_changed();
+                    }
+                    Err(e) if e.is_cancelled() => {}
                     Err(e) => self.status = format!("The view could not be built: {e}"),
                 }
             }
+        }
+    }
+
+    /// Starts generating, and simulating when asked (UI-09).
+    fn generate(&mut self, simulate: bool) {
+        if let Some(app) = &self.app {
+            self.run.start(app, simulate);
         }
     }
 
@@ -298,6 +330,14 @@ impl Shell {
         if redo {
             self.redo();
         }
+        // Shift+F5 first: it would otherwise be taken for F5.
+        let (simulate, generate) =
+            ctx.input_mut(|i| (i.consume_shortcut(&SIMULATE), i.consume_shortcut(&GENERATE)));
+        if simulate {
+            self.generate(true);
+        } else if generate {
+            self.generate(false);
+        }
     }
 
     fn menu(&mut self, ui: &mut egui::Ui) {
@@ -343,6 +383,45 @@ impl Shell {
                 if ui.add_enabled(can_redo, redo).clicked() {
                     self.redo();
                 }
+            });
+            ui.menu_button("Operations", |ui| {
+                let open = self.app.is_some();
+                let idle = !self.run.is_running();
+                if ui
+                    .add_enabled(open, egui::Button::new("Add operation…"))
+                    .clicked()
+                {
+                    if let Some(app) = &self.app {
+                        self.run.begin_add(app);
+                    }
+                    ui.close();
+                }
+                ui.separator();
+                let generate =
+                    egui::Button::new("Generate").shortcut_text(ctx.format_shortcut(&GENERATE));
+                if ui.add_enabled(open && idle, generate).clicked() {
+                    self.generate(false);
+                    ui.close();
+                }
+                let simulate = egui::Button::new("Generate and simulate")
+                    .shortcut_text(ctx.format_shortcut(&SIMULATE));
+                if ui.add_enabled(open && idle, simulate).clicked() {
+                    self.generate(true);
+                    ui.close();
+                }
+                if ui.add_enabled(!idle, egui::Button::new("Cancel")).clicked() {
+                    self.run.cancel();
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .add_enabled(open, egui::Button::new("Results…"))
+                    .clicked()
+                {
+                    self.run.show_results();
+                    ui.close();
+                }
+                ui.checkbox(&mut self.play.open, "Show playback");
             });
             ui.menu_button("View", |ui| {
                 for view in StandardView::ALL {
@@ -392,6 +471,7 @@ impl Shell {
         };
         let project = app.project();
         let mut chosen = None;
+        let mut add_operation = false;
         let mut command: Option<TreeAction> = None;
         ui.heading(project.name());
         let machine = project.machine().map_or_else(
@@ -427,17 +507,59 @@ impl Shell {
                         }
                     }
                 });
+            let summaries = app.selection_summaries(&self.file_warnings);
+            egui::CollapsingHeader::new(format!("Selections ({})", summaries.len()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    let on_part = self.selected == Some(Selection::Picking);
+                    if ui
+                        .selectable_label(on_part, "Select on the part…")
+                        .on_hover_text("Pick triangles in the view and save them as sets")
+                        .clicked()
+                    {
+                        command = Some(TreeAction::SelectPicking);
+                    }
+                    for s in &summaries {
+                        let selected = self.selected == Some(Selection::Set(s.id));
+                        let text = egui::RichText::new(format!("{} ({})", s.name, s.count));
+                        let text = if s.problem.is_some() {
+                            text.color(egui::Color32::from_rgb(230, 80, 80))
+                        } else {
+                            text
+                        };
+                        let row = ui.selectable_label(selected, text);
+                        if let Some(problem) = &s.problem {
+                            row.clone().on_hover_text(format!("⚠ {problem}"));
+                        }
+                        if row.clicked() {
+                            command = Some(TreeAction::SelectSet(s.id));
+                        }
+                    }
+                });
             egui::CollapsingHeader::new(format!("Operations ({})", project.operations().len()))
                 .default_open(true)
                 .show(ui, |ui| {
+                    if ui.small_button("Add operation…").clicked() {
+                        add_operation = true;
+                    }
                     let count = project.operations().len();
                     for (index, o) in project.operations().iter().enumerate() {
+                        let warning = summaries
+                            .iter()
+                            .find(|s| {
+                                s.problem.is_some() && s.uses.iter().any(|u| u.operation == o.id)
+                            })
+                            .map(|s| {
+                                format!("{}: {}", s.name, s.problem.clone().unwrap_or_default())
+                            });
                         if let Some(c) = operation_row(
                             ui,
                             index,
                             count,
                             o,
                             self.selected == Some(Selection::Operation(o.id)),
+                            warning.as_deref(),
+                            self.run.badge(app, o.id),
                         ) {
                             command = Some(c);
                         }
@@ -454,6 +576,9 @@ impl Shell {
                     }
                 });
         });
+        if add_operation {
+            self.run.begin_add(app);
+        }
         if let Some(id) = chosen
             && self.setup != Some(id)
         {
@@ -479,6 +604,15 @@ impl Shell {
             }
             TreeAction::SelectModel(id) => {
                 self.select(Selection::Model(id));
+                return;
+            }
+            TreeAction::SelectPicking => {
+                self.select(Selection::Picking);
+                return;
+            }
+            TreeAction::SelectSet(id) => {
+                self.selection.show_set(Some(id));
+                self.select(Selection::Set(id));
                 return;
             }
             TreeAction::SelectMachine => {
@@ -510,7 +644,28 @@ impl Shell {
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
             Some(Selection::Model(id)) => self.model_properties(ui, id),
             Some(Selection::Machine) => self.machine_properties(ui),
+            Some(Selection::Picking | Selection::Set(_)) => self.selection_properties(ui),
             None => {}
+        }
+    }
+
+    /// Picking triangles and the selection sets (UI-04, UI-05).
+    fn selection_properties(&mut self, ui: &mut egui::Ui) {
+        let Some(app) = &mut self.app else { return };
+        let summaries = app.selection_summaries(&self.file_warnings);
+        if let Some(Selection::Set(id)) = self.selected
+            && !summaries.iter().any(|s| s.id == id)
+        {
+            self.selected = Some(Selection::Picking);
+        }
+        let error = egui::ScrollArea::vertical()
+            .show(ui, |ui| {
+                self.selection
+                    .show(ui, app, &summaries, self.viewport.view())
+            })
+            .inner;
+        if let Some(error) = error {
+            self.dialog = Some(Dialog::Error(error));
         }
     }
 
@@ -620,12 +775,25 @@ impl Shell {
 
     /// An operation's parameter form (UI-07).
     fn operation_properties(&mut self, ui: &mut egui::Ui, id: OperationId) {
+        let mut delete = false;
         let Some(app) = &mut self.app else { return };
         let Some(operation) = app.project().operation(id) else {
             self.selected = None;
             return;
         };
-        ui.heading(&operation.name);
+        ui.horizontal(|ui| {
+            ui.heading(&operation.name);
+            if ui
+                .small_button("Delete operation")
+                .on_hover_text("Remove this operation (it can be undone)")
+                .clicked()
+            {
+                delete = true;
+            }
+        });
+        let summaries = app.selection_summaries(&self.file_warnings);
+        let roles = selection_panel::operation_roles(ui, app, id, &summaries);
+        ui.separator();
         let edit = match app.parameter_form(id) {
             Ok(form) => {
                 ui.weak(format!("Strategy: {}", form.strategy));
@@ -644,6 +812,55 @@ impl Shell {
                 .set_parameter(id, &edit.name, edit.value)
                 .map_err(|e| e.to_string());
             self.form.result(&edit.name, result);
+        }
+        if let Some(error) = roles {
+            self.dialog = Some(Dialog::Error(error));
+        }
+        if delete {
+            match app.delete_operation(id) {
+                Ok(()) => self.selected = None,
+                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            }
+        }
+    }
+
+    /// Works the generating job, the add-operation dialog and the playback
+    /// (slice 9).
+    fn run_frame(&mut self, ctx: &egui::Context) {
+        let mut error = None;
+        let mut added = None;
+        if let Some(app) = &mut self.app {
+            if let Some(run) = self.run.poll(app, ctx) {
+                self.play.set_run(app, run);
+            }
+            let (new, problem) = self.run.add_dialog(ctx, app);
+            added = new;
+            error = problem;
+            self.run.results_window(ctx, app);
+            let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
+            if self.play.frame(app, &mut self.viewport, dt) {
+                ctx.request_repaint();
+            }
+        }
+        if let Some(id) = added {
+            self.select(Selection::Operation(id));
+        }
+        if let Some(message) = error {
+            self.dialog = Some(Dialog::Error(message));
+        }
+    }
+
+    /// Hands the pointer's picks to the selection panel and draws its
+    /// highlights (slice 10 item 1).
+    fn pick_frame(&mut self, ctx: &egui::Context) {
+        let input = self.viewport.take_input();
+        let Some(app) = &self.app else { return };
+        if self.selection.frame(app, input) {
+            ctx.request_repaint();
+        }
+        if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
+            self.viewport.set_overlay(overlay);
+            ctx.request_repaint();
         }
     }
 
@@ -699,12 +916,13 @@ impl Shell {
         }
     }
 
-    fn status_bar(&self, ui: &mut egui::Ui) {
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if self.scene_job.is_some() {
                 ui.spinner();
                 ui.label("Building the view…");
             }
+            self.run.status(ui);
             if self.app.as_ref().is_some_and(Application::is_modified) {
                 ui.label("Unsaved changes.");
             }
@@ -938,6 +1156,10 @@ enum TreeAction {
     SelectModel(ModelId),
     /// Show the project's machine.
     SelectMachine,
+    /// Pick triangles on the part.
+    SelectPicking,
+    /// Show this selection set.
+    SelectSet(SelectionSetId),
 }
 
 /// What the properties panel shows.
@@ -947,6 +1169,10 @@ enum Selection {
     Tool(ToolId),
     Model(ModelId),
     Machine,
+    /// Picking on the part, and the selection sets (slice 10).
+    Picking,
+    /// A selection set, picking on the part as well.
+    Set(SelectionSetId),
 }
 
 /// One operation in the tree: enable box, name, and move up, move down and
@@ -957,6 +1183,8 @@ fn operation_row(
     count: usize,
     o: &openchuck_app::project::Operation,
     selected: bool,
+    warning: Option<&str>,
+    badge: Option<&str>,
 ) -> Option<TreeAction> {
     let mut action = None;
     ui.horizontal(|ui| {
@@ -981,6 +1209,13 @@ fn operation_row(
         };
         if ui.selectable_label(selected, name).clicked() {
             action = Some(TreeAction::Select(o.id));
+        }
+        if let Some(badge) = badge {
+            ui.weak(format!("({badge})"));
+        }
+        if let Some(warning) = warning {
+            ui.colored_label(egui::Color32::from_rgb(230, 80, 80), "⚠")
+                .on_hover_text(format!("A selection set cannot be used: {warning}"));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let id = ItemId::Operation(o.id);
@@ -1014,6 +1249,15 @@ fn operation_row(
 
 impl eframe::App for Shell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.draw(ui);
+    }
+}
+
+impl Shell {
+    /// Draws one frame: the panels, the viewport, the dialogs and the work
+    /// that keeps the jobs moving. The whole of the app's `ui`, apart from
+    /// the eframe frame it does not use, so a test can run it.
+    fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.guard_close(&ctx);
         self.poll_scene(&ctx);
@@ -1021,6 +1265,15 @@ impl eframe::App for Shell {
         self.shortcuts(&ctx);
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        if self.play.open && self.play.has_run() {
+            egui::Panel::bottom("playback")
+                .resizable(false)
+                .show(ui, |ui| {
+                    if let Some(app) = &self.app {
+                        self.play.show(ui, app);
+                    }
+                });
+        }
         egui::Panel::left("tree")
             .resizable(true)
             .default_size(240.0)
@@ -1031,9 +1284,15 @@ impl eframe::App for Shell {
                 .default_size(320.0)
                 .show(ui, |ui| self.properties(ui));
         }
+        self.viewport.set_picking(matches!(
+            self.selected,
+            Some(Selection::Picking | Selection::Set(_))
+        ));
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.viewport.show(ui));
+        self.pick_frame(&ctx);
+        self.run_frame(&ctx);
         self.import_frame(&ctx);
         self.dialogs(&ctx);
     }
@@ -1087,5 +1346,92 @@ mod tests {
         assert_eq!(existing_dir(&file), Some(dir));
         assert_eq!(existing_dir("   "), None);
         assert_eq!(existing_dir("/no/such/folder/at/all"), None);
+    }
+
+    /// Runs one frame of the whole shell without a window.
+    fn frame(shell: &mut Shell, ctx: &egui::Context) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| shell.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    /// Slice 9 review checklist, "the operation add, edit, generate and
+    /// regenerate flow in the UI": every panel is drawn through a run, with
+    /// no window and no GPU, and the run's results reach the viewport.
+    #[test]
+    fn req_ui_06_req_ui_09_the_shell_generates_shows_and_plays_a_run() {
+        use std::time::{Duration, Instant};
+
+        use crate::testing::cube_project;
+
+        let (dir, app, op, _) = cube_project("shell-flow");
+        app.save().unwrap();
+        drop(app);
+        let ctx = egui::Context::default();
+        let mut shell = Shell::new(false, Some(dir.clone()));
+        let deadline = Instant::now() + Duration::from_secs(120);
+        let wait = |shell: &mut Shell, done: &dyn Fn(&Shell) -> bool| {
+            while !done(shell) {
+                assert!(Instant::now() < deadline, "timed out");
+                frame(shell, &ctx);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        // The scene is built, then the project tree and status bar draw.
+        wait(&mut shell, &|s| s.scene_job.is_none());
+        assert!(shell.viewport.view().picking.picker().is_some());
+        // Generate and simulate (Shift+F5 does the same): the run is a job.
+        shell.generate(true);
+        assert!(shell.run.is_running());
+        frame(&mut shell, &ctx);
+        wait(&mut shell, &|s| {
+            !s.run.is_running()
+                && s.viewport
+                    .layer(openchuck_viewport::Layer::Paths)
+                    .is_some_and(|p| !p.lines.is_empty())
+        });
+        let app = shell.app.as_ref().unwrap();
+        assert_eq!(shell.run.badge(app, op), Some("generated"));
+        let paths = shell
+            .viewport
+            .layer(openchuck_viewport::Layer::Paths)
+            .unwrap();
+        assert!(!paths.lines.is_empty());
+        assert!(shell.play.open);
+        // Every panel draws: the operation's, the selections', the results,
+        // the add-operation dialog and the playback controls.
+        shell.selected = Some(Selection::Operation(op));
+        shell.run.show_results();
+        shell.run.begin_add(shell.app.as_ref().unwrap());
+        frame(&mut shell, &ctx);
+        shell.selected = Some(Selection::Picking);
+        frame(&mut shell, &ctx);
+        // Editing makes the run out of date; generating again reuses nothing
+        // that changed.
+        let app = shell.app.as_mut().unwrap();
+        app.set_parameter(
+            op,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(0.6)),
+        )
+        .unwrap();
+        frame(&mut shell, &ctx);
+        let app = shell.app.as_ref().unwrap();
+        assert_eq!(shell.run.badge(app, op), Some("out of date"));
+        shell.generate(false);
+        wait(&mut shell, &|s| !s.run.is_running());
+        let app = shell.app.as_ref().unwrap();
+        assert_eq!(shell.run.badge(app, op), Some("generated"));
+        // Cancelling a run leaves the old results alone.
+        shell.generate(true);
+        shell.run.cancel();
+        wait(&mut shell, &|s| !s.run.is_running());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
