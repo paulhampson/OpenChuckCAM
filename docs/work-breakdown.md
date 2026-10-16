@@ -76,6 +76,27 @@ These apply to every slice and are not repeated below.
 * [ ] Path-filtered CI jobs run only what a change touches, and trunk-based rules hold: main stays releasable and merges only with CI green
 * [ ] Where a slice measures deviation, kinematics, gouge, simulation, feed, determinism or fuzzing, it uses the acceptance limits in verification plan section 4.1, and any change to a limit is recorded in the plan
 
+## Slice status
+
+State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_slices` in `xtask/traceability.toml`, so a P1 requirement of theirs with no test fails CI. A closed slice may still note a measurement on the reference machines that has not been run yet (marked *benchmark pending*); that measurement is tracked as an open item and does not hold the slice open.
+
+| Slice | State | Waiting on |
+| --- | --- | --- |
+| 0 to 7 | Closed | |
+| 8 viewport and shell | In progress | Launch on native graphics on macOS and Linux (OI-129) |
+| 9 display, playback and jobs | Closed (16 Oct 2026), benchmark pending | Reference-machine measurements (OI-176) |
+| 10 mesh selection | Closed (16 Oct 2026), benchmark pending | Pick budget on the reference machines (OI-173) |
+| 11 STEP import | In progress | 11b, lane O: viewport drawing and B-rep selection storage |
+| 12 baseline finishing | Closed (16 Oct 2026) | |
+| 13 simultaneous 4-axis finishing | Closed (15 Oct 2026) | |
+| 14 rotary roughing | In progress | One checklist box: every OP-11 parameter has a test; per-selection stock to leave is still refused for roughing ([decision 0043](decisions/0043-slice-14-roughing-containment.md) item 5). Containment (item 5, lane L) is merged |
+| 15 rest machining and pencil clean-up | Closed (16 Oct 2026) | Follow-ups OI-189 to OI-193 |
+| 16 to 18 | Not started | |
+| 19 output options and setup sheet | In progress | Item 4, export dialogs (lane S) |
+| 20 hardening and first release | In progress | Preparation is done; the rest runs last |
+| 21 workholding and retaining tabs | In progress | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation and the UI, is not started |
+| 22 user interface redesign | Not started | The interface design is a proposal on a branch; waits for the UI lanes |
+
 ## Slice order and dependencies
 
 1. Slice 0 (guardrails), then spikes SP-1, SP-2, SP-3, SP-5, SP-8 and SP-12 in parallel.
@@ -463,7 +484,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 **Goal:** generate and simulate without freezing the UI, then review exactly what was generated.
 
-**Progress:** items 1 and 2 are built headless (14 Oct 2026; [decision 0030](decisions/0030-slice-9-pipeline-cache.md), accepted): the job manager existed from slice 0, and the pipeline now keeps an in-memory cache with chained keys, so editing operation N regenerates N and later operations only. Items 3 to 8 are built on branch `claude/lane-n-slice-9-playback` (lane N; [decision 0040](decisions/0040-slice-9-display-and-playback.md), accepted 15 Oct 2026, stacked on lane M's branch because both change the renderer, the viewport and the shell): toolpaths drawn by class and operation, the tool at any point with the workpiece turned by A, playback with jumps, the stock at any move from checkpoints, the part coloured by deviation, the operation add, generate and cancel flow, and levels of detail. Open: OI-131 (cache on disk), OI-132 (simulation checkpoints, progressed), OI-174 to OI-179. The limits it states (17 ms poll gap, 2 s cancel, 1,000,000 drawn points) are measured on the CPU side in one container (OI-176), so the slice stays open until the reference-machine run.
+**Progress:** closed by the owner (16 Oct 2026); the reference-machine measurements are still to run (OI-176, benchmark pending). Items 1 and 2 are built headless (14 Oct 2026; [decision 0030](decisions/0030-slice-9-pipeline-cache.md), accepted): the job manager existed from slice 0, and the pipeline now keeps an in-memory cache with chained keys, so editing operation N regenerates N and later operations only. Items 3 to 8 are built on branch `claude/lane-n-slice-9-playback` (lane N; [decision 0040](decisions/0040-slice-9-display-and-playback.md), accepted 15 Oct 2026, stacked on lane M's branch because both change the renderer, the viewport and the shell): toolpaths drawn by class and operation, the tool at any point with the workpiece turned by A, playback with jumps, the stock at any move from checkpoints, the part coloured by deviation, the operation add, generate and cancel flow, and levels of detail. Open: OI-131 (cache on disk), OI-132 (simulation checkpoints, progressed), OI-174 to OI-179. The limits it states (17 ms poll gap, 2 s cancel, 1,000,000 drawn points) are measured on the CPU side in one container (OI-176), so the reference-machine run is tracked there and does not hold the slice open.
 
 **Requirements:** SIM-01, SIM-02, SIM-04, UI-09, NFR-04
 
@@ -490,7 +511,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 **Goal:** pick geometry on a mesh, save it as named sets, and make an operation cut only there.
 
-**Status:** items 2 to 5 are built headless (lane C; project schema 7; [decision 0032](decisions/0032-slice-10-mesh-selection.md), accepted 14 Oct 2026; OI-137 and OI-138 open or deferred). Items 1 and 6 are built on branch `claude/lane-m-slice-10-picking` (lane M; [decision 0037](decisions/0037-slice-10-picking-and-selection-panel.md), accepted 15 Oct 2026): ray-cast picking in `openchuck-geom`, the picker in the scene, hover and click selection modes, highlights as a renderer overlay, the selection panel, operation roles and the visible warnings (OI-12 and OI-139 closed; OI-170 to OI-173 open). Not built: B-rep picking (slice 11b, lane O), and the offer to select again (OI-172). Review checklist: all six boxes are met by the tests named in the records; the strict pick budget has been measured in one container only (OI-173), so the slice stays open until the reference-machine run.
+**Status:** closed by the owner (16 Oct 2026); the strict pick budget on the reference machines is still to be measured (OI-173, benchmark pending). Items 2 to 5 are built headless (lane C; project schema 7; [decision 0032](decisions/0032-slice-10-mesh-selection.md), accepted 14 Oct 2026; OI-137 and OI-138 open or deferred). Items 1 and 6 are built on branch `claude/lane-m-slice-10-picking` (lane M; [decision 0037](decisions/0037-slice-10-picking-and-selection-panel.md), accepted 15 Oct 2026): ray-cast picking in `openchuck-geom`, the picker in the scene, hover and click selection modes, highlights as a renderer overlay, the selection panel, operation roles and the visible warnings (OI-12 and OI-139 closed; OI-170 to OI-173 open). Not built: B-rep picking (slice 11b, lane O), and the offer to select again (OI-172). Review checklist: all six boxes are met by the tests named in the records; the strict pick budget has been measured in one container only (OI-173), so the reference-machine run is tracked there and does not hold the slice open.
 
 **Requirements:** UI-04 (mesh), UI-05, PRJ-06 (mesh), OP-02
 
@@ -520,7 +541,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 **Spike inputs:** SP-1 (kernel), SP-9 (exact surfaces).
 
-**Status:** 11a built on branch `claude/busy-lovelace-khabqi` ([decision 0027](decisions/0027-slice-11a-step-import.md), accepted 14 Oct 2026): items 1 to 4, 6, 8 and 9 (wrapper and worker process, topology and deterministic numbering, units, tessellation with face IDs per triangle, the exact `BrepSurface`, the corpus and mutation run, the three-platform kernel CI). 11b is items 5 and 7 (viewport drawing and picking, B-rep selections in the project; OI-119), after slices 8 and 10. The slice is not closed: its review checklist is ticked below only for what 11a proves, and OI-25 (STEP from other CAD tools, deferred by the owner), OI-119 and OI-120 are open. The three-platform CI result is not yet seen. This is lane D of "Parallel work" (nothing needed merged first). It takes **no project schema number**: the units override for STEP is the existing model-reference override (schema 2), and the B-rep selection storage that row 7 of the claims table expects belongs to 11b (lanes D and O). The new B-rep fields took the library family to 0.5.0 (OI-123, closed). The nightly archives now carry the STEP worker (OI-118, closed) and a sanitizer job covers the wrapper (OI-19, closed).
+**Status:** 11a built on branch `claude/busy-lovelace-khabqi` ([decision 0027](decisions/0027-slice-11a-step-import.md), accepted 14 Oct 2026): items 1 to 4, 6, 8 and 9 (wrapper and worker process, topology and deterministic numbering, units, tessellation with face IDs per triangle, the exact `BrepSurface`, the corpus and mutation run, the three-platform kernel CI). 11b is items 5 and 7 (viewport drawing and picking, B-rep selections in the project; OI-119), after slices 8 and 10. The slice is not closed: its review checklist is ticked below only for what 11a proves, and OI-25 (STEP from other CAD tools, deferred by the owner), OI-119 and OI-120 are open. The three-platform kernel CI passed on pull request 46 (15 Oct 2026). This is lane D of "Parallel work" (nothing needed merged first). It takes **no project schema number**: the units override for STEP is the existing model-reference override (schema 2), and the B-rep selection storage that row 7 of the claims table expects belongs to 11b (lanes D and O). The new B-rep fields took the library family to 0.5.0 (OI-123, closed). The nightly archives now carry the STEP worker (OI-118, closed) and a sanitizer job covers the wrapper (OI-19, closed).
 
 **Design refinement:** the kernel route chosen in SP-1 (a thin in-house wrapper over OpenCASCADE with an isolated import process, [decision 0003](decisions/0003-step-kernel-route.md)), the deterministic face and edge numbering, how exact evaluation reaches `openchuck-path` ([decision 0017](decisions/0017-sp-9-exact-surfaces.md): the importer emits a face record with the analytic frame or a clamped, unwrapped rational B-spline patch, UV bounds, trim loops and the tessellation, and the library evaluates it in pure Rust; shim additions `occ_face_frame`, B-spline unwrapping and trim sampling; the SP-9 comparison kept as a regression test), and the licence boundary (the LGPL kernel stays in `openchuck-import`).
 
@@ -540,7 +561,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 - [x] Changing the tessellation tolerance changes triangle count and deviation as documented (`req_imp_06_tolerance_controls_triangle_count_and_deviation`, numbers in decision 0027 item 7)
 - [ ] Face and edge IDs are identical after save and reload, and across two imports (two imports and a data round trip are tested; reload of a project's selections is 11b)
 - [x] Exact versus mesh evaluation is measured on a curved surface and the difference recorded (exact 7e-15 mm, mesh 9.2e-3 mm on a sphere; `step_exact`)
-- [ ] The kernel builds on all three platforms in CI (the job is written; its first run is the check)
+- [x] The kernel builds on all three platforms in CI (the STEP kernel job passed on Windows, macOS and Ubuntu on pull request 46, 15 Oct 2026)
 - [x] Malformed STEP gives an error, not a crash (6 malformed and 12 crash files; 150 mutants, 46 reader crashes caught on Linux)
 
 ## Slice 12 – Baseline finishing: helical, axial, indexed
@@ -551,7 +572,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 **Depends on:** slices 5 and 10; the entry moves of [decision 0026](decisions/0026-entry-moves.md) (OI-80) for item 5; the stronger offset result check (OI-82) once regions come from meshes.
 
-**Status:** design refinement accepted ([decision 0034](decisions/0034-slice-12-baseline-finishing.md), 15 Oct 2026, lane H); items 1 to 4 and 6 built on `claude/lane-h-slice-12-baseline-finishing` (axial, indexed, scallop, per-selection stock to leave, `lead` entry, golden files); region offsets built (OP-02: a selection is found through its offset, OI-138 closed; the containment boundary as a curve, OI-137, is not); gate 3 for the new programs runs in CI.
+**Status:** closed by the owner (16 Oct 2026). Design in [decision 0034](decisions/0034-slice-12-baseline-finishing.md) (accepted 15 Oct 2026, lane H, merged in pull request 46): axial and indexed finishing, scallop control for helical and axial finishing, per-selection stock to leave (project schema 9), region offsets (OP-02: a selection is found through its offset; OI-138 closed, OI-137, the containment boundary as a curve, stays open), `lead` entry on all three strategies, golden jobs `cone_axial`, `cone_indexed` and `cone_axial_lead`. OP-11 and OP-02 close at slice 14.
 
 **Design refinement:** how each strategy parameterises stepover and scallop, how region constraints enter the unrolled 2D development, and what the indexed form outputs for positioning moves.
 
@@ -565,10 +586,10 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 **Review checklist**
 
 - [x] A property test shows every point of the selected region lies within stepover of the path (whole-part case on cones: `req_op_04_every_surface_point_is_within_the_stepover_of_the_path`; the region case is covered by `req_op_02_req_op_04_a_band_narrower_than_the_old_spacing_is_cut_on_every_pass`)
-- [ ] The independent checker reports no gouging beyond tolerance on the reference parts
+- [x] The independent checker reports no gouging beyond tolerance on the reference parts (`req_op_04_baseline_finishing_golden_files_pass_the_audit`: the checker runs on `cone_axial`, `cone_indexed` and `cone_axial_lead` for both posts, gouge within 0.02 mm; `req_op_04_axial_leaves_no_gouge_and_no_uncovered_surface_on_a_cone` for axial; helical since slice 5)
 - [x] Indexed positions land on the exact requested angles (`req_op_04_indexed_positions_land_on_the_requested_angles_in_order`)
 - [x] Per-selection stock to leave is respected (`req_op_11_each_zone_is_left_its_own_stock_with_all_three_strategies`, `req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations`)
-- [ ] All three replay cleanly in the LinuxCNC simulator
+- [x] All three replay cleanly in the LinuxCNC simulator (the Gate 3 job passed on pull request 46 for the helical, axial, indexed and axial-with-lead programs)
 
 ## Slice 13 – True simultaneous 4-axis finishing
 
@@ -617,7 +638,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
 
-**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); the slice closes when that merges. OI-117 is closed; OI-150 to OI-153 are open.
+**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); lane L merged on 16 Oct 2026. The slice stays open on one checklist box (every OP-11 parameter has a test), because per-selection stock to leave is not supported for roughing. OI-117 is closed; OI-150 to OI-153 are open.
 
 **Review checklist**
 
