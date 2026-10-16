@@ -194,6 +194,41 @@ Expected result for a code pull request once 1 to 4 are done: critical path of a
 - `ci.yml` (and `xtask/src/replay.rs` and `.config/nextest.toml` for the matching options) change on `claude/ci-speed-up-implementation`, one pull request per option. The verification plan section 8 text on tests over a minute is unchanged; Option 6(a) brings `.config/nextest.toml` into line with it.
 - The open items below track the choices.
 
+## Evidence added while implementing (16 Oct 2026, evening)
+
+**Queue wait on the day, to judge Option 9 (larger runners).** From the Actions API, the `CI` runs created on 16 Oct 2026 (73 runs). For each run, the longest time any job waited between creation and start:
+
+| Window (UTC) | Runs with a full job set | Median of the longest waits | Longest wait | Queue minutes, all jobs |
+| --- | --- | --- | --- | --- |
+| 08:00 to 16:00 | 5 | 1.4 min | 2.0 min | 24 |
+| 16:00 to 18:30 | 18 | 1.9 min | 11.8 min | 553 |
+| 18:30 to 19:35 | 13 | 7.1 min | 42.8 min | 2,331 |
+
+At 19:35 eight pull requests were open, all with CI running or queued, and four runs were waiting for a runner (one since 18:49). A code run uses 17 to 31 jobs. The free hosted runners of a public repository allow about 20 at once (5 on macOS), so two or three lanes pushing together exceed the cap. Overnight (00:00 to 08:00) with five lanes the median longest wait was 8.3 min and the longest 17.7 min. This supports taking slots out first (Options 8 and 7) before adding any shard, and it is the evidence for the owner's decision on Option 9.
+
+**A run is not always slow because of its code.** The Coverage trend job of pull request 64 took 69.4 min (18:32 to 19:41) against 23 to 28 min on every other run of the day, with the same tests; it finished green. No log was available while it ran, so the cause is not known (a slow or shared runner is the likely one). A required job's time therefore varies by a factor of 2.5 on the same code. Any timing in this record is one sample.
+
+**Option 5 gave almost nothing.** Pull request 68 ran the library crates under nextest: the same test counts (40, 189, 24 and 14), but the step took 10.3 min on Ubuntu against 10.8 before, 7.0 against 9.5 on Windows and 10.8 against 7.5 on macOS. The expectation in the Option 5 text above (607 s down to about 380 s) was wrong: `cargo test` already runs the tests of one binary on every core, so the limit is the crate's total CPU work, not its longest binary. Option 5 is harmless, but it gives no saving: the owner closed pull request 68 unmerged on 16 Oct 2026 for that reason, so Option 5 is not implemented and `libraries-alone` keeps `cargo test`.
+
+**The fast-checks job** (Option 8, pull request 64) ran in 6.6 min with every check passing. By step: `cargo xtask trace` 175 s, semver check 59 s, `cargo about` 54 s, `cargo deny` 32 s, repository checks `deps` 14 s, `cargo audit` 6 s, rustfmt 1 s. `xtask trace` compiles every test target of the workspace to list the tests; a cheaper listing is a candidate for a later option (it is the largest single step, on a job that is not on the critical path). A deliberate-failure run on a throwaway pull request (run 38957436177) showed the consolidation behaves as required: the `xtask records` step failed, the other repository checks still ran, conditionally skipped steps were skipped, the last step named the failure, `Fast checks` failed, and `CI required checks` failed with `Required jobs did not pass: fast-checks (failure)`.
+
+## Later decisions and results (16 Oct 2026, evening)
+
+**Merge queue: not available.** A GitHub merge queue would remove the update-and-rerun step before each merge, but it is not offered on a repository under a personal account (owner checked, 16 Oct 2026). The manual ordering stays: the orchestrator session releases each pull request in turn to update from `main`.
+
+**Draft-pull-request gate (draft gate item): accepted by the project owner (16 Oct 2026), relayed by the orchestrator session at the owner's instruction (decision 0049).** Accepted as proposed, in six points:
+1. `pull_request` also triggers on `ready_for_review`. `changes` and `Fast checks` always run; every heavy job (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke, fuzz) is conditioned on the pull request not being a draft. Pushes to `main` are unaffected.
+2. The `CI required checks` aggregator **fails on a draft** (a draft cannot merge). On a ready pull request or a push it requires `success` from every heavy job whose path filter is true and accepts `skipped` only when the filter is false, so a heavy job skipped on a ready pull request fails the run (stricter than today).
+3. Marking a draft ready always starts a full run on the current head (the trigger), and the per-pull-request concurrency group keeps only the newest run.
+4. The pull request that builds it is opened ready, to exercise the stricter aggregator; a throwaway draft pull request shows the draft path (only `changes` and `Fast checks` run).
+5. Expected saving: 14 of the 30 runs created on 16 Oct 2026 up to 19:34 UTC were cancelled by a newer push; a draft run is about 2 jobs against 17 to 31. A pull request with three pushes before it is ready saves about two full runs (about 300 runner minutes).
+6. It is built after pull requests 72 and 74 have merged, so that it does not add another update-and-rerun cycle to them.
+
+**Measured results of the accepted options.**
+- Option 3 (Gate 3 in three shares, pull request 74, run 38959733906): the three legs took 7.3, 7.4 and 7.7 min (replay 6.6 to 6.9 min) against 20.1 to 23.9 min on one runner. Gate 3 is no longer the longest job; Build and test (18 to 25 min) and Coverage trend (22 to 26 min) are.
+- Option 7 (fuzz in three jobs, pull request 72, run 38957532037): 4.2, 4.9 and 4.1 min, about 13.2 runner minutes against about 25 for nine legs, and 3 slots instead of 9.
+- Option 8 (fast checks in one job, pull request 64): `Fast checks` ran 6.8 min on the final run, in place of six jobs; merged 16 Oct 2026. Option 1 (pull request 65) merged the same day.
+
 ## Open items
 
 | # | Item | Needed from |
@@ -202,4 +237,4 @@ Expected result for a code pull request once 1 to 4 are done: critical path of a
 | OI-222 | Whether Gate 3 (Option 3) and the nextest run (Option 4) may be sharded, and the shard counts; macOS shards only if its queue allows. | Decided: Gate 3 in three shards; nextest in two, Linux and Windows first, macOS if its queue allows |
 | OI-223 | Coverage: update the long-test list (Option 6a), move the trend to `main` (6c), or shard the instrumented run (6d). | Decided: 6(a), the baseline shift agreed; 6(c) not accepted; 6(d) not wanted |
 | OI-224 | Measure the long tests alone against in the full run (contention), re-measure the long-test list on a hosted runner, and decide whether to pay for larger runners (Option 9). | Measurement accepted as the first step of order 4; larger runners not accepted |
-| OI-225 | The Actions cache and concurrency data this session could not read (cache sizes and ages, concurrent jobs at the peaks); needs a token that reads `actions/caches` and `actions/runs`. | Owner or orchestrator; still open |
+| OI-225 | The Actions cache and concurrency data this session could not read (cache sizes and ages, concurrent jobs at the peaks); needs a token that reads `actions/caches` and `actions/runs`. The queue data and the 69-minute Coverage run are in *Evidence added while implementing*; the cause of that run is still unknown. | Owner or orchestrator; still open |
