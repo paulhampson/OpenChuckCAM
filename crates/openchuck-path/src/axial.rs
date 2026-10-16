@@ -308,6 +308,7 @@ impl<'a> AlongX<'a> {
             spacing: self.spacing,
             thin: false,
             max_dt: 1.0 / self.seeds as f64,
+            wanted: None,
         };
         fit_region(&fit, self.seeds, "axial finishing", context)
     }

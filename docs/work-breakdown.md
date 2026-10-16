@@ -89,11 +89,12 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 11 STEP import | In progress | 11b, lane O: viewport drawing and B-rep selection storage |
 | 12 baseline finishing | Closed (16 Oct 2026) | |
 | 13 simultaneous 4-axis finishing | Closed (15 Oct 2026) | |
-| 14 rotary roughing | In progress | Item 5, containment to selections (lane L) |
-| 15 to 18 | Not started | |
+| 14 rotary roughing | In progress | One checklist box: every OP-11 parameter has a test; per-selection stock to leave is still refused for roughing ([decision 0043](decisions/0043-slice-14-roughing-containment.md) item 5). Containment (item 5, lane L) is merged |
+| 15 rest machining and pencil clean-up | Closed (16 Oct 2026) | Follow-ups OI-189 to OI-193 |
+| 16 to 18 | Not started | |
 | 19 output options and setup sheet | In progress | Item 4, export dialogs (lane S) |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
-| 21 workholding and retaining tabs | Not started | |
+| 21 workholding and retaining tabs | In progress | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation and the UI, is not started |
 | 22 user interface redesign | Not started | The interface design is a proposal on a branch; waits for the UI lanes |
 
 ## Slice order and dependencies
@@ -123,7 +124,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | G | 20 items 8, 10, 12: packaging route, air-cut procedure, safe-practice checklist (done 14 Oct 2026, [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md); the release workflow and bundle command are built in lane T) | ██ | | | | |
 | H | 12 baseline finishing | ░░ | ██ | | | |
 | I | 13 simultaneous 4-axis finishing (closed 15 Oct 2026, [decision 0036](decisions/0036-slice-13-simultaneous-finishing.md)) | ░░ | ██ | ██ | | |
-| J | 15 rest machining and pencil clean-up | ░░ | ██ | | | |
+| J | 15 rest machining and pencil clean-up (built 15 Oct 2026 on `claude/lane-j-slice-15-rest-machining`, [decision 0044](decisions/0044-slice-15-rest-and-pencil.md), accepted) | ░░ | ██ | | | |
 | K | 16 edge following on mesh feature edges | ░░ | ██ | | | |
 | L | 14 item 5: containment to selected regions | ░░ | ██ | | | |
 | M | 10 items 1 and 6: picking, hover, selection panel | ░░ | ░░ | ██ | | |
@@ -187,7 +188,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 ### Working in parallel
 
-- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Slice 21 (workholding and retaining tabs, record 0035) took OI-158 to OI-162 and requirement OP-21. Lane M (slice 10 items 1 and 6) took record 0037 and OI-170 to OI-173 (first OI-159 to OI-162, renumbered after workholding took those and the OpenCASCADE cache took OI-169), and no schema number. Unmerged branches hold record 0038 (the interface specification) and OI-163 to OI-166. Lane N (slice 9 items 3 to 8) took record 0040 (first 0038, renumbered after the interface specification took it) and OI-174 to OI-179 (first OI-163 to OI-168), and no schema number. Lane U (slice 21a) took record 0041, OI-180 and OI-181 (first 0040, OI-169 and OI-170, then OI-174 and OI-175; renumbered after lane N took those) and project schema 10. Next free after that: record 0042, `OI-182`, project schema 11 (lanes D and O, then S, are expected to take 11 and 12 and renumber as they merge). **Merge order:** lane M (pull request 51) has merged and lane N (pull request 52) merges next, so it keeps record 0040 and OI-174 to OI-179. Lanes J (slice 15) and L (slice 14) both took record 0040, and lane J's OI-170 to OI-174 overlap lane M's OI-170 to OI-173 and lane N's OI-174; each takes the next free numbers when it merges `main`, as slice 8 and lane N did.
+- **Numbers.** Decision records, `OI-` numbers and schema numbers are taken from the next free number across `main` and every unmerged branch. Slice 8 renumbered to record 0029 and OI-127 to OI-130 when it merged `main`, and lane G took record 0031 and OI-133 to OI-135. Lane C (slice 10) took record 0032, OI-136 to OI-140 and project schema 7. Slice 11a's record 0027 and OI-118 to OI-123 are on `main`, and lane B (slice 9) has merged record 0030 and OI-131 to OI-132. Other unmerged branches hold record 0028 and OI-124 to OI-126. Lane E (slice 14) took record 0033, `OI-150` to `OI-153` and project schema 8. Lane F (slice 19) took record 0028 and OI-141 to OI-144 on `main` first, lane I (slice 13) held OI-145 to OI-148 on its branch and OI-149 went to the CI required-checks job, so lane E's open items are OI-150 to OI-153. Lane H (slice 12) took record 0034, OI-154 to OI-157 (first OI-149 to OI-152, renumbered after lane E and the CI required-checks job took those) and project schema 9. Lane I took record 0036 (0033 went to lane E, and unmerged branches hold 0034 and 0035), OI-145 to OI-148, requirement OP-20 and no schema number. Slice 21 (workholding and retaining tabs, record 0035) took OI-158 to OI-162 and requirement OP-21. Lane M (slice 10 items 1 and 6) took record 0037 and OI-170 to OI-173 (first OI-159 to OI-162, renumbered after workholding took those and the OpenCASCADE cache took OI-169), and no schema number. Unmerged branches hold record 0038 (the interface specification) and OI-163 to OI-166. Lane N (slice 9 items 3 to 8) took record 0040 (first 0038, renumbered after the interface specification took it) and OI-174 to OI-179 (first OI-163 to OI-168), and no schema number. Lane U (slice 21a) took record 0041, OI-180 and OI-181 (first 0040, OI-169 and OI-170, then OI-174 and OI-175; renumbered after lane N took those) and project schema 10. Lane V (slice 21b) took record 0042 and OI-185 (first 0040 and OI-170, then 0041 and OI-180, renumbered after lanes M, N and U took those; checked 16 Oct 2026, when unmerged branches held records up to 0041 and OI up to 184) and no schema number. Lane L (slice 14 item 5) took record 0043 and OI-187 and OI-188 (both closed in the record) and no schema number. Lane J (slice 15) took record 0044 and OI-189 to OI-193 (first 0040 and OI-170 to OI-174, then 0041 and OI-180 to OI-184, renumbered after lanes M, N, U, V and L took those) and no schema number. Next free after that: record 0045, `OI-194`, project schema 11 (lanes D and O, then S, are expected to take 11 and 12 and renumber as they merge).
 - **Shared code.** Strategies are registered in the registry in `openchuck-path`, and operations live in `openchuck-project`; additions there merge cleanly if parameter schemas stay uniform (OP-16) and each strategy keeps to its own module. Do not reshuffle shared files in a feature lane; propose the change first.
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Adding a field to a public struct that hosts build by literal fails it. Add a new type or a new function beside it instead, as decision 0026 did with `EntryParameters` and `assemble_with_entry`.
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
@@ -637,7 +638,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
 
-**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) and per-selection stock to leave (slice 12 item 4) are not built, so the slice stays open. OI-117 is closed; OI-150 to OI-153 are open.
+**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); lane L merged on 16 Oct 2026. The slice stays open on one checklist box (every OP-11 parameter has a test), because per-selection stock to leave is not supported for roughing. OI-117 is closed; OI-150 to OI-153 are open.
 
 **Review checklist**
 
@@ -663,12 +664,14 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 4. Ordering and dependency handling between operations, using the pipeline invalidation from slice 9.
 5. Tests on parts with tight inside corners.
 
+**Status:** lane J built items 1 to 5 on `claude/lane-j-slice-15-rest-machining` ([decision 0044](decisions/0044-slice-15-rest-and-pencil.md), accepted 16 Oct 2026). Remaining material is found through the `StockModel` port from the carried stock; `rest_machining` is helical finishing cut only where material is left; `pencil_finishing` follows concave mesh creases. Not built: selections (OI-190), indexed and simultaneous rest forms (OI-189), pencil side passes (OI-192). OI-191 and OI-193 are open. The record is accepted, so the slice is closed; OI-189 to OI-193 carry the follow-ups.
+
 **Review checklist**
 
-- [ ] The rest operation cuts only where material remains above the threshold
-- [ ] Worst remaining value drops after the rest operation
-- [ ] Pencil paths follow the crease within tolerance without gouging
-- [ ] Nothing to clean gives a clear message, not an empty or odd path
+- [x] The rest operation cuts only where material remains above the threshold (a Ø1 ball after a Ø6 ball cuts X 9.5 to 13.0 of a 24 mm part; stock at the part has no sample)
+- [x] Worst remaining value drops after the rest operation (1.22 to 0.24 mm; 1.86 to 0.35 mm at a true wall; no overcut)
+- [x] Pencil paths follow the crease within tolerance without gouging (within 0.02 mm of the closed form; no overcut in the simulation)
+- [x] Nothing to clean gives a clear message, not an empty or odd path (an error naming the threshold; OI-172 asks whether it should stop the run)
 
 ## Slice 16 – Edge and curve following
 
@@ -768,7 +771,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 ## Slice 21 – Workholding and retaining tabs
 
-**Status:** 21a built (lane U, decision 0041 accepted, unmerged); 21b and 21c not started. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
+**Status:** 21a built and merged (lane U, [decision 0041](decisions/0041-slice-21a-workholding-data.md), accepted, pull request 55); 21b built by lane V on `claude/lane-v-slice-21b-composite-target` ([decision 0042](decisions/0042-slice-21b-composite-target.md), proposed; items 1 and 2 and the oracle-part tests of item 3 done, the independent checker used for the parts about the rotary axis only; OI-162 measured, OI-185 new); 21c not started. Added by [decision 0035](decisions/0035-workholding-and-retaining-tabs.md) (accepted). Split into three sub-slices so slices 12, 13 and 14, already in progress, change in no way: strategies keep working on one target surface and one stock model, and the held region and the tabs join the target before any strategy sees it.
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 
