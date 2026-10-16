@@ -311,8 +311,8 @@ fn req_op_08_brep_edges_join_into_open_and_closed_chains_and_stop_where_three_me
     let source = BrepEdges::new(&model).unwrap();
     let surface = BrepSurface::new(&capped_cylinder()).unwrap();
     let chains = source.chains(&surface).unwrap();
-    // b has four edges, so a-b, c-b, b-e and b-f are single-edge chains; c-d
-    // joins c-b? No: c has two (c-b, c-d), so c-b and c-d join into d-c-b.
+    // b has four edges, so a-b, b-e and b-f are single-edge chains. c has two
+    // edges (c-b, c-d), so they join into d-c-b.
     let open: Vec<_> = chains.iter().filter(|c| !c.closed).collect();
     let closed: Vec<_> = chains.iter().filter(|c| c.closed).collect();
     assert_eq!(closed.len(), 1, "the two half circles close");
