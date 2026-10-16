@@ -1,6 +1,6 @@
 # 0051: Slice 18 design refinement: radial drilling (lane R)
 
-- **Status:** proposed (16 Oct 2026). Built on `claude/lane-r-slice-18-drilling` (lane R). It is guidance, not authority, until the owner accepts it. Nothing in it changes a requirement, the architecture or a file format. It changes the library API (`Pass` gains a field), so the workspace goes to 0.8.0 (decision 0048).
+- **Status:** accepted by the project owner (16 Oct 2026), in this session at the owner's instruction (also relayed by the orchestrator session, decision 0049). Built on `claude/lane-r-slice-18-drilling` (lane R), as built, with all six choices a reviewer might change (the `Pass.rapids` field and the 0.8.0 bump, `SurfaceSource::holes()`, the depth defaults, tool and hole matching, through-hole entry, the ordering). Nothing in it changes a requirement, the architecture or a file format. It changes the library API (`Pass` gains a field), so the workspace goes to 0.8.0 (decision 0048).
 - **Date:** 16 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-216 to OI-220 are new.
 

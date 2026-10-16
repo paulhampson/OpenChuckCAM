@@ -133,7 +133,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | O | 11 items 5 and 7: viewport faces and edges, B-rep selection storage | ░░ | ░░ | ██ | | |
 | P | 16 edge following on B-rep edges | ░░ | ░░ | ░░ | ██ | |
 | Q | 17 swarf | ░░ | ░░ | ░░ | ██ | |
-| R | 18 radial drilling (library strategy built 16 Oct 2026 on `claude/lane-r-slice-18-drilling`, [decision 0051](decisions/0051-slice-18-radial-drilling.md), proposed) | ░░ | ░░ | ░░ | ██ | |
+| R | 18 radial drilling (library strategy built 16 Oct 2026 on `claude/lane-r-slice-18-drilling`, [decision 0051](decisions/0051-slice-18-radial-drilling.md), accepted) | ░░ | ░░ | ░░ | ██ | |
 | S | 19 item 4: export dialogs and the tool-number dialog | ░░ | ░░ | ░░ | ██ | |
 | U | 21a workholding and tab data in the setup (SET-09, OP-21): types, validation, project file, commands | ██ | | | | |
 | V | 21b composite target in `openchuck-path`: cylinder and frustum solids joined to the model's surface | ██ | ██ | | | |
@@ -753,7 +753,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 4. Post option to output canned cycles.
 5. Tests on holes at several angles.
 
-**Status:** lane R built items 1, 2, 3 and 5 as a library strategy on `claude/lane-r-slice-18-drilling` ([decision 0051](decisions/0051-slice-18-radial-drilling.md), proposed 16 Oct 2026): holes are found from the cylindrical faces of a B-rep (`SurfaceSource::holes`, selected by face through `BrepSurface::with_faces`), each is one pass along its own axis at its own A, with equal pecks as expanded moves (`Pass` gains `rapids`, so the workspace is 0.8.0), ordered in one sweep of the angles. Item 4 (canned cycles in the post) is not built (OI-216). The application cannot run the strategy yet (OI-219: a B-rep model in an operation and the face selection are lanes O and W), so the LinuxCNC simulator replay is not run. The slice stays open; OP-10 is not in `closed_slices`. Open items OI-216 to OI-220.
+**Status:** lane R built items 1, 2, 3 and 5 as a library strategy on `claude/lane-r-slice-18-drilling` ([decision 0051](decisions/0051-slice-18-radial-drilling.md), accepted 16 Oct 2026): holes are found from the cylindrical faces of a B-rep (`SurfaceSource::holes`, selected by face through `BrepSurface::with_faces`), each is one pass along its own axis at its own A, with equal pecks as expanded moves (`Pass` gains `rapids`, so the workspace is 0.8.0), ordered in one sweep of the angles. Item 4 (canned cycles in the post) is not built (OI-216). The application cannot run the strategy yet (OI-219: a B-rep model in an operation and the face selection are lanes O and W), so the LinuxCNC simulator replay is not run. The slice stays open; OP-10 is not in `closed_slices`. Open items OI-216 to OI-220.
 
 **Review checklist**
 
