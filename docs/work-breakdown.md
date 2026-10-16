@@ -696,7 +696,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 
 - [x] Engraved depth is constant within tolerance on a curved surface (`req_op_08_engraved_depth_is_constant_on_a_curved_surface`, open and closed chains; mesh edges, lane K)
 - [x] Chain direction and start point are controllable (`req_op_08_chain_direction_and_start_point_are_controllable`)
-- [ ] Edge selections persist across save and load (OI-204: a new selection kind and a schema number)
+- [ ] Edge selections persist across save and load (waits for lane P and the viewport edge-picking work, which own the new selection kind and its schema number; OI-204, owner's decision 16 Oct 2026)
 - [x] Simulator replay passes (`crates/openchuck-sim/tests/edge_following.rs`)
 
 ## Slice 17 – Swarf (flank) machining
