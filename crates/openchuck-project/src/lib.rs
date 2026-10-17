@@ -62,6 +62,6 @@ pub use hash::ContentHash;
 pub use model::{
     Descriptor, Item, ItemId, ListKind, ModelCheck, ModelRef, OldKeys, OldPlace, Operation,
     ParameterValue, Placement, Project, RelativePath, SelectionSet, SelectionTarget, Setup,
-    ToolSnapshot,
+    ToolSnapshot, is_set_colour,
 };
 pub use order::OrderKey;

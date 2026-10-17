@@ -23,10 +23,83 @@ use openchuck_viewport::{Colour, Scene, Slot};
 use crate::viewport::PickInput;
 
 const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
-const WORKING: Colour = [1.0, 0.55, 0.0, 1.0];
-const SHOWN: Colour = [0.2, 0.8, 0.35, 1.0];
-const HOVER: Colour = [1.0, 0.9, 0.2, 1.0];
+/// Working selection: blue `#3d8bff` at 40%, a fill (specification 7.4;
+/// decision 0038 amends 0037 item 5).
+const WORKING: Colour = [0.239, 0.545, 1.0, FILL_ALPHA];
+/// The triangle under the pointer: a yellow `#ffe066` outline.
+const HOVER: Colour = [1.0, 0.878, 0.4, 1.0];
 const NO_EDGES: Colour = [0.0, 0.0, 0.0, 0.0];
+/// How much of a selection's colour shows over the surface.
+const FILL_ALPHA: f32 = 0.4;
+
+/// The fixed set of eight swatches a saved set takes its colour from, by its
+/// place in the project's list of sets (so up to eight sets are told apart).
+/// None is the working blue, the hover yellow or the avoid red.
+const SWATCHES: [[u8; 3]; 8] = [
+    [0x2d, 0x6c, 0xb5],
+    [0xa0, 0x4a, 0x46],
+    [0x7d, 0x5b, 0xb5],
+    [0x3f, 0x9c, 0x8a],
+    [0xb5, 0x8a, 0x2d],
+    [0x6f, 0x9a, 0x3a],
+    [0xb5, 0x56, 0x8f],
+    [0x7a, 0x85, 0x91],
+];
+
+/// The swatch of the set at `index` in the project's list.
+fn swatch(index: usize) -> [u8; 3] {
+    SWATCHES
+        .get(index % SWATCHES.len())
+        .copied()
+        .unwrap_or_default()
+}
+
+/// The colour of a set: the one the user chose (`#rrggbb`), or the default
+/// swatch of its place in the list.
+fn set_rgb(chosen: Option<&str>, index: usize) -> [u8; 3] {
+    chosen
+        .and_then(|c| {
+            let byte = |i: usize| u8::from_str_radix(c.get(i..i + 2)?, 16).ok();
+            Some([byte(1)?, byte(3)?, byte(5)?])
+        })
+        .unwrap_or_else(|| swatch(index))
+}
+
+fn hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+}
+
+/// The fill colour of a set's colour.
+fn rgb_fill([r, g, b]: [u8; 3]) -> Colour {
+    [
+        f32::from(r) / 255.0,
+        f32::from(g) / 255.0,
+        f32::from(b) / 255.0,
+        FILL_ALPHA,
+    ]
+}
+
+/// What a key chooses (specification section 15): Q one triangle, W flood
+/// fill (connected shell), E select by angle (smooth patch). R, same
+/// direction, is added by the owner (decision 0046 item 4); the
+/// specification lists only Q, W, E and B. B, box selection, is not built
+/// (OI-201).
+fn choice_for_key(key: egui::Key) -> Option<Choice> {
+    match key {
+        egui::Key::Q => Some(Choice::Triangle),
+        egui::Key::W => Some(Choice::Connected),
+        egui::Key::E => Some(Choice::Smooth),
+        egui::Key::R => Some(Choice::Direction),
+        _ => None,
+    }
+}
+
+fn capitalise(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
+}
 
 /// What a click selects, as the panel's radio buttons name it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +108,46 @@ enum Choice {
     Connected,
     Smooth,
     Direction,
+}
+
+impl Choice {
+    const ALL: [Self; 4] = [
+        Self::Triangle,
+        Self::Connected,
+        Self::Smooth,
+        Self::Direction,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Triangle => "Select one",
+            Self::Connected => "Flood fill",
+            Self::Smooth => "By angle",
+            Self::Direction => "Same direction",
+        }
+    }
+
+    fn key(self) -> Option<egui::Key> {
+        match self {
+            Self::Triangle => Some(egui::Key::Q),
+            Self::Connected => Some(egui::Key::W),
+            Self::Smooth => Some(egui::Key::E),
+            Self::Direction => Some(egui::Key::R),
+        }
+    }
+
+    fn tip(self) -> &'static str {
+        match self {
+            Self::Triangle => "Only the triangle clicked.",
+            Self::Connected => "Every triangle joined to it through shared edges.",
+            Self::Smooth => {
+                "The connected triangles reached without turning more than the edge angle at an edge, such as one face of a block."
+            }
+            Self::Direction => {
+                "Every triangle facing within the angle of the clicked one, wherever it is on the part."
+            }
+        }
+    }
 }
 
 /// How a pick joins the working selection.
@@ -263,8 +376,8 @@ impl SelectionPanel {
     }
 
     /// The highlights to draw over the scene when they changed since the last
-    /// call: the working selection in orange, the chosen set in green, the
-    /// triangle under the pointer in yellow.
+    /// call: the chosen set filled with its swatch, the working selection
+    /// filled blue, the triangle under the pointer outlined in yellow.
     pub fn overlay(&mut self, app: &Application, view: &SceneView) -> Option<Scene> {
         if !std::mem::take(&mut self.dirty) {
             return None;
@@ -279,7 +392,18 @@ impl SelectionPanel {
             && let Some(set) = self.shown_triangles(app)
             && let Some(part) = part_of(model)
         {
-            scene.add_mesh(&triangles_mesh(&part.mesh, &set), &[], SHOWN, NO_EDGES);
+            let sets = app.project().selection_sets();
+            let index = sets
+                .iter()
+                .position(|s| Some(s.id) == self.shown)
+                .unwrap_or(0);
+            let chosen = sets.get(index).and_then(|s| s.colour.as_deref());
+            scene.add_mesh(
+                &triangles_mesh(&part.mesh, &set),
+                &[],
+                rgb_fill(set_rgb(chosen, index)),
+                NO_EDGES,
+            );
         }
         if let Some(model) = self.working_model
             && let Some(part) = part_of(model)
@@ -293,13 +417,23 @@ impl SelectionPanel {
         }
         if let Some(hover) = self.hover
             && let Some(part) = view.meshes.get(hover.mesh)
+            && let Some(corners) = part.mesh.triangles.get(hover.triangle as usize)
         {
-            let one = TriangleSet::from([hover.triangle]);
-            scene.add_mesh(&triangles_mesh(&part.mesh, &one), &[], HOVER, NO_EDGES);
+            let outline: Vec<_> = corners
+                .iter()
+                .chain(corners.first())
+                .filter_map(|&i| part.mesh.vertices.get(i as usize).copied())
+                .collect();
+            if outline.len() == 4 {
+                scene.add_polyline(&outline, HOVER, false);
+            }
         }
         // The highlights are on the workpiece, which turns with A.
         for mesh in &mut scene.meshes {
             mesh.slot = Slot::Part;
+        }
+        for line in &mut scene.lines {
+            line.slot = Slot::Part;
         }
         Some(scene)
     }
@@ -314,18 +448,72 @@ impl SelectionPanel {
     }
 
     fn shown_triangles(&self, app: &Application) -> Option<TriangleSet> {
-        use openchuck_app::project::SelectionTarget;
-        let id = self.shown?;
-        match &app
-            .project()
-            .selection_sets()
-            .iter()
-            .find(|s| s.id == id)?
-            .target
-        {
-            SelectionTarget::Triangles(t) => Some(t.clone()),
-            _ => None,
+        set_triangles(app, self.shown?)
+    }
+
+    /// Chooses what a click selects from a key (Q, W, E; specification
+    /// section 15), and reports Esc. Returns true when Esc asks to leave
+    /// picking; a region pick still running is cancelled first and keeps
+    /// picking on. Does nothing while a text field has the keyboard; the
+    /// caller skips it while a dialog is open.
+    pub fn keys(&mut self, ctx: &egui::Context) -> bool {
+        if ctx.egui_wants_keyboard_input() {
+            return false;
         }
+        let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key));
+        for key in [egui::Key::Q, egui::Key::W, egui::Key::E, egui::Key::R] {
+            if pressed(key)
+                && let Some(choice) = choice_for_key(key)
+            {
+                self.choice = choice;
+                self.message = None;
+            }
+        }
+        if !pressed(egui::Key::Escape) {
+            return false;
+        }
+        match self.pending.take() {
+            Some(pending) => {
+                pending.handle.cancel();
+                false
+            }
+            None => true,
+        }
+    }
+
+    /// The selection tools box, drawn over the top left of the viewport
+    /// (specification section 7.2): one button for each way a click selects,
+    /// with its key.
+    pub fn tools(&mut self, ctx: &egui::Context, corner: egui::Pos2) {
+        egui::Area::new(egui::Id::new("selection tools"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(corner)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(Color32::from_rgba_unmultiplied(16, 18, 21, 225))
+                    .corner_radius(4)
+                    .inner_margin(6)
+                    .show(ui, |ui| {
+                        ui.visuals_mut().override_text_color = Some(Color32::from_gray(228));
+                        for choice in Choice::ALL {
+                            let key = choice
+                                .key()
+                                .map_or(String::new(), |k| format!(" ({})", k.name()));
+                            let tip = choice.tip();
+                            if ui
+                                .selectable_label(
+                                    self.choice == choice,
+                                    format!("{}{key}", choice.name()),
+                                )
+                                .on_hover_text(tip)
+                                .clicked()
+                            {
+                                self.choice = choice;
+                                self.message = None;
+                            }
+                        }
+                    });
+            });
     }
 
     /// Draws the panel. Returns the text of an error to show in a dialog.
@@ -338,59 +526,29 @@ impl SelectionPanel {
     ) -> Option<String> {
         let mut error = None;
         self.drop_stale_working(app);
-        ui.heading("Selection");
+        ui.heading("Selection sets");
         if view.picking.picker().is_none() {
             ui.label("There is no part to select on. Choose a setup with a part.");
         }
-        ui.strong("A click selects");
-        for (choice, text, tip) in [
-            (
-                Choice::Triangle,
-                "One triangle",
-                "Only the triangle clicked.",
-            ),
-            (
-                Choice::Connected,
-                "Connected shell",
-                "Every triangle joined to it through shared edges.",
-            ),
-            (
-                Choice::Smooth,
-                "Smooth patch",
-                "The connected triangles reached without turning more than the edge angle at an edge, such as one face of a block.",
-            ),
-            (
-                Choice::Direction,
-                "Same direction",
-                "Every triangle facing within the angle of the clicked one, wherever it is on the part.",
-            ),
-        ] {
-            if ui
-                .radio_value(&mut self.choice, choice, text)
-                .on_hover_text(tip)
-                .changed()
-            {
-                self.message = None;
-            }
+        ui.weak("Meshes are selected by triangle; STEP models by face and edge.");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Click: {}.", self.choice.name().to_lowercase()));
+            ui.weak("Choose in the box on the view, or press Q, W, E or R.");
+        });
+        ui.add(
+            egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
+                .text("select by angle within")
+                .suffix("°"),
+        )
+        .on_hover_text("The edge angle for smooth patch: the most a surface may turn at an edge.");
+        if self.choice == Choice::Direction {
+            ui.add(
+                egui::Slider::new(&mut self.direction_angle, 1.0..=90.0)
+                    .text("same direction within")
+                    .suffix("°"),
+            );
         }
-        match self.choice {
-            Choice::Smooth => {
-                ui.add(
-                    egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
-                        .text("edge angle")
-                        .suffix("°"),
-                );
-            }
-            Choice::Direction => {
-                ui.add(
-                    egui::Slider::new(&mut self.direction_angle, 1.0..=90.0)
-                        .text("angle")
-                        .suffix("°"),
-                );
-            }
-            _ => {}
-        }
-        ui.weak("Click selects. Shift adds. Ctrl removes. Drag to orbit.");
+        ui.weak("Click selects. Shift adds. Ctrl removes. Drag to orbit. Esc leaves.");
         match self.hover {
             Some(h) => ui.label(format!("Pointing at triangle {}", h.triangle)),
             None => ui.weak("Not pointing at the part"),
@@ -403,27 +561,23 @@ impl SelectionPanel {
         }
 
         ui.separator();
-        ui.strong("Working selection");
-        ui.label(format!("{} triangles", self.working.len()));
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(!self.working.is_empty(), egui::Button::new("Clear"))
-                .clicked()
-            {
-                self.working.clear();
-                self.working_model = None;
-                self.dirty = true;
-            }
+        ui.strong(format!(
+            "Working selection: {} triangles",
+            self.working.len()
+        ));
+        let chosen = summaries.iter().find(|s| Some(s.id) == self.shown);
+        let can_edit = chosen.is_some_and(|s| {
+            !self.working.is_empty() && self.working_model == Some(s.model) && s.kind == "triangles"
         });
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.name)
                     .hint_text(format!("Selection {}", summaries.len() + 1))
-                    .desired_width(140.0),
+                    .desired_width(120.0),
             );
             let ready = !self.working.is_empty() && self.working_model.is_some();
             if ui
-                .add_enabled(ready, egui::Button::new("Save as set"))
+                .add_enabled(ready, egui::Button::new("New set from selection"))
                 .on_hover_text("Name this selection so operations can use it (UI-05)")
                 .clicked()
                 && let Some(model) = self.working_model
@@ -444,38 +598,157 @@ impl SelectionPanel {
                     Err(e) => error = Some(e.to_string()),
                 }
             }
+            if ui
+                .add_enabled(!self.working.is_empty(), egui::Button::new("Clear"))
+                .clicked()
+            {
+                self.working.clear();
+                self.working_model = None;
+                self.dirty = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (label, tip, kind) in [
+                (
+                    "Add selection to set",
+                    "Add the working selection to the chosen set",
+                    0,
+                ),
+                (
+                    "Remove from set",
+                    "Take the working selection out of the chosen set",
+                    1,
+                ),
+                (
+                    "Replace set",
+                    "Replace the chosen set's triangles with the working selection",
+                    2,
+                ),
+            ] {
+                let enabled = can_edit;
+                let button = ui.add_enabled(enabled, egui::Button::new(label));
+                if !enabled {
+                    button.clone().on_disabled_hover_text(
+                        "Choose a set of triangles on the model you selected on",
+                    );
+                }
+                if button.on_hover_text(tip).clicked()
+                    && let Some(set) = chosen
+                {
+                    let triangles = self.working.clone();
+                    let which = match kind {
+                        0 => SelectionEdit::Add(triangles),
+                        1 => SelectionEdit::Remove(triangles),
+                        _ => SelectionEdit::Replace(triangles),
+                    };
+                    match app.edit_selection(set.id, which) {
+                        Ok(_) => self.dirty = true,
+                        Err(e) => error = Some(e.to_string()),
+                    }
+                }
+            }
         });
 
         ui.separator();
-        ui.strong(format!("Sets ({})", summaries.len()));
         if summaries.is_empty() {
-            ui.weak("None yet. Select triangles and save them as a set.");
+            ui.weak("No sets yet. Select triangles and make a set from them.");
+        } else {
+            self.table(ui, app, summaries);
         }
-        for summary in summaries {
-            let chosen = self.shown == Some(summary.id);
-            let mut text = RichText::new(format!(
-                "{}  ({} {})",
-                summary.name, summary.count, summary.kind
-            ));
-            if summary.problem.is_some() {
-                text = text.color(PROBLEM);
-            }
-            let row = ui.selectable_label(chosen, text);
-            if let Some(problem) = &summary.problem {
-                row.clone().on_hover_text(problem);
-            }
-            if row.clicked() {
-                self.show_set(if chosen { None } else { Some(summary.id) });
-                self.rename = summary.name.clone();
-            }
-        }
-        if let Some(summary) = summaries.iter().find(|s| Some(s.id) == self.shown) {
+        if let Some(summary) = chosen {
             ui.separator();
             if let Some(e) = self.set_details(ui, app, summary) {
                 error = Some(e);
             }
         }
+        ui.separator();
+        ui.weak("Editing a set marks every operation that uses it stale.");
         error
+    }
+
+    /// The table of sets (specification section 12.2): swatch, name, kind,
+    /// size, used by, status and the action. A set with a problem is marked
+    /// with a triangle as well as red.
+    fn table(&mut self, ui: &mut egui::Ui, app: &Application, summaries: &[SelectionSummary]) {
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            egui::Grid::new("selection sets")
+                .striped(true)
+                .num_columns(7)
+                .show(ui, |ui| {
+                    for head in ["", "Name", "Kind", "Size", "Used by", "Status", ""] {
+                        ui.weak(head);
+                    }
+                    ui.end_row();
+                    for (index, summary) in summaries.iter().enumerate() {
+                        let chosen = self.shown == Some(summary.id);
+                        let [r, g, b] = set_rgb(summary.colour.as_deref(), index);
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+                        ui.painter()
+                            .rect_filled(rect, 2.0, Color32::from_rgb(r, g, b));
+                        let name = ui.selectable_label(chosen, &summary.name);
+                        if name.clicked() {
+                            self.show_set(if chosen { None } else { Some(summary.id) });
+                            self.rename = summary.name.clone();
+                        }
+                        ui.label(capitalise(summary.kind));
+                        ui.label(summary.count.to_string());
+                        let used: Vec<String> = summary
+                            .uses
+                            .iter()
+                            .map(|u| {
+                                let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
+                                format!("{} ({})", u.name, roles.join(", "))
+                            })
+                            .collect();
+                        ui.label(if used.is_empty() {
+                            "Not used".to_owned()
+                        } else {
+                            used.join("; ")
+                        });
+                        match &summary.problem {
+                            Some(problem) => {
+                                ui.colored_label(PROBLEM, "▲ Problem")
+                                    .on_hover_text(problem);
+                            }
+                            None => {
+                                ui.label("● Matches model");
+                            }
+                        }
+                        let usable = summary.problem.is_none() && summary.kind == "triangles";
+                        if usable
+                            && ui
+                                .link("Select in view")
+                                .on_hover_text("Make the set the working selection, to edit it")
+                                .clicked()
+                            && let Some(t) = set_triangles(app, summary.id)
+                        {
+                            self.select_set_in_view(app, summary, t);
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+
+    /// Makes `triangles`, the contents of `summary`'s set, the working
+    /// selection and shows the set.
+    fn select_set_in_view(
+        &mut self,
+        app: &Application,
+        summary: &SelectionSummary,
+        triangles: TriangleSet,
+    ) {
+        // A region pick still running would overwrite what is loaded.
+        if let Some(pending) = self.pending.take() {
+            pending.handle.cancel();
+        }
+        self.working = triangles;
+        self.working_model = Some(summary.model);
+        self.working_hash = recorded_hash(app, summary.model);
+        self.shown = Some(summary.id);
+        self.rename = summary.name.clone();
+        self.dirty = true;
     }
 
     fn set_details(
@@ -496,7 +769,7 @@ impl SelectionPanel {
                 .unwrap_or("a model that is gone")
         ));
         if let Some(problem) = &summary.problem {
-            ui.colored_label(PROBLEM, format!("⚠ {problem}"));
+            ui.colored_label(PROBLEM, format!("▲ {problem}"));
         }
         if summary.uses.is_empty() {
             ui.weak("No operation uses this set.");
@@ -505,46 +778,6 @@ impl SelectionPanel {
             let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
             ui.label(format!("Used by {}: {}", u.name, roles.join(", ")));
         }
-        let editable = !self.working.is_empty()
-            && self.working_model == Some(summary.model)
-            && summary.kind == "triangles";
-        let edit = |edit: SelectionEdit, app: &mut Application| {
-            app.edit_selection(summary.id, edit)
-                .err()
-                .map(|e| e.to_string())
-        };
-        ui.horizontal_wrapped(|ui| {
-            for (label, tip, kind) in [
-                ("Add selection", "Add the working selection to this set", 0),
-                (
-                    "Remove selection",
-                    "Take the working selection out of this set",
-                    1,
-                ),
-                (
-                    "Replace with selection",
-                    "Replace this set's triangles with the working selection",
-                    2,
-                ),
-            ] {
-                if ui
-                    .add_enabled(editable, egui::Button::new(label))
-                    .on_hover_text(tip)
-                    .clicked()
-                {
-                    let triangles = self.working.clone();
-                    let which = match kind {
-                        0 => SelectionEdit::Add(triangles),
-                        1 => SelectionEdit::Remove(triangles),
-                        _ => SelectionEdit::Replace(triangles),
-                    };
-                    if let Some(e) = edit(which, app) {
-                        error = Some(e);
-                    }
-                    self.dirty = true;
-                }
-            }
-        });
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut self.rename).desired_width(140.0));
             if ui
@@ -553,9 +786,42 @@ impl SelectionPanel {
                     egui::Button::new("Rename"),
                 )
                 .clicked()
-                && let Some(e) = edit(SelectionEdit::Rename(self.rename.trim().to_owned()), app)
+                && let Err(e) = app.edit_selection(
+                    summary.id,
+                    SelectionEdit::Rename(self.rename.trim().to_owned()),
+                )
             {
-                error = Some(e);
+                error = Some(e.to_string());
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Colour");
+            for rgb in SWATCHES {
+                let current = summary.colour.as_deref() == Some(hex(rgb).as_str());
+                let (r, g, b) = (rgb[0], rgb[1], rgb[2]);
+                let button = egui::Button::new(if current { "✓" } else { "  " })
+                    .fill(Color32::from_rgb(r, g, b))
+                    .min_size(egui::vec2(18.0, 18.0));
+                if ui
+                    .add(button)
+                    .on_hover_text(format!("Show this set in {}", hex(rgb)))
+                    .clicked()
+                {
+                    match app.edit_selection(summary.id, SelectionEdit::Colour(Some(hex(rgb)))) {
+                        Ok(_) => self.dirty = true,
+                        Err(e) => error = Some(e.to_string()),
+                    }
+                }
+            }
+            if ui
+                .add_enabled(summary.colour.is_some(), egui::Button::new("Default"))
+                .on_hover_text("Take the swatch of the set's place in the list")
+                .clicked()
+            {
+                match app.edit_selection(summary.id, SelectionEdit::Colour(None)) {
+                    Ok(_) => self.dirty = true,
+                    Err(e) => error = Some(e.to_string()),
+                }
             }
         });
         let used = !summary.uses.is_empty();
@@ -573,6 +839,21 @@ impl SelectionPanel {
             }
         }
         error
+    }
+}
+
+/// The triangles of the set `id`, if it selects triangles.
+fn set_triangles(app: &Application, id: SelectionSetId) -> Option<TriangleSet> {
+    use openchuck_app::project::SelectionTarget;
+    match &app
+        .project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == id)?
+        .target
+    {
+        SelectionTarget::Triangles(t) => Some(t.clone()),
+        _ => None,
     }
 }
 
@@ -663,7 +944,7 @@ pub fn operation_roles(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
 
@@ -683,6 +964,110 @@ mod tests {
         assert_eq!(current, set(&[2, 3]));
         Combine::Replace.apply(&mut current, set(&[7]));
         assert_eq!(current, set(&[7]));
+    }
+
+    #[test]
+    fn req_ui_14_keys_q_w_e_r_choose_how_a_click_selects() {
+        assert_eq!(choice_for_key(egui::Key::Q), Some(Choice::Triangle));
+        assert_eq!(choice_for_key(egui::Key::W), Some(Choice::Connected));
+        assert_eq!(choice_for_key(egui::Key::E), Some(Choice::Smooth));
+        assert_eq!(choice_for_key(egui::Key::R), Some(Choice::Direction));
+        assert_eq!(choice_for_key(egui::Key::B), None);
+        // Every way a click selects has a key, shown in its tooltip label.
+        assert!(Choice::ALL.iter().all(|c| c.key().is_some()));
+        // Every key the tools box shows is one that chooses that tool.
+        for choice in Choice::ALL {
+            if let Some(key) = choice.key() {
+                assert_eq!(choice_for_key(key), Some(choice));
+            }
+        }
+        let ctx = egui::Context::default();
+        let mut panel = SelectionPanel::default();
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::Key {
+            key: egui::Key::Q,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        });
+        let mut output = ctx.run_ui(input, |ui| {
+            assert!(!panel.keys(ui.ctx()));
+        });
+        output.textures_delta.clear();
+        assert_eq!(panel.choice, Choice::Triangle);
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        });
+        let mut left = false;
+        let mut output = ctx.run_ui(input, |ui| left = panel.keys(ui.ctx()));
+        output.textures_delta.clear();
+        assert!(left, "Esc leaves picking when no fill is running");
+    }
+
+    #[test]
+    fn req_ui_05_the_swatches_are_eight_and_none_is_a_highlight_colour() {
+        let all: std::collections::BTreeSet<_> = SWATCHES.iter().collect();
+        assert_eq!(all.len(), 8);
+        assert_eq!(swatch(8), swatch(0));
+        let to_u8 = |c: Colour| [0, 1, 2].map(|i| (c[i] * 255.0).round() as u8);
+        for s in SWATCHES {
+            assert_ne!(s, to_u8(WORKING));
+            assert_ne!(s, to_u8(HOVER));
+        }
+        assert_eq!(to_u8(WORKING), [0x3d, 0x8b, 0xff]);
+        assert_eq!(to_u8(HOVER), [0xff, 0xe0, 0x66]);
+    }
+
+    #[test]
+    fn req_ui_05_a_chosen_colour_replaces_the_default_swatch() {
+        assert_eq!(set_rgb(None, 1), swatch(1));
+        assert_eq!(set_rgb(Some("#102030"), 1), [0x10, 0x20, 0x30]);
+        // A malformed stored value falls back to the swatch, never a panic.
+        assert_eq!(set_rgb(Some("#12"), 2), swatch(2));
+        assert_eq!(set_rgb(Some("zzzzzzz"), 2), swatch(2));
+        assert_eq!(hex([0x2d, 0x6c, 0xb5]), "#2d6cb5");
+    }
+
+    #[test]
+    fn req_ui_04_hover_is_a_yellow_outline_and_the_working_selection_a_blue_fill() {
+        use openchuck_app::project::id::ModelId;
+        let (dir, app, model) = cube_project("hover-outline");
+        let view = app.start_scene(None).wait().unwrap();
+        let mut panel = SelectionPanel::default();
+        panel.join(model, Combine::Replace, set(&[0, 1]), None);
+        panel.hover = Some(ScenePick {
+            mesh: view
+                .meshes
+                .iter()
+                .position(|m| m.role == SceneRole::Part)
+                .unwrap(),
+            model: Some(model),
+            triangle: 3,
+            distance: 1.0,
+            point: openchuck_app::setup::Point3::new(0.0, 0.0, 0.0),
+            normal: None,
+        });
+        let scene = panel.overlay(&app, &view).unwrap();
+        // One blue translucent fill of the two working triangles ...
+        assert_eq!(scene.meshes.len(), 1);
+        assert_eq!(overlay_triangles(&scene), 2);
+        assert_eq!(scene.meshes[0].colour, WORKING);
+        assert!(scene.meshes[0].colour[3] < 1.0);
+        // ... and the hovered triangle as a closed yellow loop of 3 sides
+        // (6 end points), not a fill.
+        assert_eq!(scene.lines.len(), 1);
+        assert_eq!(scene.lines[0].colour, HOVER);
+        assert_eq!(scene.lines[0].segments.len(), 6);
+        assert!(!scene.lines[0].on_top);
+        assert_eq!(scene.lines[0].slot, Slot::Part);
+        let _ = ModelId::new();
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -726,7 +1111,7 @@ mod tests {
         let mut panel = SelectionPanel::default();
         // Nothing is chosen, so only the (empty) overlay is drawn.
         assert_eq!(overlay_triangles(&panel.overlay(&app, &view).unwrap()), 0);
-        // Choosing the set draws exactly its two triangles, in green.
+        // Choosing the set draws exactly its two triangles.
         panel.show_set(Some(id));
         let scene = panel.overlay(&app, &view).unwrap();
         assert_eq!(overlay_triangles(&scene), 2);
@@ -734,7 +1119,7 @@ mod tests {
             scene.meshes[0]
                 .colour
                 .iter()
-                .zip(SHOWN)
+                .zip(rgb_fill(swatch(0)))
                 .all(|(a, b)| (a - b).abs() < 1e-6)
         );
         // Nothing changed since: nothing to draw again.

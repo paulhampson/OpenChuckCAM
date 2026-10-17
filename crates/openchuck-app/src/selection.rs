@@ -96,6 +96,10 @@ pub enum SelectionEdit {
     /// Sets the stock to leave on the set, in millimetres, or clears it so the
     /// operation's value applies (OP-11).
     StockToLeave(Option<f64>),
+    /// Sets the colour the set is shown in, as `#rrggbb` in lower case, or
+    /// clears it so the default swatch applies (decision record 0046). It
+    /// does not change what an operation cuts.
+    Colour(Option<String>),
 }
 
 /// The part an operation gives a selection set (OP-02).
@@ -169,6 +173,9 @@ pub struct SelectionSummary {
     pub uses: Vec<SelectionUse>,
     /// Why it cannot be used as it is, worded for the user.
     pub problem: Option<String>,
+    /// The colour the user chose for it (`#rrggbb`), or `None` for the
+    /// default swatch of its place in the list.
+    pub colour: Option<String>,
 }
 
 fn selection_error(name: &str, reason: impl Into<String>) -> AppError {
@@ -265,6 +272,7 @@ impl Application {
             target: SelectionTarget::Triangles(triangles),
             descriptors: Vec::new(),
             stock_to_leave: None,
+            colour: None,
         };
         self.execute(Command::Add {
             item: Item::SelectionSet(set),
@@ -300,6 +308,17 @@ impl Application {
                 ));
             }
             edited.stock_to_leave = leave;
+        } else if let SelectionEdit::Colour(colour) = edit {
+            if colour
+                .as_deref()
+                .is_some_and(|c| !openchuck_project::is_set_colour(c))
+            {
+                return Err(selection_error(
+                    &edited.name,
+                    "the colour must be written #rrggbb in lower case",
+                ));
+            }
+            edited.colour = colour;
         } else {
             let SelectionTarget::Triangles(current) = &mut edited.target else {
                 return Err(selection_error(
@@ -311,7 +330,9 @@ impl Application {
                 SelectionEdit::Add(more) => current.extend(more),
                 SelectionEdit::Remove(less) => current.retain(|t| !less.contains(t)),
                 SelectionEdit::Replace(all) => *current = all,
-                SelectionEdit::Rename(_) | SelectionEdit::StockToLeave(_) => {}
+                SelectionEdit::Rename(_)
+                | SelectionEdit::StockToLeave(_)
+                | SelectionEdit::Colour(_) => {}
             }
             if current.is_empty() {
                 return Err(selection_error(
@@ -508,6 +529,7 @@ impl Application {
                     count,
                     uses,
                     problem,
+                    colour: set.colour.clone(),
                 }
             })
             .collect()
