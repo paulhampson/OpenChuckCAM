@@ -84,5 +84,5 @@ Two gaps in the command-line tool shape the design:
 ## Consequences
 
 - One sample list feeds determinism, the golden comparison, simulation, cancellation and undo. A new reference job is added in `reference_jobs.rs` (its golden programs) and in `e2e.rs` (the command-line route).
-- The suite found one defect: a false setup warning when the stock is exactly as wide as the part (OI-314). It is recorded, not fixed here: it is a warning, not wrong output, and the fix belongs in `openchuck-types`.
+- The suite found one defect: a false setup warning when the stock is exactly as wide as the part (OI-314). It is recorded, not fixed here: it is a warning, not wrong output, and the one-line fix (a tolerance in the comparison) is a production-code change in the library family that the orchestrator has put to the owner. No tolerance is chosen.
 - Slice 20 review check "The full run works with no network access" is ticked for the command-line suite on Linux. The UI is not run offline here: it has no network code, and `cargo xtask deps` refuses network crates on every platform.
