@@ -5,13 +5,15 @@
 # assemble and pack the same way. Builds `openchuck-cli`, `openchuck-ui` and the STEP reader in
 # release mode and uploads one archive per platform, named `<name>-<target>.<tar.gz|zip>`, as a
 # workflow artifact (unzipped, so the Unix executable bits survive). The caller publishes them.
+# The notices travel between the jobs as `<kind>-notices` (`nightly-notices` for the nightly build,
+# as before the build was shared).
 name: Build archives
 
 on:
   workflow_call:
     inputs:
       name:
-        description: The archive name before the target, for example openchuckcam-0.8.0.
+        description: The archive name before the target, for example openchuckcam-<version>.
         required: true
         type: string
       kind:
@@ -66,7 +68,7 @@ jobs:
       - run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
       - uses: actions/upload-artifact@v7
         with:
-          name: archive-notices
+          name: ${{ inputs.kind }}-notices
           path: THIRD-PARTY-NOTICES.html
           retention-days: 1
 
@@ -114,7 +116,7 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-import --features kernel --bin openchuck-step-worker
       - uses: actions/download-artifact@v8
         with:
-          name: archive-notices
+          name: ${{ inputs.kind }}-notices
       # The posts and the built-in machine profile are compiled into the
       # binaries, so the archive needs no data folders beside them.
       - name: Assemble the archive folder

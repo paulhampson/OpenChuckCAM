@@ -72,9 +72,9 @@ jobs:
           fi
 
   # The notices, build, assemble and pack steps are shared with the release workflow
-  # (build-archives.yml, decision 0091).
+  # (build-archives.yml, decision 0091). The job has no display name, so its jobs show as
+  # `build / Licence notices (cargo about)` and `build / Build (<target>)`.
   build:
-    name: Archives
     needs: changes
     if: needs.changes.outputs.build == 'true'
     uses: ./.github/workflows/build-archives.yml

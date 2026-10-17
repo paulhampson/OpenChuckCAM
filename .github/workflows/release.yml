@@ -10,7 +10,7 @@
 # - `app-v<version>`: the archives for the three platforms (build-archives.yml, shared with the
 #   nightly build) are attached to a GitHub release, not a pre-release, for the existing tag.
 # - `lib-v<version>`: the four library crates pass `cargo publish --dry-run`. Publishing them to
-#   crates.io is done by hand with cargo-release for now (decision 0091 item 4, OI-303).
+#   crates.io is not done here: this workflow never publishes a crate (decision 0091 item 4, OI-303).
 #
 # A manual run is a dry run unless `dry_run` is unticked: it runs the gate, builds and checks the
 # archives and the library publish dry run, and publishes nothing. A manual run that publishes
