@@ -96,6 +96,9 @@ pub struct ExportPanel {
     attempted: Option<Key>,
     files: Option<Files>,
     files_error: Option<String>,
+    /// What the chosen post says, read when the choice changes and not on
+    /// every frame (a post folder is read from disk).
+    summary: Option<(PostSelection, Result<PostSummary, String>)>,
     preview: usize,
     ack: Option<Acknowledgements>,
     ack_lookup: AcknowledgementLookup,
@@ -126,6 +129,7 @@ impl ExportPanel {
             attempted: None,
             files: None,
             files_error: None,
+            summary: None,
             preview: 0,
             ack,
             ack_lookup: AcknowledgementLookup {
@@ -155,6 +159,7 @@ impl ExportPanel {
         self.attempted = None;
         self.files = None;
         self.files_error = None;
+        self.summary = None;
         self.ticked = false;
         self.refresh_acknowledgement(app);
         self.read_numbers(app);
@@ -178,6 +183,16 @@ impl ExportPanel {
             .into_iter()
             .map(|r| (r.tool, r.number.to_string()))
             .collect();
+    }
+
+    /// What the chosen post says, loaded again only when the choice changes.
+    fn summary(&mut self) -> Option<&Result<PostSummary, String>> {
+        let selection = self.selection()?;
+        if self.summary.as_ref().map(|(s, _)| s) != Some(&selection) {
+            let loaded = post_summary(&selection).map_err(|e| e.to_string());
+            self.summary = Some((selection, loaded));
+        }
+        self.summary.as_ref().map(|(_, r)| r)
     }
 
     /// The post chosen, or why it cannot be read.
@@ -532,7 +547,7 @@ impl ExportPanel {
             ui.text_edit_singleline(&mut self.custom)
                 .on_hover_text("The folder that holds the post's files.");
         }
-        match self.selection().map(|s| post_summary(&s)) {
+        match self.summary().cloned() {
             Some(Ok(post)) => {
                 egui::Grid::new("export post facts")
                     .num_columns(2)
@@ -551,7 +566,7 @@ impl ExportPanel {
                 ui.weak("The post sets these. Change them in the post's files.");
             }
             Some(Err(e)) => {
-                ui.colored_label(PROBLEM, e.to_string());
+                ui.colored_label(PROBLEM, e);
             }
             None => {
                 ui.colored_label(WARNING, "Choose the folder of a post.");
@@ -1042,6 +1057,27 @@ mod tests {
         assert!(app.can_undo());
         assert_eq!(ExportPanel::numbers_problem(&app), None);
         let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    #[test]
+    fn req_gc_04_the_post_folder_is_read_when_the_choice_changes_not_every_frame() {
+        let (settings_dir, ack) = settings("export-summary-settings");
+        let copy = settings_dir.join("post-copy");
+        std::fs::create_dir_all(&copy).unwrap();
+        let posts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../posts/linuxcnc");
+        for name in ["post.toml", "main.post"] {
+            std::fs::copy(posts.join(name), copy.join(name)).unwrap();
+        }
+        let mut panel = ExportPanel::new(Some(ack));
+        panel.post_index = panel.posts.len();
+        panel.custom = copy.display().to_string();
+        assert!(panel.summary().unwrap().is_ok());
+        // With the folder gone the cached answer stands until the choice changes.
+        std::fs::remove_dir_all(&copy).unwrap();
+        assert!(panel.summary().unwrap().is_ok(), "read again from disk");
+        panel.custom.push('x');
+        assert!(panel.summary().unwrap().is_err(), "a new choice is read");
         let _ = std::fs::remove_dir_all(settings_dir);
     }
 
