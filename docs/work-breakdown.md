@@ -144,6 +144,10 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| TR | 20 items 8 and 9: the release workflow (tags `lib-v*` and `app-v*`, dry-run by default, no crates.io publishing) and `cargo xtask release-gate` (built 17 Oct 2026 on `claude/lane-tr-release-workflow-and-gate`, draft pull request 99; decision record 0091 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TE | 20 items 3, 6 and 7: end-to-end command-line scenarios, the determinism run at 1, 2 and N threads over the sample projects (the reference jobs and the owner's blisk) and the no-network run (built 17 Oct 2026 on `claude/lane-te-end-to-end-and-determinism`, draft pull request 98; decision record 0096 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TS | OI-129 and slice 20: a UI smoke test of the built archives on Windows, macOS and Linux under software rendering, `ui-smoke.yml` (built 17 Oct 2026 on `claude/lane-ts-ui-smoke-ci`, draft pull request 95; decision record 0101 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -170,6 +174,10 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | Z | P and R (both merged), W (the composite target's wiring) |
 | TL | Slice 4 (merged); nothing else |
 | E2 | E and H (both merged): nothing else |
+| TR | Nothing |
+| TE | Nothing to start; its sample set grows as strategy lanes merge |
+| TS | Nothing |
+| TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
 
