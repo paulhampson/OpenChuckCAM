@@ -141,7 +141,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | W | 21c wiring: application mapping, simulation, deviation, forms (built 16 Oct 2026 on `claude/lane-w-slice-21c-wiring`, [decision 0045](decisions/0045-slice-21c-wiring.md), accepted) | ░░ | ░░ | ██ | | |
 | Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; merged in pull request 66; its proof on the default tabs is on `claude/lane-y-default-tabs-proof`) | ░░ | ░░ | ██ | | |
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
-| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); standard tools built, Z1 part waits on OI-269; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
@@ -870,7 +870,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 ## Slice 23 – Default tool library
 
-**Status:** not started. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
+**Status:** partly built (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools, embedded and installed on first run with a ledger, are built; the Makera Z1 tools and tool set are not, because `MakeraInc/CarveraProfiles` has no licence (OI-269); OI-268 to OI-271 wait for the owner. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
 
 **Goal:** a new user finds the tools a Makera Z1 normally holds and a set of common standard tools already in the library.
 

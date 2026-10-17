@@ -4,6 +4,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Slice 23 (decision 0081, TL-12): `tools::default_tools`, `ToolLibrary::install_defaults`, `InstallReport` and `LEDGER_FILE`; 23 standard tools embedded in the crate.
+
 - Version 0.7.0 with the library family. Project schema 8: tools may state `centre_cutting` (decision 0033).
 - Slice 10 (decision 0032): operations gain `boundary`, `avoid` and `check` selection set references (`Operation::selection_refs`), `Project::operations_using` and `file::selection_inputs_hash`; project folder schema 7, migrated from 6 (a number only).
 - Machine IDs (decision 0029 item 16): `machines::ProfileEntry` (a profile with its optional `id`), `parse_profile_entry`, `load_profile_entry`, `render_profile_entry`, `save_profile_entry`, `builtin_entry`, `list_library_entries`, `validate_machine_id` and `new_machine_id`; profile files schema 2 with `id` beside `[machine]`; the built-in Makera Z1 has a fixed ID; `Project::machine_id` and `set_machine_from`, and `machine.toml` keeps the copy's source ID (project schema 6).

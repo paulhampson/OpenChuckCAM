@@ -67,6 +67,11 @@ fn native_options(vsync: bool) -> eframe::NativeOptions {
 }
 
 fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
+    // TL-12: a new user's tool library starts with the default tools. A
+    // failure is reported, never fatal (NFR-07).
+    if let Some(Err(e)) = openchuck_app::library::install_default_tools_in_default_folder() {
+        eprintln!("warning: could not install the default tools: {e}");
+    }
     let options = native_options(true);
     graphics::watch_for_stall();
     let result = eframe::run_native(
