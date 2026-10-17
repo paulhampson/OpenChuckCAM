@@ -36,7 +36,7 @@ The cone of the reference jobs (diameter 20 to 10 over 30 mm), 3 mm ball, stepov
 
 | Case | Before | After |
 | --- | --- | --- |
-| Owner's default layout at the head (lane W's branch, held region, frustum tab narrowing to 10 mm on the 20 mm end) | Gate 1 `F600.1`; gate 2: a move 7.00 % off the IR's time | – (re-run on the default tabs once pull request 61 is on `main`) |
+| Owner's default layout at the head (lane W's branch, held region, frustum tab narrowing to 10 mm on the 20 mm end) | Gate 1 `F600.1`; gate 2: a move 7.00 % off the IR's time | Through the application on `main` with lane W's code (17 Oct 2026): `Application::start_default_tabs` on the cone held 4 mm and 2 mm, finishing only: both gates clean with both posts, the same G-code at 1, 2 and N threads. Without this record's assembly changes the same job writes `F600.2` and `F600.1` (gate 1) and a move 9.06 % off (gate 2) |
 | The same layout as a mesh (`walls.rs` in `openchuck-app`, part `head`), Z1 post | Gate 1 `F688.8` and `F600.1`; gate 2 7.02 % | Both gates clean, both posts |
 | A narrow tab and a wide held region at the tail, as a mesh (part `tail`) | Gate 2 2.6 % | Both gates clean, both posts |
 | The default-like layout on `CompositeSurface` (`walls.rs` in `openchuck-path`), three walls | 16 micro-moves | None; one move up or down each wall; slowest move 0.17 of the feed (a wall move, OI-211) |
@@ -62,7 +62,7 @@ The gouge and determinism tests pass before and after: they guard that the merge
 
 - `openchuck-path`: a private `assemble::walls` module; `assemble` calls it. No public item changes; the changelog says so.
 - `docs/work-breakdown.md`: the lane Y row, the numbers paragraph and the slice 21 status. `docs/open-items.md`: OI-211 to OI-213. `docs/verification-plan.md`: the OP-13 and OP-14 rows name the wall tests. Decision index.
-- Once pull request 61 is on `main`: the default tabs are proved on the composite through the application (`Application::start_default_tabs`), OI-209's row is closed in the register, and the slice 21 status drops "default tabs depend on OI-209".
+- Done after pull request 61 reached `main` (17 Oct 2026): the default tabs are proved through the application (`req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2` in `openchuck-app/tests/workholding.rs`); lane W's pull request closed OI-209's row in the register and updated the slice 21 status.
 
 ## Open items
 
