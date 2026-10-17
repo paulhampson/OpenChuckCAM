@@ -89,7 +89,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 11 STEP import | In progress | 11b, lane O: viewport drawing and B-rep selection storage |
 | 12 baseline finishing | Closed (16 Oct 2026) | |
 | 13 simultaneous 4-axis finishing | Closed (15 Oct 2026) | |
-| 14 rotary roughing | In progress | One checklist box: every OP-11 parameter has a test; per-selection stock to leave is still refused for roughing ([decision 0043](decisions/0043-slice-14-roughing-containment.md) item 5). Containment (item 5, lane L) is merged |
+| 14 rotary roughing | Built, pending merge | The checklist is ticked: per-selection stock to leave for roughing is built by lane E2 on `claude/lane-e2-roughing-stock-per-selection` ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; OI-261 deferred). Containment (item 5, lane L) is merged. The owner closes the slice |
 | 15 rest machining and pencil clean-up | Closed (16 Oct 2026) | Follow-ups OI-189 to OI-193 |
 | 16 edge and curve following | In progress | Lane K built the mesh feature edge side ([decision 0047](decisions/0047-slice-16-edge-following-mesh.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction); lane P built the B-rep edge side ([decision 0053](decisions/0053-slice-16-edge-following-brep.md), accepted 16 Oct 2026); stored edge selections (OI-204) are open |
 | 17 swarf | In progress | Lane Q built the library strategy on `claude/lane-q-slice-17-swarf` ([decision 0061](decisions/0061-slice-17-swarf.md), accepted 17 Oct 2026, relayed by the orchestrator session at the owner's instruction); the application wiring and the LinuxCNC replay wait for lanes O and W (OI-238) |
@@ -143,7 +143,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | F | OI-236 (second assignment of the letter; slice 19's lane F is done): the Makera Z1's F word within its limit where A counts in it, and small feeds written to three significant figures ([decision 0076](decisions/0076-feed-word-limit-and-rounding.md), accepted 17 Oct 2026; built on `claude/lane-f-feed-limit-and-rounding`) | ░░ | ░░ | ██ | | |
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
-| E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; built 17 Oct 2026 on `claude/lane-e2-roughing-stock-per-selection`) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -663,14 +663,14 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
 
-**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); lane L merged on 16 Oct 2026. The slice stays open on one checklist box (every OP-11 parameter has a test), because per-selection stock to leave is not supported for roughing; the owner chose on 17 Oct 2026 that roughing leaves at least the largest value ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), lane E2, not started; exact per-zone roughing is OI-261, deferred). OI-117 is closed; OI-150 to OI-153 are open.
+**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); lane L merged on 16 Oct 2026. The slice stays open on one checklist box (every OP-11 parameter has a test), because per-selection stock to leave is not supported for roughing; the owner chose on 17 Oct 2026 that roughing leaves at least the largest value ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted), and lane E2 built it on `claude/lane-e2-roughing-stock-per-selection` (17 Oct 2026; no number taken), which ticks that box; exact per-zone roughing is OI-261, deferred. The slice is ready for the owner to close. OI-117 is closed; OI-150 to OI-153 are open.
 
 **Review checklist**
 
 - [x] Simulated leftover is uniform and matches stock to leave within tolerance (cylinder: 0.45 to 0.53 mm for 0.5 mm to leave at a 0.1 mm cell; cone and indexed forms within the stepover's scallop; strips the tool cannot reach are reported, OI-150)
 - [x] A second roughing pass does not re-cut already removed material (`req_op_03_a_second_roughing_run_over_its_own_result_cuts_nothing`)
 - [x] Indexed and continuous forms reach the same final stock envelope (to within the scallop of the stepover, `req_op_03_indexed_and_continuous_forms_reach_the_same_envelope`)
-- [ ] Every OP-11 parameter exists and has a test (stepdown, stock to leave per operation, entry styles and retract do; per-selection stock to leave is slice 12 item 4)
+- [x] Every OP-11 parameter exists and has a test (stepdown, stock to leave per operation, entry styles and retract do; per-selection stock to leave is slice 12 item 4, and for roughing the largest amount over the whole part, `req_op_11_req_op_03_*` in `crates/openchuck-app/tests/selection.rs`, [decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md))
 - [x] Link moves never cross the stock (`req_op_14_links_stay_below_the_clearance_cylinder_without_cutting`, simulated, no rapid cuts)
 
 ## Slice 15 – Rest machining and pencil clean-up
