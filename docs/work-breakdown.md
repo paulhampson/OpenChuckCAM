@@ -768,7 +768,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 - [x] Hole positions and angles match the model within tolerance (seven holes at several angles, flat, pointed, split and through, an offset one: the tool line is the hole's axis line to 1e-9 mm and the hole is vertical on the machine)
 - [x] Peck and retract heights are correct and stay clear of the part (exact peck depths in both modes, rapid retracts, links at the clearance radius, stock above the opening raises the retract height)
 - [x] Simulation shows the correct hole depth (dexel stock at 0.1 mm: each hole open to the model's depth within two cells, no deeper, as wide as the tool, with and without pecks)
-- [ ] Simulator replay passes (gate 2, the replay of the posted program within rounding, passes; gate 3, the LinuxCNC simulator, runs the `drilling` reference job through the application from lane Z's branch, decision 0056; ticked when it has passed in CI, OI-219)
+- [ ] Simulator replay passes (gate 2, the replay of the posted program within rounding, passes; gate 3, the LinuxCNC simulator, replays the `drilling` reference job made through the application from a STEP file on lane Z's branch, decision 0056: passed in the lane Z session on 17 Oct 2026; ticked when it has passed in CI, OI-219)
 
 ## Slice 19 – Output options and setup sheet
 

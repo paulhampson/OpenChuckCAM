@@ -44,9 +44,9 @@ Records read: 0003, 0017, 0027 (STEP import and exact faces), 0042 and 0045 (the
 | The `drilling` reference job: gates 1 and 2, golden files (OP-10, GC-09, GC-10) | `req_op_10_req_gc_09_req_gc_10_the_drilling_reference_job_passes_gates_1_and_2_and_matches_its_golden_files` | yes |
 | Identical at 1 and N threads (GC-07, NFR-06) | `req_gc_07_req_nfr_06_the_drilling_reference_job_is_identical_at_1_and_n_threads` | yes |
 | Edge following on a STEP file through the application, depth on the wall (OP-08) | `req_op_08_a_step_part_is_engraved_along_its_b_rep_edges_through_the_application` | yes |
-| Gate 3: the LinuxCNC simulator replays `drilling_linuxcnc.ngc` | `cargo xtask replay` (CI's Gate 3 job) | no |
+| Gate 3: the LinuxCNC simulator replays `drilling_linuxcnc.ngc` | `cargo xtask replay` (CI's Gate 3 job). Run in the lane Z session on 17 Oct 2026 with LinuxCNC 2.9.10 in the image built from `docker/linuxcnc`: all 15 moves reached, largest difference 0.0010, 23.3 s of motion, no fault | no |
 
-The kernel tests are added to the STEP kernel CI job (`.github/workflows/ci.yml`), with `step_drilling`, which was not run there before. Times uninstrumented are in the pull request; none is over a minute, so `.config/nextest.toml` is unchanged.
+The kernel tests are added to the STEP kernel CI job (`.github/workflows/ci.yml`), with `step_drilling`, which was not run there before. Times uninstrumented: the four unit tests 1.2 s together, `step_pipeline` 0.5 s, `step_drilling` 0.04 s; none is over a minute, so `.config/nextest.toml` is unchanged. Gate 3's shard timing gains `drilling_linuxcnc.ngc` at 30 s (`xtask/src/replay.rs`).
 
 ## Consequences
 

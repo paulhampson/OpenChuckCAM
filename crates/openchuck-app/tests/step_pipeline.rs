@@ -218,7 +218,7 @@ fn req_imp_02_req_imp_05_a_step_model_is_added_inspected_and_placed() {
     // Placed: the rod's ends stay at X 0 and 60, and it stays round the axis.
     let extent = inspection.extent.unwrap();
     assert!(extent.bounds.min.x.abs() < 1e-6 && (extent.bounds.max.x - 60.0).abs() < 1e-6);
-    assert!((extent.radius - 12.0).abs() < 0.02, "{}", extent.radius);
+    assert!((extent.radius.0 - 12.0).abs() < 0.02, "{}", extent.radius.0);
     assert!(inspection.summary.triangles > 0);
     std::fs::remove_dir_all(dir).unwrap();
 }
