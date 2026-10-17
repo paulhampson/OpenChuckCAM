@@ -16,6 +16,7 @@ openchuck-app.workspace = true
 openchuck-viewport.workspace = true
 eframe.workspace = true
 rfd.workspace = true
+log.workspace = true
 
 [lints]
 workspace = true
