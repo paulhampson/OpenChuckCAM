@@ -508,6 +508,12 @@ fn brep_selection(
             )));
         }
         match &set.target {
+            SelectionTarget::Faces(faces) if faces.is_empty() => {
+                return Err(bad("it selects no faces".to_owned()));
+            }
+            SelectionTarget::Edges(edges) if edges.is_empty() => {
+                return Err(bad("it selects no edges".to_owned()));
+            }
             SelectionTarget::Faces(faces) => {
                 if let Some(face) = faces
                     .iter()
@@ -634,22 +640,32 @@ mod tests {
     }
 
     fn fixture(strategy: &str, parameters: &[(&str, Value)]) -> Fixture {
-        let (brep, built) = drilled_blank(
-            RADIUS,
-            LENGTH,
+        fixture_with(
+            strategy,
+            parameters,
             &[
                 HoleSpec::blind(15.0, polar(90.0), DIAMETER, 6.0),
                 HoleSpec::through(30.0, polar(0.0), DIAMETER),
                 HoleSpec::blind(45.0, polar(225.0), DIAMETER, 4.0),
             ],
-        );
+            "blank.step",
+        )
+    }
+
+    fn fixture_with(
+        strategy: &str,
+        parameters: &[(&str, Value)],
+        holes: &[HoleSpec],
+        file: &str,
+    ) -> Fixture {
+        let (brep, built) = drilled_blank(RADIUS, LENGTH, holes);
         let hash = ContentHash::of_bytes(b"blank.step");
         let mut project = Project::new("blank");
         project
             .set_machine(Some(crate::setup::builtin("makera-z1").unwrap().unwrap()))
             .unwrap();
         let model = ModelId::new();
-        let mut reference = ModelRef::new(model, RelativePath::new("blank.step").unwrap(), hash);
+        let mut reference = ModelRef::new(model, RelativePath::new(file).unwrap(), hash);
         reference.transform = vec![TransformStep::Translate {
             x: SHIFT,
             y: 0.0,
@@ -730,9 +746,29 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy, Debug)]
+    enum Role {
+        Machine,
+        Boundary,
+        Avoid,
+        Check,
+    }
+
     impl Fixture {
         /// Adds a selection set on the part and puts it in the operation.
         fn select(&mut self, target: SelectionTarget, hash: ContentHash) {
+            self.select_as(target, hash, self.model, Role::Machine);
+        }
+
+        /// Adds a selection set on `model` and puts it in `role` of the
+        /// operation.
+        fn select_as(
+            &mut self,
+            target: SelectionTarget,
+            hash: ContentHash,
+            model: ModelId,
+            role: Role,
+        ) {
             let id = SelectionSetId::new();
             self.project
                 .insert(
@@ -740,7 +776,7 @@ mod tests {
                         id,
                         order: OrderKey::default(),
                         name: "chosen".into(),
-                        model: self.model,
+                        model,
                         model_hash: hash,
                         target,
                         descriptors: Vec::new(),
@@ -750,7 +786,12 @@ mod tests {
                 )
                 .unwrap();
             let mut operation = self.project.operation(self.operation).unwrap().clone();
-            operation.selections.push(id);
+            match role {
+                Role::Machine => operation.selections.push(id),
+                Role::Boundary => operation.boundary = Some(id),
+                Role::Avoid => operation.avoid.push(id),
+                Role::Check => operation.check.push(id),
+            }
             self.project.replace(Item::Operation(operation)).unwrap();
         }
 
@@ -872,42 +913,192 @@ mod tests {
 
     #[test]
     fn req_op_02_req_nfr_07_selections_a_step_part_cannot_use_are_refused() {
-        let cases: Vec<(&str, SelectionTarget, bool, &str)> = vec![
+        let faces = || SelectionTarget::Faces([FaceId(1)].into_iter().collect());
+        let edges = || SelectionTarget::Edges([EdgeId(0)].into_iter().collect());
+        let registry = Registry::builtin();
+        let mut cases: Vec<(String, SelectionTarget, Role, bool, &str)> = Vec::new();
+        for choice in registry.iter() {
+            let strategy = choice.name().to_owned();
+            if strategy != drill::NAME {
+                cases.push((
+                    strategy.clone(),
+                    faces(),
+                    Role::Machine,
+                    true,
+                    "limited to faces",
+                ));
+            }
+            if strategy != edge_following::NAME {
+                cases.push((
+                    strategy.clone(),
+                    edges(),
+                    Role::Machine,
+                    true,
+                    "only edge following",
+                ));
+            }
+            // Boundaries, avoid and check surfaces are not built for STEP parts
+            // (OI-233), whatever the strategy.
+            for role in [Role::Boundary, Role::Avoid, Role::Check] {
+                cases.push((
+                    strategy.clone(),
+                    faces(),
+                    role,
+                    true,
+                    "not built for STEP models",
+                ));
+            }
+        }
+        let drill = || drill::NAME.to_owned();
+        let edge = || edge_following::NAME.to_owned();
+        cases.extend([
             (
-                "helical_finishing",
-                SelectionTarget::Faces([FaceId(0)].into_iter().collect()),
-                true,
-                "cannot yet be limited to faces",
-            ),
-            (
-                drill::NAME,
-                SelectionTarget::Edges([EdgeId(0)].into_iter().collect()),
-                true,
-                "only edge following",
-            ),
-            (
-                drill::NAME,
+                drill(),
                 SelectionTarget::Faces([FaceId(9999)].into_iter().collect()),
+                Role::Machine,
                 true,
                 "face 9999 is not in the model",
             ),
             (
-                drill::NAME,
-                SelectionTarget::Faces([FaceId(0)].into_iter().collect()),
-                false,
-                "different version",
+                edge(),
+                SelectionTarget::Edges([EdgeId(9999)].into_iter().collect()),
+                Role::Machine,
+                true,
+                "edge 9999 is not in the model",
             ),
-        ];
-        for (strategy, target, same_hash, message) in cases {
-            let mut f = fixture(strategy, &[]);
+            (drill(), faces(), Role::Machine, false, "different version"),
+            (
+                drill(),
+                SelectionTarget::Faces(BTreeSet::new()),
+                Role::Machine,
+                true,
+                "selects no faces",
+            ),
+            (
+                edge(),
+                SelectionTarget::Edges(BTreeSet::new()),
+                Role::Machine,
+                true,
+                "selects no edges",
+            ),
+        ]);
+        for (strategy, target, role, same_hash, message) in cases {
+            let mut f = fixture(&strategy, &[("depth", Value::Number(0.2))]);
             let hash = if same_hash {
                 f.hash
             } else {
                 ContentHash::of_bytes(b"other")
             };
-            f.select(target, hash);
+            f.select_as(target, hash, f.model, role);
             let err = f.run().unwrap_err().to_string();
-            assert!(err.contains(message), "{strategy}: {err}");
+            assert!(
+                err.contains(message) && err.contains("'Op'"),
+                "{strategy} {role:?}: {err}"
+            );
         }
+    }
+
+    #[test]
+    fn req_op_02_req_nfr_07_a_set_made_on_another_model_is_refused() {
+        let mut f = fixture(drill::NAME, &[]);
+        let other = ModelId::new();
+        f.project
+            .insert(
+                Item::Model(ModelRef::new(
+                    other,
+                    RelativePath::new("other.step").unwrap(),
+                    f.hash,
+                )),
+                Placement::End,
+            )
+            .unwrap();
+        f.select_as(
+            SelectionTarget::Faces([FaceId(1)].into_iter().collect()),
+            f.hash,
+            other,
+            Role::Machine,
+        );
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("different model"), "{err}");
+    }
+
+    #[test]
+    fn req_op_10_req_nfr_07_faces_with_no_hole_and_a_part_with_no_holes_are_clear_errors() {
+        // The blank's side holds no hole wall: nothing to drill.
+        let mut f = fixture(drill::NAME, &[]);
+        f.select(
+            SelectionTarget::Faces([FaceId(0)].into_iter().collect()),
+            f.hash,
+        );
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("no hole to drill"), "{err}");
+        // A part with no holes at all.
+        let f = fixture_with(drill::NAME, &[], &[], "blank.step");
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("no hole to drill"), "{err}");
+    }
+
+    #[test]
+    fn req_op_08_the_crease_angle_default_is_the_b_reps_on_a_step_part_and_the_meshs_on_a_mesh() {
+        let crease = |f: &Fixture| {
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation)
+                .unwrap()
+                .fields
+                .into_iter()
+                .find(|x| x.name == edge_following::parameter::CREASE_ANGLE)
+                .unwrap()
+        };
+        let engrave = [("depth", Value::Number(0.2))];
+        // A STEP part: 1 degree, shown as the default.
+        let step = fixture(edge_following::NAME, &engrave);
+        let field = crease(&step);
+        assert_eq!(field.value, Some(Value::Number(1.0)));
+        assert_eq!(field.source, crate::form::Source::Default);
+        // A mesh part keeps the schema's 30 degrees.
+        let mesh = fixture_with(edge_following::NAME, &engrave, &[], "blank.stl");
+        let field = crease(&mesh);
+        assert_eq!(field.value, Some(Value::Number(30.0)));
+        // Other strategies and parameters are not touched.
+        let op = mesh.project.operation(mesh.operation).unwrap();
+        assert!(default_override(&step.project, op, names::FEED).is_none());
+        // The operation's value wins: every edge of the blank turns 90
+        // degrees, so 120 leaves none to follow, where the default follows
+        // them all.
+        let mut over = engrave.to_vec();
+        over.push((
+            edge_following::parameter::CREASE_ANGLE,
+            Value::Number(120.0),
+        ));
+        let set = fixture(edge_following::NAME, &over);
+        assert_eq!(crease(&set).source, crate::form::Source::Operation);
+        let err = set.run().unwrap_err().to_string();
+        assert!(err.contains("no edge to follow"), "{err}");
+        assert!(step.run().is_ok());
+    }
+
+    #[test]
+    fn req_nfr_07_a_step_part_that_cannot_be_placed_or_evaluated_is_an_error() {
+        let (brep, _) = drilled_blank(RADIUS, LENGTH, &[]);
+        let hash = ContentHash::of_bytes(b"blank.step");
+        // An invalid placement step.
+        let err = PlacedPart::of_brep(&brep, &[TransformStep::Scale { factor: 0.0 }], hash)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("factor"), "{err}");
+        // A face whose frame has no axes cannot be evaluated: the operation
+        // fails with a message, not a panic.
+        let mut f = fixture(drill::NAME, &[]);
+        let face = &mut f.brep.faces[0];
+        let zero = openchuck_types::geometry::Vec3::new(0.0, 0.0, 0.0);
+        match &mut face.geometry {
+            openchuck_types::brep::Surface::Cylinder { frame, .. }
+            | openchuck_types::brep::Surface::Plane { frame } => {
+                frame.x = zero;
+                frame.y = zero;
+                frame.z = zero;
+            }
+            other => panic!("unexpected side face {other:?}"),
+        }
+        assert!(f.run().is_err());
     }
 }
