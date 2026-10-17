@@ -141,6 +141,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | W | 21c wiring: application mapping, simulation, deviation, forms (built 16 Oct 2026 on `claude/lane-w-slice-21c-wiring`, [decision 0045](decisions/0045-slice-21c-wiring.md), accepted) | ░░ | ░░ | ██ | | |
 | Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; merged in pull request 66; its proof on the default tabs is on `claude/lane-y-default-tabs-proof`) | ░░ | ░░ | ██ | | |
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
@@ -166,6 +167,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | W | U and V; its roughing and finishing tests need lanes E and H merged |
 | Y | V (the composite target); its proof on the default tabs needs W |
 | Z | P and R (both merged), W (the composite target's wiring) |
+| TL | Slice 4 (merged); nothing else |
 | E2 | E and H (both merged): nothing else |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
@@ -866,6 +868,33 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 - [ ] Undo, redo and the inline errors behave as before (UI-08, UI-07)
 - [ ] Anything the design asks for beyond the requirements is listed as an open item or a requirement proposal, not built
 
+## Slice 23 – Default tool library
+
+**Status:** not started. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
+
+**Goal:** a new user finds the tools a Makera Z1 normally holds and a set of common standard tools already in the library.
+
+**Requirements:** TL-12 (P1); uses TL-01 to TL-07 and TL-11.
+
+**Needs:** slice 4 (merged). Nothing else.
+
+**Design refinement:** first step, before any data is copied. Record in a decision: the source and licence of the Makera reference tools (`MakeraInc/CarveraProfiles`, named by the owner; the files, the commit read, and whether its licence allows the data to be copied and shipped under the AGPL, NFR-10; if not, the Z1 tools are written from published specifications and the repository is cited as a reference only), the list of common standard tools (types and sizes, for the owner to approve), whether cutting data (TL-05) is shipped (only values with a source; never invented, NFR-12), how the defaults are delivered (embedded in the program, read offline, NFR-09), how they are installed into the user's library on first run, and the update policy (a tool the user changed is never overwritten, and a deleted tool is not restored).
+
+1. The Makera Z1 reference tools as library tool files, with the Z1 default tool set (TL-11) and its tool numbers from the Makera library.
+2. A set of common standard tools of each type in TL-02 and TL-03 (flat, ball, bull-nose, tapered ball, V-bit or chamfer, drill), as library tool files.
+3. Delivery: embedded in the program and installed into the user's library folder on first run (`OpenChuckCAM/tools`, decision 0029 item 15); no network.
+4. Update policy as recorded, with a test for each rule.
+5. Tests, the verification plan row for TL-12, and the guide.
+
+**Review checklist**
+
+- [ ] The source and licence of the Makera data are recorded, and nothing was copied that the licence does not allow
+- [ ] A first run installs the Z1 tools with their tool set and a standard tool of every type into an empty library; a second run installs nothing (`req_tl_12_*`)
+- [ ] A tool the user edited or deleted is not overwritten or restored by an update
+- [ ] Every default tool validates and its shape matches its closed-form silhouette (TL-02, TL-03)
+- [ ] The data is embedded and read with no network access (NFR-09)
+- [ ] Cutting data that ships has a recorded source
+
 ## Slice 20 – Hardening and first release
 
 **Goal:** a release you can trust, with every P1 requirement traceable to a passing test or a recorded manual check.
@@ -929,5 +958,6 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 | 20 | NFR-12 | – |
 | 21 | SET-09, OP-21 | – |
 | 22 | – | – |
+| 23 | TL-12 | – |
 
 **Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19) and NFR-02 (0, 8). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
