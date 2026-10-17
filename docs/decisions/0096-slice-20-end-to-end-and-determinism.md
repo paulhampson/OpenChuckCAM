@@ -2,9 +2,9 @@
 
 - **Status:** proposed (lane TE, 17 Oct 2026). Built on `claude/lane-te-end-to-end-and-determinism`. Only the project owner accepts a record (decision 0049).
 - **Date:** 17 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-310 to OI-315.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-310 to OI-315; OI-314 is closed by item 9 (owner's decision, relayed).
 
-This is lane TE: work breakdown slice 20 items 3 (determinism at 1, 2 and N threads on all sample projects), 6 (sample projects, including the Z1 reference part, end to end) and 7 (command-line end-to-end scenarios in CI, including undo, redo and cancellation mid-job), and the slice 20 review check "The full run works with no network access" (NFR-09). It claims record **0096** and **OI-310 to OI-315** (from the block of records 0096 to 0100 and OI-310 to OI-319 the orchestrator assigned) and **no project schema number**. Requirements: GC-07, NFR-06, NFR-08, NFR-09, GC-11, UI-08, UI-09, with SIM-03 and SIM-05 for the simulation run. Production code is unchanged.
+This is lane TE: work breakdown slice 20 items 3 (determinism at 1, 2 and N threads on all sample projects), 6 (sample projects, including the Z1 reference part, end to end) and 7 (command-line end-to-end scenarios in CI, including undo, redo and cancellation mid-job), and the slice 20 review check "The full run works with no network access" (NFR-09). It claims record **0096** and **OI-310 to OI-315** (from the block of records 0096 to 0100 and OI-310 to OI-319 the orchestrator assigned) and **no project schema number**. Requirements: GC-07, NFR-06, NFR-08, NFR-09, GC-11, UI-08, UI-09, with SIM-03 and SIM-05 for the simulation run. The only production-code change is the fix of item 9, in its own commit.
 
 ## Context
 
@@ -81,8 +81,23 @@ Two gaps in the command-line tool shape the design:
 
    Each joins the suite when its reference job exists.
 
+9. **Fix: stock exactly as wide as the part encloses it (OI-314; owner's decision, option B, 17 Oct 2026, relayed by the orchestrator session, decision 0049).**
+   - **The defect.** `stock_encloses` in `crates/openchuck-types/src/setup.rs` compared the part's extent with the stock's exactly. So `setup` warned "some of the part lies outside the stock" for `cone_held_tabs`, whose stock is exactly as wide as the part: the mesh radius is 10.000000000000002 against a stock radius of 10. Measured over the testkit parts, using the same largest-vertex radius as `openchuck_geom::part_extent`, a part exactly as wide as its stock measures outside it by:
+     - double-precision coordinates (ASCII STL, STEP): 1.8e-15 mm at radius 10, 2.8e-14 mm at radius 150;
+     - coordinates rounded to 32-bit floats, as a binary STL stores them: 3.0e-7 to 4.6e-7 mm at radius 10 to 12, 1.5e-6 mm at radius 50, 6.5e-6 mm at radius 150, about 4.5e-8 × the radius.
+
+     The library's existing 1e-9 mm (`LENGTH_EPSILON`) covers the first case but not the second.
+   - **The change.** Every comparison in the function (both X ends, the cylinder radius, the box Y and Z) is one call to `at_most(a, b)`, which tests `a <= b + ENCLOSE_TOLERANCE * max(|a|, |b|, 1)`. The new private constant `ENCLOSE_TOLERANCE = f32::EPSILON as f64` (2^-23, about 1.19e-7) is a relative tolerance, never applied to less than 1 mm of size. It is about 2.6 times the measured worst case: 1.2 µm at 10 mm, 18 µm at 150 mm. Its comment gives the reason and the measurements.
+   - **API.** The constant and `at_most` are private, as nothing else needs them. The public API is unchanged: `cargo semver-checks -p openchuck-types --baseline-rev origin/main` reports no update required. This is a non-breaking behaviour change, with no version bump and no changelog entry.
+   - **Tests.** `req_set_03_req_nfr_05_stock_as_wide_as_the_part_encloses_it` in `setup.rs` checks four parts: radius 10 and radius 150, each with double-precision and with 32-bit coordinates.
+     - Stock exactly as wide as the part, cylinder or box, gives no warning.
+     - Cylinder stock 0.01 mm narrower warns, and so does box stock 0.01 mm short along X.
+     - A real overhang of 1e-4 mm on a 10 mm part warns.
+
+     Without the tolerance the test fails, which reproduces the defect. The end-to-end suite now requires every sample, `cone_held_tabs` included, to report no setup problem.
+
 ## Consequences
 
 - One sample list feeds determinism, the golden comparison, simulation, cancellation and undo. A new reference job is added in `reference_jobs.rs` (its golden programs) and in `e2e.rs` (the command-line route).
-- The suite found one defect: a false setup warning when the stock is exactly as wide as the part (OI-314). It is recorded, not fixed here: it is a warning, not wrong output, and the one-line fix (a tolerance in the comparison) is a production-code change in the library family that the orchestrator has put to the owner. No tolerance is chosen.
+- The suite found one defect: a false setup warning when the stock is exactly as wide as the part (OI-314). It is fixed by item 9.
 - Slice 20 review check "The full run works with no network access" is ticked for the command-line suite on Linux. The UI is not run offline here: it has no network code, and `cargo xtask deps` refuses network crates on every platform.

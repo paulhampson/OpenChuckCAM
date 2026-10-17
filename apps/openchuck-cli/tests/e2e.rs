@@ -280,11 +280,9 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
     setup[1] = p.to_owned();
     setup.extend(sample.holding.iter().map(OsString::from));
     let out = cli_ok(&setup);
-    // Stock exactly as wide as the part draws a false "outside the stock"
-    // warning: the check compares radii with no tolerance (OI-314).
-    if sample.oversize > 0.0 {
-        assert!(out.stdout.contains("no problems found"), "{}", out.stdout);
-    }
+    // Includes `cone_held_tabs`, whose stock is exactly as wide as the part
+    // (OI-314).
+    assert!(out.stdout.contains("no problems found"), "{}", out.stdout);
 
     let library = root.join(format!("{}-library", sample.name));
     std::fs::create_dir_all(&library).unwrap();
