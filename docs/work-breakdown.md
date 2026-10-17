@@ -870,7 +870,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 ## Slice 23 – Default tool library
 
-**Status:** partly built (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools, embedded and installed on first run with a ledger, are built; the Makera Z1 tools and tool set are not, because `MakeraInc/CarveraProfiles` has no licence (OI-269); OI-268 to OI-271 wait for the owner. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
+**Status:** partly built (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools, embedded and installed on first run with a ledger, are built; the Makera Z1 tools and tool set are not, because `MakeraInc/CarveraProfiles` has no licence (OI-269); OI-268 to OI-271 are open: the owner has not decided them, and what is built is a proposal that may change. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
 
 **Goal:** a new user finds the tools a Makera Z1 normally holds and a set of common standard tools already in the library.
 
