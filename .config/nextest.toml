@@ -19,7 +19,8 @@
 # follows the full-run time, which is what the Tests and Coverage jobs pay. The
 # first filter also selects slice 13's `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
 # (simultaneous finishing; decision 0036) and the helical oracle-parts test of the
-# same prefix.
+# same prefix. The `reference_jobs_are_identical_at_1_and_n_threads` filter also
+# selects slice 21c's `cone_held_tabs` (81 s when it was listed).
 
 [profile.coverage]
 default-filter = '''not (
@@ -30,9 +31,9 @@ default-filter = '''not (
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
   | test(~req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)
   | test(~req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)
-  | test(~req_gc_07_reference_jobs_are_identical_at_1_and_n_threads)
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
+  | test(~reference_jobs_are_identical_at_1_and_n_threads)
 )'''
 
 [profile.long]
@@ -44,7 +45,7 @@ default-filter = '''
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
   | test(~req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)
   | test(~req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)
-  | test(~req_gc_07_reference_jobs_are_identical_at_1_and_n_threads)
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
+  | test(~reference_jobs_are_identical_at_1_and_n_threads)
 '''

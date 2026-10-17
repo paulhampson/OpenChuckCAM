@@ -123,6 +123,7 @@ pub(crate) fn fit_curve(
                         passes.push(Pass {
                             points: std::mem::take(&mut points),
                             stock: None,
+                            rapids: Vec::new(),
                         });
                     }
                 }
@@ -132,6 +133,7 @@ pub(crate) fn fit_curve(
             passes.push(Pass {
                 points,
                 stock: None,
+                rapids: Vec::new(),
             });
         }
         context.report(

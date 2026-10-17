@@ -106,6 +106,7 @@ fn sample() -> Project {
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7), FaceId(12)])),
             descriptors: Vec::new(),
             stock_to_leave: None,
+            colour: None,
         }),
         Placement::End,
     )
@@ -497,6 +498,7 @@ fn with_roles() -> Project {
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(n as u32)])),
             descriptors: Vec::new(),
             stock_to_leave: None,
+            colour: None,
         })
     };
     for n in [31, 32, 33] {
@@ -561,19 +563,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 10\n", "schema = 10\nspeed = 3\n"),
+            |t| t.replace("schema = 11\n", "schema = 11\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 10\n", ""),
+            |t| t.replace("schema = 11\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 10", "schema = 11"),
+            |t| t.replace("schema = 11", "schema = 12"),
             "newer OpenChuckCAM",
         ),
         (
@@ -616,7 +618,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 10\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 11\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -727,14 +729,14 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 10\n"), "{path}");
+        assert!(text.starts_with("schema = 11\n"), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
         let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect::<String>()
-            .replace("schema = 1\n", "schema = 10\n");
+            .replace("schema = 1\n", "schema = 11\n");
         if path.starts_with("setups/") {
             old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
         }
@@ -873,6 +875,7 @@ fn req_prj_06_selections_match_the_model_kind() {
         target,
         descriptors: Vec::new(),
         stock_to_leave: None,
+        colour: None,
     };
     let stl = placed_model();
     let step = model(1);
@@ -962,7 +965,7 @@ fn req_op_11_nfr_07_bad_stock_to_leave_is_refused_and_schema_7_still_loads() {
     for (path, text) in file::render(&q).unwrap() {
         std::fs::write(
             old.join(&path),
-            text.replacen("schema = 10", "schema = 7", 1),
+            text.replacen("schema = 11", "schema = 7", 1),
         )
         .unwrap();
     }
@@ -986,6 +989,68 @@ fn req_op_11_nfr_07_a_bad_stock_to_leave_cannot_be_put_in_the_project() {
         set.stock_to_leave = Some(0.0);
         p.replace(Item::SelectionSet(set)).unwrap();
     }
+}
+
+#[test]
+fn req_ui_05_prj_06_a_chosen_set_colour_survives_save_and_load_and_is_optional() {
+    let dir = temp_dir("colour-roundtrip");
+    let mut p = with_roles();
+    let mut set = p
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == SelectionSetId::from_u128(31))
+        .unwrap()
+        .clone();
+    set.colour = Some("#7d5bb5".to_owned());
+    p.replace(Item::SelectionSet(set)).unwrap();
+    file::save(&p, &dir).unwrap();
+    let path = dir.join("selections/00000000-0000-0000-0000-00000000001f.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("colour = \"#7d5bb5\"\n"), "{text}");
+    assert_eq!(file::load(&dir).unwrap(), p);
+    // Written only when chosen, so older files stay byte for byte unchanged.
+    for (path, text) in file::render(&with_roles()).unwrap() {
+        assert!(!text.contains("colour"), "{path}");
+    }
+    // A bad value is refused on load.
+    for bad in ["#7D5BB5", "7d5bb5", "#7d5bb", "#7d5bbg", "red"] {
+        std::fs::write(&path, text.replace("#7d5bb5", bad)).unwrap();
+        let err = file::load(&dir).unwrap_err();
+        assert!(err.to_string().contains("colour"), "{bad}: {err}");
+    }
+}
+
+#[test]
+fn req_ui_05_nfr_07_a_bad_set_colour_cannot_be_put_in_the_project() {
+    for bad in ["#7D5BB5", "7d5bb5", "", "#12345", "#1234567", "#ggg000"] {
+        let mut p = with_roles();
+        let mut set = p
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == SelectionSetId::from_u128(31))
+            .unwrap()
+            .clone();
+        set.colour = Some(bad.to_owned());
+        let err = p.replace(Item::SelectionSet(set)).unwrap_err();
+        assert!(err.to_string().contains("colour"), "{bad}: {err}");
+    }
+}
+
+#[test]
+fn req_prj_04_a_schema_10_project_loads_with_default_set_colours() {
+    let old = temp_dir("colour-schema-10");
+    let q = with_roles();
+    file::save(&q, &old).unwrap();
+    for (path, text) in file::render(&q).unwrap() {
+        std::fs::write(
+            old.join(&path),
+            text.replacen("schema = 11", "schema = 10", 1),
+        )
+        .unwrap();
+    }
+    let loaded = file::load(&old).unwrap();
+    assert_eq!(loaded, q);
+    assert!(loaded.selection_sets().iter().all(|s| s.colour.is_none()));
 }
 
 /// The tool snapshot file of `sample()` and its text.
@@ -1036,7 +1101,7 @@ fn req_prj_04_req_tl_04_centre_cutting_round_trips_and_older_files_load_without_
 
     // A schema 7 project loads, and its tool states nothing.
     let old = copy_tree_with(&base, "centre-schema7", |_, text| {
-        text.replace("schema = 10", "schema = 7")
+        text.replace("schema = 11", "schema = 7")
     });
     let loaded = file::load(&old).unwrap();
     assert_eq!(loaded.tools().first().unwrap().tool.centre_cutting, None);
@@ -1054,13 +1119,13 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
                     "flute_count = 2\n",
                     &format!("flute_count = 2\ncentre_cutting = {value}\n"),
                 )
-                .replace("schema = 10", schema)
+                .replace("schema = 11", schema)
             } else {
                 text.to_owned()
             }
         }
     };
-    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 10"));
+    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 11"));
     let err = file::load(&bad).unwrap_err().to_string();
     assert!(
         err.contains("000000000014") && err.contains("centre_cutting"),

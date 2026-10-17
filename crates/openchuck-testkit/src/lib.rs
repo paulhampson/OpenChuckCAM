@@ -18,6 +18,7 @@
 
 #![warn(missing_docs)]
 
+pub mod brep;
 pub mod determinism;
 pub mod golden;
 pub mod gouge;

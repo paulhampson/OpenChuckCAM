@@ -29,6 +29,8 @@ const A_DIRECTION: Colour = [0.85, 0.2, 0.75, 1.0];
 const WORK_X: Colour = [0.9, 0.15, 0.15, 1.0];
 const WORK_Y: Colour = [0.1, 0.7, 0.2, 1.0];
 const WORK_Z: Colour = [0.15, 0.35, 0.95, 1.0];
+const HELD: Colour = [0.35, 0.55, 0.85, 1.0];
+const TAB: Colour = [0.9, 0.7, 0.25, 1.0];
 const PROBLEM: Colour = [0.95, 0.2, 0.2, 1.0];
 const BACKGROUND: Color32 = Color32::from_rgb(38, 40, 46);
 
@@ -42,6 +44,8 @@ fn style(role: SceneRole) -> (Colour, bool) {
     match role {
         SceneRole::Part => (PART, false),
         SceneRole::Stock => (STOCK, false),
+        SceneRole::HeldRegion => (HELD, false),
+        SceneRole::Tab => (TAB, false),
         SceneRole::RotaryAxis => (AXIS, true),
         SceneRole::ADirection => (A_DIRECTION, true),
         SceneRole::WorkX => (WORK_X, true),
@@ -321,6 +325,11 @@ impl Viewport {
     /// built with its tip at the origin and its axis along +Z to its place.
     pub fn set_tool_transform(&mut self, transform: Mat4) {
         self.tool_transform = transform;
+    }
+
+    /// Whether picking is on.
+    pub fn is_picking(&self) -> bool {
+        self.picking
     }
 
     /// Lets the pointer pick triangles of the part: hover and click are then

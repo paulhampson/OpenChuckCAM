@@ -47,6 +47,7 @@ pub mod simulation;
 pub mod stockplay;
 pub mod tool_edit;
 pub mod tools;
+pub mod workholding;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -271,6 +272,96 @@ impl Application {
             })
     }
 
+    /// The default retaining tabs of `setup` (OP-21, decision 0035 item 4 and
+    /// the owner's answers to OI-158), as explicit tabs to add to its
+    /// workholding: one in the head zone and one in the tail zone, computed
+    /// from the part's extent. The setup is not changed; the front end shows
+    /// them and replaces the setup, which can be undone (decision 0045 item
+    /// 3). Reads and places the part, so it runs as a job.
+    pub fn start_default_tabs(
+        &self,
+        setup: openchuck_project::id::SetupId,
+    ) -> JobHandle<Vec<openchuck_types::workholding::Tab>> {
+        let document = self.document.clone();
+        self.jobs
+            .submit("default tabs", self.events_tx.clone(), move |context| {
+                workholding::default_tabs_of(&document.location, &document.project, setup, context)
+            })
+    }
+
+    /// What is wrong with `draft` as the workholding of `setup`, from the
+    /// part and the tools, which the setup's own validation cannot see: tabs
+    /// outside the head and tail zones (OI-180) and tabs narrower than a tool
+    /// of the setup's operations (OI-159). A front end runs it before it
+    /// stores an edit; generation refuses the same things. Empty when there
+    /// is nothing wrong or no part to check against. Reads and places the
+    /// part, so it runs as a job.
+    pub fn start_check_workholding(
+        &self,
+        setup: openchuck_project::id::SetupId,
+        draft: &openchuck_types::workholding::Workholding,
+    ) -> JobHandle<Vec<String>> {
+        let document = self.document.clone();
+        let draft = draft.clone();
+        self.jobs.submit(
+            "check workholding",
+            self.events_tx.clone(),
+            move |context| {
+                let mut edited = document
+                    .project
+                    .setup(setup)
+                    .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?
+                    .clone();
+                edited.workholding = draft;
+                workholding::findings_of(&document.location, &document.project, &edited, context)
+            },
+        )
+    }
+
+    /// As [`Application::start_check_workholding`], for `s` as it would be
+    /// stored, which need not be in the project yet (a setup being added from
+    /// the command line), waiting for the result. For a front end that may
+    /// block, such as the command line; an interface starts the job instead.
+    pub fn check_setup_workholding(
+        &self,
+        s: &openchuck_project::Setup,
+    ) -> Result<Vec<String>, AppError> {
+        let document = self.document.clone();
+        let s = s.clone();
+        self.jobs
+            .submit(
+                "check workholding",
+                self.events_tx.clone(),
+                move |context| {
+                    workholding::findings_of(&document.location, &document.project, &s, context)
+                },
+            )
+            .wait()
+    }
+
+    /// Notes about the selections of `operation` that reach a held region or a
+    /// tab of its setup (SET-09, OP-21; UI-03): those are never machined, so
+    /// the selection cuts less than it names there. Reads and places the part,
+    /// so it runs as a job. Empty when the setup holds nothing.
+    pub fn start_workholding_warnings(
+        &self,
+        operation: openchuck_project::id::OperationId,
+    ) -> JobHandle<Vec<String>> {
+        let document = self.document.clone();
+        self.jobs.submit(
+            "workholding warnings",
+            self.events_tx.clone(),
+            move |context| {
+                workholding::reach_warnings_of(
+                    &document.location,
+                    &document.project,
+                    operation,
+                    context,
+                )
+            },
+        )
+    }
+
     /// Checks every model file against its recorded content hash (PRJ-02).
     pub fn check_models(&self) -> Result<Vec<(ModelId, ModelCheck)>, AppError> {
         self.document
@@ -478,6 +569,10 @@ impl Application {
                     unconfirmed: Vec::new(),
                 }),
             );
+            // A tab narrower than a tool that operations of the setup use is
+            // refused when they are generated (OI-159); say so here, when the
+            // tab or the tool is chosen.
+            notes.extend(workholding::narrow_tab_notes(project, s));
             reports.push(SetupReport {
                 setup: s.id,
                 name: s.name.clone(),

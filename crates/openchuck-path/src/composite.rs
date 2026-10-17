@@ -21,6 +21,7 @@ use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter::{Contact, ToolLine};
+use crate::holes::Hole;
 use crate::solid::Solid;
 use crate::surface::{RayHit, SurfacePoint, SurfaceSource};
 
@@ -115,6 +116,10 @@ impl SurfaceSource for CompositeSurface {
 
     fn tessellation(&self) -> &TriangleMesh {
         &self.mesh
+    }
+
+    fn holes(&self) -> &[Hole] {
+        self.model.holes()
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {

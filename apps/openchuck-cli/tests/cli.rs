@@ -115,7 +115,7 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 10\n"), "{text}");
+    assert!(text.starts_with("schema = 11\n"), "{text}");
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -916,6 +916,104 @@ fn req_set_09_req_op_21_cli_reports_the_end_region_and_tabs_around_the_axis() {
     assert!(
         out.stdout
             .contains("3 around the axis at 10 mm from it, first at 30 degrees"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
+fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
+    let project = empty_project("holding-set");
+    let p = project.to_str().unwrap();
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    std::fs::copy(corpus("cube_ascii.stl"), project.join("models/cube.stl")).unwrap();
+    let out = run(&args(&[
+        "import",
+        p,
+        project.join("models/cube.stl").to_str().unwrap(),
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&args(&["transform", p, "models/cube.stl", "centre"]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--part",
+        "models/cube.stl",
+        "--stock",
+        "cylinder=30,60,-25",
+        "--held-start",
+        "5",
+        "--held-end",
+        "4,20",
+        "--tab",
+        "frustum=-18,6,12,6",
+        "--tab",
+        "cylinder=14,6,4@3,30,8",
+    ]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .contains("held at the start of the stock for 5 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("held at the end of the stock for 4 mm, diameter 20 mm"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout.contains("tab 1:") && out.stdout.contains("frustum"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("3 around the axis at 8 mm from it, first at 30 degrees"),
+        "{}",
+        out.stdout
+    );
+    // The edit is stored: a fresh process reports it, and clearing removes it.
+    let out = run(&args(&["report", p]));
+    assert!(out.stdout.contains("tab 2:"), "{}", out.stdout);
+    let out = run(&args(&[
+        "setup",
+        p,
+        "Setup 1",
+        "--clear-tabs",
+        "--held-start",
+        "none",
+    ]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(!out.stdout.contains("tab 1:"), "{}", out.stdout);
+    assert!(!out.stdout.contains("held at the start"), "{}", out.stdout);
+    // A tab that is not a tab, and one that overlaps the held region, are refused.
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "sphere=1,2,3"]));
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("is not a tab"), "{}", out.stderr);
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=32,2,4"]));
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("held region"), "{}", out.stderr);
+    assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+    // A tab across the part is outside the head and tail zones: refused when
+    // editing, and nothing is stored (decision 0045 item 4).
+    let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=-1,2,4"]));
+    assert_ne!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(out.stderr.contains("tab 1"), "{}", out.stderr);
+    assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+    let out = run(&args(&["report", p]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
+    assert!(!out.stdout.contains("tab 1:"), "{}", out.stdout);
+    // The default tabs come from the part: one at the head, one at the tail.
+    let out = run(&args(&["setup", p, "Setup 1", "--default-tabs"]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout.contains("tab 1:") && out.stdout.contains("tab 2:"),
         "{}",
         out.stdout
     );

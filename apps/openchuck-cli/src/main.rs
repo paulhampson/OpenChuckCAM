@@ -19,9 +19,9 @@ use openchuck_app::model::{
 use openchuck_app::project::id::SetupId;
 use openchuck_app::project::{Item, ModelCheck, Placement, Setup};
 use openchuck_app::setup::{
-    ARange, Aabb, Clearance, Confirmation, MachineProfile, Millimetres, Point3, ProfileEntry,
-    SetupReport, Stock, TabLayout, TabShape, WorkOffsetRegister, Workholding, a_direction, builtin,
-    builtin_entry, builtin_keys, list_library, load_profile_entry,
+    ARange, Aabb, Clearance, Confirmation, HeldRegion, MachineProfile, Millimetres, Point3,
+    ProfileEntry, SetupReport, Stock, Tab, TabLayout, TabShape, WorkOffsetRegister, Workholding,
+    a_direction, builtin, builtin_entry, builtin_keys, list_library, load_profile_entry,
 };
 use openchuck_app::simulation::{DEFAULT_CELL, SimulationSettings};
 use openchuck_app::tools::{
@@ -34,6 +34,34 @@ use openchuck_app::{
     AppError, Application, Command, PostSelection, Query, QueryResult, SimulationReport, Threads,
     VERIFY_GCODE_NOTICE, inspect_file,
 };
+
+/// The workholding options of `setup` (SET-09, OP-21).
+#[derive(Debug, clap::Args)]
+struct HoldingArgs {
+    /// The length the workholding grips at the start (lower X end) of
+    /// the stock, `LENGTH` or `LENGTH,DIAMETER` in mm, or `none`. The
+    /// held region is never machined (SET-09).
+    #[arg(long)]
+    held_start: Option<String>,
+    /// As --held-start, at the end (higher X end) of the stock.
+    #[arg(long)]
+    held_end: Option<String>,
+    /// Add a retaining tab (OP-21): `cylinder=X_START,LENGTH,DIAMETER` or
+    /// `frustum=X_START,LENGTH,START_DIAMETER,END_DIAMETER` (the diameters
+    /// at X_START and at X_START+LENGTH), on the axis; end with
+    /// `@COUNT,START_ANGLE,RADIAL_OFFSET` for COUNT tabs around the axis.
+    /// Repeat for more tabs.
+    #[arg(long = "tab")]
+    tabs: Vec<String>,
+    /// Remove all the setup's tabs first.
+    #[arg(long)]
+    clear_tabs: bool,
+    /// Add the default tabs, computed from the part (OP-21): one at the
+    /// head and one at the tail, frustums with the small end on the part.
+    /// For a setup with a part, stock and no tabs.
+    #[arg(long, conflicts_with = "new")]
+    default_tabs: bool,
+}
 
 /// What to do with the tool numbers when G-code is written.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -228,6 +256,8 @@ enum Action {
         /// the machine profile's.
         #[arg(long)]
         clearance: Option<String>,
+        #[command(flatten)]
+        holding: Box<HoldingArgs>,
     },
     /// List a project's tool snapshots with their checks, and compare them
     /// with a tool library folder (TL-07). The snapshots always win;
@@ -805,7 +835,15 @@ fn run(cli: Cli) -> Result<()> {
             work_offset,
             work_x,
             clearance,
+            holding,
         } => {
+            let HoldingArgs {
+                held_start,
+                held_end,
+                tabs,
+                clear_tabs,
+                default_tabs,
+            } = *holding;
             let mut app = open_project(&project, threads, create)?;
             let mut edited = match (&new, &setup) {
                 (Some(name), _) => Setup::new(SetupId::new(), name.clone()),
@@ -842,7 +880,37 @@ fn run(cli: Cli) -> Result<()> {
             if let Some(clearance) = clearance {
                 edited.clearance = parse_clearance(&clearance)?;
             }
+            if let Some(text) = held_start {
+                edited.workholding.start = parse_held(&text)?;
+            }
+            if let Some(text) = held_end {
+                edited.workholding.end = parse_held(&text)?;
+            }
+            if clear_tabs {
+                edited.workholding.tabs.clear();
+            }
+            for text in &tabs {
+                edited.workholding.tabs.push(parse_tab(text)?);
+            }
             let id = edited.id;
+            // Tabs outside the head and tail zones, and tabs narrower than a
+            // tool the setup uses, are refused as they are when generating
+            // (OI-159, OI-180; decision 0045 item 4).
+            let refuse_findings = |app: &Application, setup: &Setup| -> Result<()> {
+                let found = app.check_setup_workholding(setup)?;
+                anyhow::ensure!(found.is_empty(), "{}", found.join("\n"));
+                Ok(())
+            };
+            refuse_findings(&app, &edited)?;
+            if default_tabs {
+                // Computed from the setup as it stands once the other
+                // options are applied (the held regions fix the zones).
+                let probe = edited.clone();
+                app.execute(Command::Replace(Item::Setup(probe)))?;
+                let added = app.start_default_tabs(id).wait()?;
+                edited.workholding.tabs.extend(added);
+                refuse_findings(&app, &edited)?;
+            }
             let command = if new.is_some() {
                 Command::Add {
                     item: Item::Setup(edited),
@@ -1395,6 +1463,94 @@ fn parse_stock(text: &str) -> Result<Option<Stock>> {
         ),
     };
     Ok(Some(stock))
+}
+
+/// Reads `--held-start` and `--held-end`: `LENGTH`, `LENGTH,DIAMETER` or
+/// `none`.
+fn parse_held(text: &str) -> Result<Option<HeldRegion>> {
+    if text == "none" {
+        return Ok(None);
+    }
+    let numbers = parse_numbers(text, text)?;
+    match numbers.as_slice() {
+        [length] => Ok(Some(HeldRegion {
+            length: Millimetres(*length),
+            diameter: None,
+        })),
+        [length, diameter] => Ok(Some(HeldRegion {
+            length: Millimetres(*length),
+            diameter: Some(Millimetres(*diameter)),
+        })),
+        _ => anyhow::bail!("'{text}' is not a held region: use LENGTH, LENGTH,DIAMETER or none"),
+    }
+}
+
+/// Comma-separated numbers; `whole` is the text to name in an error.
+fn parse_numbers(values: &str, whole: &str) -> Result<Vec<f64>> {
+    values
+        .split(',')
+        .map(|v| {
+            v.trim()
+                .parse::<f64>()
+                .with_context(|| format!("'{v}' in '{whole}' is not a number"))
+        })
+        .collect()
+}
+
+/// Reads a `--tab`: `cylinder=X_START,LENGTH,DIAMETER` or
+/// `frustum=X_START,LENGTH,START_DIAMETER,END_DIAMETER`, with an optional
+/// `@COUNT,START_ANGLE,RADIAL_OFFSET` for tabs around the axis.
+fn parse_tab(text: &str) -> Result<Tab> {
+    let usage = || {
+        format!(
+            "'{text}' is not a tab: use cylinder=X_START,LENGTH,DIAMETER or \
+             frustum=X_START,LENGTH,START_DIAMETER,END_DIAMETER, optionally followed by \
+             @COUNT,START_ANGLE,RADIAL_OFFSET"
+        )
+    };
+    let (shape_text, around) = match text.split_once('@') {
+        Some((shape, around)) => (shape, Some(around)),
+        None => (text, None),
+    };
+    let (kind, values) = shape_text.split_once('=').with_context(usage)?;
+    let numbers = parse_numbers(values, text)?;
+    let (x_start, length, shape) = match (kind.trim(), numbers.as_slice()) {
+        ("cylinder", [x, l, d]) => (
+            *x,
+            *l,
+            TabShape::Cylinder {
+                diameter: Millimetres(*d),
+            },
+        ),
+        ("frustum", [x, l, a, b]) => (
+            *x,
+            *l,
+            TabShape::Frustum {
+                start_diameter: Millimetres(*a),
+                end_diameter: Millimetres(*b),
+            },
+        ),
+        _ => anyhow::bail!(usage()),
+    };
+    let layout = match around {
+        None => TabLayout::OnAxis,
+        Some(around) => match parse_numbers(around, text)?.as_slice() {
+            [count, angle, offset] if *count >= 1.0 && count.fract() == 0.0 => {
+                TabLayout::AroundAxis {
+                    count: *count as u32,
+                    start_angle: Degrees(*angle),
+                    radial_offset: Millimetres(*offset),
+                }
+            }
+            _ => anyhow::bail!(usage()),
+        },
+    };
+    Ok(Tab {
+        x_start: Millimetres(x_start),
+        length: Millimetres(length),
+        shape,
+        layout,
+    })
 }
 
 /// Reads the `--clearance` option.

@@ -65,6 +65,7 @@ impl Strategy for OneRing {
         Ok(vec![Pass {
             points,
             stock: None,
+            rapids: Vec::new(),
         }])
     }
 }

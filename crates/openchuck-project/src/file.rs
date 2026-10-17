@@ -71,7 +71,9 @@ use openchuck_types::workholding::Workholding;
 ///   selection), written only when set (decision record 0034 item 4).
 /// - 10: setups gain the optional `[workholding]` table, written only when
 ///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
-pub const SCHEMA: i64 = 10;
+/// - 11: selection sets gain the optional `colour`, written only when the
+///   user chose one (decision record 0046 item 2).
+pub const SCHEMA: i64 = 11;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -95,6 +97,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_7_to_8,
     schema_8_to_9,
     schema_9_to_10,
+    schema_10_to_11,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -185,6 +188,13 @@ fn schema_8_to_9(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String
 /// Schema 10 adds the optional `[workholding]` table to setup files, which a
 /// schema 9 file does not have, so it needs no change but its number.
 fn schema_9_to_10(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 11 adds the optional `colour` to selection sets, which a schema 10
+/// file does not have (the set then takes the default swatch of its place in
+/// the list), so it needs no change but its number.
+fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }
 
@@ -291,6 +301,8 @@ struct SelectionFile {
     descriptors: Vec<Descriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stock_to_leave: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    colour: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -443,6 +455,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             target: s.target.clone(),
             descriptors: s.descriptors.clone(),
             stock_to_leave: s.stock_to_leave,
+            colour: s.colour.clone(),
         };
         files.insert(item_path(FileKind::SelectionSet, &s.id), to_text(&file)?);
     }
@@ -633,6 +646,15 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                             .to_owned(),
                     });
                 }
+                if f.colour
+                    .as_deref()
+                    .is_some_and(|c| !crate::model::is_set_colour(c))
+                {
+                    return Err(ProjectError::BadFile {
+                        path: path.clone(),
+                        reason: "colour must be written #rrggbb in lower case".to_owned(),
+                    });
+                }
                 Ok(SelectionSet {
                     id: f.id,
                     order: f.order,
@@ -642,6 +664,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                     target: f.target,
                     descriptors: f.descriptors,
                     stock_to_leave: f.stock_to_leave,
+                    colour: f.colour,
                 })
             })
             .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -932,7 +955,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 10);
+        assert_eq!(SCHEMA, 11);
         let mut project = Project::new("p");
         project
             .insert(
@@ -941,7 +964,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 10\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 11\n"), "{path}: {text}");
         }
     }
 
