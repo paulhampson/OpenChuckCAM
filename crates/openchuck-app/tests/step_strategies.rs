@@ -500,6 +500,7 @@ fn req_op_08_req_nfr_07_a_step_parts_seam_alone_is_no_edge_and_a_rim_is_followed
                 target: SelectionTarget::Edges(edges.into_iter().collect()),
                 descriptors: Vec::new(),
                 stock_to_leave: None,
+                colour: None,
             }),
             placement: Placement::End,
         })

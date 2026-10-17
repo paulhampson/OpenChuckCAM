@@ -858,6 +858,7 @@ mod tests {
                         target,
                         descriptors: Vec::new(),
                         stock_to_leave: None,
+                        colour: None,
                     }),
                     Placement::End,
                 )
