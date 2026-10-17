@@ -261,6 +261,9 @@ pub struct SelectionPanel {
     /// if the project accepts a changed file the selection is dropped.
     working_hash: Option<ContentHash>,
     name: String,
+    /// Whether a new set of B-rep edges keeps tangent edges, or `None` for
+    /// the project's default (decision record 0066).
+    new_tangent: Option<bool>,
     rename: String,
     pending: Option<Pending>,
     hover: Option<Hover>,
@@ -282,6 +285,7 @@ impl Default for SelectionPanel {
             working_model: None,
             working_hash: None,
             name: String::new(),
+            new_tangent: None,
             rename: String::new(),
             pending: None,
             hover: None,
@@ -792,7 +796,15 @@ impl SelectionPanel {
                 } else {
                     self.name.trim().to_owned()
                 };
-                match app.save_selection(&name, model, self.working.clone()) {
+                let saved = app
+                    .save_selection(&name, model, self.working.clone())
+                    .and_then(|id| match self.new_tangent {
+                        Some(keep) => app
+                            .edit_selection(id, SelectionEdit::KeepTangentEdges(Some(keep)))
+                            .map(|_| id),
+                        None => Ok(id),
+                    });
+                match saved {
                     Ok(id) => {
                         self.name.clear();
                         self.working = nothing();
@@ -812,6 +824,16 @@ impl SelectionPanel {
                 self.dirty = true;
             }
         });
+        if matches!(self.working, SelectionTarget::Edges(_))
+            && let Some(choice) = tangent_choice(
+                ui,
+                "new set tangent edges",
+                self.new_tangent,
+                app.project().keep_tangent_edges(),
+            )
+        {
+            self.new_tangent = choice;
+        }
         ui.horizontal_wrapped(|ui| {
             for (label, tip, kind) in [
                 (
@@ -867,6 +889,18 @@ impl SelectionPanel {
             }
         }
         ui.separator();
+        let mut keep = app.project().keep_tangent_edges();
+        if ui
+            .checkbox(&mut keep, "Keep tangent edges by default")
+            .on_hover_text(
+                "For sets of a STEP model's edges that do not say: whether edge following keeps \
+                 the edges where two faces meet smoothly. Saved with the project.",
+            )
+            .changed()
+            && let Err(e) = app.execute(openchuck_app::Command::SetKeepTangentEdges(keep))
+        {
+            error = Some(e.to_string());
+        }
         ui.weak("Editing a set marks every operation that uses it stale.");
         error
     }
@@ -1034,6 +1068,23 @@ impl SelectionPanel {
                 }
             }
         });
+        if let Some(set) = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == summary.id)
+            .filter(|s| matches!(s.target, SelectionTarget::Edges(_)))
+            .cloned()
+            && let Some(choice) = tangent_choice(
+                ui,
+                "set tangent edges",
+                set.keep_tangent_edges,
+                app.project().keep_tangent_edges(),
+            )
+            && let Err(e) = app.edit_selection(set.id, SelectionEdit::KeepTangentEdges(choice))
+        {
+            error = Some(e.to_string());
+        }
         let used = !summary.uses.is_empty();
         if ui
             .add_enabled(!used, egui::Button::new("Delete set"))
@@ -1050,6 +1101,50 @@ impl SelectionPanel {
         }
         error
     }
+}
+
+/// The choice of keeping tangent edges, as the user reads it: the project's
+/// default, keep, or drop (decision record 0066).
+fn tangent_label(value: Option<bool>, default: bool) -> String {
+    match value {
+        None => format!(
+            "Project default ({})",
+            if default { "keep" } else { "drop" }
+        ),
+        Some(true) => "Keep tangent edges".to_owned(),
+        Some(false) => "Drop tangent edges".to_owned(),
+    }
+}
+
+/// A list to choose whether a set of a STEP model's edges keeps the edges
+/// where two faces meet smoothly. Returns the new choice when it changed.
+fn tangent_choice(
+    ui: &mut egui::Ui,
+    salt: &str,
+    value: Option<bool>,
+    default: bool,
+) -> Option<Option<bool>> {
+    let mut chosen = None;
+    ui.horizontal(|ui| {
+        ui.label("Tangent edges").on_hover_text(
+            "Edges where two faces meet smoothly, such as the edge of a fillet. Edge \
+                 following drops them unless they are kept.",
+        );
+        egui::ComboBox::from_id_salt(salt)
+            .selected_text(tangent_label(value, default))
+            .show_ui(ui, |ui| {
+                for option in [None, Some(true), Some(false)] {
+                    if ui
+                        .selectable_label(value == option, tangent_label(option, default))
+                        .clicked()
+                        && option != value
+                    {
+                        chosen = Some(option);
+                    }
+                }
+            });
+    });
+    chosen
 }
 
 /// What the set `id` selects.
@@ -1664,6 +1759,83 @@ mod tests {
         panel.choice = Choice::Triangle;
         panel.click(&app, &view, &surface, Combine::Add);
         assert_eq!(panel.working, tri(&[surface.triangle]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_op_08_req_ui_05_the_tangent_edge_choice_reads_inherit_keep_or_drop() {
+        use openchuck_app::Command;
+        use openchuck_app::pick::EdgeId;
+        use openchuck_app::project::{Item, ModelRef, Placement, RelativePath, SelectionSet};
+        assert_eq!(tangent_label(None, false), "Project default (drop)");
+        assert_eq!(tangent_label(None, true), "Project default (keep)");
+        assert_eq!(tangent_label(Some(true), false), "Keep tangent edges");
+        assert_eq!(tangent_label(Some(false), true), "Drop tangent edges");
+
+        // A project with a STEP model and a set of its edges: the panel shows
+        // the set with its choice, and the project's default, without error.
+        let (dir, mut app, _) = cube_project("tangent-choice");
+        let step = ModelRef::new(
+            ModelId::new(),
+            RelativePath::new("models/part.step").unwrap(),
+            ContentHash::of_bytes(b"part"),
+        );
+        let model = step.id;
+        app.execute(Command::Add {
+            item: Item::Model(step),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let id = SelectionSetId::new();
+        app.execute(Command::Add {
+            item: Item::SelectionSet(SelectionSet {
+                id,
+                order: Default::default(),
+                name: "Outline".into(),
+                model,
+                model_hash: ContentHash::of_bytes(b"part"),
+                target: SelectionTarget::Edges([EdgeId(3)].into()),
+                descriptors: Vec::new(),
+                stock_to_leave: None,
+                colour: None,
+                keep_tangent_edges: Some(true),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let mut panel = SelectionPanel::default();
+        panel.show_set(Some(id));
+        panel.working = SelectionTarget::Edges([EdgeId(5)].into());
+        panel.working_model = Some(model);
+        let ctx = egui::Context::default();
+        let summaries = app.selection_summaries(&[]);
+        assert_eq!(summaries.iter().find(|s| s.id == id).unwrap().kind, "edges");
+        let mut error = Some("not drawn".to_owned());
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            error = panel.show(ui, &mut app, &summaries, &SceneView::default());
+        });
+        output.textures_delta.clear();
+        assert_eq!(error, None);
+        // The set's own choice stands when the project's default changes.
+        app.execute(Command::SetKeepTangentEdges(true)).unwrap();
+        let set = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .clone();
+        assert_eq!(set.keep_tangent_edges, Some(true));
+        app.edit_selection(id, SelectionEdit::KeepTangentEdges(None))
+            .unwrap();
+        let set = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .clone();
+        assert!(app.project().keeps_tangent_edges(&set));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

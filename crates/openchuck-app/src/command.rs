@@ -40,6 +40,9 @@ pub enum Command {
     },
     /// Sets the simulation settings (SIM-07).
     SetSimulation(SimulationSettings),
+    /// Sets whether sets of B-rep edges keep tangent edges when they do not
+    /// say (OP-08; decision record 0066).
+    SetKeepTangentEdges(bool),
     /// Adds an item.
     Add {
         /// The new item, with a fresh ID.
@@ -122,6 +125,9 @@ impl Command {
                 }
             }
             Self::SetSimulation(settings) => Self::SetSimulation(project.set_simulation(settings)?),
+            Self::SetKeepTangentEdges(keep) => {
+                Self::SetKeepTangentEdges(project.set_keep_tangent_edges(keep))
+            }
             Self::Add { item, placement } => {
                 let id = item.id();
                 let rekeyed = project.insert(item, placement)?;

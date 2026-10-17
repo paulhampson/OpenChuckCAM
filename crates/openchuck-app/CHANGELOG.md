@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Slice 11b (lane O, decision 0066): `scene::SceneBrep`, `SceneEdge` and `SceneMesh::brep` (a STEP part's face per triangle and its edges); `pick::EdgeRef`, `SceneEdgePick`, `ScenePick::face`, `ScenePicker::pick_edge`, `select_faces`, `select_edges`, `edge_points` and `edges_points`, with `PickTolerance`, `FaceId` and `EdgeId` re-exported; `save_selection` takes any target and `SelectionEdit::Add`, `Remove` and `Replace` a target of the set's kind; `SelectionEdit::KeepTangentEdges` and `Command::SetKeepTangentEdges`; edge following follows a mesh's chosen edges.
 - Slice 15 (decision 0044): `rest_machining` and `pencil_finishing` are offered; an operation whose strategy cleans up earlier operations' material (`Strategy::needs_earlier_operations`) says in its notes when no earlier operation of its setup has cut.
 - `JobHandle::try_result` remembers that it has handed the result over, so a poll right after it returns the documented lost-job error rather than `None`: the worker drops its end of the channel only after sending, and a poll in between read as still running (the race behind `req_nfr_04_scene_job_can_be_polled`).
 - Version 0.7.0 with the library family. `rotary_roughing` is offered; the tool's stepdown fills the operation's; a plunge is refused for a tool that cannot cut straight down; `SetupSimulation::id`; `path` re-export (decision 0033).

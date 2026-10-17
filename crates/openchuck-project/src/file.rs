@@ -74,8 +74,10 @@ use openchuck_types::workholding::Workholding;
 /// - 11: selection sets gain the optional `colour`, written only when the
 ///   user chose one (decision record 0046 item 2).
 /// - 12: a selection set's target may be `mesh_edges`, edges of a mesh
-///   model's triangles as `[triangle, side]` pairs (OI-204, decision record
-///   0066).
+///   model's triangles as `[triangle, side]` pairs (OI-204); a set of B-rep
+///   edges gains the optional `keep_tangent_edges`, and `project.toml` the
+///   project's default for it, `keep_tangent_edges`, written only when true
+///   (decision record 0066).
 pub const SCHEMA: i64 = 12;
 
 /// Name of the machine profile file in the project folder.
@@ -202,25 +204,39 @@ fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), Stri
     Ok(())
 }
 
-/// Schema 12 adds the `mesh_edges` selection target, which a schema 11 file
-/// does not have, so it needs no change but its number. A schema 11 selection
-/// file that already holds one was not written by any version that knew it,
-/// so it is refused rather than guessed at.
+/// Schema 12 adds the `mesh_edges` selection target and the optional
+/// `keep_tangent_edges` of edge sets and of the project, which a schema 11
+/// file does not have, so it needs no change but its number: its edge sets
+/// follow the project's default, off. A schema 11 file that already holds one
+/// was not written by any version that knew it, so it is refused rather than
+/// guessed at.
 fn schema_11_to_12(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
-    let stated = kind == FileKind::SelectionSet
-        && table
-            .get("target")
-            .and_then(toml::Value::as_table)
-            .is_some_and(|t| t.contains_key("mesh_edges"));
-    if stated {
-        return Err(
-            "this schema 11 selection file selects `mesh_edges`, a target schema 12 \
-             introduced; remove the set, or set `schema = 12` if the file was written for \
-             schema 12"
-                .to_owned(),
-        );
+    let premature = match kind {
+        FileKind::SelectionSet => {
+            if table
+                .get("target")
+                .and_then(toml::Value::as_table)
+                .is_some_and(|t| t.contains_key("mesh_edges"))
+            {
+                Some("selects `mesh_edges`, a target")
+            } else if table.contains_key("keep_tangent_edges") {
+                Some("has `keep_tangent_edges`, a field")
+            } else {
+                None
+            }
+        }
+        FileKind::Project if table.contains_key("keep_tangent_edges") => {
+            Some("has `keep_tangent_edges`, a field")
+        }
+        _ => None,
+    };
+    match premature {
+        Some(what) => Err(format!(
+            "this schema 11 file {what} schema 12 introduced; remove it, or set `schema = 12` \
+             if the file was written for schema 12"
+        )),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// The kinds of file in a project folder.
@@ -258,6 +274,8 @@ impl FileKind {
 struct ProjectFile {
     schema: i64,
     name: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    keep_tangent_edges: bool,
     #[serde(default, skip_serializing_if = "SimulationSettings::is_default")]
     simulation: SimulationSettings,
     #[serde(default)]
@@ -328,6 +346,13 @@ struct SelectionFile {
     stock_to_leave: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     colour: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    keep_tangent_edges: Option<bool>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -381,6 +406,10 @@ pub fn selection_inputs_hash(
         target: &'a SelectionTarget,
         #[serde(skip_serializing_if = "Option::is_none")]
         stock_to_leave: Option<f64>,
+        /// Whether an edge set keeps tangent edges, as resolved; absent for
+        /// other kinds, so their hashes are unchanged (decision record 0066).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        keep_tangent_edges: Option<bool>,
     }
     #[derive(Serialize)]
     struct Inputs<'a> {
@@ -407,6 +436,8 @@ pub fn selection_inputs_hash(
                     model_hash: s.model_hash,
                     target: &s.target,
                     stock_to_leave: s.stock_to_leave,
+                    keep_tangent_edges: matches!(s.target, SelectionTarget::Edges(_))
+                        .then(|| project.keeps_tangent_edges(s)),
                 },
             )
         })
@@ -429,6 +460,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
     let project_file = ProjectFile {
         schema: SCHEMA,
         name: project.name().to_owned(),
+        keep_tangent_edges: project.keep_tangent_edges(),
         simulation: project.simulation(),
         models: project.models().to_vec(),
     };
@@ -481,6 +513,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             descriptors: s.descriptors.clone(),
             stock_to_leave: s.stock_to_leave,
             colour: s.colour.clone(),
+            keep_tangent_edges: s.keep_tangent_edges,
         };
         files.insert(item_path(FileKind::SelectionSet, &s.id), to_text(&file)?);
     }
@@ -690,6 +723,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
                     descriptors: f.descriptors,
                     stock_to_leave: f.stock_to_leave,
                     colour: f.colour,
+                    keep_tangent_edges: f.keep_tangent_edges,
                 })
             })
             .collect::<Result<Vec<_>, ProjectError>>()?;
@@ -728,6 +762,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
         reason: e.to_string(),
     })?;
     project.machine_id = machine_id;
+    project.set_keep_tangent_edges(file.keep_tangent_edges);
     project
         .set_simulation(file.simulation)
         .map_err(|e| ProjectError::BadFile {

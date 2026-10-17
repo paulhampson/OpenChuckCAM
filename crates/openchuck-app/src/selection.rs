@@ -102,6 +102,10 @@ pub enum SelectionEdit {
     /// clears it so the default swatch applies (decision record 0046). It
     /// does not change what an operation cuts.
     Colour(Option<String>),
+    /// For a set of a STEP model's edges: keeps the edges where two faces
+    /// meet smoothly (`Some(true)`), drops them (`Some(false)`), or follows
+    /// the project's default (`None`) (decision record 0066).
+    KeepTangentEdges(Option<bool>),
 }
 
 /// The part an operation gives a selection set (OP-02).
@@ -280,6 +284,7 @@ impl Application {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         };
         self.execute(Command::Add {
             item: Item::SelectionSet(set),
@@ -327,6 +332,15 @@ impl Application {
                     ));
                 }
                 edited.colour = colour;
+            }
+            SelectionEdit::KeepTangentEdges(keep) => {
+                if keep.is_some() && !matches!(edited.target, SelectionTarget::Edges(_)) {
+                    return Err(selection_error(
+                        &edited.name,
+                        "keeping tangent edges applies to a set of a STEP model's edges only",
+                    ));
+                }
+                edited.keep_tangent_edges = keep;
             }
             SelectionEdit::Add(other) => combine(&mut edited, other, Join::Add)?,
             SelectionEdit::Remove(other) => combine(&mut edited, other, Join::Remove)?,
@@ -993,7 +1007,11 @@ mod tests {
     /// record 0066): the kind, emptiness and every ID.
     #[test]
     fn req_prj_06_req_ui_05_face_and_edge_sets_are_checked_against_the_b_rep() {
-        let (brep, _) = drilled_blank(10.0, 40.0, &[HoleSpec::blind(20.0, [0.0, 0.0, 1.0], 4.0, 3.0)]);
+        let (brep, _) = drilled_blank(
+            10.0,
+            40.0,
+            &[HoleSpec::blind(20.0, [0.0, 0.0, 1.0], 4.0, 3.0)],
+        );
         let mesh = brep.joined_tessellation().0;
         let check = |target: SelectionTarget, brep| check_target("Set", &mesh, brep, &target);
         let faces = |ids: &[u32]| SelectionTarget::Faces(ids.iter().map(|i| FaceId(*i)).collect());

@@ -803,5 +803,16 @@ fn req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind() {
     assert_eq!(count(&app), edges.len() + 1);
     app.undo().unwrap();
     assert_eq!(count(&app), edges.len());
+    // Keeping tangent edges is for a STEP model's edges only; the project's
+    // default is an undoable command (decision record 0066).
+    assert!(
+        err(app.edit_selection(id, SelectionEdit::KeepTangentEdges(Some(true))))
+            .contains("STEP model's edges")
+    );
+    assert!(!app.project().keep_tangent_edges());
+    app.execute(Command::SetKeepTangentEdges(true)).unwrap();
+    assert!(app.project().keep_tangent_edges());
+    app.undo().unwrap();
+    assert!(!app.project().keep_tangent_edges());
     std::fs::remove_dir_all(&dir).unwrap();
 }

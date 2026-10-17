@@ -21,7 +21,7 @@ use openchuck_project::{
     Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
     ToolSnapshot, file,
 };
-use openchuck_types::brep::FaceId;
+use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
 use openchuck_types::units::Millimetres;
 
@@ -107,6 +107,7 @@ fn sample() -> Project {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         }),
         Placement::End,
     )
@@ -499,6 +500,7 @@ fn with_roles() -> Project {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         })
     };
     for n in [31, 32, 33] {
@@ -876,6 +878,7 @@ fn req_prj_06_selections_match_the_model_kind() {
         descriptors: Vec::new(),
         stock_to_leave: None,
         colour: None,
+        keep_tangent_edges: None,
     };
     let stl = placed_model();
     let step = model(1);
@@ -1162,6 +1165,7 @@ fn with_mesh_edges() -> Project {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         }),
         Placement::End,
     )
@@ -1257,4 +1261,161 @@ fn req_prj_06_mesh_edges_apply_to_mesh_models_only() {
     let err = p.replace(Item::Model(renamed)).unwrap_err();
     assert!(err.to_string().contains("its own edges"), "{err}");
     assert_eq!(MeshEdge::new(0, 3), None);
+}
+
+/// `sample()` (a STEP model, an operation using set 30) with set 34, a set of
+/// B-rep edges, used by the operation too (decision record 0066).
+fn with_edge_set(keep: Option<bool>) -> Project {
+    let mut p = sample();
+    p.insert(
+        Item::SelectionSet(SelectionSet {
+            id: SelectionSetId::from_u128(34),
+            order: OrderKey::default(),
+            name: "Outline".into(),
+            model: ModelId::from_u128(1),
+            model_hash: model(1).hash,
+            target: SelectionTarget::Edges(BTreeSet::from([EdgeId(4), EdgeId(9)])),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: keep,
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    let mut o = p.operations()[0].clone();
+    o.selections.push(SelectionSetId::from_u128(34));
+    p.replace(Item::Operation(o)).unwrap();
+    p
+}
+
+const EDGE_SET_FILE: &str = "selections/00000000-0000-0000-0000-000000000022.toml";
+
+#[test]
+fn req_prj_06_req_op_08_keep_tangent_edges_survives_save_and_load_per_set_and_for_the_project() {
+    // Unset everywhere: nothing is written, and the project's default is off.
+    let plain = with_edge_set(None);
+    assert!(!plain.keep_tangent_edges());
+    for (path, text) in file::render(&plain).unwrap() {
+        assert!(!text.contains("keep_tangent_edges"), "{path}");
+    }
+    let set = |p: &Project| {
+        p.selection_sets()
+            .iter()
+            .find(|s| s.id == SelectionSetId::from_u128(34))
+            .unwrap()
+            .clone()
+    };
+    assert!(!plain.keeps_tangent_edges(&set(&plain)));
+
+    // A set's own value and the project's default are written and read back.
+    let mut p = with_edge_set(Some(false));
+    assert!(!p.set_keep_tangent_edges(true));
+    let dir = temp_dir("tangent");
+    file::save(&p, &dir).unwrap();
+    let project_text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(
+        project_text.contains("\nkeep_tangent_edges = true\n"),
+        "{project_text}"
+    );
+    let set_text = std::fs::read_to_string(dir.join(EDGE_SET_FILE)).unwrap();
+    assert!(
+        set_text.contains("keep_tangent_edges = false\n"),
+        "{set_text}"
+    );
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    // The set's value wins over the project's default; a set without one
+    // takes the default.
+    assert!(loaded.keep_tangent_edges());
+    assert!(!loaded.keeps_tangent_edges(&set(&loaded)));
+    let mut inherits = set(&loaded);
+    inherits.keep_tangent_edges = None;
+    assert!(loaded.keeps_tangent_edges(&inherits));
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_keep_tangent_edges_needs_schema_12_and_an_edge_set() {
+    let mut p = with_edge_set(Some(true));
+    p.set_keep_tangent_edges(true);
+    let dir = temp_dir("tangent-bad");
+    file::save(&p, &dir).unwrap();
+    let base = read_tree(&dir);
+
+    // In a schema 11 file, in either place, it is refused naming the file.
+    for (name, file) in [
+        ("tangent-11-set", EDGE_SET_FILE),
+        ("tangent-11-project", "project.toml"),
+    ] {
+        let old = copy_tree_with(&base, name, |path, text| {
+            if path == file {
+                text.replacen("schema = 12", "schema = 11", 1)
+            } else {
+                text.to_owned()
+            }
+        });
+        let err = file::load(&old).unwrap_err().to_string();
+        assert!(
+            err.contains("keep_tangent_edges") && err.contains("schema 12"),
+            "{name}: {err}"
+        );
+    }
+    // A schema 11 project without it loads with the default off.
+    let q = with_edge_set(None);
+    let old = copy_tree_with(
+        &read_tree(&{
+            let d = temp_dir("tangent-11-plain");
+            file::save(&q, &d).unwrap();
+            d
+        }),
+        "tangent-11-plain-copy",
+        |_, text| text.replacen("schema = 12", "schema = 11", 1),
+    );
+    let loaded = file::load(&old).unwrap();
+    assert_eq!(loaded, q);
+    assert!(!loaded.keep_tangent_edges());
+
+    // Only a set of B-rep edges may hold it.
+    let mut faces = p.selection_sets()[0].clone();
+    assert!(matches!(faces.target, SelectionTarget::Faces(_)));
+    faces.keep_tangent_edges = Some(true);
+    let err = p
+        .replace(Item::SelectionSet(faces))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("keep_tangent_edges"), "{err}");
+}
+
+#[test]
+fn req_op_08_req_prj_03_keep_tangent_edges_changes_the_cache_key_of_operations_on_edge_sets_only() {
+    let hash = |p: &Project, op: u128| file::selection_inputs_hash(p, op_id(op)).unwrap();
+    // The first operation uses the edge set; operation 102 only the face set.
+    let mut p = with_edge_set(None);
+    let edges_op = p.operations()[0].id;
+    assert_ne!(edges_op, op_id(102));
+    let (before_edges, before_faces) = (
+        file::selection_inputs_hash(&p, edges_op).unwrap(),
+        hash(&p, 102),
+    );
+    // The project's default changes what an inheriting edge set keeps.
+    p.set_keep_tangent_edges(true);
+    assert_ne!(
+        file::selection_inputs_hash(&p, edges_op).unwrap(),
+        before_edges
+    );
+    assert_eq!(hash(&p, 102), before_faces);
+    // A set's own value equal to the resolved one gives the same key.
+    let mut set = p
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == SelectionSetId::from_u128(34))
+        .unwrap()
+        .clone();
+    let inherited = file::selection_inputs_hash(&p, edges_op).unwrap();
+    set.keep_tangent_edges = Some(true);
+    p.replace(Item::SelectionSet(set)).unwrap();
+    assert_eq!(
+        file::selection_inputs_hash(&p, edges_op).unwrap(),
+        inherited
+    );
 }

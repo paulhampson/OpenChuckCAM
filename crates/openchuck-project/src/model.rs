@@ -442,6 +442,11 @@ pub struct SelectionSet {
     /// for the default swatch of its place in the list (decision record 0046
     /// item 2). It does not change what an operation cuts.
     pub colour: Option<String>,
+    /// For a set of B-rep edges: whether edges where two faces meet smoothly
+    /// (tangent edges) are kept, or `None` for the project's default
+    /// ([`Project::keep_tangent_edges`]). Only an `Edges` set may hold one
+    /// (schema 12, decision record 0066).
+    pub keep_tangent_edges: Option<bool>,
 }
 
 /// Whether `text` is a colour as a set stores it: `#rrggbb` in lower case.
@@ -648,6 +653,9 @@ pub struct Project {
     /// The ID of the library profile the machine copy came from (OI-128).
     pub(crate) machine_id: Option<String>,
     simulation: SimulationSettings,
+    /// Whether B-rep edge sets keep tangent edges when they do not say
+    /// (schema 12, decision record 0066). Off by default.
+    keep_tangent_edges: bool,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
     tools: Vec<ToolSnapshot>,
@@ -905,6 +913,7 @@ impl Project {
             machine,
             machine_id: None,
             simulation: SimulationSettings::default(),
+            keep_tangent_edges: false,
             models,
             setups,
             tools,
@@ -932,6 +941,19 @@ impl Project {
     /// stock (SIM-06), so the G-code depends on it (GC-07, decision record 0025).
     pub fn simulation(&self) -> SimulationSettings {
         self.simulation
+    }
+
+    /// Whether a set of B-rep edges that does not say keeps the edges where
+    /// two faces meet smoothly (tangent edges) when an operation follows it
+    /// (OP-08; decision record 0066). Off unless the project sets it.
+    pub fn keep_tangent_edges(&self) -> bool {
+        self.keep_tangent_edges
+    }
+
+    /// Whether `set` keeps tangent edges: its own choice, else the project's
+    /// default. Meaningful for a set of B-rep edges.
+    pub fn keeps_tangent_edges(&self, set: &SelectionSet) -> bool {
+        set.keep_tangent_edges.unwrap_or(self.keep_tangent_edges)
     }
 
     /// Model references in order.
@@ -1065,6 +1087,12 @@ impl Project {
     /// records one (OI-128).
     pub fn machine_id(&self) -> Option<&str> {
         self.machine_id.as_deref()
+    }
+
+    /// Sets the project's default for keeping tangent edges and returns the
+    /// old one (decision record 0066).
+    pub fn set_keep_tangent_edges(&mut self, keep: bool) -> bool {
+        std::mem::replace(&mut self.keep_tangent_edges, keep)
     }
 
     /// Sets the simulation settings and returns the old ones. Fails, leaving
@@ -1316,6 +1344,14 @@ impl Project {
                     return Err(openchuck_types::Error::invalid(
                         format!("selection set {}.colour", s.id),
                         "colour must be written #rrggbb in lower case",
+                    )
+                    .into());
+                }
+                if s.keep_tangent_edges.is_some() && !matches!(s.target, SelectionTarget::Edges(_))
+                {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("selection set {}.keep_tangent_edges", s.id),
+                        "keep_tangent_edges applies to a set of a STEP model's edges only",
                     )
                     .into());
                 }
