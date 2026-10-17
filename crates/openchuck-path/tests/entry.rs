@@ -82,6 +82,7 @@ impl Strategy for Line {
         Ok(vec![Pass {
             points,
             stock: None,
+            rapids: Vec::new(),
         }])
     }
 }

@@ -79,6 +79,11 @@ enum Check {
         /// Give up on one program after this many seconds.
         #[arg(long, default_value_t = 900)]
         timeout: u64,
+        /// Run only one share of the programs, `I/N` (for example `2/3`): the programs are
+        /// dealt over N runners by expected run time, so every program belongs to exactly one
+        /// share. CI runs one share on each of N runners.
+        #[arg(long, value_name = "I/N")]
+        shard: Option<String>,
     },
     /// Every check.
     All,
@@ -119,6 +124,7 @@ fn run() -> Result<bool> {
             keep_reports,
             tolerance,
             timeout,
+            shard,
         } => vec![(
             "replay",
             replay::check(
@@ -129,6 +135,7 @@ fn run() -> Result<bool> {
                     keep_reports,
                     tolerance,
                     timeout_seconds: timeout,
+                    shard,
                 },
             )?,
         )],

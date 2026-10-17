@@ -28,6 +28,7 @@ use crate::run_panel::RunPanel;
 use crate::selection_panel::{self, SelectionPanel};
 use crate::tool_panel;
 use crate::viewport::Viewport;
+use crate::workholding_panel::WorkholdingPanel;
 
 /// The starting text and control size. egui's own default reads small on
 /// large desktop displays (owner's visual check, 14 Oct 2026).
@@ -93,6 +94,11 @@ pub struct Shell {
     model_panel: Option<ModelPanel>,
     /// The machine panel, with the profiles found when it was opened.
     machine_panel: Option<MachinePanel>,
+    /// The chosen setup's workholding and tabs (SET-09, OP-21).
+    workholding_panel: Option<WorkholdingPanel>,
+    /// Selections of the chosen operation that reach a held region or a tab:
+    /// the notes, or the job finding them (UI-03).
+    reach: Reach,
     /// Typed text and refused values in the parameter form.
     form: FormState,
     /// Picking triangles and the selection sets (slice 10).
@@ -124,6 +130,8 @@ impl Shell {
             import: None,
             model_panel: None,
             machine_panel: None,
+            workholding_panel: None,
+            reach: Reach::default(),
             form: FormState::default(),
             selection: SelectionPanel::default(),
             run: RunPanel::default(),
@@ -210,6 +218,7 @@ impl Shell {
 
     /// Starts building the scene again after the project or the chosen setup changed.
     fn rebuild_scene(&mut self, fit: bool) {
+        self.reach = Reach::default();
         if let Some(app) = &self.app {
             if let Some((old, _)) = self.scene_job.take() {
                 old.cancel();
@@ -499,11 +508,14 @@ impl Shell {
                 .default_open(true)
                 .show(ui, |ui| {
                     for s in project.setups() {
+                        let selected = self.selected == Some(Selection::Setup(s.id));
                         if ui
-                            .selectable_label(self.setup == Some(s.id), &s.name)
+                            .selectable_label(selected || self.setup == Some(s.id), &s.name)
+                            .on_hover_text("Show the setup; edit its workholding and tabs")
                             .clicked()
                         {
                             chosen = Some(s.id);
+                            command = Some(TreeAction::SelectSetup(s.id));
                         }
                     }
                 });
@@ -615,6 +627,17 @@ impl Shell {
                 self.select(Selection::Set(id));
                 return;
             }
+            TreeAction::SelectSetup(id) => {
+                if self
+                    .workholding_panel
+                    .as_ref()
+                    .is_none_or(|p| p.setup() != id)
+                {
+                    self.workholding_panel = None;
+                }
+                self.select(Selection::Setup(id));
+                return;
+            }
             TreeAction::SelectMachine => {
                 if self.selected != Some(Selection::Machine) {
                     self.machine_panel = Some(MachinePanel::default());
@@ -644,6 +667,7 @@ impl Shell {
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
             Some(Selection::Model(id)) => self.model_properties(ui, id),
             Some(Selection::Machine) => self.machine_properties(ui),
+            Some(Selection::Setup(id)) => self.setup_properties(ui, id),
             Some(Selection::Picking | Selection::Set(_)) => self.selection_properties(ui),
             None => {}
         }
@@ -677,6 +701,27 @@ impl Shell {
         let copy_id = app.project().machine_id().map(str::to_owned);
         let command = egui::ScrollArea::vertical()
             .show(ui, |ui| panel.show(ui, copy.as_ref(), copy_id.as_deref()))
+            .inner;
+        if let Some(command) = command {
+            match app.execute(command) {
+                Ok(()) => self.rebuild_scene(false),
+                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            }
+        }
+    }
+
+    /// A setup's held regions and tabs (SET-09, OP-21).
+    fn setup_properties(&mut self, ui: &mut egui::Ui, id: SetupId) {
+        let Some(app) = &mut self.app else { return };
+        let Some(setup) = app.project().setup(id).cloned() else {
+            self.selected = None;
+            return;
+        };
+        let panel = self
+            .workholding_panel
+            .get_or_insert_with(|| WorkholdingPanel::new(&setup));
+        let command = egui::ScrollArea::vertical()
+            .show(ui, |ui| panel.show(ui, app, &setup))
             .inner;
         if let Some(command) = command {
             match app.execute(command) {
@@ -793,6 +838,9 @@ impl Shell {
         });
         let summaries = app.selection_summaries(&self.file_warnings);
         let roles = selection_panel::operation_roles(ui, app, id, &summaries);
+        for note in self.reach.notes(app, id, ui.ctx()) {
+            ui.colored_label(egui::Color32::from_rgb(230, 180, 60), note);
+        }
         ui.separator();
         let edit = match app.parameter_form(id) {
             Ok(form) => {
@@ -1160,6 +1208,46 @@ enum TreeAction {
     SelectPicking,
     /// Show this selection set.
     SelectSet(SelectionSetId),
+    /// Show this setup's workholding.
+    SelectSetup(SetupId),
+}
+
+/// Warnings that an operation's selections reach a held region or a tab,
+/// found by a job when the operation is shown (SET-09, OP-21).
+#[derive(Default)]
+struct Reach {
+    job: Option<(OperationId, JobHandle<Vec<String>>)>,
+    found: Option<(OperationId, Vec<String>)>,
+}
+
+impl Reach {
+    /// The notes for `operation`, starting the job that finds them once.
+    fn notes(
+        &mut self,
+        app: &Application,
+        operation: OperationId,
+        ctx: &egui::Context,
+    ) -> Vec<String> {
+        if let Some((id, job)) = &self.job {
+            match job.try_result() {
+                None => ctx.request_repaint(),
+                Some(result) => {
+                    let id = *id;
+                    self.job = None;
+                    self.found = Some((id, result.unwrap_or_default()));
+                }
+            }
+        }
+        match &self.found {
+            Some((id, notes)) if *id == operation => notes.clone(),
+            _ => {
+                if self.job.as_ref().is_none_or(|(id, _)| *id != operation) {
+                    self.job = Some((operation, app.start_workholding_warnings(operation)));
+                }
+                Vec::new()
+            }
+        }
+    }
 }
 
 /// What the properties panel shows.
@@ -1169,6 +1257,8 @@ enum Selection {
     Tool(ToolId),
     Model(ModelId),
     Machine,
+    /// A setup's workholding and tabs.
+    Setup(SetupId),
     /// Picking on the part, and the selection sets (slice 10).
     Picking,
     /// A selection set, picking on the part as well.

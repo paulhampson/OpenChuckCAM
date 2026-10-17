@@ -11,8 +11,9 @@
 # - The nightly run uses `--profile long`, which runs only the long tests,
 #   uninstrumented.
 #
-# Uninstrumented times when listed: 368 s, 252 s, 137 s, 122 s and 121 s. The last
-# filter also selects slice 13's `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
+# Uninstrumented times when listed: 368 s, 252 s, 137 s, 122 s, 121 s and 81 s (the
+# reference jobs at 1 and N threads, which includes slice 21c's `cone_held_tabs`). The
+# `req_op_12` filter also selects slice 13's `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
 # (simultaneous finishing, 93 s alone on one test thread; decision 0036).
 
 [profile.coverage]
@@ -22,6 +23,7 @@ default-filter = '''not (
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
+  | test(~reference_jobs_are_identical_at_1_and_n_threads)
 )'''
 
 [profile.long]
@@ -31,4 +33,5 @@ default-filter = '''
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
+  | test(~reference_jobs_are_identical_at_1_and_n_threads)
 '''
