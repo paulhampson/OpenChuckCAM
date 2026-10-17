@@ -4,6 +4,7 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- OI-259: the inspection of a STEP model checks its tessellation with the faces' shared corners joined, so a closed part is reported closed with its volume; the pole slivers joining collapses are left out, and the report's indices are the placed mesh's.
 - Decision 0056 (lane Z): STEP models can be added, inspected, drawn and simulated (their joined tessellation), and operations on a STEP part run on its exact `BrepSurface`. Radial drilling drills the part's holes, or those of the selected `Faces` sets; edge following follows the B-rep's own edges, or the selected `Edges` sets, with the operation's crease angle (the B-rep default of 1 degree when unset, which the form shows) and shortest chain. Other selections on a STEP part are refused by name, and so is an empty face or edge set, with a message saying to select something or take the set out (it is not read as the whole part). Triangle selection refuses a STEP model.
 - Decision 0057: `operation::EdgeOptions`, `edge_options` (answers off until lane O stores the per-selection setting) and `generate_operation_with`; keeping tangent edges builds the B-rep edges at a crease angle of zero, and is refused on a mesh part.
 - Slice 15 (decision 0044): `rest_machining` and `pencil_finishing` are offered; an operation whose strategy cleans up earlier operations' material (`Strategy::needs_earlier_operations`) says in its notes when no earlier operation of its setup has cut.
