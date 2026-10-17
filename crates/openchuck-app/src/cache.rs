@@ -242,6 +242,17 @@ pub(crate) fn operation_key(
     let tool = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
+    // The controller mapping (tool number and offsets) is read when posting, not
+    // when the path is made, so renumbering tools (GC-14) leaves results valid.
+    let tool = tool.map(|t| {
+        let mut t = t.clone();
+        t.controller = openchuck_types::tool::ControllerMapping {
+            number: 0,
+            length_offset: None,
+            diameter_offset: None,
+        };
+        t
+    });
     feed(&mut bytes, "tool", &tool)?;
     let model = ModelFiles::part(project, operation);
     feed(&mut bytes, "model", &model)?;

@@ -25,9 +25,11 @@
 
 #![warn(missing_docs)]
 
+mod acknowledgement;
 mod cache;
 mod command;
 mod error;
+mod export;
 pub mod form;
 mod jobs;
 pub mod library;
@@ -60,9 +62,14 @@ use openchuck_project::{
 };
 use setup::{PartExtent, SetupReport};
 
+pub use acknowledgement::{Acknowledgements, Lookup as AcknowledgementLookup};
 pub use cache::DEFAULT_CACHE_VERSIONS;
 pub use command::{Command, duplicate_operation};
 pub use error::AppError;
+pub use export::{
+    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, ExportChecks,
+    PostSummary, builtin_post_summaries, post_summary, write_gcode_files,
+};
 pub use jobs::{JobHandle, JobId, JobManager, Threads};
 /// The G-code reader and replay, re-exported so front ends need no engine
 /// crate of their own (architecture section 5.8).
@@ -76,7 +83,7 @@ pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use opflow::StrategyChoice;
 pub use pipeline::{GroupInfo, Regeneration};
-pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PostSelection};
+pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
 pub use selection::{
     RegionRequest, SelectionEdit, SelectionRole, SelectionSummary, SelectionUse, TriangleSet,
 };
@@ -785,6 +792,73 @@ impl Application {
     /// How the G-code is split into files.
     pub fn output_grouping(&self) -> OutputGrouping {
         self.grouping
+    }
+
+    /// The files `grouping` would write for `toolpath` with `post`, with their
+    /// names, setups and programmed times, before anything is posted (GC-05).
+    pub fn planned_files(
+        &self,
+        toolpath: &openchuck_types::ir::Toolpath,
+        post: &PostSelection,
+        grouping: OutputGrouping,
+    ) -> Result<Vec<PlannedFile>, AppError> {
+        posting::plan_files(&self.document.project, toolpath, post, grouping)
+    }
+
+    /// Starts regenerating with `post` and `grouping` for this one run, leaving
+    /// the application's own post and grouping as they were, so a later
+    /// generation does not post G-code unasked. Cached operations are reused,
+    /// so only posting and its checks cost time (GC-02, GC-05).
+    pub fn start_regenerate_with_post(
+        &mut self,
+        post: PostSelection,
+        grouping: OutputGrouping,
+    ) -> JobHandle<Regeneration> {
+        let (before_post, before_grouping) = (self.post.replace(post), self.grouping);
+        self.grouping = grouping;
+        let handle = self.start_pipeline("post", false);
+        self.post = before_post;
+        self.grouping = before_grouping;
+        handle
+    }
+
+    /// Writes the setup sheet as HTML and PDF into `folder`, named after the
+    /// project, and returns the two paths (GC-12). Pass the toolpath of a
+    /// regeneration to include the programmed times.
+    pub fn write_setup_sheet(
+        &self,
+        folder: &Path,
+        toolpath: Option<&openchuck_types::ir::Toolpath>,
+    ) -> Result<Vec<PathBuf>, AppError> {
+        let sheet = self.setup_sheet(toolpath);
+        let stem = format!(
+            "{}-setup-sheet",
+            posting::slug(self.document.project.name(), "project")
+        );
+        export::write_bytes(
+            folder,
+            &[
+                (format!("{stem}.html"), sheet.to_html().into_bytes()),
+                (format!("{stem}.pdf"), sheet.to_pdf()),
+            ],
+        )
+    }
+
+    /// The checks before writing G-code (GC-15). `run` is the latest
+    /// regeneration, `posted` a run made with the chosen post (its files'
+    /// checks count) and `last_error` the message of a later failed one.
+    pub fn export_checks(
+        &self,
+        run: Option<&Regeneration>,
+        posted: Option<&Regeneration>,
+        last_error: Option<&str>,
+    ) -> ExportChecks {
+        export::export_checks(&self.document.project, run, posted, last_error)
+    }
+
+    /// The post in use, if one is chosen.
+    pub fn post(&self) -> Option<&PostSelection> {
+        self.post.as_ref()
     }
 
     /// The project's setup sheet (GC-12). Pass a regeneration's toolpath to

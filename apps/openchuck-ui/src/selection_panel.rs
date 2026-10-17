@@ -209,6 +209,10 @@ pub struct SelectionPanel {
     message: Option<String>,
     /// The highlights need drawing again.
     dirty: bool,
+    /// Test hook: leave a region pick pending when frames are drawn, so a
+    /// shell test can press Esc while one is certainly still running.
+    #[cfg(test)]
+    hold_region_pick: bool,
 }
 
 impl Default for SelectionPanel {
@@ -227,11 +231,51 @@ impl Default for SelectionPanel {
             shown: None,
             message: None,
             dirty: true,
+            #[cfg(test)]
+            hold_region_pick: false,
         }
     }
 }
 
 impl SelectionPanel {
+    /// Test hook: the name of the click mode now chosen.
+    #[cfg(test)]
+    pub(crate) fn choice_name(&self) -> &'static str {
+        self.choice.name()
+    }
+
+    /// Test hook: whether a region pick is running.
+    #[cfg(test)]
+    pub(crate) fn has_region_pick(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// Test hook: the triangles of the working selection.
+    #[cfg(test)]
+    pub(crate) fn working_triangles(&self) -> Vec<u32> {
+        let mut t: Vec<u32> = self.working.iter().copied().collect();
+        t.sort_unstable();
+        t
+    }
+
+    /// Test hook: starts a flood fill on `model` and keeps it pending however
+    /// fast it is, until it is cancelled.
+    #[cfg(test)]
+    pub(crate) fn hold_region_pick(&mut self, app: &Application, model: ModelId) {
+        let handle = app
+            .start_select_region(
+                model,
+                &openchuck_app::RegionRequest::FloodFill { seeds: vec![0] },
+            )
+            .unwrap();
+        self.pending = Some(Pending {
+            handle,
+            model,
+            combine: Combine::Replace,
+        });
+        self.hold_region_pick = true;
+    }
+
     /// Forgets everything that belongs to the open project.
     pub fn clear(&mut self) {
         *self = Self {
@@ -289,6 +333,10 @@ impl SelectionPanel {
         let Some(pending) = &self.pending else {
             return false;
         };
+        #[cfg(test)]
+        if self.hold_region_pick {
+            return true;
+        }
         match pending.handle.try_result() {
             None => true,
             Some(result) => {
@@ -451,13 +499,16 @@ impl SelectionPanel {
         set_triangles(app, self.shown?)
     }
 
-    /// Chooses what a click selects from a key (Q, W, E; specification
+    /// Chooses what a click selects from a key (Q, W, E, R; specification
     /// section 15), and reports Esc. Returns true when Esc asks to leave
     /// picking; a region pick still running is cancelled first and keeps
-    /// picking on. Does nothing while a text field has the keyboard; the
-    /// caller skips it while a dialog is open.
-    pub fn keys(&mut self, ctx: &egui::Context) -> bool {
-        if ctx.egui_wants_keyboard_input() {
+    /// picking on. Does nothing while a text field has the keyboard, or had it
+    /// at the end of the last frame (`text_had_focus`: egui lets go of a text
+    /// field's focus at the start of the frame an Esc arrives in, so Esc that
+    /// ends an edit would otherwise also leave picking); the caller skips it
+    /// while a dialog is open.
+    pub fn keys(&mut self, ctx: &egui::Context, text_had_focus: bool) -> bool {
+        if text_had_focus || ctx.egui_wants_keyboard_input() {
             return false;
         }
         let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key));
@@ -992,7 +1043,7 @@ mod tests {
             modifiers: Modifiers::NONE,
         });
         let mut output = ctx.run_ui(input, |ui| {
-            assert!(!panel.keys(ui.ctx()));
+            assert!(!panel.keys(ui.ctx(), false));
         });
         output.textures_delta.clear();
         assert_eq!(panel.choice, Choice::Triangle);
@@ -1005,7 +1056,7 @@ mod tests {
             modifiers: Modifiers::NONE,
         });
         let mut left = false;
-        let mut output = ctx.run_ui(input, |ui| left = panel.keys(ui.ctx()));
+        let mut output = ctx.run_ui(input, |ui| left = panel.keys(ui.ctx(), false));
         output.textures_delta.clear();
         assert!(left, "Esc leaves picking when no fill is running");
     }
