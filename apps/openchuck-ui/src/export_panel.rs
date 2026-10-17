@@ -516,7 +516,8 @@ impl ExportPanel {
             ui.columns(2, |columns| {
                 let [left, right] = columns else { return };
                 self.left(left, app, checks, acts);
-                self.right(right);
+                let current = self.files_current(app).is_some();
+                self.right(right, current);
             });
             ui.add_space(8.0);
             self.notice(ui);
@@ -740,7 +741,10 @@ impl ExportPanel {
         ui.weak(EXPORT_RULE);
     }
 
-    fn right(&mut self, ui: &mut egui::Ui) {
+    /// The files column. `current` says the files were made from the project and
+    /// choices as they stand; old files are not listed or previewed, since
+    /// they are not what "Write G-code" would write.
+    fn right(&mut self, ui: &mut egui::Ui, current: bool) {
         ui.heading("Files to write");
         if self.job.is_some() {
             ui.horizontal(|ui| {
@@ -751,12 +755,13 @@ impl ExportPanel {
         if let Some(error) = &self.files_error {
             ui.colored_label(PROBLEM, error);
         }
-        let Some(files) = &self.files else {
+        let Some(files) = self.files.as_ref().filter(|_| current) else {
             if self.job.is_none() && self.files_error.is_none() {
-                ui.weak("The files appear here once every operation is generated.");
+                ui.weak("The files appear here once every operation is generated and up to date.");
             }
             return;
         };
+        let mut chosen = None;
         egui::Grid::new("export files")
             .num_columns(4)
             .striped(true)
@@ -777,7 +782,7 @@ impl ExportPanel {
                         .selectable_label(self.preview == i, &planned.name)
                         .clicked()
                     {
-                        self.preview = i;
+                        chosen = Some(i);
                     }
                     ui.label(&planned.setup);
                     ui.label(lines.to_string());
@@ -787,7 +792,8 @@ impl ExportPanel {
             });
         ui.weak("Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.");
         ui.add_space(4.0);
-        if let Some(planned) = files.plan.get(self.preview) {
+        let shown_index = chosen.unwrap_or(self.preview);
+        if let Some(planned) = files.plan.get(shown_index) {
             ui.strong(format!("Start of {}", planned.name));
             if let Some((_, text)) = files.run.gcode.iter().find(|(n, _)| *n == planned.name) {
                 let shown: Vec<&str> = text.lines().take(PREVIEW_LINES).collect();
@@ -798,6 +804,9 @@ impl ExportPanel {
                     }
                 });
             }
+        }
+        if let Some(i) = chosen {
+            self.preview = i;
         }
     }
 
@@ -1025,6 +1034,10 @@ mod tests {
         let checks = app.export_checks(Some(&run), None, None);
         let reason = panel.write_blocker(&app, &checks, true).unwrap();
         assert!(reason.contains("out of date"), "{reason}");
+        assert!(
+            panel.files_current(&app).is_none(),
+            "old files are not listed or previewed once the project changed"
+        );
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
     }
