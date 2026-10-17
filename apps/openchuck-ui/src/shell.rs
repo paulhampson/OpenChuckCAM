@@ -903,7 +903,7 @@ impl Shell {
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
         let Some(app) = &self.app else { return };
-        if self.selection.frame(app, input) {
+        if self.selection.frame(app, self.viewport.view(), input) {
             ctx.request_repaint();
         }
         // Q, W and E choose the click; Esc leaves picking (specification 15).
@@ -1385,6 +1385,7 @@ impl Shell {
             self.selected,
             Some(Selection::Picking | Selection::Set(_))
         ));
+        self.viewport.set_pick_edges(self.selection.picks_edges());
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {

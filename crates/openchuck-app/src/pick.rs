@@ -29,7 +29,6 @@ use openchuck_geom::edges::EdgeMap;
 use openchuck_geom::pick::{EdgePicker, MeshPicker};
 use openchuck_project::MeshEdge;
 use openchuck_project::id::ModelId;
-use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::geometry::{Point3, Vec3};
 
 use crate::scene::{SceneMesh, SceneRole};
@@ -38,6 +37,9 @@ use crate::{AppError, RegionRequest};
 /// How far from the pointer's ray an edge may be and still be picked; see
 /// [`openchuck_geom::pick::PickTolerance`].
 pub use openchuck_geom::pick::PickTolerance;
+/// A STEP model's face and edge IDs, re-exported so front ends need no
+/// engine crate of their own (architecture section 5.8).
+pub use openchuck_types::brep::{EdgeId, FaceId};
 
 /// A triangle under a ray.
 #[derive(Debug, Clone, Copy, PartialEq)]
