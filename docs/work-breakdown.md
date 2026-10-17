@@ -145,7 +145,6 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
-| TR | 20 items 8 and 9: the release workflow and the release gate (built 17 Oct 2026 on `claude/lane-tr-release-workflow-and-gate`, [decision 0091](decisions/0091-release-workflow-and-gate.md), proposed) | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
 
@@ -172,7 +171,6 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | E2 | E and H (both merged): nothing else |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
-| TR | Nothing beyond `main`: the gate and workflow run the checks that exist (started by the orchestrator ahead of lane T) |
 
 ### Project schema ordering
 
