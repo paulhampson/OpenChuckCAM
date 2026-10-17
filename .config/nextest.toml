@@ -21,6 +21,11 @@
 # (simultaneous finishing; decision 0036) and the helical oracle-parts test of the
 # same prefix. The `reference_jobs_are_identical_at_1_and_n_threads` filter also
 # selects slice 21c's `cone_held_tabs` (81 s when it was listed).
+#
+# Lane TE (decision 0096, 17 Oct 2026, 4 cores): the command-line end-to-end tests
+# in `apps/openchuck-cli/tests/e2e.rs` take 231 s (the sample projects at 1, 2 and N
+# threads with both posts), 126 s (their simulation) and 52 s (the interrupted run,
+# which runs the lobed job twice on one thread) in `cargo nextest run -p openchuck-cli`.
 
 [profile.coverage]
 default-filter = '''not (
@@ -34,6 +39,9 @@ default-filter = '''not (
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
+  | test(~sample_projects_run_end_to_end_at_1_2_and_n_threads)
+  | test(~sample_projects_simulate_without_overcut)
+  | test(~an_interrupted_cli_run_writes_nothing_and_changes_nothing)
 )'''
 
 [profile.long]
@@ -48,4 +56,7 @@ default-filter = '''
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
+  | test(~sample_projects_run_end_to_end_at_1_2_and_n_threads)
+  | test(~sample_projects_simulate_without_overcut)
+  | test(~an_interrupted_cli_run_writes_nothing_and_changes_nothing)
 '''

@@ -2263,6 +2263,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "openchuck-app",
+ "openchuck-testkit",
 ]
 
 [[package]]
