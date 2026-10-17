@@ -6,7 +6,7 @@
 # the golden G-code tests read them).
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
-# heavy jobs (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke and
+# heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
 # fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
 # on a ready pull request or a push, requires every heavy job whose filter is true to succeed.
 name: CI
@@ -25,7 +25,7 @@ permissions:
 # A newer push to a pull request cancels the older run of that pull request: the newer commit is the
 # one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
 # replaced while it waits: its group is its own run, so every merged commit keeps a complete result
-# (and its cache and coverage artifacts), even if several manual runs target one commit
+# (and its cache), even if several manual runs target one commit
 # (decision 0052, Option 1).
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -612,58 +612,9 @@ jobs:
             exit 1
           fi
 
-  coverage:
-    name: Coverage trend
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    env:
-      # The repository tooling (xtask) is not product code; keep it out of every report.
-      COV_IGNORE: 'xtask/'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - run: rustup component add llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov,cargo-nextest
-      # Run the tests once, then render each report format from that run. nextest
-      # schedules tests from every binary in parallel, one process each; plain
-      # `cargo test` ran the binaries one after another, and the two heavy path
-      # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
-      # Doctests are not part of this run (llvm-cov nextest does not run them).
-      # The `coverage` profile (.config/nextest.toml) leaves out the long-running
-      # tests: instrumentation makes them 6 to 11 times slower and one test cannot
-      # be split across cores. The Tests job runs all of them, and the nightly run
-      # repeats them.
-      - name: Run tests with coverage instrumentation
-        run: cargo llvm-cov nextest --profile coverage --workspace --locked --no-report
-      - name: HTML report (browsable, per file and per line)
-        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
-      - name: lcov data (trend tracking)
-        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --lcov --output-path lcov.info
-      - name: Summary on the run page
-        shell: bash
-        run: |
-          {
-            echo '## Coverage'
-            echo
-            echo '```text'
-            cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE"
-            echo '```'
-            echo
-            echo 'The full per-line HTML report is in the `coverage-html` artifact (open `html/index.html`).'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage-html
-          path: target/coverage
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage-lcov
-          path: lcov.info
+  # Coverage is not a pull request or a push job (decision 0102): `coverage.yml` runs it every night,
+  # on the whole suite, and checks the line-coverage target per crate. The pull request gate is the
+  # tests (Build and test runs every test, uninstrumented).
 
   # The single status to require in the branch ruleset for `main` ("CI required checks").
   # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
@@ -691,7 +642,6 @@ jobs:
       - libraries-alone
       - fast-checks
       - fuzz-smoke
-      - coverage
     runs-on: ubuntu-latest
     steps:
       - name: Check the required jobs
@@ -714,9 +664,13 @@ jobs:
           out() { echo "$NEEDS" | jq -r ".changes.outputs.$1"; }
           res() { echo "$NEEDS" | jq -r ".\"$1\".result"; }
           bad=""
+          # Every job in `needs` must be checked below: a job that is listed and never checked
+          # would pass without anyone looking at its result.
+          checked=" changes "
           # check JOB DUE: a job that is due must have succeeded; any other job may have been skipped.
           check() {
             local r
+            checked="$checked$1 "
             r=$(res "$1")
             if [ "$2" = true ]; then
               [ "$r" = success ] || bad="$bad, $1 ($r, due)"
@@ -728,7 +682,6 @@ jobs:
           check build-test "$(out rust)"
           check ui-smoke "$(out rust)"
           check libraries-alone "$(out rust)"
-          check coverage "$(out rust)"
           check step-kernel "$(out step)"
           fast=false
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ]; then fast=true; fi
@@ -736,6 +689,12 @@ jobs:
           fuzz=false
           if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
           check fuzz-smoke "$fuzz"
+          for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
+            case "$checked" in
+              *" $job "*) ;;
+              *) bad="$bad, $job (in needs, never checked)" ;;
+            esac
+          done
           if [ -n "$bad" ]; then
             echo "::error title=Required jobs did not pass::${bad#, }"
             exit 1
