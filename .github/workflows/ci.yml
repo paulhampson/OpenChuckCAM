@@ -4,10 +4,17 @@
 # verification plan sections 7 to 9). Jobs are path-filtered: a change to
 # docs/ alone does not rebuild the Rust workspace (posts/ and testdata/ do, because
 # the golden G-code tests read them).
+#
+# Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
+# heavy jobs (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke and
+# fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
+# on a ready pull request or a push, requires every heavy job whose filter is true to succeed.
 name: CI
 
 on:
   pull_request:
+    # `ready_for_review` starts the full run when a draft is marked ready (decision 0052, draft gate).
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -129,7 +136,7 @@ jobs:
   gate3:
     name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 3)
     needs: changes
-    if: needs.changes.outputs.gate3 == 'true'
+    if: needs.changes.outputs.gate3 == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -171,7 +178,7 @@ jobs:
   build-test:
     name: Build and test (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -200,7 +207,7 @@ jobs:
   ui-smoke:
     name: UI smoke test (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
     # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
@@ -275,7 +282,7 @@ jobs:
   step-kernel:
     name: STEP kernel (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.step == 'true'
+    if: needs.changes.outputs.step == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -313,7 +320,7 @@ jobs:
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -487,7 +494,7 @@ jobs:
   fuzz-smoke:
     name: Fuzz smoke, 1 minute per target (${{ matrix.group.name }})
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -561,7 +568,7 @@ jobs:
   coverage:
     name: Coverage trend
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     env:
       # The repository tooling (xtask) is not product code; keep it out of every report.
@@ -614,13 +621,17 @@ jobs:
   # The single status to require in the branch ruleset for `main` ("CI required checks").
   # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
   # required status that never reports blocks the merge. Requiring this one job
-  # avoids listing every job (and every matrix leg) in the ruleset. It always
-  # runs, fails if any job it needs failed or was cancelled, and accepts a
-  # skipped job only because a path filter or event condition turned it off.
-  # `changes` itself must succeed: if it fails, every other job is skipped and
-  # the filter result is unknown, so that must not read as a pass.
-  # To make a new job required, add it to `needs:` here; to make one advisory,
-  # remove it.
+  # avoids listing every job (and every matrix leg) in the ruleset. It always runs.
+  # - `changes` itself must succeed: if it fails, every other job is skipped and
+  #   the filter result is unknown, so that must not read as a pass.
+  # - A draft pull request fails here: its heavy jobs have not run (decision 0052). A
+  #   draft cannot be merged, and marking it ready starts a full run.
+  # - Otherwise every job whose path filter (or event) says it is due must have succeeded;
+  #   a due job that was skipped, failed or was cancelled fails the run. A job that is not
+  #   due may be skipped. So a skipped job passes only because a path filter or the event
+  #   turned it off, never because of the draft condition.
+  # To make a new job required, add it to `needs:` and to the list below; to make one
+  # advisory, remove it from both.
   required:
     name: CI required checks
     if: always()
@@ -640,6 +651,8 @@ jobs:
         shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -euo pipefail
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
@@ -647,9 +660,37 @@ jobs:
             echo "::error::The change-detection job did not succeed, so skipped jobs cannot be trusted"
             exit 1
           fi
-          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) (\(.value.result))"')
-          if [ -n "$bad" ]; then
-            echo "::error title=Required jobs did not pass::$(echo "$bad" | paste -sd, -)"
+          if [ "$DRAFT" = true ]; then
+            echo "::error title=Draft pull request::The heavy checks have not run on a draft; mark the pull request ready for review to run them"
             exit 1
           fi
-          echo "All required jobs passed or were skipped by their path filters."
+          out() { echo "$NEEDS" | jq -r ".changes.outputs.$1"; }
+          res() { echo "$NEEDS" | jq -r ".\"$1\".result"; }
+          bad=""
+          # check JOB DUE: a job that is due must have succeeded; any other job may have been skipped.
+          check() {
+            local r
+            r=$(res "$1")
+            if [ "$2" = true ]; then
+              [ "$r" = success ] || bad="$bad, $1 ($r, due)"
+            else
+              [ "$r" = skipped ] || [ "$r" = success ] || bad="$bad, $1 ($r)"
+            fi
+          }
+          check gate3 "$(out gate3)"
+          check build-test "$(out rust)"
+          check ui-smoke "$(out rust)"
+          check libraries-alone "$(out rust)"
+          check coverage "$(out rust)"
+          check step-kernel "$(out step)"
+          fast=false
+          if [ "$(out rust)" = true ] || [ "$(out records)" = true ]; then fast=true; fi
+          check fast-checks "$fast"
+          fuzz=false
+          if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
+          check fuzz-smoke "$fuzz"
+          if [ -n "$bad" ]; then
+            echo "::error title=Required jobs did not pass::${bad#, }"
+            exit 1
+          fi
+          echo "All required jobs passed or were turned off by their path filters."
