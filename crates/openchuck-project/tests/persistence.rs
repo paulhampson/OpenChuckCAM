@@ -17,9 +17,9 @@ use std::time::{Duration, SystemTime};
 
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, MeshEdge, ModelCheck, ModelRef, Operation, OrderKey,
-    ParameterValue, Placement, Project, ProjectError, RelativePath, SelectionSet,
-    SelectionTarget, Setup, ToolSnapshot, file,
+    ContentHash, Item, ItemId, MeshEdge, ModelCheck, ModelRef, Operation, OrderKey, ParameterValue,
+    Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
+    ToolSnapshot, file,
 };
 use openchuck_types::brep::FaceId;
 use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
@@ -1222,7 +1222,10 @@ fn req_prj_04_req_nfr_07_mesh_edges_need_schema_12_and_a_side_of_0_to_2() {
     let text = std::fs::read_to_string(&path).unwrap();
     assert_ne!(text, good, "the edit must change the file: {good}");
     let err = file::load(&dir).unwrap_err().to_string();
-    assert!(err.contains("000000000028") && err.contains("0, 1 or 2"), "{err}");
+    assert!(
+        err.contains("000000000028") && err.contains("0, 1 or 2"),
+        "{err}"
+    );
 
     // A schema 11 project without mesh edges loads as it is.
     let old = temp_dir("mesh-edges-schema-11");

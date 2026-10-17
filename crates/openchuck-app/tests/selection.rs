@@ -19,7 +19,7 @@ use openchuck_app::model::TransformStep;
 use openchuck_app::project::file::selection_inputs_hash;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{
-    Item, Operation, OrderKey, Placement, SelectionTarget, Setup, ToolSnapshot,
+    Item, MeshEdge, Operation, OrderKey, Placement, SelectionTarget, Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
 use openchuck_app::{AppError, Application, Command, Event, RegionRequest, SelectionEdit, Threads};
@@ -283,14 +283,15 @@ fn req_ui_05_saving_and_editing_are_undoable_and_checked() {
     assert_eq!(app.project().selection_sets().len(), 1);
 
     let one: BTreeSet<u32> = top.iter().take(1).copied().collect();
-    app.edit_selection(id, SelectionEdit::Remove(one.clone()))
+    app.edit_selection(id, SelectionEdit::Remove(one.clone().into()))
         .unwrap();
     let triangles = |app: &Application| match &app.project().selection_sets()[0].target {
         SelectionTarget::Triangles(t) => t.clone(),
         other => panic!("{other:?}"),
     };
     assert_eq!(triangles(&app).len(), 1);
-    app.edit_selection(id, SelectionEdit::Add(one)).unwrap();
+    app.edit_selection(id, SelectionEdit::Add(one.into()))
+        .unwrap();
     assert_eq!(triangles(&app), top);
     app.edit_selection(id, SelectionEdit::Rename("Roof".into()))
         .unwrap();
@@ -299,10 +300,12 @@ fn req_ui_05_saving_and_editing_are_undoable_and_checked() {
     assert_eq!(app.project().selection_sets()[0].name, "Top");
 
     // Refused: empty, beyond the model, and no such set.
-    assert!(err(app.save_selection("None", model, BTreeSet::new())).contains("no triangles"));
+    assert!(
+        err(app.save_selection("None", model, BTreeSet::<u32>::new())).contains("no triangles")
+    );
     assert!(err(app.save_selection("Far", model, BTreeSet::from([12]))).contains("triangle 12"));
     assert!(
-        err(app.edit_selection(id, SelectionEdit::Replace(BTreeSet::new())))
+        err(app.edit_selection(id, SelectionEdit::Replace(BTreeSet::<u32>::new().into())))
             .contains("no triangles")
     );
     assert!(
@@ -363,7 +366,7 @@ fn req_ui_05_editing_a_set_marks_exactly_the_operations_that_use_it() {
     let before = [hash(&app, op), hash(&app, second), hash(&app, third)];
     let one: BTreeSet<u32> = top.iter().take(1).copied().collect();
     let affected = app
-        .edit_selection(roof, SelectionEdit::Remove(one))
+        .edit_selection(roof, SelectionEdit::Remove(one.into()))
         .unwrap();
     assert_eq!(affected, vec![op, second]);
     let after = [hash(&app, op), hash(&app, second), hash(&app, third)];
@@ -675,5 +678,130 @@ fn req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations() {
         .unwrap();
     app.undo().unwrap();
     assert_eq!(app.project().selection_sets()[0].stock_to_leave, None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The top front edge of the placed cube (y = -5, z = 5, x from 0 to 10),
+/// picked in the scene and saved as a set of mesh edges (schema 12; OI-204,
+/// decision record 0066).
+fn front_edge(app: &mut Application, model: ModelId) -> (SelectionSetId, BTreeSet<MeshEdge>) {
+    use openchuck_app::pick::{EdgeRef, PickMode, PickTolerance};
+    let view = app.start_scene(None).wait().unwrap();
+    let picker = view.picking.picker().unwrap();
+    let reach = PickTolerance {
+        base: 0.3,
+        per_distance: 0.0,
+    };
+    let pick = picker
+        .pick_edge([5.0, -4.9, 40.0], [0.0, 0.0, -1.0], reach)
+        .unwrap()
+        .expect("the pointer is over the edge");
+    // A cube's corners join three edges, so its chain is the edge alone.
+    let chosen = picker.select_edges(&pick, PickMode::Connected);
+    assert_eq!(chosen.len(), 1);
+    let edges: BTreeSet<MeshEdge> = chosen
+        .into_iter()
+        .map(|e| match e {
+            EdgeRef::Mesh(m) => m,
+            EdgeRef::Brep(_) => panic!("a mesh has no B-rep edges"),
+        })
+        .collect();
+    let id = app
+        .save_selection("Front edge", model, edges.clone())
+        .unwrap();
+    (id, edges)
+}
+
+#[test]
+fn req_op_08_req_prj_06_chosen_mesh_edges_survive_reopening_and_are_the_only_ones_followed() {
+    let (dir, mut app, op, model) = project("mesh-edges");
+    let (id, edges) = front_edge(&mut app, model);
+    app.save().unwrap();
+    drop(app);
+
+    // Reopened, the set names the same edges of the same file.
+    let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    let set = app
+        .project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == id)
+        .unwrap()
+        .clone();
+    assert_eq!(set.target, SelectionTarget::MeshEdges(edges));
+    assert_eq!(set.target.kind_name(), "edges");
+
+    // Edge following on it engraves that edge and no other.
+    set_roles(&mut app, op, |o| {
+        o.strategy = "edge_following".into();
+        o.selections = vec![id];
+    });
+    let result = app.regenerate().unwrap();
+    let tips: Vec<Point3> = result.toolpath.groups[0]
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .map(|s| s.end.tip)
+        .collect();
+    assert!(!tips.is_empty());
+    for tip in &tips {
+        // On the edge's radial plane (y = -5, z = 5 is at 135 degrees from
+        // +Y; the tip is cut in radially from it).
+        let angle = tip.z.atan2(tip.y).to_degrees();
+        assert!((angle - 135.0).abs() < 1e-6, "{tip:?} at {angle} degrees");
+        assert!((-1e-6..=10.0 + 1e-6).contains(&tip.x), "{tip:?}");
+    }
+    assert!(tips.iter().any(|t| t.x < 1.0) && tips.iter().any(|t| t.x > 9.0));
+
+    // As a boundary, or for a strategy that does not follow edges, it is
+    // refused with a message naming it.
+    set_roles(&mut app, op, |o| {
+        o.strategy = "helical_finishing".into();
+    });
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("'Front edge'") && e.contains("edges"), "{e}");
+    set_roles(&mut app, op, |o| {
+        o.strategy = "edge_following".into();
+        o.selections = Vec::new();
+        o.boundary = Some(id);
+    });
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("'Front edge'"), "{e}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind() {
+    let (dir, mut app, _, model) = project("mesh-edge-edit");
+    let (id, edges) = front_edge(&mut app, model);
+    // A triangle beyond the model, or a side above 2, is refused.
+    let beyond: BTreeSet<MeshEdge> = [MeshEdge::new(99, 0).unwrap()].into();
+    assert!(err(app.save_selection("Beyond", model, beyond)).contains("triangle 99"));
+    // Faces of a mesh are refused; an edit of another kind is refused.
+    let faces: BTreeSet<openchuck_types::brep::FaceId> = [openchuck_types::brep::FaceId(0)].into();
+    assert!(err(app.save_selection("Faces", model, faces)).contains("no faces"));
+    let triangles: BTreeSet<u32> = [0].into();
+    assert!(err(app.edit_selection(id, SelectionEdit::Add(triangles.into()))).contains("one kind"));
+    // Removing its only edge would empty it.
+    assert!(
+        err(app.edit_selection(id, SelectionEdit::Remove(edges.clone().into())))
+            .contains("no edges")
+    );
+    // Adding another edge is an undoable step.
+    let more: BTreeSet<MeshEdge> = [MeshEdge::new(0, 0).unwrap()].into();
+    app.edit_selection(id, SelectionEdit::Add(more.into()))
+        .unwrap();
+    let count = |app: &Application| {
+        app.project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .target
+            .len()
+    };
+    assert_eq!(count(&app), edges.len() + 1);
+    app.undo().unwrap();
+    assert_eq!(count(&app), edges.len());
     std::fs::remove_dir_all(&dir).unwrap();
 }

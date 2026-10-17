@@ -637,9 +637,9 @@ impl SelectionPanel {
                 {
                     let triangles = self.working.clone();
                     let which = match kind {
-                        0 => SelectionEdit::Add(triangles),
-                        1 => SelectionEdit::Remove(triangles),
-                        _ => SelectionEdit::Replace(triangles),
+                        0 => SelectionEdit::Add(triangles.into()),
+                        1 => SelectionEdit::Remove(triangles.into()),
+                        _ => SelectionEdit::Replace(triangles.into()),
                     };
                     match app.edit_selection(set.id, which) {
                         Ok(_) => self.dirty = true,
@@ -1042,6 +1042,7 @@ mod tests {
         let mut panel = SelectionPanel::default();
         panel.join(model, Combine::Replace, set(&[0, 1]), None);
         panel.hover = Some(ScenePick {
+            face: None,
             mesh: view
                 .meshes
                 .iter()
@@ -1191,6 +1192,7 @@ mod tests {
             ..SelectionPanel::default()
         };
         let pick = ScenePick {
+            face: None,
             mesh: 0,
             model: Some(model),
             triangle: 5,

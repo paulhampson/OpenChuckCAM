@@ -317,6 +317,30 @@ impl SelectionTarget {
     }
 }
 
+impl From<BTreeSet<FaceId>> for SelectionTarget {
+    fn from(faces: BTreeSet<FaceId>) -> Self {
+        Self::Faces(faces)
+    }
+}
+
+impl From<BTreeSet<EdgeId>> for SelectionTarget {
+    fn from(edges: BTreeSet<EdgeId>) -> Self {
+        Self::Edges(edges)
+    }
+}
+
+impl From<BTreeSet<u32>> for SelectionTarget {
+    fn from(triangles: BTreeSet<u32>) -> Self {
+        Self::Triangles(triangles)
+    }
+}
+
+impl From<BTreeSet<MeshEdge>> for SelectionTarget {
+    fn from(edges: BTreeSet<MeshEdge>) -> Self {
+        Self::MeshEdges(edges)
+    }
+}
+
 /// An edge of a mesh model, named by one triangle that has it: side `side` of
 /// facet `triangle` of the model file, from corner `side` to corner
 /// `(side + 1) % 3` (schema 12; decision record 0066).

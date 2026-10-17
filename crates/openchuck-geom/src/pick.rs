@@ -324,9 +324,7 @@ impl EdgePicker {
                     continue;
                 }
                 let share = offset / allowed;
-                let better = best.is_none_or(|(s, h)| {
-                    share < s || (share == s && t < h.distance)
-                });
+                let better = best.is_none_or(|(s, h)| share < s || (share == s && t < h.distance));
                 if better {
                     best = Some((
                         share,

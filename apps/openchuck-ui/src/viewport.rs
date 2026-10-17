@@ -574,6 +574,7 @@ mod tests {
         use openchuck_app::scene::SceneMesh;
         let view = SceneView {
             meshes: vec![SceneMesh {
+                brep: None,
                 role: SceneRole::Problem,
                 model: None,
                 mesh: mesh(),

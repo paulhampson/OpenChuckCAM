@@ -308,7 +308,14 @@ fn req_ui_04_picking_a_million_triangles_stays_within_its_budget() {
 /// order: the four bottom edges, the four top edges, then the four verticals.
 fn cube_edges() -> Vec<Vec<Point3>> {
     let v = |x: f64, y: f64, z: f64| Point3::new(x * 10.0, y * 10.0, z * 10.0);
-    let square = |z: f64| [v(0.0, 0.0, z), v(1.0, 0.0, z), v(1.0, 1.0, z), v(0.0, 1.0, z)];
+    let square = |z: f64| {
+        [
+            v(0.0, 0.0, z),
+            v(1.0, 0.0, z),
+            v(1.0, 1.0, z),
+            v(0.0, 1.0, z),
+        ]
+    };
     let mut lines = Vec::new();
     for z in [0.0, 1.0] {
         let s = square(z);
@@ -358,7 +365,10 @@ fn req_ui_04_the_edge_nearest_the_ray_within_the_reach_is_picked() {
     // edge is never picked through the part.
     let side = Vec3::new(1.0, 0.0, 0.0);
     let low = Point3::new(-20.0, 0.2, 5.0);
-    let hit = picker.pick(low, side, reach, f64::INFINITY).unwrap().unwrap();
+    let hit = picker
+        .pick(low, side, reach, f64::INFINITY)
+        .unwrap()
+        .unwrap();
     assert_eq!(hit.edge, 8, "the vertical at x = 0, y = 0: {hit:?}");
     let hit = picker.pick(low, side, reach, 19.0).unwrap();
     assert_eq!(hit, None);
