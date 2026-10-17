@@ -1,0 +1,1028 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! Swarf (flank) machining on ruled B-rep faces (OP-07; work breakdown
+//! slice 17; decision records 0021 and 0061): the analytic oracle cases
+//! (cylinder, cone, plane, helicoid; sphere and torus refused), the
+//! independent checker, the A limits, the kinematic sign and determinism.
+//! No kernel is involved: the faces are built from closed forms.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp,
+    clippy::indexing_slicing,
+    clippy::cast_precision_loss
+)]
+
+use openchuck_path::params::names;
+use openchuck_path::swarf::{self, Family, Flank, Settings, detect_rulings, face_path};
+use openchuck_path::{
+    AcceptAll, AnalyticStock, BrepSurface, FaceClosest, FaceRef, MeshSurface, ParameterValue,
+    ParametricFace, RayHit, Registry, RotaryMapping, StrategyInput, SurfacePoint, SurfaceSource,
+    Swarf, ToolLine, Uv, generate, generate_in_region,
+};
+use openchuck_testkit::gouge::Outline;
+use openchuck_testkit::ruled::{
+    boss_cylinder, coaxial_cylinder, draft_cone, point, sphere_band, torus_band, wall_plane,
+};
+use openchuck_types::brep::BrepModel;
+use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
+use openchuck_types::ir::{MoveKind, PathTags, ToolPose, ToolpathGroup};
+use openchuck_types::job::{CancelToken, JobContext, NoProgress};
+use openchuck_types::machine::{ARange, Clearance, MachineProfile};
+use openchuck_types::mesh::TriangleMesh;
+use openchuck_types::tool::profile::RevolvedProfile;
+use openchuck_types::tool::{Tool, ToolShape};
+use openchuck_types::units::{Degrees, Millimetres};
+use std::collections::BTreeMap;
+
+// ---- fixtures -------------------------------------------------------------
+
+const BOSS_X: f64 = 30.0;
+const BOSS_RADIUS: f64 = 8.0;
+const Z0: f64 = 10.0;
+const Z1: f64 = 18.0;
+const TOOL_RADIUS: f64 = 3.0;
+const TOL: f64 = 0.01;
+
+fn tool(shape: ToolShape, flute_length: f64) -> RevolvedProfile {
+    Tool {
+        shape,
+        diameter: Millimetres(2.0 * TOOL_RADIUS),
+        flute_length: Millimetres(flute_length),
+        overall_length: Millimetres(60.0),
+        shank_diameter: Millimetres(2.0 * TOOL_RADIUS),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    }
+    .profile()
+    .unwrap()
+}
+
+fn flat() -> RevolvedProfile {
+    tool(ToolShape::FlatEnd, 15.0)
+}
+
+fn tapered(half_angle_degrees: f64) -> RevolvedProfile {
+    tool(
+        ToolShape::TaperedBall {
+            tip_radius: Millimetres(1.0),
+            taper_half_angle: Degrees(half_angle_degrees),
+        },
+        20.0,
+    )
+}
+
+fn machine() -> MachineProfile {
+    MachineProfile::example_x_rotary()
+}
+
+fn values(extra: &[(&str, ParameterValue)]) -> BTreeMap<String, ParameterValue> {
+    let mut v: BTreeMap<String, ParameterValue> =
+        [(names::FEED, 600.0), (names::PLUNGE_FEED, 200.0)]
+            .into_iter()
+            .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+            .collect();
+    for (k, x) in extra {
+        v.insert((*k).to_owned(), x.clone());
+    }
+    v
+}
+
+fn num(x: f64) -> ParameterValue {
+    ParameterValue::Number(x)
+}
+
+fn text(s: &str) -> ParameterValue {
+    ParameterValue::Text(s.to_owned())
+}
+
+struct Fixture {
+    surface: Box<dyn SurfaceSource>,
+    stock: AnalyticStock,
+    tool: RevolvedProfile,
+    tags: PathTags,
+    rotary: RotaryMapping,
+}
+
+impl Fixture {
+    fn brep(model: &BrepModel, tool: RevolvedProfile) -> Self {
+        Self::with_surface(Box::new(BrepSurface::new(model).unwrap()), tool)
+    }
+
+    fn with_surface(surface: Box<dyn SurfaceSource>, tool: RevolvedProfile) -> Self {
+        Self {
+            surface,
+            stock: AnalyticStock::Cylinder {
+                radius: 22.0,
+                x_start: 0.0,
+                x_end: 60.0,
+            },
+            tool,
+            tags: PathTags {
+                operation: "swarf".to_owned(),
+                setup: "s1".to_owned(),
+                tool: "t1".to_owned(),
+            },
+            rotary: RotaryMapping::of_profile(&machine()),
+        }
+    }
+
+    fn input(&self) -> StrategyInput<'_> {
+        StrategyInput {
+            surface: self.surface.as_ref(),
+            stock: &self.stock,
+            collision: &AcceptAll,
+            tool: &self.tool,
+            rotary: self.rotary,
+            clearance: Clearance {
+                radius: Millimetres(40.0),
+                safe_z: Millimetres(50.0),
+            },
+            max_feeds: machine().max_feeds,
+            tags: &self.tags,
+        }
+    }
+
+    fn settings(&self) -> Settings {
+        Settings {
+            tolerance: TOL,
+            stock_to_leave: 0.0,
+            tip_extension: 0.0,
+            reverse_tip_end: false,
+            reverse_direction: false,
+        }
+    }
+
+    fn face(&self) -> FaceRef<'_> {
+        self.surface.exact_faces().into_iter().next().unwrap()
+    }
+}
+
+fn run<T>(f: impl FnOnce(&JobContext<'_>) -> T) -> T {
+    let cancel = CancelToken::new();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    f(&ctx)
+}
+
+fn generated(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> openchuck_path::GeneratedPath {
+    run(|ctx| generate(&Swarf, &fixture.input(), &values(extra), ctx)).unwrap()
+}
+
+fn refused(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
+    run(|ctx| generate(&Swarf, &fixture.input(), &values(extra), ctx))
+        .expect_err("the operation is refused")
+        .to_string()
+}
+
+/// The poses of the cutting moves, with the pose each run of them starts
+/// from (the end of the entry), so the moves can be swept.
+fn cutting_poses(group: &ToolpathGroup) -> Vec<ToolPose> {
+    let mut out = Vec::new();
+    let mut previous = group.start;
+    let mut cutting = false;
+    for s in &group.segments {
+        if s.kind == MoveKind::Cutting {
+            if !cutting {
+                out.push(previous);
+            }
+            out.push(s.end);
+        }
+        cutting = s.kind == MoveKind::Cutting;
+        previous = s.end;
+    }
+    out
+}
+
+/// Signed clearance of the exact surface sample `p` from the tool at `pose`,
+/// by the independent checker.
+fn checker_clearance(outline: &Outline, pose: &ToolPose, p: Point3) -> f64 {
+    let w = p - pose.tip;
+    let z = w.dot(pose.axis.get());
+    let r = (w - pose.axis.get() * z).length();
+    outline.clearance(r, z)
+}
+
+/// The smallest clearance of `p` over all poses: negative by the deepest
+/// gouge, about the stock to leave where the flank reaches the sample.
+fn best_clearance(outline: &Outline, poses: &[ToolPose], p: Point3) -> f64 {
+    poses
+        .iter()
+        .map(|pose| checker_clearance(outline, pose, p))
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// A model point as the machine sees it at angle `a`, from first principles
+/// for the example machine: positive A turns the part by the right-hand
+/// rule about +X, so a model point appears rotated by +A.
+fn to_machine(p: Point3, a: f64) -> Point3 {
+    let (s, c) = a.to_radians().sin_cos();
+    Point3::new(p.x, c * p.y - s * p.z, s * p.y + c * p.z)
+}
+
+fn to_model(m: Point3, a: f64) -> Point3 {
+    to_machine(m, -a)
+}
+
+/// The poses the machine passes through: the cutting poses and `steps - 1`
+/// points of each straight move between them (X, Y, Z and A linear in the
+/// machine frame), so the checker sees the swept flank and not only the
+/// discrete poses (whose scallop a tool of a small radius would show).
+fn motion(poses: &[ToolPose], steps: usize) -> Vec<ToolPose> {
+    let mut out = Vec::new();
+    for w in poses.windows(2) {
+        let (p, q) = (w[0], w[1]);
+        let (mp, mq) = (to_machine(p.tip, p.a.0), to_machine(q.tip, q.a.0));
+        for k in 0..steps {
+            let f = k as f64 / steps as f64;
+            let a = p.a.0 + (q.a.0 - p.a.0) * f;
+            let m = mp + (mq - mp) * f;
+            let tip = to_model(m, a);
+            let axis = UnitVec3::new(to_model(Point3::new(0.0, 0.0, 1.0), a).to_vec()).unwrap();
+            out.push(ToolPose {
+                tip,
+                axis,
+                a: Degrees(a),
+            });
+        }
+    }
+    if let Some(last) = poses.last() {
+        out.push(*last);
+    }
+    out
+}
+
+/// Samples of the exact surface of a single-face model over its parameter
+/// box, `nu` by `nv`, inset from the ends of the rulings by `inset` of the
+/// range (the first and last pose cover the ends only to the chord).
+fn samples(model: &BrepModel, nu: usize, nv: usize, inset: f64) -> Vec<Point3> {
+    let face = &model.faces[0];
+    let b = face.uv_bounds;
+    let mut out = Vec::new();
+    for i in 0..=nu {
+        for j in 0..=nv {
+            let u = b[0] + (b[1] - b[0]) * i as f64 / nu as f64;
+            let v = b[2] + (b[3] - b[2]) * (inset + (1.0 - 2.0 * inset) * j as f64 / nv as f64);
+            out.push(point(&face.geometry, u, v));
+        }
+    }
+    out
+}
+
+/// The checker's verdict on a path over the exact surface: the deepest gouge
+/// and the largest material left where the flank should have reached.
+fn verdict(outline: &Outline, poses: &[ToolPose], points: &[Point3], leave: f64) -> (f64, f64) {
+    let swept = motion(poses, 8);
+    let mut gouge = 0.0f64;
+    let mut left = 0.0f64;
+    for p in points {
+        let c = best_clearance(outline, &swept, *p) - leave;
+        if c < 0.0 {
+            gouge = gouge.max(-c);
+        } else {
+            left = left.max(c);
+        }
+    }
+    (gouge, left)
+}
+
+// ---- a helicoid as a hand-written exact face --------------------------------
+
+/// The helicoid `S(u, v) = (pitch u, v cos u, v sin u)` about the rotary
+/// axis: exactly ruled (its rulings are radial lines perpendicular to X),
+/// developable only in the limit of zero pitch. The tool side is -X.
+#[derive(Debug)]
+struct Helicoid {
+    pitch: f64,
+    u: (f64, f64),
+    v: (f64, f64),
+}
+
+impl Helicoid {
+    fn at(&self, u: f64, v: f64) -> Point3 {
+        Point3::new(self.pitch * u, v * u.cos(), v * u.sin())
+    }
+
+    fn normal(&self, u: f64, v: f64) -> UnitVec3 {
+        UnitVec3::new(Vec3::new(-v, -self.pitch * u.sin(), self.pitch * u.cos())).unwrap()
+    }
+}
+
+impl ParametricFace for Helicoid {
+    fn uv_bounds(&self) -> (Uv, Uv) {
+        (
+            Uv {
+                u: self.u.0,
+                v: self.v.0,
+            },
+            Uv {
+                u: self.u.1,
+                v: self.v.1,
+            },
+        )
+    }
+
+    fn point_normal(&self, uv: Uv) -> Option<SurfacePoint> {
+        self.contains(uv).then(|| SurfacePoint {
+            point: self.at(uv.u, uv.v),
+            normal: self.normal(uv.u, uv.v),
+            position: None,
+        })
+    }
+
+    fn closest(&self, point: Point3) -> Option<FaceClosest> {
+        let n = 64;
+        let mut best: Option<(f64, Uv)> = None;
+        for i in 0..=n {
+            for j in 0..=n {
+                let uv = Uv {
+                    u: self.u.0 + (self.u.1 - self.u.0) * i as f64 / n as f64,
+                    v: self.v.0 + (self.v.1 - self.v.0) * j as f64 / n as f64,
+                };
+                let d = self.at(uv.u, uv.v).distance(point);
+                if best.is_none_or(|b| d < b.0) {
+                    best = Some((d, uv));
+                }
+            }
+        }
+        let (distance, uv) = best?;
+        Some(FaceClosest {
+            uv,
+            point: self.point_normal(uv)?,
+            distance,
+        })
+    }
+
+    fn ray_hits(&self, _origin: Point3, _direction: UnitVec3, _max: f64) -> Vec<RayHit> {
+        Vec::new()
+    }
+
+    fn contains(&self, uv: Uv) -> bool {
+        (self.u.0..=self.u.1).contains(&uv.u) && (self.v.0..=self.v.1).contains(&uv.v)
+    }
+}
+
+/// A `SurfaceSource` over hand-written exact faces, numbered in order; the
+/// mesh queries come from a tessellation of the first face.
+#[derive(Debug)]
+struct ExactFaces {
+    faces: Vec<Box<dyn ParametricFace>>,
+    mesh: MeshSurface,
+}
+
+impl ExactFaces {
+    fn helicoid(pitch: f64, degrees: f64) -> Self {
+        let h = Helicoid {
+            pitch,
+            u: (0.0, degrees.to_radians()),
+            v: (8.0, 20.0),
+        };
+        let mut mesh = TriangleMesh::default();
+        let (nu, nv) = (64, 4);
+        for i in 0..=nu {
+            for j in 0..=nv {
+                let u = h.u.0 + (h.u.1 - h.u.0) * i as f64 / nu as f64;
+                let v = h.v.0 + (h.v.1 - h.v.0) * j as f64 / nv as f64;
+                mesh.vertices.push(h.at(u, v));
+            }
+        }
+        let at = |i: usize, j: usize| (i * (nv + 1) + j) as u32;
+        for i in 0..nu {
+            for j in 0..nv {
+                mesh.triangles
+                    .push([at(i, j), at(i + 1, j + 1), at(i + 1, j)]);
+                mesh.triangles
+                    .push([at(i, j), at(i, j + 1), at(i + 1, j + 1)]);
+            }
+        }
+        Self {
+            faces: vec![Box::new(h)],
+            mesh: MeshSurface::new(&mesh).unwrap(),
+        }
+    }
+}
+
+impl SurfaceSource for ExactFaces {
+    fn bounds(&self) -> Aabb {
+        self.mesh.bounds()
+    }
+
+    fn project(&self, point: Point3) -> Option<SurfacePoint> {
+        self.mesh.project(point)
+    }
+
+    fn cast_ray(&self, origin: Point3, direction: UnitVec3, max: f64) -> Option<RayHit> {
+        self.mesh.cast_ray(origin, direction, max)
+    }
+
+    fn tessellation(&self) -> &TriangleMesh {
+        self.mesh.tessellation()
+    }
+
+    fn drop_tool(
+        &self,
+        profile: &RevolvedProfile,
+        line: &ToolLine,
+    ) -> Option<openchuck_path::Contact> {
+        self.mesh.drop_tool(profile, line)
+    }
+
+    fn exact_faces(&self) -> Vec<FaceRef<'_>> {
+        self.faces
+            .iter()
+            .enumerate()
+            .map(|(i, f)| FaceRef {
+                number: i as u32,
+                face: f.as_ref(),
+            })
+            .collect()
+    }
+}
+
+fn helicoid_samples(pitch: f64, degrees: f64, nu: usize, nv: usize, inset: f64) -> Vec<Point3> {
+    let h = Helicoid {
+        pitch,
+        u: (0.0, degrees.to_radians()),
+        v: (8.0, 20.0),
+    };
+    let mut out = Vec::new();
+    for i in 0..=nu {
+        for j in 0..=nv {
+            let u = h.u.0 + (h.u.1 - h.u.0) * i as f64 / nu as f64;
+            let v = h.v.0 + (h.v.1 - h.v.0) * (inset + (1.0 - 2.0 * inset) * j as f64 / nv as f64);
+            out.push(h.at(u, v));
+        }
+    }
+    out
+}
+
+// ---- detection ---------------------------------------------------------------
+
+#[test]
+fn req_op_07_detection_fits_rulings_on_ruled_faces_and_refuses_a_sphere_and_a_torus() {
+    let ruled = [
+        (
+            boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1),
+            Family::AlongV,
+            0.0,
+        ),
+        (
+            draft_cone(BOSS_X, 10.0, 6f64.to_radians(), 10.0, 16.0),
+            Family::AlongV,
+            0.0,
+        ),
+        (wall_plane(8.0, 22.0, 38.0, Z0, Z1), Family::AlongU, 0.0),
+    ];
+    for (model, family, twist) in ruled {
+        let f = Fixture::brep(&model, flat());
+        let d = detect_rulings(f.face().face, TOL);
+        assert_eq!(d.chosen, Some(family), "{d:?}");
+        assert!(d.fit(family).residual < 1e-9, "{d:?}");
+        assert!((d.fit(family).twist - twist).abs() < 1e-6, "{d:?}");
+        assert!(d.refusal().is_none());
+    }
+    for model in [
+        sphere_band(BOSS_X, 12.0, -0.6, 0.6),
+        torus_band(BOSS_X, 12.0, 4.0),
+    ] {
+        let f = Fixture::brep(&model, flat());
+        let d = detect_rulings(f.face().face, TOL);
+        assert_eq!(d.chosen, None, "{d:?}");
+        assert!(d.best().residual > 0.5, "{d:?}");
+        let why = d.refusal().unwrap();
+        assert!(why.contains("not a ruled surface"), "{why}");
+        assert!(why.contains("limit 0.0100 mm"), "{why}");
+        let message = refused(&f, &[]);
+        assert!(message.contains("swarf cannot cut face 0"), "{message}");
+        assert!(message.contains("misses by"), "{message}");
+    }
+    // The helicoid is ruled exactly, with a twist the detection reports.
+    let faces = ExactFaces::helicoid(1.5, 200.0);
+    let d = detect_rulings(faces.exact_faces()[0].face, TOL);
+    assert_eq!(d.chosen, Some(Family::AlongV), "{d:?}");
+    assert!(d.v.residual < 1e-9, "{d:?}");
+    assert!(d.v.twist > 2.0 && d.v.twist < 6.0, "{d:?}");
+}
+
+#[test]
+fn req_op_07_the_flank_is_the_straight_side_of_the_tool_as_one_cone() {
+    let f = Flank::of(&flat()).unwrap();
+    assert_eq!(f.half_angle, 0.0);
+    assert_eq!((f.z_start, f.z_end), (0.0, 15.0));
+    assert_eq!((f.r_start, f.r_end), (TOOL_RADIUS, TOOL_RADIUS));
+    let ball = tool(ToolShape::BallEnd, 12.0);
+    let f = Flank::of(&ball).unwrap();
+    assert_eq!(f.half_angle, 0.0);
+    assert_eq!((f.z_start, f.z_end), (TOOL_RADIUS, 12.0));
+    let t = Flank::of(&tapered(6.0)).unwrap();
+    assert!((t.half_angle.to_degrees() - 6.0).abs() < 1e-9, "{t:?}");
+    assert!(t.z_start > 0.0 && t.r_start < TOOL_RADIUS && t.r_end == TOOL_RADIUS);
+    let v = Flank::of(&tool(
+        ToolShape::VBit {
+            included_angle: Degrees(60.0),
+            tip_diameter: Millimetres(0.0),
+        },
+        15.0,
+    ))
+    .unwrap();
+    assert!((v.half_angle.to_degrees() - 30.0).abs() < 1e-9, "{v:?}");
+    // A ball whose flute length is its radius has no straight side.
+    let none = Flank::of(&tool(ToolShape::BallEnd, TOOL_RADIUS)).unwrap_err();
+    assert!(none.to_string().contains("no straight flank"), "{none}");
+}
+
+// ---- the oracle cases --------------------------------------------------------
+
+#[test]
+fn req_op_07_a_radial_cylinder_boss_is_cut_with_the_flank_at_constant_a_within_tolerance() {
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!(path.closed, "a whole boss is one closed run");
+    assert_eq!(path.runs.len(), 1);
+    assert!(path.max_tilt < 1e-9, "{}", path.max_tilt);
+    assert!(path.twist < 1e-9);
+    assert!(path.gouge <= TOL && path.left <= TOL, "{path:?}");
+    assert!(path.refusal(TOL).is_none());
+    let poses: Vec<_> = path.poses().collect();
+    assert!(poses.len() > 50, "{} poses", poses.len());
+    for p in &poses {
+        // The tool is vertical, its tip at the foot of the wall and its axis
+        // one tool radius outside the boss (closed form).
+        assert!(
+            (p.a.0.rem_euclid(360.0)).min(360.0 - p.a.0.rem_euclid(360.0)) < 1e-9,
+            "{p:?}"
+        );
+        assert!((p.tip.z - Z0).abs() < 1e-9, "{p:?}");
+        let r = (p.tip.x - BOSS_X).hypot(p.tip.y);
+        assert!((r - (BOSS_RADIUS + TOOL_RADIUS)).abs() < 1e-9, "{p:?}");
+        assert!((p.contact.z - 0.5 * (Z0 + Z1)).abs() < 1e-9, "{p:?}");
+        assert!((p.ruling_length - (Z1 - Z0)).abs() < 1e-9);
+    }
+    let (first, last) = (poses[0], poses[poses.len() - 1]);
+    assert!(first.tip.distance(last.tip) < 1e-9, "the run closes");
+    // Through the strategy and the shared services: one pass, A constant,
+    // the independent checker finds neither gouge nor uncut wall.
+    let path = generated(&f, &[]);
+    let poses = cutting_poses(&path.group);
+    assert!(poses.len() > 50);
+    assert!(poses.iter().all(|p| p.a.0.abs() < 1e-9), "A stays at zero");
+    let outline = Outline::new(&flat());
+    let (gouge, left) = verdict(&outline, &poses, &samples(&model, 180, 8, 0.05), 0.0);
+    assert!(gouge <= TOL, "gouge {gouge}");
+    assert!(left <= TOL, "left {left}");
+    assert!(
+        path.notes
+            .iter()
+            .any(|n| n.message.contains("rulings along v")),
+        "{:?}",
+        path.notes
+    );
+}
+
+#[test]
+fn req_op_07_a_plane_wall_uses_the_family_the_four_axes_can_reach() {
+    // The wall is ruled in both families; the lines along X cannot be cut on
+    // four axes, so the lines along Z are used (decision 0061 item 1).
+    let model = wall_plane(8.0, 22.0, 38.0, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert_eq!(path.family, Family::AlongU);
+    assert!(!path.closed);
+    assert_eq!(path.runs.len(), 1);
+    assert!(
+        path.max_tilt < 1e-9 && path.gouge <= TOL && path.left <= TOL,
+        "{path:?}"
+    );
+    for p in path.poses() {
+        assert!((p.tip.y - (8.0 + TOOL_RADIUS)).abs() < 1e-9, "{p:?}");
+        assert!((p.tip.z - Z0).abs() < 1e-9, "{p:?}");
+        assert!(p.a.0.abs() < 1e-9);
+    }
+    // A straight wall needs no extra poses: the initial spacing is kept.
+    assert_eq!(path.poses().count(), 5);
+    let xs: Vec<f64> = path.poses().map(|p| p.tip.x).collect();
+    assert!(xs.windows(2).all(|w| w[1] > w[0]), "{xs:?}");
+}
+
+#[test]
+fn req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refused_naming_it() {
+    let half = 6f64;
+    let model = draft_cone(BOSS_X, 10.0, half.to_radians(), 10.0, 16.0);
+    // The matching taper: the tool axis is vertical and the flank follows
+    // the cone exactly.
+    let f = Fixture::brep(&model, tapered(half));
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!(path.max_tilt < 1e-9, "{}", path.max_tilt);
+    assert!(path.gouge <= TOL && path.left <= TOL, "{path:?}");
+    assert!(path.suggested_taper.is_none());
+    let flank = Flank::of(&tapered(half)).unwrap();
+    for p in path.poses() {
+        assert!(
+            p.a.0.abs() < 1e-9 || (p.a.0.abs() - 360.0).abs() < 1e-9,
+            "{p:?}"
+        );
+        // The tip sits where the flank's start meets the foot of the wall.
+        let foot = point(&model.faces[0].geometry, 0.0, 10.0);
+        assert!((p.tip.z - (foot.z - flank.z_start)).abs() < 1e-9, "{p:?}");
+    }
+    let generated = generated(&f, &[]);
+    let poses = cutting_poses(&generated.group);
+    let (gouge, left) = verdict(
+        &Outline::new(&tapered(half)),
+        &poses,
+        &samples(&model, 180, 8, 0.05),
+        0.0,
+    );
+    assert!(gouge <= TOL, "gouge {gouge}");
+    assert!(left <= TOL, "left {left}");
+    // A straight tool is off by the draft angle where the rulings lean
+    // along X, and gouges: refused, naming the tilt and the taper that
+    // would remove it (OI-94).
+    let f = Fixture::brep(&model, flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!((path.max_tilt - half).abs() < 0.01, "{}", path.max_tilt);
+    assert!(path.gouge > TOL, "{path:?}");
+    assert!(
+        path.suggested_taper
+            .is_some_and(|a| (a - half).abs() < 0.01),
+        "{path:?}"
+    );
+    let message = refused(&f, &[]);
+    assert!(
+        message.contains("would cut into the surface by"),
+        "{message}"
+    );
+    assert!(
+        message.contains("four-axis tilt reaches 6.00 degrees"),
+        "{message}"
+    );
+    assert!(
+        message.contains("flank half angle of 6.00 degrees would remove it"),
+        "{message}"
+    );
+}
+
+#[test]
+fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_named_at_a_large_one()
+ {
+    // Pitch 0.3 mm per radian: the normal twists under a degree along the
+    // 12 mm rulings and the straight flank stays within tolerance.
+    let faces = ExactFaces::helicoid(0.3, 200.0);
+    let f = Fixture::with_surface(Box::new(faces), flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!(path.twist > 0.3 && path.twist < 1.0, "{}", path.twist);
+    assert!(path.max_tilt < 1e-9, "the rulings are perpendicular to X");
+    assert!(path.gouge <= TOL, "{path:?}");
+    assert!(path.refusal(TOL).is_none());
+    // A turns with the rulings: continuous, through the face's 200 degrees.
+    let a: Vec<f64> = path.poses().map(|p| p.a.0).collect();
+    assert!(a.windows(2).all(|w| (w[1] - w[0]).abs() < 10.0), "{a:?}");
+    assert!(
+        ((a[a.len() - 1] - a[0]).abs() - 200.0).abs() < 1e-6,
+        "{a:?}"
+    );
+    // The tip sits one tool radius off the inner end of each ruling (the
+    // end nearer the rotary axis), square to the ruling.
+    for p in path.poses() {
+        let inner = Point3::new(0.3 * p.t, 8.0 * p.t.cos(), 8.0 * p.t.sin());
+        let d = Vec3::new(0.0, p.t.cos(), p.t.sin());
+        assert!((p.tip.distance(inner) - TOOL_RADIUS).abs() < 1e-9, "{p:?}");
+        assert!((p.tip - inner).dot(d).abs() < 1e-9, "{p:?}");
+    }
+    let generated = generated(&f, &[]);
+    let poses = cutting_poses(&generated.group);
+    let (gouge, _) = verdict(
+        &Outline::new(&flat()),
+        &poses,
+        &helicoid_samples(0.3, 200.0, 200, 8, 0.05),
+        0.0,
+    );
+    assert!(gouge <= TOL, "gouge {gouge}");
+    assert!(
+        generated
+            .notes
+            .iter()
+            .any(|n| n.message.contains("the normal twists") && n.message.contains("degrees")),
+        "{:?}",
+        generated.notes
+    );
+    // Pitch 3: the twist is over ten degrees and the flank gouges either
+    // side of the ruling. The gate refuses and names the twist.
+    let faces = ExactFaces::helicoid(3.0, 200.0);
+    let f = Fixture::with_surface(Box::new(faces), flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!(path.twist > 5.0, "{}", path.twist);
+    assert!(path.gouge > TOL, "{path:?}");
+    let message = refused(&f, &[]);
+    assert!(
+        message.contains("would cut into the surface by"),
+        "{message}"
+    );
+    assert!(message.contains("ruled but not developable"), "{message}");
+    assert!(!message.contains("tilt"), "{message}");
+}
+
+#[test]
+fn req_op_07_rulings_along_the_rotary_axis_are_refused() {
+    let f = Fixture::brep(&coaxial_cylinder(12.0, 10.0, 40.0), flat());
+    let message = refused(&f, &[]);
+    assert!(
+        message.contains("rulings run along the rotary axis"),
+        "{message}"
+    );
+    assert!(message.contains("no tool taper helps"), "{message}");
+}
+
+#[test]
+fn req_op_07_a_ruling_longer_than_the_flank_is_refused_and_so_is_a_tool_without_a_flank() {
+    // The wall is 8 mm tall; a tool with 6 mm of flute cannot reach, and a
+    // tip extension counts against the flank too.
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 6.0));
+    let message = refused(&f, &[]);
+    assert!(message.contains("needs 8.000 mm of flank"), "{message}");
+    assert!(message.contains("flank is 6.000 mm long"), "{message}");
+    let f = Fixture::brep(&model, tool(ToolShape::FlatEnd, 9.0));
+    assert!(generated(&f, &[]).group.segments.len() > 10);
+    let message = refused(&f, &[(swarf::parameter::TIP_EXTENSION, num(1.5))]);
+    assert!(message.contains("needs 9.500 mm of flank"), "{message}");
+    let f = Fixture::brep(&model, tool(ToolShape::BallEnd, TOOL_RADIUS));
+    assert!(refused(&f, &[]).contains("no straight flank"));
+}
+
+#[test]
+fn req_op_07_the_tip_extension_tip_end_and_direction_parameters_move_the_tool() {
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let forward = generated(&f, &[]);
+    let extended = generated(&f, &[(swarf::parameter::TIP_EXTENSION, num(1.5))]);
+    let tips = |p: &openchuck_path::GeneratedPath| {
+        cutting_poses(&p.group)
+            .iter()
+            .map(|q| q.tip)
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        tips(&extended)
+            .iter()
+            .all(|t| (t.z - (Z0 - 1.5)).abs() < 1e-9)
+    );
+    // The other end: the tool comes from below, upside down in the model,
+    // which A = 180 makes upright on the machine.
+    let reversed = generated(&f, &[(swarf::parameter::TIP_END, text("reversed"))]);
+    let poses = cutting_poses(&reversed.group);
+    assert!(
+        poses.iter().all(|p| (p.tip.z - Z1).abs() < 1e-9),
+        "{:?}",
+        poses[0]
+    );
+    assert!(
+        poses.iter().all(|p| (p.a.0.abs() - 180.0).abs() < 1e-9),
+        "{:?}",
+        poses[0]
+    );
+    // The direction reverses the order round the boss.
+    let back = generated(&f, &[(swarf::parameter::DIRECTION, text("reverse"))]);
+    let mut t = tips(&back);
+    t.reverse();
+    assert_eq!(t, tips(&forward));
+}
+
+#[test]
+fn req_op_11_req_op_07_stock_to_leave_offsets_the_flank_by_the_allowance() {
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let leave = 0.5;
+    let path = generated(&f, &[(names::STOCK_TO_LEAVE, num(leave))]);
+    let poses = cutting_poses(&path.group);
+    for p in &poses {
+        let r = (p.tip.x - BOSS_X).hypot(p.tip.y);
+        assert!(
+            (r - (BOSS_RADIUS + TOOL_RADIUS + leave)).abs() < 1e-9,
+            "{p:?}"
+        );
+    }
+    let (gouge, left) = verdict(
+        &Outline::new(&flat()),
+        &poses,
+        &samples(&model, 180, 8, 0.05),
+        leave,
+    );
+    assert!(gouge <= TOL, "gouge {gouge}");
+    assert!(left <= TOL, "left {left}");
+}
+
+#[test]
+fn req_op_12_req_op_07_the_independent_checker_finds_no_gouge_on_the_oracle_cases() {
+    let cases: Vec<(BrepModel, RevolvedProfile)> = vec![
+        (boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat()),
+        (
+            boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1),
+            tool(ToolShape::BallEnd, 15.0),
+        ),
+        (
+            draft_cone(BOSS_X, 10.0, 6f64.to_radians(), 10.0, 16.0),
+            tapered(6.0),
+        ),
+        (wall_plane(8.0, 22.0, 38.0, Z0, Z1), flat()),
+    ];
+    for (model, tool) in cases {
+        let f = Fixture::brep(&model, tool.clone());
+        let path = generated(&f, &[]);
+        let poses = cutting_poses(&path.group);
+        let (gouge, left) = verdict(
+            &Outline::new(&tool),
+            &poses,
+            &samples(&model, 240, 8, 0.05),
+            0.0,
+        );
+        assert!(
+            gouge <= TOL,
+            "gouge {gouge} on {:?}",
+            model.faces[0].surface
+        );
+        assert!(left <= TOL, "left {left} on {:?}", model.faces[0].surface);
+        // Nothing moves the tip into the wall: every cutting pose keeps the
+        // whole exact surface clear of the tool body.
+        for p in &poses {
+            let worst = samples(&model, 120, 6, 0.0)
+                .iter()
+                .map(|q| checker_clearance(&Outline::new(&tool), p, *q))
+                .fold(f64::INFINITY, f64::min);
+            assert!(worst > -TOL, "pose {p:?} gouges by {}", -worst);
+        }
+    }
+}
+
+#[test]
+fn req_op_06_req_op_07_the_tool_axis_is_the_machine_vertical_at_each_pose() {
+    // First principles for the example machine (A positive turns the part
+    // by the right-hand rule about +X): the machine's Z axis, seen in the
+    // model, is (0, sin A, cos A). Every cutting pose on the helicoid, where
+    // A runs through 200 degrees, must have that axis (OI-98).
+    let faces = ExactFaces::helicoid(0.3, 200.0);
+    let f = Fixture::with_surface(Box::new(faces), flat());
+    let path = generated(&f, &[]);
+    let poses = cutting_poses(&path.group);
+    assert!(poses.len() > 20);
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for p in &poses {
+        let a = p.a.0.to_radians();
+        let expected = Vec3::new(0.0, a.sin(), a.cos());
+        assert!((p.axis.get() - expected).length() < 1e-9, "{p:?}");
+        lo = lo.min(p.a.0);
+        hi = hi.max(p.a.0);
+    }
+    assert!(hi - lo > 150.0, "A turned from {lo} to {hi}");
+}
+
+#[test]
+fn req_op_15_req_op_07_the_a_range_is_respected_along_a_helicoid() {
+    let make = |range: ARange| {
+        let faces = ExactFaces::helicoid(0.3, 200.0);
+        let mut f = Fixture::with_surface(Box::new(faces), flat());
+        f.rotary.range = range;
+        f
+    };
+    // 200 degrees of travel do not fit a 180 degree range: refused, naming
+    // the pass, by the shared A-axis management.
+    let f = make(ARange::Limited {
+        min: Degrees(-90.0),
+        max: Degrees(90.0),
+    });
+    let message = refused(&f, &[]);
+    assert!(
+        message.contains("more than the machine's range"),
+        "{message}"
+    );
+    // They fit a whole turn, and every A stays inside it.
+    let f = make(ARange::Limited {
+        min: Degrees(-180.0),
+        max: Degrees(180.0),
+    });
+    let path = generated(&f, &[]);
+    let a: Vec<f64> = path.group.segments.iter().map(|s| s.end.a.0).collect();
+    assert!(
+        a.iter().all(|x| (-180.0 - 1e-9..=180.0 + 1e-9).contains(x)),
+        "{a:?}"
+    );
+    assert!(a.windows(2).all(|w| (w[1] - w[0]).abs() < 180.0), "no jump");
+}
+
+#[test]
+fn req_op_16_swarf_is_in_the_registry_with_the_common_parameters() {
+    let registry = Registry::builtin();
+    let s = registry.get("swarf").unwrap();
+    assert_eq!(s.label(), "Swarf (flank) machining");
+    let schema = s.schema();
+    for name in [
+        names::TOLERANCE,
+        names::STEPOVER,
+        names::STOCK_TO_LEAVE,
+        names::FEED,
+        names::ENTRY,
+        swarf::parameter::TIP_EXTENSION,
+        swarf::parameter::TIP_END,
+        swarf::parameter::DIRECTION,
+    ] {
+        assert!(schema.get(name).is_some(), "{name}");
+    }
+    assert!(!s.honours_region());
+    assert!(!s.honours_leave_zones());
+}
+
+#[test]
+fn req_nfr_07_req_op_07_a_mesh_a_region_and_a_cancelled_job_are_refused_clearly() {
+    // A mesh has no rulings (decision 0021, OI-96).
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let mesh = MeshSurface::new(&model.faces[0].tessellation).unwrap();
+    let f = Fixture::with_surface(Box::new(mesh), flat());
+    let message = refused(&f, &[]);
+    assert!(message.contains("a mesh has no rulings"), "{message}");
+    // A region is not what swarf cuts.
+    let f = Fixture::brep(&model, flat());
+    let region = openchuck_path::RegionConstraint::default();
+    let err = run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx))
+        .err()
+        .unwrap();
+    assert!(
+        err.to_string().contains("cannot be limited to a region")
+            || err.to_string().contains("not a region"),
+        "{err}"
+    );
+    // A negative tip extension is refused by the schema.
+    let err = run(|ctx| {
+        generate(
+            &Swarf,
+            &f.input(),
+            &values(&[(swarf::parameter::TIP_EXTENSION, num(-1.0))]),
+            ctx,
+        )
+    })
+    .err()
+    .unwrap();
+    assert!(err.to_string().contains("tip_extension"), "{err}");
+    // Cancellation is an error, not a path.
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let ctx = JobContext::new(&cancel, &NoProgress);
+    assert!(matches!(
+        generate(&Swarf, &f.input(), &values(&[]), &ctx),
+        Err(openchuck_path::PathError::Cancelled)
+    ));
+}
+
+#[test]
+fn req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads() {
+    let model = draft_cone(BOSS_X, 10.0, 6f64.to_radians(), 10.0, 16.0);
+    let f = Fixture::brep(&model, tapered(6.0));
+    let runs = openchuck_testkit::determinism::check(|| {
+        let path = generated(&f, &[]);
+        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
+    let faces = ExactFaces::helicoid(0.3, 200.0);
+    let f = Fixture::with_surface(Box::new(faces), flat());
+    let runs = openchuck_testkit::determinism::check(|| {
+        let path = generated(&f, &[]);
+        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
+}
+
+#[test]
+fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
+    let mut model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let mut second = wall_plane(-14.0, 22.0, 38.0, Z0, Z1).faces.remove(0);
+    second.id = openchuck_types::brep::FaceId(1);
+    // The wall at y = -14 faces -Y: flip it so its normal faces the tool.
+    second.reversed = true;
+    model.faces.push(second);
+    let f = Fixture::brep(&model, flat());
+    let path = generated(&f, &[]);
+    assert_eq!(
+        path.notes
+            .iter()
+            .filter(|n| n.message.starts_with("swarf on face"))
+            .count(),
+        2
+    );
+    let poses = cutting_poses(&path.group);
+    let on_wall: Vec<_> = poses.iter().filter(|p| p.tip.y < -12.0).collect();
+    assert!(!on_wall.is_empty());
+    assert!(
+        on_wall
+            .iter()
+            .all(|p| (p.tip.y - (-14.0 - TOOL_RADIUS)).abs() < 1e-9)
+    );
+    // The wall at the bottom of the part is cut at A = 180, so the sign of
+    // the face decides the side the tool is on.
+    assert!(
+        on_wall.iter().all(|p| p.a.0.abs() < 1e-9),
+        "{:?}",
+        on_wall[0]
+    );
+}

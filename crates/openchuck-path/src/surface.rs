@@ -88,6 +88,17 @@ pub struct RayHit {
     pub position: Option<FacePosition>,
 }
 
+/// One exact face of a surface, as a strategy that reads the faces
+/// themselves sees it (swarf reads their rulings, OP-07; decision record
+/// 0061): the face's number and its evaluator.
+#[derive(Debug, Clone, Copy)]
+pub struct FaceRef<'a> {
+    /// The face's number: its `FaceId`, as [`FacePosition::face`].
+    pub number: u32,
+    /// The face.
+    pub face: &'a dyn ParametricFace,
+}
+
 /// The closest point of one face to a point.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FaceClosest {
@@ -159,6 +170,14 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
     /// any: a mesh answers with none.
     fn holes(&self) -> &[Hole] {
         &[]
+    }
+
+    /// The exact faces of the selected surfaces, in face order, for a
+    /// strategy that reads the faces themselves (swarf fits rulings on each,
+    /// OP-07; decision record 0061). Only an exact (B-rep) surface has any:
+    /// a mesh answers with none, and such a strategy refuses it.
+    fn exact_faces(&self) -> Vec<FaceRef<'_>> {
+        Vec::new()
     }
 }
 
