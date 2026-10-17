@@ -1,6 +1,6 @@
 # 0071: Slice 19 item 4: the export dialog, the tool-number dialog and the CLI options (lane S)
 
-- **Status:** proposed. Lane S, built on `claude/lane-s-slice-19-export-dialogs`. Not accepted: the project owner decides, through the orchestrator session. The code is written to the choices below and is cheap to change.
+- **Status:** accepted by the project owner (17 Oct 2026), with the orchestrator's recommendations on all five points, relayed by the orchestrator session at the owner's instruction (decision 0049). Lane S, built on `claude/lane-s-slice-19-export-dialogs`. The five points: gate 1 and 2 failures block writing (item 4); the acknowledgement is kept at the first successful write (item 6); a tool renumbering does not make results out of date (item 3); the dialog does not remember the post, grouping or folder (item 2); the CLI prints the notice with no tick and the feed mode is shown read-only (items 8 and 10). GC-16 says "the user confirms"; the CLI's printed notice is the owner's accepted reading, and `docs/requirements.md` is unchanged. Proposing a wording note is left to the orchestrator.
 - **Date:** 17 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-248 to OI-251 and OI-257 are new (OI-247 is the shell-level tests of item 11, closed); OI-144 is closed by this change.
 
@@ -10,7 +10,7 @@ This is lane S: work breakdown slice 19 item 4 (export UI and CLI options, the t
 
 Slice 19 items 1 to 3 and 5 are built. `Application::set_output_grouping`, `Application::setup_sheet` and the tool numbering functions (`tool_number_plan`, `tool_numbering_command`) exist with no dialog. Specification section 11.6 describes the dialog (board 5): post and files on the left, tool numbers, the checks before writing, a files list and preview on the right, an amber notice with a tick box, and a footer with the setup sheet button, Cancel and "Write G-code". Section 13 keeps the acknowledgement per user on each computer, keyed by the project folder (OI-165, closed). Neither the steps (section 4) nor the footer primary action (section 5) nor a user settings store are built.
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **Where things live.** The decisions are in `openchuck-app`, so the CLI and tests use them and the dialog only draws:
    - `export` module: `post_summary` and `builtin_post_summaries` (what a post says: units, rotary letter, wrap, feed mode), `ExportChecks` and `export_checks`, `write_gcode_files`, the fixed notice text and the tick box label; `Application::planned_files` (the files a grouping would write, with name, setup and programmed time, before posting), `Application::start_regenerate_with_post` (a run with a post and grouping of its own that leaves the application's own as they were, so a later Generate does not post G-code unasked), `Application::write_setup_sheet` (HTML and PDF named for the project).
@@ -57,5 +57,5 @@ Slice 19 items 1 to 3 and 5 are built. `Application::set_output_grouping`, `Appl
 | 1 | Remember the post, grouping and output folder per project on each computer, in the user's settings file (OI-248). | When a user asks | Owner's choice |
 | 2 | Out-of-date and error are found for the whole run, not per operation, and a changed model file is not compared (OI-249). | With the project tree states (UI-11) | Lane A or T |
 | 3 | `settings.toml` is shared with the other per-user settings of section 13; this lane writes only `export.acknowledged` (OI-250). | When the settings store (UI-15) is built | Lane A or T |
-| 4 | Whether the CLI asks the acknowledgement (OI-251). | Owner's choice | Owner's choice |
-| 5 | Whether the feed mode is a choice in the dialog (OI-257). | Owner's choice | Owner's choice |
+| 4 | Whether the CLI asks the acknowledgement (OI-251). | **Closed 17 Oct 2026:** it prints the notice, no tick | |
+| 5 | Whether the feed mode is a choice in the dialog (OI-257). | **Closed 17 Oct 2026:** shown read-only | |
