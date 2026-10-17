@@ -42,6 +42,7 @@ use parry3d_f64::shape::TriMesh;
 
 use crate::cutter::{self, Contact, ToolLine};
 use crate::error::{PathError, Result};
+use crate::holes::Hole;
 
 /// A position in a face's parameter space.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -152,6 +153,13 @@ pub trait SurfaceSource: Send + Sync + std::fmt::Debug {
     /// point. `None` when the tool would not touch the surface anywhere on
     /// the line.
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact>;
+
+    /// The round holes of the selected surfaces, found from their cylindrical
+    /// faces (OP-10; decision record 0051). Only an exact (B-rep) surface has
+    /// any: a mesh answers with none.
+    fn holes(&self) -> &[Hole] {
+        &[]
+    }
 }
 
 /// A triangle mesh with a bounding volume hierarchy, as a [`SurfaceSource`].
