@@ -37,6 +37,7 @@
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
 mod entry;
+mod walls;
 
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, Segment, ToolPose, ToolpathGroup};
@@ -73,6 +74,10 @@ const EPS: f64 = 1e-9;
 /// How much longer, in millimetres, positions written to three decimals can
 /// make a move: half a unit in each of two end points on three axes.
 const WRITTEN_ALLOWANCE: f64 = 0.002;
+
+/// The last written decimal of a position, in millimetres: two positions
+/// closer than this may be written the same.
+const WRITTEN_UNIT: f64 = 0.001;
 
 struct Builder<'a> {
     rotary: RotaryMapping,
@@ -157,7 +162,16 @@ impl Builder<'_> {
             0.0
         };
         let line = (dx * dx + dy * dy + dz * dz).sqrt();
-        let line_limit = if dx > EPS || dy > EPS { linear } else { z };
+        // A move that changes X or Y by less than a written unit may be
+        // written with or without that change, so it is checked against
+        // either limit: it is timed for the lower (decision record 0050).
+        let line_limit = if dx >= WRITTEN_UNIT || dy >= WRITTEN_UNIT {
+            linear
+        } else if dx > EPS || dy > EPS {
+            linear.min(z)
+        } else {
+            z
+        };
         let axis_time = 60.0
             * [
                 dx / linear,
@@ -270,9 +284,13 @@ pub fn assemble_with_entry(
         )));
     }
 
+    let tolerance = common.tolerance.get().0;
+    let chord = crate::wrap_fit::CHORD_FACTOR * tolerance;
+
     // A-axis management: continuous within a pass, fitted by whole turns.
     let mut placed: Vec<Vec<CutPoint>> = Vec::new();
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
+    let mut rapids: Vec<Vec<usize>> = Vec::new();
     let mut previous = Degrees(0.0);
     for (i, pass) in passes.iter().enumerate() {
         if pass.points.is_empty() {
@@ -298,11 +316,21 @@ pub fn assemble_with_entry(
                 ..*p
             })
             .collect();
+        // The micro-moves path fitting leaves at a wall become one move
+        // (decision record 0050). A pass with rapid points (a drilled hole)
+        // is left as it is: its rapids index its points, and its pecks run
+        // along the tool axis on purpose.
+        let points = if pass.rapids.is_empty() {
+            walls::merge_at_walls(&rotary, &points, tolerance, chord)
+        } else {
+            points
+        };
         if let Some(last) = points.last() {
             previous = last.a;
         }
         placed.push(points);
         stocks.push(pass.stock.clone());
+        rapids.push(pass.rapids.clone());
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
         return Err(PathError::Strategy(
@@ -368,11 +396,22 @@ pub fn assemble_with_entry(
             b.push(MoveKind::Rapid, end, None, None)?;
         }
         entry.enter(&mut b, input, stock, common, i, points)?;
-        let contacts = smoothed_contacts(points);
+        let doubling = rapids.get(i).filter(|r| !r.is_empty());
+        let contacts = match doubling {
+            Some(_) => points.iter().map(|p| p.contact).collect(),
+            None => {
+                let breaks = walls::wall_breaks(&rotary, points, tolerance);
+                smoothed_contacts_between(points, &breaks)
+            }
+        };
         b.contact = contacts.first().copied().unwrap_or(head.contact);
-        for (p, c) in points.iter().zip(&contacts).skip(1) {
+        for (k, (p, c)) in points.iter().zip(&contacts).enumerate().skip(1) {
             let end = b.pose(p.tip, p.a);
-            b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
+            if doubling.is_some_and(|r| r.contains(&k)) {
+                b.push(MoveKind::Rapid, end, None, None)?;
+            } else {
+                b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
+            }
         }
         entry.exit(&mut b, common, input, i, points)?;
     }
@@ -411,6 +450,26 @@ pub const CONTACT_SMOOTHING: usize = 2;
 /// (decision record 0015); averaging removes that jitter from the contact
 /// length while a smooth path is left almost unchanged.
 pub fn smoothed_contacts(points: &[CutPoint]) -> Vec<Point3> {
+    smoothed_contacts_between(points, &[])
+}
+
+/// [`smoothed_contacts`] with the window stopped at each index of `breaks`
+/// (in increasing order): the points before a break and those from it on are
+/// smoothed separately, so a wall step's contact jump is not shared with the
+/// moves beside it (decision record 0050).
+fn smoothed_contacts_between(points: &[CutPoint], breaks: &[usize]) -> Vec<Point3> {
+    let mut out = Vec::with_capacity(points.len());
+    let mut start = 0;
+    for &end in breaks.iter().chain(std::iter::once(&points.len())) {
+        if let Some(piece) = points.get(start..end) {
+            out.extend(smoothed_piece(piece));
+        }
+        start = end;
+    }
+    out
+}
+
+fn smoothed_piece(points: &[CutPoint]) -> Vec<Point3> {
     let n = points.len();
     (0..n)
         .map(|i| {
@@ -645,5 +704,115 @@ fn view<'a>(stocks: &'a [Option<PassStock>], i: usize, input: &'a StrategyInput<
             stock: input.stock,
             wide: false,
         },
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::stock::AcceptAll;
+    use openchuck_types::machine::MachineProfile;
+    use openchuck_types::tool::{Tool, ToolShape};
+    use openchuck_types::units::FeedRate;
+
+    fn point(x: f64, height: f64, a: f64, contact: Point3) -> CutPoint {
+        let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
+        CutPoint {
+            tip: rotary.to_model(
+                AxisPosition {
+                    along: x,
+                    across: 0.0,
+                    height,
+                },
+                Degrees(a),
+            ),
+            a: Degrees(a),
+            contact,
+        }
+    }
+
+    #[test]
+    fn req_op_13_contact_smoothing_stops_at_a_wall_step() {
+        // Three points at the foot of a wall, three on top, the contact
+        // jumping 5 mm between them.
+        let low = Point3::new(0.0, 0.0, 5.0);
+        let high = Point3::new(1.5, 0.0, 10.0);
+        let points: Vec<CutPoint> = (0..6)
+            .map(|i| {
+                let up = i >= 3;
+                let c = if up { high } else { low };
+                point(f64::from(i) * 0.1, if up { 8.5 } else { 5.0 }, 0.0, c)
+            })
+            .collect();
+        let across = smoothed_contacts(&points);
+        let stopped = smoothed_contacts_between(&points, &[3]);
+        // Smoothed across the wall, the moves beside it share its jump;
+        // stopped at it, they keep their own contact and the wall step has
+        // the whole jump.
+        assert!(across[2].distance(across[1]) > 0.5);
+        assert_eq!(stopped[..3], [low, low, low]);
+        assert_eq!(stopped[3..], [high, high, high]);
+    }
+
+    #[test]
+    fn req_op_13_a_move_that_hardly_moves_x_is_timed_against_z() {
+        // A climb of 2.2935 mm with X changing by a thousandth of a micron:
+        // written to three decimals, X does not change and Z changes by
+        // 2.294 mm, which the checker holds to Z's limit.
+        let machine = MachineProfile::example_x_rotary();
+        let rotary = RotaryMapping::of_profile(&machine);
+        let profile = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: openchuck_types::units::Millimetres(3.0),
+            flute_length: openchuck_types::units::Millimetres(8.0),
+            overall_length: openchuck_types::units::Millimetres(40.0),
+            shank_diameter: openchuck_types::units::Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap();
+        let from = point(-1.5, 5.0, 0.0, Point3::ORIGIN);
+        let to = point(-1.5 + 1e-6, 7.2935, 0.0, Point3::ORIGIN);
+        let mut b = Builder {
+            rotary,
+            tool_radius: 1.5,
+            profile: &profile,
+            max_feeds: machine.max_feeds,
+            collision: &AcceptAll,
+            pose: ToolPose {
+                tip: from.tip,
+                axis: rotary.tool_axis(from.a),
+                a: from.a,
+            },
+            contact: from.tip,
+            segments: Vec::new(),
+            notes: Vec::new(),
+        };
+        let end = b.pose(to.tip, to.a);
+        // A contact feed far above the limits, so the axes set the time.
+        b.push(MoveKind::Cutting, end, Some(to.tip), Some(FeedRate(1.0e6)))
+            .unwrap();
+        let seconds = b.segments[0].duration.0;
+        let written_z = 2.294;
+        let f = 60.0 * written_z / seconds;
+        assert!(f <= machine.max_feeds.z.0, "F{f:.3}");
+        // On a machine whose Z is faster than its linear axes, X may be
+        // written as changing by a unit, and the linear limit then applies.
+        let mut fast_z = machine.max_feeds;
+        fast_z.z = FeedRate(2.0 * fast_z.linear.0);
+        b.max_feeds = fast_z;
+        b.segments.clear();
+        b.pose = ToolPose {
+            tip: from.tip,
+            axis: rotary.tool_axis(from.a),
+            a: from.a,
+        };
+        b.push(MoveKind::Cutting, end, Some(to.tip), Some(FeedRate(1.0e6)))
+            .unwrap();
+        let f = 60.0 * (written_z.hypot(0.001)) / b.segments[0].duration.0;
+        assert!(f <= fast_z.linear.0, "F{f:.3}");
     }
 }

@@ -273,6 +273,40 @@ struct Job {
     /// simultaneous finishing, where A follows the normal and turns faster
     /// than the drive point on a lobe's flank (decision record 0036).
     max_a_step: f64,
+    /// Where the part's outline has a concave kink (model X): within
+    /// [`KINK_ZONE`] of these the contact feed is not judged, because the
+    /// ball's contact slides along the valley, as at the part's ends.
+    kinks: &'static [f64],
+}
+
+/// Half-width of the zone round a concave kink where the contact feed is not
+/// judged (mm).
+const KINK_ZONE: f64 = 2.5;
+
+/// The `cone_held_tabs` reference job's target: stock of diameter 20 from X
+/// -12 to 42; the cylinder tab and held region at the start (radius 10), the
+/// cone from X 0 to 30 (radius 10 to 5), the frustum tab from X 30 to 40
+/// (radius 5 to 10) and the held region to X 42 (radius 10).
+struct ConeHeld;
+
+impl RadialPart for ConeHeld {
+    fn name(&self) -> &'static str {
+        "cone with held regions and tabs"
+    }
+    fn x_range(&self) -> (f64, f64) {
+        (-12.0, 42.0)
+    }
+    fn radius_at(&self, x: f64, _angle: f64) -> f64 {
+        if x <= 0.0 {
+            10.0
+        } else if x <= 30.0 {
+            10.0 - 5.0 * x / 30.0
+        } else if x <= 40.0 {
+            5.0 + 5.0 * (x - 30.0) / 10.0
+        } else {
+            10.0
+        }
+    }
 }
 
 fn jobs() -> Vec<Job> {
@@ -286,6 +320,7 @@ fn jobs() -> Vec<Job> {
                 depth: 1.5,
             }),
             max_a_step: 5.0,
+            kinks: &[],
         },
         Job {
             name: "cone",
@@ -295,11 +330,22 @@ fn jobs() -> Vec<Job> {
                 length: 30.0,
             }),
             max_a_step: 5.0,
+            kinks: &[],
+        },
+        // Slice 21 (decision 0035): the cone with its held regions and tabs
+        // as one surface of revolution, the exact target the audit holds the
+        // tool to.
+        Job {
+            name: "cone_held_tabs",
+            part: Box::new(ConeHeld),
+            max_a_step: 5.0,
+            kinks: &[30.0],
         },
         Job {
             name: "sphere",
             part: Box::new(Sphere { radius: 10.0 }),
             max_a_step: 5.0,
+            kinks: &[],
         },
         Job {
             name: "lobed",
@@ -312,6 +358,7 @@ fn jobs() -> Vec<Job> {
                 length: 20.0,
             }),
             max_a_step: 10.0,
+            kinks: &[],
         },
     ]
 }
@@ -328,6 +375,7 @@ fn audit_geometry(
     post: Post,
     part: &dyn RadialPart,
     max_a_step: f64,
+    kinks: &[f64],
 ) -> Vec<Point3> {
     let ball = Tool {
         shape: ToolShape::BallEnd,
@@ -414,7 +462,9 @@ fn audit_geometry(
         // Away from the part's ends, as in the pathing tests (OI-77): near a rim or a pole the
         // contact slides round the end and its speed is not what the feed is defined on.
         let (x0, x1) = part.x_range();
-        let inside = contacts[k].x > x0 + END_ZONE && contacts[k].x < x1 - END_ZONE;
+        let inside = contacts[k].x > x0 + END_ZONE
+            && contacts[k].x < x1 - END_ZONE
+            && kinks.iter().all(|c| (contacts[k].x - c).abs() > KINK_ZONE);
         if seconds > 0.0 && length > 0.0 && inside {
             let e = (length / seconds * 60.0) / CONTACT_FEED - 1.0;
             if std::env::var("AUDIT_DEBUG").is_ok() && k < 40 {
@@ -512,6 +562,7 @@ fn req_gc_09_req_gc_10_req_nfr_08_reference_job_golden_files_pass_the_audit() {
                 post,
                 job.part.as_ref(),
                 job.max_a_step,
+                job.kinks,
             ));
         }
         // Agreement: the two posts reach the same tool positions on the exact surface.

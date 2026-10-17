@@ -64,6 +64,7 @@ impl Strategy for FineRing {
         Ok(vec![Pass {
             points,
             stock: None,
+            rapids: Vec::new(),
         }])
     }
 }

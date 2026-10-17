@@ -1,6 +1,6 @@
 # 0042: Slice 21b design refinement: analytic solids and the composite target (SET-09, OP-21)
 
-- **Status:** proposed (16 Oct 2026). Built on `claude/lane-v-slice-21b-composite-target` (lane V). It builds item 2 of [decision 0035](0035-workholding-and-retaining-tabs.md), which the owner accepted on 15 Oct 2026 with answers on tab layout (tabs restricted to the head and tail, a tab narrower than the tool refused, no cut-off in P1), and sits beside [decision 0041](0041-slice-21a-workholding-data.md) (the setup data, merged). This record is proposed until the owner accepts it. It adds nothing to the requirements or the architecture.
+- **Status:** accepted by the project owner (16 Oct 2026), relayed by the orchestrator session at the owner's instruction (decision 0049). Built on `claude/lane-v-slice-21b-composite-target` (lane V). It builds item 2 of [decision 0035](0035-workholding-and-retaining-tabs.md), which the owner accepted on 15 Oct 2026 with answers on tab layout (tabs restricted to the head and tail, a tab narrower than the tool refused, no cut-off in P1), and sits beside [decision 0041](0041-slice-21a-workholding-data.md) (the setup data, merged). It adds nothing to the requirements or the architecture.
 - **Date:** 15 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-185; OI-162 is measured here.
 

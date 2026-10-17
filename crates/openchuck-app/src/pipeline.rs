@@ -222,13 +222,18 @@ pub(crate) fn regenerate(
         };
         for state in setups {
             context.check_cancelled()?;
-            let part = project
-                .setup(state.id)
+            let setup = project.setup(state.id);
+            let part = setup
                 .and_then(|s| s.part)
                 .and_then(|id| project.models().iter().find(|m| m.id == id));
-            let mesh = match part {
-                Some(model) => Some(crate::model::placed_mesh(location, model, context)?),
-                None => None,
+            // The held regions and tabs are part of what the stock is
+            // compared with (SET-09, OP-21).
+            let mesh = match (part, setup) {
+                (Some(model), Some(setup)) => Some(crate::workholding::setup_deviation_target(
+                    setup,
+                    crate::model::placed_mesh(location, model, context)?,
+                )?),
+                _ => None,
             };
             report
                 .setups
