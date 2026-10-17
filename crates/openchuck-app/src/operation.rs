@@ -348,7 +348,11 @@ pub(crate) fn generate_with_part(
         (Some(brep), _) => Arc::new(BrepSurface::new(brep)?),
         (None, _) => Arc::new(MeshSurface::new(mesh)?),
     };
-    let part_bounds = model_surface.bounds();
+    // The whole placed part, not the selected faces: bounding-box stock and
+    // playback need the part's extent.
+    let part_bounds = openchuck_geom::summary(mesh)
+        .bounds
+        .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
     let profile = snapshot.tool.profile()?;
     // The held regions and tabs join the model's surface as the target the
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
@@ -571,6 +575,13 @@ fn brep_selection(
                  again on the current model",
                 part.path.as_str()
             )));
+        }
+        if set.stock_to_leave.is_some() {
+            return Err(bad(
+                "a stock to leave per selection set is not built for STEP parts yet (OP-11); \
+                 clear it on the set and set the operation's stock to leave"
+                    .to_owned(),
+            ));
         }
         match &set.target {
             SelectionTarget::Faces(faces) if faces.is_empty() => {
@@ -1214,5 +1225,29 @@ mod tests {
         // setting, OI-232).
         let op = f.project.operation(f.operation).unwrap();
         assert_eq!(edge_options(&f.project, op), EdgeOptions::default());
+    }
+
+    #[test]
+    fn req_op_11_req_nfr_07_a_stock_to_leave_on_a_step_selection_is_refused() {
+        let mut f = fixture(drill::NAME, &[]);
+        let walls: BTreeSet<FaceId> = f.built[1].walls.iter().copied().collect();
+        f.select(SelectionTarget::Faces(walls), f.hash);
+        let mut set = f.project.selection_sets()[0].clone();
+        set.stock_to_leave = Some(0.2);
+        f.project.replace(Item::SelectionSet(set)).unwrap();
+        let err = f.run().unwrap_err().to_string();
+        assert!(err.contains("OP-11") && err.contains("'Op'"), "{err}");
+    }
+
+    #[test]
+    fn req_op_10_the_part_bounds_are_the_whole_parts_when_faces_are_selected() {
+        let whole = fixture(drill::NAME, &[]).run().unwrap().part_bounds;
+        let mut f = fixture(drill::NAME, &[]);
+        let walls: BTreeSet<FaceId> = f.built[1].walls.iter().copied().collect();
+        f.select(SelectionTarget::Faces(walls), f.hash);
+        let one = f.run().unwrap().part_bounds;
+        assert_eq!(one, whole);
+        // The blank, moved by the placement.
+        assert!((whole.min.x - SHIFT).abs() < 1e-9 && (whole.max.x - SHIFT - LENGTH).abs() < 1e-9);
     }
 }

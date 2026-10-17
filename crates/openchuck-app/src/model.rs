@@ -232,7 +232,7 @@ impl PlacedPart {
         transform: &[TransformStep],
     ) -> Result<(BrepModel, openchuck_geom::transform::Affine3), AppError> {
         let map = brep_placement(brep, transform)?;
-        Ok((transform_brep(brep, &map), map))
+        Ok((transform_brep(brep, &map)?, map))
     }
 
     /// The part of a B-rep model read from a file with hash `hash`, placed by
@@ -378,7 +378,7 @@ mod tests {
             },
         ];
         let map = brep_placement(&brep, &steps).unwrap();
-        let placed = transform_brep(&brep, &map);
+        let placed = transform_brep(&brep, &map).unwrap();
         let s = map.determinant().abs().cbrt();
         assert!(map.determinant() < 0.0 && (s - 2.5).abs() < 1e-12);
         let direction = |m: &Affine3, v: Vec3| m.apply_vec(v) * (1.0 / s);

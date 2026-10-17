@@ -234,8 +234,10 @@ pub fn transform_normals(normals: &[Vec3], map: &Affine3) -> Vec<Vec3> {
 /// When the map mirrors, a frame becomes left-handed, which turns the
 /// surface's `du x dv` inward, so the face's `reversed` flag is flipped to keep
 /// its normal outward, and each tessellation triangle's winding is reversed
-/// as in [`transform_mesh`].
-pub fn transform_brep(model: &BrepModel, map: &Affine3) -> BrepModel {
+/// as in [`transform_mesh`]. Fails when a face's surface is a kind this
+/// function does not know and the map moves the model, since that surface
+/// could not be moved with its face.
+pub fn transform_brep(model: &BrepModel, map: &Affine3) -> Result<BrepModel> {
     let det = map.determinant();
     let mirrored = det < 0.0;
     let s = det.abs().cbrt();
@@ -249,7 +251,7 @@ pub fn transform_brep(model: &BrepModel, map: &Affine3) -> BrepModel {
     let faces = model
         .faces
         .iter()
-        .map(|face| {
+        .map(|face| -> Result<BrepFace> {
             // Which parameters are lengths, and so scale with the model.
             let (geometry, scale_u, scale_v) = match &face.geometry {
                 Surface::Plane { frame: f } => (Surface::Plane { frame: frame(f) }, s, s),
@@ -303,12 +305,22 @@ pub fn transform_brep(model: &BrepModel, map: &Affine3) -> BrepModel {
                     1.0,
                     1.0,
                 ),
-                // A surface kind added later is kept in its own frame, which
-                // is only right for a map that does not move the model.
-                other => (other.clone(), 1.0, 1.0),
+                // A surface kind added later can only be kept as it is, which
+                // is right only for a map that does not move the model.
+                other if *map == Affine3::IDENTITY => (other.clone(), 1.0, 1.0),
+                other => {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("face {}", face.id.0),
+                        format!(
+                            "its surface ({:?}) cannot be placed: this build does not know how \
+                             to move it",
+                            other.kind()
+                        ),
+                    ));
+                }
             };
             let [u0, u1, v0, v1] = face.uv_bounds;
-            BrepFace {
+            Ok(BrepFace {
                 geometry,
                 reversed: face.reversed != mirrored,
                 uv_bounds: [u0 * scale_u, u1 * scale_u, v0 * scale_v, v1 * scale_v],
@@ -328,10 +340,10 @@ pub fn transform_brep(model: &BrepModel, map: &Affine3) -> BrepModel {
                     .collect(),
                 tessellation: transform_mesh(&face.tessellation, map),
                 ..face.clone()
-            }
+            })
         })
-        .collect();
-    BrepModel {
+        .collect::<Result<Vec<_>>>()?;
+    Ok(BrepModel {
         faces,
         edges: model
             .edges
@@ -350,7 +362,7 @@ pub fn transform_brep(model: &BrepModel, map: &Affine3) -> BrepModel {
             })
             .collect(),
         tessellation: model.tessellation,
-    }
+    })
 }
 
 /// The map of a placement for a B-rep model: as [`placement`] on its joined

@@ -86,7 +86,7 @@ fn placed(name: &str, transform: &[TransformStep]) -> BrepModel {
         panic!("{name} is not a B-rep");
     };
     let map = brep_placement(&model, transform).unwrap();
-    transform_brep(&model, &map)
+    transform_brep(&model, &map).unwrap()
 }
 
 fn ball() -> ToolSnapshot {
