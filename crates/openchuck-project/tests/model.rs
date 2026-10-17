@@ -100,6 +100,7 @@ fn sample() -> Project {
             target: SelectionTarget::Faces(BTreeSet::from([FaceId(3), FaceId(7)])),
             descriptors: Vec::new(),
             stock_to_leave: None,
+            colour: None,
         }),
         Placement::End,
     )
