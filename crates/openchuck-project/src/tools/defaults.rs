@@ -166,6 +166,54 @@ const Z1: &[(&str, &str)] = &[
         include_str!("../../defaults/z1/109-z1-corn-3x12.toml"),
     ),
     (
+        "110-z1-o-flute-metal-4x12.toml",
+        include_str!("../../defaults/z1/110-z1-o-flute-metal-4x12.toml"),
+    ),
+    (
+        "111-z1-o-flute-metal-4x17.toml",
+        include_str!("../../defaults/z1/111-z1-o-flute-metal-4x17.toml"),
+    ),
+    (
+        "112-z1-o-flute-metal-4x22.toml",
+        include_str!("../../defaults/z1/112-z1-o-flute-metal-4x22.toml"),
+    ),
+    (
+        "113-z1-o-flute-4x22.toml",
+        include_str!("../../defaults/z1/113-z1-o-flute-4x22.toml"),
+    ),
+    (
+        "114-z1-o-flute-4x25.toml",
+        include_str!("../../defaults/z1/114-z1-o-flute-4x25.toml"),
+    ),
+    (
+        "115-z1-o-flute-4x32.toml",
+        include_str!("../../defaults/z1/115-z1-o-flute-4x32.toml"),
+    ),
+    (
+        "116-z1-o-flute-metal-6x17.toml",
+        include_str!("../../defaults/z1/116-z1-o-flute-metal-6x17.toml"),
+    ),
+    (
+        "117-z1-o-flute-metal-6x25.toml",
+        include_str!("../../defaults/z1/117-z1-o-flute-metal-6x25.toml"),
+    ),
+    (
+        "118-z1-o-flute-metal-6x30.toml",
+        include_str!("../../defaults/z1/118-z1-o-flute-metal-6x30.toml"),
+    ),
+    (
+        "119-z1-o-flute-6x22.toml",
+        include_str!("../../defaults/z1/119-z1-o-flute-6x22.toml"),
+    ),
+    (
+        "120-z1-o-flute-6x25.toml",
+        include_str!("../../defaults/z1/120-z1-o-flute-6x25.toml"),
+    ),
+    (
+        "121-z1-o-flute-6x32.toml",
+        include_str!("../../defaults/z1/121-z1-o-flute-6x32.toml"),
+    ),
+    (
         "201-z1-ball-metal-3-175x10.toml",
         include_str!("../../defaults/z1/201-z1-ball-metal-3-175x10.toml"),
     ),
@@ -190,6 +238,38 @@ const Z1: &[(&str, &str)] = &[
         include_str!("../../defaults/z1/206-z1-ball-1x4.toml"),
     ),
     (
+        "207-z1-ball-metal-4x12.toml",
+        include_str!("../../defaults/z1/207-z1-ball-metal-4x12.toml"),
+    ),
+    (
+        "208-z1-ball-metal-6x18.toml",
+        include_str!("../../defaults/z1/208-z1-ball-metal-6x18.toml"),
+    ),
+    (
+        "209-z1-ball-4x12.toml",
+        include_str!("../../defaults/z1/209-z1-ball-4x12.toml"),
+    ),
+    (
+        "210-z1-ball-4x22.toml",
+        include_str!("../../defaults/z1/210-z1-ball-4x22.toml"),
+    ),
+    (
+        "211-z1-ball-4x32.toml",
+        include_str!("../../defaults/z1/211-z1-ball-4x32.toml"),
+    ),
+    (
+        "212-z1-ball-6x12.toml",
+        include_str!("../../defaults/z1/212-z1-ball-6x12.toml"),
+    ),
+    (
+        "213-z1-ball-6x22.toml",
+        include_str!("../../defaults/z1/213-z1-ball-6x22.toml"),
+    ),
+    (
+        "214-z1-ball-6x32.toml",
+        include_str!("../../defaults/z1/214-z1-ball-6x32.toml"),
+    ),
+    (
         "301-z1-v-bit-60-deg-tip-0-1.toml",
         include_str!("../../defaults/z1/301-z1-v-bit-60-deg-tip-0-1.toml"),
     ),
@@ -200,6 +280,42 @@ const Z1: &[(&str, &str)] = &[
     (
         "303-z1-v-bit-30-deg-tip-0-3.toml",
         include_str!("../../defaults/z1/303-z1-v-bit-30-deg-tip-0-3.toml"),
+    ),
+    (
+        "304-z1-v-bit-metal-30-deg-tip-0-3-shank-4.toml",
+        include_str!("../../defaults/z1/304-z1-v-bit-metal-30-deg-tip-0-3-shank-4.toml"),
+    ),
+    (
+        "305-z1-v-bit-metal-30-deg-tip-0-4-shank-4.toml",
+        include_str!("../../defaults/z1/305-z1-v-bit-metal-30-deg-tip-0-4-shank-4.toml"),
+    ),
+    (
+        "306-z1-v-bit-metal-30-deg-tip-0-5-shank-4.toml",
+        include_str!("../../defaults/z1/306-z1-v-bit-metal-30-deg-tip-0-5-shank-4.toml"),
+    ),
+    (
+        "309-z1-v-bit-30-deg-tip-0-3-shank-4.toml",
+        include_str!("../../defaults/z1/309-z1-v-bit-30-deg-tip-0-3-shank-4.toml"),
+    ),
+    (
+        "310-z1-v-bit-30-deg-tip-0-4-shank-4.toml",
+        include_str!("../../defaults/z1/310-z1-v-bit-30-deg-tip-0-4-shank-4.toml"),
+    ),
+    (
+        "311-z1-v-bit-30-deg-tip-0-5-shank-4.toml",
+        include_str!("../../defaults/z1/311-z1-v-bit-30-deg-tip-0-5-shank-4.toml"),
+    ),
+    (
+        "312-z1-v-bit-20-deg-tip-0-3-shank-6.toml",
+        include_str!("../../defaults/z1/312-z1-v-bit-20-deg-tip-0-3-shank-6.toml"),
+    ),
+    (
+        "313-z1-v-bit-20-deg-tip-0-4-shank-6.toml",
+        include_str!("../../defaults/z1/313-z1-v-bit-20-deg-tip-0-4-shank-6.toml"),
+    ),
+    (
+        "314-z1-v-bit-20-deg-tip-0-5-shank-6.toml",
+        include_str!("../../defaults/z1/314-z1-v-bit-20-deg-tip-0-5-shank-6.toml"),
     ),
     (
         "401-z1-chamfer-90-deg.toml",

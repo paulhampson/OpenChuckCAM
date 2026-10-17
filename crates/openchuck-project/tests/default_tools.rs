@@ -71,7 +71,7 @@ fn closed_form(shape: &ToolShape, diameter: f64, r: f64) -> f64 {
 #[test]
 fn req_tl_12_every_default_validates_and_has_a_stable_unique_id() {
     let tools = default_tools().unwrap();
-    assert_eq!(tools.len(), 46);
+    assert_eq!(tools.len(), 75);
     let mut ids: Vec<_> = tools.iter().map(|t| t.id).collect();
     ids.sort();
     ids.dedup();
@@ -118,18 +118,18 @@ fn req_tl_12_first_run_installs_into_an_empty_library_and_a_second_run_installs_
     let dir = temp_dir("first-run").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
     let report = lib.install_defaults().unwrap();
-    assert_eq!(report.installed.len(), 46);
+    assert_eq!(report.installed.len(), 75);
     assert!(dir.join(LEDGER_FILE).is_file());
 
     let reopened = ToolLibrary::open(&dir).unwrap();
-    assert_eq!(reopened.tools().count(), 46);
+    assert_eq!(reopened.tools().count(), 75);
     assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
 
     let mut again = reopened;
     let report = again.install_defaults().unwrap();
     assert!(report.installed.is_empty());
-    assert_eq!(report.already_installed, 46);
-    assert_eq!(again.tools().count(), 46);
+    assert_eq!(report.already_installed, 75);
+    assert_eq!(again.tools().count(), 75);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn req_tl_12_a_deleted_default_is_not_restored() {
     let report = reopened.install_defaults().unwrap();
     assert!(report.installed.is_empty());
     assert!(reopened.get(gone).is_none());
-    assert_eq!(reopened.tools().count(), 45);
+    assert_eq!(reopened.tools().count(), 74);
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn req_tl_12_a_default_the_ledger_does_not_know_is_installed_and_a_user_tool_is_
     let mut reopened = ToolLibrary::open(&dir).unwrap();
     let report = reopened.install_defaults().unwrap();
     assert_eq!(report.installed, vec![id]);
-    assert_eq!(reopened.tools().count(), 46);
+    assert_eq!(reopened.tools().count(), 75);
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn req_tl_12_a_damaged_ledger_never_overwrites_a_tool() {
     let mut reopened = ToolLibrary::open(&dir).unwrap();
     let report = reopened.install_defaults().unwrap();
     assert!(report.installed.is_empty());
-    assert_eq!(report.already_present, 46);
+    assert_eq!(report.already_present, 75);
     assert_eq!(reopened.get(tool.id), Some(&tool));
 }
 
@@ -204,7 +204,7 @@ fn req_nfr_09_req_tl_12_the_defaults_are_embedded_not_read_from_the_source_tree(
     // and no network: run it from a folder that holds nothing else.
     let dir = temp_dir("offline").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
-    assert_eq!(lib.install_defaults().unwrap().installed.len(), 46);
+    assert_eq!(lib.install_defaults().unwrap().installed.len(), 75);
 }
 
 #[test]
@@ -224,17 +224,22 @@ fn req_tl_12_restore_defaults_reinstalls_a_deleted_default_and_never_touches_an_
     assert_eq!(report.installed, vec![gone.id]);
     assert_eq!(reopened.get(gone.id), Some(&gone));
     assert_eq!(reopened.get(edited.id), Some(&edited));
-    assert_eq!(reopened.tools().count(), 46);
+    assert_eq!(reopened.tools().count(), 75);
 }
 
 #[test]
 fn req_tl_12_req_tl_11_the_z1_tools_are_carbide_without_cutting_data_and_the_set_numbers_them() {
     let z1 = z1_tools().unwrap();
-    assert_eq!(z1.len(), 23);
+    assert_eq!(z1.len(), 52);
     for t in &z1 {
         assert_eq!(t.tool.material.as_deref(), Some("carbide"), "{}", t.name);
         assert!(t.cutting_data.is_empty(), "{} ships cutting data", t.name);
-        assert_eq!(t.tool.shank_diameter.0, 3.175, "{}", t.name);
+        // 1/8 inch, 4 mm and 6 mm shanks (the 4 mm and 6 mm extension).
+        assert!(
+            [3.175, 4.0, 6.0].contains(&t.tool.shank_diameter.0),
+            "{}",
+            t.name
+        );
     }
     let sets = default_tool_sets().unwrap();
     assert_eq!(sets.len(), 1);
@@ -277,7 +282,7 @@ fn req_tl_12_first_run_installs_the_z1_tool_set_and_a_second_run_installs_nothin
     let reopened = ToolLibrary::open(&dir).unwrap();
     assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
     let set = reopened.tool_set("makera z1").unwrap();
-    assert_eq!(set.entries.len(), 23);
+    assert_eq!(set.entries.len(), 52);
     for e in &set.entries {
         assert!(reopened.get(e.tool).is_some());
     }
@@ -316,5 +321,5 @@ fn req_tl_12_an_edited_or_deleted_tool_set_is_not_overwritten_or_restored_by_a_r
     // The explicit action does bring it back, over nothing.
     let report = reopened.restore_defaults().unwrap();
     assert_eq!(report.tool_sets_installed, vec!["Makera Z1".to_owned()]);
-    assert_eq!(reopened.tool_set("Makera Z1").unwrap().entries.len(), 23);
+    assert_eq!(reopened.tool_set("Makera Z1").unwrap().entries.len(), 52);
 }

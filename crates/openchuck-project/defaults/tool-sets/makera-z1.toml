@@ -3,7 +3,7 @@
 # Tool numbers are NXX: N a category (1 flat end, 2 ball, 3 V-bit, 4 chamfer,
 # 5 drill), XX counting from 01 in the category. They are assigned by this
 # project under the owner's decision, not read from Makera, and the owner may
-# replace them.
+# replace them. 4 mm and 6 mm shank tools continue each category's numbers.
 schema = 1
 machine = "Makera Z1"
 
@@ -52,6 +52,66 @@ tool = "c0de0001-0000-4000-8000-000000000108"
 number = 109
 tool = "c0de0001-0000-4000-8000-000000000109"
 
+# Z1 O-flute metal 4x12
+[[tools]]
+number = 110
+tool = "c0de0001-0000-4000-8000-000000000110"
+
+# Z1 O-flute metal 4x17
+[[tools]]
+number = 111
+tool = "c0de0001-0000-4000-8000-000000000111"
+
+# Z1 O-flute metal 4x22
+[[tools]]
+number = 112
+tool = "c0de0001-0000-4000-8000-000000000112"
+
+# Z1 O-flute 4x22
+[[tools]]
+number = 113
+tool = "c0de0001-0000-4000-8000-000000000113"
+
+# Z1 O-flute 4x25
+[[tools]]
+number = 114
+tool = "c0de0001-0000-4000-8000-000000000114"
+
+# Z1 O-flute 4x32
+[[tools]]
+number = 115
+tool = "c0de0001-0000-4000-8000-000000000115"
+
+# Z1 O-flute metal 6x17
+[[tools]]
+number = 116
+tool = "c0de0001-0000-4000-8000-000000000116"
+
+# Z1 O-flute metal 6x25
+[[tools]]
+number = 117
+tool = "c0de0001-0000-4000-8000-000000000117"
+
+# Z1 O-flute metal 6x30
+[[tools]]
+number = 118
+tool = "c0de0001-0000-4000-8000-000000000118"
+
+# Z1 O-flute 6x22
+[[tools]]
+number = 119
+tool = "c0de0001-0000-4000-8000-000000000119"
+
+# Z1 O-flute 6x25
+[[tools]]
+number = 120
+tool = "c0de0001-0000-4000-8000-000000000120"
+
+# Z1 O-flute 6x32
+[[tools]]
+number = 121
+tool = "c0de0001-0000-4000-8000-000000000121"
+
 # Z1 ball metal 3.175x10
 [[tools]]
 number = 201
@@ -82,6 +142,46 @@ tool = "c0de0001-0000-4000-8000-000000000205"
 number = 206
 tool = "c0de0001-0000-4000-8000-000000000206"
 
+# Z1 ball metal 4x12
+[[tools]]
+number = 207
+tool = "c0de0001-0000-4000-8000-000000000207"
+
+# Z1 ball metal 6x18
+[[tools]]
+number = 208
+tool = "c0de0001-0000-4000-8000-000000000208"
+
+# Z1 ball 4x12
+[[tools]]
+number = 209
+tool = "c0de0001-0000-4000-8000-000000000209"
+
+# Z1 ball 4x22
+[[tools]]
+number = 210
+tool = "c0de0001-0000-4000-8000-000000000210"
+
+# Z1 ball 4x32
+[[tools]]
+number = 211
+tool = "c0de0001-0000-4000-8000-000000000211"
+
+# Z1 ball 6x12
+[[tools]]
+number = 212
+tool = "c0de0001-0000-4000-8000-000000000212"
+
+# Z1 ball 6x22
+[[tools]]
+number = 213
+tool = "c0de0001-0000-4000-8000-000000000213"
+
+# Z1 ball 6x32
+[[tools]]
+number = 214
+tool = "c0de0001-0000-4000-8000-000000000214"
+
 # Z1 V-bit 60 deg tip 0.1
 [[tools]]
 number = 301
@@ -96,6 +196,51 @@ tool = "c0de0001-0000-4000-8000-000000000302"
 [[tools]]
 number = 303
 tool = "c0de0001-0000-4000-8000-000000000303"
+
+# Z1 V-bit metal 30 deg tip 0.3 shank 4
+[[tools]]
+number = 304
+tool = "c0de0001-0000-4000-8000-000000000304"
+
+# Z1 V-bit metal 30 deg tip 0.4 shank 4
+[[tools]]
+number = 305
+tool = "c0de0001-0000-4000-8000-000000000305"
+
+# Z1 V-bit metal 30 deg tip 0.5 shank 4
+[[tools]]
+number = 306
+tool = "c0de0001-0000-4000-8000-000000000306"
+
+# Z1 V-bit 30 deg tip 0.3 shank 4
+[[tools]]
+number = 309
+tool = "c0de0001-0000-4000-8000-000000000309"
+
+# Z1 V-bit 30 deg tip 0.4 shank 4
+[[tools]]
+number = 310
+tool = "c0de0001-0000-4000-8000-000000000310"
+
+# Z1 V-bit 30 deg tip 0.5 shank 4
+[[tools]]
+number = 311
+tool = "c0de0001-0000-4000-8000-000000000311"
+
+# Z1 V-bit 20 deg tip 0.3 shank 6
+[[tools]]
+number = 312
+tool = "c0de0001-0000-4000-8000-000000000312"
+
+# Z1 V-bit 20 deg tip 0.4 shank 6
+[[tools]]
+number = 313
+tool = "c0de0001-0000-4000-8000-000000000313"
+
+# Z1 V-bit 20 deg tip 0.5 shank 6
+[[tools]]
+number = 314
+tool = "c0de0001-0000-4000-8000-000000000314"
 
 # Z1 chamfer 90 deg
 [[tools]]

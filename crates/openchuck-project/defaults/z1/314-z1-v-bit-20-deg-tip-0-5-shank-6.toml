@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default Makera Z1 tool, number 314 (TL-12; decision record 0081). Facts
+# only: dimensions and parameters, no wording, images or file structures.
+# Tool material "carbide" is the owner's decision, from the community
+# profiles' material column. No cutting data (OI-270).
+# Source: bit page two-flute-engraving-bit-6mm-shank: included angle and tip
+# diameter (variant names and parameter row labels), shank 6, total length
+# ~50, two flutes (name), solid carbide; cutter diameter 6 and flute length
+# 17 from the community profiles Carvera-
+# Community/Carvera_Community_Profiles at 186e7b9,
+# CAM_Post_Processors/Fusion360-profiles/Tool Files/csv/Makera Engraving
+# Bits.csv only.
+schema = 1
+id = "c0de0001-0000-4000-8000-000000000314"
+name = "Z1 V-bit 20 deg tip 0.5 shank 6"
+
+[tool]
+diameter = 6.0
+flute_length = 17.0
+overall_length = 50.0
+shank_diameter = 6.0
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "v_bit"
+included_angle = 20.0
+tip_diameter = 0.5
