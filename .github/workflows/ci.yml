@@ -250,24 +250,20 @@ jobs:
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
     # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
-    # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
-    # yet proven on hosted runners, so they report without blocking until
-    # their first runs are recorded under OI-129.
+    # adapter. Windows (WARP) and macOS (the runner's Metal device) are proven on
+    # hosted runners (OI-129), so all three legs block: a failed leg fails this job
+    # and so `CI required checks` (owner's decision, 17 Oct 2026, OI-320).
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             require_adapter: "1"
-            blocking: true
           - os: windows-latest
             require_adapter: ""
-            blocking: false
           - os: macos-latest
             require_adapter: ""
-            blocking: false
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ !matrix.blocking }}
     timeout-minutes: 30
     env:
       OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
