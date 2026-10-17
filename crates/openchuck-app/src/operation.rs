@@ -574,10 +574,18 @@ fn brep_selection(
         }
         match &set.target {
             SelectionTarget::Faces(faces) if faces.is_empty() => {
-                return Err(bad("it selects no faces".to_owned()));
+                return Err(bad(
+                    "it selects no faces; select the hole walls to drill, or take the set out \
+                     of the operation to drill every hole"
+                        .to_owned(),
+                ));
             }
             SelectionTarget::Edges(edges) if edges.is_empty() => {
-                return Err(bad("it selects no edges".to_owned()));
+                return Err(bad(
+                    "it selects no edges; select the edges to follow, or take the set out of \
+                     the operation to follow every edge"
+                        .to_owned(),
+                ));
             }
             SelectionTarget::Faces(faces) => {
                 if let Some(face) = faces
