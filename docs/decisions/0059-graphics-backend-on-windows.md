@@ -2,7 +2,7 @@
 
 - **Status:** accepted by the project owner (17 Oct 2026), option B: DX12 by default on Windows when a hardware DX12 adapter exists. The owner's acceptance was first relayed by the orchestrator session (decision 0049) and then given directly in the lane Gfx session. Built by lane Gfx on `claude/lane-gfx-intel-uhd620-startup`. With acceptance the owner moved the performance check to the laptop, the lower-powered system (OI-264), and reported that with DX12 the interface felt smooth there (anecdotal, not measured).
 - **Date:** 17 Oct 2026.
-- **Open items:** OI-263 to OI-266 (new).
+- **Open items:** OI-263 to OI-266 (new). OI-263 closed 17 Oct 2026: the owner confirmed on the laptop that the build of this change opens its window (Nightly build run 39047948212, head `52eaf5a`).
 
 Numbering: 0059 was assigned to lane Gfx by the orchestrator session.
 
