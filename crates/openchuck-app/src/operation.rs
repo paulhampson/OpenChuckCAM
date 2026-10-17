@@ -432,7 +432,7 @@ pub(crate) fn generate_with_part(
                 ),
             ));
         }
-        // Rotary roughing leaves the largest amount over the whole part, so it
+        // Rotary roughing leaves the largest amount wherever it cuts, so it
         // never cuts below what any selection asks for (decision 0058).
         zones.clear();
         if let Some((leave, set)) = largest_selection_leave(project, operation)
@@ -443,10 +443,10 @@ pub(crate) fn generate_with_part(
                 ParameterValue::Number(leave),
             );
             leave_notes.push(format!(
-                "stock to leave: roughing leaves {leave} mm on the whole part, the amount of \
+                "stock to leave: roughing leaves {leave} mm wherever it cuts, the amount of \
                  the selection set '{set}' (the largest of its selections), in place of the \
-                 operation's {operation_leave} mm; roughing leaves one amount everywhere, and \
-                 a finishing operation cuts each selection to its own"
+                 operation's {operation_leave} mm; roughing leaves one amount everywhere it \
+                 cuts, and a finishing operation cuts each selection to its own"
             ));
         }
     }
