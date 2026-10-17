@@ -122,7 +122,10 @@ fn req_set_01_machine_copy_survives_save_and_load() {
     file::save(&project, &dir).unwrap();
     let text = std::fs::read_to_string(dir.join(file::MACHINE_FILE)).unwrap();
     assert!(
-        text.starts_with("schema = 11\n\n[machine]\nname = \"Makera Z1\"\n"),
+        text.starts_with(&format!(
+            "schema = {}\n\n[machine]\nname = \"Makera Z1\"\n",
+            file::SCHEMA
+        )),
         "{text}"
     );
     assert_eq!(file::load(&dir).unwrap().machine(), Some(&z1()));
@@ -141,7 +144,10 @@ fn req_set_01_machine_copy_survives_save_and_load() {
     let id_text = std::fs::read_to_string(id_dir.join(file::MACHINE_FILE)).unwrap();
     assert!(
         id_text.starts_with(
-            "schema = 11\nid = \"8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01\"\n\n[machine]\nname = \"Makera Z1\"\n"
+            &format!(
+                "schema = {}\nid = \"8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01\"\n\n[machine]\nname = \"Makera Z1\"\n",
+                file::SCHEMA
+            )
         ),
         "{id_text}"
     );
@@ -275,4 +281,35 @@ fn req_prj_04_slice_two_folder_with_a_machine_name_migrates() {
     let setup = &project.setups()[0];
     assert_eq!(setup.frame, SetupFrame::default());
     assert_eq!((setup.stock.as_ref(), setup.clearance), (None, None));
+}
+
+#[test]
+fn req_prj_04_req_op_13_an_older_z1_copy_migrates_to_count_a_in_its_feed_word() {
+    use openchuck_types::machine::RotaryInFeed;
+    // Schema 11 kept no `rotary_in_feed`; a copy of the built-in Z1 (known by
+    // its library ID) gains the Z1's rule (decision record 0076).
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-11-z1");
+    let project = file::load(&fixture).unwrap();
+    let machine = project.machine().unwrap();
+    assert_eq!(machine.max_feeds.rotary_in_feed, RotaryInFeed::Makera);
+    assert_eq!(machine.max_feeds, z1().max_feeds);
+    assert_eq!(z1().max_feeds.rotary_in_feed, RotaryInFeed::Makera);
+
+    // Any other profile keeps A counted separately, as it was timed before.
+    let dir = temp_dir("schema-11-other");
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in ["project.toml", "machine.toml"] {
+        let text = std::fs::read_to_string(fixture.join(name)).unwrap();
+        std::fs::write(
+            dir.join(name),
+            text.replace("8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01", "my-own-machine"),
+        )
+        .unwrap();
+    }
+    let other = file::load(&dir).unwrap();
+    assert_eq!(
+        other.machine().unwrap().max_feeds.rotary_in_feed,
+        RotaryInFeed::Separate
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

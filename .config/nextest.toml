@@ -21,6 +21,13 @@
 # (simultaneous finishing; decision 0036) and the helical oracle-parts test of the
 # same prefix. The `reference_jobs_are_identical_at_1_and_n_threads` filter also
 # selects slice 21c's `cone_held_tabs` (81 s when it was listed).
+#
+# The STEP kernel tests run only with `--features kernel-tests`, in CI's STEP
+# kernel job (not in the Tests, Coverage or nightly long runs), so their entry
+# below documents the time and selects nothing elsewhere: roughing then rest
+# machining of the cylinder and the filleted box with pencil clean-up on the
+# exact STEP parts took 147 s alone (lane F, 17 Oct 2026, decision 0076; the
+# filleted box was added back for OI-236).
 
 [profile.coverage]
 default-filter = '''not (
@@ -34,6 +41,7 @@ default-filter = '''not (
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
+  | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
 )'''
 
 [profile.long]
@@ -48,4 +56,5 @@ default-filter = '''
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
+  | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
 '''

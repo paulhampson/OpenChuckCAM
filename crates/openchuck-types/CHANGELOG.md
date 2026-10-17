@@ -4,6 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- **Breaking (0.9.0):** `machine::MaxFeeds` has a new public field, `rotary_in_feed` (`RotaryInFeed`: `Separate`, the default, or `Makera`), which says how the controller counts A in the feed word of a move that also moves X, Y or Z, so path assembly can keep that word within the limit (OP-13; decision 0076). Profile files without it read as `Separate`.
 - Version 0.8.0 with the library family (`Pass` in `openchuck-path` gains `rapids`, a breaking change; decision 0051).
 - Version 0.7.0 with the library family (`Tool` gains `centre_cutting` and `Pass` gains `stock`, breaking changes; decision 0033).
 - **Breaking (0.7.0):** `tool::Tool` has a new public field, `centre_cutting: Option<bool>` (TL-04, OI-117; project schema 8), and `Tool::can_plunge()` (decision 0033).
