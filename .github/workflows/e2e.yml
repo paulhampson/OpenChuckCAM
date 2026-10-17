@@ -14,6 +14,9 @@
 # the run itself is offline: that is what a user's machine does after installation.
 #
 # Draft gate (decision 0052): skipped on a draft pull request, like the heavy jobs of ci.yml.
+#
+# Required check (OI-315, owner's decision, relayed): the job name below,
+# "CLI end to end, network unavailable (NFR-09)", reports on every pull request.
 name: End to end
 
 on:
@@ -36,14 +39,21 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  changes:
-    name: Detect changes
+  # One job, so it always reports under one name and can be a required check (OI-315). The path
+  # check is a step, not a separate job: if it fails, the job fails. A job skipped because a job
+  # it needs failed would report as skipped, which GitHub counts as passing. A pull request that
+  # changes nothing the suite builds or reads passes in seconds after the path check. A draft
+  # skips the job (decision 0052), and a skipped job counts as passing; the aggregate
+  # `CI required checks` of ci.yml fails on a draft anyway.
+  offline:
+    name: CLI end to end, network unavailable (NFR-09)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # paths-filter lists a pull request's changed files through the API.
     permissions:
       contents: read
       pull-requests: read
-    outputs:
-      rust: ${{ steps.filter.outputs.rust }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,28 +74,24 @@ jobs:
               - '.cargo/**'
               - '.config/**'
               - '.github/workflows/e2e.yml'
-
-  offline:
-    name: CLI end to end, network unavailable (NFR-09)
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+      - name: Nothing the suite reads changed
+        if: steps.filter.outputs.rust != 'true'
+        run: echo "No change to the workspace, posts, test data or this workflow; the suite is not run."
       - uses: Swatinem/rust-cache@v2
+        if: steps.filter.outputs.rust == 'true'
         with:
           key: e2e-offline
       - uses: taiki-e/install-action@v2
+        if: steps.filter.outputs.rust == 'true'
         with:
           tool: cargo-nextest
       - name: Fetch and build the suite (network up)
+        if: steps.filter.outputs.rust == 'true'
         run: cargo nextest run -p openchuck-cli --locked --no-run
       # `unshare --net` gives the command a new network namespace: no interface but a loopback
       # that is down. The canary must fail to reach the outside, or the run below proves nothing.
       - name: Canary, nothing is reachable without the network
+        if: steps.filter.outputs.rust == 'true'
         run: |
           if sudo unshare --net -- curl --silent --show-error --max-time 10 https://github.com > /dev/null; then
             echo "::error title=Network still reachable::the namespace reached github.com, so the offline run would prove nothing"
@@ -95,6 +101,7 @@ jobs:
       # The run itself, as the runner user (sudo is needed only to enter the namespace), with
       # cargo told not to touch the network either.
       - name: CLI end-to-end suite, network unavailable
+        if: steps.filter.outputs.rust == 'true'
         run: >
           sudo unshare --net --
           sudo --preserve-env -u "$USER"

@@ -2,7 +2,7 @@
 
 - **Status:** proposed (lane TE, 17 Oct 2026). Built on `claude/lane-te-end-to-end-and-determinism`. Only the project owner accepts a record (decision 0049).
 - **Date:** 17 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-310 to OI-315; OI-314 is closed by item 9 (owner's decision, relayed).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-310 to OI-315; OI-314 is closed by item 9 and OI-315 is decided (required; item 6), both by the owner, relayed.
 
 This is lane TE: work breakdown slice 20 items 3 (determinism at 1, 2 and N threads on all sample projects), 6 (sample projects, including the Z1 reference part, end to end) and 7 (command-line end-to-end scenarios in CI, including undo, redo and cancellation mid-job), and the slice 20 review check "The full run works with no network access" (NFR-09). It claims record **0096** and **OI-310 to OI-315** (from the block of records 0096 to 0100 and OI-310 to OI-319 the orchestrator assigned) and **no project schema number**. Requirements: GC-07, NFR-06, NFR-08, NFR-09, GC-11, UI-08, UI-09, with SIM-03 and SIM-05 for the simulation run. The only production-code change is the fix of item 9, in its own commit.
 
@@ -59,7 +59,14 @@ Two gaps in the command-line tool shape the design:
    - A canary must fail to reach `github.com` from inside `sudo unshare --net`.
    - The whole `openchuck-cli` suite (`cli.rs` and `e2e.rs`) then runs inside a new network namespace, as the runner user, with `cargo nextest run --offline`. The namespace has only a loopback, and it is down.
 
-   Like the heavy jobs of `ci.yml`, the job skips drafts (decision 0052) and runs only when the workspace, posts or test data change. Making it a required check is the owner's action in the repository settings (OI-315). The same run (48 tests) passed in the lane TE session with `unshare --net`.
+   The same run (48 tests) passed in the lane TE session with `unshare --net`.
+
+   **A required check (OI-315; owner's decision, option A, 17 Oct 2026, relayed by the orchestrator session, decision 0049).** The check is required by its own name, `CLI end to end, network unavailable (NFR-09)`. `e2e.yml` is built so that it is safe to require:
+   - **It reports on every pull request.** The workflow runs on every `pull_request` event (opened, synchronize, reopened, ready for review), on pushes to `main` and on manual runs, with no path filter on the trigger.
+   - **The path check is a step in the one job, not a separate job.** A pull request that changes nothing the suite builds or reads (the workspace, posts, test data, `.config` or the workflow) passes in seconds. A failure of the path check fails the check. A separate path job would have left this job skipped on such a failure, and GitHub counts a skipped job as passing. A separate job named "Detect changes" would also have shared its name with the job of that name in `ci.yml`.
+   - **Drafts skip it** (decision 0052, as the heavy jobs of `ci.yml` do), and GitHub counts a skipped job as passing. The aggregate `CI required checks` fails a draft anyway, so a draft still cannot merge. The `ready_for_review` event starts the full run.
+   - **It is not wired into the aggregate.** That would mean moving the job into `ci.yml` (a job's `needs` cannot reach another workflow) and adding it to the aggregate's `needs` and its list. That is a `ci.yml` change outside this lane, with no gain over requiring the check by name.
+   - **The owner's action:** in the branch protection or ruleset of `main`, add `CLI end to end, network unavailable (NFR-09)` to the required checks. GitHub offers a check name only after it has run, so this is done after the check first runs: on the ready run of pull request 98, or on `main` after the merge.
 
 7. **Long-running tests and CI cost.** Timed uninstrumented with `cargo nextest run` on a 4-core Linux machine, debug build (17 Oct 2026). Times are alone on one test thread, then in a full `cargo nextest run -p openchuck-cli`:
    - `lobed` end to end: 103 s, then 117 s.
