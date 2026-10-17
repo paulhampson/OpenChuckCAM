@@ -273,3 +273,24 @@ fn req_gc_14_a_tool_without_a_number_is_refused() {
         .to_string();
     assert!(e.contains("t1"), "{e}");
 }
+
+#[test]
+fn req_gc_04_req_op_13_a_feed_word_keeps_three_significant_figures() {
+    use openchuck_post::feed_str;
+    // `decimals.f` is the least; a small feed gets more, so its rounding is at
+    // most 0.5 % of a move's time (decision record 0076).
+    for (value, decimals, text) in [
+        (1200.04, 1, "1200.0"),
+        (480.0, 1, "480.0"),
+        (12.34, 1, "12.3"),
+        (4.237, 1, "4.24"),
+        (4.15, 1, "4.15"),
+        (0.0123, 1, "0.0123"),
+        (99.96, 1, "100.0"),
+        (4.237, 3, "4.237"),
+        (7.0, 0, "7.00"),
+        (1e-12, 1, "0.000000000"),
+    ] {
+        assert_eq!(feed_str(value, decimals), text, "{value} at {decimals}");
+    }
+}
