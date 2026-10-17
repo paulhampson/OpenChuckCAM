@@ -73,10 +73,14 @@ use openchuck_types::workholding::Workholding;
 ///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
 /// - 11: selection sets gain the optional `colour`, written only when the
 ///   user chose one (decision record 0046 item 2).
-/// - 12: the machine copy's feed limits gain the optional `rotary_in_feed`,
+/// - 12 and 13: held for lanes O (stored B-rep and edge selections) and S
+///   (export grouping), which claimed them first; no change of their own
+///   here yet. The lane that merges later renumbers its step (work
+///   breakdown, "Project schema ordering").
+/// - 14: the machine copy's feed limits gain the optional `rotary_in_feed`,
 ///   written only when A counts in the feed word; a copy of the built-in
 ///   Makera Z1 gains `"makera"` (decision record 0076).
-pub const SCHEMA: i64 = 12;
+pub const SCHEMA: i64 = 14;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -102,6 +106,8 @@ const MIGRATIONS: &[Migration] = &[
     schema_9_to_10,
     schema_10_to_11,
     schema_11_to_12,
+    schema_12_to_13,
+    schema_13_to_14,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -202,11 +208,23 @@ fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), Stri
     Ok(())
 }
 
-/// Schema 12 adds the machine copy's optional `max_feeds.rotary_in_feed`. A
+/// Schema 12 is held for lane O's change, not yet on this branch: no change
+/// but its number.
+fn schema_11_to_12(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 13 is held for lane S's change, not yet on this branch: no change
+/// but its number.
+fn schema_12_to_13(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 14 adds the machine copy's optional `max_feeds.rotary_in_feed`. A
 /// copy of the built-in Makera Z1, known by its library `id`, gains
 /// `"makera"`, so an older Z1 project is timed for the Z1's feed word; every
 /// other file is unchanged (decision record 0076).
-fn schema_11_to_12(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+fn schema_13_to_14(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
     if kind == FileKind::Machine {
         crate::machines::fill_rotary_in_feed(table);
     }
@@ -970,7 +988,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 12);
+        let first = format!("schema = {SCHEMA}\n");
         let mut project = Project::new("p");
         project
             .insert(
@@ -979,7 +997,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 12\n"), "{path}: {text}");
+            assert!(text.starts_with(&first), "{path}: {text}");
         }
     }
 

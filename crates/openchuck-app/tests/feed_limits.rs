@@ -167,6 +167,12 @@ fn jobs() -> Vec<Job> {
             operations: vec![("helical_finishing", vec![("max_angle_step", 10.0)])],
         },
         Job {
+            name: "filleted_box_helical",
+            mesh: prism(&rectangle(3.0, 8), 0.0, 12.0),
+            radius: corner,
+            operations: vec![("helical_finishing", vec![("max_angle_step", 10.0)])],
+        },
+        Job {
             name: "spline_simultaneous",
             mesh: revolve(&spline_profile(), 144),
             radius: 14.0,
