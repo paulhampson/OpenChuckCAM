@@ -2,9 +2,9 @@
 
 - **Status:** proposed (17 Oct 2026). Lane Z, built on `claude/lane-z-brep-pipeline`. Not accepted: only the project owner accepts a record (decision 0049). It changes no requirement, no architecture rule and no project file format, and no library-family API. The choices a reviewer is most likely to change are items 2 (every strategy on a STEP part sees the exact B-rep surface) and 4 (the B-rep crease default when the operation sets none).
 - **Date:** 17 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-232 to OI-235 are new; OI-219 and OI-226 are closed by this record's acceptance (OI-219 once gate 3 has replayed the `drilling` program in CI).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-232 to OI-236 are new; OI-219 and OI-226 are closed by this record's acceptance (OI-219 once gate 3 has replayed the `drilling` program in CI).
 
-Numbering: the orchestrator assigned records 0056 to 0060 and OI-232 to OI-236 to lane Z. This record takes 0056 and OI-232 to OI-235; 0057 to 0060 and OI-236 are unused. Lane Z takes no project schema number.
+Numbering: the orchestrator assigned records 0056 to 0060 and OI-232 to OI-236 to lane Z. This record takes 0056 and OI-232 to OI-236; 0057 to 0060 are unused. Lane Z takes no project schema number.
 
 ## Context
 
@@ -46,10 +46,26 @@ Records read: 0003, 0017, 0027 (STEP import and exact faces), 0042 and 0045 (the
 | Edge following on a STEP file through the application, depth on the wall (OP-08) | `req_op_08_a_step_part_is_engraved_along_its_b_rep_edges_through_the_application` | yes |
 | Gate 3: the LinuxCNC simulator replays `drilling_linuxcnc.ngc` | `cargo xtask replay` (CI's Gate 3 job). Run in the lane Z session on 17 Oct 2026 with LinuxCNC 2.9.10 in the image built from `docker/linuxcnc`: all 15 moves reached, largest difference 0.0010, 23.3 s of motion, no fault | no |
 
-The kernel tests are added to the STEP kernel CI job (`.github/workflows/ci.yml`), with `step_drilling`, which was not run there before. Times uninstrumented: the four unit tests 1.2 s together, `step_pipeline` 0.5 s, `step_drilling` 0.04 s; none is over a minute, so `.config/nextest.toml` is unchanged. Gate 3's shard timing gains `drilling_linuxcnc.ngc` at 30 s (`xtask/src/replay.rs`).
+**Every strategy on STEP parts** (`crates/openchuck-app/tests/step_strategies.rs`, kernel; asked for by the owner with item 2). Each job adds a corpus STEP file to a project, places it on the rotary axis and machines it with a 3 mm ball in oak on the Makera Z1; it must pass gates 1 and 2 with both posts, give the same G-code at 1, 2 and N threads, and not gouge the exact B-rep: the testkit's independent checker (its tool outline only) is run against points sampled 0.25 mm apart on the exact faces inside their trims, never against the tessellation the tool drops onto, at every fed pose, with a limit of 0.03 mm (the 0.01 mm deflection, the path tolerance, the sampling). Deepest found:
+
+| Test | Jobs (deepest into the exact surface) |
+| --- | --- |
+| `req_imp_02_req_op_04_helical_finishing_on_step_parts_does_not_gouge_the_exact_surface` | helical finishing on the cylinder (0.0029 mm), cone (0.0087), sphere (0.0120), revolved spline (0.0089) |
+| `req_imp_02_req_op_04_axial_and_indexed_finishing_on_step_parts_do_not_gouge` | axial finishing on the cone (0.0084) and box (0.0000); indexed finishing on the filleted box (0.0009) |
+| `req_imp_02_req_op_05_simultaneous_finishing_on_a_step_part_does_not_gouge` | simultaneous finishing on the cone (0.0078) |
+| `req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part_do_not_gouge` | rotary roughing then rest machining on the cylinder (0.0029); pencil clean-up on the filleted box says it has no inside corner to follow (OI-234) |
+| `req_imp_02_tool_drops_on_a_step_part_agree_with_the_exact_surface_within_tolerance` | a ball dropped radially onto the cylinder and the sphere touches within the import's 0.01 mm deflection of the closed form, never outside it (worst 0.0031 and 0.0073 mm) |
+| `req_op_08_req_nfr_07_a_step_parts_seam_alone_is_no_edge_and_a_rim_is_followed` | an `Edges` set of the cylinder's seam alone is refused; one rim is followed at one end |
+| `req_nfr_07_a_damaged_step_part_is_an_error_not_a_crash` | a truncated STEP file in place of the part gives an error |
+
+**Not covered, and why (OI-236).** Helical finishing of the box and the filleted box fails gate 1 on the Z1 post, and simultaneous finishing of the revolved spline fails gate 1 on the Z1 post and gate 2 on the LinuxCNC post; rotary roughing and rest machining of the filleted box fail gate 2 on the LinuxCNC post. Both causes are in shared posting and path-assembly code, an STL of the same box fails the same way, and the fix is a separate lane's. These combinations are not in the suite (they are not skipped or ignored: they are not written in a form that passes); the tests as first written are on `claude/lane-z-failing-tests`.
+
+**Unit tests without the kernel** (`operation.rs`) also cover: every selection a STEP part cannot use, for every registered strategy and every role (`req_op_02_req_nfr_07_selections_a_step_part_cannot_use_are_refused`), empty face and edge sets, unknown IDs, a set made on another model or another version of the file (`req_op_02_req_nfr_07_a_set_made_on_another_model_is_refused`), faces with no hole and a part with no holes (`req_op_10_req_nfr_07_faces_with_no_hole_and_a_part_with_no_holes_are_clear_errors`), the crease angle's default on a STEP part (1), on a mesh part (30) and the operation's value overriding it (`req_op_08_the_crease_angle_default_is_the_b_reps_on_a_step_part_and_the_meshs_on_a_mesh`), and a part that cannot be placed or evaluated (`req_nfr_07_a_step_part_that_cannot_be_placed_or_evaluated_is_an_error`). An empty face or edge set is refused, not read as the whole part.
+
+The kernel tests are added to the STEP kernel CI job (`.github/workflows/ci.yml`), with `step_drilling`, which was not run there before. Times uninstrumented (`cargo nextest run`, 17 Oct 2026, a 4-vCPU container): the unit tests of `operation.rs` and `model.rs` 0.08 to 1.8 s each, `step_pipeline` 0.1 to 0.5 s, `step_drilling` 0.08 s, `step_strategies` 0.06 to 31.8 s (roughing then rest 31.8 s, helical 22.3 s, axial and indexed 12.2 s, the rest under 3 s); none is over a minute, so `.config/nextest.toml` is unchanged. Gate 3's shard timing gains `drilling_linuxcnc.ngc` at 30 s (`xtask/src/replay.rs`).
 
 ## Consequences
 
 - **Code:** `openchuck-geom` (`transform_brep`, `brep_placement`), `openchuck-app` (`model.rs` placed parts, `operation.rs` the B-rep branch, `form.rs` the crease default), the STEP kernel CI job, `xtask` replay timings, two golden files.
 - **Documents:** the work breakdown (lane Z, slices 16 and 18 status, the next free numbers), the reference job list, the verification plan rows IMP-05 and OP-08/OP-10, the open-items register, the decision index, the `openchuck-geom` changelog.
-- **Open items:** OI-232 (a crease angle of 0 cannot be set for a STEP part), OI-233 (face selections for other strategies, and boundaries, avoid and check surfaces on STEP parts), OI-234 (a STEP drilling fixture with several holes at several angles for gate 3), OI-235 (a per-hole list for drilling in the interface: which holes were found, which were left out and why). Closed on acceptance: OI-226; OI-219 once gate 3 has run the program.
+- **Open items:** OI-232 (a crease angle of 0 cannot be set for a STEP part), OI-233 (face selections for other strategies, and boundaries, avoid and check surfaces on STEP parts), OI-234 (corpus gaps: a STEP drilling fixture with several holes at several angles for gate 3, and a part with a concave crease for pencil clean-up), OI-236 (two posting defects the tests found, not specific to STEP: the Z1's combined F above its limit, and LinuxCNC's one-decimal F on moves nearly all A), OI-235 (a per-hole list for drilling in the interface: which holes were found, which were left out and why). Closed on acceptance: OI-226; OI-219 once gate 3 has run the program.
