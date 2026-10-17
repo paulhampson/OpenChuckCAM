@@ -1,17 +1,16 @@
 # 0076: The feed word within the machine's limit where A counts in it, and small feeds written to three significant figures (OP-13, GC-04, GC-09, GC-10)
 
-- **Status:** proposed (17 Oct 2026). Lane F, built on `claude/lane-f-feed-limit-and-rounding`. Only the project owner accepts it (decision 0049). It changes no requirement and does not edit the architecture; it adds a machine profile field and takes project schema 14 (provisional, renumbered at release) and machine profile schema 3. Choices for the owner are listed under *Choices put to the owner*.
+- **Status:** accepted by the project owner (17 Oct 2026), in the lane F session, on the terms relayed by the orchestrator session at the owner's instruction (decision [0049](0049-relayed-acceptance-of-records.md)): the GC-04 reading below, items 1 to 3 and 5 as built, and item 4 at three significant figures, not four. Lane F, built on `claude/lane-f-feed-limit-and-rounding`. It changes no requirement and does not edit the architecture; it adds a machine profile field and takes project schema 14 (provisional, renumbered at release) and machine profile schema 3. The owner's answers are under *Choices put to the owner*.
 - **Date:** 17 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-252 to OI-254. It fixes the two defects lane Z records in OI-236 (on lane Z's branch, `claude/lane-z-brep-pipeline`, pull request 79; its register row is closed once both are on `main`).
 
 Numbering: the orchestrator assigned records 0076 to 0080 and OI-252 to OI-256 to this lane (17 Oct 2026). This record takes 0076 and OI-252 to OI-254; 0077 to 0080, OI-255 and OI-256 are unused. Project schema 12 is lane O's and 13 is held for lane S, so this record claims **14**, as the orchestrator directed (17 Oct 2026). On this branch the chain runs through two no-change steps, 11 to 12 and 12 to 13, held for those lanes; at release the lane renumbers its step to the next free schema on `main`, so the chain on `main` stays gapless (the provisional rule for all lanes). The number is the one constant `file::SCHEMA`, and the tests derive from it, so renumbering is one line and the step's name.
 
-## Question for the owner: GC-04 and the machine profile
+## GC-04 and the machine profile (the owner's answer)
 
 GC-04 lists "feed mode for rotary moves" among the post options and says "these machine-specific conventions live in the post-processor definition, not in the engine". This record keeps the conversion there: the post's `feed_rule` still turns each move's time into the F word. What it adds to the machine profile is only how the machine's feed limit counts A (item 1), read as part of SET-01's "maximum feed rates", because path assembly must respect that limit before any post is chosen and the IR must stay the same for every post (GC-10, decision 0007 item 3).
 
-- **If the owner agrees with this reading,** nothing in the requirements changes, and OI-254 tracks whether a mismatch between the profile and the post should be reported.
-- **If the owner reads GC-04 as keeping all of it in the post definition,** the only fix that keeps gate 1 clean is alternative 2 below: path assembly is given the post's feed rule, so the IR differs between the Z1 and LinuxCNC programs. That changes the architecture (one neutral IR for every post, section 5) and GC-10's premise that the verification post writes the same toolpath, so it needs an agreed change to the architecture and the verification plan, not a change in this lane.
+**The owner accepted this reading (17 Oct 2026).** Nothing in the requirements changes, and OI-254 tracks whether a mismatch between the profile and the post should be reported. The other reading, keeping all of it in the post definition, would have needed alternative 2 below: path assembly given the post's feed rule, so the IR differs between the Z1 and LinuxCNC programs. That would have changed the architecture (one neutral IR for every post, section 5) and GC-10's premise that the verification post writes the same toolpath; it was not taken.
 
 Requirements and architecture are not edited by this record.
 
@@ -33,11 +32,11 @@ The gate 2 time tolerance (1 %, `Tolerances::time_relative`) is a verification-p
 4. **Feeds are written to at least three significant figures.** The template engine gains a `feed` filter (`feed_str` in Rust): fixed decimals as `fixed` writes them, at least `decimals.f` places, and more where the value would otherwise keep fewer than three significant figures (at most nine places). Both shipped posts write the F word with it. Half a unit of the third significant figure is at most 0.5 % of the value, so the written F's rounding alone stays within half of gate 2's 1 %. Feeds of 100 and more are written exactly as before (`F1200.0`, `F480.0`); `F4.2` becomes `F4.24`. The filter multiplies by powers of ten built by repeated multiplication, so the text is the same on every platform (NFR-06, decision 0019 item 2). A custom post that keeps `fixed` keeps its one-decimal F.
 5. **Library family 0.9.0.** `MaxFeeds` gains a public field, a breaking change, so the workspace moves from 0.8.0 to 0.9.0 with changelog entries (decision 0048).
 
-*Choices put to the owner:*
+*Choices put to the owner, with the owner's answers (17 Oct 2026):*
 
-- **Where the rule lives (item 1):** the GC-04 question at the top of this record.
-- **Three significant figures, not four (item 4).** Four (0.05 %) would rewrite about 3,900 F words below 100 in four LinuxCNC golden files (`cone`, `groove`, `sphere`, `cone_held_tabs`). Three leave every existing golden file unchanged and keep the rounding within half the tolerance.
-- **The Z1's F with more decimals.** The Z1 programs only write F below 100 on slow moves (the Z1's rule has no near-zero feeds, decision 0007), but a Z1 program may now hold `F42.5` or `F7.25`. That the firmware reads F with two or three decimals is unconfirmed until gate 4 (OI-252).
+- **Where the rule lives (item 1):** the GC-04 reading at the top of this record. *Accepted.*
+- **Three significant figures, not four (item 4).** Four (0.05 %) would rewrite about 3,900 F words below 100 in four LinuxCNC golden files (`cone`, `groove`, `sphere`, `cone_held_tabs`). Three leave every existing golden file unchanged and keep the rounding within half the tolerance. *Accepted: three.*
+- **The Z1's F with more decimals.** The Z1 programs only write F below 100 on slow moves (the Z1's rule has no near-zero feeds, decision 0007), but a Z1 program may now hold `F42.5` or `F7.25`. That the firmware reads F with two or three decimals is unconfirmed until gate 4 (OI-252). *OI-252 stays open until gate 4.*
 
 ## Measurements
 
