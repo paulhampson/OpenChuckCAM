@@ -401,69 +401,139 @@ fn regenerate(project: &Path, post: &str, threads: usize, out: &Path) -> String 
     String::from_utf8(written.into_values().next().unwrap()).unwrap()
 }
 
-/// Slice 20 items 3 and 6: every sample project runs from import to checked
+/// The sample of that name.
+fn named(name: &str) -> Sample {
+    samples()
+        .into_iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| panic!("no sample project '{name}'"))
+}
+
+/// Slice 20 items 3 and 6: the sample project runs from import to checked
 /// G-code with both posts, gives byte-identical programs at 1, 2 and N
 /// threads, and matches the reviewed golden programs. The project files
 /// are left as they were, and loading then saving changes nothing.
-#[test]
-fn req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_sample_projects_run_end_to_end_at_1_2_and_n_threads() {
-    let root = scratch("samples");
-    for sample in samples() {
-        let project = build(&sample, &root);
-        cli_ok(&["validate".as_ref(), project.as_os_str()]);
-        let before = files(&project);
-        for (post, ext) in POSTS {
-            let mut programs = Vec::new();
-            for threads in thread_counts() {
-                let out = root.join(format!("{}-{post}-{threads}", sample.name));
-                programs.push((threads, regenerate(&project, post, threads, &out)));
-            }
-            let (_, first) = &programs[0];
-            for (threads, program) in &programs {
-                assert!(
-                    program == first,
-                    "{} / {post}: the program at {threads} threads differs from the one at {} (NFR-06)",
-                    sample.name,
-                    programs[0].0
-                );
-            }
+fn end_to_end(name: &str) {
+    let sample = named(name);
+    let root = scratch(&format!("samples-{name}"));
+    let project = build(&sample, &root);
+    cli_ok(&["validate".as_ref(), project.as_os_str()]);
+    let before = files(&project);
+    for (post, ext) in POSTS {
+        let mut programs = Vec::new();
+        for threads in thread_counts() {
+            let out = root.join(format!("{post}-{threads}"));
+            programs.push((threads, regenerate(&project, post, threads, &out)));
+        }
+        let (_, first) = &programs[0];
+        for (threads, program) in &programs {
             assert!(
-                stable(first) == golden(&format!("{}_{post}.{ext}", sample.name)),
-                "{} / {post}: the program differs from its golden file (NFR-08); \
-                 `cargo test -p openchuck-app --test reference_jobs` shows the diff",
-                sample.name
+                program == first,
+                "{name} / {post}: the program at {threads} threads differs from the one at {} (NFR-06)",
+                programs[0].0
             );
         }
-        let out = cli_ok(&["resave".as_ref(), project.as_os_str()]);
-        assert_eq!(files(&project), before, "{}: {}", sample.name, out.stdout);
+        assert!(
+            stable(first) == golden(&format!("{name}_{post}.{ext}")),
+            "{name} / {post}: the program differs from its golden file (NFR-08); \
+             `cargo test -p openchuck-app --test reference_jobs` shows the diff"
+        );
     }
+    let out = cli_ok(&["resave".as_ref(), project.as_os_str()]);
+    assert_eq!(files(&project), before, "{name}: {}", out.stdout);
     std::fs::remove_dir_all(root).ok();
 }
 
-/// Slice 20 item 6: the material removal simulation of every sample project
+/// Slice 20 item 6: the material removal simulation of the sample project
 /// finds no overcut and no rapid move through material (SIM-03, SIM-05).
-#[test]
-fn req_sim_03_req_sim_05_sample_projects_simulate_without_overcut() {
-    let root = scratch("simulate");
-    for sample in samples() {
-        let project = build(&sample, &root);
-        let out = cli_ok(&["simulate".as_ref(), project.as_os_str()]);
-        assert!(!out.stdout.contains("no operations"), "{}", out.stdout);
-    }
+fn simulates(name: &str) {
+    let root = scratch(&format!("simulate-{name}"));
+    let project = build(&named(name), &root);
+    let out = cli_ok(&["simulate".as_ref(), project.as_os_str()]);
+    assert!(!out.stdout.contains("no operations"), "{}", out.stdout);
     std::fs::remove_dir_all(root).ok();
 }
 
-/// Starts `regenerate --out` on `project` and returns the child process.
-fn spawn_regenerate(project: &Path, out: &Path) -> std::process::Child {
-    std::process::Command::new(assert_cmd::cargo::cargo_bin("openchuck-cli"))
+/// One end-to-end test and one simulation test per sample project, so the
+/// test runner spreads them over cores and CI shares.
+macro_rules! sample_tests {
+    ($($name:ident),* $(,)?) => {
+        $(mod $name {
+            #[test]
+            fn req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads() {
+                super::end_to_end(stringify!($name));
+            }
+            #[test]
+            fn req_sim_03_req_sim_05_simulates_without_overcut() {
+                super::simulates(stringify!($name));
+            }
+        })*
+        /// Every sample project has its pair of tests above.
+        const SAMPLE_TESTS: &[&str] = &[$(stringify!($name)),*];
+    };
+}
+
+sample_tests!(
+    groove,
+    cone,
+    sphere,
+    lobed,
+    cone_axial,
+    cone_indexed,
+    cone_axial_lead,
+    cone_held_tabs,
+);
+
+/// Slice 20 item 3 asks for all sample projects: every reference job with
+/// golden programs is a sample project with its tests, except `drilling`,
+/// which needs the STEP kernel (OI-312).
+#[test]
+fn req_gc_07_every_reference_job_is_a_sample_project_with_its_tests() {
+    let names: Vec<&str> = samples().iter().map(|s| s.name).collect();
+    assert_eq!(names, SAMPLE_TESTS);
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/golden/reference");
+    let mut jobs: Vec<String> = std::fs::read_dir(folder)
+        .unwrap()
+        .filter_map(|e| {
+            let name = e.unwrap().file_name().to_string_lossy().into_owned();
+            name.strip_suffix("_makera-z1.nc").map(str::to_owned)
+        })
+        .filter(|job| job != "drilling")
+        .collect();
+    jobs.sort();
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    assert_eq!(jobs, sorted);
+}
+
+/// Starts `regenerate --out` on `project` and returns the child process
+/// once it has begun generating. The tool prints the tool numbers on
+/// standard error after it has loaded the project and just before it
+/// generates (GC-14), so that line is the observable start of the job:
+/// no fixed delay is involved.
+fn spawn_generating(project: &Path, out: &Path) -> std::process::Child {
+    use std::io::BufRead as _;
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("openchuck-cli"))
         .args(["--threads", "1", "regenerate"])
         .arg(project)
         .args(["--post", "linuxcnc", "--tool-numbers", "keep", "--out"])
         .arg(out)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .unwrap()
+        .unwrap();
+    let stderr = std::io::BufReader::new(child.stderr.take().unwrap());
+    let mut seen = Vec::new();
+    for line in stderr.lines() {
+        let line = line.unwrap();
+        let started = line.trim_start().starts_with("T1 ");
+        seen.push(line);
+        if started {
+            return child;
+        }
+    }
+    let status = child.wait().unwrap();
+    panic!("the run ended ({status}) before it began generating: {seen:?}");
 }
 
 /// Interrupts `child` as Ctrl-C would on Unix; elsewhere ends it.
@@ -482,25 +552,18 @@ fn interrupt(child: &mut std::process::Child) {
 
 /// Slice 20 item 7, UI-09: a command-line run interrupted mid-job writes
 /// no G-code and leaves the project as it was, and the next run gives the
-/// same program as one that was never interrupted.
+/// same program as one that was never interrupted (the golden program).
+/// The interrupt follows the job's first output, never a fixed delay; the
+/// lobed job then has several seconds of generation left on one thread.
 #[test]
 fn req_ui_09_req_gc_11_an_interrupted_cli_run_writes_nothing_and_changes_nothing() {
     let root = scratch("interrupt");
-    let lobed = samples().into_iter().find(|s| s.name == "lobed").unwrap();
+    let lobed = named("lobed");
     let project = build(&lobed, &root);
     let before = files(&project);
     let out = root.join("out");
 
-    // An uninterrupted run first: its program is the reference, and its
-    // time says when the interrupted run is halfway through generating.
-    let start = Instant::now();
-    let program = regenerate(&project, "linuxcnc", 1, &out);
-    let whole = start.elapsed();
-    assert!(stable(&program) == golden("lobed_linuxcnc.ngc"));
-    std::fs::remove_dir_all(&out).unwrap();
-
-    let mut child = spawn_regenerate(&project, &out);
-    std::thread::sleep(whole / 2);
+    let mut child = spawn_generating(&project, &out);
     assert!(
         child.try_wait().unwrap().is_none(),
         "the run finished before it could be interrupted"
@@ -512,7 +575,8 @@ fn req_ui_09_req_gc_11_an_interrupted_cli_run_writes_nothing_and_changes_nothing
     assert_eq!(files(&project), before);
 
     // The next run is unaffected.
-    assert_eq!(regenerate(&project, "linuxcnc", 1, &out), program);
+    let program = regenerate(&project, "linuxcnc", 1, &out);
+    assert!(stable(&program) == golden("lobed_linuxcnc.ngc"));
     std::fs::remove_dir_all(root).ok();
 }
 
@@ -539,7 +603,7 @@ fn wait_for_progress(app: &Application) {
 #[test]
 fn req_ui_09_a_regeneration_cancelled_mid_job_leaves_the_next_run_identical() {
     let root = scratch("cancel");
-    let groove = samples().into_iter().find(|s| s.name == "groove").unwrap();
+    let groove = named("groove");
     let project = build(&groove, &root);
     let mut app = Application::open(&project, Threads::Exactly(1)).unwrap();
     app.set_post(Some(PostSelection::parse("linuxcnc")));
@@ -562,7 +626,7 @@ fn req_ui_09_a_regeneration_cancelled_mid_job_leaves_the_next_run_identical() {
 #[test]
 fn req_ui_08_undo_and_redo_on_a_sample_project_restore_the_g_code_and_the_files() {
     let root = scratch("undo");
-    let cone = samples().into_iter().find(|s| s.name == "cone").unwrap();
+    let cone = named("cone");
     let project = build(&cone, &root);
     let saved = files(&project);
     let mut app = Application::open(&project, Threads::Exactly(2)).unwrap();
