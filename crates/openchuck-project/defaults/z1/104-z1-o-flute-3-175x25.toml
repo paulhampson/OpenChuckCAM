@@ -7,9 +7,11 @@
 # of cut (stepdown) from the Tool Reference Parameters of the Makera bit
 # page spiral-o-single-flute-bit-1-8-shank; feed per tooth = feed / (spindle
 # speed x flute count); stepover 70 percent of the diameter, from the VCarve
-# database VCarveDesktop-profiles/CarveraTools.vtdb, whose rows are for the
-# material Hardwood/Plastic, so only Hardwood and Plastic have entries.
-# Materials are the page's names; a dash on the page stores nothing.
+# database VCarveDesktop-profiles/CarveraTools.vtdb, the only community file
+# that states a stepover for this bit; its rows are for the material
+# Hardwood/Plastic and the value is applied to every material the page has
+# data for (owner's decision to combine the sources). Materials are the
+# page's names; a dash on the page stores nothing.
 # Source: bit page spiral-o-single-flute-bit-1-8-shank: diameter, flute
 # length (variant sizes), shank 3.175, flute count 1 (single flute), solid
 # carbide, total length "38 mm or more"; overall length from the community
@@ -44,3 +46,10 @@ feed_per_tooth = 0.1
 plunge_feed = 300.0
 stepover = 2.2225
 stepdown = 1.0
+
+[cutting_data."Softwood"]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 2.0

@@ -3,9 +3,16 @@
 # only: dimensions and parameters, no wording, images or file structures.
 # Tool material "carbide" is the owner's decision, from the community
 # profiles' material column.
-# No cutting data (OI-270, owner-decided rule: a stepover only where a
-# community file states one): the page has data only for Carbon Fiber and
-# PCB, and the only community stepover is for Hardwood/Plastic.
+# Cutting data (OI-270, owner-decided): spindle speed, plunge feed and depth
+# of cut (stepdown) from the Tool Reference Parameters of the Makera bit
+# page tin-coating-corn-bit-1-8-shank; feed per tooth = feed / (spindle
+# speed x flute count); stepover 70 percent of the diameter, from the VCarve
+# database VCarveDesktop-profiles/CarveraTools.vtdb, the only community file
+# that states a stepover for this bit; its rows are for the material
+# Hardwood/Plastic and the value is applied to the page's materials (owner's
+# decision to combine the sources); the flute count 2 used for the feed per
+# tooth is from the community file Makera Corn Bits.csv, the page states
+# none. Materials are the page's names; a dash on the page stores nothing.
 # Source: bit page tin-coating-corn-bit-1-8-shank: diameter, flute length
 # (variant sizes), shank 3.175, length ~38, TiN-coated solid carbide; flute
 # count 2 and the flat end mill type from the community profiles Carvera-
@@ -26,3 +33,17 @@ material = "carbide"
 
 [tool.shape]
 type = "flat_end"
+
+[cutting_data."Carbon Fiber"]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 300.0
+stepover = 1.4
+stepdown = 0.3
+
+[cutting_data."PCB"]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 300.0
+stepover = 1.4
+stepdown = 0.3

@@ -372,10 +372,11 @@ fn req_tl_12_req_tl_05_cutting_data_exists_exactly_for_the_bits_and_materials_th
     let z1 = z1_tools().unwrap();
     let set = &default_tool_sets().unwrap()[0];
     let rows = page_rows();
-    // Bits with cutting data: ball 201 to 214, V-bits, and the O-flute bits 101, 102, 104 and 105. None for the chamfer,
-    // the drills, the corn bits, O-flute 103 and the twelve 4 mm and 6 mm flats.
+    // Bits with cutting data: ball 201 to 214, V-bits 301 to 314, the O-flute
+    // bits 101, 102, 104 and 105 and the corn bits 106 to 108. None for the
+    // chamfer, the drills, O-flute 103, corn 109 and the twelve 4 mm and 6 mm flats.
     let with: Vec<u32> = (201..=214)
-        .chain([101, 102, 104, 105])
+        .chain([101, 102, 104, 105, 106, 107, 108])
         .chain(301..=314)
         .collect();
     let mut seen = 0;
@@ -393,15 +394,21 @@ fn req_tl_12_req_tl_05_cutting_data_exists_exactly_for_the_bits_and_materials_th
         seen += have.len();
     }
     assert_eq!(seen, rows.len());
-    assert_eq!(with.len(), 32);
-    // The O-flute bits are limited to the materials the VCarve database names.
-    for t in z1
-        .iter()
-        .filter(|t| [101, 102, 104, 105].contains(&number_of(set, t.id)))
-    {
-        let keys: Vec<&str> = t.cutting_data.keys().map(String::as_str).collect();
-        assert_eq!(keys, ["Hardwood", "Plastic"], "{}", t.name);
-    }
+    assert_eq!(with.len(), 35);
+    // The O-flute stepover is applied to every material the page has data for
+    // (owner's decision to combine the sources), so the metal bits have the
+    // metal materials and the corn bits Carbon Fiber and PCB.
+    let keys = |n: u32| -> Vec<String> {
+        z1.iter()
+            .find(|t| number_of(set, t.id) == n)
+            .unwrap()
+            .cutting_data
+            .keys()
+            .cloned()
+            .collect()
+    };
+    assert!(keys(101).contains(&"Aluminum".to_owned()));
+    assert_eq!(keys(106), ["Carbon Fiber", "PCB"]);
 }
 
 #[test]
@@ -448,7 +455,7 @@ fn req_tl_12_req_tl_05_stepover_comes_from_the_community_files_only_where_they_s
                 303 => 0.09,
                 304..=314 => 0.03,
                 // O-flute: 70 percent of the diameter (VCarve database).
-                101 | 102 | 104 | 105 => 0.7 * d,
+                101 | 102 | 104 | 105 | 106..=108 => 0.7 * d,
                 _ => panic!("T{n} has cutting data but no stepover source"),
             };
             assert!(
@@ -473,7 +480,7 @@ fn req_tl_12_the_first_run_installs_cutting_data_with_the_tools_and_an_edit_keep
         .iter()
         .filter(|e| !reopened.get(e.tool).unwrap().cutting_data.is_empty())
         .count();
-    assert_eq!(with, 32);
+    assert_eq!(with, 35);
 
     // A user's edit to the cutting data is never overwritten by a run.
     let mut tool = reopened.get(set.entries[0].tool).unwrap().clone();
