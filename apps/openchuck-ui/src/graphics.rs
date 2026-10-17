@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Graphics start-up (decision record 0059, proposed): which wgpu backends the
+//! Graphics start-up (decision record 0059, accepted): which wgpu backends the
 //! window may use, a log on standard error that `RUST_LOG` controls, the
 //! adapter chosen, and a clear message when start-up fails or stalls instead
 //! of a window that never appears (NFR-02, UI-01, NFR-07).

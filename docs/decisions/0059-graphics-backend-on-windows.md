@@ -1,6 +1,6 @@
 # 0059: Graphics backend on Windows, start-up logging and a message when the window cannot start (lane Gfx; OI-263 to OI-266)
 
-- **Status:** proposed (17 Oct 2026, lane Gfx, `claude/lane-gfx-intel-uhd620-startup`). Only the project owner accepts it (decision 0049). The recommended option (B) is built on the branch so the owner can try it on the laptop; if the owner chooses another option the branch changes before it is released.
+- **Status:** accepted by the project owner (17 Oct 2026), option B: DX12 by default on Windows when a hardware DX12 adapter exists. The owner's acceptance was first relayed by the orchestrator session (decision 0049) and then given directly in the lane Gfx session. Built by lane Gfx on `claude/lane-gfx-intel-uhd620-startup`. With acceptance the owner moved the performance check to the laptop, the lower-powered system (OI-264), and reported that with DX12 the interface felt smooth there (anecdotal, not measured).
 - **Date:** 17 Oct 2026.
 - **Open items:** OI-263 to OI-266 (new).
 
@@ -18,7 +18,7 @@ The nightly `openchuckcam-nightly-20261017-8c32b6d7b-x86_64-pc-windows-msvc` ([d
 
 Not verified: which Vulkan call stops on the laptop, whether the process hangs or exits, and the Intel driver version. The container has no Windows GPU; the Windows UI smoke job runs on WARP, which has no Vulkan driver of its own. OI-263 asks the owner to confirm on the laptop.
 
-## Decision (recommended, built on the branch)
+## Decision (option B, accepted)
 
 1. **On Windows, use DX12 alone when DX12 offers a hardware adapter (option B).** Before the window opens, a DX12-only wgpu instance lists its adapters; if one is not a software renderer (`DeviceType::Cpu`, such as WARP), the window's instance offers only DX12. Otherwise, and on every other system, the backends stay eframe's default, so nothing changes on Linux, macOS, or a Windows machine without DX12 hardware (such as a CI runner with only WARP). Only the DX12 driver is loaded for the probe, so the Vulkan driver is never touched on a machine where DX12 works, which is the configuration the owner reported as working. The power preference is unchanged, so a desktop with a discrete GPU still gets the discrete GPU, now through DX12.
 2. **`WGPU_BACKEND` stays the override.** When set (`dx12`, `vulkan`, `gl`, or a comma list), it wins and nothing is probed. `WGPU_POWER_PREF` (`low`, `high`) is still honoured by eframe. Both are named in the program's documentation comment and in the start-up messages.
@@ -29,7 +29,7 @@ Not verified: which Vulkan call stops on the laptop, whether the process hangs o
 ## Alternatives considered
 
 - **A. Keep wgpu's choice; only add logging and the messages.** Keeps the measured desktop path (Vulkan) unchanged, but the laptop still fails by default and its user must find `WGPU_BACKEND` themselves. Impact: no behaviour change; the owner's laptop keeps needing the variable.
-- **B. DX12 first on Windows when it has hardware, else the old default (recommended, built).** DX12 is Windows' own graphics API (NFR-02 "native graphics support") and the backend wgpu, Firefox's WebGPU and Chromium's Dawn treat as primary on Windows; Intel's, AMD's and NVIDIA's DX12 drivers are their best-tested Windows path. Impact: every Windows machine with a DX12 GPU moves from Vulkan to DX12, including the desktop where NFR-03 was measured (OI-264 asks for that rerun); machines without DX12 hardware are unchanged.
+- **B. DX12 first on Windows when it has hardware, else the old default (recommended; chosen by the owner).** DX12 is Windows' own graphics API (NFR-02 "native graphics support") and the backend wgpu, Firefox's WebGPU and Chromium's Dawn treat as primary on Windows; Intel's, AMD's and NVIDIA's DX12 drivers are their best-tested Windows path. Impact: every Windows machine with a DX12 GPU moves from Vulkan to DX12, including the desktop where NFR-03 was measured (OI-264 asks for that rerun); machines without DX12 hardware are unchanged.
 - **C. Keep Vulkan but skip Intel's Vulkan adapters on Windows** (vendor 0x8086). Narrower, but it still loads the Vulkan driver to list adapters, which may be where the laptop stops, and it is a vendor list to maintain.
 - **D. Try Vulkan and fall back to DX12 on failure.** Does not help: the failure is a hang or a crash in the driver, which returns no error to fall back from.
 - **E. DX12 only on Windows, with no fallback.** Simplest, but a machine whose DX12 has only WARP would render in software although a Vulkan or OpenGL driver might work; option B keeps those machines on today's choice.
@@ -38,9 +38,9 @@ Not verified: which Vulkan call stops on the laptop, whether the process hangs o
 ## Consequences
 
 - The laptop should open its window with no variable set; OI-263 asks the owner to confirm on the nightly that carries this change and to send the start-up log lines.
-- Windows desktops move to DX12. NFR-03 was closed on a Vulkan measurement (OI-09); OI-264 asks for the `--bench` rerun on the desktop through DX12, and the old path stays one variable away (`WGPU_BACKEND=vulkan`).
+- Windows desktops move to DX12. NFR-03 was closed on a Vulkan measurement (OI-09); the owner chose to check DX12 on the laptop instead, as the lower-powered system (OI-264); the desktop rerun through DX12 is optional (OI-266). The old path stays one variable away (`WGPU_BACKEND=vulkan`).
 - The watch thread covers a stall before the first layout; a stall in the first present after it, and a crash in the driver, are reported only by the log stopping (OI-265).
-- The UHD 620 laptop is the first integrated-graphics machine available; OI-266 asks for the NFR-03 run there, which OI-09 left for when one became available.
+- The owner's first observation on the laptop through DX12 (with `WGPU_BACKEND=dx12`, before this change): the interface felt smooth. Anecdotal; OI-264 is the measurement.
 - Tests (no GPU needed, in `apps/openchuck-ui/src/graphics.rs`): `req_nfr_02_windows_prefers_dx12_hardware`, `req_nfr_02_windows_without_dx12_hardware_keeps_default`, `req_nfr_02_other_systems_keep_default_without_probing`, `req_nfr_02_wgpu_backend_overrides_without_probing`, `req_nfr_07_failure_message_names_the_error_and_the_override`, `req_nfr_07_stall_message_names_the_stage`, `req_nfr_07_describe_names_backend_and_driver`, `req_nfr_07_log_filter_default_shows_own_info_and_others_warnings`, `req_nfr_07_log_filter_reads_rust_log`. NFR-07 is about damaged input files; these tests cite it for the same rule applied to start-up (a clear message, not silence).
 - No requirement, architecture rule or library-family API changes; `openchuck-ui` is not in the library family, so no version bump (decision 0048). No project schema number.
 
@@ -49,6 +49,6 @@ Not verified: which Vulkan call stops on the laptop, whether the process hangs o
 | ID | Item |
 | --- | --- |
 | OI-263 | Confirm on the owner's UHD 620 laptop, with no variables set, that the build carrying this change opens its window, and record the adapter line it prints. |
-| OI-264 | Rerun the NFR-03 benchmark on the owner's desktop (RTX 2070 Super) through DX12, now the Windows default, against the Vulkan result OI-09 closed on. |
+| OI-264 | Measure NFR-03 on the UHD 620 laptop through DX12 (the owner's choice: the lower-powered system, and the first integrated-graphics machine available; verification plan 4.2's reference class, which OI-09 left for then). Make the 1-million-triangle model with `cargo run --release -p openchuck-benches --example bench_model -- bench1m.stl`, then run `openchuck-ui --bench bench1m.stl --seconds 60`, and again with `--mode edges`, from a release build at 1080p on mains power. Each prints the adapter line and frame-time percentiles; it passes (exit 0) when p95 is at most 33 ms and exits 2 otherwise. Compare with the desktop's Vulkan result in OI-09 (p95 0.69 ms, 0.93 ms with edges). The owner reported the interface felt smooth through DX12 (anecdotal). |
 | OI-265 | A hang in the first present, or a crash inside a graphics driver, is reported only by the log stopping. Decide whether a crash report or a watch on the first presented frame is wanted. |
-| OI-266 | Run the NFR-03 benchmark on the UHD 620 laptop, the first integrated-graphics machine available (verification plan 4.2 reference class; OI-09 left it for then). |
+| OI-266 | Optional, later: rerun the same NFR-03 benchmark on the owner's desktop (RTX 2070 Super) through DX12, now the Windows default, against the Vulkan result OI-09 closed on. |

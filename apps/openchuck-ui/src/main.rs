@@ -12,7 +12,7 @@
 //!   4.2) and exits non-zero if it fails.
 //!
 //! On Windows the window uses DX12 when it offers a hardware adapter
-//! (decision record 0059, proposed). `WGPU_BACKEND` (`dx12`, `vulkan`, `gl`)
+//! (decision record 0059, accepted). `WGPU_BACKEND` (`dx12`, `vulkan`, `gl`)
 //! overrides the choice, and `RUST_LOG` sets what is logged on standard error;
 //! the adapter chosen is logged at `info`, which is on by default.
 
