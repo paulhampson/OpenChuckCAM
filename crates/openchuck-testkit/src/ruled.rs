@@ -119,6 +119,23 @@ pub fn boss_cylinder(x: f64, radius: f64, z0: f64, z1: f64) -> BrepModel {
     )
 }
 
+/// The wall of a round pocket: the same cylinder as [`boss_cylinder`] with
+/// its normal pointing in, towards the axis, so the tool cuts from inside.
+pub fn pocket_cylinder(x: f64, radius: f64, z0: f64, z1: f64) -> BrepModel {
+    single_face(
+        Surface::Cylinder {
+            frame: frame(
+                Point3::new(x, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ),
+            radius,
+        },
+        [0.0, TAU, z0, z1],
+        true,
+    )
+}
+
 /// The wall of a boss with draft: a cone about an axis parallel to Z through
 /// (`x`, 0, 0) that narrows upward by `half_angle` radians, of `radius` at
 /// height zero, between heights `v0` and `v1` along its surface line. Its

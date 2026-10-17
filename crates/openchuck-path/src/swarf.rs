@@ -50,8 +50,13 @@
 //!    machine's motion between poses. A face the tool would cut into by
 //!    more than the tolerance (beyond the stock to leave) is refused with a
 //!    message naming the depth, the twist and the tilt, and the tool taper
-//!    that would remove the tilt where one exists; material left beyond the
-//!    allowance by more than the tolerance is reported in a note.
+//!    that would remove the tilt where one exists. Material left beyond the
+//!    allowance is silent within the tolerance, a note up to
+//!    `max_material_left`, and beyond that a refusal naming the amount,
+//!    where, and what to change (decision record 0061 item 7). The limit
+//!    is looser on a pass cut with stock to leave, a roughing or
+//!    semi-finishing pass, than on a finishing pass
+//!    ([`Settings::material_left_limit`]).
 //!
 //! Everything here is deterministic (NFR-06): the only parallel work is the
 //! gate's sampling, through [`crate::parallel`].
@@ -80,6 +85,8 @@ pub const NAME: &str = "swarf";
 pub mod parameter {
     /// How far the tool tip reaches beyond the end of the ruling it sits at.
     pub const TIP_EXTENSION: &str = "tip_extension";
+    /// The most material the flank may leave beyond the stock to leave.
+    pub const MAX_MATERIAL_LEFT: &str = "max_material_left";
     /// Which end of the rulings the tool tip sits at.
     pub const TIP_END: &str = "tip_end";
     /// Which way along the face the tool moves.
@@ -122,6 +129,13 @@ pub const MAX_ANGLE_STEP: f64 = 5.0;
 const MAX_POSES: usize = 20_000;
 /// Needed tapers closer than this, in degrees, are one taper.
 const SAME_TAPER: f64 = 0.05;
+/// The automatic `max_material_left` of a finishing pass (no stock to
+/// leave), in millimetres: ten times the default tolerance, a step a finish
+/// cut shows and the simulation's finest setting resolves (verification plan
+/// 4.1, 0.02 mm). A pass cut with stock to leave is a roughing or
+/// semi-finishing pass and gets the larger of this and its stock to leave
+/// ([`Settings::material_left_limit`]).
+pub const DEFAULT_MAX_MATERIAL_LEFT: f64 = 0.1;
 /// Below this tilt, in degrees, the four axes hold the ideal axis.
 const NO_TILT: f64 = 1e-3;
 /// Two points closer than this, in millimetres, are the same.
@@ -555,10 +569,32 @@ pub struct Settings {
     pub stock_to_leave: f64,
     /// How far the tip reaches beyond the end of the ruling it sits at.
     pub tip_extension: f64,
+    /// The most material the flank may leave beyond the stock to leave
+    /// before the face is refused; less, but more than the tolerance, is a
+    /// note. Zero chooses the limit by the pass's role
+    /// ([`Settings::material_left_limit`]).
+    pub max_material_left: f64,
     /// Put the tip at the other end of the rulings than the rule chooses.
     pub reverse_tip_end: bool,
     /// Cut the face in decreasing parameter.
     pub reverse_direction: bool,
+}
+
+impl Settings {
+    /// The limit on material left that applies (decision record 0061 item
+    /// 7): `max_material_left` when set, else, for a finishing pass (no stock
+    /// to leave), [`DEFAULT_MAX_MATERIAL_LEFT`], and for a pass cut with
+    /// stock to leave (roughing or semi-finishing, the only sign of the
+    /// pass's role the strategy has) the larger of that and the stock to
+    /// leave, so the finishing cut that follows never meets more than twice
+    /// its allowance.
+    pub fn material_left_limit(&self) -> f64 {
+        if self.max_material_left > 0.0 {
+            self.max_material_left
+        } else {
+            DEFAULT_MAX_MATERIAL_LEFT.max(self.stock_to_leave)
+        }
+    }
 }
 
 /// The swarf toolpath of one face, with what the gate measured.
@@ -581,6 +617,8 @@ pub struct FacePath {
     pub gouge_at: Point3,
     /// The most material left beyond the stock to leave, in millimetres.
     pub left: f64,
+    /// Where it is.
+    pub left_at: Point3,
     /// The largest twist of the normal along a ruling, in degrees.
     pub twist: f64,
     /// The largest tilt of any pose, in degrees.
@@ -613,41 +651,72 @@ impl FacePath {
         }
     }
 
-    /// Why the face is refused after placement: the tool would cut into the
-    /// surface, beyond the stock to leave, by more than `tolerance` (OP-12;
-    /// decision record 0021 items 3 and 4).
-    pub fn refusal(&self, tolerance: f64) -> Option<String> {
-        if self.gouge <= tolerance {
-            return None;
-        }
-        let twist = if self.twist > 0.01 {
+    fn describe_twist(&self) -> String {
+        if self.twist > 0.01 {
             format!(
                 " The normal twists {:.2} degrees along the rulings, so the face is ruled but not \
-                 developable and a straight flank cannot follow it.",
+                 developable and a straight flank cannot follow it; a smaller tool radius \
+                 deviates less.",
                 self.twist
             )
         } else {
             String::new()
-        };
-        Some(format!(
-            "swarf on face {} would cut into the surface by {:.4} mm at ({:.3}, {:.3}, {:.3}), \
-             more than the tolerance of {tolerance} mm.{twist}{}",
-            self.number,
-            self.gouge,
-            self.gouge_at.x,
-            self.gouge_at.y,
-            self.gouge_at.z,
-            self.describe_tilt()
-        ))
+        }
     }
 
-    /// What to tell the user about the face (decision record 0036 item 9).
-    pub fn note(&self, tolerance: f64) -> String {
+    /// Why the face is refused after placement (decision record 0021 items 3
+    /// and 4; decision record 0061 item 4): the tool would cut into the
+    /// surface, beyond the stock to leave, by more than `tolerance` (OP-12),
+    /// or leave more than `max_material_left` beyond it.
+    pub fn refusal(&self, tolerance: f64, max_material_left: f64) -> Option<String> {
+        if self.gouge > tolerance {
+            return Some(format!(
+                "swarf on face {} would cut into the surface by {:.4} mm at ({:.3}, {:.3}, \
+                 {:.3}), more than the tolerance of {tolerance} mm.{}{}",
+                self.number,
+                self.gouge,
+                self.gouge_at.x,
+                self.gouge_at.y,
+                self.gouge_at.z,
+                self.describe_twist(),
+                self.describe_tilt()
+            ));
+        }
+        if self.left > max_material_left {
+            let change = if self.max_tilt > NO_TILT || self.twist > 0.01 {
+                String::new()
+            } else {
+                " A tighter tolerance puts the poses closer together, and a larger \
+                 max_material_left accepts the step."
+                    .to_owned()
+            };
+            return Some(format!(
+                "swarf on face {} would leave {:.4} mm beyond the stock to leave at ({:.3}, \
+                 {:.3}, {:.3}), more than the max_material_left of {max_material_left} \
+                 mm.{}{}{change}",
+                self.number,
+                self.left,
+                self.left_at.x,
+                self.left_at.y,
+                self.left_at.z,
+                self.describe_twist(),
+                self.describe_tilt()
+            ));
+        }
+        None
+    }
+
+    /// What to tell the user about the face (decision record 0036 item 9):
+    /// material left beyond the stock to leave is mentioned only when it is
+    /// more than `tolerance` (and, for a face that is not refused, no more
+    /// than `max_material_left`).
+    pub fn note(&self, tolerance: f64, max_material_left: f64) -> String {
         let fit = self.detection.fit(self.family);
         let left = if self.left > tolerance {
             format!(
-                " It leaves up to {:.4} mm beyond the stock to leave between poses.",
-                self.left
+                " It leaves up to {:.4} mm beyond the stock to leave at ({:.3}, {:.3}, {:.3}), \
+                 within the max_material_left of {max_material_left} mm.",
+                self.left, self.left_at.x, self.left_at.y, self.left_at.z
             )
         } else {
             String::new()
@@ -1158,6 +1227,7 @@ pub fn face_path(
     let mut gouge = 0.0f64;
     let mut gouge_at = Point3::ORIGIN;
     let mut left = 0.0f64;
+    let mut left_at = Point3::ORIGIN;
     for (p, d) in samples.iter().zip(&deviations) {
         if !d.is_finite() {
             continue;
@@ -1166,7 +1236,10 @@ pub fn face_path(
             gouge = -d;
             gouge_at = *p;
         }
-        left = left.max(*d);
+        if *d > left {
+            left = *d;
+            left_at = *p;
+        }
     }
     let twist = out_runs
         .iter()
@@ -1207,6 +1280,7 @@ pub fn face_path(
         gouge,
         gouge_at,
         left,
+        left_at,
         twist,
         max_tilt,
         suggested_taper,
@@ -1266,6 +1340,18 @@ impl Strategy for Swarf {
                 "Tip extension",
                 "How far the tool tip reaches beyond the end of the ruling it sits at, along \
                  the tool axis. Zero puts the start of the flank at that end.",
+                Unit::Millimetres,
+                0.0,
+            ),
+            number_spec(
+                MAX_MATERIAL_LEFT,
+                "Most material left",
+                "The most material the flank may leave beyond the stock to leave anywhere on \
+                 the face, between poses or where four axes cannot hold the flank on the \
+                 rulings. More than the tolerance is reported; more than this refuses the face. \
+                 Zero chooses it by the pass: 0.1 mm for a finishing pass (no stock to leave), \
+                 and for a pass cut with stock to leave, a roughing or semi-finishing pass, the \
+                 larger of 0.1 mm and the stock to leave.",
                 Unit::Millimetres,
                 0.0,
             ),
@@ -1348,6 +1434,7 @@ fn swarf(
         tolerance: parameters.number(names::TOLERANCE)?,
         stock_to_leave: parameters.number(names::STOCK_TO_LEAVE)?,
         tip_extension: parameters.number(parameter::TIP_EXTENSION)?,
+        max_material_left: parameters.number(parameter::MAX_MATERIAL_LEFT)?,
         reverse_tip_end: parameters.text(parameter::TIP_END)? == REVERSED,
         reverse_direction: parameters.text(parameter::DIRECTION)? == REVERSE,
     };
@@ -1357,10 +1444,11 @@ fn swarf(
     for (i, face) in faces.into_iter().enumerate() {
         context.report("swarf", i as u64, Some(total));
         let path = face_path(face, input.tool, input.rotary, &settings, context)?;
-        if let Some(why) = path.refusal(settings.tolerance) {
+        let limit = settings.material_left_limit();
+        if let Some(why) = path.refusal(settings.tolerance, limit) {
             return Err(PathError::Strategy(why));
         }
-        notes.push(path.note(settings.tolerance));
+        notes.push(path.note(settings.tolerance, limit));
         for run in &path.runs {
             passes.push(Pass {
                 points: run

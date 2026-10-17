@@ -17,12 +17,13 @@ use openchuck_path::params::names;
 use openchuck_path::swarf::{self, Family, Flank, Settings, detect_rulings, face_path};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BrepSurface, FaceClosest, FaceRef, MeshSurface, ParameterValue,
-    ParametricFace, RayHit, Registry, RotaryMapping, StrategyInput, SurfacePoint, SurfaceSource,
-    Swarf, ToolLine, Uv, generate, generate_in_region,
+    ParametricFace, RayHit, Registry, RotaryMapping, Strategy, StrategyInput, SurfacePoint,
+    SurfaceSource, Swarf, ToolLine, Uv, generate, generate_in_region,
 };
 use openchuck_testkit::gouge::Outline;
 use openchuck_testkit::ruled::{
-    boss_cylinder, coaxial_cylinder, draft_cone, point, sphere_band, torus_band, wall_plane,
+    boss_cylinder, coaxial_cylinder, draft_cone, pocket_cylinder, point, sphere_band, torus_band,
+    wall_plane,
 };
 use openchuck_types::brep::BrepModel;
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
@@ -43,6 +44,7 @@ const Z0: f64 = 10.0;
 const Z1: f64 = 18.0;
 const TOOL_RADIUS: f64 = 3.0;
 const TOL: f64 = 0.01;
+const LIMIT: f64 = swarf::DEFAULT_MAX_MATERIAL_LEFT;
 
 fn tool(shape: ToolShape, flute_length: f64) -> RevolvedProfile {
     Tool {
@@ -149,6 +151,7 @@ impl Fixture {
             tolerance: TOL,
             stock_to_leave: 0.0,
             tip_extension: 0.0,
+            max_material_left: LIMIT,
             reverse_tip_end: false,
             reverse_direction: false,
         }
@@ -543,7 +546,7 @@ fn req_op_07_a_radial_cylinder_boss_is_cut_with_the_flank_at_constant_a_within_t
     assert!(path.max_tilt < 1e-9, "{}", path.max_tilt);
     assert!(path.twist < 1e-9);
     assert!(path.gouge <= TOL && path.left <= TOL, "{path:?}");
-    assert!(path.refusal(TOL).is_none());
+    assert!(path.refusal(TOL, LIMIT).is_none());
     let poses: Vec<_> = path.poses().collect();
     assert!(poses.len() > 50, "{} poses", poses.len());
     for p in &poses {
@@ -674,7 +677,7 @@ fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_
     assert!(path.twist > 0.3 && path.twist < 1.0, "{}", path.twist);
     assert!(path.max_tilt < 1e-9, "the rulings are perpendicular to X");
     assert!(path.gouge <= TOL, "{path:?}");
-    assert!(path.refusal(TOL).is_none());
+    assert!(path.refusal(TOL, LIMIT).is_none());
     // A turns with the rulings: continuous, through the face's 200 degrees.
     let a: Vec<f64> = path.poses().map(|p| p.a.0).collect();
     assert!(a.windows(2).all(|w| (w[1] - w[0]).abs() < 10.0), "{a:?}");
@@ -814,6 +817,218 @@ fn req_op_11_req_op_07_stock_to_leave_offsets_the_flank_by_the_allowance() {
 }
 
 #[test]
+fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within_the_limit_and_refused_beyond_it()
+ {
+    // The levels of decision 0061 item 4, on a face path with a measured
+    // leftover, and the default limit on the schema.
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let measured = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!(measured.left <= TOL, "{}", measured.left);
+    let at = Point3::new(1.0, 2.0, 3.0);
+    let with = |left: f64| swarf::FacePath {
+        left,
+        left_at: at,
+        ..measured.clone()
+    };
+    // Within the tolerance: nothing said.
+    let silent = with(0.5 * TOL);
+    assert!(silent.refusal(TOL, LIMIT).is_none());
+    assert!(!silent.note(TOL, LIMIT).contains("leaves up to"));
+    // Between the tolerance and the limit: a note, with the amount, the
+    // place and the limit.
+    let noted = with(0.05);
+    assert!(noted.refusal(TOL, LIMIT).is_none());
+    let note = noted.note(TOL, LIMIT);
+    assert!(
+        note.contains("leaves up to 0.0500 mm beyond the stock to leave at (1.000, 2.000, 3.000)"),
+        "{note}"
+    );
+    assert!(
+        note.contains("within the max_material_left of 0.1 mm"),
+        "{note}"
+    );
+    // Beyond the limit: refused, naming the amount, the place, the limit
+    // and what to change.
+    let refused = with(0.2);
+    let why = refused.refusal(TOL, LIMIT).unwrap();
+    assert!(
+        why.contains("would leave 0.2000 mm beyond the stock to leave at (1.000, 2.000, 3.000)"),
+        "{why}"
+    );
+    assert!(
+        why.contains("more than the max_material_left of 0.1 mm"),
+        "{why}"
+    );
+    assert!(
+        why.contains("tighter tolerance") && why.contains("larger max_material_left"),
+        "{why}"
+    );
+    // A gouge is refused first, and a tilted face names the taper.
+    let both = swarf::FacePath {
+        gouge: 0.05,
+        ..with(0.2)
+    };
+    assert!(both.refusal(TOL, LIMIT).unwrap().contains("would cut into"));
+    let tilted = swarf::FacePath {
+        max_tilt: 6.0,
+        suggested_taper: Some(6.0),
+        ..with(0.2)
+    };
+    let why = tilted.refusal(TOL, LIMIT).unwrap();
+    assert!(
+        why.contains("flank half angle of 6.00 degrees would remove it"),
+        "{why}"
+    );
+    assert!(!why.contains("tighter tolerance"), "{why}");
+    // The schema carries the limit, zero for the automatic one.
+    let schema = Swarf.schema();
+    let spec = schema.get(swarf::parameter::MAX_MATERIAL_LEFT).unwrap();
+    assert!(matches!(
+        spec.kind,
+        openchuck_path::ParameterKind::Number {
+            default: Some(0.0),
+            min: Some(0.0),
+            ..
+        }
+    ));
+    assert_eq!(swarf::DEFAULT_MAX_MATERIAL_LEFT, 0.1);
+}
+
+#[test]
+fn req_op_07_req_op_11_the_same_material_left_is_accepted_on_a_roughing_pass_and_refused_on_a_finishing_one()
+ {
+    // The automatic limit follows the pass's role, read from its stock to
+    // leave (decision 0061 item 7): 0.1 mm for a finishing pass, the larger
+    // of 0.1 mm and the stock to leave for a roughing or semi-finishing one;
+    // a set value wins.
+    let finishing = Settings {
+        tolerance: TOL,
+        stock_to_leave: 0.0,
+        tip_extension: 0.0,
+        max_material_left: 0.0,
+        reverse_tip_end: false,
+        reverse_direction: false,
+    };
+    let roughing = Settings {
+        stock_to_leave: 0.5,
+        ..finishing
+    };
+    let semi = Settings {
+        stock_to_leave: 0.05,
+        ..finishing
+    };
+    let set = Settings {
+        max_material_left: 0.02,
+        ..roughing
+    };
+    assert_eq!(finishing.material_left_limit(), 0.1);
+    assert_eq!(roughing.material_left_limit(), 0.5);
+    assert_eq!(semi.material_left_limit(), 0.1);
+    assert_eq!(set.material_left_limit(), 0.02);
+    // The same leftover on a measured face path: a note on the roughing
+    // pass, a refusal on the finishing pass.
+    let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let measured = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &roughing, ctx)).unwrap();
+    let path = swarf::FacePath {
+        left: 0.3,
+        ..measured
+    };
+    assert!(path.refusal(TOL, roughing.material_left_limit()).is_none());
+    assert!(
+        path.note(TOL, roughing.material_left_limit())
+            .contains("leaves up to 0.3000 mm")
+    );
+    let why = path.refusal(TOL, finishing.material_left_limit()).unwrap();
+    assert!(why.contains("would leave 0.3000 mm"), "{why}");
+    assert!(
+        why.contains("more than the max_material_left of 0.1 mm"),
+        "{why}"
+    );
+    // End to end, the roughing pass runs with its stock to leave and is
+    // silent, and its limit is the one the parameter resolves to.
+    let rough = generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))]);
+    assert!(
+        !rough
+            .notes
+            .iter()
+            .any(|n| n.message.contains("leaves up to"))
+    );
+    // Inside a pocket the chord leaves material; a set limit below it
+    // refuses the roughing pass too, the set value winning over the role.
+    let f = Fixture::brep(&pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat());
+    assert_eq!(
+        generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))])
+            .notes
+            .len(),
+        1
+    );
+    let message = refused(
+        &f,
+        &[
+            (names::STOCK_TO_LEAVE, num(0.5)),
+            (swarf::parameter::MAX_MATERIAL_LEFT, num(1e-4)),
+        ],
+    );
+    assert!(
+        message.contains("more than the max_material_left of 0.0001 mm"),
+        "{message}"
+    );
+}
+
+#[test]
+fn req_op_07_req_op_12_a_pocket_wall_is_cut_from_inside_and_a_limit_below_its_chord_refuses_it() {
+    // Inside a round pocket the straight machine move between poses takes
+    // the flank away from the wall, so the material left between poses is
+    // the chord (within 0.4 of the tolerance, decision 0061 item 6), never a
+    // gouge. With the default limit it is silent; a limit below the chord
+    // refuses with the amount and the advice.
+    let model = pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
+    let f = Fixture::brep(&model, flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    assert!(path.gouge <= 1e-6, "{}", path.gouge);
+    assert!(path.left > 1e-4 && path.left <= 0.4 * TOL, "{}", path.left);
+    for p in path.poses() {
+        let r = (p.tip.x - BOSS_X).hypot(p.tip.y);
+        assert!((r - (BOSS_RADIUS - TOOL_RADIUS)).abs() < 1e-9, "{p:?}");
+        assert!(p.a.0.abs() < 1e-9);
+    }
+    let generated = generated(&f, &[]);
+    assert!(
+        !generated
+            .notes
+            .iter()
+            .any(|n| n.message.contains("leaves up to"))
+    );
+    let poses = cutting_poses(&generated.group);
+    let (gouge, left) = verdict(
+        &Outline::new(&flat()),
+        &poses,
+        &samples(&model, 240, 8, 0.05),
+        0.0,
+    );
+    assert!(gouge <= TOL && left <= TOL, "gouge {gouge} left {left}");
+    let message = refused(&f, &[(swarf::parameter::MAX_MATERIAL_LEFT, num(1e-4))]);
+    assert!(message.contains("would leave"), "{message}");
+    assert!(
+        message.contains("more than the max_material_left of 0.0001 mm"),
+        "{message}"
+    );
+    assert!(message.contains("tighter tolerance"), "{message}");
+    let err = run(|ctx| {
+        generate(
+            &Swarf,
+            &f.input(),
+            &values(&[(swarf::parameter::MAX_MATERIAL_LEFT, num(-0.1))]),
+            ctx,
+        )
+    })
+    .unwrap_err();
+    assert!(err.to_string().contains("max_material_left"), "{err}");
+}
+
+#[test]
 fn req_op_12_req_op_07_the_independent_checker_finds_no_gouge_on_the_oracle_cases() {
     let cases: Vec<(BrepModel, RevolvedProfile)> = vec![
         (boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat()),
@@ -923,6 +1138,7 @@ fn req_op_16_swarf_is_in_the_registry_with_the_common_parameters() {
         names::FEED,
         names::ENTRY,
         swarf::parameter::TIP_EXTENSION,
+        swarf::parameter::MAX_MATERIAL_LEFT,
         swarf::parameter::TIP_END,
         swarf::parameter::DIRECTION,
     ] {
@@ -988,6 +1204,22 @@ fn req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads() {
     let runs = openchuck_testkit::determinism::check(|| {
         let path = generated(&f, &[]);
         format!("{:?}{:?}", path.group, path.notes).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
+    // The leftover levels too: the pocket wall's note-free finishing and
+    // roughing paths and its refusal under a limit below the chord are the
+    // same on every pool.
+    let f = Fixture::brep(&pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat());
+    let runs = openchuck_testkit::determinism::check(|| {
+        let path = generated(&f, &[]);
+        let rough = generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))]);
+        let why = refused(&f, &[(swarf::parameter::MAX_MATERIAL_LEFT, num(1e-4))]);
+        format!(
+            "{:?}{:?}{:?}{:?}{why}",
+            path.group, path.notes, rough.group, rough.notes
+        )
+        .into_bytes()
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
