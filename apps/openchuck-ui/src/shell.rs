@@ -906,6 +906,13 @@ impl Shell {
         if self.selection.frame(app, input) {
             ctx.request_repaint();
         }
+        // Q, W and E choose the click; Esc leaves picking (specification 15).
+        if self.dialog.is_none()
+            && matches!(self.selected, Some(Selection::Picking | Selection::Set(_)))
+            && self.selection.keys(ctx)
+        {
+            self.selected = None;
+        }
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
@@ -1380,7 +1387,14 @@ impl Shell {
         ));
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
-            .show(ui, |ui| self.viewport.show(ui));
+            .show(ui, |ui| {
+                let corner = ui.max_rect().left_top() + egui::vec2(8.0, 8.0);
+                self.viewport.show(ui);
+                // The selection tools sit over the top left of the view.
+                if self.viewport.is_picking() {
+                    self.selection.tools(ui.ctx(), corner);
+                }
+            });
         self.pick_frame(&ctx);
         self.run_frame(&ctx);
         self.import_frame(&ctx);
