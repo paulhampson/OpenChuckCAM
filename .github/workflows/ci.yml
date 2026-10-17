@@ -4,10 +4,17 @@
 # verification plan sections 7 to 9). Jobs are path-filtered: a change to
 # docs/ alone does not rebuild the Rust workspace (posts/ and testdata/ do, because
 # the golden G-code tests read them).
+#
+# Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
+# heavy jobs (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke and
+# fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
+# on a ready pull request or a push, requires every heavy job whose filter is true to succeed.
 name: CI
 
 on:
   pull_request:
+    # `ready_for_review` starts the full run when a draft is marked ready (decision 0052, draft gate).
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -15,9 +22,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels the older run of that pull request: the newer commit is the
+# one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
+# replaced while it waits: its group is its own run, so every merged commit keeps a complete result
+# (and its cache and coverage artifacts), even if several manual runs target one commit
+# (decision 0052, Option 1).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -114,11 +126,21 @@ jobs:
               - 'crates/openchuck-geom/**'
               - 'crates/openchuck-import/**'
               - 'testdata/stl/**'
+              # The fuzz job itself, so a change to it is run by its own pull request.
+              - '.github/workflows/ci.yml'
 
+  # The simulator runs in real time, so the golden programs (22 minutes one after another) are
+  # dealt over three runners by expected run time (`cargo xtask replay --shard`, decision 0052,
+  # Option 3). Every program is in exactly one share (unit-tested in xtask), a share with no
+  # programs fails, and `needs: gate3` in the aggregator waits for all three.
   gate3:
-    name: Gate 3 (LinuxCNC simulator)
+    name: Gate 3 (LinuxCNC simulator) (share ${{ matrix.shard }} of 3)
     needs: changes
-    if: needs.changes.outputs.gate3 == 'true'
+    if: needs.changes.outputs.gate3 == 'true' && github.event.pull_request.draft != true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -145,29 +167,18 @@ jobs:
       # Every LinuxCNC golden program runs in the headless XYZA simulator and is compared
       # with the replay of the same file (verification plan section 6, gate 3).
       - name: Replay the golden programs in LinuxCNC
-        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --keep-reports target/replay
+        run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --shard "${{ matrix.shard }}/3" --keep-reports target/replay
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gate3-reports
+          name: gate3-reports-${{ matrix.shard }}
           path: target/replay
           if-no-files-found: ignore
-
-  fmt:
-    name: rustfmt
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - run: cargo fmt --all --check
 
   build-test:
     name: Build and test (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -196,7 +207,7 @@ jobs:
   ui-smoke:
     name: UI smoke test (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
     # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
@@ -271,7 +282,7 @@ jobs:
   step-kernel:
     name: STEP kernel (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.step == 'true'
+    if: needs.changes.outputs.step == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -309,7 +320,7 @@ jobs:
   libraries-alone:
     name: Each library alone (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
@@ -338,94 +349,90 @@ jobs:
             cargo test --locked -p "$crate"
           done
 
-  repository-checks:
-    name: Repository checks (xtask)
+  # The checks of about two minutes or less that are not specific to an operating system share
+  # one Linux job that runs beside the long jobs, so a code change needs one runner for them
+  # instead of six (decision 0052, Option 8). Each check is its own step and keeps the condition
+  # its job had: `rust` for all but the repository checks (`rust` or `records`), and the semver
+  # check only on a pull request. Every step after the first check runs even when an earlier one
+  # failed (`if: always()`), so one run names every failing check; the last step fails the job if
+  # a check that was due did not succeed, so a wrong condition cannot pass quietly. There is no
+  # `continue-on-error`: a failed step fails the job, which fails `CI required checks`.
+  fast-checks:
+    name: Fast checks (rustfmt, xtask, deny, audit, notices, semver)
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUST: ${{ needs.changes.outputs.rust }}
+      RECORDS: ${{ needs.changes.outputs.records }}
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
-      - uses: Swatinem/rust-cache@v2
-      - name: Dependency rules (architecture sections 4 and 12)
-        run: cargo xtask deps
-      - name: SPDX headers and crate licences (NFR-10)
-        run: cargo xtask licences
-      - name: Dependency pins and records (NFR-14)
-        run: cargo xtask records
-      - name: Test-data size policy
-        run: cargo xtask testdata
-      - name: Traceability report
-        run: cargo xtask trace --report target/traceability.md
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: traceability-report
-          path: target/traceability.md
-
-  cargo-deny:
-    name: cargo deny (licences, advisories, sources)
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
-
-  cargo-audit:
-    name: cargo audit
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
-      - run: cargo audit --deny warnings
-
-  licence-notices:
-    name: Licence notices (cargo about)
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-about
-      - run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
-      - uses: actions/upload-artifact@v7
-        with:
-          name: third-party-notices
-          path: THIRD-PARTY-NOTICES.html
-
-  semver:
-    name: Semver check (library family)
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
+          # The semver check compares with the pull request's base commit.
           fetch-depth: 0
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-semver-checks
+          key: fast-checks
+      - uses: taiki-e/install-action@v2
+        if: needs.changes.outputs.rust == 'true'
+        with:
+          tool: cargo-audit,cargo-about,cargo-semver-checks
+      - name: rustfmt
+        id: fmt
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo fmt --all --check
+      - name: Dependency rules (architecture sections 4 and 12)
+        id: deps
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask deps
+      - name: SPDX headers and crate licences (NFR-10)
+        id: licences
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask licences
+      - name: Dependency pins and records (NFR-14)
+        id: records
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask records
+      - name: Test-data size policy
+        id: testdata
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask testdata
+      - name: Traceability report
+        id: trace
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        run: cargo xtask trace --report target/traceability.md
+      - uses: actions/upload-artifact@v7
+        if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
+        with:
+          name: traceability-report
+          path: target/traceability.md
+          if-no-files-found: ignore
+      - name: cargo deny (licences, advisories, sources)
+        id: deny
+        if: always() && needs.changes.outputs.rust == 'true'
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - name: cargo audit
+        id: audit
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo audit --deny warnings
+      - name: Licence notices (cargo about)
+        id: about
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo about generate --locked about.hbs > THIRD-PARTY-NOTICES.html
+      - uses: actions/upload-artifact@v7
+        if: always() && needs.changes.outputs.rust == 'true'
+        with:
+          name: third-party-notices
+          path: THIRD-PARTY-NOTICES.html
+          if-no-files-found: ignore
       # Compares the public API with the pull request's base (INT-07). Crates
       # that do not exist on the base yet are skipped.
       - name: cargo semver-checks
+        id: semver
+        if: always() && github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
         shell: bash
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -437,16 +444,68 @@ jobs:
               echo "$crate is new in this change; no baseline"
             fi
           done
+      # Fails the job when a check that was due did not succeed. A step skipped by a wrong
+      # condition, or cancelled, counts as not run here, so it cannot read as a pass.
+      - name: Every check that was due ran and passed
+        if: always()
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          FMT: ${{ steps.fmt.outcome }}
+          DEPS: ${{ steps.deps.outcome }}
+          LICENCES: ${{ steps.licences.outcome }}
+          RECORDS_STEP: ${{ steps.records.outcome }}
+          TESTDATA: ${{ steps.testdata.outcome }}
+          TRACE: ${{ steps.trace.outcome }}
+          DENY: ${{ steps.deny.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+          ABOUT: ${{ steps.about.outcome }}
+          SEMVER: ${{ steps.semver.outcome }}
+        run: |
+          bad=""
+          # check NAME DUE OUTCOME: DUE is "true" when the check should have run.
+          check() {
+            echo "$1: due=$2 outcome=$3"
+            if [ "$2" = true ] && [ "$3" != success ]; then bad="$bad, $1 ($3)"; fi
+          }
+          repo=false; if [ "$RUST" = true ] || [ "$RECORDS" = true ]; then repo=true; fi
+          check rustfmt "$RUST" "$FMT"
+          check "xtask deps" "$repo" "$DEPS"
+          check "xtask licences" "$repo" "$LICENCES"
+          check "xtask records" "$repo" "$RECORDS_STEP"
+          check "xtask testdata" "$repo" "$TESTDATA"
+          check "xtask trace" "$repo" "$TRACE"
+          check "cargo deny" "$RUST" "$DENY"
+          check "cargo audit" "$RUST" "$AUDIT"
+          check "cargo about" "$RUST" "$ABOUT"
+          semver=false; if [ "$RUST" = true ] && [ "$EVENT" = pull_request ]; then semver=true; fi
+          check "cargo semver-checks" "$semver" "$SEMVER"
+          if [ -n "$bad" ]; then
+            echo "::error title=Fast checks did not pass::${bad#, }"
+            exit 1
+          fi
+          echo "Every check that was due ran and passed."
 
+  # Nine targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three
+  # that share a toolchain install, a cargo-fuzz install and a build cache, instead of nine jobs
+  # that each set up and build from scratch (decision 0052, Option 7). Every target still gets its
+  # own minute and its own seeded corpus; a failing target is named in the annotation and does not
+  # stop the others in its job from running.
   fuzz-smoke:
-    name: Fuzz smoke (1 minute per target)
+    name: Fuzz smoke, 1 minute per target (${{ matrix.group.name }})
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.fuzz == 'true' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
+        group:
+          - name: A
+            targets: machine_profile_json machine_profile_toml toolpath_ir_json
+          - name: B
+            targets: project_files stl_import tool_library_toml
+          - name: C
+            targets: tool_profile_toml gcode_reader post_definition
     steps:
       - uses: actions/checkout@v7
         with:
@@ -455,48 +514,61 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: fuzz-smoke
       - name: Seed the STL corpus from testdata
-        if: matrix.target == 'stl_import'
+        if: contains(format(' {0} ', matrix.group.targets), ' stl_import ')
         run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
       - name: Seed the machine profile corpus from the built-in profiles
-        if: matrix.target == 'machine_profile_toml'
+        if: contains(format(' {0} ', matrix.group.targets), ' machine_profile_toml ')
         run: mkdir -p fuzz/corpus/machine_profile_toml && cp crates/openchuck-project/machines/*.toml fuzz/corpus/machine_profile_toml/
       - name: Seed the tool library corpus
-        if: matrix.target == 'tool_library_toml'
+        if: contains(format(' {0} ', matrix.group.targets), ' tool_library_toml ')
         run: mkdir -p fuzz/corpus/tool_library_toml && cp testdata/tools/library/*.toml testdata/tools/library/tool-sets/*.toml testdata/tools/broken/*.toml fuzz/corpus/tool_library_toml/
       - name: Seed the tool profile corpus
-        if: matrix.target == 'tool_profile_toml'
+        if: contains(format(' {0} ', matrix.group.targets), ' tool_profile_toml ')
         run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
       - name: Seed the G-code corpus
-        if: matrix.target == 'gcode_reader'
+        if: contains(format(' {0} ', matrix.group.targets), ' gcode_reader ')
         run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
       - name: Seed the post definition corpus
-        if: matrix.target == 'post_definition'
+        if: contains(format(' {0} ', matrix.group.targets), ' post_definition ')
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
-      - name: Fuzz for one minute
+      - name: Fuzz each target for one minute
         shell: bash
         env:
-          TARGET: ${{ matrix.target }}
+          TARGETS: ${{ matrix.group.targets }}
         run: |
-          set +e
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time=60 > fuzz.log 2>&1
-          code=$?
-          set -e
-          cat fuzz.log
-          # On failure, the end of the output becomes an annotation on the
-          # check page, so the cause is visible without opening the log.
-          if [ "$code" != 0 ]; then
-            tail -n 25 fuzz.log | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
-            echo "::error title=Fuzz $TARGET failed (exit $code)::$(cat tail.txt)"
-            exit "$code"
+          failed=""
+          for target in $TARGETS; do
+            echo "::group::Fuzz $target"
+            set +e
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 > "fuzz-$target.log" 2>&1
+            code=$?
+            set -e
+            cat "fuzz-$target.log"
+            echo "::endgroup::"
+            # On failure, the end of the output becomes an annotation on the
+            # check page, so the cause is visible without opening the log.
+            if [ "$code" != 0 ]; then
+              tail -n 25 "fuzz-$target.log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > tail.txt
+              echo "::error title=Fuzz $target failed (exit $code)::$(cat tail.txt)"
+              failed="$failed $target"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "Failed targets:$failed"
+            exit 1
           fi
 
   coverage:
     name: Coverage trend
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     env:
       # The repository tooling (xtask) is not product code; keep it out of every report.
@@ -549,29 +621,28 @@ jobs:
   # The single status to require in the branch ruleset for `main` ("CI required checks").
   # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
   # required status that never reports blocks the merge. Requiring this one job
-  # avoids listing every job (and every matrix leg) in the ruleset. It always
-  # runs, fails if any job it needs failed or was cancelled, and accepts a
-  # skipped job only because a path filter or event condition turned it off.
-  # `changes` itself must succeed: if it fails, every other job is skipped and
-  # the filter result is unknown, so that must not read as a pass.
-  # To make a new job required, add it to `needs:` here; to make one advisory,
-  # remove it.
+  # avoids listing every job (and every matrix leg) in the ruleset. It always runs.
+  # - `changes` itself must succeed: if it fails, every other job is skipped and
+  #   the filter result is unknown, so that must not read as a pass.
+  # - A draft pull request fails here: its heavy jobs have not run (decision 0052). A
+  #   draft cannot be merged, and marking it ready starts a full run.
+  # - Otherwise every job whose path filter (or event) says it is due must have succeeded;
+  #   a due job that was skipped, failed or was cancelled fails the run. A job that is not
+  #   due may be skipped. So a skipped job passes only because a path filter or the event
+  #   turned it off, never because of the draft condition.
+  # To make a new job required, add it to `needs:` and to the list below; to make one
+  # advisory, remove it from both.
   required:
     name: CI required checks
     if: always()
     needs:
       - changes
       - gate3
-      - fmt
       - build-test
       - ui-smoke
       - step-kernel
       - libraries-alone
-      - repository-checks
-      - cargo-deny
-      - cargo-audit
-      - licence-notices
-      - semver
+      - fast-checks
       - fuzz-smoke
       - coverage
     runs-on: ubuntu-latest
@@ -580,6 +651,8 @@ jobs:
         shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -euo pipefail
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
@@ -587,9 +660,37 @@ jobs:
             echo "::error::The change-detection job did not succeed, so skipped jobs cannot be trusted"
             exit 1
           fi
-          bad=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key) (\(.value.result))"')
-          if [ -n "$bad" ]; then
-            echo "::error title=Required jobs did not pass::$(echo "$bad" | paste -sd, -)"
+          if [ "$DRAFT" = true ]; then
+            echo "::error title=Draft pull request::The heavy checks have not run on a draft; mark the pull request ready for review to run them"
             exit 1
           fi
-          echo "All required jobs passed or were skipped by their path filters."
+          out() { echo "$NEEDS" | jq -r ".changes.outputs.$1"; }
+          res() { echo "$NEEDS" | jq -r ".\"$1\".result"; }
+          bad=""
+          # check JOB DUE: a job that is due must have succeeded; any other job may have been skipped.
+          check() {
+            local r
+            r=$(res "$1")
+            if [ "$2" = true ]; then
+              [ "$r" = success ] || bad="$bad, $1 ($r, due)"
+            else
+              [ "$r" = skipped ] || [ "$r" = success ] || bad="$bad, $1 ($r)"
+            fi
+          }
+          check gate3 "$(out gate3)"
+          check build-test "$(out rust)"
+          check ui-smoke "$(out rust)"
+          check libraries-alone "$(out rust)"
+          check coverage "$(out rust)"
+          check step-kernel "$(out step)"
+          fast=false
+          if [ "$(out rust)" = true ] || [ "$(out records)" = true ]; then fast=true; fi
+          check fast-checks "$fast"
+          fuzz=false
+          if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
+          check fuzz-smoke "$fuzz"
+          if [ -n "$bad" ]; then
+            echo "::error title=Required jobs did not pass::${bad#, }"
+            exit 1
+          fi
+          echo "All required jobs passed or were turned off by their path filters."

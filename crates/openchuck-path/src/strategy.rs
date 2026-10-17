@@ -71,6 +71,13 @@ pub struct Pass {
     /// that have it are linked without a retract to the clearance cylinder
     /// where the link is clear of it (decision record 0033 item 6).
     pub stock: Option<PassStock>,
+    /// Indices into `points` of the points reached by a rapid move instead of
+    /// at the cutting feed: the retract and the return of a peck in a
+    /// drilled hole (OP-10; decision record 0051 item 6). Point 0 is where
+    /// the entry ends, so an index of 0 has no move. A pass with rapid points
+    /// keeps its contact points as given instead of smoothing them (the path
+    /// doubles back on itself).
+    pub rapids: Vec<usize>,
 }
 
 /// A strategy's passes with what it found worth telling the user, as
@@ -345,7 +352,7 @@ impl Registry {
     /// The strategies this library provides: helical, axial and indexed
     /// finishing (OP-04), rotary roughing (OP-03) and simultaneous 4-axis
     /// finishing (OP-05, OP-06), and rest machining and pencil clean-up
-    /// (OP-09), and edge and curve following (OP-08).
+    /// (OP-09), radial drilling (OP-10), and edge and curve following (OP-08).
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
@@ -356,6 +363,7 @@ impl Registry {
         let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         let _ = registry.register(Arc::new(crate::rest::RestMachining));
         let _ = registry.register(Arc::new(crate::pencil::PencilFinishing));
+        let _ = registry.register(Arc::new(crate::drill::RadialDrilling));
         let _ = registry.register(Arc::new(crate::edge_following::EdgeFollowing::default()));
         registry
     }

@@ -566,6 +566,7 @@ impl Strategy for PencilFinishing {
             passes.extend(runs.into_iter().map(|points| Pass {
                 points,
                 stock: None,
+                rapids: Vec::new(),
             }));
         }
         if passes.is_empty() {

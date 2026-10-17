@@ -52,6 +52,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter::{Contact, ToolLine};
 use crate::error::{PathError, Result};
+use crate::holes::{Hole, find_holes};
 use crate::surface::{
     FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
 };
@@ -1552,6 +1553,7 @@ pub struct BrepSurface {
     face_of_triangle: Vec<FaceId>,
     fallback: Option<MeshSurface>,
     bounds: Aabb,
+    holes: Vec<Hole>,
 }
 
 impl BrepSurface {
@@ -1563,7 +1565,7 @@ impl BrepSurface {
             .map(ExactFace::new)
             .collect::<Result<Vec<_>>>()?;
         let (mesh, face_of_triangle) = model.joined_tessellation();
-        Self::assemble(faces, mesh, face_of_triangle)
+        Self::assemble(faces, mesh, face_of_triangle, find_holes(model))
     }
 
     /// Only the faces named in `ids` (the user's face selection). Fails when
@@ -1592,13 +1594,20 @@ impl BrepSurface {
                 face_of_triangle.push(f.id);
             }
         }
-        Self::assemble(faces, mesh, face_of_triangle)
+        // A hole is selected by any face of its wall (decision record 0051
+        // item 2); its ends are found in the whole model.
+        let holes = find_holes(model)
+            .into_iter()
+            .filter(|h| h.faces.iter().any(|f| ids.contains(f)))
+            .collect();
+        Self::assemble(faces, mesh, face_of_triangle, holes)
     }
 
     fn assemble(
         faces: Vec<ExactFace>,
         mesh: TriangleMesh,
         face_of_triangle: Vec<FaceId>,
+        holes: Vec<Hole>,
     ) -> Result<Self> {
         let mut it = faces.iter().map(ExactFace::bounding_box);
         let first = it
@@ -1627,6 +1636,7 @@ impl BrepSurface {
             face_of_triangle,
             fallback,
             bounds,
+            holes,
         })
     }
 
@@ -1672,6 +1682,10 @@ fn box_entry(b: &Aabb, o: Point3, d: Vec3, max: f64) -> Option<f64> {
 impl SurfaceSource for BrepSurface {
     fn bounds(&self) -> Aabb {
         self.bounds
+    }
+
+    fn holes(&self) -> &[Hole] {
+        &self.holes
     }
 
     fn project(&self, point: Point3) -> Option<SurfacePoint> {

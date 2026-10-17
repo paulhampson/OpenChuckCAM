@@ -885,6 +885,7 @@ pub fn follow_chains(
                 passes.push(Pass {
                     points,
                     stock: None,
+                    rapids: Vec::new(),
                 });
             }
         }

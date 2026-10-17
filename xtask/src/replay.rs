@@ -36,6 +36,88 @@ pub struct Options {
     pub tolerance: f64,
     /// Give up on one program after this many seconds.
     pub timeout_seconds: u64,
+    /// Run only one share of the programs, as `I/N`.
+    pub shard: Option<String>,
+}
+
+/// Seconds a LinuxCNC golden program takes in the simulator, which runs in real time, measured
+/// on hosted runners (decision 0052). They only balance the shards: a program missing from this
+/// list, or a changed time, makes a share longer or shorter and never drops a program.
+const EXPECTED_SECONDS: &[(&str, u64)] = &[
+    ("cone_axial_lead_linuxcnc.ngc", 295),
+    ("cone_axial_linuxcnc.ngc", 278),
+    ("cone_held_tabs_linuxcnc.ngc", 223),
+    ("groove_linuxcnc.ngc", 159),
+    ("cone_linuxcnc.ngc", 124),
+    ("lobed_linuxcnc.ngc", 114),
+    ("sphere_linuxcnc.ngc", 93),
+    ("cone_indexed_linuxcnc.ngc", 40),
+    ("post_linuxcnc_small_part.ngc", 35),
+];
+
+/// Expected time of a program that is not in the list.
+const DEFAULT_SECONDS: u64 = 150;
+
+/// Reads `I/N` (1-based) into `(index, count)`.
+fn parse_shard(text: &str) -> Result<(usize, usize)> {
+    let bad =
+        || anyhow::anyhow!("--shard takes I/N with 1 <= I <= N, for example 2/3; got '{text}'");
+    let (i, n) = text.split_once('/').ok_or_else(bad)?;
+    let i: usize = i.trim().parse().map_err(|_| bad())?;
+    let n: usize = n.trim().parse().map_err(|_| bad())?;
+    if i == 0 || i > n {
+        return Err(bad());
+    }
+    Ok((i, n))
+}
+
+/// Share `index` of `count` of `programs`, refusing a count that leaves a share with no program
+/// (that share would pass without checking anything) before any share is built.
+fn select_share(programs: &[PathBuf], index: usize, count: usize) -> Result<Vec<PathBuf>> {
+    if count > programs.len() {
+        bail!(
+            "{count} shares for {} programs would leave a share with nothing to run: use at most {} shares",
+            programs.len(),
+            programs.len()
+        );
+    }
+    let mine = shard_programs(programs, index, count);
+    if mine.is_empty() {
+        bail!("share {index}/{count} has no programs: use fewer shares");
+    }
+    Ok(mine)
+}
+
+/// Deals `programs` over `count` shares, longest first onto the share with the least expected
+/// time (ties by name, so every runner computes the same shares from the same files), and
+/// returns share `index` (1-based). Every program is in exactly one share.
+fn shard_programs(programs: &[PathBuf], index: usize, count: usize) -> Vec<PathBuf> {
+    let seconds = |p: &PathBuf| {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        EXPECTED_SECONDS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map_or(DEFAULT_SECONDS, |(_, s)| *s)
+    };
+    let mut order: Vec<&PathBuf> = programs.iter().collect();
+    order.sort_by(|a, b| seconds(b).cmp(&seconds(a)).then_with(|| a.cmp(b)));
+    let mut load = vec![0u64; count];
+    let mut mine = Vec::new();
+    for program in order {
+        let (share, _) = load
+            .iter()
+            .enumerate()
+            .min_by_key(|(i, l)| (**l, *i))
+            .unwrap_or((0, &0));
+        if let Some(slot) = load.get_mut(share) {
+            *slot += seconds(program);
+        }
+        if share + 1 == index {
+            mine.push(program.clone());
+        }
+    }
+    mine.sort();
+    mine
 }
 
 /// The LinuxCNC golden programs: the reference jobs and the small part.
@@ -161,6 +243,19 @@ pub fn check(root: &Path, options: &Options) -> Result<Findings> {
         default_programs(root)?
     } else {
         options.programs.clone()
+    };
+    let programs = match &options.shard {
+        None => programs,
+        Some(text) => {
+            let (index, count) = parse_shard(text)?;
+            let mine = select_share(&programs, index, count)?;
+            println!(
+                "share {index}/{count}: {} of {} programs",
+                mine.len(),
+                programs.len()
+            );
+            mine
+        }
     };
     // The comparison is the CLI's `gcode-sim`.
     let status = Command::new("cargo")
@@ -296,4 +391,94 @@ fn run_once(
         failure,
         max_gap,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn programs(names: &[&str]) -> Vec<PathBuf> {
+        names
+            .iter()
+            .map(|n| PathBuf::from(format!("testdata/golden/reference/{n}")))
+            .collect()
+    }
+
+    fn all_known() -> Vec<PathBuf> {
+        let names: Vec<&str> = EXPECTED_SECONDS.iter().map(|(n, _)| *n).collect();
+        programs(&names)
+    }
+
+    #[test]
+    fn gate_3_every_program_is_in_exactly_one_share() {
+        // The known programs plus two new ones that have no expected time.
+        let mut list = all_known();
+        list.extend(programs(&["new_a_linuxcnc.ngc", "new_b_linuxcnc.ngc"]));
+        for count in 1..=list.len() {
+            let mut seen: Vec<PathBuf> = Vec::new();
+            for index in 1..=count {
+                seen.extend(shard_programs(&list, index, count));
+            }
+            seen.sort();
+            let mut want = list.clone();
+            want.sort();
+            assert_eq!(seen, want, "{count} shares");
+        }
+    }
+
+    #[test]
+    fn gate_3_shares_do_not_depend_on_the_order_of_the_list() {
+        let list = all_known();
+        let mut reversed = list.clone();
+        reversed.reverse();
+        for index in 1..=3 {
+            assert_eq!(
+                shard_programs(&list, index, 3),
+                shard_programs(&reversed, index, 3)
+            );
+        }
+    }
+
+    #[test]
+    fn gate_3_three_shares_are_balanced_and_none_is_empty() {
+        let list = all_known();
+        let total: u64 = EXPECTED_SECONDS.iter().map(|(_, s)| *s).sum();
+        for index in 1..=3 {
+            let mine = shard_programs(&list, index, 3);
+            assert!(!mine.is_empty(), "share {index} is empty");
+            let time: u64 = mine
+                .iter()
+                .map(|p| {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                    EXPECTED_SECONDS
+                        .iter()
+                        .find(|(n, _)| *n == name)
+                        .map_or(0, |(_, s)| *s)
+                })
+                .sum();
+            // Within 40 % of an even split, so no runner carries most of the work.
+            assert!(
+                time * 3 * 10 <= total * 14,
+                "share {index} takes {time} s of {total} s"
+            );
+        }
+    }
+
+    #[test]
+    fn gate_3_more_shares_than_programs_is_refused_before_any_share_is_built() {
+        let list = all_known();
+        assert!(select_share(&list, 1, list.len()).is_ok());
+        assert!(select_share(&list, 1, list.len() + 1).is_err());
+        // A huge count must not be allocated.
+        assert!(select_share(&list, 1, 1_000_000_000).is_err());
+    }
+
+    #[test]
+    fn gate_3_shard_argument_is_checked() {
+        assert_eq!(parse_shard("2/3").ok(), Some((2, 3)));
+        assert_eq!(parse_shard("1/1").ok(), Some((1, 1)));
+        for bad in ["0/3", "4/3", "2", "a/3", "2/0", "", "2/3/4"] {
+            assert!(parse_shard(bad).is_err(), "'{bad}' was accepted");
+        }
+    }
 }

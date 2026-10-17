@@ -290,6 +290,7 @@ pub fn assemble_with_entry(
     // A-axis management: continuous within a pass, fitted by whole turns.
     let mut placed: Vec<Vec<CutPoint>> = Vec::new();
     let mut stocks: Vec<Option<PassStock>> = Vec::new();
+    let mut rapids: Vec<Vec<usize>> = Vec::new();
     let mut previous = Degrees(0.0);
     for (i, pass) in passes.iter().enumerate() {
         if pass.points.is_empty() {
@@ -316,13 +317,20 @@ pub fn assemble_with_entry(
             })
             .collect();
         // The micro-moves path fitting leaves at a wall become one move
-        // (decision record 0050).
-        let points = walls::merge_at_walls(&rotary, &points, tolerance, chord);
+        // (decision record 0050). A pass with rapid points (a drilled hole)
+        // is left as it is: its rapids index its points, and its pecks run
+        // along the tool axis on purpose.
+        let points = if pass.rapids.is_empty() {
+            walls::merge_at_walls(&rotary, &points, tolerance, chord)
+        } else {
+            points
+        };
         if let Some(last) = points.last() {
             previous = last.a;
         }
         placed.push(points);
         stocks.push(pass.stock.clone());
+        rapids.push(pass.rapids.clone());
     }
     let Some(first) = placed.first().and_then(|p| p.first()).copied() else {
         return Err(PathError::Strategy(
@@ -388,12 +396,22 @@ pub fn assemble_with_entry(
             b.push(MoveKind::Rapid, end, None, None)?;
         }
         entry.enter(&mut b, input, stock, common, i, points)?;
-        let breaks = walls::wall_breaks(&rotary, points, tolerance);
-        let contacts = smoothed_contacts_between(points, &breaks);
+        let doubling = rapids.get(i).filter(|r| !r.is_empty());
+        let contacts = match doubling {
+            Some(_) => points.iter().map(|p| p.contact).collect(),
+            None => {
+                let breaks = walls::wall_breaks(&rotary, points, tolerance);
+                smoothed_contacts_between(points, &breaks)
+            }
+        };
         b.contact = contacts.first().copied().unwrap_or(head.contact);
-        for (p, c) in points.iter().zip(&contacts).skip(1) {
+        for (k, (p, c)) in points.iter().zip(&contacts).enumerate().skip(1) {
             let end = b.pose(p.tip, p.a);
-            b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
+            if doubling.is_some_and(|r| r.contains(&k)) {
+                b.push(MoveKind::Rapid, end, None, None)?;
+            } else {
+                b.push(MoveKind::Cutting, end, Some(*c), Some(common.feed))?;
+            }
         }
         entry.exit(&mut b, common, input, i, points)?;
     }
