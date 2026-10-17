@@ -4,7 +4,7 @@ Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2
 
 ## P1 assessment
 
-93 of 147 requirements are P1: IMP 6, UI 16, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
+94 of 148 requirements are P1: IMP 6, UI 17, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
 
 Findings, after reconciling with the architecture:
 
@@ -819,7 +819,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 
-**Requirements:** SET-09, OP-21
+**Requirements:** SET-09, OP-21; UI-25 (added by decision 0104; built by 21d)
 
 **Design refinement:** the record's items: the held region and each tab as analytic solids (cylinder, frustum) added to the part for the whole job, where they live (the setup, beside stock), the composite target surface and its determinism, what stock to leave, the gouge checker and the deviation report do with them, and the cut-off.
 
@@ -965,7 +965,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 | 18 | OP-10 | – |
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
-| 21 | SET-09, OP-21 | – |
+| 21 | SET-09, OP-21, UI-25 | – |
 | 22 | – | – |
 | 23 | TL-12 | – |
 
