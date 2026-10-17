@@ -189,7 +189,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 
 | Place | Box | Steps |
 | --- | --- | --- |
-| Top left | Selection tools: Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)* | Operations, while picking |
+| Top left | Selection tools: a filter, "Pick: Both, Faces, Edges" (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
 | Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid | Operations |
 | Top right | View cube; clicking a face gives that standard view | All with a 3D view |
 | Top right, under the cube | Axis triad: X red, Y green, Z blue | All with a 3D view |
@@ -521,7 +521,10 @@ UI-05; decisions 0032 and 0037; a dock tab.
 - **Toolbar.**
   - "New set from selection", "Add selection to set", "Remove from set";
   - the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example);
-  - a note on what can be selected: triangles on meshes, faces and edges on STEP models.
+  - a note on what can be selected: triangles on meshes, faces and edges on STEP models;
+  - for a working edge selection, and for a chosen edge set of a STEP model, "Tangent edges": "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9);
+  - "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*;
+  - "Warn before a click starts a new selection" (on by default), until a project and software preferences screen exists to hold it *(OI-260)*.
 - **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
   - A set with a problem is red, with its reason ("12 missing") and "Reselect".
   - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
@@ -607,6 +610,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **Units.** Every number carries its unit: "mm", "deg" or "°", "mm/min", "rpm". Dates are written "13 Oct 2026".
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
+- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click of the other kind asks first, in a dialog "Start a new selection?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now.", with "Start a new selection", "Cancel" and "Don't show me this warning again".
 - **The machine.** Machine values are described by provenance ("confirmed on the machine", "from Makera's profile", "unconfirmed placeholder"), not by blame.
 
 ## 16. Keyboard and accessibility
@@ -628,7 +632,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 | G | Generate selected; Shift G generates every stale operation |
 | Ctrl D, Del, F2 | Duplicate, delete, rename the selected item |
 | Alt ↑, Alt ↓ | Move the selected operation earlier or later |
-| Q, W, E, B | Select one, flood fill, by angle, box (while picking) |
+| Q, W, E, B | Select one, flood fill, by angle, box (while picking); on an edge, Q, W and E are select one, chain and smooth chain |
 | Space, ←, →, Shift ←, Shift → | Play or pause, step, previous or next operation |
 | Esc | Cancel the running job, or leave picking, or close a popover |
 
