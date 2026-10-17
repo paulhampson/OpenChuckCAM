@@ -557,6 +557,65 @@ fn req_op_21_default_tabs_follow_the_owners_answers() {
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 
+/// The default tabs (decision 0045 item 3) put a tab's small end on the
+/// part's end face, so the tool meets a wall there. Path assembly merges the
+/// micro-moves path fitting leaves at a wall (decision 0050, closing
+/// OI-209), so the job passes gates 1 and 2 with both posts and gives the
+/// same G-code at 1, 2 and N threads.
+#[test]
+fn req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2() {
+    let mut w = workholding();
+    w.tabs.clear();
+    let mut b = build_with_mesh("default-gates", w, 2, BALL, (121, 144), false);
+    let tabs = b.app.start_default_tabs(b.setup).wait().unwrap();
+    assert_eq!(tabs.len(), 2, "{tabs:?}");
+    // The head tab's small end (10 mm) sits on the part's 20 mm end: a wall.
+    let TabShape::Frustum { end_diameter, .. } = tabs[0].shape else {
+        panic!("not a frustum: {:?}", tabs[0].shape);
+    };
+    assert!(end_diameter.0 < 19.0, "{tabs:?}");
+    let mut setup = b.app.project().setup(b.setup).unwrap().clone();
+    setup.workholding.tabs = tabs;
+    b.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let stable = |text: &[(String, String)]| -> Vec<String> {
+        text.iter()
+            .flat_map(|(_, t)| t.lines())
+            .filter(|l| !l.starts_with("(operation ") && !l.starts_with("(default-gates"))
+            .map(str::to_owned)
+            .collect()
+    };
+    let mut first = None;
+    for post in ["makera-z1", "linuxcnc"] {
+        b.app.set_post(Some(PostSelection::parse(post)));
+        let result = b.app.regenerate().unwrap();
+        for report in &result.reports {
+            // Before the merge, gate 1 found `F600.1` against Z's limit and
+            // gate 2 a move 7 % off the IR's time on this layout (OI-209).
+            assert!(
+                report.is_clean(),
+                "{post}: {:?} {:?}",
+                &report.findings[..report.findings.len().min(5)],
+                report.comparison
+            );
+        }
+        if first.is_none() {
+            first = Some(stable(&result.gcode));
+        }
+    }
+    b.app.save().unwrap();
+    let first = first.unwrap();
+    for threads in openchuck_testkit::determinism::thread_counts() {
+        let mut again = Application::open(&b.dir, Threads::Exactly(threads)).unwrap();
+        again.set_post(Some(PostSelection::parse("makera-z1")));
+        assert_eq!(
+            stable(&again.regenerate().unwrap().gcode),
+            first,
+            "at {threads} threads"
+        );
+    }
+    std::fs::remove_dir_all(&b.dir).unwrap();
+}
+
 #[test]
 fn req_set_09_req_op_21_the_scene_shows_them() {
     let b = build("scene", workholding(), 1, BALL);
