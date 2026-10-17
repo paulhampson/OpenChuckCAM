@@ -141,6 +141,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | W | 21c wiring: application mapping, simulation, deviation, forms (built 16 Oct 2026 on `claude/lane-w-slice-21c-wiring`, [decision 0045](decisions/0045-slice-21c-wiring.md), accepted) | ░░ | ░░ | ██ | | |
 | Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; merged in pull request 66; its proof on the default tabs is on `claude/lane-y-default-tabs-proof`) | ░░ | ░░ | ██ | | |
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
+| E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -165,6 +166,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | W | U and V; its roughing and finishing tests need lanes E and H merged |
 | Y | V (the composite target); its proof on the default tabs needs W |
 | Z | P and R (both merged), W (the composite target's wiring) |
+| E2 | E and H (both merged): nothing else |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
 
@@ -658,7 +660,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 6. Link moves checked against the remaining stock, not only the clearance cylinder (OP-14).
 7. Simulation check and leftover report.
 
-**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); lane L merged on 16 Oct 2026. The slice stays open on one checklist box (every OP-11 parameter has a test), because per-selection stock to leave is not supported for roughing. OI-117 is closed; OI-150 to OI-153 are open.
+**Status:** lane E built items 1 to 4, 6 and 7 on `claude/slice-14-rotary-roughing` ([decision 0033](decisions/0033-slice-14-rotary-roughing.md), 15 Oct 2026; in a pull request). Item 5 (containment, lane L) is built on `claude/lane-l-slice-14-containment` ([decision 0043](decisions/0043-slice-14-roughing-containment.md), accepted; OI-187 and OI-188 closed); per-selection stock to leave stays refused for roughing (item 5 of that record); lane L merged on 16 Oct 2026. The slice stays open on one checklist box (every OP-11 parameter has a test), because per-selection stock to leave is not supported for roughing; the owner chose on 17 Oct 2026 that roughing leaves at least the largest value ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), lane E2, not started; exact per-zone roughing is OI-261, deferred). OI-117 is closed; OI-150 to OI-153 are open.
 
 **Review checklist**
 
