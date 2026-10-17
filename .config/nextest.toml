@@ -29,6 +29,84 @@
 # exact STEP parts took 147 s alone (lane F, 17 Oct 2026, decision 0076; the
 # filleted box was added back for OI-236).
 
+# The nightly Coverage run (decision 00NN, `coverage.yml`): every test, instrumented, so the figures
+# are for the whole suite. Nothing is left out, so the order decides the run time. Instrumentation
+# makes the long tests 6 to 11 times slower, and one test cannot be split across cores: the longest
+# alone may take 18 to 33 minutes (estimate from the uninstrumented time alone, 182 s; the first
+# nightly run is the first measurement). So the long tests start first, longest first by their time
+# in a full uninstrumented run (17 Oct 2026), then the six next-slowest tests (132 to 241 s
+# instrumented in Coverage run 39031169050, 40 to 59 s uninstrumented), so that no test runs alone
+# at the end. `priority` changes the order only: the set of tests is the default profile's. Each
+# filter names its binary and test exactly, so nothing else is caught.
+[profile.coverage-full]
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run)'
+priority = 100
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'
+priority = 99
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::simulation) & test(=req_nfr_06_simulation_is_identical_at_1_2_and_n_threads)'
+priority = 98
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)'
+priority = 97
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::helical) & test(=req_op_12_the_independent_checker_finds_no_gouge_and_full_coverage_on_the_oracle_parts)'
+priority = 96
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-app::reference_jobs) & test(=req_gc_07_reference_jobs_are_identical_at_1_and_n_threads)'
+priority = 95
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)'
+priority = 94
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_07_finer_resolution_lowers_the_error_and_costs_more)'
+priority = 93
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)'
+priority = 92
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_05_a_gouging_path_is_reported_as_overcut_with_a_location)'
+priority = 91
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::roughing) & test(=req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)'
+priority = 90
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_05_triangle_values_put_the_overcut_on_the_triangles_it_is_on)'
+priority = 88
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::roughing) & test(=req_op_02_roughing_a_cone_within_a_region_leaves_the_stock_to_leave_inside_and_stock_outside)'
+priority = 87
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::unroll) & test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)'
+priority = 86
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_03_turned_parts_match_the_analytic_volume_within_one_cell)'
+priority = 85
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-sim::roughing) & test(=req_op_03_roughing_follows_a_cone_and_leaves_the_stock_to_leave)'
+priority = 84
+
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-path::unroll) & test(=req_op_04_every_hand_made_case_offsets_correctly_from_the_original)'
+priority = 83
+
 [profile.coverage]
 default-filter = '''not (
     test(~finest_setting_is_within)

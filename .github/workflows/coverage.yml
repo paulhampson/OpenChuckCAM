@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Coverage trend and the line-coverage target per crate (verification plan section 8, decision 00NN).
+#
+# Coverage runs every night and by hand, on the whole suite: the long-running tests are included,
+# so the figures are the full-suite figures and the nightly series is the trend. It does not run
+# on pull requests or on pushes to `main`. A pull request is gated by its tests; a lane checks the
+# crates it changed locally (AGENTS.md, "Cover the code you write").
+#
+# `cargo xtask coverage` adds up the lines of each crate from lcov.info and compares them with
+# the target in xtask/coverage.toml. It enforces on every run once `enforce = true` is set in that
+# file (until then it reports only). The `issue` job below then opens one GitHub issue when the run
+# fails, comments on it on each night it still fails, and closes it with a comment naming the
+# run when a later run reaches the threshold in every gated crate.
+name: Coverage
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'Treat this run as failed in the issue job, to try opening or updating the coverage issue (a later normal run closes it)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# No run is cancelled by a newer one: every nightly run is a point of the trend.
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Coverage trend
+    runs-on: ubuntu-latest
+    env:
+      # The repository tooling (xtask) is not product code; keep it out of every report.
+      COV_IGNORE: 'xtask/'
+    outputs:
+      # The per-crate table, for the issue job. Empty when the run failed before it was written.
+      table: ${{ steps.table.outputs.markdown }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+      # Run the tests once, then render each report format from that run. nextest
+      # schedules tests from every binary in parallel, one process each; plain
+      # `cargo test` ran the binaries one after another, and the two heavy path
+      # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
+      # Doctests are not part of this run (llvm-cov nextest does not run them).
+      # The `coverage-full` profile (.config/nextest.toml) runs every test, the long-running
+      # ones included, and starts the slowest first: instrumentation makes the long tests 6 to 11
+      # times slower and one test cannot be split across cores. There is no timeout: the run is
+      # expected to take well over half an hour (an estimate; the first run is the first timing).
+      - name: Run tests with coverage instrumentation
+        run: cargo llvm-cov nextest --profile coverage-full --workspace --locked --no-report
+      - name: HTML report (browsable, per file and per line)
+        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
+      - name: lcov data (trend tracking)
+        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --lcov --output-path lcov.info
+      - name: Summary on the run page
+        shell: bash
+        run: |
+          {
+            echo '## Coverage'
+            echo
+            echo '```text'
+            cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE"
+            echo '```'
+            echo
+            echo 'The full per-line HTML report is in the `coverage-html` artifact (open `html/index.html`).'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: target/coverage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-lcov
+          path: lcov.info
+      # The target per crate. The table is also printed in the log. It enforces on every run
+      # once `enforce = true` is set in xtask/coverage.toml, and a failure here fails the job.
+      - name: Line coverage per crate
+        run: cargo xtask coverage lcov.info --report coverage-summary.md --enforce
+      - name: Per-crate table on the run page and for the issue
+        id: table
+        if: always()
+        shell: bash
+        run: |
+          if [ -f coverage-summary.md ]; then
+            cat coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo 'markdown<<COVERAGE_TABLE_END'
+              cat coverage-summary.md
+              echo 'COVERAGE_TABLE_END'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  # One issue for a failing nightly run: the open issue with the label `nightly-coverage` is the one a
+  # later failing run comments on, and the first run that passes closes it (decision 00NN; the
+  # steps are in .github/actions/nightly-issue, shared with the Nightly workflow). Only this job
+  # can write issues; the job that builds and runs the tests holds a read-only token. It runs only
+  # on `main` (a manual run on another branch never touches the issues).
+  issue:
+    name: Coverage issue
+    needs: coverage
+    if: >-
+      always() && github.ref == 'refs/heads/main'
+      && (needs.coverage.result == 'success' || needs.coverage.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    concurrency:
+      group: coverage-issue
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/nightly-issue
+        with:
+          needs: ${{ toJSON(needs) }}
+          details: ${{ needs.coverage.outputs.table }}
+          simulate: ${{ inputs.simulate_failure && 'coverage' || '' }}
+          jobs: |
+            coverage|Coverage trend|Nightly coverage: a crate is under its threshold, or the run failed

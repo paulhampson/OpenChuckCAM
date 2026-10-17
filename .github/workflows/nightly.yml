@@ -3,13 +3,19 @@
 # Scheduled checks (work breakdown slice 0 item 13; verification plan
 # sections 4.1 and 8): one hour of fuzzing per parser, a beta-toolchain
 # build to catch breakage early, and the long-running tests listed in
-# .config/nextest.toml.
+# .config/nextest.toml. The last job opens one GitHub issue per failing job, comments on it
+# each night the job still fails and closes it when the job passes (decision 00NN).
 name: Nightly
 
 on:
   schedule:
     - cron: "17 2 * * *"
   workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'The id of a job to treat as failed in the issues job, to try the issue flow (for example fuzz); a later normal run closes the issue. Empty for none'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -155,3 +161,36 @@ jobs:
           persist-credentials: false
       - run: rustup toolchain install beta --profile minimal
       - run: cargo +beta test --workspace --locked
+
+  # One issue per failing job above: the issue with the label `nightly-<job>` is opened by the first
+  # failing night, gets a comment on each night the job still fails and is closed with a comment
+  # naming the run by the first night it passes. The steps are in .github/actions/nightly-issue.
+  # Only this job can write issues, so the jobs that build and test hold a read-only token. It
+  # runs on `main` only (a manual run on another branch never touches the issues).
+  issues:
+    name: Nightly issues
+    needs: [fuzz, step-mutations, sanitizer, long-tests, beta]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    concurrency:
+      group: nightly-issues
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/nightly-issue
+        with:
+          needs: ${{ toJSON(needs) }}
+          simulate: ${{ inputs.simulate_failure }}
+          jobs: |
+            fuzz|Fuzz |Nightly: a fuzz target failed
+            step-mutations|STEP mutation run|Nightly: the STEP mutation run failed
+            sanitizer|AddressSanitizer on the STEP wrapper|Nightly: the AddressSanitizer run failed
+            long-tests|Long-running tests|Nightly: a long-running test failed
+            beta|Beta toolchain|Nightly: the beta toolchain build or tests failed

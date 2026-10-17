@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# One GitHub issue per failing scheduled job (decision 00NN).
+#
+# For each job it is given, the step looks at the job's result:
+# - failure: if no issue with the job's label is open, it opens one (label `nightly-<id>`, a fixed
+#   title, the run link, the commit and the failing legs); if one is open, it leaves the issue's
+#   first text as it was and adds a comment (date, run link, commit, the night count, the failing
+#   legs). So a job that keeps failing gives one issue and one comment a night.
+# - success: if an issue with the job's label is open, it adds a comment naming the run and
+#   closes the issue as completed. A later failure opens a new issue.
+# - anything else (cancelled, skipped): nothing.
+#
+# The calling job needs `issues: write` (and `actions: read` to list the failing legs of a matrix
+# job; without it the legs are left out) and a checkout of `.github/actions`. It does not run the
+# tests: it runs after the jobs it reports on, so the jobs that build and test hold no write token.
+name: Nightly issue
+description: Open, comment on or close the issue of each scheduled job, from the results of the jobs
+
+inputs:
+  needs:
+    description: The `needs` context of the calling job, as JSON (`toJSON(needs)`).
+    required: true
+  jobs:
+    description: >
+      One job per line, `id|name prefix|title`: the job's key in `needs`, the start of the names of
+      its jobs in the run (a matrix job has one name per leg), and the issue's fixed title.
+    required: true
+  details:
+    description: Markdown added to the issue text or comment (for example the coverage table).
+    default: ""
+  simulate:
+    description: The id of a job to treat as failed, to try the flow by hand. Empty for none.
+    default: ""
+  token:
+    description: Token that can write issues.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Open, comment on or close the issues
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        NEEDS: ${{ inputs.needs }}
+        JOBS: ${{ inputs.jobs }}
+        DETAILS: ${{ inputs.details }}
+        SIMULATE: ${{ inputs.simulate }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        today=$(date -u +%F)
+        marker='<!-- nightly-failure -->'
+        # Every job of this run, for the names of the failing legs.
+        gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --paginate --jq '.jobs[] | {name, conclusion, html_url}' 2>/dev/null | jq -s '.' > run-jobs.json || echo '[]' > run-jobs.json
+        [ -s run-jobs.json ] || echo '[]' > run-jobs.json
+
+        while IFS='|' read -r id prefix title; do
+          [ -n "$id" ] || continue
+          label="nightly-$id"
+          result=$(echo "$NEEDS" | jq -r --arg id "$id" '.[$id].result // "missing"')
+          if [ "$SIMULATE" = "$id" ]; then result=failure; fi
+          number=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
+
+          case "$result" in
+            success)
+              if [ -n "$number" ]; then
+                {
+                  echo "Run $RUN_URL (commit \`${SHA:0:12}\`, $today) passed this job. Closing this issue; a new failure opens a new one."
+                  if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
+                } > comment.md
+                gh issue comment "$number" --body-file comment.md
+                gh issue close "$number" --reason completed
+              fi
+              ;;
+            failure)
+              legs=$(jq -r --arg p "$prefix" '.[] | select((.name | startswith($p)) and .conclusion == "failure") | "- [\(.name)](\(.html_url))"' run-jobs.json)
+              note=""
+              if [ "$SIMULATE" = "$id" ]; then note="This failure was simulated by hand to try the issue flow; the job itself did not fail."; fi
+              if [ -n "$number" ]; then
+                comments=$(gh api "repos/$GH_REPO/issues/$number/comments" --paginate --jq "[.[] | select(.body | contains(\"$marker\"))] | length" | awk '{ s += $1 } END { print s + 0 }')
+                since=$(gh issue view "$number" --json createdAt --jq '.createdAt[:10]')
+                {
+                  echo "$marker"
+                  echo "Still failing on $today: night $(( comments + 2 )) (failing since $since)."
+                  echo
+                  echo "- Run: $RUN_URL"
+                  echo "- Commit: \`$SHA\`"
+                  if [ -n "$legs" ]; then echo; echo "Failing:"; echo "$legs"; fi
+                  if [ -n "$note" ]; then echo; echo "$note"; fi
+                  if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
+                } > comment.md
+                gh issue comment "$number" --body-file comment.md
+              else
+                {
+                  echo "$title on $today."
+                  echo
+                  echo "- Run: $RUN_URL"
+                  echo "- Commit: \`$SHA\`"
+                  if [ -n "$legs" ]; then echo; echo "Failing:"; echo "$legs"; fi
+                  if [ -n "$note" ]; then echo; echo "$note"; fi
+                  if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
+                  echo
+                  echo "This issue gets a comment each night the job still fails, and is closed by the first run in which it passes (decision 00NN)."
+                } > body.md
+                gh label create "$label" --color B60205 --description 'Opened and closed by the scheduled workflows' 2>/dev/null || true
+                gh issue create --title "$title" --label "$label" --body-file body.md
+              fi
+              ;;
+            *)
+              echo "$id: $result, no issue action"
+              ;;
+          esac
+        done <<< "$JOBS"
