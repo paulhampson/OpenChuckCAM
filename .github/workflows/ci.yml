@@ -89,7 +89,9 @@ jobs:
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-path/**'
               - 'crates/openchuck-app/**'
+              - 'crates/openchuck-geom/**'
               - 'testdata/step/**'
+              - 'testdata/golden/reference/drilling_*'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -354,6 +356,11 @@ jobs:
       # B-rep edges of the corpus as edge chains (OP-08, decision 0053); needs the worker built above.
       - name: B-rep edge chains of the STEP corpus
         run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
+      # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
+      # the `drilling` reference job against its golden files on every platform (OI-28), and every
+      # strategy on corpus STEP parts against the exact B-rep.
+      - name: STEP parts through the application
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
