@@ -206,11 +206,67 @@ pub fn generate_operation_on(
     stock: Option<&dyn StockModel>,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
-    generate_with_part(root, project, id, registry, stock, None, context)
+    generate_with_part(root, project, id, registry, stock, None, None, context)
+}
+
+/// How edge following builds the B-rep edges of a STEP part, beyond the
+/// operation's parameters (decision 0057).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EdgeOptions {
+    /// Keep the edges between tangent faces (the boundaries of fillets, the
+    /// line where two halves of a cylinder meet): the B-rep source is built
+    /// with a crease angle of zero, whatever the operation's crease angle. A
+    /// mesh part has no such choice.
+    pub keep_tangent: bool,
+}
+
+/// The edge options of `operation` as the project holds them: the chosen
+/// `Edges` set's own setting if it has one, else the project's default, else
+/// off (decision 0057). Neither is stored yet: the per-selection setting and
+/// the project default are lane O's project schema 12 work (OI-232), so this
+/// answers off until lane O wires it here.
+pub fn edge_options(project: &Project, operation: &Operation) -> EdgeOptions {
+    EdgeOptions {
+        keep_tangent: keep_tangent_edges(project, operation),
+    }
+}
+
+/// Whether edge following on `operation` keeps tangent edges: the seam lane
+/// O wires to the stored per-selection setting and project default (decision
+/// 0057, OI-232). Off until then, and always off on a mesh part.
+fn keep_tangent_edges(project: &Project, operation: &Operation) -> bool {
+    let _ = (project, operation);
+    false
+}
+
+/// As [`generate_operation_on`], with the edge options given rather than
+/// read from the project (decision 0057). Fails when `edges` keeps tangent
+/// edges on an operation whose part is a mesh, which has no such choice.
+pub fn generate_operation_with(
+    root: &Path,
+    project: &Project,
+    id: OperationId,
+    registry: &Registry,
+    stock: Option<&dyn StockModel>,
+    edges: EdgeOptions,
+    context: &JobContext<'_>,
+) -> Result<OperationPath, AppError> {
+    generate_with_part(
+        root,
+        project,
+        id,
+        registry,
+        stock,
+        None,
+        Some(edges),
+        context,
+    )
 }
 
 /// As [`generate_operation_on`], with the setup's part already placed when
-/// `placed` is given (the tests hand in a B-rep built without the kernel).
+/// `placed` is given (the tests hand in a B-rep built without the kernel),
+/// and the edge options when `edges` is given (otherwise the project's).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn generate_with_part(
     root: &Path,
     project: &Project,
@@ -218,12 +274,14 @@ pub(crate) fn generate_with_part(
     registry: &Registry,
     stock: Option<&dyn StockModel>,
     placed: Option<crate::model::PlacedPart>,
+    edges: Option<EdgeOptions>,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
     let carried = stock;
     let operation = project
         .operation(id)
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
+    let edges = edges.unwrap_or_else(|| edge_options(project, operation));
     let strategy = registry.get(&operation.strategy)?;
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
@@ -269,6 +327,13 @@ pub(crate) fn generate_with_part(
         Some(placed) => placed,
         None => crate::model::placed_part(root, model, context)?,
     };
+    if edges.keep_tangent && placed.brep.is_none() {
+        return Err(missing(
+            operation,
+            "keeping tangent edges is a choice for the B-rep edges of a STEP part; its part is \
+             a mesh, whose edges are chosen by the crease angle",
+        ));
+    }
     let (mesh, file_hash) = (&placed.mesh, placed.hash);
     context.check_cancelled()?;
     // A STEP part is machined on its exact faces (IMP-02; decision 0056).
@@ -364,9 +429,9 @@ pub(crate) fn generate_with_part(
     // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
     // decision 0056).
     let brep_edges = match (&placed.brep, &brep_choice) {
-        (Some(brep), Some(choice)) if operation.strategy == edge_following::NAME => {
-            Some(brep_curves(operation, brep, &choice.edges, &parameters)?)
-        }
+        (Some(brep), Some(choice)) if operation.strategy == edge_following::NAME => Some(
+            brep_curves(operation, brep, &choice.edges, &parameters, edges)?,
+        ),
         _ => None,
     };
     let registry_strategy = strategy;
@@ -564,12 +629,14 @@ fn brep_selection(
 /// The edges edge following follows on a STEP part: the chosen edges, or
 /// every real edge, at the operation's crease angle (the B-rep default of
 /// [`openchuck_path::brep_edges::DEFAULT_CREASE_DEGREES`] when the operation
-/// does not set one) and its shortest chain (decision 0056).
+/// does not set one) and its shortest chain (decision 0056); at a crease
+/// angle of zero when `options` keeps tangent edges (decision 0057).
 fn brep_curves(
     operation: &Operation,
     brep: &BrepModel,
     edges: &[EdgeId],
     parameters: &openchuck_path::params::Parameters,
+    options: EdgeOptions,
 ) -> Result<Arc<dyn CurveSource>, AppError> {
     use openchuck_path::edge_following::parameter::{CREASE_ANGLE, MIN_LENGTH};
     let source = if edges.is_empty() {
@@ -577,7 +644,9 @@ fn brep_curves(
     } else {
         BrepEdges::with_edges(brep, edges)?
     };
-    let crease = if operation.parameters.contains_key(CREASE_ANGLE) {
+    let crease = if options.keep_tangent {
+        0.0
+    } else if operation.parameters.contains_key(CREASE_ANGLE) {
         parameters.number(CREASE_ANGLE)?
     } else {
         openchuck_path::brep_edges::DEFAULT_CREASE_DEGREES
@@ -817,6 +886,7 @@ mod tests {
                 &Registry::builtin(),
                 None,
                 Some(placed),
+                None,
                 &context,
             )
         }
@@ -1100,5 +1170,40 @@ mod tests {
             other => panic!("unexpected side face {other:?}"),
         }
         assert!(f.run().is_err());
+    }
+
+    #[test]
+    fn req_op_08_req_nfr_07_keeping_tangent_edges_is_refused_on_a_mesh_part() {
+        let f = fixture_with(
+            edge_following::NAME,
+            &[("depth", Value::Number(0.2))],
+            &[HoleSpec::through(30.0, polar(0.0), DIAMETER)],
+            "blank.stl",
+        );
+        let run = |keep_tangent: bool| {
+            // The blank's triangles as a mesh part: no B-rep.
+            let mut placed = PlacedPart::of_brep(&f.brep, &[], f.hash).unwrap();
+            placed.brep = None;
+            let cancel = CancelToken::new();
+            let context = JobContext::new(&cancel, &NoProgress);
+            generate_with_part(
+                Path::new("."),
+                &f.project,
+                f.operation,
+                &Registry::builtin(),
+                None,
+                Some(placed),
+                Some(EdgeOptions { keep_tangent }),
+                &context,
+            )
+        };
+        let err = run(true).unwrap_err().to_string();
+        assert!(err.contains("'Op'") && err.contains("mesh"), "{err}");
+        // Off, the mesh's own feature edges are followed as before.
+        assert!(run(false).is_ok());
+        // The project answers off for every operation (lane O stores the
+        // setting, OI-232).
+        let op = f.project.operation(f.operation).unwrap();
+        assert_eq!(edge_options(&f.project, op), EdgeOptions::default());
     }
 }

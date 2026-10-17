@@ -544,3 +544,91 @@ fn req_nfr_07_a_damaged_step_part_is_an_error_not_a_crash() {
     assert!(err.contains("STEP"), "{err}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Runs operation `0` of `app` with `edges`, as the pipeline would.
+fn run_with(
+    dir: &Path,
+    app: &Application,
+    edges: openchuck_app::operation::EdgeOptions,
+) -> Result<openchuck_app::operation::OperationPath, openchuck_app::AppError> {
+    let cancel = CancelToken::new();
+    let context = JobContext::new(&cancel, &NoProgress);
+    openchuck_app::operation::generate_operation_with(
+        dir,
+        app.project(),
+        app.project().operations()[0].id,
+        app.strategies(),
+        None,
+        edges,
+        &context,
+    )
+}
+
+/// The chains a toolpath cut: runs of cutting moves between other moves.
+fn cut_runs(path: &openchuck_app::operation::OperationPath) -> usize {
+    let mut runs = 0;
+    let mut cutting = false;
+    for s in &path.group.segments {
+        let now = s.kind == MoveKind::Cutting;
+        if now && !cutting {
+            runs += 1;
+        }
+        cutting = now;
+    }
+    runs
+}
+
+#[test]
+fn req_op_08_keeping_tangent_edges_follows_the_fillet_boundaries_of_a_step_part() {
+    use openchuck_app::operation::{EdgeOptions, edge_options};
+    let job = Job {
+        part: "filleted_box",
+        transform: onto_axis(),
+        operations: vec![("edge_following", vec![("depth", n(0.2))])],
+    };
+    let (dir, app, _) = build(&job, "tangent");
+    // Off, the default: every edge of the filleted box is tangent (decision
+    // 0053), so there is none to follow.
+    let operation = &app.project().operations()[0];
+    assert_eq!(
+        edge_options(app.project(), operation),
+        EdgeOptions::default()
+    );
+    let off = run_with(&dir, &app, EdgeOptions::default())
+        .unwrap_err()
+        .to_string();
+    assert!(off.contains("no edge to follow"), "{off}");
+    let err = app.regenerate().unwrap_err().to_string();
+    assert!(err.contains("no edge to follow"), "{err}");
+    // On: the 48 fillet boundaries, each its own chain, as the library finds
+    // them at a crease angle of zero.
+    let on = run_with(&dir, &app, EdgeOptions { keep_tangent: true }).unwrap();
+    assert_eq!(cut_runs(&on), 48, "{:?}", on.notes);
+    // Nothing of the choice is stored: a saved project reads back the same
+    // and holds no new field (the stored setting is lane O's, OI-232).
+    app.save().unwrap();
+    let before: Vec<(PathBuf, String)> = walk(&dir);
+    assert!(before.iter().all(|(_, text)| !text.contains("tangent")));
+    let reopened = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    assert_eq!(reopened.project(), app.project());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// Every TOML file of a project folder, with its text.
+fn walk(dir: &Path) -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "toml") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                out.push((path, text));
+            }
+        }
+    }
+    out.sort();
+    out
+}
