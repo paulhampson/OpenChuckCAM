@@ -1,6 +1,6 @@
 # 0081: Slice 23 design refinement: the default tool library (lane TL)
 
-- **Status:** proposed (17 Oct 2026). Owner-decided and relayed by the orchestrator (decision 0049) so far: the standard-tool list (OI-268), the route for the Makera data and the Z1 set (OI-269: the Z1 tool table, the shape mapping, material "carbide", the NXX numbering and its range up to 504, thread mills left out), as set out in item 8, and the update policy (OI-271, option A, explicit action). Still open: cutting data (OI-270). The owner has not yet accepted the record as a whole.
+- **Status:** accepted by the project owner (17 Oct 2026), relayed by the orchestrator session at the owner's instruction (decision 0049). Every item is owner-decided and relayed as set out in items 3, 4, 6, 8, 9 and 10: the standard-tool list (OI-268), cutting data and its stepover rule with the conflicts reported (OI-270), the update policy (OI-271), the route for the Makera data and the Z1 set including the 4 mm and 6 mm extension and the derived diameters of 307 and 308 (OI-269, OI-280, OI-281, OI-282, OI-283). **OI-269's licence question stays open: no legal clearance is claimed for the Makera or the community data**, which is used as facts only, with a source for each value.
 - **Date:** 17 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-268 to OI-271 (from [decision 0060](0060-gc16-command-line-reading-and-tl12-default-tool-library.md)) are updated here.
 
