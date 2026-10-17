@@ -23,7 +23,7 @@ mod render;
 pub use builtin::{builtin, builtin_ids};
 pub use convert::{ConvertOptions, ToolSetting, round_written, to_machine_program};
 pub use definition::{MAX_FILE_BYTES, PostDefinition, SCHEMA};
-pub use engine::fixed_str;
+pub use engine::{FEED_SIGNIFICANT_FIGURES, feed_str, fixed_str};
 pub use error::{PostError, Result};
 pub use feed::{FeedRule, FeedWord, MoveMetrics, NO_MOTION};
 pub use options::{
