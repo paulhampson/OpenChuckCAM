@@ -24,7 +24,7 @@
 //! feed with segment durations (OP-13). Strategies are found by name in a
 //! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`],
 //! [`SimultaneousFinishing`], [`RestMachining`], [`PencilFinishing`] and
-//! [`EdgeFollowing`] (edge chains from a [`CurveSource`], decision record 0047). Tool-centre
+//! [`RadialDrilling`] and [`EdgeFollowing`] (edge chains from a [`CurveSource`], decision record 0047). Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -75,10 +75,12 @@ mod candidates;
 mod composite;
 pub mod curves;
 pub mod cutter;
+pub mod drill;
 pub mod edge_following;
 mod error;
 pub mod field;
 pub mod helical;
+pub mod holes;
 pub mod indexed;
 pub mod parallel;
 pub mod params;
@@ -102,10 +104,12 @@ pub use brep::{BrepSurface, ExactFace};
 pub use composite::CompositeSurface;
 pub use curves::{CurveSource, EdgeChain, MeshFeatureEdges};
 pub use cutter::{Contact, ToolLine};
+pub use drill::RadialDrilling;
 pub use edge_following::EdgeFollowing;
 pub use error::{PathError, Result};
 pub use field::HeightStock;
 pub use helical::HelicalFinishing;
+pub use holes::{Hole, HoleEnd, find_holes};
 pub use indexed::IndexedFinishing;
 pub use params::{
     CommonParameters, EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec,
