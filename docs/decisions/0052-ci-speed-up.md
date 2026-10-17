@@ -235,12 +235,29 @@ At 19:35 eight pull requests were open, all with CI running or queued, and four 
 - *Long-test list (Option 6(a)):* the list followed the full-run time, since that is what the Tests and Coverage jobs pay. Eleven tests exceed about 60 s in the full run; five were not listed and now are (`req_op_13` lobed part, `req_op_06` tilt bound, `req_gc_07` reference jobs at 1 and n threads, `req_op_15` smoothing, `req_op_03` indexed and continuous). The helical `req_op_12` oracle-parts test was already covered by the existing `req_op_12_the_independent_checker_finds_no_gouge` filter. The coverage profile now leaves out 11 of 741 tests (730 run), `long` selects the same 11; their full-run time adds up to about 1700 of the 3100 s of test time. The coverage baseline shifts once, as the owner agreed.
 - *Shards (Option 4):* `hash:1/2` and `hash:2/2` hold 339 and 402 tests and, by the measured times, 1488 and 1621 s of test time (48 % and 52 %); `slice` gave 1681 and 1428 s and `count` 1714 and 1396 s. `hash` was chosen for balance and because adding a test moves no other. Each share is expected to take about half the 876 s test phase; clippy, doctests and the examples run in shard 1 (the lighter). Linux and Windows run two shards; macOS stays one job. Every shard lists the tests of all its shares and fails if one share is empty or the shares do not add up to the full list, and the run uses `--no-tests=fail`.
 
+**Results of Options 4 and 6(a) on CI (17 Oct 2026, pull requests 77 and 79).** The test run is split in two jobs by test-name hash on Linux and Windows; macOS stays one job. Times are job minutes from the Actions job records. The first run had cold caches for the new per-shard keys; the other two are the first two runs of pull request 79 (main at 76161d6 plus other lanes' tests).
+
+| Job | Run 39026950506 (cold) | Run 39029360545 | Run 39031169050 | Before (pull request 75 run) |
+| --- | --- | --- | --- | --- |
+| Build and test, Ubuntu, shard 1 / 2 | 17.5 / 14.4 | 14.2 / 12.8 | 14.1 / 10.5 | 19.2 (one job) |
+| Build and test, Windows, shard 1 / 2 | 22.6 / 19.4 | 20.6 / 19.7 | 13.5 / 10.4 | 20.3 (one job) |
+| Build and test, macOS (one job) | 23.0 | 24.6 | 9.4 | 21.4 |
+| Partition-check step, Linux / Windows | 3.1 / 6.2 to 6.5 | 1.3 to 1.4 / 5.7 to 7.3 | 1.1 to 1.4 / 2.2 to 2.3 | |
+| Coverage trend | 22.3 | 19.5 | 19.4 | 25.8 |
+| Longest queue in the run | 4.8 | 4.5 | 2.4 | 7.3 |
+| Wall clock of the run | 23.5 | 27.7 | 19.7 | 33 |
+
+- *Sharding.* With warm caches the Ubuntu shards take 14.1 and 10.5 min against 19.2 for one job, and the Windows shards 13.5 and 10.4 against 20.3. The cold run showed no gain on Windows, because the test binaries were compiled in the partition-check step (the first step that builds them), not in Tests. The shards are uneven by 2 to 3 min (name-hash assignment); a hand-kept time-aware split was considered and not done.
+- *Clippy, doctests and examples* run in shard 1. With warm caches clippy takes 0.0 to 0.7 min, so moving them to another job would save under a minute and is not planned.
+- *macOS* took 24.6 min in one run (Tests step 17.2 min) and 9.4 min in another (Tests 7.9 min) on the same code, so its true cost is not yet known. Sharding it in two is left until there are three or four more runs of data.
+- *Coverage trend* fell from 25.8 to 19.4 min with the longer long-test list (6(a)) and is now the longest job in the run. Options left for it were decided against (6(c) not accepted, sharding the instrumented run not wanted).
+
 ## Open items
 
 | # | Item | Needed from |
 | --- | --- | --- |
 | OI-221 | What a pull request run does when a docs-only push arrives (Option 2) and whether `main` runs are never cancelled (Option 1). | Decided: Option 2 as (a) plus (d); Option 1 accepted |
-| OI-222 | Whether Gate 3 (Option 3) and the nextest run (Option 4) may be sharded, and the shard counts; macOS shards only if its queue allows. | Decided: Gate 3 in three shards; nextest in two, Linux and Windows first, macOS if its queue allows |
-| OI-223 | Coverage: update the long-test list (Option 6a), move the trend to `main` (6c), or shard the instrumented run (6d). | Decided: 6(a), the baseline shift agreed; 6(c) not accepted; 6(d) not wanted |
-| OI-224 | Measure the long tests alone against in the full run (contention), re-measure the long-test list on a hosted runner, and decide whether to pay for larger runners (Option 9). | Measurement accepted as the first step of order 4; larger runners not accepted |
+| OI-222 | Whether Gate 3 (Option 3) and the nextest run (Option 4) may be sharded, and the shard counts; macOS shards only if its queue allows. | Closed 17 Oct 2026: Gate 3 in three shards (pull request 74); nextest in two on Linux and Windows, macOS one job (pull request 77) |
+| OI-223 | Coverage: update the long-test list (Option 6a), move the trend to `main` (6c), or shard the instrumented run (6d). | Closed 17 Oct 2026: 6(a) done in pull request 77 (baseline shifted once); 6(c) not accepted; 6(d) not wanted |
+| OI-224 | Measure the long tests alone against in the full run (contention), re-measure the long-test list on a hosted runner, and decide whether to pay for larger runners (Option 9). | Contention measured (see *Test run and long-test list*); larger runners not accepted; the re-measurement of the long-test list on a hosted runner is not done (still open) |
 | OI-225 | The Actions cache and concurrency data this session could not read (cache sizes and ages, concurrent jobs at the peaks); needs a token that reads `actions/caches` and `actions/runs`. The queue data and the 69-minute Coverage run are in *Evidence added while implementing*; the cause of that run is still unknown. | Owner or orchestrator; still open |
