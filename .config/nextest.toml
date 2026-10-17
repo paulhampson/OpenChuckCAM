@@ -11,10 +11,16 @@
 # - The nightly run uses `--profile long`, which runs only the long tests,
 #   uninstrumented.
 #
-# Uninstrumented times when listed: 368 s, 252 s, 137 s, 122 s, 121 s and 81 s (the
-# reference jobs at 1 and N threads, which includes slice 21c's `cone_held_tabs`). The
-# `req_op_12` filter also selects slice 13's `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
-# (simultaneous finishing, 93 s alone on one test thread; decision 0036).
+# Times on a 4-core machine in a full `cargo nextest run` (16 Oct 2026, decision
+# 0052, OI-223 and OI-224), where the long tests share the cores with the rest:
+# 318 s, 309 s, 197 s, 171 s, 138 s, 113 s, 113 s, 91 s, 89 s, 79 s and 77 s. Run
+# alone on one test thread they take 104 s, 182 s, 66 s, 54 s, 55 s, 33 s, 71 s,
+# 30 s, 27 s, 21 s and 24 s: contention roughly doubles a test's time, so the list
+# follows the full-run time, which is what the Tests and Coverage jobs pay. The
+# first filter also selects slice 13's `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
+# (simultaneous finishing; decision 0036) and the helical oracle-parts test of the
+# same prefix. The `reference_jobs_are_identical_at_1_and_n_threads` filter also
+# selects slice 21c's `cone_held_tabs` (81 s when it was listed).
 
 [profile.coverage]
 default-filter = '''not (
@@ -23,6 +29,10 @@ default-filter = '''not (
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
+  | test(~req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)
+  | test(~req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)
+  | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
+  | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
 )'''
 
@@ -33,5 +43,9 @@ default-filter = '''
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
   | test(~req_op_12_the_independent_checker_finds_no_gouge)
+  | test(~req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part)
+  | test(~req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)
+  | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
+  | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
 '''

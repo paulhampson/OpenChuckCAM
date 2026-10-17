@@ -327,6 +327,19 @@ pub struct SelectionSet {
     /// operation's stock to leave where the set is a machined region (OP-11,
     /// decision record 0034 item 4). `None` uses the operation's value.
     pub stock_to_leave: Option<f64>,
+    /// The colour the set is shown in, as `#rrggbb` in lower case, or `None`
+    /// for the default swatch of its place in the list (decision record 0046
+    /// item 2). It does not change what an operation cuts.
+    pub colour: Option<String>,
+}
+
+/// Whether `text` is a colour as a set stores it: `#rrggbb` in lower case.
+pub fn is_set_colour(text: &str) -> bool {
+    text.len() == 7
+        && text.starts_with('#')
+        && text[1..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// A parameter value of an operation. The strategy's parameter schema (OP-16)
@@ -1185,6 +1198,13 @@ impl Project {
                     return Err(openchuck_types::Error::invalid(
                         format!("selection set {}.stock_to_leave", s.id),
                         "stock_to_leave must be a number of millimetres, zero or more",
+                    )
+                    .into());
+                }
+                if s.colour.as_deref().is_some_and(|c| !is_set_colour(c)) {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("selection set {}.colour", s.id),
+                        "colour must be written #rrggbb in lower case",
                     )
                     .into());
                 }
