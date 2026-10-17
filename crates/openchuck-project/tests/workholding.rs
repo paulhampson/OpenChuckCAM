@@ -108,12 +108,12 @@ fn req_prj_04_older_setup_loads_with_no_workholding() {
     for entry in std::fs::read_dir(dir.join("setups")).unwrap() {
         let path = entry.unwrap().path();
         let text = std::fs::read_to_string(&path).unwrap();
-        std::fs::write(&path, text.replacen("schema = 11", "schema = 9", 1)).unwrap();
+        std::fs::write(&path, text.replacen("schema = 12", "schema = 9", 1)).unwrap();
     }
     let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
     std::fs::write(
         dir.join("project.toml"),
-        text.replacen("schema = 11", "schema = 9", 1),
+        text.replacen("schema = 12", "schema = 9", 1),
     )
     .unwrap();
     let back = file::load(&dir).unwrap();

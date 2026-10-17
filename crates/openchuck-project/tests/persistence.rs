@@ -17,9 +17,9 @@ use std::time::{Duration, SystemTime};
 
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, ModelCheck, ModelRef, Operation, OrderKey, ParameterValue,
-    Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
-    ToolSnapshot, file,
+    ContentHash, Item, ItemId, MeshEdge, ModelCheck, ModelRef, Operation, OrderKey,
+    ParameterValue, Placement, Project, ProjectError, RelativePath, SelectionSet,
+    SelectionTarget, Setup, ToolSnapshot, file,
 };
 use openchuck_types::brep::FaceId;
 use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
@@ -563,19 +563,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 11\n", "schema = 11\nspeed = 3\n"),
+            |t| t.replace("schema = 12\n", "schema = 12\nspeed = 3\n"),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 11\n", ""),
+            |t| t.replace("schema = 12\n", ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 11", "schema = 12"),
+            |t| t.replace("schema = 12", "schema = 13"),
             "newer OpenChuckCAM",
         ),
         (
@@ -618,7 +618,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 11\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), "schema = 12\n").unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -729,14 +729,14 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 11\n"), "{path}");
+        assert!(text.starts_with("schema = 12\n"), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
         let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect::<String>()
-            .replace("schema = 1\n", "schema = 11\n");
+            .replace("schema = 1\n", "schema = 12\n");
         if path.starts_with("setups/") {
             old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
         }
@@ -965,7 +965,7 @@ fn req_op_11_nfr_07_bad_stock_to_leave_is_refused_and_schema_7_still_loads() {
     for (path, text) in file::render(&q).unwrap() {
         std::fs::write(
             old.join(&path),
-            text.replacen("schema = 11", "schema = 7", 1),
+            text.replacen("schema = 12", "schema = 7", 1),
         )
         .unwrap();
     }
@@ -1044,7 +1044,7 @@ fn req_prj_04_a_schema_10_project_loads_with_default_set_colours() {
     for (path, text) in file::render(&q).unwrap() {
         std::fs::write(
             old.join(&path),
-            text.replacen("schema = 11", "schema = 10", 1),
+            text.replacen("schema = 12", "schema = 10", 1),
         )
         .unwrap();
     }
@@ -1101,7 +1101,7 @@ fn req_prj_04_req_tl_04_centre_cutting_round_trips_and_older_files_load_without_
 
     // A schema 7 project loads, and its tool states nothing.
     let old = copy_tree_with(&base, "centre-schema7", |_, text| {
-        text.replace("schema = 11", "schema = 7")
+        text.replace("schema = 12", "schema = 7")
     });
     let loaded = file::load(&old).unwrap();
     assert_eq!(loaded.tools().first().unwrap().tool.centre_cutting, None);
@@ -1119,13 +1119,13 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
                     "flute_count = 2\n",
                     &format!("flute_count = 2\ncentre_cutting = {value}\n"),
                 )
-                .replace("schema = 11", schema)
+                .replace("schema = 12", schema)
             } else {
                 text.to_owned()
             }
         }
     };
-    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 11"));
+    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 12"));
     let err = file::load(&bad).unwrap_err().to_string();
     assert!(
         err.contains("000000000014") && err.contains("centre_cutting"),
@@ -1139,4 +1139,119 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
         err.contains("000000000014") && err.contains("centre_cutting"),
         "{err}"
     );
+}
+
+/// A project with the STL `placed_model()` and a set of edges of its
+/// triangles (schema 12; OI-204, decision record 0066).
+fn with_mesh_edges() -> Project {
+    let stl = placed_model();
+    let mut p = Project::new("mesh edges");
+    p.insert(Item::Model(stl.clone()), Placement::End).unwrap();
+    let edges = [(4, 0), (4, 2), (9, 1), (120, 0)]
+        .into_iter()
+        .map(|(t, s)| MeshEdge::new(t, s).unwrap())
+        .collect();
+    p.insert(
+        Item::SelectionSet(SelectionSet {
+            id: SelectionSetId::from_u128(40),
+            order: OrderKey::default(),
+            name: "Lettering".into(),
+            model: stl.id,
+            model_hash: stl.hash,
+            target: SelectionTarget::MeshEdges(edges),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    p
+}
+
+const MESH_EDGE_FILE: &str = "selections/00000000-0000-0000-0000-000000000028.toml";
+
+#[test]
+fn req_prj_06_req_op_08_a_mesh_edge_selection_survives_save_and_load() {
+    let dir = temp_dir("mesh-edges");
+    let p = with_mesh_edges();
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join(MESH_EDGE_FILE)).unwrap();
+    assert!(text.starts_with("schema = 12\n"), "{text}");
+    assert!(text.contains("[target]\nmesh_edges = ["), "{text}");
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    let SelectionTarget::MeshEdges(edges) = &loaded.selection_sets()[0].target else {
+        panic!("{:?}", loaded.selection_sets()[0].target);
+    };
+    assert_eq!(
+        edges
+            .iter()
+            .map(|e| (e.triangle, e.side(), e.corners()))
+            .collect::<Vec<_>>(),
+        [
+            (4, 0, [0, 1]),
+            (4, 2, [2, 0]),
+            (9, 1, [1, 2]),
+            (120, 0, [0, 1])
+        ]
+    );
+    // Saving what was loaded writes the same bytes (PRJ-01).
+    let again = temp_dir("mesh-edges-again");
+    file::save(&loaded, &again).unwrap();
+    assert_eq!(read_tree(&again), read_tree(&dir));
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_mesh_edges_need_schema_12_and_a_side_of_0_to_2() {
+    let dir = temp_dir("mesh-edges-bad");
+    file::save(&with_mesh_edges(), &dir).unwrap();
+    let path = dir.join(MESH_EDGE_FILE);
+    let good = std::fs::read_to_string(&path).unwrap();
+
+    // Schema 11 had no mesh edges: such a file is refused, naming the target.
+    std::fs::write(&path, good.replacen("schema = 12", "schema = 11", 1)).unwrap();
+    let err = file::load(&dir).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000028") && err.contains("mesh_edges") && err.contains("schema 12"),
+        "{err}"
+    );
+
+    // A side is 0, 1 or 2.
+    std::fs::write(&path, good.replacen("120,\n    0,", "120,\n    3,", 1)).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_ne!(text, good, "the edit must change the file: {good}");
+    let err = file::load(&dir).unwrap_err().to_string();
+    assert!(err.contains("000000000028") && err.contains("0, 1 or 2"), "{err}");
+
+    // A schema 11 project without mesh edges loads as it is.
+    let old = temp_dir("mesh-edges-schema-11");
+    let q = with_roles();
+    for (path, text) in file::render(&q).unwrap() {
+        let target = old.join(&path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, text.replacen("schema = 12", "schema = 11", 1)).unwrap();
+    }
+    assert_eq!(file::load(&old).unwrap(), q);
+}
+
+#[test]
+fn req_prj_06_mesh_edges_apply_to_mesh_models_only() {
+    let mut p = with_mesh_edges();
+    let step = model(1);
+    p.insert(Item::Model(step.clone()), Placement::End).unwrap();
+    let mut set = p.selection_sets()[0].clone();
+    set.id = SelectionSetId::from_u128(41);
+    set.model = step.id;
+    set.model_hash = step.hash;
+    let err = p
+        .insert(Item::SelectionSet(set), Placement::End)
+        .unwrap_err();
+    assert!(err.to_string().contains("its own edges"), "{err}");
+    // An STL model stays one while it has mesh edges selected on it.
+    let mut renamed = placed_model();
+    renamed.path = RelativePath::new("models/shaft.step").unwrap();
+    let err = p.replace(Item::Model(renamed)).unwrap_err();
+    assert!(err.to_string().contains("its own edges"), "{err}");
+    assert_eq!(MeshEdge::new(0, 3), None);
 }

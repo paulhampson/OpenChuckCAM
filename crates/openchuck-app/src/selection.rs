@@ -490,16 +490,8 @@ impl Application {
                         .find(|w| w.starts_with(&format!("'{}' ", m.path.as_str())))
                         .map(|w| format!("{w}, so the selection may not match it")),
                 };
-                let count = match &set.target {
-                    SelectionTarget::Triangles(t) => t.len(),
-                    SelectionTarget::Faces(f) => f.len(),
-                    SelectionTarget::Edges(e) => e.len(),
-                };
-                let kind = match &set.target {
-                    SelectionTarget::Triangles(_) => "triangles",
-                    SelectionTarget::Faces(_) => "faces",
-                    SelectionTarget::Edges(_) => "edges",
-                };
+                let count = set.target.len();
+                let kind = set.target.kind_name();
                 let uses = project
                     .operations()
                     .iter()

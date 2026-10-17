@@ -73,7 +73,10 @@ use openchuck_types::workholding::Workholding;
 ///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
 /// - 11: selection sets gain the optional `colour`, written only when the
 ///   user chose one (decision record 0046 item 2).
-pub const SCHEMA: i64 = 11;
+/// - 12: a selection set's target may be `mesh_edges`, edges of a mesh
+///   model's triangles as `[triangle, side]` pairs (OI-204, decision record
+///   0066).
+pub const SCHEMA: i64 = 12;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -98,6 +101,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_8_to_9,
     schema_9_to_10,
     schema_10_to_11,
+    schema_11_to_12,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -195,6 +199,27 @@ fn schema_9_to_10(_kind: FileKind, _table: &mut toml::Table) -> Result<(), Strin
 /// file does not have (the set then takes the default swatch of its place in
 /// the list), so it needs no change but its number.
 fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 12 adds the `mesh_edges` selection target, which a schema 11 file
+/// does not have, so it needs no change but its number. A schema 11 selection
+/// file that already holds one was not written by any version that knew it,
+/// so it is refused rather than guessed at.
+fn schema_11_to_12(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let stated = kind == FileKind::SelectionSet
+        && table
+            .get("target")
+            .and_then(toml::Value::as_table)
+            .is_some_and(|t| t.contains_key("mesh_edges"));
+    if stated {
+        return Err(
+            "this schema 11 selection file selects `mesh_edges`, a target schema 12 \
+             introduced; remove the set, or set `schema = 12` if the file was written for \
+             schema 12"
+                .to_owned(),
+        );
+    }
     Ok(())
 }
 
@@ -955,7 +980,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 11);
+        assert_eq!(SCHEMA, 12);
         let mut project = Project::new("p");
         project
             .insert(
@@ -964,7 +989,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 11\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 12\n"), "{path}: {text}");
         }
     }
 
