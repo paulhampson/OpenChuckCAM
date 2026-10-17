@@ -259,8 +259,17 @@ impl Application {
                     .and_then(|id| run.project.models().iter().find(|m| m.id == id))
                     .ok_or_else(|| AppError::Playback("the setup has no part".to_owned()))?;
                 let mesh = crate::model::placed_mesh(&document.location, model, context)?;
+                let model_triangles = mesh.triangles.len();
+                // The deviation was measured against the part with the held
+                // regions and tabs; the colours are of the part's triangles,
+                // which come first.
+                let target = match run.project.setup(setup) {
+                    Some(setup) => crate::workholding::setup_deviation_target(setup, mesh.clone())?,
+                    None => mesh.clone(),
+                };
                 let options = DeviationOptions::for_cell(report.settings.cell.0);
-                let values = triangle_values(deviation, &mesh, options.spacing)?;
+                let mut values = triangle_values(deviation, &target, options.spacing)?;
+                values.truncate(model_triangles);
                 Ok((model.id, deviation_bands(&values, report.settings.cell.0)))
             },
         )

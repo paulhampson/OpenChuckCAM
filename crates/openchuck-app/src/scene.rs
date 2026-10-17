@@ -37,6 +37,10 @@ pub enum SceneRole {
     Part,
     /// The stock outline.
     Stock,
+    /// A held region of the setup's workholding (SET-09), shaded.
+    HeldRegion,
+    /// A retaining tab (OP-21), shaded.
+    Tab,
     /// The rotary axis.
     RotaryAxis,
     /// The arrow showing which way the part turns for positive A.
@@ -178,6 +182,32 @@ pub(crate) fn build_scene(
         Err(e) => view
             .notes
             .push(format!("the part cannot be picked on: {e}")),
+    }
+
+    // The held regions and tabs, shaded beside the part (SET-09, OP-21;
+    // UI-03). A setup whose workholding cannot be built is noted, not hidden.
+    if let (Some(s), Some(extent)) = (chosen, part.as_ref())
+        && !s.workholding.is_empty()
+    {
+        match crate::workholding::labelled_solids(&s.workholding, s.stock.as_ref(), extent) {
+            Ok(solids) => {
+                for (name, solid) in solids {
+                    view.meshes.push(SceneMesh {
+                        role: if name.starts_with("tab") {
+                            SceneRole::Tab
+                        } else {
+                            SceneRole::HeldRegion
+                        },
+                        model: None,
+                        mesh: solid.mesh(CIRCLE_SEGMENTS as u32),
+                        feature_edges: Vec::new(),
+                    });
+                }
+            }
+            Err(e) => view
+                .notes
+                .push(format!("the workholding cannot be drawn: {e}")),
+        }
     }
 
     let mut bounds = part.map(|p| p.bounds);

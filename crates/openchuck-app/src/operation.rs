@@ -12,12 +12,14 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::parameter::STEPDOWN;
 use openchuck_path::{
-    AcceptAll, AnalyticStock, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
-    StrategyInput, SurfaceSource, generate, generate_in_region, generate_in_zones,
+    AcceptAll, AnalyticStock, CompositeSurface, MeshSurface, ParameterValue, Registry,
+    RotaryMapping, StockModel, StrategyInput, SurfaceSource, generate, generate_in_region,
+    generate_in_zones,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -248,19 +250,51 @@ pub fn generate_operation_on(
 
     let (mesh, file_hash) = crate::model::placed_mesh_hashed(root, model, context)?;
     context.check_cancelled()?;
-    let surface = MeshSurface::new(&mesh)?;
+    let model_surface = Arc::new(MeshSurface::new(&mesh)?);
+    let part_bounds = model_surface.bounds();
+    let profile = snapshot.tool.profile()?;
+    // The held regions and tabs join the model's surface as the target the
+    // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
+    // them uses the model's own surface, so its G-code is unchanged.
+    let mut reach_notes = Vec::new();
+    let composite = if setup.workholding.is_empty() {
+        None
+    } else {
+        let part = openchuck_geom::part_extent(&mesh)
+            .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
+        crate::workholding::check_for_tool(
+            &setup.workholding,
+            setup.stock.as_ref(),
+            &part,
+            2.0 * profile.cutting_radius(),
+            &snapshot.name,
+        )
+        .map_err(|e| missing(operation, &e.to_string()))?;
+        let labelled =
+            crate::workholding::labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)
+                .map_err(|e| missing(operation, &e.to_string()))?;
+        reach_notes =
+            crate::workholding::selection_reach_notes(project, operation, &mesh, &labelled);
+        Some(CompositeSurface::new(
+            model_surface.clone(),
+            labelled.into_iter().map(|(_, s)| s).collect(),
+        ))
+    };
+    let surface: &dyn SurfaceSource = match &composite {
+        Some(c) => c,
+        None => model_surface.as_ref(),
+    };
     let resolved_region = crate::selection::resolve(project, operation, model, file_hash, &mesh)?;
     let constraint = resolved_region.as_ref().map(|r| r.constraint());
-    let analytic = AnalyticStock::from_stock(stock, Some(surface.bounds()))?;
+    let analytic = AnalyticStock::from_stock(stock, Some(part_bounds))?;
     let stock: &dyn StockModel = carried.unwrap_or(&analytic);
-    let profile = snapshot.tool.profile()?;
     let tags = PathTags {
         operation: operation.id.to_string(),
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
     let input = StrategyInput {
-        surface: &surface,
+        surface,
         stock,
         collision: &AcceptAll,
         tool: &profile,
@@ -308,6 +342,7 @@ pub fn generate_operation_on(
     };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
+    notes.extend(reach_notes);
     notes.extend(strategy.parameter_warnings(&profile, &parameters));
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
@@ -329,6 +364,6 @@ pub fn generate_operation_on(
         group: path.group,
         notes,
         tool: profile,
-        part_bounds: surface.bounds(),
+        part_bounds,
     })
 }
