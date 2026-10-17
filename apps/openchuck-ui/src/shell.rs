@@ -1385,7 +1385,7 @@ impl Shell {
             self.selected,
             Some(Selection::Picking | Selection::Set(_))
         ));
-        self.viewport.set_pick_edges(self.selection.picks_edges());
+        self.viewport.set_pick_filter(self.selection.pick_filter());
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {

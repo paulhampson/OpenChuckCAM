@@ -8,8 +8,9 @@
 //! a selection with the chosen [`PickMode`], keeps the working selection,
 //! saves it as a named set, edits sets, and gives an operation's roles to
 //! sets. A mesh is selected by triangle or by the edges of its triangles, a
-//! STEP part by face or by its own edges: the box on the view chooses
-//! surfaces or edges. Every project change is a command of `openchuck-app`,
+//! STEP part by face or by its own edges. A click picks the edge when the
+//! pointer is within reach of one and the surface otherwise; the box on the
+//! view can restrict picking to faces or to edges. Every project change is a command of `openchuck-app`,
 //! so it can be undone; the highlights it asks the viewport to draw are plain
 //! meshes from [`triangles_mesh`] and the edges' polylines.
 
@@ -23,7 +24,7 @@ use openchuck_app::{
 };
 use openchuck_viewport::{Colour, Scene, Slot};
 
-use crate::viewport::PickInput;
+use crate::viewport::{PickFilter, PickInput};
 
 const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
 /// Working selection: blue `#3d8bff` at 40%, a fill (specification 7.4;
@@ -131,7 +132,7 @@ impl Choice {
     }
 
     /// The name when edges are picked: W follows the chain, E the smooth
-    /// chain, and R is not offered (decision record 0066).
+    /// chain, and R selects the edge alone (decision record 0066 item 4).
     fn edge_name(self) -> &'static str {
         match self {
             Self::Triangle => "Select one",
@@ -150,7 +151,7 @@ impl Choice {
             Self::Smooth => {
                 "The chain onward through each corner to the edge that turns least, while it turns no more than the angle."
             }
-            Self::Direction => "Not used for edges.",
+            Self::Direction => "Only the edge clicked: same direction is for surfaces.",
         }
     }
 
@@ -200,8 +201,10 @@ impl Combine {
         }
     }
 
-    /// `current` joined with `picked`. A selection holds one kind: adding
-    /// another kind starts again with it, and taking one away changes nothing.
+    /// `current` joined with `picked`. A selection holds one kind: replacing
+    /// it with another kind starts again with that kind, and adding or taking
+    /// away another kind changes nothing (the panel refuses such a click
+    /// before it gets here, saying why).
     pub fn apply(self, current: &mut SelectionTarget, picked: SelectionTarget) {
         fn join<T: Ord>(
             how: Combine,
@@ -220,7 +223,7 @@ impl Combine {
             (SelectionTarget::Faces(a), SelectionTarget::Faces(b)) => join(self, a, b),
             (SelectionTarget::Edges(a), SelectionTarget::Edges(b)) => join(self, a, b),
             (current, picked) => {
-                if self != Self::Remove {
+                if self == Self::Replace || current.is_empty() {
                     *current = picked;
                 }
             }
@@ -249,9 +252,8 @@ struct Pending {
 /// The panel's state between frames.
 pub struct SelectionPanel {
     choice: Choice,
-    /// Whether a click picks edges rather than surfaces (decision record
-    /// 0066).
-    edges: bool,
+    /// What a click may pick (decision record 0066 item 3).
+    filter: PickFilter,
     smooth_angle: f64,
     direction_angle: f64,
     working: SelectionTarget,
@@ -278,7 +280,7 @@ impl Default for SelectionPanel {
     fn default() -> Self {
         Self {
             choice: Choice::Smooth,
-            edges: false,
+            filter: PickFilter::Both,
             smooth_angle: 30.0,
             direction_angle: 10.0,
             working: nothing(),
@@ -301,7 +303,7 @@ impl SelectionPanel {
     pub fn clear(&mut self) {
         *self = Self {
             choice: self.choice,
-            edges: self.edges,
+            filter: self.filter,
             smooth_angle: self.smooth_angle,
             direction_angle: self.direction_angle,
             ..Self::default()
@@ -327,9 +329,19 @@ impl SelectionPanel {
         }
     }
 
-    /// Whether a click picks edges rather than surfaces.
-    pub fn picks_edges(&self) -> bool {
-        self.edges
+    /// What a click may pick.
+    pub fn pick_filter(&self) -> PickFilter {
+        self.filter
+    }
+
+    /// Whether the tools are named for edges: only edges are picked, or the
+    /// working selection holds edges.
+    fn names_edges(&self) -> bool {
+        self.filter == PickFilter::Edges
+            || matches!(
+                self.working,
+                SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_)
+            )
     }
 
     fn mode(&self) -> PickMode {
@@ -474,13 +486,24 @@ impl SelectionPanel {
         picked: impl Into<SelectionTarget>,
         hash: Option<ContentHash>,
     ) {
+        let picked = picked.into();
+        // A selection holds one kind. Adding or taking away a pick of another
+        // kind is refused with the way out, and the selection stays as it was
+        // (decision record 0066 item 3); a plain click starts a new one.
+        if combine != Combine::Replace
+            && self.working_model == Some(model)
+            && !self.working.is_empty()
+            && std::mem::discriminant(&self.working) != std::mem::discriminant(&picked)
+        {
+            self.message = Some(refusal(&self.working, &picked));
+            return;
+        }
         // A selection is on one model; picking on another starts again.
         if self.working_model != Some(model) {
             self.working = nothing();
             self.working_model = Some(model);
             self.working_hash = hash;
         }
-        let picked = picked.into();
         combine.apply(&mut self.working, picked);
         if self.working.is_empty() {
             self.working_model = None;
@@ -658,24 +681,30 @@ impl SelectionPanel {
                     .show(ui, |ui| {
                         ui.visuals_mut().override_text_color = Some(Color32::from_gray(228));
                         ui.horizontal(|ui| {
-                            for (edges, label, tip) in [
+                            ui.label("Pick");
+                            for (filter, label, tip) in [
                                 (
-                                    false,
-                                    "Surfaces",
-                                    "Click selects triangles, or the faces of a STEP model.",
+                                    PickFilter::Both,
+                                    "Both",
+                                    "An edge when the pointer is near one, the surface otherwise.",
                                 ),
                                 (
-                                    true,
+                                    PickFilter::Faces,
+                                    "Faces",
+                                    "Only surfaces: triangles, or the faces of a STEP model.",
+                                ),
+                                (
+                                    PickFilter::Edges,
                                     "Edges",
-                                    "Click selects edges: the edges drawn on the part.",
+                                    "Only edges: the edges drawn on the part.",
                                 ),
                             ] {
                                 if ui
-                                    .selectable_label(self.edges == edges, label)
+                                    .selectable_label(self.filter == filter, label)
                                     .on_hover_text(tip)
                                     .clicked()
                                 {
-                                    self.edges = edges;
+                                    self.filter = filter;
                                     self.message = None;
                                     self.hover = None;
                                     self.dirty = true;
@@ -684,16 +713,21 @@ impl SelectionPanel {
                         });
                         ui.separator();
                         for choice in Choice::ALL {
-                            if self.edges && choice == Choice::Direction {
+                            if self.filter == PickFilter::Edges && choice == Choice::Direction {
                                 continue;
                             }
                             let key = choice
                                 .key()
                                 .map_or(String::new(), |k| format!(" ({})", k.name()));
-                            let (name, tip) = if self.edges {
-                                (choice.edge_name(), choice.edge_tip())
-                            } else {
-                                (choice.name(), choice.tip())
+                            let edge_tip = format!("On an edge: {}", choice.edge_tip());
+                            let (name, tip) = match (self.names_edges(), self.filter) {
+                                (true, _) => (choice.edge_name(), choice.edge_tip().to_owned()),
+                                (false, PickFilter::Faces) => {
+                                    (choice.name(), choice.tip().to_owned())
+                                }
+                                (false, _) => {
+                                    (choice.name(), format!("{}\n{edge_tip}", choice.tip()))
+                                }
                             };
                             if ui
                                 .selectable_label(self.choice == choice, format!("{name}{key}"))
@@ -724,12 +758,16 @@ impl SelectionPanel {
         }
         ui.weak("Meshes are selected by triangle or edge; STEP models by face and edge.");
         ui.horizontal_wrapped(|ui| {
-            let name = if self.edges {
+            let name = if self.names_edges() {
                 self.choice.edge_name()
             } else {
                 self.choice.name()
             };
-            let what = if self.edges { "edges" } else { "surfaces" };
+            let what = match self.filter {
+                PickFilter::Both => "edges near the pointer, else surfaces",
+                PickFilter::Faces => "surfaces only",
+                PickFilter::Edges => "edges only",
+            };
             ui.label(format!("Click: {}, {what}.", name.to_lowercase()));
             ui.weak("Choose in the box on the view, or press Q, W, E or R.");
         });
@@ -982,11 +1020,6 @@ impl SelectionPanel {
         if let Some(pending) = self.pending.take() {
             pending.handle.cancel();
         }
-        // Picking goes on in the kind the set holds.
-        self.edges = matches!(
-            target,
-            SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_)
-        );
         self.working = target;
         self.working_model = Some(summary.model);
         self.working_hash = recorded_hash(app, summary.model);
@@ -1148,6 +1181,23 @@ fn tangent_choice(
 }
 
 /// What the set `id` selects.
+/// Why a pick of another kind is not added to the working selection, and the
+/// way out (decision record 0066 item 3).
+fn refusal(working: &SelectionTarget, picked: &SelectionTarget) -> String {
+    let noun = |t: &SelectionTarget| match t {
+        SelectionTarget::Triangles(_) => ("triangles", "a triangle", "Faces"),
+        SelectionTarget::Faces(_) => ("faces", "a face", "Faces"),
+        SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => ("edges", "an edge", "Edges"),
+    };
+    let (holds, _, filter) = noun(working);
+    let (_, one, _) = noun(picked);
+    format!(
+        "The selection holds {holds}, so {one} cannot join it: a selection holds one kind. \
+         Choose {filter} in the box on the view to pick only {holds}, or click without \
+         Shift or Ctrl to start a new selection."
+    )
+}
+
 fn set_target(app: &Application, id: SelectionSetId) -> Option<SelectionTarget> {
     app.project()
         .selection_sets()
@@ -1309,13 +1359,19 @@ mod tests {
         assert_eq!(current, tri(&[2, 3]));
         Combine::Replace.apply(&mut current, tri(&[7]));
         assert_eq!(current, tri(&[7]));
-        // A selection holds one kind: adding faces starts again with them,
-        // and taking faces from triangles changes nothing.
+        // A selection holds one kind: adding or taking faces from triangles
+        // changes nothing, and replacing starts again with the faces. An
+        // empty selection takes either kind.
         let faces = SelectionTarget::Faces([openchuck_app::pick::FaceId(3)].into());
         Combine::Remove.apply(&mut current, faces.clone());
         assert_eq!(current, tri(&[7]));
         Combine::Add.apply(&mut current, faces.clone());
+        assert_eq!(current, tri(&[7]));
+        Combine::Replace.apply(&mut current, faces.clone());
         assert_eq!(current, faces);
+        let mut empty = tri(&[]);
+        Combine::Add.apply(&mut empty, faces.clone());
+        assert_eq!(empty, faces);
     }
 
     #[test]
@@ -1722,12 +1778,12 @@ mod tests {
             .pick_edge([5.0, -4.9, 40.0], [0.0, 0.0, -1.0], reach)
             .unwrap()
             .unwrap();
+        // No switch is needed: by default an edge near the pointer is picked.
         let mut panel = SelectionPanel {
-            edges: true,
             choice: Choice::Connected,
             ..SelectionPanel::default()
         };
-        assert!(panel.picks_edges());
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
         let input = PickInput {
             edge_hover: Some(pick),
             edge_click: Some((pick, Modifiers::NONE)),
@@ -1748,7 +1804,8 @@ mod tests {
         );
         assert_eq!(scene.lines[1].colour, HOVER);
         assert!(scene.lines.iter().all(|l| l.on_top && l.slot == Slot::Part));
-        // A surface click starts the working selection again, as triangles.
+        // A surface clicked with Shift is not added to the edges: the click
+        // is refused, saying why and the way out, and the edges stay.
         let surface = view
             .picking
             .picker()
@@ -1757,8 +1814,23 @@ mod tests {
             .unwrap()
             .unwrap();
         panel.choice = Choice::Triangle;
+        let before = panel.working.clone();
         panel.click(&app, &view, &surface, Combine::Add);
+        assert_eq!(panel.working, before);
+        let message = panel.message.clone().unwrap();
+        assert!(message.contains("holds edges"), "{message}");
+        assert!(message.contains("Choose Edges"), "{message}");
+        assert!(message.contains("start a new selection"), "{message}");
+        // Ctrl is refused the same way; a plain click starts a new selection.
+        panel.click(&app, &view, &surface, Combine::Remove);
+        assert_eq!(panel.working, before);
+        panel.click(&app, &view, &surface, Combine::Replace);
         assert_eq!(panel.working, tri(&[surface.triangle]));
+        assert!(panel.message.is_none());
+        // And an edge clicked with Shift is refused on the triangles.
+        panel.click_edge(&app, &view, &pick, Combine::Add);
+        assert_eq!(panel.working, tri(&[surface.triangle]));
+        assert!(panel.message.as_deref().unwrap().contains("Choose Faces"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

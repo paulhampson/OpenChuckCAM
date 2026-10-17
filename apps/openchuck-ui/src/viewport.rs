@@ -249,9 +249,23 @@ pub struct Viewport {
     tool_transform: Mat4,
     /// Whether the pointer picks triangles of the part (slice 10 item 1).
     picking: bool,
-    /// Whether it picks edges rather than surfaces (slice 11 item 5).
-    pick_edges: bool,
+    /// What the pointer may pick (slice 11 item 5).
+    filter: PickFilter,
     input: PickInput,
+}
+
+/// What the pointer may pick (decision record 0066 item 3). With `Both`, the
+/// default, an edge is picked when the pointer is within reach of one and the
+/// surface under it otherwise; the other two restrict picking to one kind.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PickFilter {
+    /// Edges near the pointer, else the surface under it.
+    #[default]
+    Both,
+    /// Only the surface under the pointer: triangles, or a STEP part's faces.
+    Faces,
+    /// Only edges near the pointer.
+    Edges,
 }
 
 /// What the pointer did over the part in the last frame (UI-04).
@@ -261,7 +275,7 @@ pub struct PickInput {
     pub hover: Option<ScenePick>,
     /// The triangle clicked, and the keys held.
     pub click: Option<(ScenePick, Modifiers)>,
-    /// The edge near the pointer, when edges are picked.
+    /// The edge near the pointer, unless only faces are picked.
     pub edge_hover: Option<SceneEdgePick>,
     /// The edge clicked, and the keys held.
     pub edge_click: Option<(SceneEdgePick, Modifiers)>,
@@ -286,7 +300,7 @@ impl Viewport {
             part_transform: IDENTITY,
             tool_transform: IDENTITY,
             picking: false,
-            pick_edges: false,
+            filter: PickFilter::Both,
             input: PickInput::default(),
         }
     }
@@ -356,10 +370,9 @@ impl Viewport {
         self.picking
     }
 
-    /// Makes the pointer pick edges near it rather than the surface under it
-    /// (slice 11 item 5).
-    pub fn set_pick_edges(&mut self, on: bool) {
-        self.pick_edges = on;
+    /// Chooses what the pointer may pick (slice 11 item 5).
+    pub fn set_pick_filter(&mut self, filter: PickFilter) {
+        self.filter = filter;
     }
 
     /// Lets the pointer pick triangles of the part: hover and click are then
@@ -502,8 +515,9 @@ impl Viewport {
     }
 
     /// Hover and click picking (UI-04): the pointer becomes a ray, the scene's
-    /// picker finds the triangle, and the shell is told. Not run while the
-    /// pointer is dragging the camera.
+    /// picker finds the edge within reach of it or else the triangle under
+    /// it, and the shell is told. Not run while the pointer is dragging the
+    /// camera.
     fn pick(&mut self, ui: &egui::Ui, response: &egui::Response, rect: Rect) {
         self.input = PickInput::default();
         if !self.picking || response.dragged() {
@@ -526,7 +540,7 @@ impl Viewport {
         let back = rigid_inverse(&self.part_transform);
         let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
         let d = transform(&back, [direction[0], direction[1], direction[2], 0.0]);
-        if self.pick_edges {
+        if self.filter != PickFilter::Faces {
             // The reach is what EDGE_PIXELS span: the ray a few pixels over
             // gives how far apart the rays start and how fast they part.
             let beside = [ndc[0] + f64::from(2.0 * EDGE_PIXELS / rect.width()), ndc[1]];
@@ -542,15 +556,18 @@ impl Viewport {
                 base: gap(origin, o2),
                 per_distance: gap(unit(direction), unit(d2)),
             };
-            let Ok(Some(hit)) = picker.pick_edge([o[0], o[1], o[2]], [d[0], d[1], d[2]], tolerance)
-            else {
+            if let Ok(Some(hit)) =
+                picker.pick_edge([o[0], o[1], o[2]], [d[0], d[1], d[2]], tolerance)
+            {
+                self.input.edge_hover = Some(hit);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+                if response.clicked_by(PointerButton::Primary) {
+                    self.input.edge_click = Some((hit, ui.input(|i| i.modifiers)));
+                }
                 return;
-            };
-            self.input.edge_hover = Some(hit);
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-            if response.clicked_by(PointerButton::Primary) {
-                self.input.edge_click = Some((hit, ui.input(|i| i.modifiers)));
             }
+        }
+        if self.filter == PickFilter::Edges {
             return;
         }
         let Ok(Some(hit)) = picker.pick([o[0], o[1], o[2]], [d[0], d[1], d[2]]) else {
