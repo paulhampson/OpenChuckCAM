@@ -842,8 +842,20 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 3. Default tabs when none are set, from the part's extent (decision 0035, owner's answers, OI-158): two on the axis, one at the head and one at the tail, frustums with the small end on the model, each the smaller of 10 mm and half the part's local diameter across; the head tab runs from the held region's inner edge to the start of the model and the tail tab from the model's end to the stock's end, kept out of held regions and user-excluded regions. Tabs are restricted to the head and tail zones, and 21c refuses one outside them (OI-180). A tab narrower than the tool is refused (OI-159).
 4. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
 
+**21d – Interface specification, display and verification (not started; added 17 Oct 2026 at the owner's request)**
+
+Today the workholding panel (`workholding_panel.rs`, edits a draft of the held regions and tabs) and the viewport's held-region and tab colours exist (21c item 2), but no requirement and no part of the interface specification says that held regions and tabs are shown or edited in the interface: SET-09 and OP-21 describe the data and the machining, and UI-03 lists only the rotary axis, work coordinate system, stock and part. 21d closes that gap.
+
+1. A requirement for the interface, wording proposed to the owner (not edited into `docs/requirements.md` until agreed): the viewport shows each setup's held regions and retaining tabs with the stock and part, and the interface lets the user view, add, edit and remove them with validation and the default tabs. The candidate is an addition to UI-03 and a new UI requirement; a decision record carries the change.
+2. The interface specification (`docs/ui-design/ui-specification.md`) gains the workholding panel (fields, validation messages, the default tabs and how they are shown as defaults, the warning when an operation's selection reaches a held region or a tab) and the viewport display (colour and shape or outline so the two roles differ by more than colour, a legend entry, hover and selection behaviour), with a mock-up.
+3. Tests and screenshots that name the new requirement: the panel edits and validates a tab and a held region and the edit is undoable; the viewport draws them; the UI smoke test opens the panel (UI-07, UI-08, NFR-02). The verification plan gains the row.
+4. Slice 22 (interface redesign) includes the panel and the display in its component inventory.
+
 **Review checklist**
 
+- [ ] A requirement in `docs/requirements.md` says that held regions and retaining tabs are shown in the viewport and edited in the interface (21d item 1; the owner agrees the wording first)
+- [ ] The interface specification describes the workholding panel and the viewport display, with a mock-up (21d item 2)
+- [ ] Tests that name the new requirement cover editing, undo, display and the selection warning (21d item 3)
 - [x] A held region and each tab validate, persist, migrate and undo; impossible ones are refused with a message (21a tests in `openchuck-project`, `openchuck-app` and `openchuck-cli`; the form and generation refuse the checks that need the part and the tool)
 - [x] Roughing and finishing on the oracle parts never cut into a held region or a tab, and the independent checker agrees (`req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab`; tabs around the axis by the simulation, OI-197)
 - [x] Links and retracts do not cross a held region (the same test: every fed move checked, and no rapid move removes material)
@@ -863,7 +875,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Design refinement:** first step, before any rework. Record the design as a decision record: the screens and panels, the layout and navigation, the interaction for selecting, operating and playing back, theming and text sizes, and what in the design asks for a feature the requirements do not have. Anything that does is raised, not built (UI-xx requirements change only by agreement, and the architecture's view-model boundary stays: the UI imports no engine crate).
 
-1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new.
+1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new. It includes the setup's workholding panel and the viewport display of held regions and tabs (slice 21d).
 2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the design touches) to the design, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
 3. Update the UI smoke tests and the screenshots in the guide; keep the 1M-triangle frame benchmark and rerun it on the reference machines (NFR-03).
 4. No project format change and no engine change. If the design needs one, it is a separate lane with its own schema claim.
