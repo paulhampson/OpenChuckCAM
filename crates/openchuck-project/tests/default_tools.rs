@@ -71,7 +71,7 @@ fn closed_form(shape: &ToolShape, diameter: f64, r: f64) -> f64 {
 #[test]
 fn req_tl_12_every_default_validates_and_has_a_stable_unique_id() {
     let tools = default_tools().unwrap();
-    assert_eq!(tools.len(), 75);
+    assert_eq!(tools.len(), 77);
     let mut ids: Vec<_> = tools.iter().map(|t| t.id).collect();
     ids.sort();
     ids.dedup();
@@ -120,18 +120,18 @@ fn req_tl_12_first_run_installs_into_an_empty_library_and_a_second_run_installs_
     let dir = temp_dir("first-run").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
     let report = lib.install_defaults().unwrap();
-    assert_eq!(report.installed.len(), 75);
+    assert_eq!(report.installed.len(), 77);
     assert!(dir.join(LEDGER_FILE).is_file());
 
     let reopened = ToolLibrary::open(&dir).unwrap();
-    assert_eq!(reopened.tools().count(), 75);
+    assert_eq!(reopened.tools().count(), 77);
     assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
 
     let mut again = reopened;
     let report = again.install_defaults().unwrap();
     assert!(report.installed.is_empty());
-    assert_eq!(report.already_installed, 75);
-    assert_eq!(again.tools().count(), 75);
+    assert_eq!(report.already_installed, 77);
+    assert_eq!(again.tools().count(), 77);
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn req_tl_12_a_deleted_default_is_not_restored() {
     let report = reopened.install_defaults().unwrap();
     assert!(report.installed.is_empty());
     assert!(reopened.get(gone).is_none());
-    assert_eq!(reopened.tools().count(), 74);
+    assert_eq!(reopened.tools().count(), 76);
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn req_tl_12_a_default_the_ledger_does_not_know_is_installed_and_a_user_tool_is_
     let mut reopened = ToolLibrary::open(&dir).unwrap();
     let report = reopened.install_defaults().unwrap();
     assert_eq!(report.installed, vec![id]);
-    assert_eq!(reopened.tools().count(), 75);
+    assert_eq!(reopened.tools().count(), 77);
 }
 
 #[test]
@@ -196,7 +196,7 @@ fn req_tl_12_a_damaged_ledger_never_overwrites_a_tool() {
     let mut reopened = ToolLibrary::open(&dir).unwrap();
     let report = reopened.install_defaults().unwrap();
     assert!(report.installed.is_empty());
-    assert_eq!(report.already_present, 75);
+    assert_eq!(report.already_present, 77);
     assert_eq!(reopened.get(tool.id), Some(&tool));
 }
 
@@ -206,7 +206,7 @@ fn req_nfr_09_req_tl_12_the_defaults_are_embedded_not_read_from_the_source_tree(
     // and no network: run it from a folder that holds nothing else.
     let dir = temp_dir("offline").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
-    assert_eq!(lib.install_defaults().unwrap().installed.len(), 75);
+    assert_eq!(lib.install_defaults().unwrap().installed.len(), 77);
 }
 
 #[test]
@@ -226,13 +226,13 @@ fn req_tl_12_restore_defaults_reinstalls_a_deleted_default_and_never_touches_an_
     assert_eq!(report.installed, vec![gone.id]);
     assert_eq!(reopened.get(gone.id), Some(&gone));
     assert_eq!(reopened.get(edited.id), Some(&edited));
-    assert_eq!(reopened.tools().count(), 75);
+    assert_eq!(reopened.tools().count(), 77);
 }
 
 #[test]
 fn req_tl_12_req_tl_11_the_z1_tools_are_carbide_and_the_set_numbers_them() {
     let z1 = z1_tools().unwrap();
-    assert_eq!(z1.len(), 52);
+    assert_eq!(z1.len(), 54);
     for t in &z1 {
         assert_eq!(t.tool.material.as_deref(), Some("carbide"), "{}", t.name);
         // 1/8 inch, 4 mm and 6 mm shanks (the 4 mm and 6 mm extension).
@@ -283,7 +283,7 @@ fn req_tl_12_first_run_installs_the_z1_tool_set_and_a_second_run_installs_nothin
     let reopened = ToolLibrary::open(&dir).unwrap();
     assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
     let set = reopened.tool_set("makera z1").unwrap();
-    assert_eq!(set.entries.len(), 52);
+    assert_eq!(set.entries.len(), 54);
     for e in &set.entries {
         assert!(reopened.get(e.tool).is_some());
     }
@@ -322,7 +322,7 @@ fn req_tl_12_an_edited_or_deleted_tool_set_is_not_overwritten_or_restored_by_a_r
     // The explicit action does bring it back, over nothing.
     let report = reopened.restore_defaults().unwrap();
     assert_eq!(report.tool_sets_installed, vec!["Makera Z1".to_owned()]);
-    assert_eq!(reopened.tool_set("Makera Z1").unwrap().entries.len(), 52);
+    assert_eq!(reopened.tool_set("Makera Z1").unwrap().entries.len(), 54);
 }
 
 /// The Makera bit pages' Tool Reference Parameters for the Z1 tools that ship
@@ -372,13 +372,11 @@ fn req_tl_12_req_tl_05_cutting_data_exists_exactly_for_the_bits_and_materials_th
     let z1 = z1_tools().unwrap();
     let set = &default_tool_sets().unwrap()[0];
     let rows = page_rows();
-    // Bits with cutting data: ball 201 to 214, V-bits except the held 307 and
-    // 308, and the O-flute bits 101, 102, 104 and 105. None for the chamfer,
+    // Bits with cutting data: ball 201 to 214, V-bits, and the O-flute bits 101, 102, 104 and 105. None for the chamfer,
     // the drills, the corn bits, O-flute 103 and the twelve 4 mm and 6 mm flats.
     let with: Vec<u32> = (201..=214)
         .chain([101, 102, 104, 105])
-        .chain(301..=306)
-        .chain(309..=314)
+        .chain(301..=314)
         .collect();
     let mut seen = 0;
     for t in &z1 {
@@ -395,7 +393,7 @@ fn req_tl_12_req_tl_05_cutting_data_exists_exactly_for_the_bits_and_materials_th
         seen += have.len();
     }
     assert_eq!(seen, rows.len());
-    assert_eq!(with.len(), 30);
+    assert_eq!(with.len(), 32);
     // The O-flute bits are limited to the materials the VCarve database names.
     for t in z1
         .iter()
@@ -475,7 +473,7 @@ fn req_tl_12_the_first_run_installs_cutting_data_with_the_tools_and_an_edit_keep
         .iter()
         .filter(|e| !reopened.get(e.tool).unwrap().cutting_data.is_empty())
         .count();
-    assert_eq!(with, 30);
+    assert_eq!(with, 32);
 
     // A user's edit to the cutting data is never overwritten by a run.
     let mut tool = reopened.get(set.entries[0].tool).unwrap().clone();
@@ -486,4 +484,24 @@ fn req_tl_12_the_first_run_installs_cutting_data_with_the_tools_and_an_edit_keep
     let mut third = ToolLibrary::open(&dir).unwrap();
     third.install_defaults().unwrap();
     assert_eq!(third.get(tool.id), Some(&tool));
+}
+
+#[test]
+fn req_tl_12_req_tl_03_the_derived_cutter_diameters_of_t307_and_t308_follow_their_formula() {
+    // Neither the page nor the community files state these diameters
+    // (decision 0081 item 9, OI-283): tip + 2 x flute length x tan 15 degrees,
+    // rounded down to 0.01 mm.
+    let z1 = z1_tools().unwrap();
+    let set = &default_tool_sets().unwrap()[0];
+    for (number, tip) in [(307, 0.1_f64), (308, 0.2_f64)] {
+        let tool = z1.iter().find(|t| number_of(set, t.id) == number).unwrap();
+        let derived = tip + 2.0 * 7.0 * 15.0_f64.to_radians().tan();
+        let want = (derived * 100.0).floor() / 100.0;
+        assert_eq!(tool.tool.diameter.0, want, "T{number}");
+        assert_eq!(tool.tool.flute_length.0, 7.0);
+        tool.validate().unwrap();
+        // The cone from the tip reaches the diameter within the flute length.
+        let needed = (want - tip) / 2.0 / 15.0_f64.to_radians().tan();
+        assert!(needed <= 7.0, "T{number}: {needed}");
+    }
 }

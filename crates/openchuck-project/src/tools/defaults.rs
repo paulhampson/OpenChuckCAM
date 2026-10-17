@@ -294,6 +294,14 @@ const Z1: &[(&str, &str)] = &[
         include_str!("../../defaults/z1/306-z1-v-bit-metal-30-deg-tip-0-5-shank-4.toml"),
     ),
     (
+        "307-z1-v-bit-30-deg-tip-0-1-shank-4.toml",
+        include_str!("../../defaults/z1/307-z1-v-bit-30-deg-tip-0-1-shank-4.toml"),
+    ),
+    (
+        "308-z1-v-bit-30-deg-tip-0-2-shank-4.toml",
+        include_str!("../../defaults/z1/308-z1-v-bit-30-deg-tip-0-2-shank-4.toml"),
+    ),
+    (
         "309-z1-v-bit-30-deg-tip-0-3-shank-4.toml",
         include_str!("../../defaults/z1/309-z1-v-bit-30-deg-tip-0-3-shank-4.toml"),
     ),

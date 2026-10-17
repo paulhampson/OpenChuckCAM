@@ -71,7 +71,7 @@ fn req_tl_12_installing_defaults_twice_into_a_folder_installs_nothing_the_second
     let dir = std::env::temp_dir().join(format!("openchuck-app-defaults-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let first = openchuck_app::library::install_default_tools(&dir).unwrap();
-    assert_eq!(first.installed.len(), 75);
+    assert_eq!(first.installed.len(), 77);
     let second = openchuck_app::library::install_default_tools(&dir).unwrap();
     assert!(second.installed.is_empty());
 }

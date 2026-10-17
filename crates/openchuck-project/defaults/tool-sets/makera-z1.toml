@@ -212,6 +212,16 @@ tool = "c0de0001-0000-4000-8000-000000000305"
 number = 306
 tool = "c0de0001-0000-4000-8000-000000000306"
 
+# Z1 V-bit 30 deg tip 0.1 shank 4
+[[tools]]
+number = 307
+tool = "c0de0001-0000-4000-8000-000000000307"
+
+# Z1 V-bit 30 deg tip 0.2 shank 4
+[[tools]]
+number = 308
+tool = "c0de0001-0000-4000-8000-000000000308"
+
 # Z1 V-bit 30 deg tip 0.3 shank 4
 [[tools]]
 number = 309
