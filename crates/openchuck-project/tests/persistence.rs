@@ -1419,3 +1419,46 @@ fn req_op_08_req_prj_03_keep_tangent_edges_changes_the_cache_key_of_operations_o
         inherited
     );
 }
+
+#[test]
+fn req_prj_06_the_selection_reset_warning_setting_survives_save_and_load() {
+    // On by default and not written.
+    let plain = with_edge_set(None);
+    assert!(plain.warn_on_selection_reset());
+    for (path, text) in file::render(&plain).unwrap() {
+        assert!(!text.contains("warn_on_selection_reset"), "{path}");
+    }
+    // Turned off ("Don't show me this warning again"): written and read back.
+    let mut p = with_edge_set(None);
+    assert!(p.set_warn_on_selection_reset(false));
+    let dir = temp_dir("reset-warning");
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(
+        text.contains("\nwarn_on_selection_reset = false\n"),
+        "{text}"
+    );
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    assert!(!loaded.warn_on_selection_reset());
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_the_selection_reset_warning_setting_needs_schema_12() {
+    let mut p = with_edge_set(None);
+    p.set_warn_on_selection_reset(false);
+    let dir = temp_dir("reset-warning-11");
+    file::save(&p, &dir).unwrap();
+    let old = copy_tree_with(&read_tree(&dir), "reset-warning-11-copy", |path, text| {
+        if path == "project.toml" {
+            text.replacen("schema = 12", "schema = 11", 1)
+        } else {
+            text.to_owned()
+        }
+    });
+    let err = file::load(&old).unwrap_err().to_string();
+    assert!(
+        err.contains("warn_on_selection_reset") && err.contains("schema 12"),
+        "{err}"
+    );
+}

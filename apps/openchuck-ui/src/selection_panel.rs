@@ -243,6 +243,14 @@ fn nothing() -> SelectionTarget {
     SelectionTarget::Triangles(TriangleSet::new())
 }
 
+/// A plain click of the other kind waiting for the user to confirm that it
+/// resets the working selection (decision record 0066 item 3).
+struct Reset {
+    model: ModelId,
+    picked: SelectionTarget,
+    hash: Option<ContentHash>,
+}
+
 struct Pending {
     handle: JobHandle<TriangleSet>,
     model: ModelId,
@@ -268,6 +276,13 @@ pub struct SelectionPanel {
     new_tangent: Option<bool>,
     rename: String,
     pending: Option<Pending>,
+    /// Whether a plain click of the other kind asks first, as the project
+    /// says when the click came.
+    warn_reset: bool,
+    /// The click waiting for that answer, and whether the user ticked
+    /// "Don't show me this warning again".
+    reset: Option<Reset>,
+    dont_warn: bool,
     hover: Option<Hover>,
     shown: Option<SelectionSetId>,
     /// The last thing that went wrong or the last notice.
@@ -290,6 +305,9 @@ impl Default for SelectionPanel {
             new_tangent: None,
             rename: String::new(),
             pending: None,
+            warn_reset: true,
+            reset: None,
+            dont_warn: false,
             hover: None,
             shown: None,
             message: None,
@@ -362,6 +380,7 @@ impl SelectionPanel {
     /// again.
     pub fn frame(&mut self, app: &Application, view: &SceneView, input: PickInput) -> bool {
         self.drop_stale_working(app);
+        self.warn_reset = app.project().warn_on_selection_reset();
         let hover = match (input.edge_hover, input.hover) {
             (Some(edge), _) => Some(Hover::Edge(edge)),
             (None, Some(pick)) => Some(Hover::Surface(pick)),
@@ -402,6 +421,7 @@ impl SelectionPanel {
 
     fn click(&mut self, app: &Application, view: &SceneView, pick: &ScenePick, combine: Combine) {
         let Some(model) = pick.model else { return };
+        self.warn_reset = app.project().warn_on_selection_reset();
         self.message = None;
         // An older region pick must not finish later and overwrite this click.
         if let Some(old) = self.pending.take() {
@@ -449,6 +469,7 @@ impl SelectionPanel {
         let Some(picker) = view.picking.picker() else {
             return;
         };
+        self.warn_reset = app.project().warn_on_selection_reset();
         self.message = None;
         if let Some(old) = self.pending.take() {
             old.handle.cancel();
@@ -487,15 +508,24 @@ impl SelectionPanel {
         hash: Option<ContentHash>,
     ) {
         let picked = picked.into();
-        // A selection holds one kind. Adding or taking away a pick of another
-        // kind is refused with the way out, and the selection stays as it was
-        // (decision record 0066 item 3); a plain click starts a new one.
-        if combine != Combine::Replace
-            && self.working_model == Some(model)
+        // A selection holds one kind (decision record 0066 item 3). Adding or
+        // taking away a pick of another kind is refused with the way out, and
+        // the selection stays as it was; a plain click starts a new one, after
+        // asking unless the project says not to.
+        let other_kind = self.working_model == Some(model)
             && !self.working.is_empty()
-            && std::mem::discriminant(&self.working) != std::mem::discriminant(&picked)
-        {
+            && std::mem::discriminant(&self.working) != std::mem::discriminant(&picked);
+        if other_kind && combine != Combine::Replace {
             self.message = Some(refusal(&self.working, &picked));
+            return;
+        }
+        if other_kind && self.warn_reset {
+            self.reset = Some(Reset {
+                model,
+                picked,
+                hash,
+            });
+            self.dont_warn = false;
             return;
         }
         // A selection is on one model; picking on another starts again.
@@ -655,6 +685,9 @@ impl SelectionPanel {
             }
         }
         if !pressed(egui::Key::Escape) {
+            return false;
+        }
+        if self.reset.take().is_some() {
             return false;
         }
         match self.pending.take() {
@@ -939,8 +972,70 @@ impl SelectionPanel {
         {
             error = Some(e.to_string());
         }
+        let mut warn = app.project().warn_on_selection_reset();
+        if ui
+            .checkbox(&mut warn, "Warn before a click starts a new selection")
+            .on_hover_text(
+                "Ask before a click that picks the other kind (an edge on a selection of faces, \
+                 say) clears the selection. Saved with the project.",
+            )
+            .changed()
+            && let Err(e) = app.execute(openchuck_app::Command::SetWarnOnSelectionReset(warn))
+        {
+            error = Some(e.to_string());
+        }
         ui.weak("Editing a set marks every operation that uses it stale.");
         error
+    }
+
+    /// The warning before a plain click of the other kind resets the working
+    /// selection (decision record 0066 item 3), drawn while one waits.
+    /// Returns the text of an error to show in a dialog.
+    pub fn reset_dialog(&mut self, ctx: &egui::Context, app: &mut Application) -> Option<String> {
+        let reset = self.reset.as_ref()?;
+        let text = reset_warning(&self.working, &reset.picked);
+        let mut answer = None;
+        egui::Window::new("Start a new selection?")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(text);
+                ui.checkbox(&mut self.dont_warn, "Don't show me this warning again");
+                ui.horizontal(|ui| {
+                    if ui.button("Start a new selection").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        answer.and_then(|start| self.answer_reset(app, start))
+    }
+
+    /// Answers the warning: `start` resets the working selection to the
+    /// click's pick, storing "Don't show me this warning again" as an
+    /// undoable project setting; otherwise the selection stays as it was.
+    fn answer_reset(&mut self, app: &mut Application, start: bool) -> Option<String> {
+        let Reset {
+            model,
+            picked,
+            hash,
+        } = self.reset.take()?;
+        if !start {
+            return None;
+        }
+        if self.dont_warn
+            && let Err(e) = app.execute(openchuck_app::Command::SetWarnOnSelectionReset(false))
+        {
+            return Some(e.to_string());
+        }
+        // The answer is given: this click resets without asking again.
+        self.warn_reset = false;
+        self.join(model, Combine::Replace, picked, hash);
+        self.warn_reset = app.project().warn_on_selection_reset();
+        None
     }
 
     /// The table of sets (specification section 12.2): swatch, name, kind,
@@ -1195,6 +1290,22 @@ fn refusal(working: &SelectionTarget, picked: &SelectionTarget) -> String {
         "The selection holds {holds}, so {one} cannot join it: a selection holds one kind. \
          Choose {filter} in the box on the view to pick only {holds}, or click without \
          Shift or Ctrl to start a new selection."
+    )
+}
+
+/// What the warning before a reset says (decision record 0066 item 3).
+fn reset_warning(working: &SelectionTarget, picked: &SelectionTarget) -> String {
+    let noun = |t: &SelectionTarget| match t {
+        SelectionTarget::Triangles(_) => ("triangles", "a triangle"),
+        SelectionTarget::Faces(_) => ("faces", "a face"),
+        SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => ("edges", "an edge"),
+    };
+    let (holds, _) = noun(working);
+    let (_, one) = noun(picked);
+    format!(
+        "This click picks {one}, and the selection holds {holds}: a selection holds one kind. \
+         Starting a new selection with it clears the {} {holds} selected now.",
+        working.len()
     )
 }
 
@@ -1824,9 +1935,37 @@ mod tests {
         // Ctrl is refused the same way; a plain click starts a new selection.
         panel.click(&app, &view, &surface, Combine::Remove);
         assert_eq!(panel.working, before);
+        // A plain click of the other kind warns first: nothing changes until
+        // the user answers, and Cancel keeps the edges.
         panel.click(&app, &view, &surface, Combine::Replace);
+        assert_eq!(panel.working, before);
+        let warning = reset_warning(&panel.working, &panel.reset.as_ref().unwrap().picked);
+        assert!(warning.contains("picks a triangle"), "{warning}");
+        assert!(warning.contains("clears the 1 edges"), "{warning}");
+        assert!(panel.answer_reset(&mut app, false).is_none());
+        assert_eq!(panel.working, before);
+        assert!(panel.reset.is_none());
+        // Starting a new selection with "Don't show me this warning again"
+        // ticked resets it and stores the choice in the project, undoably.
+        panel.click(&app, &view, &surface, Combine::Replace);
+        panel.dont_warn = true;
+        assert!(panel.answer_reset(&mut app, true).is_none());
         assert_eq!(panel.working, tri(&[surface.triangle]));
         assert!(panel.message.is_none());
+        assert!(!app.project().warn_on_selection_reset());
+        // With the warning off, a plain click of the other kind resets
+        // silently.
+        panel.click_edge(&app, &view, &pick, Combine::Replace);
+        assert!(panel.reset.is_none());
+        assert!(matches!(&panel.working, SelectionTarget::MeshEdges(_)));
+        // Undo turns the warning on again: the next one asks.
+        app.undo().unwrap();
+        assert!(app.project().warn_on_selection_reset());
+        panel.click(&app, &view, &surface, Combine::Replace);
+        assert!(panel.reset.is_some());
+        assert!(panel.answer_reset(&mut app, true).is_none());
+        assert!(app.project().warn_on_selection_reset());
+        assert_eq!(panel.working, tri(&[surface.triangle]));
         // And an edge clicked with Shift is refused on the triangles.
         panel.click_edge(&app, &view, &pick, Combine::Add);
         assert_eq!(panel.working, tri(&[surface.triangle]));

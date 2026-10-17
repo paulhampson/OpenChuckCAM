@@ -917,6 +917,12 @@ impl Shell {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
         }
+        // The warning before a click of the other kind resets the selection.
+        if let Some(app) = &mut self.app
+            && let Some(e) = self.selection.reset_dialog(ctx, app)
+        {
+            self.dialog = Some(Dialog::Error(e));
+        }
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in

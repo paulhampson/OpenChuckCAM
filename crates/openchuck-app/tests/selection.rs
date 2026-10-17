@@ -814,5 +814,13 @@ fn req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind() {
     assert!(app.project().keep_tangent_edges());
     app.undo().unwrap();
     assert!(!app.project().keep_tangent_edges());
+    // So is turning off the warning before a plain click of the other kind
+    // resets the working selection (decision record 0066 item 3).
+    assert!(app.project().warn_on_selection_reset());
+    app.execute(Command::SetWarnOnSelectionReset(false))
+        .unwrap();
+    assert!(!app.project().warn_on_selection_reset());
+    app.undo().unwrap();
+    assert!(app.project().warn_on_selection_reset());
     std::fs::remove_dir_all(&dir).unwrap();
 }

@@ -43,6 +43,9 @@ pub enum Command {
     /// Sets whether sets of B-rep edges keep tangent edges when they do not
     /// say (OP-08; decision record 0066).
     SetKeepTangentEdges(bool),
+    /// Sets whether a plain click of the other kind warns before it resets
+    /// the working selection (decision record 0066 item 3).
+    SetWarnOnSelectionReset(bool),
     /// Adds an item.
     Add {
         /// The new item, with a fresh ID.
@@ -127,6 +130,9 @@ impl Command {
             Self::SetSimulation(settings) => Self::SetSimulation(project.set_simulation(settings)?),
             Self::SetKeepTangentEdges(keep) => {
                 Self::SetKeepTangentEdges(project.set_keep_tangent_edges(keep))
+            }
+            Self::SetWarnOnSelectionReset(warn) => {
+                Self::SetWarnOnSelectionReset(project.set_warn_on_selection_reset(warn))
             }
             Self::Add { item, placement } => {
                 let id = item.id();

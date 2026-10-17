@@ -646,7 +646,7 @@ pub enum OldPlace {
 }
 
 /// A project document.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Project {
     name: String,
     machine: Option<MachineProfile>,
@@ -656,6 +656,10 @@ pub struct Project {
     /// Whether B-rep edge sets keep tangent edges when they do not say
     /// (schema 12, decision record 0066). Off by default.
     keep_tangent_edges: bool,
+    /// Whether a plain click of the other kind warns before it resets the
+    /// working selection (schema 12, decision record 0066 item 3). On by
+    /// default.
+    warn_on_selection_reset: bool,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
     tools: Vec<ToolSnapshot>,
@@ -884,6 +888,26 @@ fn replace_at<T: Entry>(
     Ok(std::mem::replace(slot, entry).into_item())
 }
 
+impl Default for Project {
+    /// An empty project with no name; the reset warning is on (decision
+    /// record 0066 item 3).
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            machine: None,
+            machine_id: None,
+            simulation: SimulationSettings::default(),
+            keep_tangent_edges: false,
+            warn_on_selection_reset: true,
+            models: Vec::new(),
+            setups: Vec::new(),
+            tools: Vec::new(),
+            selection_sets: Vec::new(),
+            operations: Vec::new(),
+        }
+    }
+}
+
 impl Project {
     /// An empty project with this name.
     pub fn new(name: impl Into<String>) -> Self {
@@ -914,6 +938,7 @@ impl Project {
             machine_id: None,
             simulation: SimulationSettings::default(),
             keep_tangent_edges: false,
+            warn_on_selection_reset: true,
             models,
             setups,
             tools,
@@ -954,6 +979,13 @@ impl Project {
     /// default. Meaningful for a set of B-rep edges.
     pub fn keeps_tangent_edges(&self, set: &SelectionSet) -> bool {
         set.keep_tangent_edges.unwrap_or(self.keep_tangent_edges)
+    }
+
+    /// Whether a plain click that picks the other kind (an edge on a
+    /// selection of faces, say) asks before it resets the working selection
+    /// (decision record 0066 item 3). On unless the user turned it off.
+    pub fn warn_on_selection_reset(&self) -> bool {
+        self.warn_on_selection_reset
     }
 
     /// Model references in order.
@@ -1093,6 +1125,12 @@ impl Project {
     /// old one (decision record 0066).
     pub fn set_keep_tangent_edges(&mut self, keep: bool) -> bool {
         std::mem::replace(&mut self.keep_tangent_edges, keep)
+    }
+
+    /// Sets whether a plain click of the other kind warns before it resets
+    /// the working selection, and returns the old value (decision record 0066).
+    pub fn set_warn_on_selection_reset(&mut self, warn: bool) -> bool {
+        std::mem::replace(&mut self.warn_on_selection_reset, warn)
     }
 
     /// Sets the simulation settings and returns the old ones. Fails, leaving

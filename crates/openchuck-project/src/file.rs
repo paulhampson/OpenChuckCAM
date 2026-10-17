@@ -76,7 +76,8 @@ use openchuck_types::workholding::Workholding;
 /// - 12: a selection set's target may be `mesh_edges`, edges of a mesh
 ///   model's triangles as `[triangle, side]` pairs (OI-204); a set of B-rep
 ///   edges gains the optional `keep_tangent_edges`, and `project.toml` the
-///   project's default for it, `keep_tangent_edges`, written only when true
+///   project's default for it, `keep_tangent_edges`, written only when true;
+///   `project.toml` gains `warn_on_selection_reset`, written only when false
 ///   (decision record 0066).
 pub const SCHEMA: i64 = 12;
 
@@ -205,7 +206,8 @@ fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), Stri
 }
 
 /// Schema 12 adds the `mesh_edges` selection target and the optional
-/// `keep_tangent_edges` of edge sets and of the project, which a schema 11
+/// `keep_tangent_edges` of edge sets and of the project, and the project's
+/// optional `warn_on_selection_reset`, which a schema 11
 /// file does not have, so it needs no change but its number: its edge sets
 /// follow the project's default, off. A schema 11 file that already holds one
 /// was not written by any version that knew it, so it is refused rather than
@@ -227,6 +229,9 @@ fn schema_11_to_12(kind: FileKind, table: &mut toml::Table) -> Result<(), String
         }
         FileKind::Project if table.contains_key("keep_tangent_edges") => {
             Some("has `keep_tangent_edges`, a field")
+        }
+        FileKind::Project if table.contains_key("warn_on_selection_reset") => {
+            Some("has `warn_on_selection_reset`, a field")
         }
         _ => None,
     };
@@ -276,6 +281,8 @@ struct ProjectFile {
     name: String,
     #[serde(default, skip_serializing_if = "is_false")]
     keep_tangent_edges: bool,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    warn_on_selection_reset: bool,
     #[serde(default, skip_serializing_if = "SimulationSettings::is_default")]
     simulation: SimulationSettings,
     #[serde(default)]
@@ -353,6 +360,15 @@ struct SelectionFile {
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
 const fn is_false(value: &bool) -> bool {
     !*value
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+const fn is_true(value: &bool) -> bool {
+    *value
+}
+
+const fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -461,6 +477,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
         schema: SCHEMA,
         name: project.name().to_owned(),
         keep_tangent_edges: project.keep_tangent_edges(),
+        warn_on_selection_reset: project.warn_on_selection_reset(),
         simulation: project.simulation(),
         models: project.models().to_vec(),
     };
@@ -763,6 +780,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
     })?;
     project.machine_id = machine_id;
     project.set_keep_tangent_edges(file.keep_tangent_edges);
+    project.set_warn_on_selection_reset(file.warn_on_selection_reset);
     project
         .set_simulation(file.simulation)
         .map_err(|e| ProjectError::BadFile {
