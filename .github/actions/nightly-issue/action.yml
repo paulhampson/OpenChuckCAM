@@ -14,10 +14,11 @@
 #   pull request that addresses the failure ("Fixes #N"), never by a green run.
 # - anything else (cancelled, skipped): nothing.
 #
-# A green run closes an issue only if it is newer than the failure the issue records: every issue
+# A green run closes an issue only if it is not older than the failure the issue records: every issue
 # text and every night's comment carries the id of the run that wrote it (`<!-- nightly-run: ID -->`),
 # and run ids grow with time. So an older run that finishes late, after a newer run failed, cannot
-# close the issue of the newer failure.
+# close the issue of the newer failure. The same run id means a later attempt of the same run (a
+# re-run), which counts: a passing re-run of a failed run closes the issue it opened.
 #
 # The policy `fix` also decides when a failure is a new one. A failure of a `fix` job comments on
 # the newest open issue only when the job's previous run also failed; when the previous run passed
@@ -113,8 +114,8 @@ runs:
                 echo "$id: passed; a $label issue is closed by a pull request, not by a green run"
               elif [ -n "$number" ]; then
                 recorded=$(latest_recorded_run "$number" || true)
-                if [ -n "$recorded" ] && [ "$RUN_ID" -le "$recorded" ]; then
-                  echo "$id: passed, but run $RUN_ID is not newer than run $recorded recorded in issue #$number; not closing it"
+                if [ -n "$recorded" ] && [ "$RUN_ID" -lt "$recorded" ]; then
+                  echo "$id: passed, but run $RUN_ID is older than run $recorded recorded in issue #$number; not closing it"
                 else
                   {
                     echo "Run $RUN_URL (commit \`${SHA:0:12}\`, $today) passed this job. Closing this issue; a new failure opens a new one."
