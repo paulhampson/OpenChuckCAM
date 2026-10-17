@@ -23,7 +23,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 use crate::cutter::{Contact, ToolLine};
 use crate::holes::Hole;
 use crate::solid::Solid;
-use crate::surface::{RayHit, SurfacePoint, SurfaceSource};
+use crate::surface::{FaceRef, RayHit, SurfacePoint, SurfaceSource};
 
 /// Segments around a solid in the composite's tessellation.
 const TESSELLATION_SEGMENTS: u32 = 96;
@@ -120,6 +120,10 @@ impl SurfaceSource for CompositeSurface {
 
     fn holes(&self) -> &[Hole] {
         self.model.holes()
+    }
+
+    fn exact_faces(&self) -> Vec<FaceRef<'_>> {
+        self.model.exact_faces()
     }
 
     fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
