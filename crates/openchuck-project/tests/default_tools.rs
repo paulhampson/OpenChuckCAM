@@ -204,3 +204,23 @@ fn req_nfr_09_req_tl_12_the_defaults_are_embedded_not_read_from_the_source_tree(
     let mut lib = ToolLibrary::open(&dir).unwrap();
     assert_eq!(lib.install_defaults().unwrap().installed.len(), 23);
 }
+
+#[test]
+fn req_tl_12_restore_defaults_reinstalls_a_deleted_default_and_never_touches_an_existing_tool() {
+    let dir = temp_dir("restore").join("tools");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    lib.install_defaults().unwrap();
+    let mut tools = lib.tools().cloned().collect::<Vec<_>>();
+    let gone = tools.remove(0);
+    let mut edited = tools.remove(0);
+    edited.name = "Edited".to_owned();
+    lib.remove_tool(gone.id).unwrap();
+    lib.save_tool(edited.clone()).unwrap();
+
+    let mut reopened = ToolLibrary::open(&dir).unwrap();
+    let report = reopened.restore_defaults().unwrap();
+    assert_eq!(report.installed, vec![gone.id]);
+    assert_eq!(reopened.get(gone.id), Some(&gone));
+    assert_eq!(reopened.get(edited.id), Some(&edited));
+    assert_eq!(reopened.tools().count(), 23);
+}

@@ -4,7 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
-- Slice 23 (decision 0081, TL-12): `tools::default_tools`, `ToolLibrary::install_defaults`, `InstallReport` and `LEDGER_FILE`; 23 standard tools embedded in the crate.
+- Slice 23 (decision 0081, TL-12): `tools::default_tools`, `ToolLibrary::install_defaults`, `ToolLibrary::restore_defaults`, `InstallReport` and `LEDGER_FILE`; 23 standard tools embedded in the crate.
 
 - Version 0.7.0 with the library family. Project schema 8: tools may state `centre_cutting` (decision 0033).
 - Slice 10 (decision 0032): operations gain `boundary`, `avoid` and `check` selection set references (`Operation::selection_refs`), `Project::operations_using` and `file::selection_inputs_hash`; project folder schema 7, migrated from 6 (a number only).

@@ -171,6 +171,27 @@ impl ToolLibrary {
         }
         Ok(report)
     }
+
+    /// The explicit "restore default tools" action (TL-12): installs every
+    /// embedded default the library does not hold now, including one the user
+    /// deleted. A tool that is in the library is never touched, edited or not.
+    pub fn restore_defaults(&mut self) -> Result<InstallReport, ProjectError> {
+        let ledger_path: PathBuf = self.dir().join(LEDGER_FILE);
+        let mut ledger = read_ledger(&ledger_path)?;
+        let mut report = InstallReport::default();
+        for tool in default_tools()? {
+            let id = tool.id;
+            if self.get(id).is_some() {
+                report.already_present += 1;
+            } else {
+                self.save_tool(tool)?;
+                report.installed.push(id);
+            }
+            ledger.insert(id);
+        }
+        write_ledger(&ledger_path, &ledger)?;
+        Ok(report)
+    }
 }
 
 fn read_ledger(path: &std::path::Path) -> Result<BTreeSet<ToolId>, ProjectError> {
