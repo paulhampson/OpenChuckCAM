@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use openchuck_path::params::{EntryParameters, ParameterKind, names};
-use openchuck_path::roughing::parameter::STEPDOWN;
+use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BrepEdges, BrepSurface, CompositeSurface, CurveSource, EdgeFollowing,
     MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel, Strategy, StrategyInput,
@@ -416,18 +416,39 @@ pub(crate) fn generate_with_part(
     // A straight plunge needs a tool that can cut straight down (OI-117).
     EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
     let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
-    let zones = resolved_region
+    let mut zones = resolved_region
         .as_ref()
         .map_or_else(Vec::new, |r| r.zones(operation_leave));
+    let mut values = resolved.values;
+    let mut leave_notes = Vec::new();
     if !zones.is_empty() && !strategy.honours_leave_zones() {
-        return Err(missing(
-            operation,
-            &format!(
-                "the strategy '{}' cannot leave different stock on different selections \
-                 (OP-11); clear the stock to leave of the selection sets",
-                operation.strategy
-            ),
-        ));
+        if operation.strategy != roughing::NAME {
+            return Err(missing(
+                operation,
+                &format!(
+                    "the strategy '{}' cannot leave different stock on different selections \
+                     (OP-11); clear the stock to leave of the selection sets",
+                    operation.strategy
+                ),
+            ));
+        }
+        // Rotary roughing leaves the largest amount over the whole part, so it
+        // never cuts below what any selection asks for (decision 0058).
+        zones.clear();
+        if let Some((leave, set)) = largest_selection_leave(project, operation)
+            && leave > operation_leave
+        {
+            values.insert(
+                names::STOCK_TO_LEAVE.to_owned(),
+                ParameterValue::Number(leave),
+            );
+            leave_notes.push(format!(
+                "stock to leave: roughing leaves {leave} mm on the whole part, the amount of \
+                 the selection set '{set}' (the largest of its selections), in place of the \
+                 operation's {operation_leave} mm; roughing leaves one amount everywhere, and \
+                 a finishing operation cuts each selection to its own"
+            ));
+        }
     }
     // Edge following on a STEP part follows the B-rep's own edges, with the
     // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
@@ -449,10 +470,8 @@ pub(crate) fn generate_with_part(
     };
     let path = if zones.is_empty() {
         match &constraint {
-            Some(region) => {
-                generate_in_region(strategy, &input, region, &resolved.values, context)?
-            }
-            None => generate(strategy, &input, &resolved.values, context)?,
+            Some(region) => generate_in_region(strategy, &input, region, &values, context)?,
+            None => generate(strategy, &input, &values, context)?,
         }
     } else {
         generate_in_zones(
@@ -460,12 +479,13 @@ pub(crate) fn generate_with_part(
             &input,
             constraint.as_ref(),
             &zones,
-            &resolved.values,
+            &values,
             context,
         )?
     };
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
+    notes.extend(leave_notes);
     notes.extend(reach_notes);
     // The registry's strategy: a B-rep edge source uses the crease angle and
     // the shortest chain, so the warning that they are not used does not apply.
@@ -492,6 +512,23 @@ pub(crate) fn generate_with_part(
         tool: profile,
         part_bounds,
     })
+}
+
+/// The largest stock to leave of the selection sets `operation` selects, and
+/// the name of the first set that holds it. `None` when no set has one.
+fn largest_selection_leave<'a>(
+    project: &'a Project,
+    operation: &Operation,
+) -> Option<(f64, &'a str)> {
+    operation
+        .selections
+        .iter()
+        .filter_map(|id| project.selection_sets().iter().find(|s| s.id == *id))
+        .filter_map(|s| s.stock_to_leave.map(|leave| (leave, s.name.as_str())))
+        .fold(None, |best, (leave, name)| match best {
+            Some((top, _)) if top >= leave => best,
+            _ => Some((leave, name)),
+        })
 }
 
 /// True when the part of `operation`'s setup is a STEP model, by its file
