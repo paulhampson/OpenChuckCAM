@@ -135,6 +135,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | TL-10 | Import tool tables from other systems (for example LinuxCNC tool tables). | P3 |
 | TL-11 | A default tool set per machine profile: the tools the machine normally holds and their tool numbers, kept with the tool library and used to number a tool when it is added to a project for that machine. Tool numbers belong to the project, not to the library tool. | P1 |
 | TL-12 | A default tool library ships with the application: the reference tools for the Makera Z1 with their tool numbers as the machine's default tool set (TL-11), and a set of common standard tools of each type in TL-02 and TL-03. The user can edit, add and delete tools, and an update never overwrites a tool the user has changed. | P1 |
+| TL-13 | The tool library supports undercutting tools, starting with thread mills: a profile that cuts below an overhang or in a bore, with its thread pitch and diameter, so operations can use it for thread milling and undercut features. The default tool library does not ship thread mills until this is built. | P2 |
 
 ### 3.5 Machining strategies and toolpath generation
 
