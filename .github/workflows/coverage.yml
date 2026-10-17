@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Coverage trend and the line-coverage target per crate (verification plan section 8, decision 00NN).
+# Coverage trend and the line-coverage target per crate (verification plan section 8, decision 0102).
 #
 # Coverage runs every night and by hand, on the whole suite: the long-running tests are included,
 # so the figures are the full-suite figures and the nightly series is the trend. It does not run
@@ -108,7 +108,7 @@ jobs:
           fi
 
   # One issue for a failing nightly run: the open issue with the label `nightly-coverage` is the one a
-  # later failing run comments on, and the first run that passes closes it (decision 00NN; the
+  # later failing run comments on, and the first run that passes closes it (decision 0102; the
   # steps are in .github/actions/nightly-issue, shared with the Nightly workflow). Only this job
   # can write issues; the job that builds and runs the tests holds a read-only token. It runs only
   # on `main` (a manual run on another branch never touches the issues).

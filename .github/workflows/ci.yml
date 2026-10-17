@@ -612,7 +612,7 @@ jobs:
             exit 1
           fi
 
-  # Coverage is not a pull request or a push job (decision 00NN): `coverage.yml` runs it every night,
+  # Coverage is not a pull request or a push job (decision 0102): `coverage.yml` runs it every night,
   # on the whole suite, and checks the line-coverage target per crate. The pull request gate is the
   # tests (Build and test runs every test, uninstrumented).
 

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Configuration for `cargo xtask coverage`: line coverage per crate against the
-# development target (verification plan section 8, decision 00NN). The Coverage
+# development target (verification plan section 8, decision 0102). The Coverage
 # workflow (`.github/workflows/coverage.yml`) runs it on the lcov file of every
 # nightly run, which is the whole suite.
 

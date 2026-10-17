@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# One GitHub issue per failing scheduled job (decision 00NN).
+# One GitHub issue per failing scheduled job (decision 0102).
 #
 # For each job it is given, the step looks at the job's result:
 # - failure: if no issue with the job's label is open, it opens one (label `nightly-<id>`, a fixed
@@ -105,7 +105,7 @@ runs:
                   if [ -n "$note" ]; then echo; echo "$note"; fi
                   if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
                   echo
-                  echo "This issue gets a comment each night the job still fails, and is closed by the first run in which it passes (decision 00NN)."
+                  echo "This issue gets a comment each night the job still fails, and is closed by the first run in which it passes (decision 0102)."
                 } > body.md
                 gh label create "$label" --color B60205 --description 'Opened and closed by the scheduled workflows' 2>/dev/null || true
                 gh issue create --title "$title" --label "$label" --body-file body.md

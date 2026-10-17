@@ -4,7 +4,7 @@
 # sections 4.1 and 8): one hour of fuzzing per parser, a beta-toolchain
 # build to catch breakage early, and the long-running tests listed in
 # .config/nextest.toml. The last job opens one GitHub issue per failing job, comments on it
-# each night the job still fails and closes it when the job passes (decision 00NN).
+# each night the job still fails and closes it when the job passes (decision 0102).
 name: Nightly
 
 on:
