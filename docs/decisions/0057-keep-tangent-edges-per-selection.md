@@ -1,6 +1,6 @@
 # 0057: Keeping tangent edges on a STEP part is chosen per edge selection, with a project default (lane Z; OI-232)
 
-- **Status:** proposed (17 Oct 2026). Records the owner's choice for OI-232, relayed by the orchestrator session on 17 Oct 2026; only the project owner accepts a record, and the owner will do so directly (decision 0049). Lane Z built the seam on `claude/lane-z-brep-pipeline`; the stored setting and its interface are lane O's (project schema 12). It changes no requirement, no architecture rule and no library-family API, and lane Z takes no schema number.
+- **Status:** accepted by the project owner (17 Oct 2026, directly in the lane Z session) as option C: a separate keep-tangent-edges setting, which the owner refined the same day (relayed by the orchestrator session) from a per-operation switch to a per-selection setting with a project default. Item 1 is that refined form; alternative C below is the first, per-operation form. Lane Z built the seam on `claude/lane-z-brep-pipeline`; the stored setting and its interface are lane O's (project schema 12). It changes no requirement, no architecture rule and no library-family API, and lane Z takes no schema number.
 - **Date:** 17 Oct 2026.
 - **Open items:** OI-232 stays open (state: seam built; storage and interface wait for lane O). No new open item.
 
@@ -20,7 +20,7 @@ Numbering: from the records 0056 to 0060 the orchestrator assigned to lane Z; th
 
 - **A. Leave it (no way to keep tangent edges):** rejected by the owner; the fillet boundary can be exactly the line to engrave (decision 0053, alternatives).
 - **B. Allow 0 in the crease angle's range:** a crease angle of 0 on a mesh selects every triangle edge, which is never meant.
-- **C. A per-operation on/off parameter, or a project setting only:** the owner first chose an operation switch (shown for STEP parts only; a switch, not the second crease parameter decision 0056 rejected), then changed to per selection: the choice may differ between selections of one part, and going to an operation's or the project's settings each time is a poor experience.
+- **C as first chosen: a per-operation on/off parameter, or a project setting only:** the owner first chose an operation switch (shown for STEP parts only; a switch, not the second crease parameter decision 0056 rejected), then changed to per selection: the choice may differ between selections of one part, and going to an operation's or the project's settings each time is a poor experience.
 - **D. A range for the crease angle that depends on the model's kind:** one parameter whose limits change with the part is confusing, and the schema is the same for every part (OP-16).
 
 ## Verification
