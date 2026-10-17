@@ -251,10 +251,7 @@ impl PartPicker {
         let mut found = BTreeSet::from([start]);
         for leave in [0, 1] {
             let (mut edge, mut end) = (start, leave);
-            loop {
-                let Some(corner) = self.corners.ends.get(edge).and_then(|e| e.get(end)) else {
-                    break;
-                };
+            while let Some(corner) = self.corners.ends.get(edge).and_then(|e| e.get(end)) {
                 let others: Vec<(usize, usize)> = self
                     .corners
                     .at
@@ -413,7 +410,12 @@ impl ScenePicker {
                 continue;
             };
             let share = hit.offset / tolerance.at(hit.distance);
-            if best.is_none_or(|(s, b)| share < s || (share == s && hit.distance < b.distance)) {
+            if best.is_none_or(|(s, b)| {
+                share
+                    .total_cmp(&s)
+                    .then(hit.distance.total_cmp(&b.distance))
+                    .is_lt()
+            }) {
                 best = Some((
                     share,
                     SceneEdgePick {
