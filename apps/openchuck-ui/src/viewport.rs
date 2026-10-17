@@ -8,7 +8,7 @@ use std::sync::Arc;
 use eframe::egui::{self, Color32, Modifiers, PointerButton, Rect, Sense, pos2};
 use eframe::egui_wgpu;
 use openchuck_app::pathview::{DeviationBand, DeviationBands};
-use openchuck_app::pick::ScenePick;
+use openchuck_app::pick::{PickTolerance, SceneEdgePick, ScenePick};
 use openchuck_app::project::id::ModelId;
 use openchuck_app::scene::{Mesh as TriangleMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_viewport::camera::{IDENTITY, Mat4, rigid_inverse, rotation_x, transform};
@@ -33,6 +33,10 @@ const HELD: Colour = [0.35, 0.55, 0.85, 1.0];
 const TAB: Colour = [0.9, 0.7, 0.25, 1.0];
 const PROBLEM: Colour = [0.95, 0.2, 0.2, 1.0];
 const BACKGROUND: Color32 = Color32::from_rgb(38, 40, 46);
+
+/// How near the pointer an edge must pass to be picked, in pixels (decision
+/// record 0066).
+const EDGE_PIXELS: f32 = 6.0;
 
 /// Degrees of orbit per pixel dragged.
 const ORBIT_PER_PIXEL: f64 = 0.4;
@@ -97,6 +101,19 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
                 }
             }
             _ => scene.add_mesh(&mesh.mesh, &mesh.feature_edges, colour, PART_EDGES),
+        }
+        // A STEP part's own edges, drawn as its feature edges are, so the
+        // display mode shows or hides them alike (slice 11 item 5).
+        if let Some(brep) = &mesh.brep {
+            let mut edges = TriangleMesh::default();
+            let mut pairs = Vec::new();
+            for edge in &brep.edges {
+                let base = edges.vertices.len() as u32;
+                edges.vertices.extend(edge.points.iter().copied());
+                let count = edge.points.len() as u32;
+                pairs.extend((1..count).map(|i| [base + i - 1, base + i]));
+            }
+            scene.add_mesh(&edges, &pairs, colour, PART_EDGES);
         }
         for added in scene.meshes.iter_mut().skip(first) {
             added.slot = Slot::Part;
@@ -232,6 +249,8 @@ pub struct Viewport {
     tool_transform: Mat4,
     /// Whether the pointer picks triangles of the part (slice 10 item 1).
     picking: bool,
+    /// Whether it picks edges rather than surfaces (slice 11 item 5).
+    pick_edges: bool,
     input: PickInput,
 }
 
@@ -242,6 +261,10 @@ pub struct PickInput {
     pub hover: Option<ScenePick>,
     /// The triangle clicked, and the keys held.
     pub click: Option<(ScenePick, Modifiers)>,
+    /// The edge near the pointer, when edges are picked.
+    pub edge_hover: Option<SceneEdgePick>,
+    /// The edge clicked, and the keys held.
+    pub edge_click: Option<(SceneEdgePick, Modifiers)>,
 }
 
 impl Viewport {
@@ -263,6 +286,7 @@ impl Viewport {
             part_transform: IDENTITY,
             tool_transform: IDENTITY,
             picking: false,
+            pick_edges: false,
             input: PickInput::default(),
         }
     }
@@ -330,6 +354,12 @@ impl Viewport {
     /// Whether picking is on.
     pub fn is_picking(&self) -> bool {
         self.picking
+    }
+
+    /// Makes the pointer pick edges near it rather than the surface under it
+    /// (slice 11 item 5).
+    pub fn set_pick_edges(&mut self, on: bool) {
+        self.pick_edges = on;
     }
 
     /// Lets the pointer pick triangles of the part: hover and click are then
@@ -496,6 +526,33 @@ impl Viewport {
         let back = rigid_inverse(&self.part_transform);
         let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
         let d = transform(&back, [direction[0], direction[1], direction[2], 0.0]);
+        if self.pick_edges {
+            // The reach is what EDGE_PIXELS span: the ray a few pixels over
+            // gives how far apart the rays start and how fast they part.
+            let beside = [ndc[0] + f64::from(2.0 * EDGE_PIXELS / rect.width()), ndc[1]];
+            let (o2, d2) = self.camera.ray(beside, self.aspect);
+            let unit = |v: [f64; 3]| {
+                let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-300);
+                v.map(|x| x / l)
+            };
+            let gap = |a: [f64; 3], b: [f64; 3]| {
+                ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+            };
+            let tolerance = PickTolerance {
+                base: gap(origin, o2),
+                per_distance: gap(unit(direction), unit(d2)),
+            };
+            let Ok(Some(hit)) = picker.pick_edge([o[0], o[1], o[2]], [d[0], d[1], d[2]], tolerance)
+            else {
+                return;
+            };
+            self.input.edge_hover = Some(hit);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            if response.clicked_by(PointerButton::Primary) {
+                self.input.edge_click = Some((hit, ui.input(|i| i.modifiers)));
+            }
+            return;
+        }
         let Ok(Some(hit)) = picker.pick([o[0], o[1], o[2]], [d[0], d[1], d[2]]) else {
             return;
         };
@@ -574,6 +631,7 @@ mod tests {
         use openchuck_app::scene::SceneMesh;
         let view = SceneView {
             meshes: vec![SceneMesh {
+                brep: None,
                 role: SceneRole::Problem,
                 model: None,
                 mesh: mesh(),

@@ -10,10 +10,12 @@
 //! breakdown slice 3 review checklist, "visually in slice 8").
 
 use openchuck_geom::display::{DEFAULT_CREASE_DEGREES, feature_edges};
+use openchuck_path::BrepEdges;
 use std::collections::BTreeSet;
 
 use openchuck_project::id::{ModelId, SetupId};
 use openchuck_project::{ModelRef, Project};
+use openchuck_types::brep::{BrepModel, EdgeId, FaceId};
 use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::kinematics::{RotaryFrame, facing_at, model_up};
@@ -66,8 +68,82 @@ pub struct SceneMesh {
     pub model: Option<ModelId>,
     /// The triangles, in the model frame.
     pub mesh: TriangleMesh,
-    /// Feature edges as vertex index pairs (`openchuck_geom::display`).
+    /// Feature edges as vertex index pairs (`openchuck_geom::display`). Empty
+    /// for a STEP part, whose own edges are in `brep`.
     pub feature_edges: Vec<[u32; 2]>,
+    /// A STEP part's faces and edges (slice 11 item 5); `None` for a mesh.
+    pub brep: Option<SceneBrep>,
+}
+
+/// The faces and edges of a STEP part as the scene draws and picks them
+/// (UI-04; slice 11 item 5; decision record 0066).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SceneBrep {
+    /// The face of each triangle of the mesh: the faces' tessellations are
+    /// joined in face order.
+    pub faces: Vec<FaceId>,
+    /// The edges, in ID order: every edge of the model but seams and edges
+    /// of no length, tangent ones included, so each face's outline is drawn.
+    pub edges: Vec<SceneEdge>,
+}
+
+impl SceneBrep {
+    /// The faces and edges of the placed B-rep `brep`, whose joined
+    /// tessellation is the scene mesh.
+    pub(crate) fn of(brep: &BrepModel) -> Result<Self, AppError> {
+        let faces = brep
+            .faces
+            .iter()
+            .flat_map(|f| std::iter::repeat_n(f.id, f.tessellation.triangles.len()))
+            .collect();
+        let turns = BrepEdges::new(brep)?.with_crease(0.0).edge_turns();
+        let edges = turns
+            .into_iter()
+            .filter_map(|(id, turn)| {
+                let edge = brep.edges.iter().find(|e| e.id == id)?;
+                let mut faces = edge.faces.clone();
+                faces.sort_unstable();
+                faces.dedup();
+                Some(SceneEdge {
+                    id,
+                    faces,
+                    turn,
+                    points: edge.polyline.clone(),
+                })
+            })
+            .collect();
+        Ok(Self { faces, edges })
+    }
+
+    /// The triangles of the faces `faces`, for drawing them (UI-04).
+    pub fn triangles_of(&self, faces: &BTreeSet<FaceId>) -> BTreeSet<u32> {
+        (0u32..)
+            .zip(&self.faces)
+            .filter_map(|(t, f)| faces.contains(f).then_some(t))
+            .collect()
+    }
+
+    /// The edge with ID `id`.
+    pub fn edge(&self, id: EdgeId) -> Option<&SceneEdge> {
+        self.edges
+            .binary_search_by_key(&id, |e| e.id)
+            .ok()
+            .and_then(|i| self.edges.get(i))
+    }
+}
+
+/// One edge of a STEP part.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SceneEdge {
+    /// Its ID in the model.
+    pub id: EdgeId,
+    /// The faces it joins, in ID order.
+    pub faces: Vec<FaceId>,
+    /// The sharpest turn between its two faces, degrees; `None` for an edge
+    /// of one face (a boundary) or of three or more.
+    pub turn: Option<f64>,
+    /// Its polyline, in the model frame.
+    pub points: Vec<Point3>,
 }
 
 /// A connected line through points.
@@ -110,6 +186,41 @@ pub struct SceneView {
     pub notes: Vec<String>,
     /// Ray-cast picking on the part meshes (UI-04); empty for a preview.
     pub picking: Picking,
+}
+
+/// The scene item of the placed part `model`: its triangles `mesh`, and for a
+/// STEP model its placed B-rep `brep` (whose joined tessellation `mesh` is),
+/// drawn with its own edges and picked by face and edge (slice 11 item 5;
+/// decision record 0066). A mesh draws its feature edges. A B-rep whose faces
+/// cannot be evaluated is drawn as a mesh, with a note in `notes`.
+pub(crate) fn part_mesh(
+    model: &ModelRef,
+    mesh: TriangleMesh,
+    brep: Option<&BrepModel>,
+    notes: &mut Vec<String>,
+) -> Result<SceneMesh, AppError> {
+    let brep = match brep.map(SceneBrep::of) {
+        Some(Ok(brep)) => Some(brep),
+        Some(Err(e)) => {
+            notes.push(format!(
+                "the faces and edges of '{}' cannot be shown or selected: {e}",
+                model.path.as_str()
+            ));
+            None
+        }
+        None => None,
+    };
+    let feature_edges = match brep {
+        Some(_) => Vec::new(),
+        None => feature_edges(&mesh, DEFAULT_CREASE_DEGREES)?,
+    };
+    Ok(SceneMesh {
+        role: SceneRole::Part,
+        model: Some(model.id),
+        mesh,
+        feature_edges,
+        brep,
+    })
 }
 
 /// Segments used to draw a circle.
@@ -156,17 +267,14 @@ pub(crate) fn build_scene(
     let mut part: Option<PartExtent> = None;
     for model in models {
         context.check_cancelled()?;
+        // A STEP part is read by the pipeline once lane Z's placed B-rep is
+        // on `main`; its faces and edges then come through `part_mesh`
+        // (decision record 0066, OI-242).
         match placed_mesh(root, model, context) {
             Ok(mesh) => {
-                let extent = openchuck_geom::part_extent(&mesh);
-                part = merge_extent(part, extent);
-                let feature_edges = feature_edges(&mesh, DEFAULT_CREASE_DEGREES)?;
-                view.meshes.push(SceneMesh {
-                    role: SceneRole::Part,
-                    model: Some(model.id),
-                    mesh,
-                    feature_edges,
-                });
+                part = merge_extent(part, openchuck_geom::part_extent(&mesh));
+                let item = part_mesh(model, mesh, None, &mut view.notes)?;
+                view.meshes.push(item);
             }
             Err(e) => view
                 .notes
@@ -201,6 +309,7 @@ pub(crate) fn build_scene(
                         model: None,
                         mesh: solid.mesh(CIRCLE_SEGMENTS as u32),
                         feature_edges: Vec::new(),
+                        brep: None,
                     });
                 }
             }
@@ -505,6 +614,7 @@ pub(crate) fn model_scene(
                 triangles,
             },
             feature_edges: Vec::new(),
+            brep: None,
         });
     }
     // Open and non-manifold edges as lines.
@@ -540,6 +650,7 @@ pub(crate) fn model_scene(
             model: None,
             mesh,
             feature_edges,
+            brep: None,
         },
     );
     view.bounds = Some(bounds);

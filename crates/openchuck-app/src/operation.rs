@@ -17,9 +17,9 @@ use std::sync::Arc;
 use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::parameter::STEPDOWN;
 use openchuck_path::{
-    AcceptAll, AnalyticStock, CompositeSurface, MeshSurface, ParameterValue, Registry,
-    RotaryMapping, StockModel, StrategyInput, SurfaceSource, generate, generate_in_region,
-    generate_in_zones,
+    AcceptAll, AnalyticStock, ChosenSegments, CompositeSurface, EdgeFollowing, MeshSurface,
+    ParameterValue, Registry, RotaryMapping, StockModel, Strategy, StrategyInput, SurfaceSource,
+    edge_following, generate, generate_in_region, generate_in_zones,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{Operation, Project};
@@ -211,7 +211,12 @@ pub fn generate_operation_on(
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
     let strategy = registry.get(&operation.strategy)?;
     let limited = operation.selection_refs().next().is_some();
-    if limited && !strategy.honours_region() {
+    // Edge following follows a mesh's chosen edges rather than honouring a
+    // region (OI-204; decision record 0066).
+    if limited
+        && !strategy.honours_region()
+        && !crate::selection::selects_mesh_edges(project, operation)
+    {
         return Err(missing(
             operation,
             &format!(
@@ -284,7 +289,12 @@ pub fn generate_operation_on(
         Some(c) => c,
         None => model_surface.as_ref(),
     };
-    let resolved_region = crate::selection::resolve(project, operation, model, file_hash, &mesh)?;
+    let mesh_edges =
+        crate::selection::mesh_edge_segments(project, operation, model, file_hash, &mesh)?;
+    let resolved_region = match mesh_edges {
+        Some(_) => None,
+        None => crate::selection::resolve(project, operation, model, file_hash, &mesh)?,
+    };
     let constraint = resolved_region.as_ref().map(|r| r.constraint());
     let analytic = AnalyticStock::from_stock(stock, Some(part_bounds))?;
     let stock: &dyn StockModel = carried.unwrap_or(&analytic);
@@ -323,6 +333,19 @@ pub fn generate_operation_on(
             ),
         ));
     }
+    // Edge following on chosen mesh edges follows only them (OP-08, OI-204).
+    let with_edges;
+    let strategy: &dyn Strategy = match mesh_edges {
+        Some(segments) => {
+            with_edges = EdgeFollowing::with_source(
+                ChosenSegments::new(segments)?
+                    .with_min_length(parameters.number(edge_following::parameter::MIN_LENGTH)?)
+                    .shared(),
+            );
+            &with_edges
+        }
+        None => strategy,
+    };
     let path = if zones.is_empty() {
         match &constraint {
             Some(region) => {

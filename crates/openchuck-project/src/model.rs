@@ -272,9 +272,10 @@ pub struct ToolSnapshot {
 /// What a selection set selects on its model (PRJ-06).
 ///
 /// B-rep models are selected by face or edge, whose IDs are stable for the same
-/// file (architecture section 5.4). Mesh models are selected by triangle index;
-/// triangle selections apply to mesh models only, because a B-rep model's
-/// triangles change with the tessellation tolerance.
+/// file (architecture section 5.4). Mesh models are selected by triangle index,
+/// or by the edges of their triangles; triangle and mesh edge selections apply
+/// to mesh models only, because a B-rep model's triangles change with the
+/// tessellation tolerance.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SelectionTarget {
@@ -284,6 +285,116 @@ pub enum SelectionTarget {
     Edges(BTreeSet<EdgeId>),
     /// Mesh triangles by index.
     Triangles(BTreeSet<u32>),
+    /// Mesh edges, each named by a triangle that has it (schema 12; OI-204,
+    /// decision record 0066).
+    MeshEdges(BTreeSet<MeshEdge>),
+}
+
+impl SelectionTarget {
+    /// How many entities the target selects.
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Faces(f) => f.len(),
+            Self::Edges(e) => e.len(),
+            Self::Triangles(t) => t.len(),
+            Self::MeshEdges(e) => e.len(),
+        }
+    }
+
+    /// Whether the target selects nothing.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The entities' name for the user: "faces", "edges" or "triangles".
+    /// Mesh edges and B-rep edges are both "edges".
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Self::Faces(_) => "faces",
+            Self::Edges(_) | Self::MeshEdges(_) => "edges",
+            Self::Triangles(_) => "triangles",
+        }
+    }
+}
+
+impl From<BTreeSet<FaceId>> for SelectionTarget {
+    fn from(faces: BTreeSet<FaceId>) -> Self {
+        Self::Faces(faces)
+    }
+}
+
+impl From<BTreeSet<EdgeId>> for SelectionTarget {
+    fn from(edges: BTreeSet<EdgeId>) -> Self {
+        Self::Edges(edges)
+    }
+}
+
+impl From<BTreeSet<u32>> for SelectionTarget {
+    fn from(triangles: BTreeSet<u32>) -> Self {
+        Self::Triangles(triangles)
+    }
+}
+
+impl From<BTreeSet<MeshEdge>> for SelectionTarget {
+    fn from(edges: BTreeSet<MeshEdge>) -> Self {
+        Self::MeshEdges(edges)
+    }
+}
+
+/// An edge of a mesh model, named by one triangle that has it: side `side` of
+/// facet `triangle` of the model file, from corner `side` to corner
+/// `(side + 1) % 3` (schema 12; decision record 0066).
+///
+/// Triangle `i` is facet `i` of the file whatever the placement (decision
+/// record 0032), so the name is relative to the file's content hash, as a
+/// triangle selection is. An edge shared by two triangles has two names; a
+/// front end stores the smaller, so a set holds each edge once. Written as a
+/// pair `[triangle, side]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "[u32; 2]", into = "[u32; 2]")]
+pub struct MeshEdge {
+    /// The facet's index in the model file.
+    pub triangle: u32,
+    /// The side, 0 to 2.
+    side: u8,
+}
+
+impl MeshEdge {
+    /// Side `side` (0 to 2) of triangle `triangle`, or `None` for a side
+    /// above 2.
+    pub fn new(triangle: u32, side: u8) -> Option<Self> {
+        (side < 3).then_some(Self { triangle, side })
+    }
+
+    /// The side, 0 to 2: from corner `side` to corner `(side + 1) % 3`.
+    pub fn side(self) -> u8 {
+        self.side
+    }
+
+    /// The indices, 0 to 2, of the triangle's corners at the edge's ends.
+    pub fn corners(self) -> [usize; 2] {
+        let a = usize::from(self.side);
+        [a, (a + 1) % 3]
+    }
+}
+
+impl TryFrom<[u32; 2]> for MeshEdge {
+    type Error = String;
+
+    fn try_from([triangle, side]: [u32; 2]) -> Result<Self, String> {
+        u8::try_from(side)
+            .ok()
+            .and_then(|s| Self::new(triangle, s))
+            .ok_or_else(|| {
+                format!("mesh edge [{triangle}, {side}]: the side of a triangle is 0, 1 or 2")
+            })
+    }
+}
+
+impl From<MeshEdge> for [u32; 2] {
+    fn from(edge: MeshEdge) -> Self {
+        [edge.triangle, u32::from(edge.side)]
+    }
 }
 
 /// Where a selected entity was, for matching it again after the model is
@@ -331,6 +442,11 @@ pub struct SelectionSet {
     /// for the default swatch of its place in the list (decision record 0046
     /// item 2). It does not change what an operation cuts.
     pub colour: Option<String>,
+    /// For a set of B-rep edges: whether edges where two faces meet smoothly
+    /// (tangent edges) are kept, or `None` for the project's default
+    /// ([`Project::keep_tangent_edges`]). Only an `Edges` set may hold one
+    /// (schema 12, decision record 0066).
+    pub keep_tangent_edges: Option<bool>,
 }
 
 /// Whether `text` is a colour as a set stores it: `#rrggbb` in lower case.
@@ -537,6 +653,9 @@ pub struct Project {
     /// The ID of the library profile the machine copy came from (OI-128).
     pub(crate) machine_id: Option<String>,
     simulation: SimulationSettings,
+    /// Whether B-rep edge sets keep tangent edges when they do not say
+    /// (schema 12, decision record 0066). Off by default.
+    keep_tangent_edges: bool,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
     tools: Vec<ToolSnapshot>,
@@ -794,6 +913,7 @@ impl Project {
             machine,
             machine_id: None,
             simulation: SimulationSettings::default(),
+            keep_tangent_edges: false,
             models,
             setups,
             tools,
@@ -821,6 +941,19 @@ impl Project {
     /// stock (SIM-06), so the G-code depends on it (GC-07, decision record 0025).
     pub fn simulation(&self) -> SimulationSettings {
         self.simulation
+    }
+
+    /// Whether a set of B-rep edges that does not say keeps the edges where
+    /// two faces meet smoothly (tangent edges) when an operation follows it
+    /// (OP-08; decision record 0066). Off unless the project sets it.
+    pub fn keep_tangent_edges(&self) -> bool {
+        self.keep_tangent_edges
+    }
+
+    /// Whether `set` keeps tangent edges: its own choice, else the project's
+    /// default. Meaningful for a set of B-rep edges.
+    pub fn keeps_tangent_edges(&self, set: &SelectionSet) -> bool {
+        set.keep_tangent_edges.unwrap_or(self.keep_tangent_edges)
     }
 
     /// Model references in order.
@@ -954,6 +1087,12 @@ impl Project {
     /// records one (OI-128).
     pub fn machine_id(&self) -> Option<&str> {
         self.machine_id.as_deref()
+    }
+
+    /// Sets the project's default for keeping tangent edges and returns the
+    /// old one (decision record 0066).
+    pub fn set_keep_tangent_edges(&mut self, keep: bool) -> bool {
+        std::mem::replace(&mut self.keep_tangent_edges, keep)
     }
 
     /// Sets the simulation settings and returns the old ones. Fails, leaving
@@ -1208,6 +1347,14 @@ impl Project {
                     )
                     .into());
                 }
+                if s.keep_tangent_edges.is_some() && !matches!(s.target, SelectionTarget::Edges(_))
+                {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("selection set {}.keep_tangent_edges", s.id),
+                        "keep_tangent_edges applies to a set of a STEP model's edges only",
+                    )
+                    .into());
+                }
                 for (i, d) in s.descriptors.iter().enumerate() {
                     let field = format!("selection set {}.descriptors[{i}]", s.id);
                     d.position.validate(&format!("{field}.position"))?;
@@ -1282,8 +1429,8 @@ impl Project {
     }
 }
 
-/// Triangle selections apply to mesh models only, and face and edge
-/// selections to B-rep models only (architecture section 5.6). A model whose
+/// Triangle and mesh edge selections apply to mesh models only, and face and
+/// edge selections to B-rep models only (architecture section 5.6). A model whose
 /// format is not known is not checked.
 fn check_selection_kind(set: &SelectionSet, kind: Option<ModelKind>) -> Result<(), ProjectError> {
     let reason = match (&set.target, kind) {
@@ -1291,8 +1438,13 @@ fn check_selection_kind(set: &SelectionSet, kind: Option<ModelKind>) -> Result<(
             "a STEP model is selected by face and edge, not by triangle, because its \
              triangles change with the tessellation tolerance"
         }
+        (SelectionTarget::MeshEdges(_), Some(ModelKind::Brep)) => {
+            "a STEP model is selected by its own edges, not by the edges of its triangles, \
+             because its triangles change with the tessellation tolerance"
+        }
         (SelectionTarget::Faces(_) | SelectionTarget::Edges(_), Some(ModelKind::Mesh)) => {
-            "a mesh model has no faces or edges to select; select triangles"
+            "a mesh model has no faces or B-rep edges to select; select triangles or \
+             triangle edges"
         }
         _ => return Ok(()),
     };

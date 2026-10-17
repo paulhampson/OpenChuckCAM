@@ -104,7 +104,7 @@ pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use brep_edges::BrepEdges;
 pub use composite::CompositeSurface;
-pub use curves::{CurveSource, EdgeChain, MeshFeatureEdges};
+pub use curves::{ChosenSegments, CurveSource, EdgeChain, MeshFeatureEdges};
 pub use cutter::{Contact, ToolLine};
 pub use drill::RadialDrilling;
 pub use edge_following::EdgeFollowing;

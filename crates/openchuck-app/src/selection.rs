@@ -81,16 +81,18 @@ pub enum RegionRequest {
     },
 }
 
-/// A change to a selection set's triangles or name (UI-05).
+/// A change to what a selection set selects, or to its name (UI-05). What is
+/// added, taken out or put in place must be of the set's kind: triangles,
+/// mesh edges, faces or B-rep edges.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SelectionEdit {
-    /// Adds triangles.
-    Add(TriangleSet),
-    /// Takes triangles out.
-    Remove(TriangleSet),
+    /// Adds to the selection.
+    Add(SelectionTarget),
+    /// Takes out of the selection.
+    Remove(SelectionTarget),
     /// Replaces the selection.
-    Replace(TriangleSet),
+    Replace(SelectionTarget),
     /// Renames the set.
     Rename(String),
     /// Sets the stock to leave on the set, in millimetres, or clears it so the
@@ -100,6 +102,10 @@ pub enum SelectionEdit {
     /// clears it so the default swatch applies (decision record 0046). It
     /// does not change what an operation cuts.
     Colour(Option<String>),
+    /// For a set of a STEP model's edges: keeps the edges where two faces
+    /// meet smoothly (`Some(true)`), drops them (`Some(false)`), or follows
+    /// the project's default (`None`) (decision record 0066).
+    KeepTangentEdges(Option<bool>),
 }
 
 /// The part an operation gives a selection set (OP-02).
@@ -236,22 +242,27 @@ impl Application {
             }))
     }
 
-    /// Saves `triangles` of the mesh model `model` as a new named set at the
-    /// end of the list (UI-05, PRJ-06). Fails if `triangles` is empty, names a
-    /// triangle the model does not have, or the model file has changed since
-    /// it was added to the project. Undoable.
+    /// Saves `target` as a new named set on `model`, at the end of the list
+    /// (UI-05, PRJ-06): triangles or edges of a mesh model's triangles, or
+    /// faces or edges of a STEP model (slice 11 item 7; decision record
+    /// 0066). Fails if it selects nothing, names something the model does not
+    /// have, is of a kind the model is not selected by, or the model file has
+    /// changed since it was added to the project. Undoable.
     pub fn save_selection(
         &mut self,
         name: &str,
         model: ModelId,
-        triangles: TriangleSet,
+        target: impl Into<SelectionTarget>,
     ) -> Result<SelectionSetId, AppError> {
+        let target = target.into();
         let reference = self.model_ref(model)?.clone();
         let cancel = CancelToken::new();
         let context = JobContext::new(&cancel, &NoProgress);
+        // A STEP model's placed B-rep comes with lane Z's `PlacedPart`; until
+        // then a STEP model cannot be read here (OI-242).
         let (mesh, hash) =
             crate::model::placed_mesh_hashed(&self.document.location, &reference, &context)?;
-        check_triangles(name, &mesh, &triangles)?;
+        check_target(name, &mesh, None, &target)?;
         if hash != reference.hash {
             return Err(selection_error(
                 name,
@@ -269,10 +280,11 @@ impl Application {
             name: name.to_owned(),
             model,
             model_hash: hash,
-            target: SelectionTarget::Triangles(triangles),
+            target,
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         };
         self.execute(Command::Add {
             item: Item::SelectionSet(set),
@@ -298,57 +310,63 @@ impl Application {
             .find(|s| s.id == set)
             .cloned()
             .ok_or_else(|| AppError::UnknownSelection(set.to_string()))?;
-        if let SelectionEdit::Rename(name) = edit {
-            edited.name = name;
-        } else if let SelectionEdit::StockToLeave(leave) = edit {
-            if leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
-                return Err(selection_error(
-                    &edited.name,
-                    "the stock to leave must be zero or more millimetres",
-                ));
+        match edit {
+            SelectionEdit::Rename(name) => edited.name = name,
+            SelectionEdit::StockToLeave(leave) => {
+                if leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+                    return Err(selection_error(
+                        &edited.name,
+                        "the stock to leave must be zero or more millimetres",
+                    ));
+                }
+                edited.stock_to_leave = leave;
             }
-            edited.stock_to_leave = leave;
-        } else if let SelectionEdit::Colour(colour) = edit {
-            if colour
-                .as_deref()
-                .is_some_and(|c| !openchuck_project::is_set_colour(c))
-            {
-                return Err(selection_error(
-                    &edited.name,
-                    "the colour must be written #rrggbb in lower case",
-                ));
+            SelectionEdit::Colour(colour) => {
+                if colour
+                    .as_deref()
+                    .is_some_and(|c| !openchuck_project::is_set_colour(c))
+                {
+                    return Err(selection_error(
+                        &edited.name,
+                        "the colour must be written #rrggbb in lower case",
+                    ));
+                }
+                edited.colour = colour;
             }
-            edited.colour = colour;
-        } else {
-            let SelectionTarget::Triangles(current) = &mut edited.target else {
-                return Err(selection_error(
-                    &edited.name,
-                    "only triangle selections on meshes can be edited so far",
-                ));
-            };
-            match edit {
-                SelectionEdit::Add(more) => current.extend(more),
-                SelectionEdit::Remove(less) => current.retain(|t| !less.contains(t)),
-                SelectionEdit::Replace(all) => *current = all,
-                SelectionEdit::Rename(_)
-                | SelectionEdit::StockToLeave(_)
-                | SelectionEdit::Colour(_) => {}
+            SelectionEdit::KeepTangentEdges(keep) => {
+                if keep.is_some() && !matches!(edited.target, SelectionTarget::Edges(_)) {
+                    return Err(selection_error(
+                        &edited.name,
+                        "keeping tangent edges applies to a set of a STEP model's edges only",
+                    ));
+                }
+                edited.keep_tangent_edges = keep;
             }
-            if current.is_empty() {
-                return Err(selection_error(
-                    &edited.name,
-                    "the edit would leave the set with no triangles; remove the set instead",
-                ));
-            }
-            let reference = self.model_ref(edited.model)?;
-            let cancel = CancelToken::new();
-            let context = JobContext::new(&cancel, &NoProgress);
-            let (mesh, _) =
-                crate::model::placed_mesh_hashed(&self.document.location, reference, &context)?;
-            check_triangles(&edited.name, &mesh, current)?;
+            SelectionEdit::Add(other) => combine(&mut edited, other, Join::Add)?,
+            SelectionEdit::Remove(other) => combine(&mut edited, other, Join::Remove)?,
+            SelectionEdit::Replace(other) => combine(&mut edited, other, Join::Replace)?,
+        }
+        let changed_target = self
+            .document
+            .project
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == set && s.target != edited.target);
+        if changed_target {
+            self.check_edited(&edited)?;
         }
         self.execute(Command::Replace(Item::SelectionSet(edited)))?;
         Ok(self.document.project.operations_using(set))
+    }
+
+    /// Checks an edited set's target against its model as read now.
+    fn check_edited(&self, set: &SelectionSet) -> Result<(), AppError> {
+        let reference = self.model_ref(set.model)?;
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &NoProgress);
+        let (mesh, _) =
+            crate::model::placed_mesh_hashed(&self.document.location, reference, &context)?;
+        check_target(&set.name, &mesh, None, &set.target)
     }
 
     /// Puts `set` in, or takes it out of, `role` of `operation` (OP-02, UI-05).
@@ -456,7 +474,7 @@ impl Application {
     /// it selects, the operations that use it and why, and a problem if one
     /// can be seen without reading the model. Checked here: the model is in
     /// the project, the set was made on the version of its file the project
-    /// holds, it selects triangles of a mesh, it selects something, and the
+    /// holds, it selects something, and the
     /// file on disk is still the one added. A triangle beyond the end of the
     /// model is found when the operation is generated (decision record 0032
     /// item 7). Nothing is dropped silently (OI-139).
@@ -475,11 +493,8 @@ impl Application {
                 let model = project.models().iter().find(|m| m.id == set.model);
                 let problem = match (&set.target, model) {
                     (_, None) => Some("its model is no longer in the project".to_owned()),
-                    (SelectionTarget::Faces(_) | SelectionTarget::Edges(_), Some(_)) => Some(
-                        "it selects faces or edges, which need a STEP model (slice 11)".to_owned(),
-                    ),
-                    (SelectionTarget::Triangles(t), Some(_)) if t.is_empty() => {
-                        Some("it selects no triangles".to_owned())
+                    (target, Some(_)) if target.is_empty() => {
+                        Some(format!("it selects no {}", target.kind_name()))
                     }
                     (_, Some(m)) if m.hash != set.model_hash => Some(format!(
                         "it was made on a different version of '{}'; select again on the current model",
@@ -490,16 +505,8 @@ impl Application {
                         .find(|w| w.starts_with(&format!("'{}' ", m.path.as_str())))
                         .map(|w| format!("{w}, so the selection may not match it")),
                 };
-                let count = match &set.target {
-                    SelectionTarget::Triangles(t) => t.len(),
-                    SelectionTarget::Faces(f) => f.len(),
-                    SelectionTarget::Edges(e) => e.len(),
-                };
-                let kind = match &set.target {
-                    SelectionTarget::Triangles(_) => "triangles",
-                    SelectionTarget::Faces(_) => "faces",
-                    SelectionTarget::Edges(_) => "edges",
-                };
+                let count = set.target.len();
+                let kind = set.target.kind_name();
                 let uses = project
                     .operations()
                     .iter()
@@ -560,6 +567,240 @@ fn check_triangles(
             format!("triangle {last} does not exist; the model has {count} triangles"),
         )),
         _ => Ok(()),
+    }
+}
+
+/// Whether `operation` uses a set of mesh edges in any role. Edge following
+/// follows them instead of honouring a region, and
+/// [`mesh_edge_segments`] refuses them anywhere else, naming the set
+/// (OI-204; decision record 0066).
+pub(crate) fn selects_mesh_edges(project: &Project, operation: &Operation) -> bool {
+    operation.selection_refs().any(|id| {
+        project
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == id && matches!(s.target, SelectionTarget::MeshEdges(_)))
+    })
+}
+
+/// The mesh edges `operation` selects, as segments of its placed part `mesh`
+/// (`part`, read now with hash `hash`), in the sets' order; `None` when it
+/// selects none (OI-204; decision record 0066). Only edge following uses
+/// them, and only as the sets it machines; anything else is an error naming
+/// the set, never a silent drop (OP-02).
+pub(crate) fn mesh_edge_segments(
+    project: &Project,
+    operation: &Operation,
+    part: &ModelRef,
+    hash: ContentHash,
+    mesh: &TriangleMesh,
+) -> Result<Option<Vec<[openchuck_types::geometry::Point3; 2]>>, AppError> {
+    let fail = |set: &SelectionSet, reason: String| AppError::Operation {
+        name: operation.name.clone(),
+        reason: format!("selection set '{}' cannot be used: {reason}", set.name),
+    };
+    let find = |id: SelectionSetId| {
+        project
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| AppError::UnknownSelection(id.to_string()))
+    };
+    for id in operation
+        .boundary
+        .iter()
+        .chain(&operation.avoid)
+        .chain(&operation.check)
+    {
+        let set = find(*id)?;
+        if matches!(set.target, SelectionTarget::MeshEdges(_)) {
+            return Err(fail(
+                set,
+                "it selects edges, which can only be followed, not used as a boundary, an \
+                 avoid or a check surface"
+                    .to_owned(),
+            ));
+        }
+    }
+    let mut segments = Vec::new();
+    let mut triangles = None;
+    let mut any = false;
+    for id in &operation.selections {
+        let set = find(*id)?;
+        let SelectionTarget::MeshEdges(edges) = &set.target else {
+            triangles = Some(set);
+            continue;
+        };
+        any = true;
+        if operation.strategy != openchuck_path::edge_following::NAME {
+            return Err(fail(
+                set,
+                format!(
+                    "it selects edges, and the strategy '{}' does not use selected edges; only \
+                     edge following does",
+                    operation.strategy
+                ),
+            ));
+        }
+        if set.model != part.id {
+            return Err(fail(
+                set,
+                "it was made on a different model from the setup's part".to_owned(),
+            ));
+        }
+        if set.model_hash != hash {
+            return Err(fail(
+                set,
+                format!(
+                    "it was made on a different version of '{}' (the file has changed); select \
+                     again on the current model",
+                    part.path.as_str()
+                ),
+            ));
+        }
+        if edges.is_empty() {
+            return Err(fail(set, "it selects no edges".to_owned()));
+        }
+        for edge in edges {
+            let ends = mesh
+                .triangles
+                .get(edge.triangle as usize)
+                .map(|t| edge.corners().map(|c| t.get(c).copied()))
+                .and_then(|[a, b]| {
+                    Some([
+                        mesh.vertices.get(a? as usize)?,
+                        mesh.vertices.get(b? as usize)?,
+                    ])
+                });
+            let Some([a, b]) = ends else {
+                return Err(fail(
+                    set,
+                    format!(
+                        "triangle {} does not exist; the model has {} triangles",
+                        edge.triangle,
+                        mesh.triangles.len()
+                    ),
+                ));
+            };
+            segments.push([*a, *b]);
+        }
+    }
+    if !any {
+        return Ok(None);
+    }
+    if let Some(set) = triangles {
+        return Err(fail(
+            set,
+            "it selects triangles, and edge following follows the operation's selected edges; \
+             take the triangle set out"
+                .to_owned(),
+        ));
+    }
+    Ok(Some(segments))
+}
+
+#[derive(Clone, Copy)]
+enum Join {
+    Add,
+    Remove,
+    Replace,
+}
+
+/// Joins `other` to the target of `set` as `join` says; both must be of one
+/// kind, and the result must select something.
+fn combine(set: &mut SelectionSet, other: SelectionTarget, join: Join) -> Result<(), AppError> {
+    fn apply<T: Ord>(current: &mut BTreeSet<T>, other: BTreeSet<T>, join: Join) {
+        match join {
+            Join::Add => current.extend(other),
+            Join::Remove => current.retain(|t| !other.contains(t)),
+            Join::Replace => *current = other,
+        }
+    }
+    let kind = set.target.kind_name();
+    match (&mut set.target, other) {
+        (SelectionTarget::Triangles(a), SelectionTarget::Triangles(b)) => apply(a, b, join),
+        (SelectionTarget::MeshEdges(a), SelectionTarget::MeshEdges(b)) => apply(a, b, join),
+        (SelectionTarget::Faces(a), SelectionTarget::Faces(b)) => apply(a, b, join),
+        (SelectionTarget::Edges(a), SelectionTarget::Edges(b)) => apply(a, b, join),
+        (_, other) => {
+            return Err(selection_error(
+                &set.name,
+                format!(
+                    "it selects {kind}, and the edit gives {}; a set holds one kind",
+                    other.kind_name()
+                ),
+            ));
+        }
+    }
+    if set.target.is_empty() {
+        return Err(selection_error(
+            &set.name,
+            format!("the edit would leave the set with no {kind}; remove the set instead"),
+        ));
+    }
+    Ok(())
+}
+
+/// Checks that `target` can be stored on the model read as `mesh`, with its
+/// placed B-rep `brep` for a STEP model: of a kind the model is selected by,
+/// not empty, and naming only what the model has.
+pub(crate) fn check_target(
+    name: &str,
+    mesh: &TriangleMesh,
+    brep: Option<&openchuck_types::brep::BrepModel>,
+    target: &SelectionTarget,
+) -> Result<(), AppError> {
+    let kind = target.kind_name();
+    if target.is_empty() {
+        return Err(selection_error(name, format!("it selects no {kind}")));
+    }
+    match (target, brep) {
+        (SelectionTarget::Triangles(t), None) => check_triangles(name, mesh, t),
+        (SelectionTarget::MeshEdges(edges), None) => {
+            let count = mesh.triangles.len();
+            match edges.iter().map(|e| e.triangle).max() {
+                Some(last) if last as usize >= count => Err(selection_error(
+                    name,
+                    format!("triangle {last} does not exist; the model has {count} triangles"),
+                )),
+                _ => Ok(()),
+            }
+        }
+        (SelectionTarget::Faces(faces), Some(brep)) => {
+            match faces
+                .iter()
+                .find(|f| !brep.faces.iter().any(|g| g.id == **f))
+            {
+                Some(f) => Err(selection_error(
+                    name,
+                    format!("face {} is not in the model", f.0),
+                )),
+                None => Ok(()),
+            }
+        }
+        (SelectionTarget::Edges(edges), Some(brep)) => {
+            match edges
+                .iter()
+                .find(|e| !brep.edges.iter().any(|g| g.id == **e))
+            {
+                Some(e) => Err(selection_error(
+                    name,
+                    format!("edge {} is not in the model", e.0),
+                )),
+                None => Ok(()),
+            }
+        }
+        (SelectionTarget::Triangles(_) | SelectionTarget::MeshEdges(_), Some(_)) => {
+            Err(selection_error(
+                name,
+                "a STEP model is selected by face and edge, not by triangle, because its \
+                 triangles change with the tessellation tolerance",
+            ))
+        }
+        (SelectionTarget::Faces(_) | SelectionTarget::Edges(_), None) => Err(selection_error(
+            name,
+            "a mesh model has no faces or B-rep edges to select; select triangles or edges",
+        )),
     }
 }
 
@@ -643,7 +884,11 @@ pub(crate) fn resolve(
                 let SelectionTarget::Triangles(triangles) = &set.target else {
                     return Err(fail(
                         set,
-                        "it selects faces or edges, which need a STEP model (slice 11)".to_owned(),
+                        format!(
+                            "it selects {}, which only edge following uses, as the edges it \
+                             follows",
+                            set.target.kind_name()
+                        ),
                     ));
                 };
                 if set.model != part.id {
@@ -746,4 +991,47 @@ pub(crate) fn resolve(
         leaves,
         rest,
     }))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use openchuck_project::MeshEdge;
+    use openchuck_testkit::brep::{HoleSpec, drilled_blank};
+    use openchuck_types::brep::{EdgeId, FaceId};
+
+    use super::*;
+
+    /// Face and edge sets are checked against the placed B-rep they are made
+    /// on, the seam lane Z's `PlacedPart` fills (slice 11 item 7; decision
+    /// record 0066): the kind, emptiness and every ID.
+    #[test]
+    fn req_prj_06_req_ui_05_face_and_edge_sets_are_checked_against_the_b_rep() {
+        let (brep, _) = drilled_blank(
+            10.0,
+            40.0,
+            &[HoleSpec::blind(20.0, [0.0, 0.0, 1.0], 4.0, 3.0)],
+        );
+        let mesh = brep.joined_tessellation().0;
+        let check = |target: SelectionTarget, brep| check_target("Set", &mesh, brep, &target);
+        let faces = |ids: &[u32]| SelectionTarget::Faces(ids.iter().map(|i| FaceId(*i)).collect());
+        let edges = |ids: &[u32]| SelectionTarget::Edges(ids.iter().map(|i| EdgeId(*i)).collect());
+        check(faces(&[0, 2]), Some(&brep)).unwrap();
+        check(edges(&[0, 1]), Some(&brep)).unwrap();
+        let err = |r: Result<(), AppError>| r.unwrap_err().to_string();
+        assert!(err(check(faces(&[9]), Some(&brep))).contains("face 9 is not in the model"));
+        assert!(err(check(edges(&[7]), Some(&brep))).contains("edge 7 is not in the model"));
+        assert!(err(check(faces(&[]), Some(&brep))).contains("no faces"));
+        // Triangles and mesh edges are refused on a STEP model, faces and
+        // B-rep edges on a mesh.
+        let triangles = SelectionTarget::Triangles([0].into());
+        assert!(err(check(triangles.clone(), Some(&brep))).contains("face and edge"));
+        let mesh_edges = SelectionTarget::MeshEdges([MeshEdge::new(0, 1).unwrap()].into());
+        assert!(err(check(mesh_edges.clone(), Some(&brep))).contains("face and edge"));
+        assert!(err(check(faces(&[0]), None)).contains("no faces"));
+        check(triangles, None).unwrap();
+        check(mesh_edges, None).unwrap();
+        let beyond = SelectionTarget::MeshEdges([MeshEdge::new(u32::MAX, 0).unwrap()].into());
+        assert!(err(check(beyond, None)).contains("does not exist"));
+    }
 }
