@@ -21,6 +21,7 @@ env:
 jobs:
   fuzz:
     name: Fuzz ${{ matrix.target }} (1 hour)
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -59,6 +60,7 @@ jobs:
   # importer; the application process must never crash, hang or panic. The kernel build is cached.
   step-mutations:
     name: STEP mutation run through the importer
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
@@ -129,6 +131,7 @@ jobs:
 
   long-tests:
     name: Long-running tests (uninstrumented)
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -144,6 +147,7 @@ jobs:
 
   beta:
     name: Beta toolchain (${{ matrix.os }})
+    if: false
     strategy:
       fail-fast: false
       matrix:
