@@ -2,7 +2,14 @@
 # Default Makera Z1 tool, number 105 (TL-12; decision record 0081). Facts
 # only: dimensions and parameters, no wording, images or file structures.
 # Tool material "carbide" is the owner's decision, from the community
-# profiles' material column. No cutting data (OI-270).
+# profiles' material column.
+# Cutting data (OI-270, owner-decided): spindle speed, plunge feed and depth
+# of cut (stepdown) from the Tool Reference Parameters of the Makera bit
+# page spiral-o-single-flute-bit-1-8-shank; feed per tooth = feed / (spindle
+# speed x flute count); stepover 70 percent of the diameter, from the VCarve
+# database VCarveDesktop-profiles/CarveraTools.vtdb, whose rows are for the
+# material Hardwood/Plastic, so only Hardwood and Plastic have entries.
+# Materials are the page's names; a dash on the page stores nothing.
 # Source: bit page spiral-o-single-flute-bit-1-8-shank: diameter, flute
 # length (variant sizes), shank 3.175, flute count 1 (single flute), solid
 # carbide, total length "38 mm or more"; overall length from the community
@@ -23,3 +30,17 @@ material = "carbide"
 
 [tool.shape]
 type = "flat_end"
+
+[cutting_data."Hardwood"]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 1.0
+
+[cutting_data."Plastic"]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 1.0

@@ -870,7 +870,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 ## Slice 23 – Default tool library
 
-**Status:** built except what is still open (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools and 52 Makera Z1 tools (the 1/8 in set plus the 4 mm and 6 mm shank extension) with the Z1 default tool set (NXX numbers 101 to 504, assigned by this project; the owner approved the tables and the numbers, relayed) are embedded and installed on first run with a ledger, and the explicit restore action is built. **Still open:** cutting data (OI-270, none ships), the UI button for the restore action (the update policy itself is decided, OI-271), thread mills as a P2 item (OI-281, left out), the tools left out of the extension (OI-282), two 4 mm engraving bits that fail validation (OI-283), and the licence of the Makera data (OI-269: the owner's route, no legal clearance claimed). The guide is not written. TL-12 is met for the standard tools and the Z1 set except for those items. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
+**Status:** built except what is still open (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools and 52 Makera Z1 tools (the 1/8 in set plus the 4 mm and 6 mm shank extension) with the Z1 default tool set (NXX numbers 101 to 504, assigned by this project; the owner approved the tables and the numbers, relayed) are embedded and installed on first run with a ledger, and the explicit restore action is built. **Cutting data (OI-270, decided):** 30 of the 52 Z1 bits ship the Makera reference values (125 entries, source record in decision 0081 item 10); the standard tools and the other 22 Z1 bits ship none. **Still open:** the UI button for the restore action (the update policy itself is decided, OI-271), thread mills as a P2 item (OI-281, left out), the tools left out of the extension (OI-282), two 4 mm engraving bits that fail validation (OI-283), and the licence of the Makera data (OI-269: the owner's route, no legal clearance claimed). The guide is not written. TL-12 is met for the standard tools and the Z1 set except for those items. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
 
 **Goal:** a new user finds the tools a Makera Z1 normally holds and a set of common standard tools already in the library.
 
@@ -893,7 +893,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 - [x] A tool the user edited or deleted is not overwritten or restored by an update
 - [x] Every default tool validates and its shape matches its closed-form silhouette (TL-02, TL-03)
 - [x] The data is embedded and read with no network access (NFR-09)
-- [ ] Cutting data that ships has a recorded source *(none ships; OI-270 is undecided)*
+- [x] Cutting data that ships has a recorded source *(decision 0081 item 10, OI-270, and each file's header)*
 
 ## Slice 20 – Hardening and first release
 

@@ -2,7 +2,14 @@
 # Default Makera Z1 tool, number 210 (TL-12; decision record 0081). Facts
 # only: dimensions and parameters, no wording, images or file structures.
 # Tool material "carbide" is the owner's decision, from the community
-# profiles' material column. No cutting data (OI-270).
+# profiles' material column.
+# Cutting data (OI-270, owner-decided): spindle speed, plunge feed and depth
+# of cut (stepdown) from the Tool Reference Parameters of the Makera bit
+# page two-flute-ball-nose-bit-4mm-shank; feed per tooth = feed / (spindle
+# speed x flute count); stepover diameter / 7 (community Fusion presets and
+# FreeCAD bit files agree: Fusion360-profiles/Tool Files/Makera Ball
+# Endmills.tools, Freecad/Tools/Bit/). Materials are the page's names; a
+# dash on the page stores nothing.
 # Source: bit page two-flute-ball-nose-bit-4mm-shank: diameter, flute length
 # (variant sizes), shank 4, total length ~45, two flutes (name), solid
 # carbide. Where the page lists several sizes beside several total lengths,
@@ -23,3 +30,24 @@ material = "carbide"
 
 [tool.shape]
 type = "ball_end"
+
+[cutting_data."Hardwood"]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 200.0
+stepover = 0.571429
+stepdown = 1.0
+
+[cutting_data."Plastic"]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 200.0
+stepover = 0.571429
+stepdown = 1.0
+
+[cutting_data."Softwood"]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 200.0
+stepover = 0.571429
+stepdown = 2.0

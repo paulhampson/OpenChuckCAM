@@ -2,7 +2,9 @@
 # Default Makera Z1 tool, number 401 (TL-12; decision record 0081). Facts
 # only: dimensions and parameters, no wording, images or file structures.
 # Tool material "carbide" is the owner's decision, from the community
-# profiles' material column. No cutting data (OI-270).
+# profiles' material column.
+# No cutting data (OI-270, owner-decided rule: a stepover only where a
+# community file states one): the owner excluded the chamfer.
 # Source: bit page chamfering-bit: 90 degree angle, tip 0.1 (parameter row
 # label), shank 3.175 (variant), length ~38, solid carbide; cutter diameter
 # 3.175, flute length 3 and flute count 2 from the community profiles

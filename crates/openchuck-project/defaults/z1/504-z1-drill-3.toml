@@ -2,7 +2,10 @@
 # Default Makera Z1 tool, number 504 (TL-12; decision record 0081). Facts
 # only: dimensions and parameters, no wording, images or file structures.
 # Tool material "carbide" is the owner's decision, from the community
-# profiles' material column. No cutting data (OI-270).
+# profiles' material column.
+# No cutting data (OI-270, owner-decided rule: a stepover only where a
+# community file states one): drilling has no stepover and no community file
+# states one.
 # Source: bit page tin-coating-drill-bit-1-8-shank: diameter, flute length
 # (variant sizes), shank 3.175, length ~38, TiN-coated solid carbide; the
 # 118 degree point angle (owner's shape mapping) and flute count 2 from the

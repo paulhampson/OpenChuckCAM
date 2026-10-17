@@ -78,6 +78,8 @@ fn req_tl_12_every_default_validates_and_has_a_stable_unique_id() {
     assert_eq!(ids.len(), tools.len(), "an ID is used twice");
     for t in &tools {
         t.validate().unwrap_or_else(|e| panic!("{}: {e}", t.name));
+    }
+    for t in standard_tools().unwrap() {
         assert!(t.cutting_data.is_empty(), "{} ships cutting data", t.name);
     }
 }
@@ -228,12 +230,11 @@ fn req_tl_12_restore_defaults_reinstalls_a_deleted_default_and_never_touches_an_
 }
 
 #[test]
-fn req_tl_12_req_tl_11_the_z1_tools_are_carbide_without_cutting_data_and_the_set_numbers_them() {
+fn req_tl_12_req_tl_11_the_z1_tools_are_carbide_and_the_set_numbers_them() {
     let z1 = z1_tools().unwrap();
     assert_eq!(z1.len(), 52);
     for t in &z1 {
         assert_eq!(t.tool.material.as_deref(), Some("carbide"), "{}", t.name);
-        assert!(t.cutting_data.is_empty(), "{} ships cutting data", t.name);
         // 1/8 inch, 4 mm and 6 mm shanks (the 4 mm and 6 mm extension).
         assert!(
             [3.175, 4.0, 6.0].contains(&t.tool.shank_diameter.0),
@@ -322,4 +323,167 @@ fn req_tl_12_an_edited_or_deleted_tool_set_is_not_overwritten_or_restored_by_a_r
     let report = reopened.restore_defaults().unwrap();
     assert_eq!(report.tool_sets_installed, vec!["Makera Z1".to_owned()]);
     assert_eq!(reopened.tool_set("Makera Z1").unwrap().entries.len(), 52);
+}
+
+/// The Makera bit pages' Tool Reference Parameters for the Z1 tools that ship
+/// cutting data, one row per tool and material (decision 0081 item 10).
+const PAGE_REFERENCE: &str = include_str!("data/z1-page-reference.csv");
+
+struct PageRow {
+    number: u32,
+    material: String,
+    rpm: f64,
+    feed: f64,
+    plunge: f64,
+    depth_of_cut: f64,
+    stepover: f64,
+}
+
+fn page_rows() -> Vec<PageRow> {
+    PAGE_REFERENCE
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(|l| {
+            let c: Vec<&str> = l.split(',').collect();
+            PageRow {
+                number: c[0].parse().unwrap(),
+                material: c[1].to_owned(),
+                rpm: c[2].parse().unwrap(),
+                feed: c[3].parse().unwrap(),
+                plunge: c[4].parse().unwrap(),
+                depth_of_cut: c[5].parse().unwrap(),
+                stepover: c[6].parse().unwrap(),
+            }
+        })
+        .collect()
+}
+
+fn number_of(set: &openchuck_project::tools::ToolSet, id: openchuck_project::id::ToolId) -> u32 {
+    set.entries
+        .iter()
+        .find(|e| e.tool == id)
+        .unwrap()
+        .controller
+        .number
+}
+
+#[test]
+fn req_tl_12_req_tl_05_cutting_data_exists_exactly_for_the_bits_and_materials_the_rule_gives() {
+    let z1 = z1_tools().unwrap();
+    let set = &default_tool_sets().unwrap()[0];
+    let rows = page_rows();
+    // Bits with cutting data: ball 201 to 214, V-bits except the held 307 and
+    // 308, and the O-flute bits 101, 102, 104 and 105. None for the chamfer,
+    // the drills, the corn bits, O-flute 103 and the twelve 4 mm and 6 mm flats.
+    let with: Vec<u32> = (201..=214)
+        .chain([101, 102, 104, 105])
+        .chain(301..=306)
+        .chain(309..=314)
+        .collect();
+    let mut seen = 0;
+    for t in &z1 {
+        let n = number_of(set, t.id);
+        let want: std::collections::BTreeSet<&str> = rows
+            .iter()
+            .filter(|r| r.number == n)
+            .map(|r| r.material.as_str())
+            .collect();
+        let have: std::collections::BTreeSet<&str> =
+            t.cutting_data.keys().map(String::as_str).collect();
+        assert_eq!(have, want, "T{n} {}", t.name);
+        assert_eq!(!have.is_empty(), with.contains(&n), "T{n} {}", t.name);
+        seen += have.len();
+    }
+    assert_eq!(seen, rows.len());
+    assert_eq!(with.len(), 30);
+    // The O-flute bits are limited to the materials the VCarve database names.
+    for t in z1
+        .iter()
+        .filter(|t| [101, 102, 104, 105].contains(&number_of(set, t.id)))
+    {
+        let keys: Vec<&str> = t.cutting_data.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["Hardwood", "Plastic"], "{}", t.name);
+    }
+}
+
+#[test]
+fn req_tl_12_req_tl_05_shipped_entries_validate_and_reproduce_the_page_values() {
+    let z1 = z1_tools().unwrap();
+    let set = &default_tool_sets().unwrap()[0];
+    for t in &z1 {
+        let n = number_of(set, t.id);
+        for (material, data) in &t.cutting_data {
+            data.validate(&t.tool, material).unwrap();
+            let row = page_rows()
+                .into_iter()
+                .find(|r| r.number == n && &r.material == material)
+                .unwrap();
+            assert_eq!(data.spindle_speed.0, row.rpm, "T{n} {material}");
+            assert_eq!(data.plunge_feed.0, row.plunge, "T{n} {material}");
+            assert_eq!(data.stepdown.0, row.depth_of_cut, "T{n} {material}");
+            assert_eq!(data.stepover.0, row.stepover, "T{n} {material}");
+            // Feed per tooth gives the page's feed back: feed / (rpm x flutes).
+            let feed = data.cutting_feed(&t.tool).0;
+            assert!(
+                (feed - row.feed).abs() <= 1e-6 * row.feed,
+                "T{n} {material}: {feed} against {}",
+                row.feed
+            );
+        }
+    }
+}
+
+#[test]
+fn req_tl_12_req_tl_05_stepover_comes_from_the_community_files_only_where_they_state_one() {
+    let z1 = z1_tools().unwrap();
+    let set = &default_tool_sets().unwrap()[0];
+    for t in &z1 {
+        let n = number_of(set, t.id);
+        let d = t.tool.diameter.0;
+        for (material, data) in &t.cutting_data {
+            let want = match n {
+                // Ball: diameter / 7 (Fusion presets and FreeCAD bit files).
+                201..=214 => d / 7.0,
+                // V-bits: the value the community files state for each bit.
+                301 => 0.03,
+                302 => 0.06,
+                303 => 0.09,
+                304..=314 => 0.03,
+                // O-flute: 70 percent of the diameter (VCarve database).
+                101 | 102 | 104 | 105 => 0.7 * d,
+                _ => panic!("T{n} has cutting data but no stepover source"),
+            };
+            assert!(
+                (data.stepover.0 - want).abs() < 1e-6,
+                "T{n} {material}: {} against {want}",
+                data.stepover.0
+            );
+        }
+    }
+}
+
+#[test]
+fn req_tl_12_the_first_run_installs_cutting_data_with_the_tools_and_an_edit_keeps_it() {
+    let dir = temp_dir("cutting").join("tools");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    lib.install_defaults().unwrap();
+    let reopened = ToolLibrary::open(&dir).unwrap();
+    assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
+    let set = reopened.tool_set("Makera Z1").unwrap();
+    let with = set
+        .entries
+        .iter()
+        .filter(|e| !reopened.get(e.tool).unwrap().cutting_data.is_empty())
+        .count();
+    assert_eq!(with, 30);
+
+    // A user's edit to the cutting data is never overwritten by a run.
+    let mut tool = reopened.get(set.entries[0].tool).unwrap().clone();
+    let key = tool.cutting_data.keys().next().unwrap().clone();
+    tool.cutting_data.get_mut(&key).unwrap().spindle_speed.0 += 1000.0;
+    let mut again = ToolLibrary::open(&dir).unwrap();
+    again.save_tool(tool.clone()).unwrap();
+    let mut third = ToolLibrary::open(&dir).unwrap();
+    third.install_defaults().unwrap();
+    assert_eq!(third.get(tool.id), Some(&tool));
 }
