@@ -12,6 +12,9 @@
 //! so a part turned by 90 degrees has exact coordinates.
 
 use openchuck_types::Result;
+use openchuck_types::brep::{
+    BSplinePatch, BrepEdge, BrepFace, BrepModel, BrepVertex, Frame, Surface, TrimLoop, UvPoint,
+};
 use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::transform::{Axis, TransformStep};
@@ -216,6 +219,144 @@ pub fn transform_mesh(mesh: &TriangleMesh, map: &Affine3) -> TriangleMesh {
 /// normal perpendicular to its triangle and on the same side.
 pub fn transform_normals(normals: &[Vec3], map: &Affine3) -> Vec<Vec3> {
     normals.iter().map(|&n| map.apply_vec(n)).collect()
+}
+
+/// The B-rep model mapped by `map` (IMP-05 for STEP models), with every face,
+/// edge and vertex keeping its ID.
+///
+/// Placement maps are rotations, mirrors, uniform scales and moves, so the
+/// linear part is a scale `s` times an orthogonal map. Each analytic frame's
+/// origin is mapped and its axes are mapped and divided by `s`, so they stay
+/// orthonormal; radii are multiplied by `s`, and the parameters that are
+/// lengths (u and v of a plane, v of a cylinder and a cone) are multiplied by
+/// `s` in the UV bounds and the trim loops, so a (u, v) names the same place
+/// on the part as before. B-spline poles are mapped and their parameters kept.
+/// When the map mirrors, a frame becomes left-handed, which turns the
+/// surface's `du x dv` inward, so the face's `reversed` flag is flipped to keep
+/// its normal outward, and each tessellation triangle's winding is reversed
+/// as in [`transform_mesh`].
+pub fn transform_brep(model: &BrepModel, map: &Affine3) -> BrepModel {
+    let det = map.determinant();
+    let mirrored = det < 0.0;
+    let s = det.abs().cbrt();
+    let axis = |v: Vec3| map.apply_vec(v) * (1.0 / s);
+    let frame = |f: &Frame| Frame {
+        origin: map.apply(f.origin),
+        x: axis(f.x),
+        y: axis(f.y),
+        z: axis(f.z),
+    };
+    let faces = model
+        .faces
+        .iter()
+        .map(|face| {
+            // Which parameters are lengths, and so scale with the model.
+            let (geometry, scale_u, scale_v) = match &face.geometry {
+                Surface::Plane { frame: f } => (Surface::Plane { frame: frame(f) }, s, s),
+                Surface::Cylinder { frame: f, radius } => (
+                    Surface::Cylinder {
+                        frame: frame(f),
+                        radius: radius * s,
+                    },
+                    1.0,
+                    s,
+                ),
+                Surface::Cone {
+                    frame: f,
+                    radius,
+                    semi_angle,
+                } => (
+                    Surface::Cone {
+                        frame: frame(f),
+                        radius: radius * s,
+                        semi_angle: *semi_angle,
+                    },
+                    1.0,
+                    s,
+                ),
+                Surface::Sphere { frame: f, radius } => (
+                    Surface::Sphere {
+                        frame: frame(f),
+                        radius: radius * s,
+                    },
+                    1.0,
+                    1.0,
+                ),
+                Surface::Torus {
+                    frame: f,
+                    major,
+                    minor,
+                } => (
+                    Surface::Torus {
+                        frame: frame(f),
+                        major: major * s,
+                        minor: minor * s,
+                    },
+                    1.0,
+                    1.0,
+                ),
+                Surface::BSpline(patch) => (
+                    Surface::BSpline(BSplinePatch {
+                        poles: patch.poles.iter().map(|&p| map.apply(p)).collect(),
+                        ..patch.clone()
+                    }),
+                    1.0,
+                    1.0,
+                ),
+                // A surface kind added later is kept in its own frame, which
+                // is only right for a map that does not move the model.
+                other => (other.clone(), 1.0, 1.0),
+            };
+            let [u0, u1, v0, v1] = face.uv_bounds;
+            BrepFace {
+                geometry,
+                reversed: face.reversed != mirrored,
+                uv_bounds: [u0 * scale_u, u1 * scale_u, v0 * scale_v, v1 * scale_v],
+                trims: face
+                    .trims
+                    .iter()
+                    .map(|l| {
+                        TrimLoop(
+                            l.0.iter()
+                                .map(|p| UvPoint {
+                                    u: p.u * scale_u,
+                                    v: p.v * scale_v,
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+                tessellation: transform_mesh(&face.tessellation, map),
+                ..face.clone()
+            }
+        })
+        .collect();
+    BrepModel {
+        faces,
+        edges: model
+            .edges
+            .iter()
+            .map(|e| BrepEdge {
+                polyline: e.polyline.iter().map(|&p| map.apply(p)).collect(),
+                ..e.clone()
+            })
+            .collect(),
+        vertices: model
+            .vertices
+            .iter()
+            .map(|v| BrepVertex {
+                point: map.apply(v.point),
+                ..v.clone()
+            })
+            .collect(),
+        tessellation: model.tessellation,
+    }
+}
+
+/// The map of a placement for a B-rep model: as [`placement`] on its joined
+/// tessellation, which [`TransformStep::CentreOnRotaryAxis`] centres.
+pub fn brep_placement(model: &BrepModel, steps: &[TransformStep]) -> Result<Affine3> {
+    placement(&model.joined_tessellation().0, steps)
 }
 
 /// The mesh placed by `steps` (IMP-05).

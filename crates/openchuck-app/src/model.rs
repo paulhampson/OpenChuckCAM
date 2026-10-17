@@ -10,10 +10,14 @@
 use std::path::{Component, Path, PathBuf};
 
 use openchuck_geom::check::check_mesh;
-use openchuck_geom::transform::{placement, transform_mesh, transform_normals};
-use openchuck_import::{ImportOptions, import_bytes};
+use openchuck_geom::transform::{
+    brep_placement, placement, transform_brep, transform_mesh, transform_normals,
+};
+use openchuck_import::{ImportOptions, ImportedModel, import_bytes};
 use openchuck_project::{ContentHash, ModelRef};
+use openchuck_types::brep::BrepModel;
 use openchuck_types::job::JobContext;
+use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::model::ModelGeometry;
 
 use crate::AppError;
@@ -77,7 +81,7 @@ pub(crate) fn inspect_placed(
     units: Option<LengthUnit>,
     transform: &[TransformStep],
     context: &JobContext<'_>,
-) -> Result<(ModelInspection, openchuck_types::mesh::TriangleMesh), AppError> {
+) -> Result<(ModelInspection, TriangleMesh), AppError> {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -91,14 +95,9 @@ pub(crate) fn inspect_placed(
         },
         context,
     )?;
-    let mesh = match &model.geometry {
-        ModelGeometry::Mesh(mesh) => mesh,
-        ModelGeometry::Brep(_) => return Err(ImportError::NotSupported("STEP").into()),
-    };
     context.check_cancelled()?;
     context.report("check mesh", 0, None);
-    let map = placement(mesh, transform)?;
-    let placed = transform_mesh(mesh, &map);
+    let (placed, map, _) = place(&model, transform)?;
     let normals = model
         .stated_normals
         .as_deref()
@@ -188,25 +187,79 @@ pub(crate) fn inspect_model(
     Ok(inspection)
 }
 
-/// Imports a project's model and places it in the model frame, for the
-/// pathing library (work breakdown slice 5 item 10). Only meshes are read
-/// so far: STEP waits for slice 11.
-pub(crate) fn placed_mesh(
-    project_root: &Path,
-    model: &ModelRef,
-    context: &JobContext<'_>,
-) -> Result<openchuck_types::mesh::TriangleMesh, AppError> {
-    placed_mesh_hashed(project_root, model, context).map(|(mesh, _)| mesh)
+/// An imported model placed in the model frame (IMP-05): its triangles, and
+/// for a STEP model its B-rep placed by the same map. A STEP model's mesh is
+/// its faces' tessellation joined in face order, which is what the viewport
+/// draws, the simulation compares with and the mesh strategies cut.
+fn place(
+    model: &ImportedModel,
+    transform: &[TransformStep],
+) -> Result<
+    (
+        TriangleMesh,
+        openchuck_geom::transform::Affine3,
+        Option<BrepModel>,
+    ),
+    AppError,
+> {
+    Ok(match &model.geometry {
+        ModelGeometry::Mesh(mesh) => {
+            let map = placement(mesh, transform)?;
+            (transform_mesh(mesh, &map), map, None)
+        }
+        ModelGeometry::Brep(brep) => {
+            let (placed, map) = PlacedPart::place_brep(brep, transform)?;
+            (placed.joined_tessellation().0, map, Some(placed))
+        }
+    })
 }
 
-/// As [`placed_mesh`], with the hash of the file as read now, which selection
-/// sets are checked against (PRJ-06). Triangle `i` of the result is facet `i`
-/// of the file: placement keeps the order.
-pub(crate) fn placed_mesh_hashed(
+/// A project's part as the pipeline reads it.
+#[derive(Debug, Clone)]
+pub(crate) struct PlacedPart {
+    /// The placed triangles: the mesh, or a STEP model's joined tessellation.
+    pub mesh: TriangleMesh,
+    /// The placed B-rep of a STEP model.
+    pub brep: Option<BrepModel>,
+    /// The hash of the file as read now, which selection sets are checked
+    /// against (PRJ-06).
+    pub hash: ContentHash,
+}
+
+impl PlacedPart {
+    fn place_brep(
+        brep: &BrepModel,
+        transform: &[TransformStep],
+    ) -> Result<(BrepModel, openchuck_geom::transform::Affine3), AppError> {
+        let map = brep_placement(brep, transform)?;
+        Ok((transform_brep(brep, &map), map))
+    }
+
+    /// The part of a B-rep model read from a file with hash `hash`, placed by
+    /// `transform`.
+    #[cfg(test)]
+    pub(crate) fn of_brep(
+        brep: &BrepModel,
+        transform: &[TransformStep],
+        hash: ContentHash,
+    ) -> Result<Self, AppError> {
+        let (placed, _) = Self::place_brep(brep, transform)?;
+        Ok(Self {
+            mesh: placed.joined_tessellation().0,
+            brep: Some(placed),
+            hash,
+        })
+    }
+}
+
+/// Imports a project's model and places it in the model frame, for the
+/// pathing library (work breakdown slice 5 item 10), keeping a STEP model's
+/// B-rep (decision 0056).
+pub(crate) fn placed_part(
     project_root: &Path,
     model: &ModelRef,
     context: &JobContext<'_>,
-) -> Result<(openchuck_types::mesh::TriangleMesh, ContentHash), AppError> {
+) -> Result<PlacedPart, AppError> {
     let path = model.path.resolve(project_root);
     let bytes = read(&path)?;
     let hash = ContentHash::of_bytes(&bytes);
@@ -223,12 +276,38 @@ pub(crate) fn placed_mesh_hashed(
         },
         context,
     )?;
-    let mesh = match &imported.geometry {
-        ModelGeometry::Mesh(mesh) => mesh,
-        ModelGeometry::Brep(_) => return Err(ImportError::NotSupported("STEP").into()),
-    };
-    let map = placement(mesh, &model.transform)?;
-    Ok((transform_mesh(mesh, &map), hash))
+    let (mesh, _, brep) = place(&imported, &model.transform)?;
+    Ok(PlacedPart { mesh, brep, hash })
+}
+
+/// The placed triangles of a project's model: a mesh, or a STEP model's
+/// joined tessellation, for drawing, the workholding checks and the
+/// simulation.
+pub(crate) fn placed_mesh(
+    project_root: &Path,
+    model: &ModelRef,
+    context: &JobContext<'_>,
+) -> Result<TriangleMesh, AppError> {
+    placed_part(project_root, model, context).map(|part| part.mesh)
+}
+
+/// The placed mesh of a mesh model with the hash of the file as read now,
+/// for triangle selections. Triangle `i` of the result is facet `i` of the
+/// file: placement keeps the order. A STEP model is refused: it is selected
+/// by face and edge, never by triangle (architecture section 5.5).
+pub(crate) fn placed_mesh_hashed(
+    project_root: &Path,
+    model: &ModelRef,
+    context: &JobContext<'_>,
+) -> Result<(TriangleMesh, ContentHash), AppError> {
+    let part = placed_part(project_root, model, context)?;
+    if part.brep.is_some() {
+        return Err(AppError::Selection {
+            name: model.path.as_str().to_owned(),
+            reason: "a STEP model is selected by face and edge, not by triangle".to_owned(),
+        });
+    }
+    Ok((part.mesh, part.hash))
 }
 
 pub(crate) fn read(path: &Path) -> Result<Vec<u8>, AppError> {
@@ -262,4 +341,92 @@ pub(crate) fn relative_to(base: &Path, target: &Path) -> Result<Option<PathBuf>,
         relative.push(part.as_os_str());
     }
     Ok(Some(relative))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use openchuck_geom::transform::Affine3;
+    use openchuck_path::ExactFace;
+    use openchuck_path::surface::{ParametricFace, Uv};
+    use openchuck_testkit::brep::{HoleSpec, drilled_blank};
+    use openchuck_types::geometry::Vec3;
+    use openchuck_types::units::Degrees;
+
+    use super::*;
+
+    #[test]
+    fn req_imp_05_a_placed_b_rep_is_evaluated_where_the_placement_puts_it() {
+        let mut point = HoleSpec::blind(20.0, [0.0, 0.6, 0.8], 4.0, 5.0);
+        point.point = true;
+        let (brep, _) = drilled_blank(
+            10.0,
+            40.0,
+            &[point, HoleSpec::through(30.0, [0.0, 1.0, 0.0], 3.0)],
+        );
+        let steps = [
+            TransformStep::Rotate {
+                axis: Axis::Z,
+                angle: Degrees(30.0),
+            },
+            TransformStep::Mirror { axis: Axis::Y },
+            TransformStep::Scale { factor: 2.5 },
+            TransformStep::Translate {
+                x: 3.0,
+                y: -1.0,
+                z: 7.0,
+            },
+        ];
+        let map = brep_placement(&brep, &steps).unwrap();
+        let placed = transform_brep(&brep, &map);
+        let s = map.determinant().abs().cbrt();
+        assert!(map.determinant() < 0.0 && (s - 2.5).abs() < 1e-12);
+        let direction = |m: &Affine3, v: Vec3| m.apply_vec(v) * (1.0 / s);
+        let mut checked = 0;
+        for (before, after) in brep.faces.iter().zip(&placed.faces) {
+            assert_eq!(before.id, after.id);
+            let (a, b) = (
+                ExactFace::new(before).unwrap(),
+                ExactFace::new(after).unwrap(),
+            );
+            let ((a0, a1), (b0, b1)) = (a.uv_bounds(), b.uv_bounds());
+            for (fu, fv) in [(0.5, 0.5), (0.2, 0.7), (0.9, 0.1)] {
+                let at = |lo: Uv, hi: Uv| Uv {
+                    u: lo.u + fu * (hi.u - lo.u),
+                    v: lo.v + fv * (hi.v - lo.v),
+                };
+                let (Some(p), Some(q)) = (a.point_normal(at(a0, a1)), b.point_normal(at(b0, b1)))
+                else {
+                    continue;
+                };
+                let want = map.apply(p.point);
+                assert!(
+                    (q.point - want).length() < 1e-9,
+                    "face {}: {:?} against {want:?}",
+                    after.id.0,
+                    q.point
+                );
+                // Still outward: the normal turns with the part, mirror and all.
+                let n = direction(&map, p.normal.get());
+                assert!(
+                    (q.normal.get() - n).length() < 1e-9,
+                    "face {}: normal {:?} against {n:?}",
+                    after.id.0,
+                    q.normal
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 10, "{checked}");
+        for (before, after) in brep.edges.iter().zip(&placed.edges) {
+            assert_eq!(before.id, after.id);
+            assert!(
+                before
+                    .polyline
+                    .iter()
+                    .zip(&after.polyline)
+                    .all(|(p, q)| (map.apply(*p) - *q).length() < 1e-9)
+            );
+        }
+    }
 }

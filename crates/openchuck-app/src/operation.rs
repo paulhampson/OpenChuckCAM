@@ -17,12 +17,13 @@ use std::sync::Arc;
 use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::parameter::STEPDOWN;
 use openchuck_path::{
-    AcceptAll, AnalyticStock, CompositeSurface, MeshSurface, ParameterValue, Registry,
-    RotaryMapping, StockModel, StrategyInput, SurfaceSource, generate, generate_in_region,
-    generate_in_zones,
+    AcceptAll, AnalyticStock, BrepEdges, BrepSurface, CompositeSurface, CurveSource, EdgeFollowing,
+    MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel, Strategy, StrategyInput,
+    SurfaceSource, drill, edge_following, generate, generate_in_region, generate_in_zones,
 };
 use openchuck_project::id::OperationId;
-use openchuck_project::{Operation, Project};
+use openchuck_project::{ContentHash, ModelRef, Operation, Project, SelectionTarget};
+use openchuck_types::brep::{BrepModel, EdgeId, FaceId};
 use openchuck_types::ir::PathTags;
 use openchuck_types::job::JobContext;
 
@@ -205,13 +206,29 @@ pub fn generate_operation_on(
     stock: Option<&dyn StockModel>,
     context: &JobContext<'_>,
 ) -> Result<OperationPath, AppError> {
+    generate_with_part(root, project, id, registry, stock, None, context)
+}
+
+/// As [`generate_operation_on`], with the setup's part already placed when
+/// `placed` is given (the tests hand in a B-rep built without the kernel).
+pub(crate) fn generate_with_part(
+    root: &Path,
+    project: &Project,
+    id: OperationId,
+    registry: &Registry,
+    stock: Option<&dyn StockModel>,
+    placed: Option<crate::model::PlacedPart>,
+    context: &JobContext<'_>,
+) -> Result<OperationPath, AppError> {
     let carried = stock;
     let operation = project
         .operation(id)
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
     let strategy = registry.get(&operation.strategy)?;
     let limited = operation.selection_refs().next().is_some();
-    if limited && !strategy.honours_region() {
+    // A STEP part's selections are faces and edges, which choose the holes
+    // and the edges below (decision 0056); a mesh part's are triangles.
+    if limited && !on_step_part(project, operation) && !strategy.honours_region() {
         return Err(missing(
             operation,
             &format!(
@@ -248,9 +265,24 @@ pub fn generate_operation_on(
         .as_ref()
         .ok_or_else(|| missing(operation, "its setup has no stock"))?;
 
-    let (mesh, file_hash) = crate::model::placed_mesh_hashed(root, model, context)?;
+    let placed = match placed {
+        Some(placed) => placed,
+        None => crate::model::placed_part(root, model, context)?,
+    };
+    let (mesh, file_hash) = (&placed.mesh, placed.hash);
     context.check_cancelled()?;
-    let model_surface = Arc::new(MeshSurface::new(&mesh)?);
+    // A STEP part is machined on its exact faces (IMP-02; decision 0056).
+    let brep_choice = match &placed.brep {
+        Some(brep) => Some(brep_selection(project, operation, model, file_hash, brep)?),
+        None => None,
+    };
+    let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
+        (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
+            Arc::new(BrepSurface::with_faces(brep, &choice.faces)?)
+        }
+        (Some(brep), _) => Arc::new(BrepSurface::new(brep)?),
+        (None, _) => Arc::new(MeshSurface::new(mesh)?),
+    };
     let part_bounds = model_surface.bounds();
     let profile = snapshot.tool.profile()?;
     // The held regions and tabs join the model's surface as the target the
@@ -260,7 +292,7 @@ pub fn generate_operation_on(
     let composite = if setup.workholding.is_empty() {
         None
     } else {
-        let part = openchuck_geom::part_extent(&mesh)
+        let part = openchuck_geom::part_extent(mesh)
             .ok_or_else(|| missing(operation, "its setup's part has no extent"))?;
         crate::workholding::check_for_tool(
             &setup.workholding,
@@ -273,8 +305,10 @@ pub fn generate_operation_on(
         let labelled =
             crate::workholding::labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)
                 .map_err(|e| missing(operation, &e.to_string()))?;
-        reach_notes =
-            crate::workholding::selection_reach_notes(project, operation, &mesh, &labelled);
+        if placed.brep.is_none() {
+            reach_notes =
+                crate::workholding::selection_reach_notes(project, operation, mesh, &labelled);
+        }
         Some(CompositeSurface::new(
             model_surface.clone(),
             labelled.into_iter().map(|(_, s)| s).collect(),
@@ -284,7 +318,10 @@ pub fn generate_operation_on(
         Some(c) => c,
         None => model_surface.as_ref(),
     };
-    let resolved_region = crate::selection::resolve(project, operation, model, file_hash, &mesh)?;
+    let resolved_region = match placed.brep {
+        Some(_) => None,
+        None => crate::selection::resolve(project, operation, model, file_hash, mesh)?,
+    };
     let constraint = resolved_region.as_ref().map(|r| r.constraint());
     let analytic = AnalyticStock::from_stock(stock, Some(part_bounds))?;
     let stock: &dyn StockModel = carried.unwrap_or(&analytic);
@@ -323,6 +360,24 @@ pub fn generate_operation_on(
             ),
         ));
     }
+    // Edge following on a STEP part follows the B-rep's own edges, with the
+    // operation's crease angle and shortest chain (OP-08; decision 0053 item 7,
+    // decision 0056).
+    let brep_edges = match (&placed.brep, &brep_choice) {
+        (Some(brep), Some(choice)) if operation.strategy == edge_following::NAME => {
+            Some(brep_curves(operation, brep, &choice.edges, &parameters)?)
+        }
+        _ => None,
+    };
+    let registry_strategy = strategy;
+    let with_edges;
+    let strategy: &dyn Strategy = match brep_edges {
+        Some(source) => {
+            with_edges = EdgeFollowing::with_source(source);
+            &with_edges
+        }
+        None => strategy,
+    };
     let path = if zones.is_empty() {
         match &constraint {
             Some(region) => {
@@ -343,7 +398,9 @@ pub fn generate_operation_on(
     // Notes about the values come first, then the notes about moves.
     let mut notes = resolved.notes;
     notes.extend(reach_notes);
-    notes.extend(strategy.parameter_warnings(&profile, &parameters));
+    // The registry's strategy: a B-rep edge source uses the crease angle and
+    // the shortest chain, so the warning that they are not used does not apply.
+    notes.extend(registry_strategy.parameter_warnings(&profile, &parameters));
     // Rest machining and pencil clean-up work on what earlier operations
     // left (OP-09, SIM-06); against the setup's own stock the whole part has
     // material left, which is rarely what was meant.
@@ -366,4 +423,491 @@ pub fn generate_operation_on(
         tool: profile,
         part_bounds,
     })
+}
+
+/// True when the part of `operation`'s setup is a STEP model, by its file
+/// name, without reading it.
+pub(crate) fn on_step_part(project: &Project, operation: &Operation) -> bool {
+    project
+        .setup(operation.setup)
+        .and_then(|s| s.part)
+        .and_then(|id| project.models().iter().find(|m| m.id == id))
+        .is_some_and(|m| {
+            openchuck_types::model::ModelFormat::from_file_name(m.path.as_str())
+                .is_some_and(|f| f.kind() == openchuck_types::model::ModelKind::Brep)
+        })
+}
+
+/// The default of parameter `name` of `operation` where the application's
+/// differs from the strategy's schema: edge following on a STEP part takes
+/// the B-rep crease angle (decision 0056).
+pub(crate) fn default_override(
+    project: &Project,
+    operation: &Operation,
+    name: &str,
+) -> Option<f64> {
+    (operation.strategy == edge_following::NAME
+        && name == edge_following::parameter::CREASE_ANGLE
+        && on_step_part(project, operation))
+    .then_some(openchuck_path::brep_edges::DEFAULT_CREASE_DEGREES)
+}
+
+/// What an operation on a STEP part selects: the faces whose holes radial
+/// drilling drills, or the edges edge following follows (OP-02, OP-08,
+/// OP-10). Empty lists mean the whole part.
+struct BrepChoice {
+    faces: Vec<FaceId>,
+    edges: Vec<EdgeId>,
+}
+
+/// Reads the selections of `operation` on its STEP part `part` (decision
+/// 0056). Only face sets for radial drilling and edge sets for edge
+/// following are honoured so far; anything else is an error that says so,
+/// never a silent drop (OP-02).
+fn brep_selection(
+    project: &Project,
+    operation: &Operation,
+    part: &ModelRef,
+    hash: ContentHash,
+    brep: &BrepModel,
+) -> Result<BrepChoice, AppError> {
+    let fail = |reason: String| missing(operation, &reason);
+    if operation.boundary.is_some() || !operation.avoid.is_empty() || !operation.check.is_empty() {
+        return Err(fail(
+            "boundaries, avoid and check surfaces are not built for STEP models yet; remove them \
+             from the operation"
+                .to_owned(),
+        ));
+    }
+    let mut choice = BrepChoice {
+        faces: Vec::new(),
+        edges: Vec::new(),
+    };
+    for id in &operation.selections {
+        let set = project
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == *id)
+            .ok_or_else(|| AppError::UnknownSelection(id.to_string()))?;
+        let bad = |reason: String| {
+            fail(format!(
+                "selection set '{}' cannot be used: {reason}",
+                set.name
+            ))
+        };
+        if set.model != part.id {
+            return Err(bad(
+                "it was made on a different model from the setup's part".to_owned(),
+            ));
+        }
+        if set.model_hash != hash {
+            return Err(bad(format!(
+                "it was made on a different version of '{}' (the file has changed); select \
+                 again on the current model",
+                part.path.as_str()
+            )));
+        }
+        match &set.target {
+            SelectionTarget::Faces(faces) => {
+                if let Some(face) = faces
+                    .iter()
+                    .find(|f| !brep.faces.iter().any(|g| g.id == **f))
+                {
+                    return Err(bad(format!("face {} is not in the model", face.0)));
+                }
+                choice.faces.extend(faces.iter().copied());
+            }
+            SelectionTarget::Edges(edges) => {
+                if let Some(edge) = edges
+                    .iter()
+                    .find(|e| !brep.edges.iter().any(|g| g.id == **e))
+                {
+                    return Err(bad(format!("edge {} is not in the model", edge.0)));
+                }
+                choice.edges.extend(edges.iter().copied());
+            }
+            // The project refuses a triangle set on a STEP model.
+            SelectionTarget::Triangles(_) => {
+                return Err(bad(
+                    "it selects triangles, and a STEP model is selected by face and edge"
+                        .to_owned(),
+                ));
+            }
+        }
+    }
+    choice.faces.sort_unstable();
+    choice.faces.dedup();
+    choice.edges.sort_unstable();
+    choice.edges.dedup();
+    if !choice.faces.is_empty() && operation.strategy != drill::NAME {
+        return Err(fail(format!(
+            "the strategy '{}' cannot yet be limited to faces of a STEP model (OP-02); only \
+             radial drilling uses selected faces, to choose its holes",
+            operation.strategy
+        )));
+    }
+    if !choice.edges.is_empty() && operation.strategy != edge_following::NAME {
+        return Err(fail(format!(
+            "the strategy '{}' does not use selected edges; only edge following does",
+            operation.strategy
+        )));
+    }
+    Ok(choice)
+}
+
+/// The edges edge following follows on a STEP part: the chosen edges, or
+/// every real edge, at the operation's crease angle (the B-rep default of
+/// [`openchuck_path::brep_edges::DEFAULT_CREASE_DEGREES`] when the operation
+/// does not set one) and its shortest chain (decision 0056).
+fn brep_curves(
+    operation: &Operation,
+    brep: &BrepModel,
+    edges: &[EdgeId],
+    parameters: &openchuck_path::params::Parameters,
+) -> Result<Arc<dyn CurveSource>, AppError> {
+    use openchuck_path::edge_following::parameter::{CREASE_ANGLE, MIN_LENGTH};
+    let source = if edges.is_empty() {
+        BrepEdges::new(brep)?
+    } else {
+        BrepEdges::with_edges(brep, edges)?
+    };
+    let crease = if operation.parameters.contains_key(CREASE_ANGLE) {
+        parameters.number(CREASE_ANGLE)?
+    } else {
+        openchuck_path::brep_edges::DEFAULT_CREASE_DEGREES
+    };
+    Ok(source
+        .with_crease(crease)
+        .with_min_length(parameters.number(MIN_LENGTH)?)
+        .shared())
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+mod tests {
+    //! The B-rep path through the pipeline without the STEP kernel: a
+    //! closed-form drilled blank (`openchuck_testkit::brep`) is handed in as
+    //! the placed part of a project whose setup names a STEP file (decision
+    //! 0056). The kernel tests in `tests/step_pipeline.rs` read the same path
+    //! from a real STEP file.
+
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use openchuck_project::id::{ModelId, SelectionSetId, SetupId, ToolId};
+    use openchuck_project::{
+        Item, OrderKey, ParameterValue as Value, Placement, RelativePath, SelectionSet, Setup,
+        ToolSnapshot,
+    };
+    use openchuck_testkit::brep::{Built, HoleSpec, drilled_blank};
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::job::{CancelToken, NoProgress};
+    use openchuck_types::stock::Stock;
+    use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
+    use openchuck_types::transform::TransformStep;
+    use openchuck_types::units::{Degrees, Millimetres};
+
+    use super::*;
+    use crate::model::PlacedPart;
+
+    const RADIUS: f64 = 12.0;
+    const LENGTH: f64 = 60.0;
+    const DIAMETER: f64 = 4.0;
+    /// The placement: the blank moved 5 mm along the rotary axis.
+    const SHIFT: f64 = 5.0;
+
+    struct Fixture {
+        project: Project,
+        operation: OperationId,
+        model: ModelId,
+        hash: ContentHash,
+        brep: BrepModel,
+        built: Vec<Built>,
+    }
+
+    fn polar(phi: f64) -> [f64; 3] {
+        [0.0, phi.to_radians().cos(), phi.to_radians().sin()]
+    }
+
+    fn fixture(strategy: &str, parameters: &[(&str, Value)]) -> Fixture {
+        let (brep, built) = drilled_blank(
+            RADIUS,
+            LENGTH,
+            &[
+                HoleSpec::blind(15.0, polar(90.0), DIAMETER, 6.0),
+                HoleSpec::through(30.0, polar(0.0), DIAMETER),
+                HoleSpec::blind(45.0, polar(225.0), DIAMETER, 4.0),
+            ],
+        );
+        let hash = ContentHash::of_bytes(b"blank.step");
+        let mut project = Project::new("blank");
+        project
+            .set_machine(Some(crate::setup::builtin("makera-z1").unwrap().unwrap()))
+            .unwrap();
+        let model = ModelId::new();
+        let mut reference = ModelRef::new(model, RelativePath::new("blank.step").unwrap(), hash);
+        reference.transform = vec![TransformStep::Translate {
+            x: SHIFT,
+            y: 0.0,
+            z: 0.0,
+        }];
+        let setup_id = SetupId::new();
+        let mut setup = Setup::new(setup_id, "Setup 1");
+        setup.part = Some(model);
+        setup.stock = Some(Stock::Cylinder {
+            diameter: Millimetres(2.0 * RADIUS + 1.0),
+            length: Millimetres(LENGTH),
+            x_start: Millimetres(SHIFT),
+        });
+        let tool = ToolId::new();
+        let snapshot = ToolSnapshot {
+            id: tool,
+            order: OrderKey::default(),
+            name: "4 mm drill".into(),
+            tool: Tool {
+                shape: ToolShape::Drill {
+                    point_angle: Degrees(118.0),
+                },
+                diameter: Millimetres(DIAMETER),
+                flute_length: Millimetres(30.0),
+                overall_length: Millimetres(60.0),
+                shank_diameter: Millimetres(DIAMETER),
+                flute_count: 2,
+                material: None,
+                centre_cutting: Some(true),
+            },
+            controller: ControllerMapping {
+                number: 1,
+                length_offset: None,
+                diameter_offset: None,
+            },
+            cutting_data: BTreeMap::new(),
+        };
+        let operation = OperationId::new();
+        let mut values: BTreeMap<String, Value> = [
+            (names::FEED, Value::Number(200.0)),
+            (names::PLUNGE_FEED, Value::Number(100.0)),
+            (names::STEPOVER, Value::Number(1.0)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect();
+        for (k, v) in parameters {
+            values.insert((*k).to_owned(), v.clone());
+        }
+        for item in [
+            Item::Model(reference),
+            Item::Setup(setup),
+            Item::Tool(snapshot),
+            Item::Operation(Operation {
+                enabled: true,
+                id: operation,
+                order: OrderKey::default(),
+                name: "Op".into(),
+                setup: setup_id,
+                strategy: strategy.into(),
+                tool: Some(tool),
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                parameters: values,
+            }),
+        ] {
+            project.insert(item, Placement::End).unwrap();
+        }
+        Fixture {
+            project,
+            operation,
+            model,
+            hash,
+            brep,
+            built,
+        }
+    }
+
+    impl Fixture {
+        /// Adds a selection set on the part and puts it in the operation.
+        fn select(&mut self, target: SelectionTarget, hash: ContentHash) {
+            let id = SelectionSetId::new();
+            self.project
+                .insert(
+                    Item::SelectionSet(SelectionSet {
+                        id,
+                        order: OrderKey::default(),
+                        name: "chosen".into(),
+                        model: self.model,
+                        model_hash: hash,
+                        target,
+                        descriptors: Vec::new(),
+                        stock_to_leave: None,
+                    }),
+                    Placement::End,
+                )
+                .unwrap();
+            let mut operation = self.project.operation(self.operation).unwrap().clone();
+            operation.selections.push(id);
+            self.project.replace(Item::Operation(operation)).unwrap();
+        }
+
+        fn run(&self) -> Result<OperationPath, AppError> {
+            let placed = PlacedPart::of_brep(
+                &self.brep,
+                &self
+                    .project
+                    .models()
+                    .iter()
+                    .find(|m| m.id == self.model)
+                    .unwrap()
+                    .transform,
+                self.hash,
+            )
+            .unwrap();
+            let cancel = CancelToken::new();
+            let context = JobContext::new(&cancel, &NoProgress);
+            generate_with_part(
+                Path::new("."),
+                &self.project,
+                self.operation,
+                &Registry::builtin(),
+                None,
+                Some(placed),
+                &context,
+            )
+        }
+    }
+
+    /// The height of the drill's 118 degree point.
+    fn point_height() -> f64 {
+        0.5 * DIAMETER / 59.0_f64.to_radians().tan()
+    }
+
+    /// How deep below the placed opening of `hole` the tool tip goes on the
+    /// hole's own axis line, or `None` when no move reaches the line.
+    fn depth_at(path: &OperationPath, hole: &Built) -> Option<f64> {
+        let entry = Point3::new(hole.entry.x + SHIFT, hole.entry.y, hole.entry.z);
+        path.group
+            .segments
+            .iter()
+            .filter(|s| s.kind.is_fed())
+            .filter_map(|s| {
+                let off = s.end.tip - entry;
+                let along = off.dot(hole.direction);
+                let across = (off - hole.direction * along).length();
+                (across < 1e-6).then_some(-along)
+            })
+            .reduce(f64::max)
+    }
+
+    #[test]
+    fn req_op_10_a_step_part_drills_every_hole_through_the_pipeline() {
+        let f = fixture(drill::NAME, &[]);
+        let path = f.run().unwrap();
+        for (i, hole) in f.built.iter().enumerate() {
+            let through = hole.length > 2.0 * RADIUS - 1e-6;
+            let want = hole.length + point_height() + if through { 0.5 } else { 0.0 };
+            let got = depth_at(&path, hole).unwrap_or_else(|| panic!("hole {i} is not drilled"));
+            assert!((got - want).abs() < 1e-6, "hole {i}: {got} against {want}");
+        }
+    }
+
+    #[test]
+    fn req_op_10_req_op_02_selected_faces_choose_the_holes_on_a_step_part() {
+        let mut f = fixture(drill::NAME, &[]);
+        let walls: BTreeSet<FaceId> = f.built[1].walls.iter().copied().collect();
+        f.select(SelectionTarget::Faces(walls), f.hash);
+        let path = f.run().unwrap();
+        assert!(depth_at(&path, &f.built[1]).is_some());
+        assert!(depth_at(&path, &f.built[0]).is_none());
+        assert!(depth_at(&path, &f.built[2]).is_none());
+    }
+
+    #[test]
+    fn req_op_08_a_step_part_follows_its_b_rep_edges_with_the_operations_values() {
+        let engrave = [("depth", Value::Number(0.2))];
+        let f = fixture(edge_following::NAME, &engrave);
+        // The form shows the B-rep crease angle as the default.
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
+        let crease = form
+            .fields
+            .iter()
+            .find(|x| x.name == edge_following::parameter::CREASE_ANGLE)
+            .unwrap();
+        assert_eq!(crease.value, Some(Value::Number(1.0)));
+        assert_eq!(crease.source, crate::form::Source::Default);
+        let path = f.run().unwrap();
+        assert!(
+            path.group
+                .segments
+                .iter()
+                .any(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+        );
+        // No warning that the crease angle and shortest chain are unused.
+        assert!(
+            !path
+                .notes
+                .iter()
+                .any(|n| n.contains("not used") && n.contains("crease")),
+            "{:?}",
+            path.notes
+        );
+        // The shortest chain is the operation's: longer than every rim, so
+        // nothing is left to follow.
+        let mut long = engrave.to_vec();
+        long.push(("min_length", Value::Number(1000.0)));
+        let err = fixture(edge_following::NAME, &long).run().unwrap_err();
+        assert!(err.to_string().contains("no edge to follow"), "{err}");
+        // A chosen edge is the only one followed.
+        let mut f = fixture(edge_following::NAME, &engrave);
+        let edge = f.brep.edges.iter().find(|e| e.faces.len() == 2).unwrap().id;
+        f.select(SelectionTarget::Edges([edge].into_iter().collect()), f.hash);
+        let one = f.run().unwrap();
+        assert!(one.group.segments.len() < path.group.segments.len());
+    }
+
+    #[test]
+    fn req_op_02_req_nfr_07_selections_a_step_part_cannot_use_are_refused() {
+        let cases: Vec<(&str, SelectionTarget, bool, &str)> = vec![
+            (
+                "helical_finishing",
+                SelectionTarget::Faces([FaceId(0)].into_iter().collect()),
+                true,
+                "cannot yet be limited to faces",
+            ),
+            (
+                drill::NAME,
+                SelectionTarget::Edges([EdgeId(0)].into_iter().collect()),
+                true,
+                "only edge following",
+            ),
+            (
+                drill::NAME,
+                SelectionTarget::Faces([FaceId(9999)].into_iter().collect()),
+                true,
+                "face 9999 is not in the model",
+            ),
+            (
+                drill::NAME,
+                SelectionTarget::Faces([FaceId(0)].into_iter().collect()),
+                false,
+                "different version",
+            ),
+        ];
+        for (strategy, target, same_hash, message) in cases {
+            let mut f = fixture(strategy, &[]);
+            let hash = if same_hash {
+                f.hash
+            } else {
+                ContentHash::of_bytes(b"other")
+            };
+            f.select(target, hash);
+            let err = f.run().unwrap_err().to_string();
+            assert!(err.contains(message), "{strategy}: {err}");
+        }
+    }
 }

@@ -152,7 +152,9 @@ pub fn parameter_form(
                         min_exclusive: *min_exclusive,
                         max: *max,
                     },
-                    default.map(ParameterValue::Number),
+                    crate::operation::default_override(project, op, &spec.name)
+                        .or(*default)
+                        .map(ParameterValue::Number),
                 ),
                 ParameterKind::Integer { min, max, default } => (
                     FieldKind::Integer {
