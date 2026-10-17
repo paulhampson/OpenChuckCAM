@@ -133,7 +133,7 @@ States: *open* (needs work or a decision), *proposed* (a recommendation awaits a
 | OI-249 | The export checks find out-of-date operations from the pipeline cache key for the whole run, and a failed generation blocks as a whole; there is no per-operation error state, and a changed model file is not compared. | [Decision 0071](decisions/0071-slice-19-export-dialogs.md) item 4 | open | With the project tree states (UI-11) | Lane A or T |
 | OI-250 | `settings.toml` is shared by the per-user settings of specification section 13 (UI-15); the export lane writes only `export.acknowledged` and keeps other keys. The rest of the store (layout, scale, theme, recent projects) is not built by this lane. | [Decision 0071](decisions/0071-slice-19-export-dialogs.md) item 6 | open | When the settings store is built | Lane A or T |
 | OI-251 | Whether the CLI asks the GC-16 acknowledgement. It prints the notice at every run and asks nothing, so unattended runs (reference jobs, CI) keep working. | [Decision 0071](decisions/0071-slice-19-export-dialogs.md) item 10 | open | Owner's choice | Owner's choice |
-| OI-252 | Whether the feed mode is a choice in the export dialog or only shown from the post (GC-04 puts it in the post definition; specification 11.6 can be read as a choice). | [Decision 0071](decisions/0071-slice-19-export-dialogs.md) item 8 | open | Owner's choice | Owner's choice |
+| OI-257 | Whether the feed mode is a choice in the export dialog or only shown from the post (GC-04 puts it in the post definition; specification 11.6 can be read as a choice). | [Decision 0071](decisions/0071-slice-19-export-dialogs.md) item 8 | open | Owner's choice | Owner's choice |
 
 ## Closed
 
