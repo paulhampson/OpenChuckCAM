@@ -31,8 +31,8 @@ use openchuck_app::tools::{
     with_custom_profile,
 };
 use openchuck_app::{
-    AppError, Application, Command, PostSelection, Query, QueryResult, SimulationReport, Threads,
-    VERIFY_GCODE_NOTICE, inspect_file,
+    AppError, Application, Command, OutputGrouping, PostSelection, Query, QueryResult,
+    SimulationReport, Threads, VERIFY_GCODE_NOTICE, inspect_file,
 };
 
 /// The workholding options of `setup` (SET-09, OP-21).
@@ -122,6 +122,13 @@ enum Action {
         /// numbers are shown and you are asked; otherwise this is required.
         #[arg(long, value_enum)]
         tool_numbers: Option<NumberChoice>,
+        /// How the G-code is split into files: `project`, `setup` (the
+        /// default), `operation` or `tool`.
+        #[arg(long, default_value = "setup")]
+        grouping: OutputGrouping,
+        /// Also write the setup sheet as HTML and PDF into the `--out` folder.
+        #[arg(long)]
+        setup_sheet: bool,
     },
     /// Regenerate and simulate material removal for every operation, then
     /// compare the stock left with each setup's part (SIM-03, SIM-05 to
@@ -534,11 +541,17 @@ fn run(cli: Cli) -> Result<()> {
             out,
             post,
             tool_numbers,
+            grouping,
+            setup_sheet,
         } => {
             let mut app = open_project(&project, threads, create)?;
-            if out.is_some() && post.is_none() {
+            if setup_sheet && out.is_none() {
+                anyhow::bail!("--setup-sheet needs --out: say which folder to write it into");
+            }
+            if out.is_some() && post.is_none() && !setup_sheet {
                 anyhow::bail!("--out needs --post: say which post to write the G-code with");
             }
+            app.set_output_grouping(grouping);
             if post.is_some() {
                 confirm_tool_numbers(&mut app, tool_numbers)?;
             }
@@ -554,6 +567,11 @@ fn run(cli: Cli) -> Result<()> {
                     let path = out.join(name);
                     std::fs::write(&path, text)
                         .with_context(|| format!("cannot write '{}'", path.display()))?;
+                }
+            }
+            if setup_sheet && let Some(out) = &out {
+                for path in app.write_setup_sheet(out, Some(&result.toolpath))? {
+                    println!("wrote {}", path.display());
                 }
             }
             println!(

@@ -29,6 +29,29 @@ pub fn floating<T>(
     key: &str,
     title: &str,
     size: [f32; 2],
+    contents: impl FnMut(&mut egui::Ui) -> T,
+) -> (T, WindowEvent) {
+    show(ctx, key, title, size, true, contents)
+}
+
+/// Like [`floating`], but the contents are not put in a scroll area, so a
+/// dialog can pin its own footer with a bottom panel and scroll the rest.
+pub fn floating_unscrolled<T>(
+    ctx: &egui::Context,
+    key: &str,
+    title: &str,
+    size: [f32; 2],
+    contents: impl FnMut(&mut egui::Ui) -> T,
+) -> (T, WindowEvent) {
+    show(ctx, key, title, size, false, contents)
+}
+
+fn show<T>(
+    ctx: &egui::Context,
+    key: &str,
+    title: &str,
+    size: [f32; 2],
+    scroll: bool,
     mut contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
     let builder = ViewportBuilder::default()
@@ -42,7 +65,11 @@ pub fn floating<T>(
             _ => {
                 egui::CentralPanel::default()
                     .show(ui, |ui| {
-                        egui::ScrollArea::vertical().show(ui, &mut contents).inner
+                        if scroll {
+                            egui::ScrollArea::vertical().show(ui, &mut contents).inner
+                        } else {
+                            contents(ui)
+                        }
                     })
                     .inner
             }

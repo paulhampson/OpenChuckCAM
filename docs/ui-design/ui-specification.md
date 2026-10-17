@@ -460,7 +460,7 @@ Board 4 (SIM-01 to SIM-07).
 
 ### 11.6 Post and export
 
-Board 5. Opened from step 5, or with Ctrl E. Built in lane S (OI-144).
+Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](../decisions/0071-slice-19-export-dialogs.md), proposed): until step 5 exists it opens from File, "Post and export…" as well as with Ctrl E; the post, grouping and folder are not remembered between openings (OI-248); a file that fails its own checks also blocks writing; the acknowledgement is kept when the first write succeeds.
 
 **Left column:**
 
