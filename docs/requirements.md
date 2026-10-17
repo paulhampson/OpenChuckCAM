@@ -134,6 +134,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | TL-09 | A material library holding cutting data per material and tool, used to pre-fill the values in TL-05. | P2 |
 | TL-10 | Import tool tables from other systems (for example LinuxCNC tool tables). | P3 |
 | TL-11 | A default tool set per machine profile: the tools the machine normally holds and their tool numbers, kept with the tool library and used to number a tool when it is added to a project for that machine. Tool numbers belong to the project, not to the library tool. | P1 |
+| TL-12 | A default tool library ships with the application: the reference tools for the Makera Z1 with their tool numbers as the machine's default tool set (TL-11), and a set of common standard tools of each type in TL-02 and TL-03. The user can edit, add and delete tools, and an update never overwrites a tool the user has changed. | P1 |
 
 ### 3.5 Machining strategies and toolpath generation
 
@@ -200,7 +201,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | GC-13 | An embedded scripting language for post-processors, for logic that text templates cannot express. | P2 |
 | GC-14 | Before G-code is written, show the tool numbers the program will use and let the user confirm them, renumber automatically in operation order, or renumber by hand. The chosen numbers are saved in the project, so the next post gives the same output. | P1 |
 | GC-15 | Refuse to write G-code while an enabled operation is stale or in error, and warn when an operation has not been simulated, listing the checks before writing. | P1 |
-| GC-16 | Before the first export of a project on a computer, the user confirms that they will verify the G-code before running it. The confirmation is kept on that computer, not in the project, so another computer asks again; the notice itself is shown at every export. | P1 |
+| GC-16 | Before the first export of a project on a computer, the user confirms that they will verify the G-code before running it. The confirmation is kept on that computer, not in the project, so another computer asks again; the notice itself is shown at every export. The command-line tool runs unattended: it prints the notice at every run and asks for no confirmation. | P1 |
 
 ### 3.8 Project files
 

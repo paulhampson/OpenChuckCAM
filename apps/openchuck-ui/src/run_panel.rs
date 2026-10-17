@@ -235,6 +235,16 @@ impl RunPanel {
         }
     }
 
+    /// The latest finished run, with its simulation if one was made.
+    pub fn last(&self) -> Option<&Arc<Regeneration>> {
+        self.last.as_ref()
+    }
+
+    /// The message of the latest run if it failed.
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
+    }
+
     /// Whether the project has changed since the latest run was made.
     pub fn is_stale(&self, app: &Application) -> bool {
         self.last_project
@@ -323,6 +333,11 @@ impl RunPanel {
         } else if let Some(error) = &self.last_error {
             ui.colored_label(NOTE, error);
         }
+    }
+
+    /// Whether the results window or the add-operation dialog is open.
+    pub fn has_window(&self) -> bool {
+        self.show_results || self.adding.is_some()
     }
 
     /// Opens the results window on the latest run.

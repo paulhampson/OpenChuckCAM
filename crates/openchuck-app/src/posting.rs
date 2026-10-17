@@ -40,7 +40,7 @@ impl PostSelection {
         }
     }
 
-    fn load(&self) -> Result<PostDefinition, AppError> {
+    pub(crate) fn load(&self) -> Result<PostDefinition, AppError> {
         match self {
             Self::Builtin(id) => builtin(id).ok_or_else(|| {
                 AppError::Post(format!(
@@ -102,7 +102,7 @@ impl std::str::FromStr for OutputGrouping {
 
 /// A name made safe for a file name: lower-case ASCII letters and digits
 /// joined by hyphens, at most 40 characters, `fallback` when nothing is left.
-fn slug(name: &str, fallback: &str) -> String {
+pub(crate) fn slug(name: &str, fallback: &str) -> String {
     let mapped: String = name
         .chars()
         .map(|c| {
@@ -136,6 +136,89 @@ fn file_stem(index: usize, parts: &[String]) -> String {
         stem.push_str(part);
     }
     stem
+}
+
+/// The name of the file at `index`: the running number, the project name
+/// (`Project`) or the setup name, then what the unit holds beyond its setup.
+fn file_name(
+    project: &Project,
+    setup: &str,
+    label: Option<&(String, String)>,
+    grouping: OutputGrouping,
+    index: usize,
+    extension: &str,
+) -> String {
+    let mut parts = Vec::new();
+    if grouping == OutputGrouping::Project {
+        parts.push(slug(project.name(), "project"));
+    } else {
+        parts.push(slug(setup, "setup"));
+    }
+    if let Some((_, part)) = label {
+        parts.push(part.clone());
+    }
+    format!("{}.{extension}", file_stem(index, &parts))
+}
+
+/// One G-code file the grouping would write, known before anything is posted
+/// (GC-05; specification section 11.6, the files to write).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlannedFile {
+    /// The file name.
+    pub name: String,
+    /// The setup it belongs to.
+    pub setup: String,
+    /// The operation or tool name for `Operation` and `Tool` files.
+    pub label: Option<String>,
+    /// The programmed time: the sum of the toolpath's move durations at their
+    /// programmed feeds, in seconds (decision 0028 item 3; not SIM-08).
+    pub programmed_seconds: f64,
+}
+
+/// The files `grouping` would write for `toolpath`, in output order, with the
+/// names [`post_toolpath`] gives them. A project file across setups is refused
+/// as it is when posting (OI-92).
+pub(crate) fn plan_files(
+    project: &Project,
+    toolpath: &Toolpath,
+    selection: &PostSelection,
+    grouping: OutputGrouping,
+) -> Result<Vec<PlannedFile>, AppError> {
+    let extension = selection.load()?.options.file_extension;
+    split_units(project, toolpath, grouping)?
+        .into_iter()
+        .enumerate()
+        .map(|(index, unit)| {
+            let setup = project
+                .setups()
+                .iter()
+                .find(|s| s.id.to_string() == unit.setup)
+                .ok_or_else(|| {
+                    AppError::Post(format!(
+                        "setup '{}' of the toolpath is not in the project",
+                        unit.setup
+                    ))
+                })?;
+            Ok(PlannedFile {
+                name: file_name(
+                    project,
+                    &setup.name,
+                    unit.label.as_ref(),
+                    grouping,
+                    index,
+                    &extension,
+                ),
+                setup: setup.name.clone(),
+                label: unit.label.as_ref().map(|(title, _)| title.clone()),
+                programmed_seconds: unit
+                    .groups
+                    .iter()
+                    .flat_map(|g| g.segments.iter())
+                    .map(|s| s.duration.0)
+                    .sum(),
+            })
+        })
+        .collect()
 }
 
 /// What the checks found about one G-code file (GC-08, GC-11; gates 1 and 2).
@@ -486,16 +569,14 @@ pub(crate) fn post_toolpath(
                 setup.name, output.clamped_feeds
             ));
         }
-        let mut parts = Vec::new();
-        if grouping == OutputGrouping::Project {
-            parts.push(slug(project.name(), "project"));
-        } else {
-            parts.push(slug(&setup.name, "setup"));
-        }
-        if let Some((_, part)) = &label {
-            parts.push(part.clone());
-        }
-        let name = format!("{}.{extension}", file_stem(index, &parts));
+        let name = file_name(
+            project,
+            &setup.name,
+            label.as_ref(),
+            grouping,
+            index,
+            &extension,
+        );
         reports.push(check_file(
             &output.text,
             &name,

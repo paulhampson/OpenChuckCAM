@@ -2,7 +2,7 @@
 
 - **Status:** accepted by the project owner (17 Oct 2026), in the lane F session, on the terms relayed by the orchestrator session at the owner's instruction (decision [0049](0049-relayed-acceptance-of-records.md)): the GC-04 reading below, items 1 to 3 and 5 as built, and item 4 at three significant figures, not four. Lane F, built on `claude/lane-f-feed-limit-and-rounding`. It changes no requirement and does not edit the architecture; it adds a machine profile field and takes project schema 14 (provisional, renumbered at release) and machine profile schema 3. The owner's answers are under *Choices put to the owner*.
 - **Date:** 17 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-252 to OI-254. It fixes the two defects lane Z records in OI-236 (on lane Z's branch, `claude/lane-z-brep-pipeline`, pull request 79; its register row is closed once both are on `main`).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): new OI-252 to OI-254. It fixes the two defects lane Z records in OI-236 (decision 0056, merged in pull request 79), which this change closes.
 
 Numbering: the orchestrator assigned records 0076 to 0080 and OI-252 to OI-256 to this lane (17 Oct 2026). This record takes 0076 and OI-252 to OI-254; 0077 to 0080, OI-255 and OI-256 are unused. Project schema 12 is lane O's and 13 is held for lane S, so this record claims **14**, as the orchestrator directed (17 Oct 2026). On this branch the chain runs through two no-change steps, 11 to 12 and 12 to 13, held for those lanes; at release the lane renumbers its step to the next free schema on `main`, so the chain on `main` stays gapless (the provisional rule for all lanes). The number is the one constant `file::SCHEMA`, and the tests derive from it, so renumbering is one line and the step's name.
 
@@ -61,6 +61,7 @@ Output is identical at 1, 2 and N threads on both posts for the box and the spli
 - `openchuck-app/tests/round_trip.rs` `req_op_13_req_gc_10_a_small_feed_is_written_to_keep_its_moves_time_within_gate_2`: the near-A moves pass gate 2 on both posts, and the same template with `fixed` (one decimal) fails it.
 - `openchuck-app/tests/feed_limits.rs`: the three jobs pass gates 1 and 2 on both posts and every F is within 1200 (`req_op_13_req_gc_09_req_gc_10_...`, fails before as in the table); identical G-code at 1, 2 and N threads on both posts (`req_gc_07_req_nfr_06_...`).
 - `openchuck-project/tests/setup.rs` `req_prj_04_req_op_13_an_older_z1_copy_migrates_to_count_a_in_its_feed_word`: the schema 11 fixture (`tests/fixtures/schema-11-z1`) gains `makera`; the same copy with another `id` keeps `separate`.
+- `openchuck-app/tests/step_strategies.rs` (needs the kernel, `--features kernel-tests`, run by CI's STEP kernel job): the cases lane Z left out for OI-236 are back, at the oak feed on the exact STEP parts: helical finishing of the box and the filleted box, simultaneous finishing of the revolved spline, and roughing then rest machining of the filleted box, each through gates 1 and 2 on both posts.
 
 ## Alternatives considered
 
