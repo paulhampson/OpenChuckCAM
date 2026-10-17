@@ -73,7 +73,10 @@ use openchuck_types::workholding::Workholding;
 ///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
 /// - 11: selection sets gain the optional `colour`, written only when the
 ///   user chose one (decision record 0046 item 2).
-pub const SCHEMA: i64 = 11;
+/// - 12: the machine copy's feed limits gain the optional `rotary_in_feed`,
+///   written only when A counts in the feed word; a copy of the built-in
+///   Makera Z1 gains `"makera"` (decision record 0076).
+pub const SCHEMA: i64 = 12;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -98,6 +101,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_8_to_9,
     schema_9_to_10,
     schema_10_to_11,
+    schema_11_to_12,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -195,6 +199,17 @@ fn schema_9_to_10(_kind: FileKind, _table: &mut toml::Table) -> Result<(), Strin
 /// file does not have (the set then takes the default swatch of its place in
 /// the list), so it needs no change but its number.
 fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
+    Ok(())
+}
+
+/// Schema 12 adds the machine copy's optional `max_feeds.rotary_in_feed`. A
+/// copy of the built-in Makera Z1, known by its library `id`, gains
+/// `"makera"`, so an older Z1 project is timed for the Z1's feed word; every
+/// other file is unchanged (decision record 0076).
+fn schema_11_to_12(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        crate::machines::fill_rotary_in_feed(table);
+    }
     Ok(())
 }
 
@@ -955,7 +970,7 @@ mod tests {
 
     #[test]
     fn req_prj_04_every_file_records_the_schema() {
-        assert_eq!(SCHEMA, 11);
+        assert_eq!(SCHEMA, 12);
         let mut project = Project::new("p");
         project
             .insert(
@@ -964,7 +979,7 @@ mod tests {
             )
             .unwrap();
         for (path, text) in render(&project).unwrap() {
-            assert!(text.starts_with("schema = 11\n"), "{path}: {text}");
+            assert!(text.starts_with("schema = 12\n"), "{path}: {text}");
         }
     }
 
