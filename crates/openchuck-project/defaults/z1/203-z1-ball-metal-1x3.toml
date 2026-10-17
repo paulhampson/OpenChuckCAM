@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default Makera Z1 tool, number 203 (TL-12; decision record 0081). Facts
+# only: dimensions and parameters, no wording, images or file structures.
+# Tool material "carbide" is the owner's decision, from the community
+# profiles' material column. No cutting data (OI-270).
+# Source: bit page two-flute-ball-nose-bit-for-metal-1-8-shank: diameter,
+# flute length (variant sizes), shank 3.175, length ~38, flute count 2 (two
+# flute), solid carbide; set page agrees; community file Makera Ball
+# Endmills.csv agrees (ball end mill, overall length 38).
+schema = 1
+id = "c0de0001-0000-4000-8000-000000000203"
+name = "Z1 ball metal 1x3"
+
+[tool]
+diameter = 1.0
+flute_length = 3.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "ball_end"

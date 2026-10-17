@@ -10,7 +10,9 @@
 
 use std::path::PathBuf;
 
-use openchuck_project::tools::{LEDGER_FILE, ToolLibrary, default_tools};
+use openchuck_project::tools::{
+    LEDGER_FILE, ToolLibrary, default_tool_sets, default_tools, standard_tools, z1_tools,
+};
 use openchuck_types::tool::ToolShape;
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -69,7 +71,7 @@ fn closed_form(shape: &ToolShape, diameter: f64, r: f64) -> f64 {
 #[test]
 fn req_tl_12_every_default_validates_and_has_a_stable_unique_id() {
     let tools = default_tools().unwrap();
-    assert_eq!(tools.len(), 23);
+    assert_eq!(tools.len(), 46);
     let mut ids: Vec<_> = tools.iter().map(|t| t.id).collect();
     ids.sort();
     ids.dedup();
@@ -116,18 +118,18 @@ fn req_tl_12_first_run_installs_into_an_empty_library_and_a_second_run_installs_
     let dir = temp_dir("first-run").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
     let report = lib.install_defaults().unwrap();
-    assert_eq!(report.installed.len(), 23);
+    assert_eq!(report.installed.len(), 46);
     assert!(dir.join(LEDGER_FILE).is_file());
 
     let reopened = ToolLibrary::open(&dir).unwrap();
-    assert_eq!(reopened.tools().count(), 23);
+    assert_eq!(reopened.tools().count(), 46);
     assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
 
     let mut again = reopened;
     let report = again.install_defaults().unwrap();
     assert!(report.installed.is_empty());
-    assert_eq!(report.already_installed, 23);
-    assert_eq!(again.tools().count(), 23);
+    assert_eq!(report.already_installed, 46);
+    assert_eq!(again.tools().count(), 46);
 }
 
 #[test]
@@ -157,7 +159,7 @@ fn req_tl_12_a_deleted_default_is_not_restored() {
     let report = reopened.install_defaults().unwrap();
     assert!(report.installed.is_empty());
     assert!(reopened.get(gone).is_none());
-    assert_eq!(reopened.tools().count(), 22);
+    assert_eq!(reopened.tools().count(), 45);
 }
 
 #[test]
@@ -165,18 +167,18 @@ fn req_tl_12_a_default_the_ledger_does_not_know_is_installed_and_a_user_tool_is_
     let dir = temp_dir("new-default").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
     lib.install_defaults().unwrap();
-    // As if a later release had added the last default: forget it.
+    // As if a later release had added a default: forget one and remove it.
+    let id = standard_tools().unwrap().last().unwrap().id;
     let ledger = std::fs::read_to_string(dir.join(LEDGER_FILE)).unwrap();
-    let mut lines: Vec<&str> = ledger.lines().collect();
-    let forgotten = lines.pop().unwrap().to_owned();
-    std::fs::write(dir.join(LEDGER_FILE), lines.join("\n")).unwrap();
-    let id = forgotten.parse().unwrap();
+    let kept: Vec<&str> = ledger.lines().filter(|l| *l != id.to_string()).collect();
+    assert_eq!(kept.len() + 1, ledger.lines().count());
+    std::fs::write(dir.join(LEDGER_FILE), kept.join("\n")).unwrap();
     lib.remove_tool(id).unwrap();
 
     let mut reopened = ToolLibrary::open(&dir).unwrap();
     let report = reopened.install_defaults().unwrap();
     assert_eq!(report.installed, vec![id]);
-    assert_eq!(reopened.tools().count(), 23);
+    assert_eq!(reopened.tools().count(), 46);
 }
 
 #[test]
@@ -192,7 +194,7 @@ fn req_tl_12_a_damaged_ledger_never_overwrites_a_tool() {
     let mut reopened = ToolLibrary::open(&dir).unwrap();
     let report = reopened.install_defaults().unwrap();
     assert!(report.installed.is_empty());
-    assert_eq!(report.already_present, 23);
+    assert_eq!(report.already_present, 46);
     assert_eq!(reopened.get(tool.id), Some(&tool));
 }
 
@@ -202,7 +204,7 @@ fn req_nfr_09_req_tl_12_the_defaults_are_embedded_not_read_from_the_source_tree(
     // and no network: run it from a folder that holds nothing else.
     let dir = temp_dir("offline").join("tools");
     let mut lib = ToolLibrary::open(&dir).unwrap();
-    assert_eq!(lib.install_defaults().unwrap().installed.len(), 23);
+    assert_eq!(lib.install_defaults().unwrap().installed.len(), 46);
 }
 
 #[test]
@@ -222,5 +224,97 @@ fn req_tl_12_restore_defaults_reinstalls_a_deleted_default_and_never_touches_an_
     assert_eq!(report.installed, vec![gone.id]);
     assert_eq!(reopened.get(gone.id), Some(&gone));
     assert_eq!(reopened.get(edited.id), Some(&edited));
-    assert_eq!(reopened.tools().count(), 23);
+    assert_eq!(reopened.tools().count(), 46);
+}
+
+#[test]
+fn req_tl_12_req_tl_11_the_z1_tools_are_carbide_without_cutting_data_and_the_set_numbers_them() {
+    let z1 = z1_tools().unwrap();
+    assert_eq!(z1.len(), 23);
+    for t in &z1 {
+        assert_eq!(t.tool.material.as_deref(), Some("carbide"), "{}", t.name);
+        assert!(t.cutting_data.is_empty(), "{} ships cutting data", t.name);
+        assert_eq!(t.tool.shank_diameter.0, 3.175, "{}", t.name);
+    }
+    let sets = default_tool_sets().unwrap();
+    assert_eq!(sets.len(), 1);
+    let set = &sets[0];
+    assert_eq!(set.machine, "Makera Z1");
+    assert_eq!(set.entries.len(), z1.len());
+    let mut numbers: Vec<u32> = set.entries.iter().map(|e| e.controller.number).collect();
+    numbers.sort_unstable();
+    let before = numbers.len();
+    numbers.dedup();
+    assert_eq!(numbers.len(), before, "a tool number is used twice");
+    // NXX: category 1 flat (O-flute, corn), 2 ball, 3 V-bit, 4 chamfer, 5 drill.
+    let category = |t: &openchuck_project::tools::LibraryTool| match t.tool.shape {
+        ToolShape::FlatEnd => 1,
+        ToolShape::BallEnd => 2,
+        ToolShape::VBit { .. } => 3,
+        ToolShape::Chamfer { .. } => 4,
+        ToolShape::Drill { .. } => 5,
+        _ => panic!("unexpected Z1 shape"),
+    };
+    for e in &set.entries {
+        let t = z1
+            .iter()
+            .find(|t| t.id == e.tool)
+            .expect("set names a Z1 tool");
+        assert_eq!(e.controller.number / 100, category(t), "{}", t.name);
+        assert!(e.controller.number <= 504);
+    }
+    assert_eq!(numbers.first(), Some(&101));
+    assert_eq!(numbers.last(), Some(&504));
+}
+
+#[test]
+fn req_tl_12_first_run_installs_the_z1_tool_set_and_a_second_run_installs_nothing() {
+    let dir = temp_dir("z1-set").join("tools");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    let report = lib.install_defaults().unwrap();
+    assert_eq!(report.tool_sets_installed, vec!["Makera Z1".to_owned()]);
+
+    let reopened = ToolLibrary::open(&dir).unwrap();
+    assert!(reopened.problems().is_empty(), "{:?}", reopened.problems());
+    let set = reopened.tool_set("makera z1").unwrap();
+    assert_eq!(set.entries.len(), 23);
+    for e in &set.entries {
+        assert!(reopened.get(e.tool).is_some());
+    }
+
+    let mut again = reopened;
+    let report = again.install_defaults().unwrap();
+    assert!(report.installed.is_empty());
+    assert!(report.tool_sets_installed.is_empty());
+}
+
+#[test]
+fn req_tl_12_an_edited_or_deleted_tool_set_is_not_overwritten_or_restored_by_a_run() {
+    let dir = temp_dir("set-kept").join("tools");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    lib.install_defaults().unwrap();
+    let mut set = lib.tool_set("Makera Z1").unwrap().clone();
+    set.entries.truncate(3);
+    lib.save_tool_set(set.clone()).unwrap();
+    let mut reopened = ToolLibrary::open(&dir).unwrap();
+    reopened.install_defaults().unwrap();
+    assert_eq!(reopened.tool_set("Makera Z1"), Some(&set));
+
+    // Deleted: the file goes, the next run does not bring it back.
+    let path = std::fs::read_dir(dir.join("tool-sets"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    std::fs::remove_file(path).unwrap();
+    let mut reopened = ToolLibrary::open(&dir).unwrap();
+    let report = reopened.install_defaults().unwrap();
+    assert!(report.tool_sets_installed.is_empty());
+    assert!(reopened.tool_set("Makera Z1").is_none());
+
+    // The explicit action does bring it back, over nothing.
+    let report = reopened.restore_defaults().unwrap();
+    assert_eq!(report.tool_sets_installed, vec!["Makera Z1".to_owned()]);
+    assert_eq!(reopened.tool_set("Makera Z1").unwrap().entries.len(), 23);
 }

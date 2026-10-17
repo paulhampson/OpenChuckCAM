@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default tool set for the Makera Z1 (TL-11, TL-12; decision record 0081).
+# Tool numbers are NXX: N a category (1 flat end, 2 ball, 3 V-bit, 4 chamfer,
+# 5 drill), XX counting from 01 in the category. They are assigned by this
+# project under the owner's decision, not read from Makera, and the owner may
+# replace them.
+schema = 1
+machine = "Makera Z1"
+
+# Z1 O-flute metal 3.175x12
+[[tools]]
+number = 101
+tool = "c0de0001-0000-4000-8000-000000000101"
+
+# Z1 O-flute metal 2x8
+[[tools]]
+number = 102
+tool = "c0de0001-0000-4000-8000-000000000102"
+
+# Z1 O-flute metal 1x3
+[[tools]]
+number = 103
+tool = "c0de0001-0000-4000-8000-000000000103"
+
+# Z1 O-flute 3.175x25
+[[tools]]
+number = 104
+tool = "c0de0001-0000-4000-8000-000000000104"
+
+# Z1 O-flute 3.175x42
+[[tools]]
+number = 105
+tool = "c0de0001-0000-4000-8000-000000000105"
+
+# Z1 corn 0.6x3
+[[tools]]
+number = 106
+tool = "c0de0001-0000-4000-8000-000000000106"
+
+# Z1 corn 1x7
+[[tools]]
+number = 107
+tool = "c0de0001-0000-4000-8000-000000000107"
+
+# Z1 corn 2x10.5
+[[tools]]
+number = 108
+tool = "c0de0001-0000-4000-8000-000000000108"
+
+# Z1 corn 3x12
+[[tools]]
+number = 109
+tool = "c0de0001-0000-4000-8000-000000000109"
+
+# Z1 ball metal 3.175x10
+[[tools]]
+number = 201
+tool = "c0de0001-0000-4000-8000-000000000201"
+
+# Z1 ball metal 2x6
+[[tools]]
+number = 202
+tool = "c0de0001-0000-4000-8000-000000000202"
+
+# Z1 ball metal 1x3
+[[tools]]
+number = 203
+tool = "c0de0001-0000-4000-8000-000000000203"
+
+# Z1 ball 3.175x22
+[[tools]]
+number = 204
+tool = "c0de0001-0000-4000-8000-000000000204"
+
+# Z1 ball 2x12
+[[tools]]
+number = 205
+tool = "c0de0001-0000-4000-8000-000000000205"
+
+# Z1 ball 1x4
+[[tools]]
+number = 206
+tool = "c0de0001-0000-4000-8000-000000000206"
+
+# Z1 V-bit 60 deg tip 0.1
+[[tools]]
+number = 301
+tool = "c0de0001-0000-4000-8000-000000000301"
+
+# Z1 V-bit 30 deg tip 0.2
+[[tools]]
+number = 302
+tool = "c0de0001-0000-4000-8000-000000000302"
+
+# Z1 V-bit 30 deg tip 0.3
+[[tools]]
+number = 303
+tool = "c0de0001-0000-4000-8000-000000000303"
+
+# Z1 chamfer 90 deg
+[[tools]]
+number = 401
+tool = "c0de0001-0000-4000-8000-000000000401"
+
+# Z1 drill 1
+[[tools]]
+number = 501
+tool = "c0de0001-0000-4000-8000-000000000501"
+
+# Z1 drill 2
+[[tools]]
+number = 502
+tool = "c0de0001-0000-4000-8000-000000000502"
+
+# Z1 drill 2.5
+[[tools]]
+number = 503
+tool = "c0de0001-0000-4000-8000-000000000503"
+
+# Z1 drill 3
+[[tools]]
+number = 504
+tool = "c0de0001-0000-4000-8000-000000000504"

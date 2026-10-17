@@ -141,7 +141,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | W | 21c wiring: application mapping, simulation, deviation, forms (built 16 Oct 2026 on `claude/lane-w-slice-21c-wiring`, [decision 0045](decisions/0045-slice-21c-wiring.md), accepted) | ░░ | ░░ | ██ | | |
 | Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; merged in pull request 66; its proof on the default tabs is on `claude/lane-y-default-tabs-proof`) | ░░ | ░░ | ██ | | |
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
-| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); standard tools built, Z1 part waits on OI-269; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); standard tools and the Z1 set built, open: OI-270, OI-271, OI-281; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
@@ -870,7 +870,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 ## Slice 23 – Default tool library
 
-**Status:** partly built (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools, embedded and installed on first run with a ledger, are built; the Makera Z1 tools and tool set are not, because `MakeraInc/CarveraProfiles` has no licence (OI-269); OI-268 (the standard-tool list) is owner-approved; OI-270 and OI-271 are open and what is built for them is a proposal that may change. **TL-12 is only partly met:** the Z1 bits and the Z1 default tool set are not built yet. The owner decided the tool set ships with tool numbers in the form NXX (a category number per tool type, then an incrementing library number, assigned by us), but the category list, the numbers and the shape mapping are not decided (OI-280), and the owner has not given the go on the table of Z1 bits (OI-269), so the review checklist's tool-set item stays unticked; thread mills are left out (OI-281). Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
+**Status:** built except what is still open (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), proposed): the 23 standard tools and the 23 Makera Z1 tools with the Z1 default tool set (NXX numbers 101 to 504, assigned by this project; the owner approved the table and the numbers, relayed) are embedded and installed on first run with a ledger, and the explicit restore action is built. **Still open:** cutting data (OI-270, none ships), the update policy in detail (OI-271; the proposed explicit-action rule is what is built, and there is no UI button for the restore action yet), thread mills as a P2 item (OI-281, left out), and the licence of the Makera data (OI-269: the owner's route, no legal clearance claimed). The guide is not written. TL-12 is met for the standard tools and the Z1 set except for those items. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
 
 **Goal:** a new user finds the tools a Makera Z1 normally holds and a set of common standard tools already in the library.
 
@@ -888,12 +888,12 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Review checklist**
 
-- [ ] The source and licence of the Makera data are recorded, and nothing was copied that the licence does not allow
-- [ ] A first run installs the Z1 tools with their tool set and a standard tool of every type into an empty library; a second run installs nothing (`req_tl_12_*`)
-- [ ] A tool the user edited or deleted is not overwritten or restored by an update
-- [ ] Every default tool validates and its shape matches its closed-form silhouette (TL-02, TL-03)
-- [ ] The data is embedded and read with no network access (NFR-09)
-- [ ] Cutting data that ships has a recorded source
+- [ ] The source and licence of the Makera data are recorded, and nothing was copied that the licence does not allow *(sources are recorded per value; the repositories have no licence file, the owner chose the route, and no legal clearance is claimed, so this stays unticked: OI-269)*
+- [x] A first run installs the Z1 tools with their tool set and a standard tool of every type into an empty library; a second run installs nothing (`req_tl_12_*`)
+- [x] A tool the user edited or deleted is not overwritten or restored by an update
+- [x] Every default tool validates and its shape matches its closed-form silhouette (TL-02, TL-03)
+- [x] The data is embedded and read with no network access (NFR-09)
+- [ ] Cutting data that ships has a recorded source *(none ships; OI-270 is undecided)*
 
 ## Slice 20 – Hardening and first release
 

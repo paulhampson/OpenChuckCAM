@@ -82,7 +82,9 @@ mod defaults;
 mod library;
 mod profile_file;
 
-pub use defaults::{InstallReport, LEDGER_FILE, default_tools};
+pub use defaults::{
+    InstallReport, LEDGER_FILE, default_tool_sets, default_tools, standard_tools, z1_tools,
+};
 pub use library::{
     ImportReport, LIBRARY_SCHEMA, LibraryTool, SnapshotStatus, TOOL_SETS_FOLDER, ToolLibrary,
     ToolSet, ToolSetEntry, compare_snapshot, file_stem_for, parse_tool_file, parse_tool_set,

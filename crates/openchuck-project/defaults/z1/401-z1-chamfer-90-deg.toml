@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default Makera Z1 tool, number 401 (TL-12; decision record 0081). Facts
+# only: dimensions and parameters, no wording, images or file structures.
+# Tool material "carbide" is the owner's decision, from the community
+# profiles' material column. No cutting data (OI-270).
+# Source: bit page chamfering-bit: 90 degree angle, tip 0.1 (parameter row
+# label), shank 3.175 (variant), length ~38, solid carbide; cutter diameter
+# 3.175, flute length 3 and flute count 2 from the community profiles
+# Carvera-Community/Carvera_Community_Profiles at 186e7b9,
+# CAM_Post_Processors/Fusion360-profiles/Tool Files/csv/Makera Other
+# Tools.csv only.
+schema = 1
+id = "c0de0001-0000-4000-8000-000000000401"
+name = "Z1 chamfer 90 deg"
+
+[tool]
+diameter = 3.175
+flute_length = 3.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "chamfer"
+included_angle = 90.0
+tip_diameter = 0.1

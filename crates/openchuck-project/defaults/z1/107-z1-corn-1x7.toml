@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default Makera Z1 tool, number 107 (TL-12; decision record 0081). Facts
+# only: dimensions and parameters, no wording, images or file structures.
+# Tool material "carbide" is the owner's decision, from the community
+# profiles' material column. No cutting data (OI-270).
+# Source: bit page tin-coating-corn-bit-1-8-shank: diameter, flute length
+# (variant sizes), shank 3.175, length ~38, TiN-coated solid carbide; flute
+# count 2 and the flat end mill type from the community profiles Carvera-
+# Community/Carvera_Community_Profiles at 186e7b9,
+# CAM_Post_Processors/Fusion360-profiles/Tool Files/csv/Makera Corn Bits.csv
+# only (the page states no flute count).
+schema = 1
+id = "c0de0001-0000-4000-8000-000000000107"
+name = "Z1 corn 1x7"
+
+[tool]
+diameter = 1.0
+flute_length = 7.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "flat_end"
