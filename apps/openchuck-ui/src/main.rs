@@ -22,6 +22,7 @@ use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 
 mod bench;
+mod export_panel;
 mod floating;
 mod form_panel;
 mod graphics;
