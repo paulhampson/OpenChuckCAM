@@ -1347,6 +1347,7 @@ fn operation_row(
 impl eframe::App for Shell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.draw(ui);
+        crate::graphics::reached(crate::graphics::Stage::Drawing);
     }
 }
 

@@ -14,6 +14,14 @@ The OpenChuckCAM desktop application, built on egui with the wgpu backend (archi
 
     cargo run --release -p openchuck-ui -- [PROJECT_FOLDER]
 
+## Graphics backend and start-up log
+
+On Windows the window uses DX12 when DX12 offers a hardware adapter, and wgpu's own choice (Vulkan, DX12 or OpenGL) otherwise; other systems use wgpu's choice (decision record 0059, proposed). At start-up the program prints the backends and the adapter it chose on standard error. If the window does not open, it prints why, and if nothing has been drawn after 30 s it prints a warning.
+
+- `WGPU_BACKEND=dx12`, `vulkan` or `gl` chooses the backend.
+- `WGPU_POWER_PREF=low` or `high` chooses between an integrated and a discrete GPU.
+- `RUST_LOG` sets the log detail, for example `RUST_LOG=info` or `RUST_LOG=info,wgpu_core=debug,wgpu_hal=debug`. Without it, the program's own start-up lines and every warning are shown.
+
 ## Frame-time benchmark (NFR-03, verification plan 4.2)
 
     cargo run --release -p openchuck-benches --example bench_model -- bench1m.stl
