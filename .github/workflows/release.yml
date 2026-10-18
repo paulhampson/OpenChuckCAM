@@ -5,7 +5,8 @@
 # Runs only for a release tag, `lib-v<version>` (the library family) or `app-v<version>` (the
 # application binaries), and by hand. The first job runs the release gate (`cargo xtask
 # release-gate`: dependency rules, cargo deny, the golden G-code comparison and the LinuxCNC
-# replay); every build and publish job needs it, so a failing gate publishes nothing.
+# replay); every build and publish job needs it, so a failing gate publishes nothing. The Z1 air cut
+# (gates 4 and 5) is a manual release-checklist step, not part of the gate (decision record 0106).
 #
 # - `app-v<version>`: the archives for the three platforms (build-archives.yml, shared with the
 #   nightly build) are attached to a GitHub release, not a pre-release, for the existing tag.
@@ -234,6 +235,8 @@ jobs:
             echo "**$notice**"
             echo
             echo "This release passed the release gate: the dependency rules, cargo deny, the golden G-code comparison and the LinuxCNC replay."
+            echo
+            echo "Makera Z1 machine values that have not been confirmed on the machine are labelled unconfirmed in the application. The Z1 air cut is a manual release step, recorded in the project's decision records (decision 0106)."
             echo
             echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the STEP reader, the licences, the third-party notices and a README. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
           } > notes.md

@@ -12,6 +12,9 @@
 //!   parts (GC-09, GC-10). The STEP `drilling` reference job is included, so the kernel is built.
 //! - `replay`: gate 3, every LinuxCNC golden program in the LinuxCNC simulator (GC-10).
 //!
+//! The Z1 air cut (gates 4 and 5) is not part of the gate: it is a manual release-checklist step
+//! owned by the owner (decision record 0106).
+//!
 //! Every check runs, even after one fails, so one run reports everything that blocks the
 //! release. A check that cannot run (a missing tool, a build failure) fails the gate like a check
 //! that finds a problem. There is no option to skip or soften a check; the release workflow's

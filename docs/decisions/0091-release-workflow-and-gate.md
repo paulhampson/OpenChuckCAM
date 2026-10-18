@@ -1,11 +1,11 @@
 # 0091: The release workflow and the release gate (lane TR)
 
-- **Status:** proposed (17 Oct 2026). Lane TR, built on `claude/lane-tr-release-workflow-and-gate`. The orchestrator approved the design on 17 Oct 2026 with these conditions: no real crates.io publishing; the nightly build's name, `changes` and `publish` jobs, artifact names, archive contents and README unchanged. Nothing has been tagged, published or dispatched. The release workflow cannot be dispatched until it is on `main` (OI-304).
+- **Status:** accepted by the project owner on 17 Oct 2026, relayed by the orchestrator session (decision 0049). Lane TR, built on `claude/lane-tr-release-workflow-and-gate`. The orchestrator approved the design on 17 Oct 2026 with these conditions: no real crates.io publishing; the nightly build's name, `changes` and `publish` jobs, artifact names, archive contents and README unchanged. Nothing has been tagged, published or dispatched. The release workflow cannot be dispatched until it is on `main` (OI-304).
 - **Date:** 17 Oct 2026.
 - **Work breakdown:** slice 20 items 8 (the workflow still to build after [decision 0031](0031-slice-20-packaging-and-trial-documents.md)) and 9 (the release gate in `xtask`), and the review checklist box "A deliberately failing check blocks the release tag".
-- **Open items** are tracked in [open-items.md](../open-items.md): OI-300 to OI-305 are new. OI-29 has progressed. OI-103, OI-104 and OI-135 are unchanged.
+- **Open items** are tracked in [open-items.md](../open-items.md): OI-300 to OI-306 are new. OI-29 has progressed. OI-103, OI-104 and OI-135 are unchanged.
 
-Numbering: the orchestrator assigned record numbers 0091 to 0095 and OI-300 to OI-309 to this lane. This record takes 0091 and OI-300 to OI-305. It takes no project schema number.
+Numbering: the orchestrator assigned record numbers 0091 to 0095 and OI-300 to OI-309 to this lane. This record takes 0091 and OI-300 to OI-306. It takes no project schema number.
 
 ## Context
 
@@ -13,13 +13,14 @@ Decision 0031 (accepted) settled the packaging route: a plain build matrix exten
 
 Requirements touched: NFR-01 and NFR-09 (the dependency rules), NFR-10 and NFR-14 (cargo deny: licences, advisories, sources), NFR-08, GC-09 and GC-10 (golden files and gate 3), NFR-02 (three platforms), NFR-12 (the G-code notice in each archive and in the release notes).
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **`cargo xtask release-gate`** (`xtask/src/release_gate.rs`) runs four checks in order, every one even after one fails, and fails if any finds a problem or cannot run (a missing tool, a failed build):
    - `deps`: the dependency rules (`cargo xtask deps`).
    - `deny`: `cargo deny --all-features check` with `deny.toml`, as pull request CI runs it.
    - `golden`: every test whose name contains `golden`, across the workspace with `openchuck-app/kernel-tests`. That covers the byte comparisons of generated G-code and toolpaths with the committed files, the golden audit against the exact parts, the output grouping files, and the STEP `drilling` reference job. A run that matches no test fails, so a renamed test cannot make the gate pass by matching nothing. Test names already carry `golden` wherever they compare with a golden file. A new golden test that leaves the word out is not in the gate. The gate does not run the full suite: pull request CI does that on every merge to `main`.
    - `replay`: gate 3, every LinuxCNC golden program in the LinuxCNC simulator (`cargo xtask replay` with no programs and no share), about 22 minutes in one job.
+   The gate does **not** check the Z1 air cut (gates 4 and 5, slice 20 item 11). [Decision 0106](0106-air-cut-is-a-manual-release-step.md) (accepted) makes that a manual step on the release checklist, owned by the owner.
    Its options are `--docker IMAGE` (where LinuxCNC comes from, as for `replay`), `--keep-reports` and `--tag`. With `--tag`, a first check refuses a tag that is not `lib-v<version>` or `app-v<version>`, or whose version is not the workspace version (lockstep, decision 0031 item 2). **No option skips or softens a check.** The tests inject failing steps only inside `#[cfg(test)]`.
 2. **`.github/workflows/release.yml`** runs on a push of a `lib-v*` or `app-v*` tag, and by hand (`workflow_dispatch`) with `dry_run`, a boolean that defaults to true. Its jobs:
    - `plan` reads the tag and the workspace version, and decides what the run builds and whether it publishes. A tag push publishes. A manual run publishes only with `dry_run` unticked **and** when started on a release tag. Started on a branch with `dry_run` unticked, it fails before the gate. A manual dry run on a branch builds both the application archives and the library dry run.
@@ -63,3 +64,4 @@ Requirements touched: NFR-01 and NFR-09 (the dependency rules), NFR-10 and NFR-1
 | 4 | Real publishing of the library family to crates.io (`cargo-release`), reserving the `openchuck-*` names and the registry token; the workflow cannot publish a crate (OI-303) | Lane TP (owner, 17 Oct 2026, relayed) | As item 3 |
 | 5 | The release workflow has not run and cannot be dispatched before it merges: the orchestrator runs a first dry run after merge, and its results are checked before the first tag (OI-304) | Before the first release | The orchestrator, after merge |
 | 6 | Protect the `lib-v*` and `app-v*` tags with a tag ruleset, so only the maintainer can create them (OI-305) | Before the first release | Project owner (repository settings) |
+| 7 | The release notes do not list which Makera Z1 profile values are confirmed ([decision 0106](0106-air-cut-is-a-manual-release-step.md) item 4). They point to the interface's labels (UI-13) and the air-cut record instead. The maintainer adds the list when editing the published release, or a later change generates it from the machine profile (OI-306) | Before the first release | Project owner, or a later lane |
