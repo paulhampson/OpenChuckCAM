@@ -149,6 +149,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TS | OI-129 and slice 20: a UI smoke test of the built archives on Windows, macOS and Linux under software rendering, `ui-smoke.yml` (built 17 Oct 2026 on `claude/lane-ts-ui-smoke-ci`, draft pull request 95; decision record 0101 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
 | FZ | 20 item 4: the malformed-input sweep, a fuzz target for every user file and the fuzz CPU hours per parser (built 18 Oct 2026 on `claude/lane-fz-malformed-input-sweep`, [decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), accepted 18 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
+| BT | OI-316 and OI-253: the blisk's gate 2 failures in lane TE's run were from before decision 0076 (lane TE closes OI-316); an older Makera Z1 machine copy with no library ID now migrates by its name ([decision 0109](decisions/0109-z1-copy-without-an-id-migrates-by-name.md), accepted 18 Oct 2026, relayed; built on `claude/lane-bt-gate2-timing`) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -180,6 +181,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TS | Nothing |
 | TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
 | FZ | Nothing; its hours accumulate nightly after it merges |
+| BT | Nothing |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
 
