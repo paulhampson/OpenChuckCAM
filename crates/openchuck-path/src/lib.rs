@@ -24,7 +24,8 @@
 //! feed with segment durations (OP-13). Strategies are found by name in a
 //! [`Registry`] (OP-16); the library's own are [`HelicalFinishing`],
 //! [`SimultaneousFinishing`], [`RestMachining`], [`PencilFinishing`] and
-//! [`RadialDrilling`] and [`EdgeFollowing`] (edge chains from a [`CurveSource`], decision record 0047). Tool-centre
+//! [`RadialDrilling`], [`EdgeFollowing`] (edge chains from a [`CurveSource`], decision record 0047)
+//! and [`Swarf`] (flank milling along the rulings of B-rep faces, decision record 0061). Tool-centre
 //! solving is the drop-cutter of [`cutter`], generic over the tool profile
 //! (decision record 0012). Regions on the unrolled cylinder and their offsets
 //! are in [`unroll`].
@@ -96,6 +97,7 @@ mod solid;
 pub mod stock;
 pub mod strategy;
 pub mod surface;
+pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
@@ -104,7 +106,7 @@ pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use brep_edges::BrepEdges;
 pub use composite::CompositeSurface;
-pub use curves::{CurveSource, EdgeChain, MeshFeatureEdges};
+pub use curves::{ChosenSegments, CurveSource, EdgeChain, MeshFeatureEdges};
 pub use cutter::{Contact, ToolLine};
 pub use drill::RadialDrilling;
 pub use edge_following::EdgeFollowing;
@@ -130,5 +132,7 @@ pub use strategy::{
     generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{
-    FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
+    FaceClosest, FacePosition, FaceRef, MeshSurface, ParametricFace, RayHit, SurfacePoint,
+    SurfaceSource, Uv,
 };
+pub use swarf::Swarf;

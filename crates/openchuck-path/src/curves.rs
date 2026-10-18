@@ -98,6 +98,95 @@ impl CurveSource for MeshFeatureEdges {
     }
 }
 
+/// Edges chosen one by one, as segments in the model frame (a user's choice
+/// of a mesh's triangle edges, OI-204; decision record 0066), chained at
+/// corners where exactly two of them meet. No crease angle applies: the user
+/// chose them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChosenSegments {
+    segments: Vec<[Point3; 2]>,
+    /// Chains shorter than this are dropped, millimetres.
+    pub min_length: f64,
+}
+
+impl ChosenSegments {
+    /// The segments, with no length limit. Ends closer than a
+    /// hundred-thousandth of a millimetre are one corner, and a segment whose
+    /// ends are one corner is skipped. Fails when a point is not finite or no
+    /// segment has length.
+    pub fn new(segments: Vec<[Point3; 2]>) -> Result<Self> {
+        if segments.iter().flatten().any(|p| !p.is_finite()) {
+            return Err(PathError::Surface(
+                "every point of a chosen edge must be finite".to_owned(),
+            ));
+        }
+        if segments.iter().all(|[a, b]| weld_key(*a) == weld_key(*b)) {
+            return Err(PathError::Surface(
+                "none of the chosen edges has length".to_owned(),
+            ));
+        }
+        Ok(Self {
+            segments,
+            min_length: 0.0,
+        })
+    }
+
+    /// Chains shorter than `millimetres` are dropped.
+    #[must_use]
+    pub fn with_min_length(mut self, millimetres: f64) -> Self {
+        self.min_length = millimetres;
+        self
+    }
+
+    /// The source as a shared value, for [`crate::EdgeFollowing::with_source`].
+    pub fn shared(self) -> Arc<dyn CurveSource> {
+        Arc::new(self)
+    }
+}
+
+impl CurveSource for ChosenSegments {
+    fn chains(&self, _surface: &dyn SurfaceSource) -> Result<Vec<EdgeChain>> {
+        if !self.min_length.is_finite() {
+            return Err(PathError::Surface(
+                "the shortest chain must be a finite number".to_owned(),
+            ));
+        }
+        let mut ids: BTreeMap<[i64; 3], u32> = BTreeMap::new();
+        let mut welded: Vec<Point3> = Vec::new();
+        let mut id = |p: Point3| {
+            *ids.entry(weld_key(p)).or_insert_with(|| {
+                welded.push(p);
+                (welded.len() - 1) as u32
+            })
+        };
+        let mut pairs: Vec<(u32, u32)> = Vec::new();
+        let mut seen: BTreeSet<(u32, u32)> = BTreeSet::new();
+        for [a, b] in &self.segments {
+            let (i, j) = (id(*a), id(*b));
+            let pair = (i.min(j), i.max(j));
+            if i != j && seen.insert(pair) {
+                pairs.push(pair);
+            }
+        }
+        let mut chains: Vec<EdgeChain> = chain_edges(&pairs)
+            .into_iter()
+            .map(|(chain, closed)| EdgeChain {
+                points: chain
+                    .iter()
+                    .filter_map(|v| welded.get(*v as usize).copied())
+                    .collect(),
+                closed,
+            })
+            .collect();
+        chains.retain(|c| c.length() >= self.min_length);
+        Ok(chains)
+    }
+}
+
+fn weld_key(p: Point3) -> [i64; 3] {
+    [p.x, p.y, p.z].map(|v| (v / WELD).round() as i64)
+}
+
 /// The feature edges of `mesh` that turn at least `min_angle` degrees (or
 /// that do not join exactly two triangles), chained into polylines in a
 /// deterministic order: by the welded vertex each chain starts at. Vertices

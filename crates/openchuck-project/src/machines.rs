@@ -33,15 +33,49 @@ use crate::file::{FileKind, MachineFile, parse, to_text};
 /// - 1: slice 3 (decision record 0011).
 /// - 2: the profile may hold an `id` that project copies keep, so a copy can
 ///   be compared with its source (OI-54, decision record 0029 item 16).
-pub const MACHINE_SCHEMA: i64 = 2;
+/// - 3: the feed limits may say how the controller counts A in the feed word
+///   (`max_feeds.rotary_in_feed`, decision record 0076).
+pub const MACHINE_SCHEMA: i64 = 3;
 
 /// Profile file migrations, oldest first (see `file::MIGRATIONS`).
-const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[machine_1_to_2];
+const MACHINE_MIGRATIONS: &[crate::file::Migration] = &[machine_1_to_2, machine_2_to_3];
 
 /// Schema 2 only adds the optional `id`, so a schema 1 file needs no change
 /// but its number. Its profile has no ID until it is saved with one.
 fn machine_1_to_2(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
+}
+
+/// Schema 3 adds `max_feeds.rotary_in_feed`; see [`fill_rotary_in_feed`].
+fn machine_2_to_3(_kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    fill_rotary_in_feed(table);
+    Ok(())
+}
+
+/// The ID of the built-in Makera Z1 profile, which every copy made from it
+/// keeps.
+pub const MAKERA_Z1_ID: &str = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01";
+
+/// Migrates a machine file from before `max_feeds.rotary_in_feed` (decision
+/// record 0076): a profile with the built-in Z1's ID came from the Z1, whose
+/// firmware counts A in the feed word (decision record 0007), so it gains
+/// `rotary_in_feed = "makera"`; any other profile keeps the default, A
+/// counted separately, which is how every profile was timed before.
+pub(crate) fn fill_rotary_in_feed(table: &mut toml::Table) {
+    let from_z1 = table.get("id").and_then(toml::Value::as_str) == Some(MAKERA_Z1_ID);
+    if !from_z1 {
+        return;
+    }
+    if let Some(feeds) = table
+        .get_mut("machine")
+        .and_then(toml::Value::as_table_mut)
+        .and_then(|m| m.get_mut("max_feeds"))
+        .and_then(toml::Value::as_table_mut)
+    {
+        feeds
+            .entry("rotary_in_feed")
+            .or_insert_with(|| toml::Value::String("makera".into()));
+    }
 }
 
 /// A new machine ID, for a profile entering a library without one.
