@@ -1,6 +1,6 @@
 # 0101: UI smoke test of the built archives (lane TS; OI-129, OI-320, OI-321)
 
-- **Status:** proposed. Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner on 17 Oct 2026, relayed by the orchestrator session (decision 0049). Built by lane TS on `claude/lane-ts-ui-smoke-ci`.
 - **Date:** 17 Oct 2026.
 - **Open items:** OI-129 (updated), OI-320 and OI-321 (new).
 
