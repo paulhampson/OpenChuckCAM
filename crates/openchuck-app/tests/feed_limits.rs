@@ -353,3 +353,50 @@ fn req_gc_07_req_nfr_06_feed_limited_jobs_give_identical_gcode_at_1_2_and_n_thre
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
+
+#[test]
+fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_word_within_the_limit()
+ {
+    // `Command::SetMachine` stores the profile with no library ID. Before
+    // schema 13 such a Z1 copy had no `rotary_in_feed`, and the migration
+    // knew the Z1 only by its ID, so the box's corners wrote `F1432.7` on the
+    // Z1 again (OI-253; decision records 0076 item 3 and 0109).
+    let limit = builtin("makera-z1").unwrap().unwrap().max_feeds.linear.0;
+    let job = jobs()
+        .into_iter()
+        .find(|j| j.name == "box_helical")
+        .unwrap();
+    let (dir, app) = build(&job, "no-id");
+    app.save().unwrap();
+    drop(app);
+    let machine = std::fs::read_to_string(dir.join("machine.toml")).unwrap();
+    assert!(!machine.contains("\nid = "), "{machine}");
+    let older: String = machine
+        .lines()
+        .filter(|l| !l.starts_with("rotary_in_feed"))
+        .map(|l| {
+            if l.starts_with("schema = ") {
+                "schema = 12\n".to_owned()
+            } else {
+                format!("{l}\n")
+            }
+        })
+        .collect();
+    std::fs::write(dir.join("machine.toml"), older).unwrap();
+
+    let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    app.set_post(Some(PostSelection::parse("makera-z1")));
+    let result = app.regenerate().unwrap();
+    for report in &result.reports {
+        assert!(
+            report.is_clean(),
+            "{:?} {:?}",
+            &report.findings[..report.findings.len().min(3)],
+            report.comparison
+        );
+    }
+    for (_, text) in &result.gcode {
+        assert!(highest_feed(text) <= limit, "F{}", highest_feed(text));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
