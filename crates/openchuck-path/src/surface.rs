@@ -192,7 +192,20 @@ pub struct MeshSurface {
     mesh: TriangleMesh,
     normals: Vec<Option<UnitVec3>>,
     bounds: Aabb,
+    /// Two distances within this are equal up to rounding: see
+    /// [`PROJECT_TIE`].
+    tie: f64,
 }
+
+/// The fraction of the mesh's size within which two distances from a point
+/// to two triangles count as equal (decision record 0112). A point on a mesh
+/// edge or at a vertex is as close to every facet that meets there, up to
+/// rounding; which facet a nearest-point search finds first then turns on
+/// the platform's last bit (OI-319). [`SurfaceSource::project`] takes every
+/// facet within this of the nearest and answers the same from either side.
+/// One part in a thousand million of the mesh's diagonal is far above the
+/// rounding of any coordinate and far below the written resolution.
+pub const PROJECT_TIE: f64 = 1e-9;
 
 impl std::fmt::Debug for MeshSurface {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -235,11 +248,13 @@ impl MeshSurface {
             min = Point3::new(min.x.min(p.x), min.y.min(p.y), min.z.min(p.z));
             max = Point3::new(max.x.max(p.x), max.y.max(p.y), max.z.max(p.z));
         }
+        let tie = PROJECT_TIE * (max - min).length().max(1.0);
         Ok(Self {
             bvh,
             mesh: mesh.clone(),
             normals,
             bounds: Aabb { min, max },
+            tie,
         })
     }
 
@@ -324,7 +339,7 @@ impl SurfaceSource for MeshSurface {
 
     fn project(&self, point: Point3) -> Option<SurfacePoint> {
         let query = to_vector(point);
-        let (i, (_, closest)) = self.bvh.bvh().find_best(
+        let (_, (nearest, _)) = self.bvh.bvh().find_best(
             f64::MAX,
             |node: &BvhNode, _| node.aabb().distance_to_local_point(query, true),
             |i, _| {
@@ -333,9 +348,31 @@ impl SurfaceSource for MeshSurface {
                 Some((q.distance(point), q))
             },
         )?;
+        // Every triangle as near as the nearest, up to rounding: a point on
+        // an edge or at a vertex is as close to each facet meeting there, and
+        // which the search found first must not decide the answer (decision
+        // record 0112, OI-319). The lowest-numbered gives the point, and the
+        // normal is the mean of all their normals, the same from either side.
+        let limit = nearest + self.tie;
+        let mut tied: Vec<(u32, Point3)> = self
+            .bvh
+            .bvh()
+            .leaves(|node: &BvhNode| node.aabb().distance_to_local_point(query, true) <= limit)
+            .filter_map(|i| {
+                let tri = self.triangle(i)?;
+                let q = closest_on_triangle(point, &tri);
+                (q.distance(point) <= limit).then_some((i, q))
+            })
+            .collect();
+        tied.sort_unstable_by_key(|(i, _)| *i);
+        let (first, closest) = *tied.first()?;
+        let sum = tied.iter().fold(Vec3::ZERO, |acc, (i, q)| {
+            acc + self.normal(*i, point - *q).get()
+        });
+        let normal = UnitVec3::new(sum).unwrap_or_else(|_| self.normal(first, point - closest));
         Some(SurfacePoint {
             point: closest,
-            normal: self.normal(i, point - closest),
+            normal,
             position: None,
         })
     }
