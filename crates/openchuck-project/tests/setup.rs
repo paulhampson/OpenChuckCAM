@@ -313,3 +313,48 @@ fn req_prj_04_req_op_13_an_older_z1_copy_migrates_to_count_a_in_its_feed_word() 
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_prj_04_req_set_01_a_z1_copy_without_an_id_migrates_by_its_name() {
+    use openchuck_types::machine::RotaryInFeed;
+    // A Z1 copy stored through `Command::SetMachine` before schema 13 has no
+    // library ID, only the profile's name; it is still the Z1 and gains its
+    // rule (decision records 0076 item 3 and 0109, OI-253).
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-11-z1");
+    let copy = |tag: &str, name: &str| {
+        let dir = temp_dir(tag);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy(fixture.join("project.toml"), dir.join("project.toml")).unwrap();
+        let machine = std::fs::read_to_string(fixture.join("machine.toml")).unwrap();
+        let machine: String = machine
+            .lines()
+            .filter(|l| !l.starts_with("id = "))
+            .map(|l| {
+                if l == "name = \"Makera Z1\"" {
+                    format!("name = \"{name}\"\n")
+                } else {
+                    format!("{l}\n")
+                }
+            })
+            .collect();
+        assert!(!machine.contains("rotary_in_feed ="));
+        std::fs::write(dir.join("machine.toml"), machine).unwrap();
+        let feed = file::load(&dir)
+            .unwrap()
+            .machine()
+            .unwrap()
+            .max_feeds
+            .rotary_in_feed;
+        std::fs::remove_dir_all(&dir).ok();
+        feed
+    };
+    assert_eq!(
+        copy("schema-11-z1-no-id", "Makera Z1"),
+        RotaryInFeed::Makera
+    );
+    // A profile with no ID and another name keeps A counted separately.
+    assert_eq!(
+        copy("schema-11-other-no-id", "My mill"),
+        RotaryInFeed::Separate
+    );
+}

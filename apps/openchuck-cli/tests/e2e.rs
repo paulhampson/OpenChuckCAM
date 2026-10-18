@@ -573,9 +573,9 @@ sample_tests!(
 );
 
 /// Slice 20 item 3 asks for all sample projects: every reference job with
-/// golden programs is a sample project with its tests, except `drilling`,
-/// which needs the STEP kernel (OI-312), and every blisk golden program
-/// belongs to a sample.
+/// golden programs is a sample project with its tests, except `drilling`
+/// and `swarf`, which need the STEP kernel (OI-312; decision record 0111),
+/// and every blisk golden program belongs to a sample.
 #[test]
 fn req_gc_07_every_reference_job_is_a_sample_project_with_its_tests() {
     let names: Vec<&str> = samples().iter().map(|s| s.name).collect();
@@ -591,7 +591,7 @@ fn req_gc_07_every_reference_job_is_a_sample_project_with_its_tests() {
                 name.strip_suffix("_makera-z1.nc")
                     .map(|job| format!("{prefix}{job}"))
             })
-            .filter(|job| job != "drilling")
+            .filter(|job| job != "drilling" && job != "swarf")
             .collect();
         jobs.sort();
         jobs

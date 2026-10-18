@@ -76,6 +76,7 @@ const NAMES: &[&str] = &[
     "revolved_spline",
     "revolved_spline_partial",
     "extruded_spline",
+    "hex_bar",
 ];
 
 #[test]

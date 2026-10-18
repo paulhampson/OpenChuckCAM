@@ -1056,7 +1056,12 @@ fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
     // editing, and nothing is stored (decision 0045 item 4).
     let out = run(&args(&["setup", p, "Setup 1", "--tab", "cylinder=-1,2,4"]));
     assert_ne!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
-    assert!(out.stderr.contains("tab 1"), "{}", out.stderr);
+    assert!(
+        out.stderr
+            .contains("Tab 1 (X -1.000 to 1.000 mm) is not wholly in the head or the tail zone"),
+        "{}",
+        out.stderr
+    );
     assert!(!out.stderr.contains("panicked"), "{}", out.stderr);
     let out = run(&args(&["report", p]));
     assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);

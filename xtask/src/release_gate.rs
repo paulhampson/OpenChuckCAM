@@ -9,7 +9,8 @@
 //! - `deny`: `cargo deny check` over licences, advisories, bans and sources (NFR-10, NFR-14).
 //! - `golden`: every golden-file test (NFR-08): the generated G-code and toolpaths compared byte
 //!   for byte with the committed files, and the golden audit of those files against the exact
-//!   parts (GC-09, GC-10). The STEP `drilling` reference job is included, so the kernel is built.
+//!   parts (GC-09, GC-10). The STEP reference jobs (`drilling`, `swarf`) are included, so the
+//!   kernel is built.
 //! - `replay`: gate 3, every LinuxCNC golden program in the LinuxCNC simulator (GC-10).
 //!
 //! The Z1 air cut (gates 4 and 5) is not part of the gate: it is a manual release-checklist step
@@ -130,7 +131,7 @@ fn deny(root: &Path) -> Result<Findings> {
 const NOT_GOLDEN_FILE_TESTS: &[&str] = &["xtask", "openchuck-testkit"];
 
 /// The `cargo test` arguments of the golden run: every test whose name says `golden`, with the
-/// kernel so the STEP reference job runs too, outside [`NOT_GOLDEN_FILE_TESTS`].
+/// kernel so the STEP reference jobs run too, outside [`NOT_GOLDEN_FILE_TESTS`].
 fn golden_args() -> Vec<&'static str> {
     let mut args = vec!["test", "--workspace", "--locked"];
     for name in NOT_GOLDEN_FILE_TESTS {
