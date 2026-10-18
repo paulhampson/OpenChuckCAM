@@ -97,7 +97,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 19 output options and setup sheet | In progress | Item 4 built by lane S on `claude/lane-s-slice-19-export-dialogs` ([decision 0071](decisions/0071-slice-19-export-dialogs.md), accepted); the owner closes the slice |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
 | 21 workholding and retaining tabs | Built, pending merge | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation, deviation, forms and the command line, is built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), accepted 16 Oct 2026; OI-195 to OI-198 and OI-209); the fix for walls in the target (OI-209, closed) is merged from lane Y ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction); 21d ([decision 0104](decisions/0104-held-regions-and-tabs-in-the-interface.md), UI-25): the interface specification (sections 7.5 and 11.7) is written by lane 21d on `claude/lane-21d-workholding-ui-spec` and merged; its code and tests (item 3) are built by lane 21d on `claude/lane-21d-workholding-ui-code` (draft pull request; OI-325 closed, what remains is OI-334) |
-| 22 user interface conformance pass | In progress | Reframed as a conformance pass ([decision 0105](decisions/0105-slice-22-conformance-pass.md), accepted). Step 1, the conformance report and component inventory, is written by lane X1 on `claude/lane-x1-slice-22-conformance-report` ([decision 0114](decisions/0114-slice-22-conformance-report.md), accepted 18 Oct 2026). The owner answered its eight questions (OI-338 to OI-341, OI-343, OI-344 closed); OI-342 (mock-ups, lane by lane) and OI-345 (the UI-13 wording) are open; OI-334 is mapped to lanes. Steps 2 to 4 are lanes X2 to X9 (Parallel work) |
+| 22 user interface conformance pass | In progress | Reframed as a conformance pass ([decision 0105](decisions/0105-slice-22-conformance-pass.md), accepted). Step 1, the conformance report and component inventory, is written by lane X1 on `claude/lane-x1-slice-22-conformance-report` ([decision 0114](decisions/0114-slice-22-conformance-report.md), accepted 18 Oct 2026). The owner answered its eight questions (OI-338 to OI-341, OI-343, OI-344 closed); OI-342 (mock-ups, re-rendered by each lane's agent as its step 1) and OI-345 (the UI-13 wording) are open; OI-334 is mapped to lanes. Steps 2 to 4 are lanes X2 to X9 (Parallel work) |
 
 ## Slice order and dependencies
 
@@ -192,14 +192,14 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | FZ | Nothing; its hours accumulate nightly after it merges |
 | BT | Nothing |
 | X1 | O and 21d (decision 0105; both merged) |
-| X2 | Pull request 121 (lane S11). Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X3 | Pull request 121. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X7a | Nothing. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X4 | X2 and X7a. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X5 | X2 and X3. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X6 | X2; its Simulate colours after X3. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X7b | X2 and X7a. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
-| X9 | X2 and X4. Before it starts, the owner re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it (OI-342) |
+| X2 | Pull request 121 (lane S11). Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X3 | Pull request 121. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X7a | Nothing. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X4 | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X5 | X2 and X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X6 | X2; its Simulate colours after X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
 | T | Everything, including W and X1 to X9 |
 
