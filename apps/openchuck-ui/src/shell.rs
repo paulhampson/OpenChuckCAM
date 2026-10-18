@@ -219,6 +219,9 @@ impl Shell {
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
         self.profile_draft = None;
+        // A workholding draft, and its "not applied" note, belong to the
+        // project that was open; they must not carry over (lane 21d, #119).
+        self.workholding_panel = None;
         self.import = None;
         self.form.clear();
         self.app = Some(app);
