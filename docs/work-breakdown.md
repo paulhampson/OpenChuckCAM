@@ -4,7 +4,7 @@ Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2
 
 ## P1 assessment
 
-93 of 147 requirements are P1: IMP 6, UI 16, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
+94 of 148 requirements are P1: IMP 6, UI 17, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
 
 Findings, after reconciling with the architecture:
 
@@ -819,7 +819,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 
-**Requirements:** SET-09, OP-21
+**Requirements:** SET-09, OP-21; UI-25 (added by decision 0104; built by 21d)
 
 **Design refinement:** the record's items: the held region and each tab as analytic solids (cylinder, frustum) added to the part for the whole job, where they live (the setup, beside stock), the composite target surface and its determinism, what stock to leave, the gouge checker and the deviation report do with them, and the cut-off.
 
@@ -842,8 +842,20 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 3. Default tabs when none are set, from the part's extent (decision 0035, owner's answers, OI-158): two on the axis, one at the head and one at the tail, frustums with the small end on the model, each the smaller of 10 mm and half the part's local diameter across; the head tab runs from the held region's inner edge to the start of the model and the tail tab from the model's end to the stock's end, kept out of held regions and user-excluded regions. Tabs are restricted to the head and tail zones, and 21c refuses one outside them (OI-180). A tab narrower than the tool is refused (OI-159).
 4. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
 
+**21d – Interface specification, display and verification (requirement agreed 17 Oct 2026, the rest not started; added at the owner's request)**
+
+Today the workholding panel (`workholding_panel.rs`, edits a draft of the held regions and tabs) and the viewport's held-region and tab colours exist (21c item 2), but no requirement and no part of the interface specification says that held regions and tabs are shown or edited in the interface: SET-09 and OP-21 describe the data and the machining, and UI-03 lists only the rotary axis, work coordinate system, stock and part. 21d closes that gap.
+
+1. The requirement, agreed by the owner on 17 Oct 2026 ([decision 0104](decisions/0104-held-regions-and-tabs-in-the-interface.md)): UI-03 now lists held regions and retaining tabs among what the viewport shows, and the new P1 requirement UI-25 says the user can view, add, edit and remove a setup's held regions and tabs in the interface, with validation, the default tabs shown as defaults and a warning when an operation's selection reaches one.
+2. The interface specification (`docs/ui-design/ui-specification.md`) gains the workholding panel (fields, validation messages, the default tabs and how they are shown as defaults, the warning when an operation's selection reaches a held region or a tab) and the viewport display (colour and shape or outline so the two roles differ by more than colour, a legend entry, hover and selection behaviour), with a mock-up.
+3. Tests and screenshots that name the new requirement: the panel edits and validates a tab and a held region and the edit is undoable; the viewport draws them; the UI smoke test opens the panel (UI-07, UI-08, NFR-02). The verification plan gains the row.
+4. Slice 22 (interface redesign) includes the panel and the display in its component inventory.
+
 **Review checklist**
 
+- [x] A requirement in `docs/requirements.md` says that held regions and retaining tabs are shown in the viewport and edited in the interface (UI-03 amended and UI-25, decision 0104, agreed by the owner 17 Oct 2026)
+- [ ] The interface specification describes the workholding panel and the viewport display, with a mock-up (21d item 2)
+- [ ] Tests that name UI-25 cover editing, undo, display and the selection warning (21d item 3)
 - [x] A held region and each tab validate, persist, migrate and undo; impossible ones are refused with a message (21a tests in `openchuck-project`, `openchuck-app` and `openchuck-cli`; the form and generation refuse the checks that need the part and the tool)
 - [x] Roughing and finishing on the oracle parts never cut into a held region or a tab, and the independent checker agrees (`req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab`; tabs around the axis by the simulation, OI-197)
 - [x] Links and retracts do not cross a held region (the same test: every fed move checked, and no rapid move removes material)
@@ -863,7 +875,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Design refinement:** first step, before any rework. Record the design as a decision record: the screens and panels, the layout and navigation, the interaction for selecting, operating and playing back, theming and text sizes, and what in the design asks for a feature the requirements do not have. Anything that does is raised, not built (UI-xx requirements change only by agreement, and the architecture's view-model boundary stays: the UI imports no engine crate).
 
-1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new.
+1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new. It includes the setup's workholding panel and the viewport display of held regions and tabs (slice 21d).
 2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the design touches) to the design, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
 3. Update the UI smoke tests and the screenshots in the guide; keep the 1M-triangle frame benchmark and rerun it on the reference machines (NFR-03).
 4. No project format change and no engine change. If the design needs one, it is a separate lane with its own schema claim.
@@ -965,7 +977,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 | 18 | OP-10 | – |
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
-| 21 | SET-09, OP-21 | – |
+| 21 | SET-09, OP-21, UI-25 | – |
 | 22 | – | – |
 | 23 | TL-12 | – |
 

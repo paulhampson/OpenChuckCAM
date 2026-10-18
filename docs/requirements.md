@@ -82,7 +82,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 |---|---|---|
 | UI-01 | Cross-platform desktop application for Windows, macOS and Linux from one codebase. | P1 |
 | UI-02 | Interactive 3D viewport: orbit, pan, zoom, standard views, perspective and orthographic cameras, shaded, wireframe and edge display. | P1 |
-| UI-03 | Display the rotary axis, work coordinate system, stock and part together in the viewport. | P1 |
+| UI-03 | Display the rotary axis, work coordinate system, stock, part, held regions and retaining tabs together in the viewport. | P1 |
 | UI-04 | Select geometry in the viewport: faces and edges on B-rep models; triangle regions on meshes, including select-by-angle and flood fill. | P1 |
 | UI-05 | Save selections as named sets that operations can reference and that update when the selection is edited. | P1 |
 | UI-06 | Project tree listing the model, stock, setups, operations and tools; operations can be reordered, enabled, disabled and duplicated. | P1 |
@@ -104,6 +104,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-22 | Show the undo history and let the user return to any step in it. | P2 |
 | UI-23 | A start page with recent projects, and import by dropping a file on the window. | P2 |
 | UI-24 | When a selection set no longer matches its model, offer to select again, to show what is missing, and to keep the part that still matches. | P2 |
+| UI-25 | View, add, edit and remove a setup's held regions and retaining tabs in the interface, with validation, the default tabs shown as defaults, and a warning when an operation's selection reaches one. | P1 |
 
 ### 3.3 Machine, stock and setup
 
