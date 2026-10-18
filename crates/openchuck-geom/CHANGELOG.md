@@ -4,6 +4,7 @@ All notable changes to `openchuck-geom` are recorded here.
 
 ## Unreleased
 
+- `check::weld_vertices`: a mesh's triangles moved onto the first vertex within a tolerance, with vertex and triangle indices kept, so a STEP model's separately tessellated faces are checked as one mesh (OI-259).
 - Slice 11b (lane O, decision 0066): `pick::EdgePicker`, `PickTolerance` and `EdgeHit`: the polyline a ray passes nearest within a reach that may grow with distance, stopped at a surface hit (UI-04 for B-rep and mesh edges).
 - `transform::transform_brep` and `brep_placement`: a B-rep model placed by the same steps as a mesh, with exact frames, radii, UV parameters and outward normals kept under rotate, mirror, scale and move (IMP-05; decision 0056 item 1). New items only.
 - Version 0.9.0 with the library family (decision 0076).

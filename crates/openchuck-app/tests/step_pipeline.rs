@@ -315,3 +315,39 @@ fn req_op_08_a_step_part_is_engraved_along_its_b_rep_edges_through_the_applicati
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_imp_04_a_closed_step_part_is_checked_closed_and_an_open_one_shows_its_holes() {
+    use openchuck_app::model::inspect_file;
+    use openchuck_types::job::{CancelToken, JobContext, NoProgress};
+    // The faces are tessellated one by one; their shared corners are joined
+    // before the mesh checks (decision 0056), so a closed part is one closed
+    // shell with its volume, and only a real opening is a hole.
+    let cancel = CancelToken::new();
+    let context = JobContext::new(&cancel, &NoProgress);
+    let inspect = |name: &str| {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/step/valid")
+            .join(format!("{name}.step"));
+        inspect_file(&path, None, &[], &context).unwrap().report
+    };
+    for (name, shells, volume) in [
+        ("box", 1, 20.0 * 30.0 * 40.0),
+        (
+            "sphere",
+            1,
+            4.0 / 3.0 * std::f64::consts::PI * 15.0_f64.powi(3),
+        ),
+        ("filleted_box", 1, 23_339.8),
+        ("rotary_blank_drilled", 1, 26_460.1),
+        ("multi_body", 3, 18_212.1),
+    ] {
+        let report = inspect(name);
+        assert!(report.is_clean(), "{name}: {:?}", report.problems());
+        assert_eq!(report.shells, shells, "{name}");
+        let v = report.volume.unwrap();
+        assert!((v - volume).abs() < 2e-3 * volume, "{name}: volume {v}");
+    }
+    // The revolved spline is an open shell: its two rims are holes.
+    assert_eq!(inspect("revolved_spline").holes.len(), 2);
+}
