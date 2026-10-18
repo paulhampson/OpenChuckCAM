@@ -807,7 +807,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | D10 | Steps, the footer primary action and the messages dock are not built | Sections 4, 5 and 9 | New work for lane A or T (decision 0038) |
 | D11 | Size and scale are not remembered (0029, owner's run, observation 1) | Remembered per user (UI-15) | New work |
 | D12 | The part is coloured in six bands by the worst deviation per triangle: overcut deeper than one cell, within one cell, up to 0.25 mm left, 0.25 to 1 mm, more than 1 mm or only a bound, not measured, with a legend giving each band's triangle count (decision 0040 item 10, accepted) | A diverging scale ordered by lightness with its thresholds at the operation's tolerance, +0.10 and +0.50 mm (section 11.5) | Open (OI-194). Until it is decided, decision 0040's bands stand; the colours of section 11.5 apply to them (overcut magenta, on the surface grey, material left in blues by depth, not measured hatched) |
-| D13 | The workholding panel and the display of held regions and tabs (slice 21c item 2, decision 0045 item 8) predate sections 7.5 and 11.7: among other things the panel stands alone in the inspector, shows messages with field paths, offers the default tabs only by a button, and the two roles are opaque shades of blue and amber with no second cue, no legend and no hover | Sections 7.5 and 11.7 | Open (OI-325, which lists every difference). The code and tests are slice 21d item 3, after lane O merges; the layout parts go with slice 22 |
+| D13 | The workholding panel and the display of held regions and tabs (slice 21c item 2, decision 0045 item 8) predate sections 7.5 and 11.7: among other things the panel stands alone in the inspector, shows messages with field paths, offers the default tabs only by a button, and the two roles are opaque shades of blue and amber with no second cue, no legend and no hover | Sections 7.5 and 11.7 | Partly built by lane 21d (slice 21d item 3; OI-325 closed). What remains, mainly the layout parts and the Setup step panes, is OI-334 and goes with slice 22 |
 
 ## 18. Traceability
 
@@ -841,7 +841,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
 - **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
 - **OI-194 (open):** the deviation display: decision 0040's six bands by triangle against this specification's continuous scale (D12).
-- **OI-325 (open):** what the current workholding panel and viewport display do differently from sections 7.5 and 11.7 (D13).
+- **OI-325 (closed 18 Oct 2026):** the differences of the workholding panel and display from sections 7.5 and 11.7 (D13), built by lane 21d. **OI-334 (open):** what lane 21d did not build.
 
 ## 20. Rendered mockups
 
