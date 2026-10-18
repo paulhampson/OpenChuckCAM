@@ -643,7 +643,7 @@ fn read_text(path: &Path) -> Result<String, ProjectError> {
     std::fs::read_to_string(path).map_err(io(path))
 }
 
-fn io(path: &Path) -> impl Fn(std::io::Error) -> ProjectError + '_ {
+pub(super) fn io(path: &Path) -> impl Fn(std::io::Error) -> ProjectError + '_ {
     move |source| ProjectError::Io {
         path: path.to_path_buf(),
         source,

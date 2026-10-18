@@ -79,3 +79,19 @@ pub fn default_folders() -> Option<LibraryFolders> {
         tools: base.join("tools"),
     })
 }
+
+/// Installs the default tools (TL-12; decision record 0081) into the tool
+/// library folder `dir`: the ones it has not had before, never overwriting or
+/// restoring a tool. A second call installs nothing.
+pub fn install_default_tools(
+    dir: &std::path::Path,
+) -> Result<openchuck_project::tools::InstallReport, openchuck_project::ProjectError> {
+    openchuck_project::tools::ToolLibrary::open(dir)?.install_defaults()
+}
+
+/// [`install_default_tools`] for the default tool library folder. `None`
+/// when the configuration folder cannot be found.
+pub fn install_default_tools_in_default_folder()
+-> Option<Result<openchuck_project::tools::InstallReport, openchuck_project::ProjectError>> {
+    Some(install_default_tools(&default_folders()?.tools))
+}
