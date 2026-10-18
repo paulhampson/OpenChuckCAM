@@ -10,7 +10,8 @@
 //!   outward, and orientation to the rotary axis (IMP-05).
 //! - [`select`]: flood fill, select-by-angle and select-by-direction on
 //!   triangles (UI-04).
-//! - [`pick`]: ray-cast picking against a bounding volume hierarchy (UI-04).
+//! - [`pick`]: ray-cast picking against a bounding volume hierarchy, and the
+//!   edge nearest a ray (UI-04).
 //! - [`display`]: feature edges for the viewport's edge display (UI-02).
 //!
 //! Everything here is format independent and single-threaded, so results are

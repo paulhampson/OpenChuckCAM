@@ -234,8 +234,9 @@ fn req_tl_04_req_tl_05_req_tl_06_snapshot_file_holds_every_value() {
     let id = ToolId::from_u128(0x0d6b8a5e_3c1f_4e2a_9b7d_000000000001);
     let files = file::render(&project).unwrap();
     let text = &files[&format!("tools/{id}.toml")];
+    let schema = format!("schema = {}", file::SCHEMA);
     for line in [
-        "schema = 11",
+        schema.as_str(),
         "name = \"6 mm flat\"",
         "overall_length = 50.0",
         "flute_count = 2",

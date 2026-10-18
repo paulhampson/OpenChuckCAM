@@ -1,0 +1,189 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# UI smoke test of the built archives (UI-01, NFR-02; work breakdown slice 8
+# launch checklist and slice 22; decision record 0101, OI-129).
+#
+# The `ui-smoke` job in ci.yml launches a debug build made from source. This
+# workflow launches what a user downloads: the release archive of each
+# platform that "Nightly build" (nightly-build.yml) produced. It unpacks the
+# archive, runs its own `openchuck-ui --bench` on the corpus cube for 3 s under
+# software rendering (Mesa lavapipe under Xvfb on Linux, WARP on Windows, the
+# runner's paravirtual Metal device on macOS), and passes only when the program
+# starts, draws frames and exits cleanly. Exit 2 (the 33 ms p95 limit missed,
+# expected in software) is a pass here: this is a launch test, not NFR-03.
+#
+# It runs after a successful nightly build, or by hand against any nightly
+# build run (give its run id). A `workflow_run` workflow runs only from the
+# default branch, so it is not a pull request check and is not in the required
+# checks. The native-graphics launch on the reference machines is not tested
+# here; it stays a hands-on step (slice 8).
+name: UI smoke test of the archives
+
+on:
+  workflow_run:
+    workflows: ["Nightly build"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run id of a Nightly build run whose archives to launch"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  # Reads another run's artefacts.
+  actions: read
+
+concurrency:
+  group: ui-smoke-${{ github.event.workflow_run.id || inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  select:
+    name: Find the archives to launch
+    runs-on: ubuntu-latest
+    outputs:
+      smoke: ${{ steps.pick.outputs.smoke }}
+      run_id: ${{ steps.pick.outputs.run_id }}
+      sha: ${{ steps.pick.outputs.sha }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          case "$RUN_ID" in ''|*[!0-9]*) echo "::error::run id '$RUN_ID' is not a number"; exit 1 ;; esac
+          if [ "$EVENT" = workflow_run ] && [ "$CONCLUSION" != success ]; then
+            echo "smoke=false" >> "$GITHUB_OUTPUT"
+            echo "The nightly build run $RUN_ID ended '$CONCLUSION'; no archives to launch." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          sha=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq .head_sha)
+          count=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" \
+            --jq '[.artifacts[] | select(.name | startswith("openchuckcam-nightly-")) | select(.expired | not)] | length')
+          {
+            echo "run_id=$RUN_ID"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            # A nightly run with nothing changed since the last build skips its
+            # build jobs and uploads nothing: success, but nothing to launch.
+            if [ "$EVENT" = workflow_run ]; then
+              echo "smoke=false" >> "$GITHUB_OUTPUT"
+              echo "The nightly build run $RUN_ID uploaded no archives (nothing changed, or they expired)." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::run $RUN_ID has no unexpired openchuckcam-nightly-* archives"
+            exit 1
+          fi
+          [ "$count" -eq 3 ] || { echo "::error::run $RUN_ID has $count archives, expected 3"; exit 1; }
+          echo "smoke=true" >> "$GITHUB_OUTPUT"
+          echo "Launching the archives of nightly build run $RUN_ID (commit $sha)." >> "$GITHUB_STEP_SUMMARY"
+
+  launch:
+    name: Launch the archive (${{ matrix.target }})
+    needs: select
+    if: needs.select.outputs.smoke == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: .exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            exe: ""
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Only the corpus models are needed; the archive carries the program.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.select.outputs.sha }}
+          sparse-checkout: testdata/stl
+          persist-credentials: false
+      # The archives were uploaded unzipped; skip-decompress keeps the file as
+      # the build packed it (the Unix executable bits live inside it).
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: openchuckcam-nightly-*-${{ matrix.target }}.*
+          run-id: ${{ needs.select.outputs.run_id }}
+          github-token: ${{ github.token }}
+          skip-decompress: true
+          merge-multiple: true
+          path: dist
+      - name: Unpack the archive and check its contents
+        env:
+          EXE: ${{ matrix.exe }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          [ "$(ls dist | wc -l)" -eq 1 ] || { echo "::error::expected one archive in dist"; exit 1; }
+          cd dist
+          case "$(ls)" in
+            *.tar.gz) tar -xzf ./*.tar.gz ;;
+            *.zip) 7z x -bso0 ./*.zip ;;
+            *) echo "::error::unknown archive type"; exit 1 ;;
+          esac
+          dir=$(ls -d openchuckcam-nightly-*/)
+          cd "$dir"
+          ls -l
+          for f in "openchuck-ui$EXE" "openchuck-cli$EXE" "openchuck-step-worker$EXE" LICENSE.txt THIRD-PARTY-NOTICES.html README.txt; do
+            [ -s "$f" ] || { echo "::error title=Archive incomplete::$f is missing or empty"; exit 1; }
+          done
+          echo "ARCHIVE_DIR=$PWD" >> "$GITHUB_ENV"
+      - name: Software Vulkan and a virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # As in ci.yml: xvfb-run needs xauth, and winit loads libxkbcommon-x11
+          # and the other X11 client libraries at run time.
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers xvfb xauth \
+            libxkbcommon-x11-0 libxkbcommon0 libx11-xcb1 libxcursor1 libxrandr2 libxi6
+      - name: Launch openchuck-ui from the archive (3 s scripted camera path)
+        timeout-minutes: 8
+        env:
+          EXE: ${{ matrix.exe }}
+        run: |
+          set -uo pipefail
+          model="$PWD/testdata/stl/cube_ascii.stl"
+          report="$RUNNER_TEMP/report.txt"
+          cd "$ARCHIVE_DIR"
+          run() { "$@" "./openchuck-ui$EXE" --bench "$model" --seconds 3 --out "$report"; }
+          set +e
+          if [ "$RUNNER_OS" = Linux ]; then
+            run xvfb-run -a -s "-screen 0 1920x1080x24" > "$RUNNER_TEMP/launch.log" 2>&1
+          else
+            run > "$RUNNER_TEMP/launch.log" 2>&1
+          fi
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/launch.log"
+          echo "exit code $code"
+          fail() {
+            tail -n 25 "$RUNNER_TEMP/launch.log" | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk '{ printf "%s%%0A", $0 }' > "$RUNNER_TEMP/tail.txt"
+            echo "::error title=UI launch failed ($1)::$(cat "$RUNNER_TEMP/tail.txt")"
+            exit 1
+          }
+          # 0 passes and 2 misses the frame-time limit; either means the
+          # window opened, drew and closed. Anything else is a failure.
+          if [ "$code" != 0 ] && [ "$code" != 2 ]; then fail "exit $code"; fi
+          [ -s "$report" ] || fail "no report written"
+          frames=$(awk '/^frames:/ { print $2 }' "$report")
+          adapter=$(sed -n 's/^adapter: *//p' "$report")
+          p95=$(sed -n 's/^p95: *//p' "$report")
+          case "$frames" in ''|*[!0-9]*|0) fail "no frames drawn" ;; esac
+          [ -n "$adapter" ] || fail "no adapter in the report"
+          echo "Launched the archive: $adapter; $frames frames in 3 s; p95 $p95; exit $code." | tee -a "$GITHUB_STEP_SUMMARY"
