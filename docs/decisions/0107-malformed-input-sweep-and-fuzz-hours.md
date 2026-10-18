@@ -1,6 +1,6 @@
 # 0107: Malformed-input sweep: every user file has a fuzz target, and the fuzz CPU hours are counted per parser
 
-- **Status:** proposed (lane FZ, 18 Oct 2026). Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner on 18 Oct 2026, as written, given directly in the lane FZ session (first relayed by the orchestrator session, [decision 0049](0049-relayed-acceptance-of-records.md)). Open items OI-326 to OI-329 stay open for the owner.
 - **Date:** 18 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-326 to OI-329 are new.
 - **Relates to:** work breakdown slice 20 item 4; NFR-07; verification plan sections 4.1 ("at least 24 cumulative CPU hours per parser with no unresolved crash for release") and 8; decisions [0003](0003-step-kernel-route.md) and [0027](0027-slice-11a-step-import.md) (the STEP mutation run, OI-27), [0052](0052-ci-speed-up.md) (fuzz smoke groups) and [0102](0102-coverage-off-pull-requests.md) (nightly issues; a fuzz issue is closed by a pull request).
