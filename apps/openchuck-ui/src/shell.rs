@@ -850,6 +850,7 @@ impl Shell {
             self.selected = None;
             return;
         };
+        let setup_of = operation.setup;
         ui.horizontal(|ui| {
             ui.heading(&operation.name);
             if ui
@@ -862,8 +863,17 @@ impl Shell {
         });
         let summaries = app.selection_summaries(&self.file_warnings);
         let roles = selection_panel::operation_roles(ui, app, id, &summaries);
+        let mut edit_workholding = false;
         for note in self.reach.notes(app, id, ui.ctx()) {
-            ui.colored_label(egui::Color32::from_rgb(230, 180, 60), note);
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(230, 180, 60),
+                    format!("\u{26a0} {note}"),
+                );
+                if ui.small_button("Edit workholding").clicked() {
+                    edit_workholding = true;
+                }
+            });
         }
         ui.separator();
         let edit = match app.parameter_form(id) {
@@ -893,6 +903,9 @@ impl Shell {
                 Ok(()) => self.selected = None,
                 Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
             }
+        } else if edit_workholding {
+            self.workholding_panel = None;
+            self.select(Selection::Setup(setup_of));
         }
     }
 
@@ -1025,6 +1038,13 @@ impl Shell {
             self.run.status(ui);
             if self.app.as_ref().is_some_and(Application::is_modified) {
                 ui.label("Unsaved changes.");
+            }
+            if self
+                .workholding_panel
+                .as_ref()
+                .is_some_and(WorkholdingPanel::has_unapplied_changes)
+            {
+                ui.label("Workholding changes not applied.");
             }
             ui.label(&self.status);
         });
