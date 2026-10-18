@@ -148,6 +148,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TE | 20 items 3, 6 and 7: end-to-end command-line scenarios, the determinism run at 1, 2 and N threads over the sample projects (the reference jobs and the owner's blisk) and the no-network run (built 17 Oct 2026 on `claude/lane-te-end-to-end-and-determinism`, draft pull request 98; decision record 0096 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TS | OI-129 and slice 20: a UI smoke test of the built archives on Windows, macOS and Linux under software rendering, `ui-smoke.yml` (built 17 Oct 2026 on `claude/lane-ts-ui-smoke-ci`, draft pull request 95; decision record 0101 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
+| FZ | 20 item 4: the malformed-input sweep, a fuzz target for every user file and the fuzz CPU hours per parser (built 18 Oct 2026 on `claude/lane-fz-malformed-input-sweep`, [decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), proposed) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -178,6 +179,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TE | Nothing to start; its sample set grows as strategy lanes merge |
 | TS | Nothing |
 | TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
+| FZ | Nothing; its hours accumulate nightly after it merges |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
 
@@ -929,7 +931,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 1. Safety notice (generated G-code must be verified before use) shown at export in the UI, printed by the CLI and available as an optional post header comment (NFR-12).
 2. Performance pass against NFR-03 and NFR-04 on the reference machine.
 3. Determinism run at 1, 2 and N threads on all sample projects.
-4. Malformed-input sweep of every importer, the project loader and every other user-supplied file format (tool library, custom tool profile, machine profile, post definition), with at least 24 cumulative fuzz CPU hours per parser and no unresolved crash (NFR-07).
+4. Malformed-input sweep of every importer, the project loader and every other user-supplied file format (tool library, custom tool profile, machine profile, post definition), with at least 24 cumulative fuzz CPU hours per parser and no unresolved crash (NFR-07). *In progress (lane FZ):* every user file is listed with its target in [fuzzing.md](fuzzing.md); the whole-folder project target and post rendering are fuzzed, all ten targets run nightly with the corpus kept, and the CPU hours are counted per parser there ([decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), proposed). On 18 Oct 2026 no parser has 24 hours (at most 6) and the 13 Oct crash is fixed; OI-326 to OI-329 are open.
 5. Licence review, third-party notices, SPDX headers and an offline run check (NFR-09, NFR-10).
 6. Sample projects, including the Z1 reference part, end to end.
 7. CLI end-to-end scenarios in CI, including undo and redo and cancellation mid-job.

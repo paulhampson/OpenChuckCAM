@@ -4,6 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- `file::load_files` loads a project from the texts of its files in memory, with every check `file::load` makes; `load` now reads every file before it checks any (decision 0107, for the `project_folder` fuzz target).
 - Version 0.9.0 with the library family. Project schema 13 (provisional; 12 is held for lane O and passes through a no-change step here) and machine profile schema 3: the machine's feed limits may hold `rotary_in_feed`; the built-in Makera Z1 sets `"makera"`, and an older project copy (or a schema 2 library file) of the built-in Z1, known by its `id`, gains it when migrated (decision 0076).
 - Version 0.7.0 with the library family. Project schema 8: tools may state `centre_cutting` (decision 0033).
 - Slice 10 (decision 0032): operations gain `boundary`, `avoid` and `check` selection set references (`Operation::selection_refs`), `Project::operations_using` and `file::selection_inputs_hash`; project folder schema 7, migrated from 6 (a number only).
