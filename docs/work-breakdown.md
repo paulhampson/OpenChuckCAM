@@ -804,6 +804,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 3. Setup sheet as HTML and PDF listing tools, operations and stock, built as a module in `openchuck-app` (GC-12).
 4. Export UI and CLI options, including the tool-number dialog (GC-14; the application side is built in slice 6), the checks that block writing (GC-15) and the safety acknowledgement kept per project on each computer (GC-16), as specification section 11.6 describes. **Built (lane S, [decision 0071](decisions/0071-slice-19-export-dialogs.md), accepted):** the dialog in `openchuck-ui` over `openchuck-app`'s export checks, file plan and acknowledgement store; `regenerate --grouping` and `--setup-sheet` in the CLI; nothing stored in the project.
 5. Golden files for each grouping and a snapshot of the setup sheet content.
+6. Traceability block on the setup sheet (GC-12, [decision 0110](decisions/0110-setup-sheet-traceability.md), accepted 17 Oct 2026; not started): the time and date it was generated (ISO 8601 with the time zone, from an injected clock so the golden snapshot stays deterministic), when the project was last saved (the project file's modification time, nothing stored in the project; "not saved yet" when there is none), the software version, a fingerprint of the saved project file, and a version-control line that reads "not tracked" until `openchuck-vcs` exists. A small lane builds it after lane S19's pull request merges, since both change the setup sheet.
 
 **Review checklist**
 
