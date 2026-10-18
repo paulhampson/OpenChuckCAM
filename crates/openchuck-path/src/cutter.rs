@@ -14,14 +14,23 @@
 //!   arc at an end);
 //! - **edge**: split the edge where its distance from the axis crosses a piece
 //!   boundary; on each part `z(t) - h(d(t))` is concave for lines and convex
-//!   arcs (a golden-section search is exact to rounding) and is sampled then
-//!   refined for concave arcs.
+//!   arcs, so its peak is where its derivative changes sign, found by
+//!   bisection to rounding precision (a search that compares heights finds a
+//!   flat peak only to the square root of rounding, about 1e-8 of the edge,
+//!   and that noise differed between platforms: decision record 0113,
+//!   OI-319); for concave arcs it is sampled then refined.
 //!
 //! Distances are evaluated directly, never from an expanded quadratic, which
 //! loses about 1e-8 mm near the axis (decision record 0012, findings). The
 //! profile never dips below its tip (`h(r) >= 0`), so a triangle can lift the
 //! tip at most to its highest vertex: triangles are visited from the highest
 //! down, and the search stops once none can beat the best so far.
+//!
+//! Two candidates whose tip heights agree within [`TIP_TIE`] are one answer
+//! up to rounding (a ball resting on two flanks at once, a flat tool on a
+//! flat facet and its edges). The contact is then the lowest-numbered
+//! triangle's, and within a triangle the first found, so the choice does not
+//! turn on the platform's last bit (decision record 0113).
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::tool::profile::{EnvelopePiece, ProfilePiece, RevolvedProfile};
@@ -114,11 +123,34 @@ impl Frame {
 struct Best {
     tip_z: f64,
     contact: Local,
+    /// The triangle the candidate came from.
+    triangle: u32,
 }
 
-fn better(best: &mut Option<Best>, tip_z: f64, contact: Local) {
-    if tip_z.is_finite() && best.is_none_or(|b| tip_z > b.tip_z) {
-        *best = Some(Best { tip_z, contact });
+/// Two tip heights (positions along a tool line, in millimetres) within this
+/// of each other are one answer up to rounding (decision record 0113). It is
+/// far above the rounding of any height the solver computes and far below
+/// the written resolution, so a tie is broken by a rule, never by the
+/// platform's last bit: the lowest-numbered triangle wins, and within a
+/// triangle the candidate found first.
+pub const TIP_TIE: f64 = 1e-9;
+
+fn better(best: &mut Option<Best>, tip_z: f64, contact: Local, triangle: u32) {
+    if !tip_z.is_finite() {
+        return;
+    }
+    let replace = match *best {
+        None => true,
+        Some(b) => {
+            tip_z > b.tip_z + TIP_TIE || (tip_z > b.tip_z - TIP_TIE && triangle < b.triangle)
+        }
+    };
+    if replace {
+        *best = Some(Best {
+            tip_z,
+            contact,
+            triangle,
+        });
     }
 }
 
@@ -164,18 +196,20 @@ pub(crate) fn drop_on_mesh(
         .collect();
     order.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     let mut best: Option<Best> = None;
-    for (bound, _, tri) in &order {
-        if best.is_some_and(|b| *bound <= b.tip_z) {
+    for (bound, i, tri) in &order {
+        // A triangle that cannot reach within a tie of the best is skipped,
+        // and so is every one after it.
+        if best.is_some_and(|b| *bound < b.tip_z - TIP_TIE) {
             break;
         }
         let [a, b, c] = *tri;
         for v in [a, b, c] {
-            vertex(profile, v, &mut best);
+            vertex(profile, v, &mut best, *i);
         }
         for (p, q) in [(a, b), (b, c), (c, a)] {
-            edge(profile, p, q, &mut best);
+            edge(profile, p, q, &mut best, *i);
         }
-        facet(profile, tri, &mut best);
+        facet(profile, tri, &mut best, *i);
     }
     best.map(|b| Contact {
         tip: line.at(b.tip_z),
@@ -189,13 +223,13 @@ fn radial(x: f64, y: f64) -> f64 {
     (x * x + y * y).sqrt()
 }
 
-fn vertex(profile: &RevolvedProfile, v: Local, best: &mut Option<Best>) {
+fn vertex(profile: &RevolvedProfile, v: Local, best: &mut Option<Best>, triangle: u32) {
     if let Some(h) = profile.height_at(radial(v.x, v.y)) {
-        better(best, v.z - h, v);
+        better(best, v.z - h, v, triangle);
     }
 }
 
-fn facet(profile: &RevolvedProfile, tri: &[Local; 3], best: &mut Option<Best>) {
+fn facet(profile: &RevolvedProfile, tri: &[Local; 3], best: &mut Option<Best>, triangle: u32) {
     let [a, b, c] = *tri;
     let u = Vec3::new(b.x - a.x, b.y - a.y, b.z - a.z);
     let v = Vec3::new(c.x - a.x, c.y - a.y, c.z - a.z);
@@ -261,6 +295,7 @@ fn facet(profile: &RevolvedProfile, tri: &[Local; 3], best: &mut Option<Best>) {
                     y: py,
                     z: pz,
                 },
+                triangle,
             );
         }
     }
@@ -276,7 +311,7 @@ fn inside(tri: &[Local; 3], px: f64, py: f64) -> bool {
     (d0 >= -eps && d1 >= -eps && d2 >= -eps) || (d0 <= eps && d1 <= eps && d2 <= eps)
 }
 
-fn edge(profile: &RevolvedProfile, p0: Local, p1: Local, best: &mut Option<Best>) {
+fn edge(profile: &RevolvedProfile, p0: Local, p1: Local, best: &mut Option<Best>, triangle: u32) {
     let ex = p1.x - p0.x;
     let ey = p1.y - p0.y;
     let l2 = ex * ex + ey * ey;
@@ -338,14 +373,79 @@ fn edge(profile: &RevolvedProfile, p0: Local, p1: Local, best: &mut Option<Best>
             point(t).z - e.piece.height_at(d)
         };
         let t = if e.piece.is_convex_in_radius() {
-            golden_max(&f, t0, t1)
+            // f is concave here, so its peak is where f' falls through zero:
+            // f'(t) = dz - h'(d) d'(t), with d'(t) = (l2 t + bq) / d. The
+            // window keeps d within the piece, so a value outside it is
+            // rounding at a window end and is clamped, as in f; where the
+            // edge crosses the axis (d = 0) the slope of h there is taken as
+            // zero, and the crossing itself is a window end tried below.
+            let dz = p1.z - p0.z;
+            let derivative = |t: f64| {
+                let raw = dist(t);
+                if raw <= 0.0 {
+                    return dz;
+                }
+                let d = raw.clamp(e.r_start, e.r_end);
+                dz - slope_at(&e.piece, d) * (l2 * t + bq) / raw
+            };
+            concave_peak(&derivative, t0, t1)
         } else {
             sampled_max(&f, t0, t1, 32)
         };
         for tt in [t0, t, t1] {
-            better(best, f(tt), point(tt));
+            better(best, f(tt), point(tt), triangle);
         }
     }
+}
+
+/// The slope `dh/dr` of a piece's height at radius `r`, within its range.
+/// On the lower envelope the height never decreases with the radius, so
+/// the slope is never negative; it grows without bound where a convex arc
+/// turns vertical.
+fn slope_at(piece: &ProfilePiece, r: f64) -> f64 {
+    match *piece {
+        ProfilePiece::Line { start, end } => {
+            (z_of(end) - z_of(start)) / (r_of(end) - r_of(start)).max(f64::MIN_POSITIVE)
+        }
+        ProfilePiece::Arc {
+            centre,
+            radius,
+            convex,
+            ..
+        } => {
+            let dr = r - r_of(centre);
+            let q = (radius * radius - dr * dr).max(0.0).sqrt();
+            let slope = dr / q.max(f64::MIN_POSITIVE);
+            if convex { slope } else { -slope }
+        }
+    }
+}
+
+/// The maximum on `[a, b]` of a concave function whose derivative is
+/// `derivative`: an end where the derivative does not change sign, else the
+/// point where it falls through zero, bisected to rounding precision. The
+/// root of a derivative is well conditioned where the peak itself is flat,
+/// so the answer moves only by rounding when the inputs do.
+fn concave_peak(derivative: &impl Fn(f64) -> f64, a: f64, b: f64) -> f64 {
+    if derivative(a) <= 0.0 {
+        return a;
+    }
+    if derivative(b) >= 0.0 {
+        return b;
+    }
+    let (mut lo, mut hi) = (a, b);
+    for _ in 0..200 {
+        let mid = 0.5 * (lo + hi);
+        if mid <= lo || mid >= hi {
+            break;
+        }
+        if derivative(mid) > 0.0 {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
 }
 
 fn piece_at(envelope: &[EnvelopePiece], d: f64) -> Option<&EnvelopePiece> {
@@ -564,6 +664,53 @@ fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
         }
     }
     best.1
+}
+
+/// How far, in millimetres, a point may lie off the tool's lower envelope and
+/// still count as a contact on it ([`contact_normal`]): a drop's contact is
+/// on it to rounding, so this is far above that and far below any geometry.
+const CONTACT_ON_TOOL: f64 = 1e-6;
+
+/// The outward unit normal of the tool's surface at `contact`, a point on
+/// the tool whose tip is at `tip` and whose axis is `axis`: the direction a
+/// displacement of the tool must have to change the cut there. Where the
+/// tool touches a smooth surface it is the surface's normal; at a mesh edge
+/// or vertex, where the surface has none, it is the normal of the surface
+/// the tool can reach there (the offset surface), so path fitting measures
+/// its deviation along a direction that rounding cannot flip between two
+/// facets (decision record 0113). `None` when `contact` is not on the tool's
+/// lower envelope (NFR-07: a defensive case for a contact from elsewhere).
+pub fn contact_normal(
+    profile: &RevolvedProfile,
+    tip: Point3,
+    axis: UnitVec3,
+    contact: Point3,
+) -> Option<UnitVec3> {
+    let e3 = axis.get();
+    let w = contact - tip;
+    let z = w.dot(e3);
+    let radial = w - e3 * z;
+    let r = radial.length();
+    let e = profile
+        .envelope()
+        .iter()
+        .find(|e| r >= e.r_start - 1e-9 && r <= e.r_end + 1e-9)?;
+    let piece = e.piece;
+    // The point must lie on the envelope, not merely under the tool's radius:
+    // a drop's contact does, to rounding; anything else has no tool normal.
+    if (z - piece.height_at(r.clamp(e.r_start, e.r_end))).abs() > CONTACT_ON_TOOL {
+        return None;
+    }
+    let (mut nr, mut nz) = piece_normal(&piece, pp(r, z));
+    if let ProfilePiece::Arc { convex: false, .. } = piece {
+        (nr, nz) = (-nr, -nz);
+    }
+    let dir = if r > 1e-12 {
+        radial * (1.0 / r)
+    } else {
+        Vec3::ZERO
+    };
+    UnitVec3::new(dir * nr + e3 * nz).ok()
 }
 
 /// Where the original tool, with its tip at `tip` and axis `axis`, comes

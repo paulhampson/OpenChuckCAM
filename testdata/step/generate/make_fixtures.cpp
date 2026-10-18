@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Writes the STEP fixtures that testdata/step/valid does not take from SP-1: a part in inches, a file of three
-// separate solids, and surfaces of revolution and extrusion (which the importer converts to B-splines).
+// separate solids, surfaces of revolution and extrusion (which the importer converts to B-splines), and a
+// hexagonal bar whose flats are ruled walls for swarf.
 // Every file is written by OpenCASCADE 7.8.1 itself, like the SP-1 fixtures (OI-25 is about files from other
 // CAD tools).
 //
@@ -12,6 +13,7 @@
 //     -lTKGeomBase -lTKG3d -lTKG2d -lTKMath -lTKernel -Wl,--end-group -lpthread -ldl -o make_fixtures
 //   ./make_fixtures testdata/step/valid
 #include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
@@ -32,6 +34,7 @@
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
+#include <cmath>
 #include <iostream>
 #include <string>
 
@@ -101,6 +104,21 @@ int main(int argc, char** argv) {
     mw.Add(top); mw.Add(right); mw.Add(bottom); mw.Add(left);
     TopoDS_Face face = BRepBuilderAPI_MakeFace(mw.Wire()).Face();
     ok &= write(BRepPrimAPI_MakePrism(face, gp_Vec(0, 25, 0)).Shape(), dir + "extruded_spline.step", "MM");
+  }
+
+  // A hexagonal bar along X (the rotary axis), 20 mm across the flats and 40 mm long, from X 0 to 40, with a
+  // flat on top (Z 10). Each flat is a plane ruled across the axis, 11.547 mm wide: the swarf reference job
+  // (decision record 0111).
+  {
+    const double r = 20.0 / std::sqrt(3.0);  // the circumradius
+    BRepBuilderAPI_MakePolygon hexagon;
+    for (int k = 0; k < 6; ++k) {
+      const double t = k * M_PI / 3.0;
+      hexagon.Add(gp_Pnt(0, r * std::cos(t), r * std::sin(t)));
+    }
+    hexagon.Close();
+    TopoDS_Face end = BRepBuilderAPI_MakeFace(hexagon.Wire(), Standard_True).Face();
+    ok &= write(BRepPrimAPI_MakePrism(end, gp_Vec(40, 0, 0)).Shape(), dir + "hex_bar.step", "MM");
   }
 
   std::cerr << (ok ? "wrote the fixtures\n" : "FAILED\n");

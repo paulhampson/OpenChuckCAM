@@ -26,6 +26,10 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  # Each target's corpus is kept between nights in the Actions cache, so the hours add up on what
+  # earlier nights found rather than starting from the seeds again. The CPU time of the hour is
+  # written as an annotation and in the job summary; the running total per parser is kept in
+  # docs/fuzzing.md (decision 0107). `-timeout=10` makes a hang on one input a failure (NFR-07).
   fuzz:
     name: Fuzz ${{ matrix.target }} (1 hour)
     runs-on: ubuntu-latest
@@ -33,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, stl_import, tool_library_toml, tool_profile_toml]
+        target: [machine_profile_json, machine_profile_toml, toolpath_ir_json, project_files, project_folder, stl_import, tool_library_toml, tool_profile_toml, gcode_reader, post_definition]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,6 +46,12 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
+      - name: Restore the corpus of earlier nights
+        uses: actions/cache/restore@v5
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
       - name: Seed the STL corpus from testdata
         if: matrix.target == 'stl_import'
         run: mkdir -p fuzz/corpus/stl_import && cp testdata/stl/*.stl fuzz/corpus/stl_import/
@@ -54,7 +64,59 @@ jobs:
       - name: Seed the tool profile corpus
         if: matrix.target == 'tool_profile_toml'
         run: mkdir -p fuzz/corpus/tool_profile_toml && cp testdata/tools/profiles/*.toml fuzz/corpus/tool_profile_toml/
-      - run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} -- -max_total_time=3600
+      - name: Seed the G-code corpus
+        if: matrix.target == 'gcode_reader'
+        run: mkdir -p fuzz/corpus/gcode_reader && cp testdata/gcode/*.ngc testdata/golden/post_*.ngc testdata/golden/reference/*.ngc testdata/golden/reference/*.nc fuzz/corpus/gcode_reader/
+      - name: Seed the post definition corpus
+        if: matrix.target == 'post_definition'
+        run: |
+          mkdir -p fuzz/corpus/post_definition
+          for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the project file corpus from the fixtures
+        if: matrix.target == 'project_files'
+        run: |
+          mkdir -p fuzz/corpus/project_files
+          # The first byte picks the kind of file, as in the target: 0 project, 1 machine, 2 setup,
+          # 3 tool, 4 selection set, 5 operation.
+          find crates/openchuck-project/tests/fixtures -name '*.toml' | sort | while read -r f; do
+            case "$f" in
+              */project.toml) k='\x00' ;; */machine.toml) k='\x01' ;; */setups/*) k='\x02' ;;
+              */tools/*) k='\x03' ;; */selections/*) k='\x04' ;; */operations/*) k='\x05' ;; *) continue ;;
+            esac
+            { printf "$k"; cat "$f"; } > "fuzz/corpus/project_files/$(echo "$f" | tr '/' '_')"
+          done
+      - name: Seed the project folder corpus from the fixtures
+        if: matrix.target == 'project_folder'
+        run: |
+          mkdir -p fuzz/corpus/project_folder
+          for d in crates/openchuck-project/tests/fixtures/*/; do
+            (cd "$d" && find . -name '*.toml' | sort | while read -r f; do printf '=== %s\n' "${f#./}"; cat "$f"; done) > "fuzz/corpus/project_folder/$(basename "$d")"
+          done
+      - run: cargo +nightly fuzz build --target x86_64-unknown-linux-gnu ${{ matrix.target }}
+      - name: Fuzz for one hour
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          TIMEFORMAT='%U %S'
+          set +e
+          { time cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time=3600 -timeout=10 -print_final_stats=1 > fuzz.log 2>&1 ; } 2> cpu.txt
+          code=$?
+          set -e
+          tail -n 200 fuzz.log
+          read -r user sys < cpu.txt
+          seconds=$(awk -v u="$user" -v s="$sys" 'BEGIN { printf "%d", u + s }')
+          runs=$(sed -n 's/^stat::number_of_executed_units: *//p' fuzz.log | tail -n 1)
+          result=$([ "$code" = 0 ] && echo passed || echo "failed (exit $code)")
+          echo "::notice title=Fuzz CPU time $TARGET::$TARGET ${seconds} CPU seconds, ${runs:-unknown} executions, $result, commit $GITHUB_SHA"
+          printf '| Target | CPU seconds | Executions | Result |\n| --- | --- | --- | --- |\n| %s | %s | %s | %s |\n' "$TARGET" "$seconds" "${runs:-unknown}" "$result" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      - name: Keep the corpus for the next night
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v5
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -77,10 +139,25 @@ jobs:
         with:
           key: step-kernel
           cache-on-failure: true
-      - name: Build the kernel and the worker
-        run: cargo build --locked --release -p openchuck-import --features kernel --bins
+      - name: Build the kernel, the worker and the mutation program
+        run: cargo build --locked --release -p openchuck-import --features kernel --bins --example step_mutations
+      # The run number is the seed, so each night imports different mutants (decision 0107); the
+      # CPU time, the worker processes' included, is written as an annotation like the fuzz jobs'.
       - name: Mutate and import 3000 files
-        run: cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 3000
+        shell: bash
+        env:
+          SEED: ${{ github.run_number }}
+        run: |
+          TIMEFORMAT='%U %S'
+          set +e
+          { time cargo run --locked --release -p openchuck-import --features kernel --example step_mutations -- 3000 "$SEED" ; } 2> cpu.txt
+          code=$?
+          set -e
+          read -r user sys < <(tail -n 1 cpu.txt)
+          head -n -1 cpu.txt >&2 || true
+          seconds=$(awk -v u="$user" -v s="$sys" 'BEGIN { printf "%d", u + s }')
+          echo "::notice title=Fuzz CPU time step_mutations::step_mutations ${seconds} CPU seconds, 3000 mutants, seed $SEED, exit $code, commit $GITHUB_SHA"
+          exit "$code"
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

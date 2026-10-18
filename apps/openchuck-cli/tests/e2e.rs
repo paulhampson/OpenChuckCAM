@@ -202,7 +202,8 @@ fn samples() -> Vec<Sample> {
         // and 50 mm long. Simultaneous finishing refuses it at the shoulder
         // (OI-318), so it runs through helical (5 and 2 degree steps) and
         // axial finishing; the tool, material and stock rule are the
-        // reference jobs'. Not simulated until OI-317 closes.
+        // reference jobs'. Not simulated yet: its memory is fixed (OI-317,
+        // decision 0108), and a simulation test is left with OI-311.
         blisk("blisk_helical_5", "helical_finishing", angle_step(5.0)),
         blisk("blisk_helical_2", "helical_finishing", angle_step(2.0)),
         blisk(
@@ -529,14 +530,13 @@ fn simulates(name: &str) {
 
 /// One end-to-end test and one simulation test per sample project, so the
 /// test runner spreads them over cores and CI shares. The samples after
-/// `manual` are the owner's blisk: no simulation test, because its simulation
-/// exhausts memory (OI-317), and an end-to-end test that no automated run
-/// executes. Its feed words differ between Linux, Windows and macOS (OI-319),
-/// so by the owner's decision (18 Oct 2026, relayed) it does not gate CI and
-/// runs by hand only:
-/// `cargo nextest run -p openchuck-cli --test e2e --run-ignored only -E 'test(~blisk_)'`.
+/// `no_simulation` are the owner's blisk: no simulation test yet (its memory
+/// is fixed, OI-317 and decision 0108). Their programs differed between
+/// Linux, Windows and macOS (OI-319) until decision 0113 made the toolpath's
+/// choices independent of the platform's rounding; they gate CI again, and
+/// the three-platform Tests job is their check.
 macro_rules! sample_tests {
-    ($($name:ident),* ; manual: $($bare:ident),* $(,)?) => {
+    ($($name:ident),* ; no_simulation: $($bare:ident),* $(,)?) => {
         $(mod $name {
             #[test]
             fn req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads() {
@@ -549,7 +549,6 @@ macro_rules! sample_tests {
         })*
         $(mod $bare {
             #[test]
-            #[ignore = "OI-319: feed words differ across platforms; manual run only (owner's decision)"]
             fn req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads() {
                 super::end_to_end(stringify!($bare));
             }
@@ -568,15 +567,15 @@ sample_tests!(
     cone_indexed,
     cone_axial_lead,
     cone_held_tabs;
-    manual: blisk_helical_5,
+    no_simulation: blisk_helical_5,
     blisk_helical_2,
     blisk_axial,
 );
 
 /// Slice 20 item 3 asks for all sample projects: every reference job with
-/// golden programs is a sample project with its tests, except `drilling`,
-/// which needs the STEP kernel (OI-312), and every blisk golden program
-/// belongs to a sample.
+/// golden programs is a sample project with its tests, except `drilling`
+/// and `swarf`, which need the STEP kernel (OI-312; decision record 0111),
+/// and every blisk golden program belongs to a sample.
 #[test]
 fn req_gc_07_every_reference_job_is_a_sample_project_with_its_tests() {
     let names: Vec<&str> = samples().iter().map(|s| s.name).collect();
@@ -592,7 +591,7 @@ fn req_gc_07_every_reference_job_is_a_sample_project_with_its_tests() {
                 name.strip_suffix("_makera-z1.nc")
                     .map(|job| format!("{prefix}{job}"))
             })
-            .filter(|job| job != "drilling")
+            .filter(|job| job != "drilling" && job != "swarf")
             .collect();
         jobs.sort();
         jobs

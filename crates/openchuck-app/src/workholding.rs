@@ -187,11 +187,15 @@ pub fn selection_reach_notes(
                     .is_some_and(|corners| corners.iter().any(|&p| solid.contains(p)))
             });
             if reaches {
-                notes.push(format!(
-                    "selection set '{}' reaches {name}, which is never machined; the \
-                     selection cuts less than it names there",
+                // A tab around the axis is several solids with one name.
+                let note = format!(
+                    "The selection '{}' reaches {name}, which is never machined. This operation \
+                     leaves it uncut there.",
                     set.name
-                ));
+                );
+                if !notes.contains(&note) {
+                    notes.push(note);
+                }
             }
         }
     }
@@ -199,7 +203,8 @@ pub fn selection_reach_notes(
 }
 
 /// The note for the first tab narrower than a tool of `tool_diameter`, naming
-/// the operation that uses it, or `None` (OI-159).
+/// the tool and the operation that uses it, or `None` (OI-159; interface
+/// specification 11.7).
 fn narrow_tab_note(
     workholding: &Workholding,
     tool_diameter: f64,
@@ -210,8 +215,9 @@ fn narrow_tab_note(
         let d = narrowest(tab);
         (d < tool_diameter - 1e-9).then(|| {
             format!(
-                "tab {} is {d:.3} mm across at its narrowest, narrower than the tool '{tool_name}' \
-                 ({tool_diameter:.3} mm) of operation '{operation}', which will be refused",
+                "Tab {} is {d:.3} mm across at its narrowest, narrower than the tool \
+                 {tool_name} ({tool_diameter:.3} mm) of {operation}. Make the tab wider or use \
+                 a smaller tool.",
                 i + 1
             )
         })
@@ -237,7 +243,7 @@ pub(crate) fn narrow_tab_notes(
             narrow_tab_note(
                 &setup.workholding,
                 2.0 * profile.cutting_radius(),
-                &snapshot.name,
+                &format!("T{} {}", snapshot.controller.number, snapshot.name),
                 &operation.name,
             )
         })
@@ -267,12 +273,18 @@ pub(crate) fn findings_of(
     let mut found: Vec<String> =
         check_tab_zones(&setup.workholding, setup.stock.as_ref(), extent.as_ref())
             .into_iter()
-            .map(|kind| {
-                openchuck_types::setup::SetupWarning {
-                    kind,
+            .map(|kind| match kind {
+                SetupWarningKind::TabOutsideEndZones { tab, x } => format!(
+                    "Tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail \
+                     zone. Tabs lie between the held region (or the end of the stock) and the \
+                     part, or between the part and the other end.",
+                    x.0, x.1
+                ),
+                other => openchuck_types::setup::SetupWarning {
+                    kind: other,
                     unconfirmed: Vec::new(),
                 }
-                .to_string()
+                .to_string(),
             })
             .collect();
     found.extend(narrow_tab_notes(project, setup));

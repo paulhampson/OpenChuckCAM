@@ -296,21 +296,10 @@ pub(crate) fn build_scene(
     if let (Some(s), Some(extent)) = (chosen, part.as_ref())
         && !s.workholding.is_empty()
     {
-        match crate::workholding::labelled_solids(&s.workholding, s.stock.as_ref(), extent) {
-            Ok(solids) => {
-                for (name, solid) in solids {
-                    view.meshes.push(SceneMesh {
-                        role: if name.starts_with("tab") {
-                            SceneRole::Tab
-                        } else {
-                            SceneRole::HeldRegion
-                        },
-                        model: None,
-                        mesh: solid.mesh(CIRCLE_SEGMENTS as u32),
-                        feature_edges: Vec::new(),
-                        brep: None,
-                    });
-                }
+        match crate::workholding_view::display_items(&s.workholding, s.stock.as_ref(), extent) {
+            Ok((meshes, lines)) => {
+                view.meshes.extend(meshes);
+                view.lines.extend(lines);
             }
             Err(e) => view
                 .notes

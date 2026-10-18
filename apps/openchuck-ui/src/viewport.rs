@@ -29,8 +29,13 @@ const A_DIRECTION: Colour = [0.85, 0.2, 0.75, 1.0];
 const WORK_X: Colour = [0.9, 0.15, 0.15, 1.0];
 const WORK_Y: Colour = [0.1, 0.7, 0.2, 1.0];
 const WORK_Z: Colour = [0.15, 0.35, 0.95, 1.0];
-const HELD: Colour = [0.35, 0.55, 0.85, 1.0];
-const TAB: Colour = [0.9, 0.7, 0.25, 1.0];
+/// Violet `#9d8df1`, translucent, with a hatch and an outline in its own
+/// colour; sand `#d8b98a`, opaque, with a dark outline (interface
+/// specification 7.5): the two roles differ by more than colour (NFR-15).
+const HELD: Colour = [0.616, 0.553, 0.945, 0.35];
+const HELD_LINE: Colour = [0.616, 0.553, 0.945, 1.0];
+const TAB: Colour = [0.847, 0.725, 0.541, 1.0];
+const TAB_LINE: Colour = [0.082, 0.09, 0.102, 1.0];
 const PROBLEM: Colour = [0.95, 0.2, 0.2, 1.0];
 const BACKGROUND: Color32 = Color32::from_rgb(38, 40, 46);
 
@@ -102,6 +107,11 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
             }
             _ => scene.add_mesh(&mesh.mesh, &mesh.feature_edges, colour, PART_EDGES),
         }
+        if mesh.role == SceneRole::HeldRegion
+            && let Some(added) = scene.meshes.last_mut()
+        {
+            added.translucent = true;
+        }
         // A STEP part's own edges, drawn as its feature edges are, so the
         // display mode shows or hides them alike (slice 11 item 5).
         if let Some(brep) = &mesh.brep {
@@ -144,7 +154,11 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
         }
     }
     for line in &view.lines {
-        let (colour, on_top) = style(line.role);
+        let (colour, on_top) = match line.role {
+            SceneRole::HeldRegion => (HELD_LINE, false),
+            SceneRole::Tab => (TAB_LINE, false),
+            role => style(role),
+        };
         scene.add_polyline(&line.points, colour, on_top);
         if matches!(line.role, SceneRole::Stock | SceneRole::Problem)
             && let Some(added) = scene.lines.last_mut()
@@ -514,6 +528,7 @@ impl Viewport {
         ));
         self.drawn = self.generation;
         self.draw_labels(ui, rect);
+        self.draw_legend(ui, rect);
     }
 
     /// Hover and click picking (UI-04): the pointer becomes a ray, the scene's
@@ -582,6 +597,63 @@ impl Viewport {
         }
     }
 
+    /// The legend of the held regions and tabs present (interface
+    /// specification 7.5): a swatch drawn the way the role is drawn, and its
+    /// name.
+    fn draw_legend(&self, ui: &egui::Ui, rect: Rect) {
+        let entries = openchuck_app::workholding_view::legend(&self.view);
+        if entries.is_empty() {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        let text_colour = ui.visuals().text_color();
+        for (row, name) in entries.iter().rev().enumerate() {
+            let y = rect.bottom() - 10.0 - 18.0 * (row as f32 + 1.0);
+            let swatch = Rect::from_min_size(pos2(rect.left() + 10.0, y), egui::vec2(12.0, 12.0));
+            if *name == "Held region" {
+                let violet = to_color32(HELD_LINE);
+                painter.rect_filled(swatch, 0.0, violet.gamma_multiply(0.35));
+                for step in [4.0_f32, 8.0] {
+                    painter.line_segment(
+                        [
+                            swatch.left_top() + egui::vec2(step, 0.0),
+                            swatch.left_top() + egui::vec2(0.0, step),
+                        ],
+                        egui::Stroke::new(1.0, violet),
+                    );
+                    painter.line_segment(
+                        [
+                            swatch.right_bottom() - egui::vec2(step, 0.0),
+                            swatch.right_bottom() - egui::vec2(0.0, step),
+                        ],
+                        egui::Stroke::new(1.0, violet),
+                    );
+                }
+                painter.rect_stroke(
+                    swatch,
+                    0.0,
+                    egui::Stroke::new(1.5, violet),
+                    egui::StrokeKind::Inside,
+                );
+            } else {
+                painter.rect_filled(swatch, 0.0, to_color32(TAB));
+                painter.rect_stroke(
+                    swatch,
+                    0.0,
+                    egui::Stroke::new(1.5, to_color32(TAB_LINE)),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            painter.text(
+                pos2(swatch.right() + 6.0, swatch.center().y),
+                egui::Align2::LEFT_CENTER,
+                *name,
+                egui::FontId::proportional(12.0),
+                text_colour,
+            );
+        }
+    }
+
     /// Draws the scene's labels ("A+", the work axes) at their projected points.
     fn draw_labels(&self, ui: &egui::Ui, rect: Rect) {
         let painter = ui.painter_at(rect);
@@ -615,6 +687,57 @@ mod tests {
     use openchuck_app::setup::Point3;
 
     use super::*;
+
+    #[test]
+    fn req_ui_25_req_ui_03_held_regions_and_tabs_differ_by_more_than_colour() {
+        use openchuck_app::setup::{
+            Aabb, HeldRegion, Millimetres, PartExtent, Stock, Tab, TabLayout, TabShape, Workholding,
+        };
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(26.0),
+            length: Millimetres(32.0),
+            x_start: Millimetres(-16.0),
+        };
+        let w = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(6.0),
+                diameter: None,
+            }),
+            end: None,
+            tabs: vec![Tab {
+                x_start: Millimetres(-10.0),
+                length: Millimetres(2.0),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(4.0),
+                },
+                layout: TabLayout::OnAxis,
+            }],
+        };
+        let part = PartExtent {
+            bounds: Aabb {
+                min: Point3::new(-8.0, -5.0, -5.0),
+                max: Point3::new(8.0, 5.0, 5.0),
+            },
+            radius: Millimetres(5.0),
+        };
+        let view = openchuck_app::workholding_view::display_scene(&w, Some(&stock), &part).unwrap();
+        let scene = to_scene(&view);
+        // The held region is translucent violet, the tab opaque sand.
+        assert_eq!(scene.meshes.len(), 2);
+        assert!(scene.meshes[0].translucent && !scene.meshes[1].translucent);
+        assert_eq!(scene.meshes[0].colour, HELD);
+        assert_eq!(scene.meshes[1].colour, TAB);
+        // The held region's outline and hatch are in its own colour, the
+        // tab's outline is dark: a second cue besides the fill colour.
+        let hatch = scene.lines.iter().filter(|l| l.colour == HELD_LINE).count();
+        let outlines = scene.lines.iter().filter(|l| l.colour == TAB_LINE).count();
+        assert!(hatch > 2, "{hatch}");
+        assert_eq!(outlines, 2);
+        assert_eq!(
+            openchuck_app::workholding_view::legend(&view),
+            vec!["Held region", "Tab"]
+        );
+    }
 
     #[test]
     fn req_ui_03_guides_are_drawn_over_the_part_and_stock_is_not() {

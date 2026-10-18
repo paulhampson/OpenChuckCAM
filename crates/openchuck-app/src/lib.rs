@@ -50,6 +50,7 @@ pub mod stockplay;
 pub mod tool_edit;
 pub mod tools;
 pub mod workholding;
+pub mod workholding_view;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};

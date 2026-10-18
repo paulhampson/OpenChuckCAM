@@ -219,6 +219,9 @@ impl Shell {
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
         self.profile_draft = None;
+        // A workholding draft, and its "not applied" note, belong to the
+        // project that was open; they must not carry over (lane 21d, #119).
+        self.workholding_panel = None;
         self.import = None;
         self.form.clear();
         self.app = Some(app);
@@ -850,6 +853,7 @@ impl Shell {
             self.selected = None;
             return;
         };
+        let setup_of = operation.setup;
         ui.horizontal(|ui| {
             ui.heading(&operation.name);
             if ui
@@ -862,8 +866,17 @@ impl Shell {
         });
         let summaries = app.selection_summaries(&self.file_warnings);
         let roles = selection_panel::operation_roles(ui, app, id, &summaries);
+        let mut edit_workholding = false;
         for note in self.reach.notes(app, id, ui.ctx()) {
-            ui.colored_label(egui::Color32::from_rgb(230, 180, 60), note);
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(230, 180, 60),
+                    format!("\u{26a0} {note}"),
+                );
+                if ui.small_button("Edit workholding").clicked() {
+                    edit_workholding = true;
+                }
+            });
         }
         ui.separator();
         let edit = match app.parameter_form(id) {
@@ -893,6 +906,21 @@ impl Shell {
                 Ok(()) => self.selected = None,
                 Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
             }
+        } else if edit_workholding {
+            // An unapplied draft of this setup stays (11.7); the view shows
+            // the setup the panel edits.
+            if self
+                .workholding_panel
+                .as_ref()
+                .is_none_or(|p| p.setup() != setup_of)
+            {
+                self.workholding_panel = None;
+            }
+            if self.setup != Some(setup_of) {
+                self.setup = Some(setup_of);
+                self.rebuild_scene(true);
+            }
+            self.select(Selection::Setup(setup_of));
         }
     }
 
@@ -1025,6 +1053,13 @@ impl Shell {
             self.run.status(ui);
             if self.app.as_ref().is_some_and(Application::is_modified) {
                 ui.label("Unsaved changes.");
+            }
+            if self
+                .workholding_panel
+                .as_ref()
+                .is_some_and(WorkholdingPanel::has_unapplied_changes)
+            {
+                ui.label("Workholding changes not applied.");
             }
             ui.label(&self.status);
         });
