@@ -258,12 +258,10 @@ impl Application {
         let reference = self.model_ref(model)?.clone();
         let cancel = CancelToken::new();
         let context = JobContext::new(&cancel, &NoProgress);
-        // A STEP model's placed B-rep comes with lane Z's `PlacedPart`; until
-        // then a STEP model cannot be read here (OI-242).
-        let (mesh, hash) =
-            crate::model::placed_mesh_hashed(&self.document.location, &reference, &context)?;
-        check_target(name, &mesh, None, &target)?;
-        if hash != reference.hash {
+        // A STEP model's faces and edges are checked against its placed B-rep.
+        let placed = crate::model::placed_part(&self.document.location, &reference, &context)?;
+        check_target(name, &placed.mesh, placed.brep.as_ref(), &target)?;
+        if placed.hash != reference.hash {
             return Err(selection_error(
                 name,
                 format!(
@@ -279,7 +277,7 @@ impl Application {
             order: Default::default(),
             name: name.to_owned(),
             model,
-            model_hash: hash,
+            model_hash: placed.hash,
             target,
             descriptors: Vec::new(),
             stock_to_leave: None,
@@ -364,9 +362,8 @@ impl Application {
         let reference = self.model_ref(set.model)?;
         let cancel = CancelToken::new();
         let context = JobContext::new(&cancel, &NoProgress);
-        let (mesh, _) =
-            crate::model::placed_mesh_hashed(&self.document.location, reference, &context)?;
-        check_target(&set.name, &mesh, None, &set.target)
+        let placed = crate::model::placed_part(&self.document.location, reference, &context)?;
+        check_target(&set.name, &placed.mesh, placed.brep.as_ref(), &set.target)
     }
 
     /// Puts `set` in, or takes it out of, `role` of `operation` (OP-02, UI-05).
@@ -1003,8 +1000,8 @@ mod tests {
     use super::*;
 
     /// Face and edge sets are checked against the placed B-rep they are made
-    /// on, the seam lane Z's `PlacedPart` fills (slice 11 item 7; decision
-    /// record 0066): the kind, emptiness and every ID.
+    /// on, as `save_selection` reads it from `PlacedPart` (slice 11 item 7;
+    /// decision record 0066): the kind, emptiness and every ID.
     #[test]
     fn req_prj_06_req_ui_05_face_and_edge_sets_are_checked_against_the_b_rep() {
         let (brep, _) = drilled_blank(

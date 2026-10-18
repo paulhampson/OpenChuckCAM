@@ -25,7 +25,7 @@ use openchuck_types::stock::Stock;
 use openchuck_types::units::Degrees;
 
 use crate::AppError;
-use crate::model::placed_mesh;
+use crate::model::placed_part;
 use crate::pick::{Picking, ScenePicker};
 /// The triangle mesh type the scene holds, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
@@ -267,13 +267,12 @@ pub(crate) fn build_scene(
     let mut part: Option<PartExtent> = None;
     for model in models {
         context.check_cancelled()?;
-        // A STEP part is read by the pipeline once lane Z's placed B-rep is
-        // on `main`; its faces and edges then come through `part_mesh`
-        // (decision record 0066, OI-242).
-        match placed_mesh(root, model, context) {
-            Ok(mesh) => {
-                part = merge_extent(part, openchuck_geom::part_extent(&mesh));
-                let item = part_mesh(model, mesh, None, &mut view.notes)?;
+        // A STEP part brings its placed B-rep, so it is drawn with its own
+        // edges and picked by face and edge (decision record 0066).
+        match placed_part(root, model, context) {
+            Ok(placed) => {
+                part = merge_extent(part, openchuck_geom::part_extent(&placed.mesh));
+                let item = part_mesh(model, placed.mesh, placed.brep.as_ref(), &mut view.notes)?;
                 view.meshes.push(item);
             }
             Err(e) => view

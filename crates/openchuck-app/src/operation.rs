@@ -221,23 +221,28 @@ pub struct EdgeOptions {
     pub keep_tangent: bool,
 }
 
-/// The edge options of `operation` as the project holds them: the chosen
-/// `Edges` set's own setting if it has one, else the project's default, else
-/// off (decision 0057). Neither is stored yet: the per-selection setting and
-/// the project default are lane O's project schema 12 work (OI-232), so this
-/// answers off until lane O wires it here.
+/// The edge options of `operation` as the project holds them (decision 0057,
+/// decision record 0066 item 9).
 pub fn edge_options(project: &Project, operation: &Operation) -> EdgeOptions {
     EdgeOptions {
         keep_tangent: keep_tangent_edges(project, operation),
     }
 }
 
-/// Whether edge following on `operation` keeps tangent edges: the seam lane
-/// O wires to the stored per-selection setting and project default (decision
-/// 0057, OI-232). Off until then, and always off on a mesh part.
+/// Whether edge following on `operation` keeps tangent edges: on a STEP part,
+/// when one of the `Edges` sets it follows keeps them, by its own choice or
+/// else the project's default (`Project::keeps_tangent_edges`). An operation
+/// that follows every edge has no set to say, so it keeps none, and its cache
+/// key, which holds each edge set's resolved choice, stays whole. Always off
+/// on a mesh part, whose edges are chosen by the crease angle.
 fn keep_tangent_edges(project: &Project, operation: &Operation) -> bool {
-    let _ = (project, operation);
-    false
+    on_step_part(project, operation)
+        && operation
+            .selections
+            .iter()
+            .filter_map(|id| project.selection_sets().iter().find(|s| s.id == *id))
+            .filter(|s| matches!(s.target, SelectionTarget::Edges(_)))
+            .any(|s| project.keeps_tangent_edges(s))
 }
 
 /// As [`generate_operation_on`], with the edge options given rather than
@@ -1259,6 +1264,54 @@ mod tests {
     }
 
     #[test]
+    fn req_op_08_an_edge_sets_tangent_choice_or_the_projects_default_reaches_edge_following() {
+        let mut f = fixture(edge_following::NAME, &[("depth", Value::Number(0.2))]);
+        let edges: BTreeSet<EdgeId> = f.brep.edges.iter().take(2).map(|e| e.id).collect();
+        f.select(SelectionTarget::Edges(edges), f.hash);
+        let keep = |project: &Project| {
+            let op = project.operation(f.operation).unwrap();
+            edge_options(project, op).keep_tangent
+        };
+        let set_choice = |project: &mut Project, choice: Option<bool>| {
+            let mut set = project.selection_sets()[0].clone();
+            set.keep_tangent_edges = choice;
+            project.replace(Item::SelectionSet(set)).unwrap();
+        };
+        // The set does not say and the project's default is off.
+        assert!(!keep(&f.project));
+        // The project's default applies to a set that does not say.
+        f.project.set_keep_tangent_edges(true);
+        assert!(keep(&f.project));
+        // The set's own choice wins either way (decision record 0066 item 9).
+        set_choice(&mut f.project, Some(false));
+        assert!(!keep(&f.project));
+        f.project.set_keep_tangent_edges(false);
+        set_choice(&mut f.project, Some(true));
+        assert!(keep(&f.project));
+        // And the generated path follows the B-rep with the tangent edges
+        // kept, as handing the option in directly does.
+        let read = f.run().unwrap();
+        let given = {
+            let cancel = CancelToken::new();
+            let context = JobContext::new(&cancel, &NoProgress);
+            generate_with_part(
+                Path::new("."),
+                &f.project,
+                f.operation,
+                &Registry::builtin(),
+                None,
+                Some(
+                    PlacedPart::of_brep(&f.brep, &f.project.models()[0].transform, f.hash).unwrap(),
+                ),
+                Some(EdgeOptions { keep_tangent: true }),
+                &context,
+            )
+            .unwrap()
+        };
+        assert_eq!(read.group, given.group);
+    }
+
+    #[test]
     fn req_op_08_req_nfr_07_keeping_tangent_edges_is_refused_on_a_mesh_part() {
         let f = fixture_with(
             edge_following::NAME,
@@ -1287,10 +1340,13 @@ mod tests {
         assert!(err.contains("'Op'") && err.contains("mesh"), "{err}");
         // Off, the mesh's own feature edges are followed as before.
         assert!(run(false).is_ok());
-        // The project answers off for every operation (lane O stores the
-        // setting, OI-232).
+        // An operation with no edge set keeps no tangent edges, whatever
+        // the project's default (decision record 0066 item 9).
         let op = f.project.operation(f.operation).unwrap();
         assert_eq!(edge_options(&f.project, op), EdgeOptions::default());
+        let mut project = f.project.clone();
+        project.set_keep_tangent_edges(true);
+        assert_eq!(edge_options(&project, op), EdgeOptions::default());
     }
 
     #[test]
