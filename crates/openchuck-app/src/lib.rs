@@ -85,7 +85,8 @@ pub use opflow::StrategyChoice;
 pub use pipeline::{GroupInfo, Regeneration};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
 pub use selection::{
-    RegionRequest, SelectionEdit, SelectionRole, SelectionSummary, SelectionUse, TriangleSet,
+    CheckedSet, EditStart, RegionRequest, SelectionEdit, SelectionRole, SelectionSummary,
+    SelectionUse, TriangleSet,
 };
 pub use setup_sheet::{SetupSheet, SheetBody, SheetSection};
 pub use simulation::{OperationSimulation, SetupSimulation, SimulationReport};

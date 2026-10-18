@@ -432,3 +432,194 @@ fn req_nfr_07_a_bad_ray_tolerance_or_edge_is_an_error() {
     let lonely = EdgePicker::new(vec![vec![Point3::new(0.0, 0.0, 0.0)]]).unwrap();
     assert_eq!(lonely.pick(o, d, ok, f64::INFINITY).unwrap(), None);
 }
+
+/// The edge-pick budget (OI-243, decision record 0066 item 5; verification
+/// plan 4.3): one pick against the drawn edges of a large part takes at most
+/// 1 ms at the 95th percentile (1,024 rays on a fixed grid), the same figure
+/// as the surface pick, and the picker is built in at most 2 s. Two parts:
+/// the 1M-triangle benchmark model (only its rims are feature edges) and a
+/// rough scan whose lattice of 720,000 edges are all feature edges, the
+/// worst case the open item names. Hosted CI relaxes the limits five times,
+/// as for the surface pick.
+#[test]
+fn req_ui_04_picking_edges_of_a_million_triangle_part_stays_within_its_budget() {
+    let relax = if std::env::var_os("CI").is_some() {
+        5.0
+    } else {
+        1.0
+    };
+    let reach = PickTolerance {
+        base: 0.5,
+        per_distance: 0.0,
+    };
+
+    // The benchmark model's feature edges, as the scene draws them.
+    let mesh = benchmark_model_1m();
+    let lines: Vec<Vec<Point3>> = openchuck_geom::display::feature_edges(&mesh, 30.0)
+        .unwrap()
+        .iter()
+        .map(|[a, b]| vec![mesh.vertices[*a as usize], mesh.vertices[*b as usize]])
+        .collect();
+    let rays = (0..32).flat_map(|i| {
+        (0..32).map(move |j| {
+            let angle = std::f64::consts::TAU * f64::from(i) / 32.0 + 0.0137;
+            let x = 100.0 * (f64::from(j) + 0.37) / 32.0;
+            (
+                p(x, 80.0 * angle.cos(), 80.0 * angle.sin()),
+                v(0.0, -angle.cos(), -angle.sin()),
+            )
+        })
+    });
+    edge_budget("benchmark model", lines, rays.collect(), reach, relax);
+
+    // A rough scan: a 601 x 601 lattice 100 mm across with a pseudo-random
+    // height at each node, so every lattice edge turns and is drawn.
+    let n = 601_usize;
+    let height = |i: usize, j: usize| {
+        let h = (i as u64)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add((j as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
+        ((h >> 40) as f64 / (1u64 << 24) as f64) * 3.0
+    };
+    let node = |i: usize, j: usize| {
+        p(
+            100.0 * i as f64 / (n - 1) as f64,
+            100.0 * j as f64 / (n - 1) as f64,
+            height(i, j),
+        )
+    };
+    let mut lines = Vec::with_capacity(2 * n * (n - 1));
+    for i in 0..n {
+        for j in 0..n {
+            if i + 1 < n {
+                lines.push(vec![node(i, j), node(i + 1, j)]);
+            }
+            if j + 1 < n {
+                lines.push(vec![node(i, j), node(i, j + 1)]);
+            }
+        }
+    }
+    let rays: Vec<(Point3, Vec3)> = (0..32)
+        .flat_map(|i| {
+            (0..32).map(move |j| {
+                (
+                    p(
+                        100.0 * (f64::from(i) + 0.37) / 32.0,
+                        100.0 * (f64::from(j) + 0.61) / 32.0,
+                        80.0,
+                    ),
+                    v(0.0, 0.0, -1.0),
+                )
+            })
+        })
+        .collect();
+    edge_budget("rough scan", lines, rays, reach, relax);
+}
+
+#[allow(clippy::print_stderr)]
+fn edge_budget(
+    what: &str,
+    lines: Vec<Vec<Point3>>,
+    rays: Vec<(Point3, Vec3)>,
+    reach: PickTolerance,
+    relax: f64,
+) {
+    let count = lines.len();
+    let started = Instant::now();
+    let picker = EdgePicker::new(lines).unwrap();
+    let build = started.elapsed().as_secs_f64();
+    assert!(build <= 2.0 * relax, "{what}: build took {build:.3} s");
+    let mut times = Vec::with_capacity(rays.len());
+    let mut hits = 0;
+    for (origin, direction) in &rays {
+        let t = Instant::now();
+        let hit = picker
+            .pick(*origin, *direction, reach, f64::INFINITY)
+            .unwrap();
+        times.push(t.elapsed().as_secs_f64());
+        hits += usize::from(hit.is_some());
+    }
+    times.sort_by(f64::total_cmp);
+    let p95 = times[(times.len() * 95).div_ceil(100) - 1];
+    eprintln!(
+        "edge pick budget, {what}: {count} edges, build {build:.3} s, p95 {:.1} us, max {:.1} us, {hits} of {} rays hit",
+        p95 * 1e6,
+        times[times.len() - 1] * 1e6,
+        rays.len()
+    );
+    assert!(
+        p95 <= 1e-3 * relax,
+        "{what}: p95 edge pick {:.1} us",
+        p95 * 1e6
+    );
+}
+
+/// The hierarchy changes how fast an edge is found, not which: on a lattice
+/// with polylines of several segments, a tolerance that grows with distance
+/// and a limit on how far the hit may be, every ray gives what testing the
+/// polylines one at a time gives, nearest share first, then the nearer, then
+/// the lower edge and segment (OI-243, NFR-06).
+#[test]
+fn req_ui_04_req_nfr_06_the_edge_hierarchy_agrees_with_testing_every_edge() {
+    let mut lines = Vec::new();
+    for i in 0..40 {
+        for j in 0..40 {
+            let (x, y) = (f64::from(i) * 2.5, f64::from(j) * 2.5);
+            let z = f64::from((i * 7 + j * 13) % 11) * 0.3;
+            // A bent polyline of three segments, and a short degenerate one.
+            lines.push(vec![
+                p(x, y, z),
+                p(x + 2.0, y + 0.5, z + 0.4),
+                p(x + 2.2, y + 2.0, z),
+                p(x, y + 2.3, z + 0.2),
+            ]);
+            lines.push(vec![p(x, y, z)]);
+        }
+    }
+    let picker = EdgePicker::new(lines.clone()).unwrap();
+    let singles: Vec<EdgePicker> = lines
+        .iter()
+        .map(|l| EdgePicker::new(vec![l.clone()]).unwrap())
+        .collect();
+    let reach = PickTolerance {
+        base: 0.2,
+        per_distance: 0.004,
+    };
+    let mut agreed_hits = 0;
+    for k in 0..400_u32 {
+        let origin = p(
+            f64::from(k % 20) * 5.0 + 0.31,
+            f64::from(k / 20) * 5.0 + 0.77,
+            40.0 + f64::from(k % 7),
+        );
+        let direction = v(
+            f64::from(k % 5) * 0.05 - 0.1,
+            f64::from(k % 3) * 0.05 - 0.05,
+            -1.0,
+        );
+        for limit in [f64::INFINITY, 38.0] {
+            let mut expected: Option<(f64, openchuck_geom::pick::EdgeHit)> = None;
+            for (edge, single) in singles.iter().enumerate() {
+                if let Some(mut hit) = single.pick(origin, direction, reach, limit).unwrap() {
+                    hit.edge = edge;
+                    let share = hit.offset / reach.at(hit.distance);
+                    let better = expected.is_none_or(|(s, h)| {
+                        share
+                            .total_cmp(&s)
+                            .then(hit.distance.total_cmp(&h.distance))
+                            .then(hit.edge.cmp(&h.edge))
+                            .then(hit.segment.cmp(&h.segment))
+                            .is_lt()
+                    });
+                    if better {
+                        expected = Some((share, hit));
+                    }
+                }
+            }
+            let got = picker.pick(origin, direction, reach, limit).unwrap();
+            assert_eq!(got, expected.map(|(_, h)| h), "ray {k}, limit {limit}");
+            agreed_hits += usize::from(got.is_some());
+        }
+    }
+    assert!(agreed_hits > 100, "{agreed_hits} rays hit an edge");
+}

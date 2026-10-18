@@ -96,6 +96,12 @@ pub struct LineItem {
     pub on_top: bool,
     /// The moving frame it is drawn in.
     pub slot: Slot,
+    /// The line's width in logical pixels at 100% scale. Up to 1 is a
+    /// hairline of one device pixel; a wider line is drawn as a quad whose
+    /// width does not change with the zoom, so a state such as a hovered or
+    /// selected edge can differ by width as well as colour (specification
+    /// section 16; OI-245).
+    pub width: f32,
 }
 
 /// Everything the renderer draws.
@@ -152,7 +158,23 @@ impl Scene {
             colour,
             on_top,
             slot: Slot::Fixed,
+            width: 0.0,
         });
+    }
+
+    /// Adds a line through `points` in order, `width` logical pixels wide
+    /// (see [`LineItem::width`]).
+    pub fn add_wide_polyline(
+        &mut self,
+        points: &[Point3],
+        colour: Colour,
+        on_top: bool,
+        width: f32,
+    ) {
+        self.add_polyline(points, colour, on_top);
+        if let Some(line) = self.lines.last_mut() {
+            line.width = width;
+        }
     }
 
     /// The box holding every point of the scene, or `None` when it is empty.
