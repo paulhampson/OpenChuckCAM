@@ -1,0 +1,185 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# One GitHub issue per failing scheduled job (decision 0102).
+#
+# For each job it is given, the step looks at the job's result:
+# - failure: if no issue with the job's label is open, it opens one (label `nightly-<id>`, a fixed
+#   title, the run link, the commit and the failing legs); if one is open, it leaves the issue's
+#   first text as it was and adds a comment (date, run link, commit, the night count, the failing
+#   legs) to the NEWEST open issue. So a job that keeps failing gives one issue and one comment
+#   a night.
+# - success: with the policy `green` (the default), if an issue with the job's label is open, it
+#   adds a comment naming the run and closes the issue as completed; a later failure opens a new
+#   issue. With the policy `fix` (the fuzz job) a green run does nothing: the issue is closed by a
+#   pull request that addresses the failure ("Fixes #N"), never by a green run.
+# - anything else (cancelled, skipped): nothing.
+#
+# A green run closes an issue only if it is not older than the failure the issue records: every issue
+# text and every night's comment carries the id of the run that wrote it (`<!-- nightly-run: ID -->`),
+# and run ids grow with time. So an older run that finishes late, after a newer run failed, cannot
+# close the issue of the newer failure. The same run id means a later attempt of the same run (a
+# re-run), which counts: a passing re-run of a failed run closes the issue it opened.
+#
+# The policy `fix` also decides when a failure is a new one. A failure of a `fix` job comments on
+# the newest open issue only when the job's previous run also failed; when the previous run passed
+# (a green run in between), it opens a NEW issue even though the earlier one may still be open,
+# because it is likely a different failure. "The previous run" is the most recent earlier run of the
+# same workflow on `main`, scheduled or by hand, in which the job's legs ran to a result: it is
+# green if every leg succeeded, failed if any leg failed or timed out; runs that were cancelled or
+# in which the job was skipped are passed over, up to the last 15 runs. If no earlier run decides
+# (new workflow, only skipped or cancelled runs, the API unavailable), it comments on the newest
+# open issue, so an unknown history does not open a second issue.
+#
+# The calling job needs `issues: write` and `actions: read` (to list the failing legs of a matrix
+# job and, for `fix`, the earlier runs; without it the legs are left out and a `fix` job comments
+# on the newest open issue) and a checkout of `.github/actions`. It does not run the tests: it
+# runs after the jobs it reports on, so the jobs that build and test hold no write token.
+name: Nightly issue
+description: Open, comment on or close the issue of each scheduled job, from the results of the jobs
+
+inputs:
+  needs:
+    description: The `needs` context of the calling job, as JSON (`toJSON(needs)`).
+    required: true
+  jobs:
+    description: >
+      One job per line, `id|name prefix|title|policy`: the job's key in `needs`, the start of the
+      names of its jobs in the run (a matrix job has one name per leg), the issue's fixed title, and
+      the policy (`green`, the default: a green run closes the issue; `fix`: only a pull request
+      closes it, and a failure after a green run opens a new issue).
+    required: true
+  details:
+    description: Markdown added to the issue text or comment (for example the coverage table).
+    default: ""
+  simulate:
+    description: The id of a job to treat as failed, to try the flow by hand. Empty for none.
+    default: ""
+  token:
+    description: Token that can write issues.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Open, comment on or close the issues
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        NEEDS: ${{ inputs.needs }}
+        JOBS: ${{ inputs.jobs }}
+        DETAILS: ${{ inputs.details }}
+        SIMULATE: ${{ inputs.simulate }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        today=$(date -u +%F)
+        marker='<!-- nightly-failure -->'
+        # Every job of this run, for the names of the failing legs.
+        gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" --paginate --jq '.jobs[] | {name, conclusion, html_url}' 2>/dev/null | jq -s '.' > run-jobs.json || echo '[]' > run-jobs.json
+        [ -s run-jobs.json ] || echo '[]' > run-jobs.json
+
+        # previous_state PREFIX: green, failed or unknown, from the earlier runs of this workflow on main.
+        previous_state() {
+          local prefix=$1 workflow run results
+          workflow=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID" --jq .workflow_id 2>/dev/null) || { echo unknown; return; }
+          for run in $(gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?branch=main&status=completed&per_page=15" --jq ".workflow_runs[] | select(.id < $RUN_ID) | .id" 2>/dev/null); do
+            results=$(gh api "repos/$GH_REPO/actions/runs/$run/jobs?per_page=100" --paginate 2>/dev/null | jq -r --arg p "$prefix" '.jobs[] | select(.name | startswith($p)) | .conclusion' 2>/dev/null) || continue
+            if grep -qxE 'failure|timed_out' <<< "$results"; then echo failed; return; fi
+            if grep -qx success <<< "$results" && ! grep -qxE 'cancelled|skipped|neutral|action_required' <<< "$results"; then echo green; return; fi
+          done
+          echo unknown
+        }
+
+        # latest_recorded_run NUMBER: the highest run id written in the issue's text or comments.
+        latest_recorded_run() {
+          { gh issue view "$1" --json body --jq .body; gh api "repos/$GH_REPO/issues/$1/comments" --paginate --jq '.[].body'; } 2>/dev/null \
+            | sed -n 's/.*<!-- nightly-run: \([0-9][0-9]*\) -->.*/\1/p' | sort -n | tail -n 1
+        }
+
+        while IFS='|' read -r id prefix title policy; do
+          [ -n "$id" ] || continue
+          policy=${policy:-green}
+          label="nightly-$id"
+          result=$(echo "$NEEDS" | jq -r --arg id "$id" '.[$id].result // "missing"')
+          if [ "$SIMULATE" = "$id" ]; then result=failure; fi
+          # The newest open issue with the label (there can be several for a `fix` job).
+          number=$(gh issue list --label "$label" --state open --json number,createdAt --jq 'sort_by(.createdAt) | reverse | .[0].number // empty')
+
+          case "$result" in
+            success)
+              if [ "$policy" = fix ]; then
+                echo "$id: passed; a $label issue is closed by a pull request, not by a green run"
+              elif [ -n "$number" ]; then
+                recorded=$(latest_recorded_run "$number" || true)
+                if [ -n "$recorded" ] && [ "$RUN_ID" -lt "$recorded" ]; then
+                  echo "$id: passed, but run $RUN_ID is older than run $recorded recorded in issue #$number; not closing it"
+                else
+                  {
+                    echo "Run $RUN_URL (commit \`${SHA:0:12}\`, $today) passed this job. Closing this issue; a new failure opens a new one."
+                    if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
+                  } > comment.md
+                  gh issue comment "$number" --body-file comment.md
+                  gh issue close "$number" --reason completed
+                fi
+              fi
+              ;;
+            failure)
+              legs=$(jq -r --arg p "$prefix" '.[] | select((.name | startswith($p)) and .conclusion == "failure") | "- [\(.name)](\(.html_url))"' run-jobs.json)
+              note=""
+              if [ "$SIMULATE" = "$id" ]; then note="This failure was simulated by hand to try the issue flow; the job itself did not fail."; fi
+              # A failure after a green run of a `fix` job is a new one: a new issue, whatever is open.
+              open_new=false
+              if [ -z "$number" ]; then
+                open_new=true
+              elif [ "$policy" = fix ] && [ "$(previous_state "$prefix")" = green ]; then
+                open_new=true
+              fi
+              if [ "$open_new" = false ]; then
+                comments=$(gh api "repos/$GH_REPO/issues/$number/comments" --paginate --jq "[.[] | select(.body | contains(\"$marker\"))] | length" | awk '{ s += $1 } END { print s + 0 }')
+                since=$(gh issue view "$number" --json createdAt --jq '.createdAt[:10]')
+                {
+                  echo "$marker"
+                  echo "<!-- nightly-run: $RUN_ID -->"
+                  echo "Still failing on $today: night $(( comments + 2 )) (failing since $since)."
+                  echo
+                  echo "- Run: $RUN_URL"
+                  echo "- Commit: \`$SHA\`"
+                  if [ -n "$legs" ]; then echo; echo "Failing:"; echo "$legs"; fi
+                  if [ -n "$note" ]; then echo; echo "$note"; fi
+                  if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
+                } > comment.md
+                gh issue comment "$number" --body-file comment.md
+              else
+                {
+                  echo "$title on $today."
+                  echo "<!-- nightly-run: $RUN_ID -->"
+                  echo
+                  echo "- Run: $RUN_URL"
+                  echo "- Commit: \`$SHA\`"
+                  if [ -n "$legs" ]; then echo; echo "Failing:"; echo "$legs"; fi
+                  if [ -n "$note" ]; then echo; echo "$note"; fi
+                  if [ -n "$DETAILS" ]; then echo; echo "$DETAILS"; fi
+                  echo
+                  if [ "$policy" = fix ]; then
+                    echo "A green run does not close this issue. Put \`Fixes #__NUMBER__\` in the description of the pull request that addresses the failure; merging that pull request closes it. This issue gets a comment on each night the job still fails. If the job passes and then fails again, a new issue is opened, because it is likely a different failure (decision 0102)."
+                  else
+                    echo "This issue gets a comment each night the job still fails, and is closed by the first run in which it passes (decision 0102)."
+                  fi
+                } > body.md
+                gh label create "$label" --color B60205 --description 'Opened and closed by the scheduled workflows' 2>/dev/null || true
+                url=$(gh issue create --title "$title" --label "$label" --body-file body.md)
+                if [ "$policy" = fix ] && [ -n "$url" ]; then
+                  # The body names the issue's own number now that it exists.
+                  sed -i "s/__NUMBER__/${url##*/}/" body.md
+                  gh issue edit "${url##*/}" --body-file body.md
+                fi
+              fi
+              ;;
+            *)
+              echo "$id: $result, no issue action"
+              ;;
+          esac
+        done <<< "$JOBS"

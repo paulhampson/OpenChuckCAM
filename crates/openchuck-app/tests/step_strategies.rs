@@ -345,13 +345,12 @@ fn helical() -> (&'static str, Vec<(&'static str, ParameterValue)>) {
     ("helical_finishing", vec![("max_angle_step", n(10.0))])
 }
 
-// Not covered here (OI-236; the failing tests as first written are on the
-// branch `claude/lane-z-failing-tests`): helical finishing of the box and the
-// filleted box with the Z1 post, where the post's F word counts A with the linear axes and goes
-// above the machine's limit at the corners (an STL box does the same); and
-// simultaneous finishing of the revolved spline, and roughing and rest
-// machining of the filleted box, with the LinuxCNC post, whose one-decimal
-// F word on moves that are nearly all A is more than 1 % of their time.
+// The square parts with helical finishing, the revolved spline with
+// simultaneous finishing and the filleted box with roughing then rest
+// machining were left out until the posting defects of OI-236 were fixed
+// (decision 0076): the Z1's F word counting A went above the machine's limit
+// at the corners, and LinuxCNC's one-decimal F word on moves that are nearly
+// all A was more than 1 % of their time.
 
 #[test]
 fn req_imp_02_req_op_04_helical_finishing_on_step_parts_does_not_gouge_the_exact_surface() {
@@ -360,6 +359,8 @@ fn req_imp_02_req_op_04_helical_finishing_on_step_parts_does_not_gouge_the_exact
         ("cone", onto_axis()),
         ("sphere", Vec::new()),
         ("revolved_spline", onto_axis()),
+        ("box", onto_axis()),
+        ("filleted_box", onto_axis()),
     ] {
         check(&Job {
             part,
@@ -393,23 +394,27 @@ fn req_imp_02_req_op_04_axial_and_indexed_finishing_on_step_parts_do_not_gouge()
 
 #[test]
 fn req_imp_02_req_op_05_simultaneous_finishing_on_a_step_part_does_not_gouge() {
-    check(&Job {
-        part: "cone",
-        transform: onto_axis(),
-        operations: vec![("simultaneous_finishing", vec![("max_angle_step", n(10.0))])],
-    });
+    for part in ["cone", "revolved_spline"] {
+        check(&Job {
+            part,
+            transform: onto_axis(),
+            operations: vec![("simultaneous_finishing", vec![("max_angle_step", n(10.0))])],
+        });
+    }
 }
 
 #[test]
 fn req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part_do_not_gouge() {
-    check(&Job {
-        part: "cylinder",
-        transform: onto_axis(),
-        operations: vec![
-            ("rotary_roughing", vec![("stock_to_leave", n(0.5))]),
-            ("rest_machining", vec![("max_angle_step", n(10.0))]),
-        ],
-    });
+    for part in ["cylinder", "filleted_box"] {
+        check(&Job {
+            part,
+            transform: onto_axis(),
+            operations: vec![
+                ("rotary_roughing", vec![("stock_to_leave", n(0.5))]),
+                ("rest_machining", vec![("max_angle_step", n(10.0))]),
+            ],
+        });
+    }
     // Pencil clean-up follows concave creases; the corpus parts have none
     // (OI-234), so on a STEP part it either finds none and says so, or cuts
     // without gouging.
@@ -501,6 +506,7 @@ fn req_op_08_req_nfr_07_a_step_parts_seam_alone_is_no_edge_and_a_rim_is_followed
                 descriptors: Vec::new(),
                 stock_to_leave: None,
                 colour: None,
+                keep_tangent_edges: None,
             }),
             placement: Placement::End,
         })
