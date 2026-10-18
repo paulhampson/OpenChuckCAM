@@ -16,7 +16,7 @@ use std::time::Instant;
 use eframe::egui::{self, Color32, RichText};
 use openchuck_app::project::Project;
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
-use openchuck_app::{Application, Event, JobHandle, Regeneration, StrategyChoice};
+use openchuck_app::{Application, JobHandle, JobId, JobLog, Regeneration, StrategyChoice};
 
 const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
 const NOTE: Color32 = Color32::from_rgb(230, 180, 60);
@@ -164,10 +164,6 @@ struct RunningJob {
     handle: JobHandle<Regeneration>,
     simulate: bool,
     started: Instant,
-    /// The project as it was when the run started. It becomes the project
-    /// the latest run was made from only if the run succeeds, so a failed or
-    /// cancelled run never makes an older run look current.
-    project: Project,
 }
 
 /// The form for a new operation.
@@ -184,8 +180,6 @@ pub struct RunPanel {
     job: Option<RunningJob>,
     progress: Option<String>,
     last: Option<Arc<Regeneration>>,
-    /// The project as it was when `last` was made.
-    last_project: Option<Project>,
     last_error: Option<String>,
     last_seconds: f64,
     show_results: bool,
@@ -223,7 +217,6 @@ impl RunPanel {
             handle,
             simulate,
             started: Instant::now(),
-            project: app.project().clone(),
         });
     }
 
@@ -245,43 +238,23 @@ impl RunPanel {
         self.last_error.as_deref()
     }
 
-    /// Whether the project has changed since the latest run was made.
-    pub fn is_stale(&self, app: &Application) -> bool {
-        self.last_project
-            .as_ref()
-            .is_none_or(|p| p != app.project())
-    }
-
-    /// What to show beside an operation: whether the latest run made it or
-    /// reused it, or that the project has changed since.
-    pub fn badge(&self, app: &Application, operation: OperationId) -> Option<&'static str> {
-        let run = self.last.as_ref()?;
-        if self.is_stale(app) {
-            return Some("out of date");
-        }
-        if run.generated.contains(&operation) {
-            Some("generated")
-        } else if run.reused.contains(&operation) {
-            Some("reused")
-        } else {
-            None
-        }
-    }
-
-    /// Reads the events and finishes the job when it has. Returns a new run.
-    pub fn poll(&mut self, app: &Application, ctx: &egui::Context) -> Option<Arc<Regeneration>> {
-        let id = self.job.as_ref().map(|j| j.handle.id());
-        for event in app.drain_events() {
-            if let Event::JobProgress { job, progress } = event
-                && Some(job) == id
-            {
-                self.progress = Some(match progress.total {
-                    Some(total) => format!("{}: {} of {total}", progress.stage, progress.done),
-                    None => progress.stage,
-                });
-            }
-        }
+    /// Finishes the job when it has. Returns a new run, with the job that
+    /// made it. Progress is read from the shell's job log.
+    pub fn poll(
+        &mut self,
+        jobs: &JobLog,
+        ctx: &egui::Context,
+    ) -> Option<(Arc<Regeneration>, JobId)> {
         let job = self.job.as_ref()?;
+        let id = job.handle.id();
+        if let Some(entry) = jobs.get(id)
+            && let Some(progress) = &entry.progress
+        {
+            self.progress = Some(match progress.total {
+                Some(total) => format!("{} of {total}", progress.done),
+                None => progress.stage.clone(),
+            });
+        }
         match job.handle.try_result() {
             None => {
                 ctx.request_repaint();
@@ -295,9 +268,8 @@ impl RunPanel {
                     Ok(run) => {
                         let run = Arc::new(run);
                         self.last = Some(Arc::clone(&run));
-                        self.last_project = Some(finished.project);
                         self.show_results = true;
-                        Some(run)
+                        Some((run, id))
                     }
                     Err(e) if e.is_cancelled() => {
                         self.last_error =
@@ -314,25 +286,19 @@ impl RunPanel {
         }
     }
 
-    /// The progress and the Cancel button, for the status bar.
-    pub fn status(&mut self, ui: &mut egui::Ui) {
-        if let Some(job) = &self.job {
-            ui.spinner();
-            let what = if job.simulate {
-                "Simulating"
-            } else {
-                "Generating"
-            };
-            ui.label(match &self.progress {
-                Some(p) => format!("{what}… {p}"),
-                None => format!("{what}…"),
-            });
-            if ui.small_button("Cancel").clicked() {
-                job.handle.cancel();
-            }
-        } else if let Some(error) = &self.last_error {
-            ui.colored_label(NOTE, error);
-        }
+    /// What the footer says while a job runs: "Generating… 2 of 4", or
+    /// `None` when nothing runs.
+    pub fn running_text(&self) -> Option<String> {
+        let job = self.job.as_ref()?;
+        let what = if job.simulate {
+            "Simulating"
+        } else {
+            "Generating"
+        };
+        Some(match &self.progress {
+            Some(p) => format!("{what}… {p}"),
+            None => format!("{what}…"),
+        })
     }
 
     /// Whether the results window or the add-operation dialog is open.
@@ -482,7 +448,7 @@ impl RunPanel {
                         ui.label("Nothing has been generated yet.");
                     }
                     Some(run) => {
-                        if self.is_stale(app) {
+                        if *run.project != *app.project() {
                             ui.colored_label(
                                 NOTE,
                                 "The project has changed since this run. Generate again.",
@@ -535,28 +501,36 @@ mod tests {
         assert!(panel.last.is_none());
     }
 
-    /// A cancelled run must not make an older run look current: the project
-    /// the latest run was made from changes only when a run succeeds.
+    /// A cancelled run must not make an older run look current: what the
+    /// application records changes only when a run succeeds (UI-11).
     #[test]
-    fn req_ui_09_a_cancelled_run_leaves_an_older_run_out_of_date() {
+    fn req_ui_09_req_ui_11_a_cancelled_run_leaves_an_older_run_stale() {
         use std::time::{Duration, Instant};
+
+        use openchuck_app::JobLog;
+        use openchuck_app::overview::{ItemRef, ItemState};
 
         use crate::testing::cube_project;
 
         let (dir, mut app, op, _) = cube_project("run-stale");
         let ctx = egui::Context::default();
         let mut panel = RunPanel::default();
-        let finish = |panel: &mut RunPanel, app: &Application| {
+        let finish = |panel: &mut RunPanel| {
             let started = Instant::now();
             while panel.is_running() {
-                panel.poll(app, &ctx);
+                panel.poll(&JobLog::default(), &ctx);
                 assert!(started.elapsed() < Duration::from_secs(120));
                 std::thread::sleep(Duration::from_millis(5));
             }
         };
+        let state = |app: &Application| {
+            app.overview(None, &JobLog::default())
+                .status(ItemRef::Operation(op))
+                .map(|s| s.state)
+        };
         panel.start(&app, false);
-        finish(&mut panel, &app);
-        assert_eq!(panel.badge(&app, op), Some("generated"));
+        finish(&mut panel);
+        assert_eq!(state(&app), Some(ItemState::UpToDate));
         // An edit makes the run out of date.
         app.set_parameter(
             op,
@@ -564,16 +538,16 @@ mod tests {
             Some(openchuck_app::project::ParameterValue::Number(0.7)),
         )
         .unwrap();
-        assert_eq!(panel.badge(&app, op), Some("out of date"));
+        assert_eq!(state(&app), Some(ItemState::Stale));
         // A run that is started and cancelled does not make it current.
         panel.start(&app, true);
         panel.cancel();
-        finish(&mut panel, &app);
-        assert_eq!(panel.badge(&app, op), Some("out of date"));
+        finish(&mut panel);
+        assert_eq!(state(&app), Some(ItemState::Stale));
         // A run that succeeds does.
         panel.start(&app, false);
-        finish(&mut panel, &app);
-        assert_eq!(panel.badge(&app, op), Some("generated"));
+        finish(&mut panel);
+        assert_eq!(state(&app), Some(ItemState::UpToDate));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

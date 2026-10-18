@@ -36,6 +36,7 @@ pub mod library;
 pub mod model;
 pub mod operation;
 pub mod opflow;
+pub mod overview;
 pub mod pathview;
 pub mod pick;
 mod pipeline;
@@ -43,6 +44,7 @@ pub mod playback;
 mod posting;
 pub mod scene;
 pub mod selection;
+pub mod settings;
 pub mod setup;
 mod setup_sheet;
 pub mod simulation;
@@ -71,7 +73,10 @@ pub use export::{
     Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, ExportChecks,
     PostSummary, builtin_post_summaries, post_summary, write_gcode_files,
 };
-pub use jobs::{JobHandle, JobId, JobManager, Threads};
+pub use jobs::{
+    FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,
+    job_label,
+};
 /// The G-code reader and replay, re-exported so front ends need no engine
 /// crate of their own (architecture section 5.8).
 pub use openchuck_gcode as gcode;
@@ -150,6 +155,8 @@ pub enum Event {
         job: JobId,
         /// `None` on success, or the error message.
         error: Option<String>,
+        /// Whether it stopped because it was cancelled on request.
+        cancelled: bool,
     },
 }
 
@@ -175,6 +182,10 @@ pub struct Application {
     grouping: OutputGrouping,
     events_tx: Sender<Event>,
     events_rx: Receiver<Event>,
+    /// Changes with every command, undo and redo ([`Application::revision`]).
+    revision: u64,
+    /// What generation has made, for the item states (decision record 0117).
+    record: std::sync::Arc<overview::GenerationRecord>,
 }
 
 impl Application {
@@ -219,6 +230,8 @@ impl Application {
             grouping: OutputGrouping::default(),
             events_tx,
             events_rx,
+            revision: 0,
+            record: std::sync::Arc::default(),
         })
     }
 
@@ -607,17 +620,23 @@ impl Application {
     /// Applies a command and records it for undo. On error the project is
     /// unchanged and nothing is recorded.
     pub fn execute(&mut self, command: Command) -> Result<(), AppError> {
-        self.history.execute(&mut self.document.project, command)
+        self.history.execute(&mut self.document.project, command)?;
+        self.revision += 1;
+        Ok(())
     }
 
     /// Undoes the latest command. Returns false when there is nothing to undo.
     pub fn undo(&mut self) -> Result<bool, AppError> {
-        self.history.undo(&mut self.document.project)
+        let undone = self.history.undo(&mut self.document.project)?;
+        self.revision += u64::from(undone);
+        Ok(undone)
     }
 
     /// Redoes the latest undone command. Returns false when there is nothing to redo.
     pub fn redo(&mut self) -> Result<bool, AppError> {
-        self.history.redo(&mut self.document.project)
+        let redone = self.history.redo(&mut self.document.project)?;
+        self.revision += u64::from(redone);
+        Ok(redone)
     }
 
     /// The parameter form of an operation (UI-07).
@@ -743,17 +762,25 @@ impl Application {
         let post = self.post.clone();
         let grouping = self.grouping;
         let cache = self.cache.clone();
+        let record = std::sync::Arc::clone(&self.record);
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
-                pipeline::regenerate(
+                let result = pipeline::regenerate(
                     &document.location,
                     &document.project,
                     &strategies,
                     post.as_ref().map(|p| (p, grouping)),
                     simulate,
                     &cache,
+                    &record,
                     context,
-                )
+                );
+                match &result {
+                    Ok(_) => record.succeeded(&document.project, simulate),
+                    Err(e) if e.is_cancelled() => record.cancelled(),
+                    Err(e) => record.failed(&document.project, e.to_string()),
+                }
+                result
             })
     }
 

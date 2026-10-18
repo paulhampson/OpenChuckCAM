@@ -35,6 +35,7 @@ mod selection_panel;
 mod shell;
 mod testing;
 mod tool_panel;
+mod toolbar;
 mod viewport;
 mod workholding_panel;
 
@@ -79,7 +80,16 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
             .set_buttons(rfd::MessageButtons::Ok)
             .show();
     }
-    let options = native_options(true);
+    let mut options = native_options(true);
+    // The window opens at the size it had (UI-15). The first time it fills
+    // the screen: at the default 120% scale a smaller window would start
+    // below the 1366 × 768 logical pixels of UI-16.
+    let size = openchuck_app::settings::SettingsFile::default_location()
+        .and_then(|f| f.load().settings.window);
+    options.viewport = match size {
+        Some(size) => options.viewport.with_inner_size(size),
+        None => options.viewport.with_maximized(true),
+    };
     graphics::watch_for_stall();
     let result = eframe::run_native(
         "OpenChuckCAM",
@@ -88,8 +98,10 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
             graphics::reached(graphics::Stage::DeviceReady);
             graphics::log_adapter(cc.wgpu_render_state.as_ref());
             let available = viewport::install(cc);
-            cc.egui_ctx.set_zoom_factor(shell::DEFAULT_ZOOM);
-            Ok(Box::new(shell::Shell::new(available, folder)))
+            // The scale the user chose, kept on this computer (UI-15).
+            let shell = shell::Shell::new(available, folder);
+            cc.egui_ctx.set_zoom_factor(shell.scale());
+            Ok(Box::new(shell))
         }),
     );
     match result {

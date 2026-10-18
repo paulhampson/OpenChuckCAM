@@ -97,7 +97,9 @@ pub struct Regeneration {
 /// generated stops the run with its error: nothing is left out silently
 /// (verification policy 8). A disabled operation is skipped as if it were
 /// absent: no toolpath, no stock removal, no G-code (UI-06; decision record
-/// 0029 item 10).
+/// 0029 item 10). `record` follows which operation is being made, for the
+/// item states (decision record 0117).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn regenerate(
     location: &Path,
     project: &Project,
@@ -108,6 +110,7 @@ pub(crate) fn regenerate(
     )>,
     simulate: bool,
     cache: &PipelineCache,
+    record: &crate::overview::GenerationRecord,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
@@ -136,6 +139,8 @@ pub(crate) fn regenerate(
     let mut previous = None;
     for (i, operation) in operations.iter().enumerate() {
         context.check_cancelled()?;
+        // A failure from here to the next operation is this operation's.
+        record.working_on(Some(operation.id));
         let carried = setups
             .iter()
             .find(|s| s.id == operation.setup)
@@ -215,6 +220,7 @@ pub(crate) fn regenerate(
         });
         context.report("regenerate", i as u64 + 1, Some(total));
     }
+    record.working_on(None);
     if simulate {
         let mut report = SimulationReport {
             settings,

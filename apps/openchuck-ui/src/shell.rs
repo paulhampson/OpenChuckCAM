@@ -1,22 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The application shell: menus, the project tree, new, open and save with
-//! unsaved-change handling, undo and redo, and the viewport (UI-01, UI-06,
-//! UI-08; work breakdown slice 8 items 3, 4 and 6; decision record 0029).
+//! The application shell: the window's regions, the workflow steps and the
+//! footer's primary action, the project tree with its marks, the dock, new,
+//! open and save with unsaved-change handling, undo and redo, and the
+//! viewport (UI-01, UI-06, UI-08 to UI-12, UI-15, UI-16; work breakdown slice
+//! 8 items 3, 4, 6, 8, 11 and 12; decision records 0029 and 0117;
+//! specification sections 3 to 6, 9, 10, 11.1 and 13).
 //!
 //! Every project change goes through `openchuck-app`; the shell holds no CAM
-//! logic. Paths can be typed, or picked with the platform's own dialog
-//! through `rfd` (OI-127); the typed path stays when no dialog is available.
+//! logic. What it shows about the state of the job (steps, marks, messages,
+//! setup checks, the primary action) is the application's
+//! [`Overview`](openchuck_app::overview::Overview). Paths can be typed, or
+//! picked with the platform's own dialog through `rfd` (OI-127); the typed
+//! path stays when no dialog is available.
+//!
+//! The regions are drawn by the submodules: [`frame`] (title bar, workflow
+//! bar, footer, empty state, panel layout and the per-user settings),
+//! [`tree`] (the project panel) and [`dock`] (Messages, Selection sets, Jobs,
+//! Setup checks and Playback).
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Instant;
 
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
+use openchuck_app::overview::{
+    Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
+};
+use openchuck_app::project::Item;
 use openchuck_app::project::ItemId;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::scene::SceneView;
+use openchuck_app::settings::{SettingsFile, UserSettings};
 use openchuck_app::tool_edit;
 use openchuck_app::tools::{self, ToolProfile};
-use openchuck_app::{AppError, Application, Command, JobHandle, Threads};
-use openchuck_viewport::{DisplayMode, Projection, StandardView};
+use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 
 use crate::bench;
 use crate::export_panel::ExportPanel;
@@ -31,18 +48,41 @@ use crate::tool_panel;
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
+mod dock;
+mod frame;
+mod marks;
+mod palette;
+mod tree;
+
+use dock::DockTab;
+
 /// The starting text and control size. egui's own default reads small on
-/// large desktop displays (owner's visual check, 14 Oct 2026).
-pub const DEFAULT_ZOOM: f32 = 1.2;
+/// large desktop displays (owner's visual check, 14 Oct 2026; OI-166).
+pub const DEFAULT_ZOOM: f32 = openchuck_app::settings::DEFAULT_SCALE;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
 const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
 const REDO: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::Z);
 const REDO_ALT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y);
-const GENERATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
-const SIMULATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F5);
+const NEW: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
+const OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::O);
+const IMPORT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::I);
 const EXPORT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::E);
+const GENERATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::G);
+const GENERATE_F5: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
+const GENERATE_STALE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::G);
+const GENERATE_STALE_F5: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F5);
+const NEW_OPERATION: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::N);
+const DUPLICATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::D);
+const DELETE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::Delete);
+const RENAME: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F2);
+const EARLIER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowUp);
+const LATER: KeyboardShortcut = KeyboardShortcut::new(Modifiers::ALT, Key::ArrowDown);
+/// Alt 1 to Alt 5 open the steps (specification section 4).
+const STEP_KEYS: [Key; 5] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5];
+/// Ctrl 1, 2 and 3 collapse the project panel, the inspector and the dock.
+const PANEL_KEYS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
@@ -71,7 +111,14 @@ enum Dialog {
     ModelFile { path: String },
     /// The project has unsaved changes.
     Unsaved(Next),
-    /// Something failed; the message says what.
+    /// Rename an item (F2).
+    Rename { item: ItemRef, name: String },
+    /// The keyboard map (Help).
+    Keys,
+    /// About the program (Help).
+    About,
+    /// A command the user gave failed outright; the message says what
+    /// (specification section 9: the only pop-up errors).
     Error(String),
 }
 
@@ -86,8 +133,10 @@ pub struct Shell {
     quitting: bool,
     /// A frame-time benchmark run (`--bench`).
     bench: Option<bench::Run>,
-    /// The operation or tool shown in the properties panel.
+    /// The item shown in the inspector.
     selected: Option<Selection>,
+    /// The section of the setup inspector a setup's child row chose.
+    setup_section: Option<SetupPart>,
     /// A custom profile being edited, for this tool (TL-03).
     profile_draft: Option<(ToolId, ToolProfile)>,
     /// A model being imported; the viewport shows its preview meanwhile.
@@ -98,9 +147,6 @@ pub struct Shell {
     machine_panel: Option<MachinePanel>,
     /// The chosen setup's workholding and tabs (SET-09, OP-21).
     workholding_panel: Option<WorkholdingPanel>,
-    /// Selections of the chosen operation that reach a held region or a tab:
-    /// the notes, or the job finding them (UI-03).
-    reach: Reach,
     /// Typed text and refused values in the parameter form.
     form: FormState,
     /// Picking triangles and the selection sets (slice 10).
@@ -113,15 +159,57 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
-    /// What `model_file_warnings` said when the project opened, for the
-    /// selection warnings; reading every model file is not done per frame.
-    file_warnings: Vec<String>,
+    /// The workflow step open (UI-10).
+    step: Step,
+    /// The jobs seen on the event stream (the Jobs tab).
+    jobs: JobLog,
+    /// The latest project checks, and the job making the next.
+    checks: Option<Arc<Checks>>,
+    checks_job: Option<JobHandle<Checks>>,
+    /// The state of the job as shown, and whether it needs working out
+    /// again.
+    overview: Overview,
+    overview_dirty: bool,
+    /// The per-user settings (UI-15) and where they are kept.
+    settings: UserSettings,
+    settings_file: Option<SettingsFile>,
+    /// When the settings changed and were not yet written.
+    settings_changed: Option<Instant>,
+    /// A problem reading the settings, shown as a message.
+    settings_problem: Option<String>,
+    /// The dock's tab, and the message severities shown.
+    dock_tab: DockTab,
+    message_filter: [bool; 3],
+    /// The message the disabled primary action points at.
+    highlight: Option<usize>,
+    /// Panels collapsed by the small-window rule, not by the user.
+    auto_collapsed: frame::AutoCollapse,
+    /// A panel whose splitter was double-clicked: its size resets.
+    reset: Option<frame::Region>,
 }
 
 impl Shell {
     /// A shell with no project open. `viewport_available` is false when
-    /// eframe runs without wgpu.
+    /// eframe runs without wgpu. The per-user settings are read from the
+    /// configuration folder.
     pub fn new(viewport_available: bool, folder: Option<PathBuf>) -> Self {
+        Self::with_settings(viewport_available, folder, SettingsFile::default_location())
+    }
+
+    /// A shell whose settings live in `settings` (none: defaults, never
+    /// written).
+    pub fn with_settings(
+        viewport_available: bool,
+        folder: Option<PathBuf>,
+        settings: Option<SettingsFile>,
+    ) -> Self {
+        let (loaded, problem) = match &settings {
+            Some(file) => {
+                let loaded = file.load();
+                (loaded.settings, loaded.problem)
+            }
+            None => (UserSettings::default(), None),
+        };
         let mut shell = Self {
             app: None,
             viewport: Viewport::new(viewport_available),
@@ -132,19 +220,33 @@ impl Shell {
             quitting: false,
             bench: None,
             selected: None,
+            setup_section: None,
             profile_draft: None,
             import: None,
             model_panel: None,
             machine_panel: None,
             workholding_panel: None,
-            reach: Reach::default(),
             form: FormState::default(),
             selection: SelectionPanel::default(),
             run: RunPanel::default(),
             export: ExportPanel::default(),
             text_had_focus: false,
             play: PlaybackPanel::default(),
-            file_warnings: Vec::new(),
+            step: Step::Model,
+            jobs: JobLog::default(),
+            checks: None,
+            checks_job: None,
+            overview: Overview::no_project(),
+            overview_dirty: true,
+            settings: loaded,
+            settings_file: settings,
+            settings_changed: None,
+            settings_problem: problem,
+            dock_tab: DockTab::Messages,
+            message_filter: [true; 3],
+            highlight: None,
+            auto_collapsed: frame::AutoCollapse::default(),
+            reset: None,
         };
         if let Some(folder) = folder {
             shell.open(folder);
@@ -152,9 +254,14 @@ impl Shell {
         shell
     }
 
+    /// The interface scale the settings keep, for the window's first frame.
+    pub fn scale(&self) -> f32 {
+        self.settings.scale
+    }
+
     /// A shell running the frame-time benchmark on `app`'s scene.
     pub fn benchmark(app: Application, run: bench::Run) -> Self {
-        let mut shell = Self::new(true, None);
+        let mut shell = Self::with_settings(true, None, None);
         shell.viewport.mode = run.mode();
         shell.bench = Some(run);
         shell.set_app(app);
@@ -189,48 +296,67 @@ impl Shell {
         match Application::open(&folder, Threads::All) {
             Ok(app) => self.set_app(app),
             Err(AppError::NoProject(_)) => self.dialog = Some(Dialog::OfferCreate { folder }),
-            Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            Err(e) => {
+                self.dialog = Some(Dialog::Error(format!(
+                    "The project could not be opened: {e}"
+                )));
+            }
         }
     }
 
     fn create(&mut self, folder: PathBuf, name: &str) {
         match Application::create(&folder, name, Threads::All) {
             Ok(app) => self.set_app(app),
-            Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            Err(e) => {
+                self.dialog = Some(Dialog::Error(format!(
+                    "The project could not be created: {e}"
+                )));
+            }
         }
     }
 
     fn set_app(&mut self, app: Application) {
         self.status = format!("Opened {}", app.location().display());
-        // Model files changed or missing since they were added (PRJ-02, OI-45).
-        let warnings = app.model_file_warnings();
-        self.file_warnings.clone_from(&warnings);
+        // Changed or missing model files are messages now (PRJ-02, OI-45;
+        // specification section 9), from the project checks.
         self.selection.clear();
         self.run.clear();
         self.export.clear();
         self.play.clear();
-        if !warnings.is_empty() {
-            self.dialog = Some(Dialog::Error(format!(
-                "Some model files do not match the project:\n{}\n\nThe toolpaths will use the files \
-                 as they are now.",
-                warnings.join("\n")
-            )));
+        self.jobs.clear();
+        self.checks = None;
+        if let Some(job) = self.checks_job.take() {
+            job.cancel();
         }
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
+        self.setup_section = None;
         self.profile_draft = None;
         // A workholding draft, and its "not applied" note, belong to the
         // project that was open; they must not carry over (lane 21d, #119).
         self.workholding_panel = None;
+        self.machine_panel = None;
         self.import = None;
         self.form.clear();
+        self.highlight = None;
+        if self.bench.is_none() {
+            self.settings.opened(app.location());
+            self.settings_touched();
+        }
+        self.step = if app.project().models().is_empty() {
+            Step::Model
+        } else if app.project().operations().is_empty() {
+            Step::Setup
+        } else {
+            Step::Operations
+        };
         self.app = Some(app);
+        self.overview_dirty = true;
         self.rebuild_scene(true);
     }
 
     /// Starts building the scene again after the project or the chosen setup changed.
     fn rebuild_scene(&mut self, fit: bool) {
-        self.reach = Reach::default();
         if let Some(app) = &self.app {
             if let Some((old, _)) = self.scene_job.take() {
                 old.cancel();
@@ -257,11 +383,61 @@ impl Shell {
                     Ok(view) => {
                         self.viewport.set_scene(view, fit);
                         self.selection.scene_changed();
+                        self.overview_dirty = true;
                     }
-                    Err(e) if e.is_cancelled() => {}
-                    Err(e) => self.status = format!("The view could not be built: {e}"),
+                    // A failure is a message, from the job log.
+                    Err(_) => self.overview_dirty = true,
                 }
             }
+        }
+    }
+
+    /// Reads the events into the job log, keeps the project checks going and
+    /// works the overview out again when anything it reads changed.
+    fn overview_frame(&mut self, ctx: &egui::Context) {
+        let Some(app) = &self.app else {
+            if self.overview_dirty {
+                self.overview = Overview::no_project();
+                self.overview_dirty = false;
+            }
+            return;
+        };
+        let events = app.drain_events();
+        if !events.is_empty() {
+            self.jobs.update(events);
+            self.overview_dirty = true;
+        }
+        if let Some(job) = &self.checks_job
+            && let Some(result) = job.try_result()
+        {
+            self.checks_job = None;
+            if let Ok(checks) = result {
+                self.checks = Some(Arc::new(checks));
+            }
+            self.overview_dirty = true;
+        }
+        let revision = app.revision();
+        let behind = self
+            .checks
+            .as_ref()
+            .is_none_or(|c| c.revision() != revision);
+        if behind && self.checks_job.is_none() {
+            self.checks_job = Some(app.start_checks(self.checks.clone()));
+        }
+        if self.checks_job.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        if self.overview_dirty || self.overview.revision != revision {
+            let mut overview = app.overview(self.checks.as_deref(), &self.jobs);
+            for note in &self.viewport.view().notes {
+                overview.push(Message::new(Severity::Info, note.clone(), None, None));
+            }
+            if let Some(problem) = &self.settings_problem {
+                overview.push(Message::new(Severity::Warning, problem.clone(), None, None));
+            }
+            self.overview = overview;
+            self.overview_dirty = false;
+            self.highlight = None;
         }
     }
 
@@ -269,6 +445,7 @@ impl Shell {
     fn generate(&mut self, simulate: bool) {
         if let Some(app) = &self.app {
             self.run.start(app, simulate);
+            self.overview_dirty = true;
         }
     }
 
@@ -331,9 +508,84 @@ impl Shell {
                 });
             }
             Next::Quit => {
+                self.save_settings();
                 self.quitting = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+        }
+    }
+
+    /// Opens the import dialog (Ctrl I, the Model "+", the workflow bar).
+    fn import_model(&mut self) {
+        if self.app.is_some() && self.import.is_none() {
+            self.dialog = Some(Dialog::ModelFile {
+                path: String::new(),
+            });
+        }
+    }
+
+    /// Opens the new-operation dialog on the Operations step (N, the
+    /// Operations "+", the workflow bar).
+    fn new_operation(&mut self) {
+        if let Some(app) = &self.app
+            && self.overview.step(Step::Operations).is_available()
+        {
+            self.step = Step::Operations;
+            self.run.begin_add(app);
+        }
+    }
+
+    /// Starts picking on the part with an empty working selection (the
+    /// Selection sets "+", decision record 0037 item 7).
+    fn start_picking(&mut self) {
+        if self.app.is_some() {
+            if self.overview.step(Step::Operations).is_available() {
+                self.step = Step::Operations;
+            }
+            self.selection.show_set(None);
+            self.dock_tab = DockTab::SelectionSets;
+            self.settings.dock.collapsed = false;
+            self.select(Selection::Picking);
+        }
+    }
+
+    /// Opens `step` if it is available (UI-10).
+    fn open_step(&mut self, step: Step) {
+        if self.overview.step(step).is_available() {
+            self.step = step;
+            if step == Step::Simulate {
+                self.play.open = true;
+                self.dock_tab = DockTab::Playback;
+            } else if self.dock_tab == DockTab::Playback {
+                self.dock_tab = DockTab::Messages;
+            }
+            if step == Step::Setup {
+                self.dock_tab = DockTab::SetupChecks;
+            } else if self.dock_tab == DockTab::SetupChecks {
+                self.dock_tab = DockTab::Messages;
+            }
+        }
+    }
+
+    /// Does what the footer's primary button says (specification section 5).
+    fn primary(&mut self) {
+        let action = self.overview.primary(self.step);
+        if action.blocked.is_some() || self.run.is_running() {
+            self.highlight = action.message;
+            if action.message.is_some() {
+                self.dock_tab = DockTab::Messages;
+                self.settings.dock.collapsed = false;
+            }
+            return;
+        }
+        match action.kind {
+            PrimaryKind::ImportModel => self.import_model(),
+            PrimaryKind::Continue(step) => self.open_step(step),
+            PrimaryKind::GenerateStale(_) => self.generate(false),
+            PrimaryKind::RunSimulation | PrimaryKind::GenerateAndSimulate(_) => {
+                self.generate(true);
+            }
+            PrimaryKind::OpenExport => self.open_export(),
         }
     }
 
@@ -351,16 +603,188 @@ impl Shell {
         if redo {
             self.redo();
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&EXPORT)) {
+        let (new, open, import, export) = ctx.input_mut(|i| {
+            (
+                i.consume_shortcut(&NEW),
+                i.consume_shortcut(&OPEN),
+                i.consume_shortcut(&IMPORT),
+                i.consume_shortcut(&EXPORT),
+            )
+        });
+        if new {
+            self.request(Next::New, ctx);
+        }
+        if open {
+            self.request(Next::Open, ctx);
+        }
+        if import {
+            self.import_model();
+        }
+        if export {
             self.open_export();
         }
-        // Shift+F5 first: it would otherwise be taken for F5.
-        let (simulate, generate) =
-            ctx.input_mut(|i| (i.consume_shortcut(&SIMULATE), i.consume_shortcut(&GENERATE)));
-        if simulate {
-            self.generate(true);
-        } else if generate {
+        // Alt 1 to 5: the steps. Ctrl 1 to 3: collapse the panels.
+        for (index, key) in STEP_KEYS.into_iter().enumerate() {
+            if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, key))
+                && let Some(step) = Step::ALL.get(index)
+            {
+                self.open_step(*step);
+            }
+        }
+        for (key, region) in PANEL_KEYS.into_iter().zip(frame::Region::ALL) {
+            if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, key)) {
+                self.toggle_region(region);
+            }
+        }
+        // Keys that would type a letter are left to a text field with the
+        // keyboard, and to a window in front of the view.
+        if self.text_had_focus || self.window_open() {
+            return;
+        }
+        let (stale, generate, new_operation) = ctx.input_mut(|i| {
+            // Shift first: Shift G would otherwise be taken for G.
+            let stale =
+                i.consume_shortcut(&GENERATE_STALE) || i.consume_shortcut(&GENERATE_STALE_F5);
+            let generate = i.consume_shortcut(&GENERATE) || i.consume_shortcut(&GENERATE_F5);
+            (stale, generate, i.consume_shortcut(&NEW_OPERATION))
+        });
+        if stale || generate {
             self.generate(false);
+        }
+        if new_operation {
+            self.new_operation();
+        }
+        let (duplicate, delete, rename, earlier, later) = ctx.input_mut(|i| {
+            (
+                i.consume_shortcut(&DUPLICATE),
+                i.consume_shortcut(&DELETE),
+                i.consume_shortcut(&RENAME),
+                i.consume_shortcut(&EARLIER),
+                i.consume_shortcut(&LATER),
+            )
+        });
+        if let Some(Selection::Operation(id)) = self.selected {
+            let action = if duplicate {
+                Some(TreeAction::Duplicate(id))
+            } else if delete {
+                Some(TreeAction::Delete(id))
+            } else if earlier {
+                self.move_action(id, -1)
+            } else if later {
+                self.move_action(id, 1)
+            } else {
+                None
+            };
+            if let Some(action) = action {
+                self.tree_action(action);
+            }
+        }
+        if rename && let Some(item) = self.selected_item() {
+            self.begin_rename(item);
+        }
+        // Esc cancels the running job when nothing is being picked
+        // (specification section 16); picking takes its own Esc.
+        let picking = matches!(self.selected, Some(Selection::Picking | Selection::Set(_)));
+        if !picking
+            && self.run.is_running()
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
+        {
+            self.run.cancel();
+        }
+    }
+
+    /// The command that moves operation `id` by `by` places, if it can move.
+    fn move_action(&self, id: OperationId, by: isize) -> Option<TreeAction> {
+        let ops = self.app.as_ref()?.project().operations();
+        let index = ops.iter().position(|o| o.id == id)?;
+        let to = index.checked_add_signed(by).filter(|t| *t < ops.len())?;
+        Some(TreeAction::Command(Box::new(Command::Move {
+            id: ItemId::Operation(id),
+            index: to,
+        })))
+    }
+
+    /// The tree item the inspector shows, if it can be renamed or deleted.
+    fn selected_item(&self) -> Option<ItemRef> {
+        match self.selected? {
+            Selection::Operation(id) => Some(ItemRef::Operation(id)),
+            Selection::Setup(id) => Some(ItemRef::Setup(id)),
+            Selection::Set(id) => Some(ItemRef::SelectionSet(id)),
+            Selection::Tool(id) => Some(ItemRef::Tool(id)),
+            Selection::Model(id) => Some(ItemRef::Model(id)),
+            Selection::Picking => None,
+        }
+    }
+
+    /// Opens the rename dialog for `item`, if it has a name of its own.
+    fn begin_rename(&mut self, item: ItemRef) {
+        let Some(app) = &self.app else { return };
+        let project = app.project();
+        let name = match item {
+            ItemRef::Operation(id) => project.operation(id).map(|o| o.name.clone()),
+            ItemRef::Setup(id) => project.setup(id).map(|s| s.name.clone()),
+            ItemRef::Tool(id) => project
+                .tools()
+                .iter()
+                .find(|t| t.id == id)
+                .map(|t| t.name.clone()),
+            ItemRef::SelectionSet(id) => project
+                .selection_sets()
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| s.name.clone()),
+            // A model is named by its file.
+            ItemRef::Model(_) | ItemRef::SetupPart(..) => None,
+        };
+        if let Some(name) = name {
+            self.dialog = Some(Dialog::Rename { item, name });
+        }
+    }
+
+    /// Renames `item` as one undoable command.
+    fn rename(&mut self, item: ItemRef, name: &str) {
+        let Some(app) = &mut self.app else { return };
+        let name = name.trim();
+        if name.is_empty() {
+            self.dialog = Some(Dialog::Error("A name cannot be empty.".to_owned()));
+            return;
+        }
+        let project = app.project();
+        let replaced = match item {
+            ItemRef::Operation(id) => project.operation(id).cloned().map(|mut o| {
+                o.name = name.to_owned();
+                Item::Operation(o)
+            }),
+            ItemRef::Setup(id) => project.setup(id).cloned().map(|mut s| {
+                s.name = name.to_owned();
+                Item::Setup(s)
+            }),
+            ItemRef::Tool(id) => {
+                project
+                    .tools()
+                    .iter()
+                    .find(|t| t.id == id)
+                    .cloned()
+                    .map(|mut t| {
+                        t.name = name.to_owned();
+                        Item::Tool(t)
+                    })
+            }
+            ItemRef::SelectionSet(id) => project
+                .selection_sets()
+                .iter()
+                .find(|s| s.id == id)
+                .cloned()
+                .map(|mut s| {
+                    s.name = name.to_owned();
+                    Item::SelectionSet(s)
+                }),
+            ItemRef::Model(_) | ItemRef::SetupPart(..) => None,
+        };
+        if let Some(item) = replaced
+            && let Err(e) = app.execute(Command::Replace(item))
+        {
+            self.dialog = Some(Dialog::Error(format!("The name was not changed: {e}")));
         }
     }
 
@@ -370,268 +794,65 @@ impl Shell {
         }
     }
 
-    fn menu(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("New project…").clicked() {
-                    self.request(Next::New, &ctx);
-                }
-                if ui.button("Open project…").clicked() {
-                    self.request(Next::Open, &ctx);
-                }
-                if ui
-                    .add_enabled(
-                        self.app.is_some() && self.import.is_none(),
-                        egui::Button::new("Import model…"),
-                    )
-                    .clicked()
-                {
-                    self.dialog = Some(Dialog::ModelFile {
-                        path: String::new(),
-                    });
-                }
-                let save = egui::Button::new("Save").shortcut_text(ctx.format_shortcut(&SAVE));
-                if ui.add_enabled(self.app.is_some(), save).clicked() {
-                    self.save();
-                }
-                let export = egui::Button::new("Post and export…")
-                    .shortcut_text(ctx.format_shortcut(&EXPORT));
-                if ui.add_enabled(self.app.is_some(), export).clicked() {
-                    self.open_export();
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Quit").clicked() {
-                    self.request(Next::Quit, &ctx);
-                }
-            });
-            ui.menu_button("Edit", |ui| {
-                let (can_undo, can_redo) = self
-                    .app
-                    .as_ref()
-                    .map_or((false, false), |a| (a.can_undo(), a.can_redo()));
-                let undo = egui::Button::new("Undo").shortcut_text(ctx.format_shortcut(&UNDO));
-                if ui.add_enabled(can_undo, undo).clicked() {
-                    self.undo();
-                }
-                let redo = egui::Button::new("Redo").shortcut_text(ctx.format_shortcut(&REDO));
-                if ui.add_enabled(can_redo, redo).clicked() {
-                    self.redo();
-                }
-            });
-            ui.menu_button("Operations", |ui| {
-                let open = self.app.is_some();
-                let idle = !self.run.is_running();
-                if ui
-                    .add_enabled(open, egui::Button::new("Add operation…"))
-                    .clicked()
-                {
-                    if let Some(app) = &self.app {
-                        self.run.begin_add(app);
-                    }
-                    ui.close();
-                }
-                ui.separator();
-                let generate =
-                    egui::Button::new("Generate").shortcut_text(ctx.format_shortcut(&GENERATE));
-                if ui.add_enabled(open && idle, generate).clicked() {
-                    self.generate(false);
-                    ui.close();
-                }
-                let simulate = egui::Button::new("Generate and simulate")
-                    .shortcut_text(ctx.format_shortcut(&SIMULATE));
-                if ui.add_enabled(open && idle, simulate).clicked() {
-                    self.generate(true);
-                    ui.close();
-                }
-                if ui.add_enabled(!idle, egui::Button::new("Cancel")).clicked() {
-                    self.run.cancel();
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(open, egui::Button::new("Results…"))
-                    .clicked()
-                {
-                    self.run.show_results();
-                    ui.close();
-                }
-                ui.checkbox(&mut self.play.open, "Show playback");
-            });
-            ui.menu_button("View", |ui| {
-                for view in StandardView::ALL {
-                    if ui.button(view.name()).clicked() {
-                        self.viewport.set_view(view);
-                    }
-                }
-                if ui.button("Fit all").clicked() {
-                    self.viewport.fit();
-                }
-                ui.separator();
-                let mut projection = self.viewport.camera.projection;
-                ui.radio_value(&mut projection, Projection::Perspective, "Perspective");
-                ui.radio_value(&mut projection, Projection::Orthographic, "Orthographic");
-                self.viewport.set_projection(projection);
-                ui.separator();
-                for mode in DisplayMode::ALL {
-                    ui.radio_value(&mut self.viewport.mode, mode, mode.name());
-                }
-                ui.separator();
-                // Text and controls scale together (egui's zoom; Ctrl and +
-                // or - also work).
-                let zoom = ctx.zoom_factor();
-                ui.label(format!("Text size: {:.0} %", zoom * 100.0));
-                ui.horizontal(|ui| {
-                    if ui.button("Larger").clicked() {
-                        ctx.set_zoom_factor((zoom * 1.1).min(3.0));
-                    }
-                    if ui.button("Smaller").clicked() {
-                        ctx.set_zoom_factor((zoom / 1.1).max(0.5));
-                    }
-                    if ui.button("Reset").clicked() {
-                        ctx.set_zoom_factor(DEFAULT_ZOOM);
-                    }
-                });
-            });
-        });
+    /// Carries out a message's action link (specification section 9).
+    fn message_action(&mut self, action: MessageAction) {
+        match action {
+            MessageAction::Show(item) => self.show_item(item),
+            MessageAction::Reselect(set) => {
+                self.start_picking();
+                self.selection.show_set(Some(set));
+                self.select(Selection::Set(set));
+            }
+            MessageAction::ReviewSetup(setup) => {
+                self.open_step(Step::Setup);
+                self.choose_setup(setup, None);
+            }
+            MessageAction::EditWorkholding(setup) => {
+                self.choose_setup(setup, Some(SetupPart::Workholding));
+            }
+            MessageAction::Generate => self.generate(false),
+        }
     }
 
-    /// The project tree (UI-06): models, setups, operations and tools.
-    /// Choosing a setup shows it in the viewport. Operations can be enabled,
-    /// disabled, moved and duplicated, each through an undoable command.
-    fn tree(&mut self, ui: &mut egui::Ui) {
-        let Some(app) = &self.app else {
-            ui.label("No project open. Use File, Open project or New project.");
-            return;
-        };
-        let project = app.project();
-        let mut chosen = None;
-        let mut add_operation = false;
-        let mut command: Option<TreeAction> = None;
-        ui.heading(project.name());
-        let machine = project.machine().map_or_else(
-            || "Machine: none".to_owned(),
-            |m| format!("Machine: {}", m.name),
-        );
-        if ui
-            .selectable_label(self.selected == Some(Selection::Machine), machine)
-            .clicked()
-        {
-            command = Some(TreeAction::SelectMachine);
+    /// Selects `item` in the tree and the inspector (a message's source).
+    fn show_item(&mut self, item: ItemRef) {
+        match item {
+            ItemRef::Model(id) => self.select(Selection::Model(id)),
+            ItemRef::Setup(id) => self.choose_setup(id, None),
+            ItemRef::SetupPart(id, part) => self.choose_setup(id, Some(part)),
+            ItemRef::SelectionSet(id) => {
+                self.selection.show_set(Some(id));
+                self.select(Selection::Set(id));
+            }
+            ItemRef::Tool(id) => self.select(Selection::Tool(id)),
+            ItemRef::Operation(id) => self.select(Selection::Operation(id)),
         }
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            egui::CollapsingHeader::new(format!("Models ({})", project.models().len()))
-                .default_open(true)
-                .show(ui, |ui| {
-                    for m in project.models() {
-                        let selected = self.selected == Some(Selection::Model(m.id));
-                        if ui.selectable_label(selected, m.path.as_str()).clicked() {
-                            command = Some(TreeAction::SelectModel(m.id));
-                        }
-                    }
-                });
-            egui::CollapsingHeader::new(format!("Setups ({})", project.setups().len()))
-                .default_open(true)
-                .show(ui, |ui| {
-                    for s in project.setups() {
-                        let selected = self.selected == Some(Selection::Setup(s.id));
-                        if ui
-                            .selectable_label(selected || self.setup == Some(s.id), &s.name)
-                            .on_hover_text("Show the setup; edit its workholding and tabs")
-                            .clicked()
-                        {
-                            chosen = Some(s.id);
-                            command = Some(TreeAction::SelectSetup(s.id));
-                        }
-                    }
-                });
-            let summaries = app.selection_summaries(&self.file_warnings);
-            egui::CollapsingHeader::new(format!("Selections ({})", summaries.len()))
-                .default_open(true)
-                .show(ui, |ui| {
-                    let on_part = self.selected == Some(Selection::Picking);
-                    if ui
-                        .selectable_label(on_part, "Select on the part…")
-                        .on_hover_text("Pick triangles in the view and save them as sets")
-                        .clicked()
-                    {
-                        command = Some(TreeAction::SelectPicking);
-                    }
-                    for s in &summaries {
-                        let selected = self.selected == Some(Selection::Set(s.id));
-                        let text = egui::RichText::new(format!("{} ({})", s.name, s.count));
-                        let text = if s.problem.is_some() {
-                            text.color(egui::Color32::from_rgb(230, 80, 80))
-                        } else {
-                            text
-                        };
-                        let row = ui.selectable_label(selected, text);
-                        if let Some(problem) = &s.problem {
-                            row.clone().on_hover_text(format!("⚠ {problem}"));
-                        }
-                        if row.clicked() {
-                            command = Some(TreeAction::SelectSet(s.id));
-                        }
-                    }
-                });
-            egui::CollapsingHeader::new(format!("Operations ({})", project.operations().len()))
-                .default_open(true)
-                .show(ui, |ui| {
-                    if ui.small_button("Add operation…").clicked() {
-                        add_operation = true;
-                    }
-                    let count = project.operations().len();
-                    for (index, o) in project.operations().iter().enumerate() {
-                        let warning = summaries
-                            .iter()
-                            .find(|s| {
-                                s.problem.is_some() && s.uses.iter().any(|u| u.operation == o.id)
-                            })
-                            .map(|s| {
-                                format!("{}: {}", s.name, s.problem.clone().unwrap_or_default())
-                            });
-                        if let Some(c) = operation_row(
-                            ui,
-                            index,
-                            count,
-                            o,
-                            self.selected == Some(Selection::Operation(o.id)),
-                            warning.as_deref(),
-                            self.run.badge(app, o.id),
-                        ) {
-                            command = Some(c);
-                        }
-                    }
-                });
-            egui::CollapsingHeader::new(format!("Tools ({})", project.tools().len()))
-                .default_open(false)
-                .show(ui, |ui| {
-                    for t in project.tools() {
-                        let selected = self.selected == Some(Selection::Tool(t.id));
-                        if ui.selectable_label(selected, &t.name).clicked() {
-                            command = Some(TreeAction::SelectTool(t.id));
-                        }
-                    }
-                });
-        });
-        if add_operation {
-            self.run.begin_add(app);
-        }
-        if let Some(id) = chosen
-            && self.setup != Some(id)
+        self.settings.inspector.collapsed = false;
+    }
+
+    /// Chooses `setup` (the view shows it) and opens its inspector at
+    /// `section`.
+    fn choose_setup(&mut self, setup: SetupId, section: Option<SetupPart>) {
+        if self
+            .workholding_panel
+            .as_ref()
+            .is_none_or(|p| p.setup() != setup)
         {
-            self.setup = Some(id);
+            self.workholding_panel = None;
+        }
+        if section == Some(SetupPart::Machine) && self.machine_panel.is_none() {
+            self.machine_panel = Some(MachinePanel::default());
+        }
+        if self.setup != Some(setup) {
+            self.setup = Some(setup);
             self.rebuild_scene(true);
         }
-        if let Some(action) = command {
-            self.tree_action(action);
-        }
+        self.setup_section = section;
+        self.select(Selection::Setup(setup));
     }
 
     /// Runs a project tree action through a command, so it can be undone.
     fn tree_action(&mut self, action: TreeAction) {
-        let Some(app) = &mut self.app else { return };
         let command = match action {
             TreeAction::Select(id) => {
                 self.select(Selection::Operation(id));
@@ -645,36 +866,65 @@ impl Shell {
                 self.select(Selection::Model(id));
                 return;
             }
-            TreeAction::SelectPicking => {
-                self.select(Selection::Picking);
-                return;
-            }
             TreeAction::SelectSet(id) => {
                 self.selection.show_set(Some(id));
+                self.dock_tab = DockTab::SelectionSets;
                 self.select(Selection::Set(id));
                 return;
             }
-            TreeAction::SelectSetup(id) => {
-                if self
-                    .workholding_panel
-                    .as_ref()
-                    .is_none_or(|p| p.setup() != id)
-                {
-                    self.workholding_panel = None;
-                }
-                self.select(Selection::Setup(id));
+            TreeAction::SelectSetup(id, section) => {
+                self.choose_setup(id, section);
                 return;
             }
-            TreeAction::SelectMachine => {
-                if self.selected != Some(Selection::Machine) {
-                    self.machine_panel = Some(MachinePanel::default());
+            TreeAction::Rename(item) => {
+                self.begin_rename(item);
+                return;
+            }
+            TreeAction::ShowInView(item) => {
+                self.show_item(item);
+                self.viewport.fit();
+                return;
+            }
+            TreeAction::Generate => {
+                self.generate(false);
+                return;
+            }
+            TreeAction::Add(group) => {
+                match group {
+                    tree::Group::Model => self.import_model(),
+                    tree::Group::SelectionSets => self.start_picking(),
+                    tree::Group::Operations => self.new_operation(),
+                    // The tool library window is lane X9's (OI-343);
+                    // tools are added from the command line until then.
+                    tree::Group::Setups | tree::Group::Tools => {}
                 }
-                self.select(Selection::Machine);
                 return;
             }
             TreeAction::Command(c) => Ok(*c),
-            TreeAction::Duplicate(id) => openchuck_app::duplicate_operation(app.project(), id),
+            TreeAction::Duplicate(id) => self
+                .app
+                .as_ref()
+                .map_or(Err(AppError::UnknownOperation(id.to_string())), |app| {
+                    openchuck_app::duplicate_operation(app.project(), id)
+                }),
+            TreeAction::Delete(id) => {
+                if let Some(app) = &mut self.app {
+                    match app.delete_operation(id) {
+                        Ok(()) => {
+                            if self.selected == Some(Selection::Operation(id)) {
+                                self.selected = None;
+                            }
+                        }
+                        Err(e) => {
+                            self.dialog =
+                                Some(Dialog::Error(format!("The operation was not deleted: {e}")));
+                        }
+                    }
+                }
+                return;
+            }
         };
+        let Some(app) = &mut self.app else { return };
         if let Err(e) = command.and_then(|c| app.execute(c)) {
             self.dialog = Some(Dialog::Error(e.to_string()));
         }
@@ -687,69 +937,121 @@ impl Shell {
         }
     }
 
-    /// The chosen operation's parameters or tool's dimensions (UI-07).
+    /// The inspector: the chosen item (specification section 8; its header,
+    /// banner and sections are lane X4's).
     fn properties(&mut self, ui: &mut egui::Ui) {
         match self.selected {
             Some(Selection::Operation(id)) => self.operation_properties(ui, id),
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
             Some(Selection::Model(id)) => self.model_properties(ui, id),
-            Some(Selection::Machine) => self.machine_properties(ui),
             Some(Selection::Setup(id)) => self.setup_properties(ui, id),
-            Some(Selection::Picking | Selection::Set(_)) => self.selection_properties(ui),
-            None => {}
-        }
-    }
-
-    /// Picking triangles and the selection sets (UI-04, UI-05).
-    fn selection_properties(&mut self, ui: &mut egui::Ui) {
-        let Some(app) = &mut self.app else { return };
-        let summaries = app.selection_summaries(&self.file_warnings);
-        if let Some(Selection::Set(id)) = self.selected
-            && !summaries.iter().any(|s| s.id == id)
-        {
-            self.selected = Some(Selection::Picking);
-        }
-        let error = egui::ScrollArea::vertical()
-            .show(ui, |ui| {
-                self.selection
-                    .show(ui, app, &summaries, self.viewport.view())
-            })
-            .inner;
-        if let Some(error) = error {
-            self.dialog = Some(Dialog::Error(error));
-        }
-    }
-
-    /// The project's machine and its library source (SET-01, OI-54).
-    fn machine_properties(&mut self, ui: &mut egui::Ui) {
-        let Some(app) = &mut self.app else { return };
-        let panel = self.machine_panel.get_or_insert_with(MachinePanel::default);
-        let copy = app.project().machine().cloned();
-        let copy_id = app.project().machine_id().map(str::to_owned);
-        let command = egui::ScrollArea::vertical()
-            .show(ui, |ui| panel.show(ui, copy.as_ref(), copy_id.as_deref()))
-            .inner;
-        if let Some(command) = command {
-            match app.execute(command) {
-                Ok(()) => self.rebuild_scene(false),
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+            Some(Selection::Set(id)) => self.set_properties(ui, id),
+            Some(Selection::Picking) => {
+                ui.heading("Selecting on the part");
+                ui.label(
+                    "Click the part to select. The Selection sets tab of the dock saves and \
+                     edits sets; Esc stops picking.",
+                );
+            }
+            None => {
+                ui.weak("Choose an item in the project panel to see it here.");
             }
         }
     }
 
-    /// A setup's held regions and tabs (SET-09, OP-21).
+    /// A selection set: its size, its problem and where it is used.
+    fn set_properties(&mut self, ui: &mut egui::Ui, id: SelectionSetId) {
+        let Some(app) = &self.app else { return };
+        let summaries = app.selection_summaries(&[]);
+        let Some(s) = summaries.iter().find(|s| s.id == id) else {
+            self.selected = Some(Selection::Picking);
+            return;
+        };
+        ui.heading(&s.name);
+        frame::status_chip(ui, self.overview.status(ItemRef::SelectionSet(id)));
+        ui.label(format!("{} {}", s.count, s.kind));
+        if let Some(path) = &s.model_path {
+            ui.weak(format!("On {path}"));
+        }
+        if let Some(problem) = &s.problem {
+            ui.colored_label(palette::ERROR, format!("Cannot be used: {problem}."));
+        }
+        if s.uses.is_empty() {
+            ui.weak("No operation uses it.");
+        } else {
+            for u in &s.uses {
+                ui.label(format!("Used by {}", u.name));
+            }
+        }
+    }
+
+    /// The setup inspector: its five sections (specification section 11.3).
+    /// The Machine and Workholding sections are the existing panels; the
+    /// fields of Stock, Part position and Work offset and clearance are lane
+    /// X4's (decision record 0114 C15), so they show the setup's values.
     fn setup_properties(&mut self, ui: &mut egui::Ui, id: SetupId) {
         let Some(app) = &mut self.app else { return };
         let Some(setup) = app.project().setup(id).cloned() else {
             self.selected = None;
             return;
         };
-        let panel = self
-            .workholding_panel
-            .get_or_insert_with(|| WorkholdingPanel::new(&setup));
-        let command = egui::ScrollArea::vertical()
-            .show(ui, |ui| panel.show(ui, app, &setup))
-            .inner;
+        ui.heading(&setup.name);
+        frame::status_chip(ui, self.overview.status(ItemRef::Setup(id)));
+        let focus = self.setup_section.take();
+        let mut command = None;
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for part in SetupPart::ALL {
+                let row = openchuck_app::overview::setup_row(app.project(), &setup, part);
+                let key = section_key(part);
+                let open = self.settings.section_open("setup", key, true);
+                let mut header = egui::CollapsingHeader::new(
+                    egui::RichText::new(section_title(part).to_uppercase())
+                        .small()
+                        .strong()
+                        .color(palette::HEADING),
+                )
+                .id_salt(("setup section", key))
+                .default_open(open);
+                if focus == Some(part) {
+                    header = header.open(Some(true));
+                }
+                let response = header.show(ui, |ui| match part {
+                    SetupPart::Machine => {
+                        let panel = self.machine_panel.get_or_insert_with(MachinePanel::default);
+                        let copy = app.project().machine().cloned();
+                        let copy_id = app.project().machine_id().map(str::to_owned);
+                        if let Some(c) = panel.show(ui, copy.as_ref(), copy_id.as_deref()) {
+                            command = Some(c);
+                        }
+                    }
+                    SetupPart::Workholding => {
+                        let panel = self
+                            .workholding_panel
+                            .get_or_insert_with(|| WorkholdingPanel::new(&setup));
+                        if let Some(c) = panel.show(ui, app, &setup) {
+                            command = Some(c);
+                        }
+                    }
+                    _ => {
+                        ui.label(&row.label);
+                        if let Some(chip) = &row.chip {
+                            ui.label(chip);
+                        }
+                    }
+                });
+                if focus == Some(part) {
+                    response
+                        .header_response
+                        .scroll_to_me(Some(egui::Align::TOP));
+                }
+                let now_open = response.body_returned.is_some();
+                if now_open != open && focus != Some(part) {
+                    self.settings
+                        .set_section_open("setup", key, now_open, &SECTION_KEYS);
+                    self.settings_changed.get_or_insert_with(Instant::now);
+                }
+            }
+        });
         if let Some(command) = command {
             match app.execute(command) {
                 Ok(()) => self.rebuild_scene(false),
@@ -765,6 +1067,7 @@ impl Shell {
             self.selected = None;
             return;
         };
+        frame::status_chip(ui, self.overview.status(ItemRef::Model(id)));
         let panel = match &mut self.model_panel {
             Some(p) if p.model() == id => p,
             _ => self.model_panel.insert(ModelPanel::new(id)),
@@ -864,15 +1167,25 @@ impl Shell {
                 delete = true;
             }
         });
-        let summaries = app.selection_summaries(&self.file_warnings);
+        frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
+        let summaries = app.selection_summaries(&[]);
         let roles = selection_panel::operation_roles(ui, app, id, &summaries);
+        // Selections that reach a held region or a tab: from the project
+        // checks, also listed in Messages (11.7).
         let mut edit_workholding = false;
-        for note in self.reach.notes(app, id, ui.ctx()) {
+        let reach: Vec<String> = self
+            .overview
+            .messages
+            .iter()
+            .filter(|m| {
+                m.source == Some(ItemRef::Operation(id))
+                    && matches!(m.action, Some(MessageAction::EditWorkholding(_)))
+            })
+            .map(|m| m.text.clone())
+            .collect();
+        for note in reach {
             ui.horizontal_wrapped(|ui| {
-                ui.colored_label(
-                    egui::Color32::from_rgb(230, 180, 60),
-                    format!("\u{26a0} {note}"),
-                );
+                ui.colored_label(palette::WARNING, format!("\u{26a0} {note}"));
                 if ui.small_button("Edit workholding").clicked() {
                     edit_workholding = true;
                 }
@@ -902,25 +1215,11 @@ impl Shell {
             self.dialog = Some(Dialog::Error(error));
         }
         if delete {
-            match app.delete_operation(id) {
-                Ok(()) => self.selected = None,
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
-            }
+            self.tree_action(TreeAction::Delete(id));
         } else if edit_workholding {
             // An unapplied draft of this setup stays (11.7); the view shows
             // the setup the panel edits.
-            if self
-                .workholding_panel
-                .as_ref()
-                .is_none_or(|p| p.setup() != setup_of)
-            {
-                self.workholding_panel = None;
-            }
-            if self.setup != Some(setup_of) {
-                self.setup = Some(setup_of);
-                self.rebuild_scene(true);
-            }
-            self.select(Selection::Setup(setup_of));
+            self.choose_setup(setup_of, Some(SetupPart::Workholding));
         }
     }
 
@@ -930,8 +1229,10 @@ impl Shell {
         let mut error = None;
         let mut added = None;
         if let Some(app) = &mut self.app {
-            if let Some(run) = self.run.poll(app, ctx) {
+            if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+                self.jobs.set_summary(job, run_summary(&run));
                 self.play.set_run(app, run);
+                self.overview_dirty = true;
             }
             let (new, problem) = self.run.add_dialog(ctx, app);
             added = new;
@@ -978,11 +1279,16 @@ impl Shell {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
         }
-        // The warning before a click of the other kind resets the selection.
-        if let Some(app) = &mut self.app
-            && let Some(e) = self.selection.reset_dialog(ctx, app)
-        {
-            self.dialog = Some(Dialog::Error(e));
+        if let Some(app) = &mut self.app {
+            // A save or an edit that ended, whether or not its tab is shown.
+            if let Some(e) = self.selection.poll(app) {
+                self.dialog = Some(Dialog::Error(e));
+            }
+            // The warning before a click of the other kind resets the
+            // selection.
+            if let Some(e) = self.selection.reset_dialog(ctx, app) {
+                self.dialog = Some(Dialog::Error(e));
+            }
         }
     }
 
@@ -1042,35 +1348,6 @@ impl Shell {
             },
             Some(Err(e)) => session.error = Some(e.to_string()),
         }
-    }
-
-    fn status_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            if self.scene_job.is_some() {
-                ui.spinner();
-                ui.label("Building the view…");
-            }
-            self.run.status(ui);
-            if self.app.as_ref().is_some_and(Application::is_modified) {
-                ui.label("Unsaved changes.");
-            }
-            if self
-                .workholding_panel
-                .as_ref()
-                .is_some_and(WorkholdingPanel::has_unapplied_changes)
-            {
-                ui.label("Workholding changes not applied.");
-            }
-            ui.label(&self.status);
-        });
-        let view = self.viewport.view();
-        if let Some(direction) = &view.a_direction {
-            ui.label(format!("A direction: {direction}."));
-        }
-        for note in &view.notes {
-            ui.label(note);
-        }
-        ui.small(openchuck_app::VERIFY_GCODE_NOTICE);
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -1202,6 +1479,50 @@ impl Shell {
                     }
                 });
             }
+            Dialog::Rename { item, mut name } => {
+                ui.heading("Rename");
+                let field = ui.text_edit_singleline(&mut name);
+                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                // The field has the keyboard when the dialog opens.
+                if !enter && ui.memory(|m| m.focused().is_none()) {
+                    field.request_focus();
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Rename").clicked() || enter {
+                        close = true;
+                        let name = name.clone();
+                        action = Some(Box::new(move |s: &mut Self| s.rename(item, &name)));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                });
+                if !close {
+                    self.dialog = Some(Dialog::Rename { item, name });
+                }
+            }
+            Dialog::Keys => {
+                ui.heading("Keyboard shortcuts");
+                egui::Grid::new("keys").striped(true).show(ui, |ui| {
+                    for (keys, what) in frame::KEY_MAP {
+                        ui.monospace(*keys);
+                        ui.label(*what);
+                        ui.end_row();
+                    }
+                });
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            }
+            Dialog::About => {
+                ui.heading("OpenChuckCAM");
+                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                ui.label("Free software under the GNU Affero General Public License, version 3 or later.");
+                ui.label(openchuck_app::VERIFY_GCODE_NOTICE);
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            }
             Dialog::Error(message) => {
                 ui.label(message);
                 if ui.button("OK").clicked() {
@@ -1211,6 +1532,8 @@ impl Shell {
         });
         if close {
             self.dialog = None;
+            // A field of the closed dialog must not keep the keyboard.
+            ctx.memory_mut(egui::Memory::stop_text_input);
         }
         if let Some(action) = action {
             action(self);
@@ -1219,14 +1542,57 @@ impl Shell {
 
     /// Stops the window closing while there are unsaved changes, and asks.
     fn guard_close(&mut self, ctx: &egui::Context) {
-        if ctx.input(|i| i.viewport().close_requested())
-            && !self.quitting
-            && self.app.as_ref().is_some_and(Application::is_modified)
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.dialog = Some(Dialog::Unsaved(Next::Quit));
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if !self.quitting && self.app.as_ref().is_some_and(Application::is_modified) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.dialog = Some(Dialog::Unsaved(Next::Quit));
+            } else {
+                self.save_settings();
+            }
         }
     }
+}
+
+/// The settings key of a setup inspector section.
+fn section_key(part: SetupPart) -> &'static str {
+    match part {
+        SetupPart::Machine => "machine",
+        SetupPart::Stock => "stock",
+        SetupPart::PartPosition => "part position",
+        SetupPart::WorkOffset => "work offset",
+        SetupPart::Workholding => "workholding",
+    }
+}
+
+/// The setup sections open by default: all of them.
+const SECTION_KEYS: [&str; 5] = [
+    "machine",
+    "part position",
+    "stock",
+    "work offset",
+    "workholding",
+];
+
+/// A setup inspector section's title (specification section 11.3).
+fn section_title(part: SetupPart) -> &'static str {
+    match part {
+        SetupPart::Machine => "Machine",
+        SetupPart::Workholding => "Workholding and tabs",
+        other => other.name(),
+    }
+}
+
+/// "Generated 2, reused 1": a run's outcome for the Jobs tab (decision
+/// record 0030 item 6).
+fn run_summary(run: &openchuck_app::Regeneration) -> String {
+    let mut out = format!("Generated {}", run.generated.len());
+    if !run.reused.is_empty() {
+        out.push_str(&format!(", reused {}", run.reused.len()));
+    }
+    if run.simulation.is_some() {
+        out.push_str(", simulated");
+    }
+    out
 }
 
 /// Which of save, undo and redo were pressed this frame, consuming them.
@@ -1283,145 +1649,40 @@ enum TreeAction {
     Command(Box<Command>),
     /// Duplicate this operation (the command is built from the project).
     Duplicate(OperationId),
+    /// Delete this operation.
+    Delete(OperationId),
     /// Show this operation's parameters.
     Select(OperationId),
     /// Show this tool's dimensions and profile.
     SelectTool(ToolId),
     /// Show this model's units, placement and checks.
     SelectModel(ModelId),
-    /// Show the project's machine.
-    SelectMachine,
-    /// Pick triangles on the part.
-    SelectPicking,
     /// Show this selection set.
     SelectSet(SelectionSetId),
-    /// Show this setup's workholding.
-    SelectSetup(SetupId),
+    /// Show this setup, at a section.
+    SelectSetup(SetupId, Option<SetupPart>),
+    /// Rename an item.
+    Rename(ItemRef),
+    /// Select an item and fit the view.
+    ShowInView(ItemRef),
+    /// Generate the stale operations.
+    Generate,
+    /// The "+" of a group header.
+    Add(tree::Group),
 }
 
-/// Warnings that an operation's selections reach a held region or a tab,
-/// found by a job when the operation is shown (SET-09, OP-21).
-#[derive(Default)]
-struct Reach {
-    job: Option<(OperationId, JobHandle<Vec<String>>)>,
-    found: Option<(OperationId, Vec<String>)>,
-}
-
-impl Reach {
-    /// The notes for `operation`, starting the job that finds them once.
-    fn notes(
-        &mut self,
-        app: &Application,
-        operation: OperationId,
-        ctx: &egui::Context,
-    ) -> Vec<String> {
-        if let Some((id, job)) = &self.job {
-            match job.try_result() {
-                None => ctx.request_repaint(),
-                Some(result) => {
-                    let id = *id;
-                    self.job = None;
-                    self.found = Some((id, result.unwrap_or_default()));
-                }
-            }
-        }
-        match &self.found {
-            Some((id, notes)) if *id == operation => notes.clone(),
-            _ => {
-                if self.job.as_ref().is_none_or(|(id, _)| *id != operation) {
-                    self.job = Some((operation, app.start_workholding_warnings(operation)));
-                }
-                Vec::new()
-            }
-        }
-    }
-}
-
-/// What the properties panel shows.
+/// What the inspector shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Selection {
     Operation(OperationId),
     Tool(ToolId),
     Model(ModelId),
-    Machine,
-    /// A setup's workholding and tabs.
+    /// A setup, its machine and its workholding and tabs.
     Setup(SetupId),
     /// Picking on the part, and the selection sets (slice 10).
     Picking,
     /// A selection set, picking on the part as well.
     Set(SelectionSetId),
-}
-
-/// One operation in the tree: enable box, name, and move up, move down and
-/// duplicate buttons (UI-06). A disabled operation's name is greyed.
-fn operation_row(
-    ui: &mut egui::Ui,
-    index: usize,
-    count: usize,
-    o: &openchuck_app::project::Operation,
-    selected: bool,
-    warning: Option<&str>,
-    badge: Option<&str>,
-) -> Option<TreeAction> {
-    let mut action = None;
-    ui.horizontal(|ui| {
-        let mut enabled = o.enabled;
-        if ui
-            .checkbox(&mut enabled, "")
-            .on_hover_text("Include in regeneration, simulation and posting")
-            .changed()
-        {
-            action = Some(TreeAction::Command(Box::new(
-                Command::SetOperationEnabled {
-                    operation: o.id,
-                    enabled,
-                },
-            )));
-        }
-        let name = egui::RichText::new(&o.name);
-        let name = if o.enabled {
-            name
-        } else {
-            name.weak().strikethrough()
-        };
-        if ui.selectable_label(selected, name).clicked() {
-            action = Some(TreeAction::Select(o.id));
-        }
-        if let Some(badge) = badge {
-            ui.weak(format!("({badge})"));
-        }
-        if let Some(warning) = warning {
-            ui.colored_label(egui::Color32::from_rgb(230, 80, 80), "⚠")
-                .on_hover_text(format!("A selection set cannot be used: {warning}"));
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let id = ItemId::Operation(o.id);
-            if ui.small_button("Duplicate").clicked() {
-                action = Some(TreeAction::Duplicate(o.id));
-            }
-            if ui
-                .add_enabled(index + 1 < count, egui::Button::new("↓").small())
-                .on_hover_text("Move later")
-                .clicked()
-            {
-                action = Some(TreeAction::Command(Box::new(Command::Move {
-                    id,
-                    index: index + 1,
-                })));
-            }
-            if ui
-                .add_enabled(index > 0, egui::Button::new("↑").small())
-                .on_hover_text("Move earlier")
-                .clicked()
-            {
-                action = Some(TreeAction::Command(Box::new(Command::Move {
-                    id,
-                    index: index - 1,
-                })));
-            }
-        });
-    });
-    action
 }
 
 impl eframe::App for Shell {
@@ -1432,55 +1693,22 @@ impl eframe::App for Shell {
 }
 
 impl Shell {
-    /// Draws one frame: the panels, the viewport, the dialogs and the work
+    /// Draws one frame: the regions, the viewport, the dialogs and the work
     /// that keeps the jobs moving. The whole of the app's `ui`, apart from
     /// the eframe frame it does not use, so a test can run it.
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.guard_close(&ctx);
         self.poll_scene(&ctx);
+        self.overview_frame(&ctx);
         self.bench_frame(&ctx);
         self.shortcuts(&ctx);
-        egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        if self.play.open && self.play.has_run() {
-            egui::Panel::bottom("playback")
-                .resizable(false)
-                .show(ui, |ui| {
-                    if let Some(app) = &self.app {
-                        self.play.show(ui, app);
-                    }
-                });
-        }
-        egui::Panel::left("tree")
-            .resizable(true)
-            .default_size(240.0)
-            .show(ui, |ui| self.tree(ui));
-        if self.selected.is_some() {
-            egui::Panel::right("properties")
-                .resizable(true)
-                .default_size(320.0)
-                .show(ui, |ui| self.properties(ui));
-        }
-        self.viewport.set_picking(matches!(
-            self.selected,
-            Some(Selection::Picking | Selection::Set(_))
-        ));
-        self.viewport.set_pick_filter(self.selection.pick_filter());
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ui, |ui| {
-                let corner = ui.max_rect().left_top() + egui::vec2(8.0, 8.0);
-                self.viewport.show(ui);
-                // The selection tools sit over the top left of the view.
-                if self.viewport.is_picking() {
-                    self.selection.tools(ui.ctx(), corner);
-                }
-            });
+        self.layout(ui);
         self.pick_frame(&ctx);
         self.run_frame(&ctx);
         self.import_frame(&ctx);
         self.dialogs(&ctx);
+        self.settings_frame(&ctx);
         self.text_had_focus = ctx.egui_wants_keyboard_input();
     }
 }
@@ -1561,7 +1789,7 @@ mod tests {
         app.save().unwrap();
         drop(app);
         let ctx = egui::Context::default();
-        let mut shell = Shell::new(false, Some(dir.clone()));
+        let mut shell = Shell::with_settings(false, Some(dir.clone()), None);
         let deadline = Instant::now() + Duration::from_secs(120);
         let wait = |shell: &mut Shell, done: &dyn Fn(&Shell) -> bool| {
             while !done(shell) {
@@ -1570,10 +1798,10 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(5));
             }
         };
-        // The scene is built, then the project tree and status bar draw.
+        // The scene is built, then the project tree and the footer draw.
         wait(&mut shell, &|s| s.scene_job.is_none());
         assert!(shell.viewport.view().picking.picker().is_some());
-        // Generate and simulate (Shift+F5 does the same): the run is a job.
+        // Generate and simulate: the run is a job.
         shell.generate(true);
         assert!(shell.run.is_running());
         frame(&mut shell, &ctx);
@@ -1583,8 +1811,12 @@ mod tests {
                     .layer(openchuck_viewport::Layer::Paths)
                     .is_some_and(|p| !p.lines.is_empty())
         });
-        let app = shell.app.as_ref().unwrap();
-        assert_eq!(shell.run.badge(app, op), Some("generated"));
+        wait(&mut shell, &|s| s.overview.stale.is_empty());
+        let item = ItemRef::Operation(op);
+        assert_eq!(
+            shell.overview.status(item).map(|s| s.state),
+            Some(openchuck_app::overview::ItemState::UpToDate)
+        );
         let paths = shell
             .viewport
             .layer(openchuck_viewport::Layer::Paths)
@@ -1598,6 +1830,7 @@ mod tests {
         shell.run.begin_add(shell.app.as_ref().unwrap());
         frame(&mut shell, &ctx);
         shell.selected = Some(Selection::Picking);
+        shell.open_step(Step::Simulate);
         frame(&mut shell, &ctx);
         // Editing makes the run out of date; generating again reuses nothing
         // that changed.
@@ -1608,20 +1841,38 @@ mod tests {
             Some(openchuck_app::project::ParameterValue::Number(0.6)),
         )
         .unwrap();
-        frame(&mut shell, &ctx);
-        let app = shell.app.as_ref().unwrap();
-        assert_eq!(shell.run.badge(app, op), Some("out of date"));
-        shell.generate(false);
-        wait(&mut shell, &|s| !s.run.is_running());
-        let app = shell.app.as_ref().unwrap();
-        assert_eq!(shell.run.badge(app, op), Some("generated"));
+        wait(&mut shell, &|s| !s.overview.stale.is_empty());
+        assert_eq!(
+            shell.overview.primary(Step::Operations).label,
+            "Generate stale (1)"
+        );
+        shell.primary_on(Step::Operations);
+        wait(&mut shell, &|s| {
+            !s.run.is_running() && s.overview.stale.is_empty()
+        });
+        // The run's outcome is in the Jobs tab.
+        assert!(shell.jobs.finished().any(|e| matches!(
+            &e.outcome,
+            Some(openchuck_app::JobOutcome::Done(Some(s))) if s.starts_with("Generated")
+        )));
         // Cancelling a run leaves the old results alone.
         shell.generate(true);
         shell.run.cancel();
         wait(&mut shell, &|s| !s.run.is_running());
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    impl Shell {
+        /// Presses the footer's primary button with `step` open.
+        fn primary_on(&mut self, step: Step) {
+            self.step = step;
+            self.primary();
+        }
+    }
 }
 
 #[cfg(test)]
 mod keys_tests;
+
+#[cfg(test)]
+mod frame_tests;
