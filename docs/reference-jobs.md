@@ -55,7 +55,7 @@ The owner's blisk, `testdata/stl/blisk.stl`, is the first sample from a real par
 | `groove_linuxcnc.ngc` | 1086 | 0.1000 | 151.6 s | none |
 | `lobed_linuxcnc.ngc` | passed in CI (pull request 48, 15 Oct 2026; Docker image, report in the gate 3 artifact) | | | none |
 | `drilling_linuxcnc.ngc` | 15 (17 Oct 2026, the Docker image built from `docker/linuxcnc` in the lane Z session; then in CI on pull request 79; decision 0056) | 0.0010 | 23.3 s | none |
-| `swarf_linuxcnc.ngc` | 54 (18 Oct 2026, an image built from `docker/linuxcnc` in the lane Q2 session, the session's proxy certificate added; decision 0111; CI's run pending) | 0.0039 | 105.6 s | none |
+| `swarf_linuxcnc.ngc` | 54 (18 Oct 2026, an image built from `docker/linuxcnc` in the lane Q2 session, the session's proxy certificate added; decision 0111; passed in CI's Gate 3 on pull request 120, run 39165411513, 18 Oct 2026) | 0.0039 | 105.6 s | none |
 
 (0.1000 is the tolerance: some nodes were accepted as passed between two samples when run in the Docker image. An earlier run of the 10 degree programs on a locally built LinuxCNC had differences of 0.034 to 0.067.) The simulator cannot confirm the A direction, or the Z1 post's `G92.4` and feed rule: the Z1 programs share the toolpath and the kinematics with these, and gate 4 checks the rest on the machine. See [tools/linuxcnc/README.md](../tools/linuxcnc/README.md) for how to run it and [docker/linuxcnc](../docker/linuxcnc/Dockerfile) for the image CI uses.
 
