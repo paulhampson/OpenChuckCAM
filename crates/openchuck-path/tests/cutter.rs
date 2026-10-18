@@ -371,3 +371,45 @@ fn req_op_11_the_cutter_contact_is_on_the_tool_stock_away_from_the_surface_point
     let c = cutter_contact(&ball, tip, axis, tip + axis.get() * rho + dir * (rho + s));
     assert!((c.distance(tip + axis.get() * rho) - rho).abs() < 1e-9);
 }
+
+/// Path fitting measures a move's deviation along the tool's contact normal
+/// (decision record 0113, closing OI-319): for a ball that is the line from
+/// the contact to the ball's centre, for a flat end it is the tool axis under
+/// the bottom, and a point off the tool's lower envelope has none.
+#[test]
+fn req_op_12_req_nfr_05_the_contact_normal_is_the_tools_normal_at_the_contact() {
+    use openchuck_path::cutter::contact_normal;
+    let rho = 1.5;
+    let ball = ball(2.0 * rho).profile().unwrap();
+    let tip = Point3::new(3.0, -2.0, 7.0);
+    let axis = UnitVec3::new(Vec3::new(0.0, 0.6, 0.8)).unwrap();
+    let centre = tip + axis.get() * rho;
+    let side = UnitVec3::new(Vec3::new(1.0, 0.0, 0.0)).unwrap().get();
+    for k in 0..=8 {
+        // From straight under the tip (k = 0) round to the equator (k = 8).
+        let theta = f64::from(k) * std::f64::consts::FRAC_PI_2 / 8.0;
+        let outward = side * theta.sin() - axis.get() * theta.cos();
+        let contact = centre + outward * rho;
+        let n = contact_normal(&ball, tip, axis, contact).unwrap().get();
+        // The sign is immaterial to the fit; the line is what matters.
+        assert!(
+            (n - outward).length() < 1e-9 || (n + outward).length() < 1e-9,
+            "k {k}: {n:?}"
+        );
+    }
+    // A flat end's lower envelope is its bottom disc: under it, and at its
+    // rim, the normal is the tool axis.
+    let flat = tool(ToolShape::FlatEnd, 2.0 * rho).profile().unwrap();
+    for r in [0.0, 0.7, rho] {
+        let under = contact_normal(&flat, tip, axis, tip + side * r)
+            .unwrap()
+            .get();
+        assert!(under.cross(axis.get()).length() < 1e-9, "r {r}: {under:?}");
+    }
+    // A point well off the tool is not on its lower envelope, and neither is
+    // one under the tool's radius but at the wrong height (inside the ball:
+    // 1 mm out at the tip's height, where the envelope is 0.38 mm higher).
+    assert!(contact_normal(&ball, tip, axis, tip + side * 4.0).is_none());
+    assert!(contact_normal(&ball, tip, axis, tip + side * 1.0).is_none());
+    assert!(contact_normal(&ball, tip, axis, centre + side * 1.0).is_none());
+}
