@@ -2,7 +2,7 @@
 
 - **Status:** accepted by the project owner (18 Oct 2026), first relayed by the orchestrator session and then confirmed by the owner in lane BM's own session (decision 0049). It amends item 6 of accepted record [0025](0025-slice-7-simulation.md) (the deviation against the target) for thin triangles only. Proposed by lane BM; the code is on branch `claude/lane-bm-sim-memory`.
 - **Date:** 18 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-331. Closes OI-317 (lane TE's record of the blisk run, not yet on `main`).
+- **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-331. Closes OI-317 (lane TE's record of the blisk run).
 
 Numbering: 0108 was reserved for lane BM by the orchestrator (see record 0110). OI-331 is the next free item after lane S19's OI-330.
 
