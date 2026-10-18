@@ -1,6 +1,6 @@
 # 0112: Slice 11 closing items: selection checks as jobs, an edge-pick hierarchy, wider selected edges
 
-- **Status:** proposed (lane S11). Items 1 and 2 follow the open items as written (OI-332, OI-243). Item 3 chooses the widths; the owner approved them and the specification row (relayed by the coordinator under decision 0049, 18 Oct 2026; OI-335 closed). The record itself is not yet accepted.
+- **Status:** accepted (relayed by the orchestrator session at the project owner's instruction, confirmed by the session's user, 18 Oct 2026, decision 0049). Lane S11. The owner also approved the edge widths of item 3 and the specification row for them (OI-335 closed).
 - **Date:** 18 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-332, OI-243 and OI-245 close; OI-335 was raised and closed.
 
