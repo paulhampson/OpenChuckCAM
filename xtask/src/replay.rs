@@ -56,6 +56,7 @@ const EXPECTED_SECONDS: &[(&str, u64)] = &[
     ("groove_linuxcnc.ngc", 159),
     ("cone_linuxcnc.ngc", 124),
     ("lobed_linuxcnc.ngc", 114),
+    ("swarf_linuxcnc.ngc", 110),
     ("sphere_linuxcnc.ngc", 93),
     ("cone_indexed_linuxcnc.ngc", 40),
     ("post_linuxcnc_small_part.ngc", 35),
