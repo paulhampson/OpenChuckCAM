@@ -73,9 +73,12 @@ use openchuck_types::workholding::Workholding;
 ///   it holds a held region or a tab (SET-09, OP-21, decision record 0041).
 /// - 11: selection sets gain the optional `colour`, written only when the
 ///   user chose one (decision record 0046 item 2).
-/// - 12: held for lane O (stored B-rep and edge selections), which claimed
-///   it first; no change of its own here yet. The lane that merges later
-///   renumbers its step (work breakdown, "Project schema ordering").
+/// - 12: a selection set's target may be `mesh_edges`, edges of a mesh
+///   model's triangles as `[triangle, side]` pairs (OI-204); a set of B-rep
+///   edges gains the optional `keep_tangent_edges`, and `project.toml` the
+///   project's default for it, `keep_tangent_edges`, written only when true;
+///   `project.toml` gains `warn_on_selection_reset`, written only when false
+///   (decision record 0066).
 /// - 13: the machine copy's feed limits gain the optional `rotary_in_feed`,
 ///   written only when A counts in the feed word; a copy of the built-in
 ///   Makera Z1 gains `"makera"` (decision record 0076).
@@ -206,10 +209,43 @@ fn schema_10_to_11(_kind: FileKind, _table: &mut toml::Table) -> Result<(), Stri
     Ok(())
 }
 
-/// Schema 12 is held for lane O's change, not yet on this branch: no change
-/// but its number.
-fn schema_11_to_12(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
-    Ok(())
+/// Schema 12 adds the `mesh_edges` selection target and the optional
+/// `keep_tangent_edges` of edge sets and of the project, and the project's
+/// optional `warn_on_selection_reset`, which a schema 11
+/// file does not have, so it needs no change but its number: its edge sets
+/// follow the project's default, off. A schema 11 file that already holds one
+/// was not written by any version that knew it, so it is refused rather than
+/// guessed at.
+fn schema_11_to_12(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let premature = match kind {
+        FileKind::SelectionSet => {
+            if table
+                .get("target")
+                .and_then(toml::Value::as_table)
+                .is_some_and(|t| t.contains_key("mesh_edges"))
+            {
+                Some("selects `mesh_edges`, a target")
+            } else if table.contains_key("keep_tangent_edges") {
+                Some("has `keep_tangent_edges`, a field")
+            } else {
+                None
+            }
+        }
+        FileKind::Project if table.contains_key("keep_tangent_edges") => {
+            Some("has `keep_tangent_edges`, a field")
+        }
+        FileKind::Project if table.contains_key("warn_on_selection_reset") => {
+            Some("has `warn_on_selection_reset`, a field")
+        }
+        _ => None,
+    };
+    match premature {
+        Some(what) => Err(format!(
+            "this schema 11 file {what} schema 12 introduced; remove it, or set `schema = 12` \
+             if the file was written for schema 12"
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Schema 13 adds the machine copy's optional `max_feeds.rotary_in_feed`. A
@@ -258,6 +294,10 @@ impl FileKind {
 struct ProjectFile {
     schema: i64,
     name: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    keep_tangent_edges: bool,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    warn_on_selection_reset: bool,
     #[serde(default, skip_serializing_if = "SimulationSettings::is_default")]
     simulation: SimulationSettings,
     #[serde(default)]
@@ -328,6 +368,22 @@ struct SelectionFile {
     stock_to_leave: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     colour: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    keep_tangent_edges: Option<bool>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+const fn is_true(value: &bool) -> bool {
+    *value
+}
+
+const fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -381,6 +437,10 @@ pub fn selection_inputs_hash(
         target: &'a SelectionTarget,
         #[serde(skip_serializing_if = "Option::is_none")]
         stock_to_leave: Option<f64>,
+        /// Whether an edge set keeps tangent edges, as resolved; absent for
+        /// other kinds, so their hashes are unchanged (decision record 0066).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        keep_tangent_edges: Option<bool>,
     }
     #[derive(Serialize)]
     struct Inputs<'a> {
@@ -407,6 +467,8 @@ pub fn selection_inputs_hash(
                     model_hash: s.model_hash,
                     target: &s.target,
                     stock_to_leave: s.stock_to_leave,
+                    keep_tangent_edges: matches!(s.target, SelectionTarget::Edges(_))
+                        .then(|| project.keeps_tangent_edges(s)),
                 },
             )
         })
@@ -429,6 +491,8 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
     let project_file = ProjectFile {
         schema: SCHEMA,
         name: project.name().to_owned(),
+        keep_tangent_edges: project.keep_tangent_edges(),
+        warn_on_selection_reset: project.warn_on_selection_reset(),
         simulation: project.simulation(),
         models: project.models().to_vec(),
     };
@@ -481,6 +545,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             descriptors: s.descriptors.clone(),
             stock_to_leave: s.stock_to_leave,
             colour: s.colour.clone(),
+            keep_tangent_edges: s.keep_tangent_edges,
         };
         files.insert(item_path(FileKind::SelectionSet, &s.id), to_text(&file)?);
     }
@@ -567,6 +632,47 @@ pub fn load(root: &Path) -> Result<Project, ProjectError> {
     load_with(root, MIGRATIONS, SCHEMA)
 }
 
+/// Loads a project from the texts of its files, keyed by their path in the
+/// project folder with `/` between parts (`project.toml`,
+/// `setups/<id>.toml`), with every check `load` makes, the cross-file ones
+/// included. As in a folder, only `.toml` files directly in an item folder
+/// are read and anything else is ignored. Messages name the files by these
+/// keys. For fuzzing and tools (NFR-07).
+pub fn load_files(files: &BTreeMap<String, String>) -> Result<Project, ProjectError> {
+    let project = files
+        .get(PROJECT_FILE)
+        .ok_or_else(|| ProjectError::NotAProject(PathBuf::new()))?;
+    let items = |kind: FileKind| -> Vec<Item> {
+        let Some(folder) = kind.folder() else {
+            return Vec::new();
+        };
+        files
+            .iter()
+            .filter_map(|(key, text)| {
+                let name = key.strip_prefix(folder)?.strip_prefix('/')?;
+                let stem = name.strip_suffix(".toml")?;
+                (!stem.is_empty() && !stem.contains('/')).then(|| Item {
+                    stem: stem.to_owned(),
+                    path: PathBuf::from(key),
+                    text: text.clone(),
+                })
+            })
+            .collect()
+    };
+    let texts = Texts {
+        root: PathBuf::new(),
+        project: (PathBuf::from(PROJECT_FILE), project.clone()),
+        machine: files
+            .get(MACHINE_FILE)
+            .map(|text| (PathBuf::from(MACHINE_FILE), text.clone())),
+        setups: items(FileKind::Setup),
+        tools: items(FileKind::Tool),
+        selections: items(FileKind::SelectionSet),
+        operations: items(FileKind::Operation),
+    };
+    assemble(texts, MIGRATIONS, SCHEMA)
+}
+
 /// Parses and checks the text of one project file of `kind`, as loading does,
 /// without the cross-file checks. For fuzzing and tools.
 pub fn parse_file(kind: FileKind, text: &str) -> Result<(), ProjectError> {
@@ -597,21 +703,64 @@ pub fn parse_file(kind: FileKind, text: &str) -> Result<(), ProjectError> {
 }
 
 fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Project, ProjectError> {
+    assemble(read_texts(root)?, migrations, schema)
+}
+
+/// One item file: its file stem, its path and its text.
+struct Item {
+    stem: String,
+    path: PathBuf,
+    text: String,
+}
+
+/// The texts of a project's files, read before any of them is checked, so
+/// the same checks run on a folder and on texts in memory.
+struct Texts {
+    root: PathBuf,
+    project: (PathBuf, String),
+    machine: Option<(PathBuf, String)>,
+    setups: Vec<Item>,
+    tools: Vec<Item>,
+    selections: Vec<Item>,
+    operations: Vec<Item>,
+}
+
+/// Reads the texts of the project in the folder `root`.
+fn read_texts(root: &Path) -> Result<Texts, ProjectError> {
     let project_path = root.join(PROJECT_FILE);
-    let text = match std::fs::read_to_string(&project_path) {
+    let project = match std::fs::read_to_string(&project_path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && root.is_dir() => {
             return Err(ProjectError::NotAProject(root.to_path_buf()));
         }
         Err(e) => return Err(io(&project_path)(e)),
     };
-    let file: ProjectFile = parse(&project_path, &text, FileKind::Project, migrations, schema)?;
     let machine_path = root.join(MACHINE_FILE);
-    let mut machine_id = None;
     let machine = match std::fs::read_to_string(&machine_path) {
-        Ok(text) => {
+        Ok(text) => Some((machine_path, text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(io(&machine_path)(e)),
+    };
+    Ok(Texts {
+        root: root.to_path_buf(),
+        project: (project_path, project),
+        machine,
+        setups: read_items(root, FileKind::Setup)?,
+        tools: read_items(root, FileKind::Tool)?,
+        selections: read_items(root, FileKind::SelectionSet)?,
+        operations: read_items(root, FileKind::Operation)?,
+    })
+}
+
+/// Checks the texts of a project's files and builds the project.
+fn assemble(texts: Texts, migrations: &[Migration], schema: i64) -> Result<Project, ProjectError> {
+    let (project_path, text) = &texts.project;
+    let file: ProjectFile = parse(project_path, text, FileKind::Project, migrations, schema)?;
+    let mut machine_id = None;
+    let machine = match &texts.machine {
+        Some((machine_path, text)) => {
             let file: MachineFile =
-                parse(&machine_path, &text, FileKind::Machine, migrations, schema)?;
+                parse(machine_path, text, FileKind::Machine, migrations, schema)?;
             if let Some(id) = &file.id {
                 crate::machines::validate_machine_id(id).map_err(|e| ProjectError::BadFile {
                     path: machine_path.clone(),
@@ -621,11 +770,9 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
             machine_id = file.id;
             Some(file.machine)
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(io(&machine_path)(e)),
+        None => None,
     };
-
-    let setups = read_items::<SetupFile>(root, FileKind::Setup, migrations, schema)?
+    let setups = parse_items::<SetupFile>(&texts.setups, FileKind::Setup, migrations, schema)?
         .into_iter()
         .map(|(path, f)| {
             check_name(&path, &f.id)?;
@@ -645,7 +792,7 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
-    let tools = read_items::<ToolFile>(root, FileKind::Tool, migrations, schema)?
+    let tools = parse_items::<ToolFile>(&texts.tools, FileKind::Tool, migrations, schema)?
         .into_iter()
         .map(|(path, f)| {
             check_name(&path, &f.id)?;
@@ -659,60 +806,65 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
             })
         })
         .collect::<Result<Vec<_>, ProjectError>>()?;
-    let selection_sets =
-        read_items::<SelectionFile>(root, FileKind::SelectionSet, migrations, schema)?
+    let selection_sets = parse_items::<SelectionFile>(
+        &texts.selections,
+        FileKind::SelectionSet,
+        migrations,
+        schema,
+    )?
+    .into_iter()
+    .map(|(path, f)| {
+        check_name(&path, &f.id)?;
+        if f.stock_to_leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
+            return Err(ProjectError::BadFile {
+                path: path.clone(),
+                reason: "stock_to_leave must be a number of millimetres, zero or more".to_owned(),
+            });
+        }
+        if f.colour
+            .as_deref()
+            .is_some_and(|c| !crate::model::is_set_colour(c))
+        {
+            return Err(ProjectError::BadFile {
+                path: path.clone(),
+                reason: "colour must be written #rrggbb in lower case".to_owned(),
+            });
+        }
+        Ok(SelectionSet {
+            id: f.id,
+            order: f.order,
+            name: f.name,
+            model: f.model,
+            model_hash: f.model_hash,
+            target: f.target,
+            descriptors: f.descriptors,
+            stock_to_leave: f.stock_to_leave,
+            colour: f.colour,
+            keep_tangent_edges: f.keep_tangent_edges,
+        })
+    })
+    .collect::<Result<Vec<_>, ProjectError>>()?;
+    let operations =
+        parse_items::<OperationFile>(&texts.operations, FileKind::Operation, migrations, schema)?
             .into_iter()
             .map(|(path, f)| {
                 check_name(&path, &f.id)?;
-                if f.stock_to_leave.is_some_and(|v| !v.is_finite() || v < 0.0) {
-                    return Err(ProjectError::BadFile {
-                        path: path.clone(),
-                        reason: "stock_to_leave must be a number of millimetres, zero or more"
-                            .to_owned(),
-                    });
-                }
-                if f.colour
-                    .as_deref()
-                    .is_some_and(|c| !crate::model::is_set_colour(c))
-                {
-                    return Err(ProjectError::BadFile {
-                        path: path.clone(),
-                        reason: "colour must be written #rrggbb in lower case".to_owned(),
-                    });
-                }
-                Ok(SelectionSet {
+                Ok(Operation {
                     id: f.id,
                     order: f.order,
                     name: f.name,
-                    model: f.model,
-                    model_hash: f.model_hash,
-                    target: f.target,
-                    descriptors: f.descriptors,
-                    stock_to_leave: f.stock_to_leave,
-                    colour: f.colour,
+                    setup: f.setup,
+                    strategy: f.strategy,
+                    tool: f.tool,
+                    selections: f.selections,
+                    boundary: f.boundary,
+                    avoid: f.avoid,
+                    check: f.check,
+                    parameters: f.parameters,
+                    enabled: f.enabled,
                 })
             })
             .collect::<Result<Vec<_>, ProjectError>>()?;
-    let operations = read_items::<OperationFile>(root, FileKind::Operation, migrations, schema)?
-        .into_iter()
-        .map(|(path, f)| {
-            check_name(&path, &f.id)?;
-            Ok(Operation {
-                id: f.id,
-                order: f.order,
-                name: f.name,
-                setup: f.setup,
-                strategy: f.strategy,
-                tool: f.tool,
-                selections: f.selections,
-                boundary: f.boundary,
-                avoid: f.avoid,
-                check: f.check,
-                parameters: f.parameters,
-                enabled: f.enabled,
-            })
-        })
-        .collect::<Result<Vec<_>, ProjectError>>()?;
 
     let mut project = Project::from_parts(
         file.name,
@@ -724,10 +876,12 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
         operations,
     )
     .map_err(|e| ProjectError::BadFile {
-        path: root.to_path_buf(),
+        path: texts.root.clone(),
         reason: e.to_string(),
     })?;
     project.machine_id = machine_id;
+    project.set_keep_tangent_edges(file.keep_tangent_edges);
+    project.set_warn_on_selection_reset(file.warn_on_selection_reset);
     project
         .set_simulation(file.simulation)
         .map_err(|e| ProjectError::BadFile {
@@ -738,28 +892,38 @@ fn load_with(root: &Path, migrations: &[Migration], schema: i64) -> Result<Proje
 }
 
 /// Reads every item file of `kind`, in file name order.
-fn read_items<T: DeserializeOwned>(
-    root: &Path,
-    kind: FileKind,
-    migrations: &[Migration],
-    schema: i64,
-) -> Result<Vec<(PathBuf, T)>, ProjectError> {
+fn read_items(root: &Path, kind: FileKind) -> Result<Vec<Item>, ProjectError> {
     let Some(folder) = kind.folder() else {
         return Ok(Vec::new());
     };
     let mut items = Vec::new();
     for (stem, path) in item_files(&root.join(folder))? {
-        if !is_item_name(kind, &stem) {
+        let text = std::fs::read_to_string(&path).map_err(io(&path))?;
+        items.push(Item { stem, path, text });
+    }
+    Ok(items)
+}
+
+/// Checks the names of item files of `kind` and parses them, in file name
+/// order.
+fn parse_items<T: DeserializeOwned>(
+    items: &[Item],
+    kind: FileKind,
+    migrations: &[Migration],
+    schema: i64,
+) -> Result<Vec<(PathBuf, T)>, ProjectError> {
+    let mut parsed = Vec::new();
+    for item in items {
+        if !is_item_name(kind, &item.stem) {
             return Err(ProjectError::BadFile {
-                path,
+                path: item.path.clone(),
                 reason: format!("the file name is not a {} ID", kind_name(kind)),
             });
         }
-        let text = std::fs::read_to_string(&path).map_err(io(&path))?;
-        let item = parse(&path, &text, kind, migrations, schema)?;
-        items.push((path, item));
+        let value = parse(&item.path, &item.text, kind, migrations, schema)?;
+        parsed.push((item.path.clone(), value));
     }
-    Ok(items)
+    Ok(parsed)
 }
 
 /// The `.toml` files directly in `dir` as (file stem, path), sorted by name.

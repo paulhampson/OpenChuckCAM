@@ -55,3 +55,36 @@ jobs:
       - name: Report
         shell: bash
         run: echo "cache hit = ${{ steps.occt.outputs.cache-hit }}"
+
+  # The sanitizer variant (nightly.yml, "AddressSanitizer on the STEP wrapper"). It is a different
+  # install: the job's CXXFLAGS instrument OpenCASCADE itself, so it has its own key
+  # (`occt-<version>-Linux-X64-asan-r1`). A nightly run reads only caches written on its own ref,
+  # and the nightly runs on `main`, so this job (also on `main`) is what lets it restore in about
+  # two seconds instead of rebuilding for about 39 minutes (OI-272). The environment and the build
+  # command are those of the nightly job, so the install written here is the one it restores. It is
+  # left out of pull request runs: a miss there would spend the 39 minutes on a cache that only
+  # that pull request could read, and the build command is the one nightly.yml already runs.
+  occt-asan:
+    name: OpenCASCADE install (ubuntu-latest, asan)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+      RUSTFLAGS: -Zsanitizer=address
+      CXXFLAGS: -fsanitize=address -fno-omit-frame-pointer
+      CARGO_TARGET_DIR: target/asan
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal -c rust-src
+      - id: occt
+        uses: ./.github/actions/occt
+        with:
+          variant: asan
+          build-command: cargo +nightly build -Zbuild-std --target $TARGET -p openchuck-import --features kernel --lib
+      - name: Report
+        shell: bash
+        run: echo "cache hit = ${{ steps.occt.outputs.cache-hit }}"

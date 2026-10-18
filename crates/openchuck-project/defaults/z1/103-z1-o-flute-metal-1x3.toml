@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default Makera Z1 tool, number 103 (TL-12; decision record 0081). Facts
+# only: dimensions and parameters, no wording, images or file structures.
+# Tool material "carbide" is the owner's decision, from the community
+# profiles' material column.
+# No cutting data (OI-270, owner-decided rule: a stepover only where a
+# community file states one): no source states a stepover for this tool, so
+# none is shipped.
+# Source: bit page spiral-o-single-flute-bit-for-metal-1-8-shank: diameter,
+# flute length (variant sizes), shank 3.175, length ~38, flute count 1
+# (single flute), solid carbide; set page Essential Milling Bit Set agrees;
+# community file Makera O Flute Bits.csv agrees (flat end mill, overall
+# length 38).
+schema = 1
+id = "c0de0001-0000-4000-8000-000000000103"
+name = "Z1 O-flute metal 1x3"
+
+[tool]
+diameter = 1.0
+flute_length = 3.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 1
+material = "carbide"
+
+[tool.shape]
+type = "flat_end"

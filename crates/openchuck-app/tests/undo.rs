@@ -240,6 +240,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                     descriptors: Vec::new(),
                     stock_to_leave: None,
                     colour: None,
+                    keep_tangent_edges: None,
                 }),
                 placement: Placement::End,
             }
