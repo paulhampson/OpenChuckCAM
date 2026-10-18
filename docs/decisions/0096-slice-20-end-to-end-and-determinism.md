@@ -1,6 +1,6 @@
 # 0096: Slice 20 items 3, 6 and 7 and the offline run: command-line end-to-end suite, determinism on the sample projects, undo, redo and cancellation (lane TE)
 
-- **Status:** proposed (lane TE, 17 Oct 2026). Built on `claude/lane-te-end-to-end-and-determinism`. Only the project owner accepts a record (decision 0049).
+- **Status:** accepted by the project owner, given directly in the lane TE session on 18 Oct 2026 (first relayed by the orchestrator session on 17 Oct 2026, decision 0049). Built on `claude/lane-te-end-to-end-and-determinism`.
 - **Date:** 17 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md). New: OI-310 to OI-315; OI-314 is closed by item 9, OI-315 is decided (required; item 6) and OI-311 is decided (item 1), all by the owner, relayed. OI-316 to OI-318 are new, from the blisk trial (item 1).
 
@@ -26,7 +26,7 @@ Two gaps in the command-line tool shape the design:
 - It has **no command that adds an operation.** It can make a project, import a model, set the machine, add a setup and add a tool, but not an operation.
 - It has **no undo or redo.** Each run is one command, and the commands that edit save.
 
-## Decision (proposed)
+## Decision (accepted)
 
 1. **The sample projects are the reference job set on the Makera Z1 profile** ([reference-jobs.md](../reference-jobs.md)): `groove`, `cone`, `sphere`, `lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead` and `cone_held_tabs`. No document defines "the Z1 reference part". These are the parts the gates and the air-cut plan run on the Z1, so they are taken to be it (OI-311). Their golden programs already exist, so no new test data is added for them.
 
