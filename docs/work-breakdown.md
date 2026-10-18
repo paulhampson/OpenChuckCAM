@@ -863,31 +863,33 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 - [x] Results are identical at 1, 2 and N threads (`req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count`, helical finishing on the held cone at 1, 2 and 4 threads; the composite's drops at 1, 2 and 7 are in lane V's tests)
 - [x] A project without a held region or tab produces byte-identical G-code to before this slice (the reference and golden files are unchanged)
 
-## Slice 22 – User interface redesign
+## Slice 22 – User interface conformance pass
 
-**Status:** not started. Waits on the owner's updated design, which does not exist in the repository yet. Added 15 Oct 2026 after lanes A, M, N, O, S and W were planned, so the interface is redesigned once, after they have put every screen, panel and dialog in place.
+**Status:** not started. Reframed on 17 Oct 2026 by the owner ([decision 0105](decisions/0105-slice-22-conformance-pass.md)): it was a redesign waiting on a new design, and the interface specification (decision 0038) is now that design and the lanes built to it. Waits on lane O (selection and viewport, #83) and lane 21d (the workholding specification) being merged.
 
-**Goal:** the application's interface follows the updated design, with the same behaviour, requirements and tests.
+**Goal:** every screen, panel and dialog follows the interface specification (`docs/ui-design/ui-specification.md`) and its mock-ups, with the same behaviour, requirements and tests. Differences are fixed or recorded as open items; there is no redesign.
 
-**Requirements:** none new. It re-verifies UI-01 to UI-09, NFR-02 and NFR-03 (the tests that already name them still pass or are updated with the design), so it is not listed in the traceability table and does not move when those requirements close.
+**Rework is expected.** Screens built earlier were each built to the specification as it stood when their lane ran, and the specification has changed since (selection, the workholding panel, the export dialogs). The owner expects some rework of earlier interface work; it is planned here and is not a defect of the slices that built it.
 
-**Needs:** the updated design from the owner (mock-ups or a document); lanes A, M, N, O, S and W merged.
+**Requirements:** none new. It re-verifies UI-01 to UI-09, NFR-02 and NFR-03 (the tests that already name them still pass or are updated with the specification), so it is not listed in the traceability table and does not move when those requirements close.
 
-**Design refinement:** first step, before any rework. Record the design as a decision record: the screens and panels, the layout and navigation, the interaction for selecting, operating and playing back, theming and text sizes, and what in the design asks for a feature the requirements do not have. Anything that does is raised, not built (UI-xx requirements change only by agreement, and the architecture's view-model boundary stays: the UI imports no engine crate).
+**Needs:** lane O and lane 21d merged (lanes A, M, N, S and W are merged).
 
-1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new. It includes the setup's workholding panel and the viewport display of held regions and tabs (slice 21d; specification sections 7.5 and 11.7): the panel moves from the setup's whole inspector to its fifth section, the setup gains a "Workholding" tree row, and the Setup step's front and end panes draw the held regions and tabs (OI-325 items a, b and o).
-2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the design touches) to the design, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
+**Design refinement:** first step, before any rework: a conformance report as a decision record. For every screen, panel, dialog and overlay in the specification, say whether the built interface matches it, and list each difference with a proposed fix (change the code, or change the specification with the owner's agreement). Differences that need a requirement change are raised, not built.
+
+1. The conformance report and the component inventory: today's panels mapped to the specification, with what is removed, moved or new. It includes the setup's workholding panel and the viewport display of held regions and tabs (slice 21d; specification sections 7.5 and 11.7): the panel moves from the setup's whole inspector to its fifth section, the setup gains a "Workholding" tree row, and the Setup step's front and end panes draw the held regions and tabs (OI-325 items a, b and o).
+2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the report touches) to the specification, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
 3. Update the UI smoke tests and the screenshots in the guide; keep the 1M-triangle frame benchmark and rerun it on the reference machines (NFR-03).
-4. No project format change and no engine change. If the design needs one, it is a separate lane with its own schema claim.
+4. No project format change and no engine change. If the specification needs one, it is a separate lane with its own schema claim.
 
 **Review checklist**
 
-- [ ] Every screen, panel and dialog in the design exists, and nothing in the old interface that the requirements need is missing
+- [ ] Every screen, panel and dialog in the specification exists, matches it or has a recorded difference, and nothing the requirements need is missing
 - [ ] The UI imports no engine crate, and only `openchuck-ui` and `openchuck-viewport` use egui or wgpu
 - [ ] The UI smoke test passes on Windows, macOS and Linux (NFR-02)
 - [ ] The frame time on 1M triangles still meets NFR-03 on the reference hardware
 - [ ] Undo, redo and the inline errors behave as before (UI-08, UI-07)
-- [ ] Anything the design asks for beyond the requirements is listed as an open item or a requirement proposal, not built
+- [ ] Anything the specification asks for beyond the requirements is listed as an open item or a requirement proposal, not built
 
 ## Slice 23 – Default tool library
 
@@ -934,7 +936,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 8. Release tooling assessed under NFR-14 (`cargo-release` for the library family, `cargo-dist` or a plain build matrix for binaries, `release-plz` later) and the packaging route decided; separate tag schemes for library and application releases. *Route decided:* [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md) (plain build matrix, `lib-v` and `app-v` tags); the workflow is still to build.
 9. Release gate in `xtask`: dependency-rule check, `cargo deny`, golden G-code comparison and LinuxCNC replay must pass before a tag is cut.
 10. Z1 air-cut procedure documented (your hands-on step) and packaging for all three platforms, including a Windows installer and macOS app bundle if the egui app needs them. *Prepared:* the [air-cut procedure](z1-air-cut-procedure.md) is written and reviewed by the operator (14 Oct 2026, OI-133); running it is still the hands-on step; the packaging route is accepted in decision 0031 and the bundle command and release workflow are still to build (signing and extra platforms: OI-135).
-11. Gates 4 and 5 on the Z1 for the reference job set (your hands-on step, attended): an air cut at reduced feed (including a timed simultaneous XYZA move compared with the IR's predicted time), then a first cut in wax or foam. Cut a 3-axis test part first to measure the machine's own repeatability, then set the first-cut limit from it (start at ±0.1 mm). Recheck the G93 result on the installed firmware (SP-12 found it ignored on 1.1.2) and carry the confirmed Z1 rotary conventions into the post definition (also OI-267).
+11. Gates 4 and 5 on the Z1 for the reference job set (your hands-on step, attended; a manual release-checklist item owned by the owner, not enforced by `xtask release-gate`, [decision 0106](decisions/0106-air-cut-is-a-manual-release-step.md)): an air cut at reduced feed (including a timed simultaneous XYZA move compared with the IR's predicted time), then a first cut in wax or foam. Cut a 3-axis test part first to measure the machine's own repeatability, then set the first-cut limit from it (start at ±0.1 mm). Recheck the G93 result on the installed firmware (SP-12 found it ignored on 1.1.2) and carry the confirmed Z1 rotary conventions into the post definition (also OI-267).
 12. Safe-practice checklist for first machine trials, written and reviewed by whoever operates the Z1. *Written and reviewed by the operator (14 Oct 2026):* [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md) (OI-133).
 13. Verification report for the release: results against the exit criteria, waivers, open defects, the commit covered, a written result for every spike, and the plan reviewed against what happened.
 14. Traceability report generated from the requirement ID tags.
