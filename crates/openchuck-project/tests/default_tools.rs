@@ -512,3 +512,40 @@ fn req_tl_12_req_tl_03_the_derived_cutter_diameters_of_t307_and_t308_follow_thei
         assert!(needed <= 7.0, "T{number}: {needed}");
     }
 }
+
+#[test]
+fn req_tl_12_a_failed_ledger_write_keeps_the_old_ledger_and_a_retry_does_not_reinstall() {
+    let dir = temp_dir("ledger-write").join("tools");
+    let mut lib = ToolLibrary::open(&dir).unwrap();
+    lib.install_defaults().unwrap();
+    let all: Vec<_> = lib.tools().map(|t| t.id).collect();
+    let (deleted, added) = (all[0], all[1]);
+    // The user deleted one default; a later release adds another, which this
+    // library has not had: forget it in the ledger and remove its file.
+    lib.remove_tool(deleted).unwrap();
+    lib.remove_tool(added).unwrap();
+    let ledger = std::fs::read_to_string(dir.join(LEDGER_FILE)).unwrap();
+    let before: String = ledger
+        .lines()
+        .filter(|l| *l != added.to_string())
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(dir.join(LEDGER_FILE), &before).unwrap();
+
+    // Make the temporary ledger impossible to create: a directory in its place.
+    let blocker = dir.join(format!("{LEDGER_FILE}.tmp"));
+    std::fs::create_dir(&blocker).unwrap();
+    let mut failing = ToolLibrary::open(&dir).unwrap();
+    assert!(failing.install_defaults().is_err());
+    assert_eq!(
+        std::fs::read_to_string(dir.join(LEDGER_FILE)).unwrap(),
+        before
+    );
+
+    // Once the cause is gone, a run keeps the deleted default deleted.
+    std::fs::remove_dir(&blocker).unwrap();
+    let mut again = ToolLibrary::open(&dir).unwrap();
+    again.install_defaults().unwrap();
+    assert!(again.get(deleted).is_none());
+    assert!(again.get(added).is_some());
+}

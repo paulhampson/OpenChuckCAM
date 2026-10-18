@@ -523,5 +523,10 @@ fn write_ledger(path: &std::path::Path, ledger: &Ledger) -> Result<(), ProjectEr
     for machine in &ledger.sets {
         text.push_str(&format!("{SET_PREFIX}{machine}\n"));
     }
-    std::fs::write(path, text).map_err(super::library::io(path))
+    // Write the whole new ledger beside the old one and replace the old one
+    // only when that has succeeded, so a failed write cannot lose the entries
+    // of tools the user deleted (they would be installed again).
+    let temporary = path.with_extension("tmp");
+    std::fs::write(&temporary, text).map_err(super::library::io(&temporary))?;
+    std::fs::rename(&temporary, path).map_err(super::library::io(path))
 }
