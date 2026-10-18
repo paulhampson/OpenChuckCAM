@@ -155,7 +155,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X1 | 22 step 1: the conformance report and component inventory ([decision 0114](decisions/0114-slice-22-conformance-report.md), accepted 18 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X2 | 22: shell frame (window, steps, primary action, tree marks, dock and Messages, footer, empty state, settings; slice 8 items 8, 11, 12) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X3 | 22: viewport drawing (toolbar, overlays, colour roles, dash and hatch lines, held regions and tabs, the OI-341 widths) | ░░ | ░░ | ░░ | ░░ | ░░ |
-| X7a | 22: theme tokens and IBM Plex with the OFL text and notices (new files only; slice 8 item 10) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| X7a | 22: theme tokens and IBM Plex with the OFL text and notices (new files only; slice 8 item 10; built 18 Oct 2026 on `claude/lane-x7a-theme-tokens-fonts`, pull request 124) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X4 | 22: inspectors (field rows, header and error banner, setup sections with two provenance icons, OI-334 layout, part extent) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X5 | 22: Setup step's front and end panes | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets | ░░ | ░░ | ░░ | ░░ | ░░ |
