@@ -65,3 +65,13 @@ fn req_set_01_req_tl_01_default_folders_sit_under_the_app_folder() {
         assert!(folders.tools.ends_with("OpenChuckCAM/tools"));
     }
 }
+
+#[test]
+fn req_tl_12_installing_defaults_twice_into_a_folder_installs_nothing_the_second_time() {
+    let dir = std::env::temp_dir().join(format!("openchuck-app-defaults-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let first = openchuck_app::library::install_default_tools(&dir).unwrap();
+    assert_eq!(first.installed.len(), 77);
+    let second = openchuck_app::library::install_default_tools(&dir).unwrap();
+    assert!(second.installed.is_empty());
+}
