@@ -88,3 +88,10 @@ path = "fuzz_targets/post_definition.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "project_folder"
+path = "fuzz_targets/project_folder.rs"
+test = false
+doc = false
+bench = false

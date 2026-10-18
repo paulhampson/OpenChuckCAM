@@ -14,8 +14,9 @@
 //!
 //! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
 //! - `replay`: gate 3, LinuxCNC programs in the headless simulator (needs LinuxCNC; not part of `all`).
-//!
-//! The release gate is added in slice 20.
+//! - `release-gate`: the release gate (slice 20 item 9): `deps`, `cargo deny`, the golden G-code
+//!   comparison and `replay`, all of which must pass (needs LinuxCNC, cargo-deny and the STEP
+//!   kernel's toolchain; not part of `all`).
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -24,6 +25,7 @@ mod deps;
 mod golden;
 mod licences;
 mod records;
+mod release_gate;
 mod replay;
 mod testdata;
 mod trace;
@@ -88,16 +90,31 @@ enum Check {
         #[arg(long)]
         keep_reports: Option<PathBuf>,
         /// Largest per-line difference allowed, mm or degrees.
-        #[arg(long, default_value_t = 0.1)]
+        #[arg(long, default_value_t = replay::TOLERANCE)]
         tolerance: f64,
         /// Give up on one program after this many seconds.
-        #[arg(long, default_value_t = 900)]
+        #[arg(long, default_value_t = replay::TIMEOUT_SECONDS)]
         timeout: u64,
         /// Run only one share of the programs, `I/N` (for example `2/3`): the programs are
         /// dealt over N runners by expected run time, so every program belongs to exactly one
         /// share. CI runs one share on each of N runners.
         #[arg(long, value_name = "I/N")]
         shard: Option<String>,
+    },
+    /// The release gate: dependency rules, `cargo deny`, the golden G-code comparison and the
+    /// LinuxCNC replay of every golden program. Fails if any of them fails; none can be skipped.
+    /// Needs LinuxCNC (as for `replay`), cargo-deny and the STEP kernel's toolchain.
+    ReleaseGate {
+        /// Run LinuxCNC in this Docker image (see docker/linuxcnc).
+        #[arg(long)]
+        docker: Option<String>,
+        /// Keep each simulator report in this folder.
+        #[arg(long)]
+        keep_reports: Option<PathBuf>,
+        /// The tag being released (`lib-v<version>` or `app-v<version>`): it must name the
+        /// workspace version.
+        #[arg(long)]
+        tag: Option<String>,
     },
     /// Every check.
     All,
@@ -161,6 +178,18 @@ fn run() -> Result<bool> {
                 },
             )?,
         )],
+        Check::ReleaseGate {
+            docker,
+            keep_reports,
+            tag,
+        } => release_gate::check(
+            &root,
+            &release_gate::Options {
+                docker,
+                keep_reports,
+                tag,
+            },
+        ),
         Check::All => vec![
             ("deps", deps::check(&root)?),
             ("licences", licences::check(&root)?),

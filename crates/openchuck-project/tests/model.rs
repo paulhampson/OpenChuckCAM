@@ -101,6 +101,7 @@ fn sample() -> Project {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         }),
         Placement::End,
     )

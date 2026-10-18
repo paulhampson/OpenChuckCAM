@@ -10,6 +10,7 @@ These documents are the source of truth for the project. They live in the reposi
 | [verification-plan.md](verification-plan.md) | How each requirement is verified, by which method and at which level, and the release gates. |
 | [crate-selection.md](crate-selection.md) | The survey of Rust crates, with scores out of 100 as of 10 Oct 2026. The architecture's crate choices come from it. |
 | [dependencies.md](dependencies.md) | The NFR-14 record of every third-party dependency: pinned version, survey score, licence and justification, and the pin and upgrade policy. |
+| [fuzzing.md](fuzzing.md) | Every user-supplied file format with its fuzz target and corpus, and the running total of fuzz CPU hours per parser (NFR-07, decision 0107). |
 | [open-items.md](open-items.md) | The register of open items raised by decision records and slice reviews, with their state. |
 | [decisions/](decisions/) | Decision records for choices made after these documents were written. |
 | [ui-design/](ui-design/) | The user interface specification: layout, workflow, states, wording and visual tokens of the desktop application. Accepted with decision 0038; it ranks with the decision records (precedence 5). Rendered mockups are in `ui-design/mockups/`. |

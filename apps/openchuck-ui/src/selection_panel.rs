@@ -1,26 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Picking triangles of the part and the selection panel (UI-04, UI-05,
-//! OP-02; work breakdown slice 10 items 1 and 6; decision record 0036).
+//! Picking the part and the selection panel (UI-04, UI-05, OP-02; work
+//! breakdown slice 10 items 1 and 6 and slice 11 items 5 and 7; decision
+//! records 0036 and 0066).
 //!
-//! The viewport reports the triangle under the pointer and clicks
-//! ([`crate::viewport::PickInput`]); this module turns a click into a
-//! selection with the chosen [`PickMode`], keeps the working selection, saves
-//! it as a named set, edits sets, and gives an operation's roles to sets.
-//! Every project change is a command of `openchuck-app`, so it can be undone;
-//! the highlights it asks the viewport to draw are plain meshes from
-//! [`triangles_mesh`].
+//! The viewport reports the triangle under the pointer, or the edge near it,
+//! and clicks ([`crate::viewport::PickInput`]); this module turns a click into
+//! a selection with the chosen [`PickMode`], keeps the working selection,
+//! saves it as a named set, edits sets, and gives an operation's roles to
+//! sets. A mesh is selected by triangle or by the edges of its triangles, a
+//! STEP part by face or by its own edges. A click picks the edge when the
+//! pointer is within reach of one and the surface otherwise; the box on the
+//! view can restrict picking to faces or to edges. Every project change is a command of `openchuck-app`,
+//! so it can be undone; the highlights it asks the viewport to draw are plain
+//! meshes from [`triangles_mesh`] and the edges' polylines.
 
 use eframe::egui::{self, Color32, Modifiers, RichText};
-use openchuck_app::pick::{PickMode, ScenePick};
-use openchuck_app::project::ContentHash;
+use openchuck_app::pick::{EdgeRef, PickMode, SceneEdgePick, ScenePick};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
-use openchuck_app::scene::{SceneRole, SceneView, triangles_mesh};
+use openchuck_app::project::{ContentHash, SelectionTarget};
+use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
     Application, JobHandle, SelectionEdit, SelectionRole, SelectionSummary, TriangleSet,
 };
 use openchuck_viewport::{Colour, Scene, Slot};
 
-use crate::viewport::PickInput;
+use crate::viewport::{PickFilter, PickInput};
 
 const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
 /// Working selection: blue `#3d8bff` at 40%, a fill (specification 7.4;
@@ -127,6 +131,30 @@ impl Choice {
         }
     }
 
+    /// The name when edges are picked: W follows the chain, E the smooth
+    /// chain, and R selects the edge alone (decision record 0066 item 4).
+    fn edge_name(self) -> &'static str {
+        match self {
+            Self::Triangle => "Select one",
+            Self::Connected => "Chain",
+            Self::Smooth => "Smooth chain",
+            Self::Direction => "Same direction",
+        }
+    }
+
+    fn edge_tip(self) -> &'static str {
+        match self {
+            Self::Triangle => "Only the edge clicked.",
+            Self::Connected => {
+                "The edge and the edges joined to it end to end, through corners where only two meet."
+            }
+            Self::Smooth => {
+                "The chain onward through each corner to the edge that turns least, while it turns no more than the angle."
+            }
+            Self::Direction => "Only the edge clicked: same direction is for surfaces.",
+        }
+    }
+
     fn key(self) -> Option<egui::Key> {
         match self {
             Self::Triangle => Some(egui::Key::Q),
@@ -138,13 +166,13 @@ impl Choice {
 
     fn tip(self) -> &'static str {
         match self {
-            Self::Triangle => "Only the triangle clicked.",
-            Self::Connected => "Every triangle joined to it through shared edges.",
+            Self::Triangle => "Only the triangle clicked, or on a STEP model the face.",
+            Self::Connected => "Everything joined to it through shared edges.",
             Self::Smooth => {
-                "The connected triangles reached without turning more than the edge angle at an edge, such as one face of a block."
+                "Everything joined to it without turning more than the edge angle at an edge, such as one face of a block."
             }
             Self::Direction => {
-                "Every triangle facing within the angle of the clicked one, wherever it is on the part."
+                "Every triangle, or every face of a STEP model, facing within the angle of the clicked one, wherever it is on the part."
             }
         }
     }
@@ -173,14 +201,54 @@ impl Combine {
         }
     }
 
-    /// `current` joined with `picked`.
-    pub fn apply(self, current: &mut TriangleSet, picked: TriangleSet) {
-        match self {
-            Self::Replace => *current = picked,
-            Self::Add => current.extend(picked),
-            Self::Remove => current.retain(|t| !picked.contains(t)),
+    /// `current` joined with `picked`. A selection holds one kind: replacing
+    /// it with another kind starts again with that kind, and adding or taking
+    /// away another kind changes nothing (the panel refuses such a click
+    /// before it gets here, saying why).
+    pub fn apply(self, current: &mut SelectionTarget, picked: SelectionTarget) {
+        fn join<T: Ord>(
+            how: Combine,
+            current: &mut std::collections::BTreeSet<T>,
+            picked: std::collections::BTreeSet<T>,
+        ) {
+            match how {
+                Combine::Replace => *current = picked,
+                Combine::Add => current.extend(picked),
+                Combine::Remove => current.retain(|t| !picked.contains(t)),
+            }
+        }
+        match (current, picked) {
+            (SelectionTarget::Triangles(a), SelectionTarget::Triangles(b)) => join(self, a, b),
+            (SelectionTarget::MeshEdges(a), SelectionTarget::MeshEdges(b)) => join(self, a, b),
+            (SelectionTarget::Faces(a), SelectionTarget::Faces(b)) => join(self, a, b),
+            (SelectionTarget::Edges(a), SelectionTarget::Edges(b)) => join(self, a, b),
+            (current, picked) => {
+                if self == Self::Replace || current.is_empty() {
+                    *current = picked;
+                }
+            }
         }
     }
+}
+
+/// What the pointer is over.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Hover {
+    Surface(ScenePick),
+    Edge(SceneEdgePick),
+}
+
+/// An empty working selection.
+fn nothing() -> SelectionTarget {
+    SelectionTarget::Triangles(TriangleSet::new())
+}
+
+/// A plain click of the other kind waiting for the user to confirm that it
+/// resets the working selection (decision record 0066 item 3).
+struct Reset {
+    model: ModelId,
+    picked: SelectionTarget,
+    hash: Option<ContentHash>,
 }
 
 struct Pending {
@@ -192,18 +260,30 @@ struct Pending {
 /// The panel's state between frames.
 pub struct SelectionPanel {
     choice: Choice,
+    /// What a click may pick (decision record 0066 item 3).
+    filter: PickFilter,
     smooth_angle: f64,
     direction_angle: f64,
-    working: TriangleSet,
+    working: SelectionTarget,
     working_model: Option<ModelId>,
     /// The hash the project recorded for `working_model` when the working
     /// selection began. Triangle numbers mean the file they were picked on, so
     /// if the project accepts a changed file the selection is dropped.
     working_hash: Option<ContentHash>,
     name: String,
+    /// Whether a new set of B-rep edges keeps tangent edges, or `None` for
+    /// the project's default (decision record 0066).
+    new_tangent: Option<bool>,
     rename: String,
     pending: Option<Pending>,
-    hover: Option<ScenePick>,
+    /// Whether a plain click of the other kind asks first, as the project
+    /// says when the click came.
+    warn_reset: bool,
+    /// The click waiting for that answer, and whether the user ticked
+    /// "Don't show me this warning again".
+    reset: Option<Reset>,
+    dont_warn: bool,
+    hover: Option<Hover>,
     shown: Option<SelectionSetId>,
     /// The last thing that went wrong or the last notice.
     message: Option<String>,
@@ -219,14 +299,19 @@ impl Default for SelectionPanel {
     fn default() -> Self {
         Self {
             choice: Choice::Smooth,
+            filter: PickFilter::Both,
             smooth_angle: 30.0,
             direction_angle: 10.0,
-            working: TriangleSet::new(),
+            working: nothing(),
             working_model: None,
             working_hash: None,
             name: String::new(),
+            new_tangent: None,
             rename: String::new(),
             pending: None,
+            warn_reset: true,
+            reset: None,
+            dont_warn: false,
             hover: None,
             shown: None,
             message: None,
@@ -250,12 +335,14 @@ impl SelectionPanel {
         self.pending.is_some()
     }
 
-    /// Test hook: the triangles of the working selection.
+    /// Test hook: the triangles of the working selection (none when it holds
+    /// another kind).
     #[cfg(test)]
     pub(crate) fn working_triangles(&self) -> Vec<u32> {
-        let mut t: Vec<u32> = self.working.iter().copied().collect();
-        t.sort_unstable();
-        t
+        match &self.working {
+            SelectionTarget::Triangles(t) => t.iter().copied().collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// Test hook: starts a flood fill on `model` and keeps it pending however
@@ -280,6 +367,7 @@ impl SelectionPanel {
     pub fn clear(&mut self) {
         *self = Self {
             choice: self.choice,
+            filter: self.filter,
             smooth_angle: self.smooth_angle,
             direction_angle: self.direction_angle,
             ..Self::default()
@@ -305,6 +393,30 @@ impl SelectionPanel {
         }
     }
 
+    /// What a click may pick.
+    pub fn pick_filter(&self) -> PickFilter {
+        self.filter
+    }
+
+    /// The tangent-edge choice a new set takes: only a set of a STEP model's
+    /// edges holds one (decision record 0066 item 9).
+    fn new_set_tangent(&self) -> Option<bool> {
+        match self.working {
+            SelectionTarget::Edges(_) => self.new_tangent,
+            _ => None,
+        }
+    }
+
+    /// Whether the tools are named for edges: only edges are picked, or the
+    /// working selection holds edges.
+    fn names_edges(&self) -> bool {
+        self.filter == PickFilter::Edges
+            || matches!(
+                self.working,
+                SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_)
+            )
+    }
+
     fn mode(&self) -> PickMode {
         match self.choice {
             Choice::Triangle => PickMode::Triangle,
@@ -318,17 +430,31 @@ impl SelectionPanel {
         }
     }
 
-    /// Takes in what the pointer did over the part, and finished fills.
-    /// Returns true while a fill is running, so the frame is drawn again.
-    pub fn frame(&mut self, app: &Application, input: PickInput) -> bool {
+    /// Takes in what the pointer did over the part in `view`, and finished
+    /// fills. Returns true while a fill is running, so the frame is drawn
+    /// again.
+    pub fn frame(&mut self, app: &Application, view: &SceneView, input: PickInput) -> bool {
         self.drop_stale_working(app);
-        let hovered = input.hover.map(|h| (h.mesh, h.triangle));
-        if hovered != self.hover.map(|h| (h.mesh, h.triangle)) {
+        self.warn_reset = app.project().warn_on_selection_reset();
+        let hover = match (input.edge_hover, input.hover) {
+            (Some(edge), _) => Some(Hover::Edge(edge)),
+            (None, Some(pick)) => Some(Hover::Surface(pick)),
+            (None, None) => None,
+        };
+        let key = |h: Option<Hover>| match h {
+            Some(Hover::Surface(p)) => Some((p.mesh, 0, p.triangle as usize)),
+            Some(Hover::Edge(e)) => Some((e.mesh, 1, e.index)),
+            None => None,
+        };
+        if key(hover) != key(self.hover) {
             self.dirty = true;
         }
-        self.hover = input.hover;
+        self.hover = hover;
         if let Some((pick, modifiers)) = input.click {
-            self.click(app, &pick, Combine::of(modifiers));
+            self.click(app, view, &pick, Combine::of(modifiers));
+        }
+        if let Some((pick, modifiers)) = input.edge_click {
+            self.click_edge(app, view, &pick, Combine::of(modifiers));
         }
         let Some(pending) = &self.pending else {
             return false;
@@ -352,12 +478,24 @@ impl SelectionPanel {
         }
     }
 
-    fn click(&mut self, app: &Application, pick: &ScenePick, combine: Combine) {
+    fn click(&mut self, app: &Application, view: &SceneView, pick: &ScenePick, combine: Combine) {
         let Some(model) = pick.model else { return };
+        self.warn_reset = app.project().warn_on_selection_reset();
         self.message = None;
         // An older region pick must not finish later and overwrite this click.
         if let Some(old) = self.pending.take() {
             old.handle.cancel();
+        }
+        // A STEP part is selected by face, from the scene's own data.
+        if pick.face.is_some() {
+            if let Some(faces) = view
+                .picking
+                .picker()
+                .and_then(|p| p.select_faces(pick, self.mode()))
+            {
+                self.join(model, combine, faces, recorded_hash(app, model));
+            }
+            return;
         }
         match self.mode().request(pick) {
             None => self.join(
@@ -379,18 +517,79 @@ impl SelectionPanel {
         }
     }
 
+    fn click_edge(
+        &mut self,
+        app: &Application,
+        view: &SceneView,
+        pick: &SceneEdgePick,
+        combine: Combine,
+    ) {
+        let Some(model) = pick.model else { return };
+        let Some(picker) = view.picking.picker() else {
+            return;
+        };
+        self.warn_reset = app.project().warn_on_selection_reset();
+        self.message = None;
+        if let Some(old) = self.pending.take() {
+            old.handle.cancel();
+        }
+        let edges = picker.select_edges(pick, self.mode());
+        let target = match pick.edge {
+            EdgeRef::Brep(_) => SelectionTarget::Edges(
+                edges
+                    .into_iter()
+                    .filter_map(|e| match e {
+                        EdgeRef::Brep(id) => Some(id),
+                        EdgeRef::Mesh(_) => None,
+                    })
+                    .collect(),
+            ),
+            EdgeRef::Mesh(_) => SelectionTarget::MeshEdges(
+                edges
+                    .into_iter()
+                    .filter_map(|e| match e {
+                        EdgeRef::Mesh(m) => Some(m),
+                        EdgeRef::Brep(_) => None,
+                    })
+                    .collect(),
+            ),
+        };
+        self.join(model, combine, target, recorded_hash(app, model));
+    }
+
     /// `hash` is what the project records for `model` now; the selection keeps
     /// the one it began with.
     fn join(
         &mut self,
         model: ModelId,
         combine: Combine,
-        picked: TriangleSet,
+        picked: impl Into<SelectionTarget>,
         hash: Option<ContentHash>,
     ) {
+        let picked = picked.into();
+        // A selection holds one kind (decision record 0066 item 3). Adding or
+        // taking away a pick of another kind is refused with the way out, and
+        // the selection stays as it was; a plain click starts a new one, after
+        // asking unless the project says not to.
+        let other_kind = self.working_model == Some(model)
+            && !self.working.is_empty()
+            && std::mem::discriminant(&self.working) != std::mem::discriminant(&picked);
+        if other_kind && combine != Combine::Replace {
+            self.message = Some(refusal(&self.working, &picked));
+            return;
+        }
+        if other_kind && self.warn_reset {
+            self.reset = Some(Reset {
+                model,
+                picked,
+                hash,
+            });
+            self.dont_warn = false;
+            return;
+        }
         // A selection is on one model; picking on another starts again.
         if self.working_model != Some(model) {
-            self.working.clear();
+            self.working = nothing();
             self.working_model = Some(model);
             self.working_hash = hash;
         }
@@ -413,7 +612,7 @@ impl SelectionPanel {
         if recorded_hash(app, model) == self.working_hash {
             return;
         }
-        self.working.clear();
+        self.working = nothing();
         self.working_model = None;
         self.working_hash = None;
         self.dirty = true;
@@ -424,8 +623,10 @@ impl SelectionPanel {
     }
 
     /// The highlights to draw over the scene when they changed since the last
-    /// call: the chosen set filled with its swatch, the working selection
-    /// filled blue, the triangle under the pointer outlined in yellow.
+    /// call: the chosen set in its swatch, the working selection in blue
+    /// (filled surfaces, or edges drawn over the part), and what is under
+    /// the pointer outlined in yellow: a triangle, a STEP part's face, or an
+    /// edge.
     pub fn overlay(&mut self, app: &Application, view: &SceneView) -> Option<Scene> {
         if !std::mem::take(&mut self.dirty) {
             return None;
@@ -433,48 +634,73 @@ impl SelectionPanel {
         let part_of = |model: ModelId| {
             view.meshes
                 .iter()
-                .find(|m| m.role == SceneRole::Part && m.model == Some(model))
+                .enumerate()
+                .find(|(_, m)| m.role == SceneRole::Part && m.model == Some(model))
         };
         let mut scene = Scene::default();
         if let Some(model) = self.shown_model(app)
-            && let Some(set) = self.shown_triangles(app)
-            && let Some(part) = part_of(model)
+            && let Some(set) = self.shown_target(app)
+            && let Some((index, part)) = part_of(model)
         {
             let sets = app.project().selection_sets();
-            let index = sets
+            let place = sets
                 .iter()
                 .position(|s| Some(s.id) == self.shown)
                 .unwrap_or(0);
-            let chosen = sets.get(index).and_then(|s| s.colour.as_deref());
-            scene.add_mesh(
-                &triangles_mesh(&part.mesh, &set),
-                &[],
-                rgb_fill(set_rgb(chosen, index)),
-                NO_EDGES,
-            );
+            let chosen = sets.get(place).and_then(|s| s.colour.as_deref());
+            let rgb = set_rgb(chosen, place);
+            draw_target(&mut scene, view, index, part, &set, rgb_fill(rgb), {
+                let [r, g, b] = rgb;
+                [
+                    f32::from(r) / 255.0,
+                    f32::from(g) / 255.0,
+                    f32::from(b) / 255.0,
+                    1.0,
+                ]
+            });
         }
         if let Some(model) = self.working_model
-            && let Some(part) = part_of(model)
+            && let Some((index, part)) = part_of(model)
         {
-            scene.add_mesh(
-                &triangles_mesh(&part.mesh, &self.working),
-                &[],
-                WORKING,
-                NO_EDGES,
-            );
+            let line = [WORKING[0], WORKING[1], WORKING[2], 1.0];
+            draw_target(&mut scene, view, index, part, &self.working, WORKING, line);
         }
-        if let Some(hover) = self.hover
-            && let Some(part) = view.meshes.get(hover.mesh)
-            && let Some(corners) = part.mesh.triangles.get(hover.triangle as usize)
-        {
-            let outline: Vec<_> = corners
-                .iter()
-                .chain(corners.first())
-                .filter_map(|&i| part.mesh.vertices.get(i as usize).copied())
-                .collect();
-            if outline.len() == 4 {
-                scene.add_polyline(&outline, HOVER, false);
+        match self.hover {
+            Some(Hover::Surface(hover)) => {
+                if let Some(part) = view.meshes.get(hover.mesh) {
+                    match (hover.face, &part.brep) {
+                        // A face is outlined by its edges.
+                        (Some(face), Some(brep)) => {
+                            for edge in brep.edges.iter().filter(|e| e.faces.contains(&face)) {
+                                scene.add_polyline(&edge.points, HOVER, false);
+                            }
+                        }
+                        _ => {
+                            if let Some(corners) = part.mesh.triangles.get(hover.triangle as usize)
+                            {
+                                let outline: Vec<_> = corners
+                                    .iter()
+                                    .chain(corners.first())
+                                    .filter_map(|&i| part.mesh.vertices.get(i as usize).copied())
+                                    .collect();
+                                if outline.len() == 4 {
+                                    scene.add_polyline(&outline, HOVER, false);
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            Some(Hover::Edge(hover)) => {
+                if let Some(points) = view
+                    .picking
+                    .picker()
+                    .and_then(|p| p.edge_points(hover.mesh, hover.index))
+                {
+                    scene.add_polyline(points, HOVER, true);
+                }
+            }
+            None => {}
         }
         // The highlights are on the workpiece, which turns with A.
         for mesh in &mut scene.meshes {
@@ -495,8 +721,8 @@ impl SelectionPanel {
             .map(|s| s.model)
     }
 
-    fn shown_triangles(&self, app: &Application) -> Option<TriangleSet> {
-        set_triangles(app, self.shown?)
+    fn shown_target(&self, app: &Application) -> Option<SelectionTarget> {
+        set_target(app, self.shown?)
     }
 
     /// Chooses what a click selects from a key (Q, W, E, R; specification
@@ -514,6 +740,7 @@ impl SelectionPanel {
         let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key));
         for key in [egui::Key::Q, egui::Key::W, egui::Key::E, egui::Key::R] {
             if pressed(key)
+                && !(self.filter == PickFilter::Edges && key == egui::Key::R)
                 && let Some(choice) = choice_for_key(key)
             {
                 self.choice = choice;
@@ -521,6 +748,9 @@ impl SelectionPanel {
             }
         }
         if !pressed(egui::Key::Escape) {
+            return false;
+        }
+        if self.reset.take().is_some() {
             return false;
         }
         match self.pending.take() {
@@ -546,16 +776,63 @@ impl SelectionPanel {
                     .inner_margin(6)
                     .show(ui, |ui| {
                         ui.visuals_mut().override_text_color = Some(Color32::from_gray(228));
+                        ui.horizontal(|ui| {
+                            ui.label("Pick");
+                            for (filter, label, tip) in [
+                                (
+                                    PickFilter::Both,
+                                    "Both",
+                                    "An edge when the pointer is near one, the surface otherwise.",
+                                ),
+                                (
+                                    PickFilter::Faces,
+                                    "Faces",
+                                    "Only surfaces: triangles, or the faces of a STEP model.",
+                                ),
+                                (
+                                    PickFilter::Edges,
+                                    "Edges",
+                                    "Only edges: the edges drawn on the part.",
+                                ),
+                            ] {
+                                if ui
+                                    .selectable_label(self.filter == filter, label)
+                                    .on_hover_text(tip)
+                                    .clicked()
+                                {
+                                    self.filter = filter;
+                                    // Same direction is not offered for edges.
+                                    if filter == PickFilter::Edges
+                                        && self.choice == Choice::Direction
+                                    {
+                                        self.choice = Choice::Triangle;
+                                    }
+                                    self.message = None;
+                                    self.hover = None;
+                                    self.dirty = true;
+                                }
+                            }
+                        });
+                        ui.separator();
                         for choice in Choice::ALL {
+                            if self.filter == PickFilter::Edges && choice == Choice::Direction {
+                                continue;
+                            }
                             let key = choice
                                 .key()
                                 .map_or(String::new(), |k| format!(" ({})", k.name()));
-                            let tip = choice.tip();
+                            let edge_tip = format!("On an edge: {}", choice.edge_tip());
+                            let (name, tip) = match (self.names_edges(), self.filter) {
+                                (true, _) => (choice.edge_name(), choice.edge_tip().to_owned()),
+                                (false, PickFilter::Faces) => {
+                                    (choice.name(), choice.tip().to_owned())
+                                }
+                                (false, _) => {
+                                    (choice.name(), format!("{}\n{edge_tip}", choice.tip()))
+                                }
+                            };
                             if ui
-                                .selectable_label(
-                                    self.choice == choice,
-                                    format!("{}{key}", choice.name()),
-                                )
+                                .selectable_label(self.choice == choice, format!("{name}{key}"))
                                 .on_hover_text(tip)
                                 .clicked()
                             {
@@ -581,9 +858,19 @@ impl SelectionPanel {
         if view.picking.picker().is_none() {
             ui.label("There is no part to select on. Choose a setup with a part.");
         }
-        ui.weak("Meshes are selected by triangle; STEP models by face and edge.");
+        ui.weak("Meshes are selected by triangle or edge; STEP models by face and edge.");
         ui.horizontal_wrapped(|ui| {
-            ui.label(format!("Click: {}.", self.choice.name().to_lowercase()));
+            let name = if self.names_edges() {
+                self.choice.edge_name()
+            } else {
+                self.choice.name()
+            };
+            let what = match self.filter {
+                PickFilter::Both => "edges near the pointer, else surfaces",
+                PickFilter::Faces => "surfaces only",
+                PickFilter::Edges => "edges only",
+            };
+            ui.label(format!("Click: {}, {what}.", name.to_lowercase()));
             ui.weak("Choose in the box on the view, or press Q, W, E or R.");
         });
         ui.add(
@@ -601,7 +888,14 @@ impl SelectionPanel {
         }
         ui.weak("Click selects. Shift adds. Ctrl removes. Drag to orbit. Esc leaves.");
         match self.hover {
-            Some(h) => ui.label(format!("Pointing at triangle {}", h.triangle)),
+            Some(Hover::Surface(ScenePick {
+                face: Some(face), ..
+            })) => ui.label(format!("Pointing at face {}", face.0)),
+            Some(Hover::Surface(h)) => ui.label(format!("Pointing at triangle {}", h.triangle)),
+            Some(Hover::Edge(e)) => ui.label(match e.edge {
+                EdgeRef::Brep(id) => format!("Pointing at edge {}", id.0),
+                EdgeRef::Mesh(m) => format!("Pointing at an edge of triangle {}", m.triangle),
+            }),
             None => ui.weak("Not pointing at the part"),
         };
         if self.pending.is_some() {
@@ -613,12 +907,16 @@ impl SelectionPanel {
 
         ui.separator();
         ui.strong(format!(
-            "Working selection: {} triangles",
-            self.working.len()
+            "Working selection: {} {}",
+            self.working.len(),
+            self.working.kind_name()
         ));
         let chosen = summaries.iter().find(|s| Some(s.id) == self.shown);
+        let same_kind = chosen
+            .and_then(|s| set_target(app, s.id))
+            .is_some_and(|t| std::mem::discriminant(&t) == std::mem::discriminant(&self.working));
         let can_edit = chosen.is_some_and(|s| {
-            !self.working.is_empty() && self.working_model == Some(s.model) && s.kind == "triangles"
+            !self.working.is_empty() && self.working_model == Some(s.model) && same_kind
         });
         ui.horizontal(|ui| {
             ui.add(
@@ -638,11 +936,21 @@ impl SelectionPanel {
                 } else {
                     self.name.trim().to_owned()
                 };
-                match app.save_selection(&name, model, self.working.clone()) {
+                let tangent = self.new_set_tangent();
+                let saved = app
+                    .save_selection(&name, model, self.working.clone())
+                    .and_then(|id| match tangent {
+                        Some(keep) => app
+                            .edit_selection(id, SelectionEdit::KeepTangentEdges(Some(keep)))
+                            .map(|_| id),
+                        None => Ok(id),
+                    });
+                match saved {
                     Ok(id) => {
                         self.name.clear();
-                        self.working.clear();
+                        self.working = nothing();
                         self.working_model = None;
+                        self.new_tangent = None;
                         self.shown = Some(id);
                         self.dirty = true;
                     }
@@ -653,11 +961,21 @@ impl SelectionPanel {
                 .add_enabled(!self.working.is_empty(), egui::Button::new("Clear"))
                 .clicked()
             {
-                self.working.clear();
+                self.working = nothing();
                 self.working_model = None;
                 self.dirty = true;
             }
         });
+        if matches!(self.working, SelectionTarget::Edges(_))
+            && let Some(choice) = tangent_choice(
+                ui,
+                "new set tangent edges",
+                self.new_tangent,
+                app.project().keep_tangent_edges(),
+            )
+        {
+            self.new_tangent = choice;
+        }
         ui.horizontal_wrapped(|ui| {
             for (label, tip, kind) in [
                 (
@@ -672,7 +990,7 @@ impl SelectionPanel {
                 ),
                 (
                     "Replace set",
-                    "Replace the chosen set's triangles with the working selection",
+                    "Replace what the chosen set selects with the working selection",
                     2,
                 ),
             ] {
@@ -680,17 +998,17 @@ impl SelectionPanel {
                 let button = ui.add_enabled(enabled, egui::Button::new(label));
                 if !enabled {
                     button.clone().on_disabled_hover_text(
-                        "Choose a set of triangles on the model you selected on",
+                        "Choose a set of the same kind on the model you selected on",
                     );
                 }
                 if button.on_hover_text(tip).clicked()
                     && let Some(set) = chosen
                 {
-                    let triangles = self.working.clone();
+                    let target = self.working.clone();
                     let which = match kind {
-                        0 => SelectionEdit::Add(triangles),
-                        1 => SelectionEdit::Remove(triangles),
-                        _ => SelectionEdit::Replace(triangles),
+                        0 => SelectionEdit::Add(target),
+                        1 => SelectionEdit::Remove(target),
+                        _ => SelectionEdit::Replace(target),
                     };
                     match app.edit_selection(set.id, which) {
                         Ok(_) => self.dirty = true,
@@ -702,7 +1020,7 @@ impl SelectionPanel {
 
         ui.separator();
         if summaries.is_empty() {
-            ui.weak("No sets yet. Select triangles and make a set from them.");
+            ui.weak("No sets yet. Select on the part and make a set from it.");
         } else {
             self.table(ui, app, summaries);
         }
@@ -713,8 +1031,82 @@ impl SelectionPanel {
             }
         }
         ui.separator();
+        let mut keep = app.project().keep_tangent_edges();
+        if ui
+            .checkbox(&mut keep, "Keep tangent edges by default")
+            .on_hover_text(
+                "For sets of a STEP model's edges that do not say: whether edge following keeps \
+                 the edges where two faces meet smoothly. Saved with the project.",
+            )
+            .changed()
+            && let Err(e) = app.execute(openchuck_app::Command::SetKeepTangentEdges(keep))
+        {
+            error = Some(e.to_string());
+        }
+        let mut warn = app.project().warn_on_selection_reset();
+        if ui
+            .checkbox(&mut warn, "Warn before a click starts a new selection")
+            .on_hover_text(
+                "Ask before a click that picks the other kind (an edge on a selection of faces, \
+                 say) clears the selection. Saved with the project.",
+            )
+            .changed()
+            && let Err(e) = app.execute(openchuck_app::Command::SetWarnOnSelectionReset(warn))
+        {
+            error = Some(e.to_string());
+        }
         ui.weak("Editing a set marks every operation that uses it stale.");
         error
+    }
+
+    /// The warning before a plain click of the other kind resets the working
+    /// selection (decision record 0066 item 3), drawn while one waits.
+    /// Returns the text of an error to show in a dialog.
+    pub fn reset_dialog(&mut self, ctx: &egui::Context, app: &mut Application) -> Option<String> {
+        let reset = self.reset.as_ref()?;
+        let text = reset_warning(&self.working, &reset.picked);
+        let mut answer = None;
+        egui::Window::new("Start a new selection?")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(text);
+                ui.checkbox(&mut self.dont_warn, "Don't show me this warning again");
+                ui.horizontal(|ui| {
+                    if ui.button("Start a new selection").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        answer.and_then(|start| self.answer_reset(app, start))
+    }
+
+    /// Answers the warning: `start` resets the working selection to the
+    /// click's pick, storing "Don't show me this warning again" as an
+    /// undoable project setting; otherwise the selection stays as it was.
+    fn answer_reset(&mut self, app: &mut Application, start: bool) -> Option<String> {
+        let Reset {
+            model,
+            picked,
+            hash,
+        } = self.reset.take()?;
+        if !start {
+            return None;
+        }
+        if self.dont_warn
+            && let Err(e) = app.execute(openchuck_app::Command::SetWarnOnSelectionReset(false))
+        {
+            return Some(e.to_string());
+        }
+        // The answer is given: this click resets without asking again.
+        self.warn_reset = false;
+        self.join(model, Combine::Replace, picked, hash);
+        self.warn_reset = app.project().warn_on_selection_reset();
+        None
     }
 
     /// The table of sets (specification section 12.2): swatch, name, kind,
@@ -766,13 +1158,13 @@ impl SelectionPanel {
                                 ui.label("● Matches model");
                             }
                         }
-                        let usable = summary.problem.is_none() && summary.kind == "triangles";
+                        let usable = summary.problem.is_none();
                         if usable
                             && ui
                                 .link("Select in view")
                                 .on_hover_text("Make the set the working selection, to edit it")
                                 .clicked()
-                            && let Some(t) = set_triangles(app, summary.id)
+                            && let Some(t) = set_target(app, summary.id)
                         {
                             self.select_set_in_view(app, summary, t);
                         }
@@ -782,19 +1174,19 @@ impl SelectionPanel {
         });
     }
 
-    /// Makes `triangles`, the contents of `summary`'s set, the working
+    /// Makes `target`, the contents of `summary`'s set, the working
     /// selection and shows the set.
     fn select_set_in_view(
         &mut self,
         app: &Application,
         summary: &SelectionSummary,
-        triangles: TriangleSet,
+        target: SelectionTarget,
     ) {
         // A region pick still running would overwrite what is loaded.
         if let Some(pending) = self.pending.take() {
             pending.handle.cancel();
         }
-        self.working = triangles;
+        self.working = target;
         self.working_model = Some(summary.model);
         self.working_hash = recorded_hash(app, summary.model);
         self.shown = Some(summary.id);
@@ -875,6 +1267,23 @@ impl SelectionPanel {
                 }
             }
         });
+        if let Some(set) = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == summary.id)
+            .filter(|s| matches!(s.target, SelectionTarget::Edges(_)))
+            .cloned()
+            && let Some(choice) = tangent_choice(
+                ui,
+                "set tangent edges",
+                set.keep_tangent_edges,
+                app.project().keep_tangent_edges(),
+            )
+            && let Err(e) = app.edit_selection(set.id, SelectionEdit::KeepTangentEdges(choice))
+        {
+            error = Some(e.to_string());
+        }
         let used = !summary.uses.is_empty();
         if ui
             .add_enabled(!used, egui::Button::new("Delete set"))
@@ -893,18 +1302,131 @@ impl SelectionPanel {
     }
 }
 
-/// The triangles of the set `id`, if it selects triangles.
-fn set_triangles(app: &Application, id: SelectionSetId) -> Option<TriangleSet> {
-    use openchuck_app::project::SelectionTarget;
-    match &app
-        .project()
+/// The choice of keeping tangent edges, as the user reads it: the project's
+/// default, keep, or drop (decision record 0066).
+fn tangent_label(value: Option<bool>, default: bool) -> String {
+    match value {
+        None => format!(
+            "Project default ({})",
+            if default { "keep" } else { "drop" }
+        ),
+        Some(true) => "Keep tangent edges".to_owned(),
+        Some(false) => "Drop tangent edges".to_owned(),
+    }
+}
+
+/// A list to choose whether a set of a STEP model's edges keeps the edges
+/// where two faces meet smoothly. Returns the new choice when it changed.
+fn tangent_choice(
+    ui: &mut egui::Ui,
+    salt: &str,
+    value: Option<bool>,
+    default: bool,
+) -> Option<Option<bool>> {
+    let mut chosen = None;
+    ui.horizontal(|ui| {
+        ui.label("Tangent edges").on_hover_text(
+            "Edges where two faces meet smoothly, such as the edge of a fillet. Edge \
+                 following drops them unless they are kept.",
+        );
+        egui::ComboBox::from_id_salt(salt)
+            .selected_text(tangent_label(value, default))
+            .show_ui(ui, |ui| {
+                for option in [None, Some(true), Some(false)] {
+                    if ui
+                        .selectable_label(value == option, tangent_label(option, default))
+                        .clicked()
+                        && option != value
+                    {
+                        chosen = Some(option);
+                    }
+                }
+            });
+    });
+    chosen
+}
+
+/// What the set `id` selects.
+/// Why a pick of another kind is not added to the working selection, and the
+/// way out (decision record 0066 item 3).
+fn refusal(working: &SelectionTarget, picked: &SelectionTarget) -> String {
+    let noun = |t: &SelectionTarget| match t {
+        SelectionTarget::Triangles(_) => ("triangles", "a triangle", "Faces"),
+        SelectionTarget::Faces(_) => ("faces", "a face", "Faces"),
+        SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => ("edges", "an edge", "Edges"),
+    };
+    let (holds, _, filter) = noun(working);
+    let (_, one, _) = noun(picked);
+    format!(
+        "The selection holds {holds}, so {one} cannot join it: a selection holds one kind. \
+         Choose {filter} in the box on the view to pick only {holds}, or click without \
+         Shift or Ctrl to start a new selection."
+    )
+}
+
+/// What the warning before a reset says (decision record 0066 item 3).
+fn reset_warning(working: &SelectionTarget, picked: &SelectionTarget) -> String {
+    let noun = |t: &SelectionTarget| match t {
+        SelectionTarget::Triangles(_) => ("triangles", "a triangle"),
+        SelectionTarget::Faces(_) => ("faces", "a face"),
+        SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => ("edges", "an edge"),
+    };
+    let (holds, _) = noun(working);
+    let (_, one) = noun(picked);
+    format!(
+        "This click picks {one}, and the selection holds {holds}: a selection holds one kind. \
+         Starting a new selection with it clears the {} {holds} selected now.",
+        working.len()
+    )
+}
+
+fn set_target(app: &Application, id: SelectionSetId) -> Option<SelectionTarget> {
+    app.project()
         .selection_sets()
         .iter()
-        .find(|s| s.id == id)?
-        .target
-    {
-        SelectionTarget::Triangles(t) => Some(t.clone()),
-        _ => None,
+        .find(|s| s.id == id)
+        .map(|s| s.target.clone())
+}
+
+/// Draws `target` on `part` (mesh `index` of `view`): surfaces filled in
+/// `fill`, edges as lines in `line` over the part.
+fn draw_target(
+    scene: &mut Scene,
+    view: &SceneView,
+    index: usize,
+    part: &SceneMesh,
+    target: &SelectionTarget,
+    fill: Colour,
+    line: Colour,
+) {
+    let edges = |refs: std::collections::BTreeSet<EdgeRef>| {
+        view.picking
+            .picker()
+            .map(|p| {
+                p.edges_points(index, &refs)
+                    .into_iter()
+                    .map(<[_]>::to_vec)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    let lines = match target {
+        SelectionTarget::Triangles(t) => {
+            scene.add_mesh(&triangles_mesh(&part.mesh, t), &[], fill, NO_EDGES);
+            return;
+        }
+        SelectionTarget::Faces(faces) => {
+            if let Some(brep) = &part.brep {
+                let triangles = brep.triangles_of(faces);
+                scene.add_mesh(&triangles_mesh(&part.mesh, &triangles), &[], fill, NO_EDGES);
+            }
+            return;
+        }
+        SelectionTarget::Edges(ids) => edges(ids.iter().map(|i| EdgeRef::Brep(*i)).collect()),
+        SelectionTarget::MeshEdges(m) => edges(m.iter().map(|e| EdgeRef::Mesh(*e)).collect()),
+    };
+    for points in lines {
+        scene.add_polyline(&points, line, true);
     }
 }
 
@@ -1003,18 +1525,49 @@ mod tests {
         items.iter().copied().collect()
     }
 
+    fn tri(items: &[u32]) -> SelectionTarget {
+        SelectionTarget::Triangles(set(items))
+    }
+
+    #[test]
+    fn req_op_08_req_ui_05_only_a_set_of_step_edges_takes_the_tangent_choice() {
+        let mut panel = SelectionPanel {
+            new_tangent: Some(true),
+            ..SelectionPanel::default()
+        };
+        // Chosen while a set of STEP edges was loaded, then the selection
+        // became triangles: the new set takes no tangent choice.
+        panel.working = tri(&[1]);
+        assert_eq!(panel.new_set_tangent(), None);
+        panel.working = SelectionTarget::Edges([openchuck_app::pick::EdgeId(4)].into());
+        assert_eq!(panel.new_set_tangent(), Some(true));
+    }
+
     #[test]
     fn req_ui_04_keys_choose_how_a_click_joins_the_selection() {
         assert_eq!(Combine::of(Modifiers::NONE), Combine::Replace);
         assert_eq!(Combine::of(Modifiers::SHIFT), Combine::Add);
         assert_eq!(Combine::of(Modifiers::COMMAND), Combine::Remove);
-        let mut current = set(&[1, 2]);
-        Combine::Add.apply(&mut current, set(&[2, 3]));
-        assert_eq!(current, set(&[1, 2, 3]));
-        Combine::Remove.apply(&mut current, set(&[1, 9]));
-        assert_eq!(current, set(&[2, 3]));
-        Combine::Replace.apply(&mut current, set(&[7]));
-        assert_eq!(current, set(&[7]));
+        let mut current = tri(&[1, 2]);
+        Combine::Add.apply(&mut current, tri(&[2, 3]));
+        assert_eq!(current, tri(&[1, 2, 3]));
+        Combine::Remove.apply(&mut current, tri(&[1, 9]));
+        assert_eq!(current, tri(&[2, 3]));
+        Combine::Replace.apply(&mut current, tri(&[7]));
+        assert_eq!(current, tri(&[7]));
+        // A selection holds one kind: adding or taking faces from triangles
+        // changes nothing, and replacing starts again with the faces. An
+        // empty selection takes either kind.
+        let faces = SelectionTarget::Faces([openchuck_app::pick::FaceId(3)].into());
+        Combine::Remove.apply(&mut current, faces.clone());
+        assert_eq!(current, tri(&[7]));
+        Combine::Add.apply(&mut current, faces.clone());
+        assert_eq!(current, tri(&[7]));
+        Combine::Replace.apply(&mut current, faces.clone());
+        assert_eq!(current, faces);
+        let mut empty = tri(&[]);
+        Combine::Add.apply(&mut empty, faces.clone());
+        assert_eq!(empty, faces);
     }
 
     #[test]
@@ -1092,7 +1645,8 @@ mod tests {
         let view = app.start_scene(None).wait().unwrap();
         let mut panel = SelectionPanel::default();
         panel.join(model, Combine::Replace, set(&[0, 1]), None);
-        panel.hover = Some(ScenePick {
+        panel.hover = Some(Hover::Surface(ScenePick {
+            face: None,
             mesh: view
                 .meshes
                 .iter()
@@ -1103,7 +1657,7 @@ mod tests {
             distance: 1.0,
             point: openchuck_app::setup::Point3::new(0.0, 0.0, 0.0),
             normal: None,
-        });
+        }));
         let scene = panel.overlay(&app, &view).unwrap();
         // One blue translucent fill of the two working triangles ...
         assert_eq!(scene.meshes.len(), 1);
@@ -1127,9 +1681,9 @@ mod tests {
         let (a, b) = (ModelId::new(), ModelId::new());
         panel.join(a, Combine::Replace, set(&[1, 2]), None);
         panel.join(a, Combine::Add, set(&[3]), None);
-        assert_eq!(panel.working, set(&[1, 2, 3]));
+        assert_eq!(panel.working, tri(&[1, 2, 3]));
         panel.join(b, Combine::Add, set(&[9]), None);
-        assert_eq!(panel.working, set(&[9]));
+        assert_eq!(panel.working, tri(&[9]));
         assert_eq!(panel.working_model, Some(b));
         // Taking away everything leaves no model.
         panel.join(b, Combine::Remove, set(&[9]), None);
@@ -1211,7 +1765,7 @@ mod tests {
         panel.scene_changed();
         assert!(panel.pending.is_none());
         // The next frame applies nothing from the old scene.
-        assert!(!panel.frame(&app, PickInput::default()));
+        assert!(!panel.frame(&app, &SceneView::default(), PickInput::default()));
         assert!(panel.working.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1242,6 +1796,7 @@ mod tests {
             ..SelectionPanel::default()
         };
         let pick = ScenePick {
+            face: None,
             mesh: 0,
             model: Some(model),
             triangle: 5,
@@ -1249,10 +1804,10 @@ mod tests {
             point: Point3::new(0.0, 0.0, 0.0),
             normal: None,
         };
-        panel.click(&app, &pick, Combine::Replace);
+        panel.click(&app, &SceneView::default(), &pick, Combine::Replace);
         // The newer click stands alone; the older job cannot overwrite it.
         assert!(panel.pending.is_none());
-        assert_eq!(panel.working, set(&[5]));
+        assert_eq!(panel.working, tri(&[5]));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1285,7 +1840,7 @@ mod tests {
         assert!(hash.is_some());
         panel.join(model, Combine::Replace, set(&[1, 2]), hash);
         panel.drop_stale_working(&app);
-        assert_eq!(panel.working, set(&[1, 2]));
+        assert_eq!(panel.working, tri(&[1, 2]));
 
         // A new placement does not change the file, and keeps the selection.
         app.execute(Command::SetModelTransform {
@@ -1294,12 +1849,12 @@ mod tests {
         })
         .unwrap();
         panel.drop_stale_working(&app);
-        assert_eq!(panel.working, set(&[1, 2]));
+        assert_eq!(panel.working, tri(&[1, 2]));
         assert_eq!(panel.working_model, Some(model));
         // So does undoing it.
         assert!(app.undo().unwrap());
         panel.drop_stale_working(&app);
-        assert_eq!(panel.working, set(&[1, 2]));
+        assert_eq!(panel.working, tri(&[1, 2]));
 
         // Accepting a changed file drops it, and says why.
         let mut edited = app.project().models()[0].clone();
@@ -1320,13 +1875,263 @@ mod tests {
         assert_ne!(new_hash, hash);
         panel.join(model, Combine::Replace, set(&[7]), new_hash);
         panel.drop_stale_working(&app);
-        assert_eq!(panel.working, set(&[7]));
+        assert_eq!(panel.working, tri(&[7]));
 
         // A model that is no longer in the project drops it too.
         let gone = ModelId::new();
         panel.join(gone, Combine::Replace, set(&[3]), Some(new_hash.unwrap()));
         panel.drop_stale_working(&app);
         assert!(panel.working.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_a_hovered_face_is_outlined_by_its_edges_and_chosen_faces_are_filled() {
+        use openchuck_app::pick::{EdgeId, FaceId};
+        use openchuck_app::scene::{Mesh, SceneBrep, SceneEdge};
+        use openchuck_app::setup::Point3;
+        // Two faces of one triangle each, side by side, with three edges:
+        // face 0's outer edge, the edge between them, face 1's outer edge.
+        let p = |x: f64, y: f64| Point3::new(x, y, 0.0);
+        let edge = |id: u32, faces: &[u32], points: Vec<Point3>| SceneEdge {
+            id: EdgeId(id),
+            faces: faces.iter().map(|f| FaceId(*f)).collect(),
+            turn: None,
+            points,
+        };
+        let model = ModelId::new();
+        let view = SceneView {
+            meshes: vec![SceneMesh {
+                role: SceneRole::Part,
+                model: Some(model),
+                mesh: Mesh {
+                    vertices: vec![p(0.0, 0.0), p(1.0, 0.0), p(1.0, 1.0), p(2.0, 0.0)],
+                    triangles: vec![[0, 1, 2], [1, 3, 2]],
+                },
+                feature_edges: Vec::new(),
+                brep: Some(SceneBrep {
+                    faces: vec![FaceId(0), FaceId(1)],
+                    edges: vec![
+                        edge(0, &[0], vec![p(1.0, 1.0), p(0.0, 0.0), p(1.0, 0.0)]),
+                        edge(1, &[0, 1], vec![p(1.0, 0.0), p(1.0, 1.0)]),
+                        edge(2, &[1], vec![p(1.0, 0.0), p(2.0, 0.0), p(1.0, 1.0)]),
+                    ],
+                }),
+            }],
+            ..SceneView::default()
+        };
+        let (dir, app, _) = cube_project("face-overlay");
+        let mut panel = SelectionPanel::default();
+        panel.join(
+            model,
+            Combine::Replace,
+            std::collections::BTreeSet::from([FaceId(1)]),
+            None,
+        );
+        panel.hover = Some(Hover::Surface(ScenePick {
+            mesh: 0,
+            model: Some(model),
+            triangle: 0,
+            face: Some(FaceId(0)),
+            distance: 1.0,
+            point: p(0.5, 0.2),
+            normal: None,
+        }));
+        let scene = panel.overlay(&app, &view).unwrap();
+        // Face 1 filled blue: its one triangle.
+        assert_eq!(scene.meshes.len(), 1);
+        assert_eq!(overlay_triangles(&scene), 1);
+        assert_eq!(scene.meshes[0].colour, WORKING);
+        // Face 0 outlined in yellow by its two edges, not by its triangle.
+        assert_eq!(scene.lines.len(), 2);
+        assert!(scene.lines.iter().all(|l| l.colour == HOVER));
+        assert_eq!(scene.lines[0].segments.len(), 4);
+        assert_eq!(scene.lines[1].segments.len(), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_a_clicked_edge_chain_is_drawn_over_the_part() {
+        use openchuck_app::Command;
+        use openchuck_app::model::TransformStep;
+        use openchuck_app::pick::PickTolerance;
+        let (dir, mut app, model) = cube_project("edge-overlay");
+        app.execute(Command::SetModelTransform {
+            model,
+            transform: vec![TransformStep::CentreOnRotaryAxis],
+        })
+        .unwrap();
+        let view = app.start_scene(None).wait().unwrap();
+        let reach = PickTolerance {
+            base: 0.3,
+            per_distance: 0.0,
+        };
+        // The top front edge of the cube (y = -5, z = 5).
+        let pick = view
+            .picking
+            .picker()
+            .unwrap()
+            .pick_edge([5.0, -4.9, 40.0], [0.0, 0.0, -1.0], reach)
+            .unwrap()
+            .unwrap();
+        // No switch is needed: by default an edge near the pointer is picked.
+        let mut panel = SelectionPanel {
+            choice: Choice::Connected,
+            ..SelectionPanel::default()
+        };
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        let input = PickInput {
+            edge_hover: Some(pick),
+            edge_click: Some((pick, Modifiers::NONE)),
+            ..PickInput::default()
+        };
+        assert!(!panel.frame(&app, &view, input));
+        // A cube's corners join three edges: the chain is the edge alone.
+        assert!(matches!(&panel.working, SelectionTarget::MeshEdges(e) if e.len() == 1));
+        assert_eq!(panel.working_model, Some(model));
+        let scene = panel.overlay(&app, &view).unwrap();
+        // The selected edge in blue and the hovered one in yellow, both over
+        // the part, and nothing filled.
+        assert!(scene.meshes.is_empty());
+        assert_eq!(scene.lines.len(), 2);
+        assert_eq!(
+            scene.lines[0].colour,
+            [WORKING[0], WORKING[1], WORKING[2], 1.0]
+        );
+        assert_eq!(scene.lines[1].colour, HOVER);
+        assert!(scene.lines.iter().all(|l| l.on_top && l.slot == Slot::Part));
+        // A surface clicked with Shift is not added to the edges: the click
+        // is refused, saying why and the way out, and the edges stay.
+        let surface = view
+            .picking
+            .picker()
+            .unwrap()
+            .pick([3.0, 1.0, 40.0], [0.0, 0.0, -1.0])
+            .unwrap()
+            .unwrap();
+        panel.choice = Choice::Triangle;
+        let before = panel.working.clone();
+        panel.click(&app, &view, &surface, Combine::Add);
+        assert_eq!(panel.working, before);
+        let message = panel.message.clone().unwrap();
+        assert!(message.contains("holds edges"), "{message}");
+        assert!(message.contains("Choose Edges"), "{message}");
+        assert!(message.contains("start a new selection"), "{message}");
+        // Ctrl is refused the same way; a plain click starts a new selection.
+        panel.click(&app, &view, &surface, Combine::Remove);
+        assert_eq!(panel.working, before);
+        // A plain click of the other kind warns first: nothing changes until
+        // the user answers, and Cancel keeps the edges.
+        panel.click(&app, &view, &surface, Combine::Replace);
+        assert_eq!(panel.working, before);
+        let warning = reset_warning(&panel.working, &panel.reset.as_ref().unwrap().picked);
+        assert!(warning.contains("picks a triangle"), "{warning}");
+        assert!(warning.contains("clears the 1 edges"), "{warning}");
+        assert!(panel.answer_reset(&mut app, false).is_none());
+        assert_eq!(panel.working, before);
+        assert!(panel.reset.is_none());
+        // Starting a new selection with "Don't show me this warning again"
+        // ticked resets it and stores the choice in the project, undoably.
+        panel.click(&app, &view, &surface, Combine::Replace);
+        panel.dont_warn = true;
+        assert!(panel.answer_reset(&mut app, true).is_none());
+        assert_eq!(panel.working, tri(&[surface.triangle]));
+        assert!(panel.message.is_none());
+        assert!(!app.project().warn_on_selection_reset());
+        // With the warning off, a plain click of the other kind resets
+        // silently.
+        panel.click_edge(&app, &view, &pick, Combine::Replace);
+        assert!(panel.reset.is_none());
+        assert!(matches!(&panel.working, SelectionTarget::MeshEdges(_)));
+        // Undo turns the warning on again: the next one asks.
+        app.undo().unwrap();
+        assert!(app.project().warn_on_selection_reset());
+        panel.click(&app, &view, &surface, Combine::Replace);
+        assert!(panel.reset.is_some());
+        assert!(panel.answer_reset(&mut app, true).is_none());
+        assert!(app.project().warn_on_selection_reset());
+        assert_eq!(panel.working, tri(&[surface.triangle]));
+        // And an edge clicked with Shift is refused on the triangles.
+        panel.click_edge(&app, &view, &pick, Combine::Add);
+        assert_eq!(panel.working, tri(&[surface.triangle]));
+        assert!(panel.message.as_deref().unwrap().contains("Choose Faces"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_op_08_req_ui_05_the_tangent_edge_choice_reads_inherit_keep_or_drop() {
+        use openchuck_app::Command;
+        use openchuck_app::pick::EdgeId;
+        use openchuck_app::project::{Item, ModelRef, Placement, RelativePath, SelectionSet};
+        assert_eq!(tangent_label(None, false), "Project default (drop)");
+        assert_eq!(tangent_label(None, true), "Project default (keep)");
+        assert_eq!(tangent_label(Some(true), false), "Keep tangent edges");
+        assert_eq!(tangent_label(Some(false), true), "Drop tangent edges");
+
+        // A project with a STEP model and a set of its edges: the panel shows
+        // the set with its choice, and the project's default, without error.
+        let (dir, mut app, _) = cube_project("tangent-choice");
+        let step = ModelRef::new(
+            ModelId::new(),
+            RelativePath::new("models/part.step").unwrap(),
+            ContentHash::of_bytes(b"part"),
+        );
+        let model = step.id;
+        app.execute(Command::Add {
+            item: Item::Model(step),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let id = SelectionSetId::new();
+        app.execute(Command::Add {
+            item: Item::SelectionSet(SelectionSet {
+                id,
+                order: Default::default(),
+                name: "Outline".into(),
+                model,
+                model_hash: ContentHash::of_bytes(b"part"),
+                target: SelectionTarget::Edges([EdgeId(3)].into()),
+                descriptors: Vec::new(),
+                stock_to_leave: None,
+                colour: None,
+                keep_tangent_edges: Some(true),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let mut panel = SelectionPanel::default();
+        panel.show_set(Some(id));
+        panel.working = SelectionTarget::Edges([EdgeId(5)].into());
+        panel.working_model = Some(model);
+        let ctx = egui::Context::default();
+        let summaries = app.selection_summaries(&[]);
+        assert_eq!(summaries.iter().find(|s| s.id == id).unwrap().kind, "edges");
+        let mut error = Some("not drawn".to_owned());
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            error = panel.show(ui, &mut app, &summaries, &SceneView::default());
+        });
+        output.textures_delta.clear();
+        assert_eq!(error, None);
+        // The set's own choice stands when the project's default changes.
+        app.execute(Command::SetKeepTangentEdges(true)).unwrap();
+        let set = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .clone();
+        assert_eq!(set.keep_tangent_edges, Some(true));
+        app.edit_selection(id, SelectionEdit::KeepTangentEdges(None))
+            .unwrap();
+        let set = app
+            .project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .clone();
+        assert!(app.project().keeps_tangent_edges(&set));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

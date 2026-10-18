@@ -249,25 +249,23 @@ jobs:
     if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
-    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
-    # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
-    # yet proven on hosted runners, so they report without blocking until
-    # their first runs are recorded under OI-129.
+    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb. Windows (WARP) and
+    # macOS (the runner's Metal device) are proven on hosted runners (OI-129), so
+    # all three legs block: a failed leg fails this job and so `CI required checks`
+    # (owner's decision, 17 Oct 2026, OI-320). Every leg must find an adapter: the
+    # render tests skip their assertions without one unless OPENCHUCK_REQUIRE_ADAPTER
+    # is set, and a blocking leg must not pass by skipping.
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             require_adapter: "1"
-            blocking: true
           - os: windows-latest
-            require_adapter: ""
-            blocking: false
+            require_adapter: "1"
           - os: macos-latest
-            require_adapter: ""
-            blocking: false
+            require_adapter: "1"
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ !matrix.blocking }}
     timeout-minutes: 30
     env:
       OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
@@ -357,10 +355,11 @@ jobs:
       - name: B-rep edge chains of the STEP corpus
         run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
       # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
-      # the `drilling` reference job against its golden files on every platform (OI-28), and every
-      # strategy on corpus STEP parts against the exact B-rep.
+      # the `drilling` reference job against its golden files on every platform (OI-28), every
+      # strategy on corpus STEP parts against the exact B-rep, and a STEP part's faces and edges
+      # picked, saved and the same after reopening and a second import (decision 0066).
       - name: STEP parts through the application
-        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
@@ -533,9 +532,10 @@ jobs:
           fi
           echo "Every check that was due ran and passed."
 
-  # Nine targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three
-  # that share a toolchain install, a cargo-fuzz install and a build cache, instead of nine jobs
-  # that each set up and build from scratch (decision 0052, Option 7). Every target still gets its
+  # Ten targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three or
+  # four that share a toolchain install, a cargo-fuzz install and a build cache, instead of ten jobs
+  # that each set up and build from scratch (decision 0052, Option 7; `project_folder` joined group
+  # A in decision 0107). Every target still gets its
   # own minute and its own seeded corpus; a failing target is named in the annotation and does not
   # stop the others in its job from running.
   fuzz-smoke:
@@ -548,7 +548,7 @@ jobs:
       matrix:
         group:
           - name: A
-            targets: machine_profile_json machine_profile_toml toolpath_ir_json
+            targets: machine_profile_json machine_profile_toml toolpath_ir_json project_folder
           - name: B
             targets: project_files stl_import tool_library_toml
           - name: C
@@ -585,6 +585,26 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the project file corpus from the fixtures
+        if: contains(format(' {0} ', matrix.group.targets), ' project_files ')
+        run: |
+          mkdir -p fuzz/corpus/project_files
+          # The first byte picks the kind of file, as in the target: 0 project, 1 machine, 2 setup,
+          # 3 tool, 4 selection set, 5 operation.
+          find crates/openchuck-project/tests/fixtures -name '*.toml' | sort | while read -r f; do
+            case "$f" in
+              */project.toml) k='\x00' ;; */machine.toml) k='\x01' ;; */setups/*) k='\x02' ;;
+              */tools/*) k='\x03' ;; */selections/*) k='\x04' ;; */operations/*) k='\x05' ;; *) continue ;;
+            esac
+            { printf "$k"; cat "$f"; } > "fuzz/corpus/project_files/$(echo "$f" | tr '/' '_')"
+          done
+      - name: Seed the project folder corpus from the fixtures
+        if: contains(format(' {0} ', matrix.group.targets), ' project_folder ')
+        run: |
+          mkdir -p fuzz/corpus/project_folder
+          for d in crates/openchuck-project/tests/fixtures/*/; do
+            (cd "$d" && find . -name '*.toml' | sort | while read -r f; do printf '=== %s\n' "${f#./}"; cat "$f"; done) > "fuzz/corpus/project_folder/$(basename "$d")"
+          done
       - name: Fuzz each target for one minute
         shell: bash
         env:
@@ -594,7 +614,7 @@ jobs:
           for target in $TARGETS; do
             echo "::group::Fuzz $target"
             set +e
-            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 > "fuzz-$target.log" 2>&1
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 -timeout=10 > "fuzz-$target.log" 2>&1
             code=$?
             set -e
             cat "fuzz-$target.log"

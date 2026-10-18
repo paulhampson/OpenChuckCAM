@@ -17,8 +17,8 @@ use openchuck_path::curves::feature_chains;
 use openchuck_path::edge_following::parameter as p;
 use openchuck_path::params::names;
 use openchuck_path::{
-    CurveSource, EdgeChain, EdgeFollowing, MeshFeatureEdges, MeshSurface, ParameterValue, Pass,
-    PathError, Registry, Strategy, SurfaceSource, generate,
+    ChosenSegments, CurveSource, EdgeChain, EdgeFollowing, MeshFeatureEdges, MeshSurface,
+    ParameterValue, Pass, PathError, Registry, Strategy, SurfaceSource, generate,
 };
 use openchuck_testkit::parts::revolve;
 use openchuck_types::geometry::Point3;
@@ -742,4 +742,49 @@ fn req_op_08_a_custom_source_with_no_chains_does_not_blame_the_crease_angle() {
         .to_string();
     assert!(e.contains("no edge to follow"), "{e}");
     assert!(!e.contains("crease_angle"), "{e}");
+}
+
+/// The segments of one end circle of `cylinder()`'s mesh (its first chain),
+/// in an order that is not the chain's.
+fn rim_segments(f: &Fixture) -> Vec<[Point3; 2]> {
+    let chains = feature_chains(f.surface.tessellation(), 30.0);
+    let rim = &chains[0];
+    let mut segments: Vec<[Point3; 2]> = rim.points.windows(2).map(|w| [w[1], w[0]]).collect();
+    segments.reverse();
+    segments.rotate_left(17);
+    segments
+}
+
+#[test]
+fn req_op_08_chosen_mesh_edges_are_chained_and_cut_at_constant_depth() {
+    let f = cylinder();
+    let segments = rim_segments(&f);
+    // The whole rim, given segment by segment out of order, is one closed chain.
+    let rim = ChosenSegments::new(segments.clone()).unwrap();
+    let chains = rim.chains(&f.surface).unwrap();
+    assert_eq!(chains.len(), 1, "{chains:?}");
+    assert!(chains[0].closed);
+    assert_eq!(chains[0].points.len(), 181);
+
+    // Part of it is one open chain, and only it is cut, at the depth asked for.
+    let part: Vec<[Point3; 2]> = segments.iter().take(40).copied().collect();
+    let chosen = EdgeFollowing::with_source(ChosenSegments::new(part).unwrap().shared());
+    let depth = 0.3;
+    let out = passes(&f, &chosen, &values(&[(p::DEPTH, num(depth))]));
+    assert_eq!(out.len(), 1, "one pass along the chosen edges");
+    for c in &out[0].points {
+        let r = radius(c.tip);
+        assert!((r - (RADIUS - depth)).abs() <= 0.01, "tip at radius {r}");
+        assert!(c.tip.x.abs() < 1e-9 || (c.tip.x - LENGTH).abs() < 1e-9);
+    }
+
+    // The shortest chain drops it; a segment of no length or a point that is
+    // not finite is refused.
+    let short = ChosenSegments::new(segments.iter().take(2).copied().collect())
+        .unwrap()
+        .with_min_length(5.0);
+    assert!(short.chains(&f.surface).unwrap().is_empty());
+    let p0 = Point3::new(0.0, RADIUS, 0.0);
+    assert!(ChosenSegments::new(vec![[p0, p0]]).is_err());
+    assert!(ChosenSegments::new(vec![[p0, Point3::new(f64::NAN, 0.0, 0.0)]]).is_err());
 }

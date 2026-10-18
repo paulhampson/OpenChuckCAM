@@ -127,6 +127,57 @@ impl MeshReport {
     }
 }
 
+/// `mesh` with each triangle's corners moved to the first vertex, in vertex
+/// order, that lies within `tolerance` millimetres of them. The vertex list
+/// and the triangle order are kept, so every index still names the same
+/// vertex and triangle of `mesh`. A STEP model's faces are tessellated one by
+/// one, so where two faces meet, and along a face's own seam, their corners
+/// differ by rounding; joined, the mesh checks see the part's real holes and
+/// shells (decision record 0056).
+pub fn weld_vertices(mesh: &TriangleMesh, tolerance: f64) -> TriangleMesh {
+    let cell = |p: Point3| -> [i64; 3] {
+        #[allow(clippy::cast_possible_truncation)]
+        let q = |v: f64| (v / tolerance).floor() as i64;
+        [q(p.x), q(p.y), q(p.z)]
+    };
+    let mut cells: BTreeMap<[i64; 3], Vec<u32>> = BTreeMap::new();
+    let mut representative: Vec<u32> = Vec::with_capacity(mesh.vertices.len());
+    for (index, &p) in mesh.vertices.iter().enumerate() {
+        let index = u32::try_from(index).unwrap_or(u32::MAX);
+        let c = cell(p);
+        let mut found = None;
+        'search: for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let key = [c[0] + dx, c[1] + dy, c[2] + dz];
+                    for &i in cells.get(&key).map_or(&[][..], Vec::as_slice) {
+                        if mesh
+                            .vertices
+                            .get(i as usize)
+                            .is_some_and(|q| (*q - p).length() <= tolerance)
+                        {
+                            found = Some(i);
+                            break 'search;
+                        }
+                    }
+                }
+            }
+        }
+        representative.push(found.unwrap_or_else(|| {
+            cells.entry(c).or_default().push(index);
+            index
+        }));
+    }
+    TriangleMesh {
+        vertices: mesh.vertices.clone(),
+        triangles: mesh
+            .triangles
+            .iter()
+            .map(|t| t.map(|i| representative.get(i as usize).copied().unwrap_or(i)))
+            .collect(),
+    }
+}
+
 /// Checks `mesh` (IMP-04). `stated_normals`, when given, holds one normal per
 /// triangle as the file states it; a zero or non-finite stated normal is
 /// ignored. Fails only if the mesh refers to a missing vertex.

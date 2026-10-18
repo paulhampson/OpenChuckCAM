@@ -120,19 +120,16 @@ pub fn compare_cancellable(
         }
     }
     context.check_cancelled()?;
-    let samples = surface_samples(target, options.spacing);
+    let mut points = surface_samples(target, options.spacing, context)?;
     context.check_cancelled()?;
-    let chunks: Vec<Vec<DeviationPoint>> = samples
-        .par_chunks(CHUNK)
-        .map(|chunk| {
-            context.check_cancelled()?;
-            Ok(chunk
-                .iter()
-                .map(|&(p, n)| measure(stock, p, n, options))
-                .collect::<Vec<_>>())
-        })
-        .collect::<Result<_>>()?;
-    let points: Vec<DeviationPoint> = chunks.into_iter().flatten().collect();
+    // Measured in place, in fixed chunks, so each sample is held once.
+    points.par_chunks_mut(CHUNK).try_for_each(|chunk| {
+        context.check_cancelled()?;
+        for d in chunk {
+            *d = measure(stock, d.point, d.normal, options);
+        }
+        Ok::<(), Error>(())
+    })?;
     let mut worst_remaining: Option<DeviationPoint> = None;
     let mut worst_overcut: Option<DeviationPoint> = None;
     for p in &points {
@@ -261,7 +258,7 @@ impl Deviation {
 /// (a degenerate one). `deviation` must be the comparison of `mesh` made with
 /// samples no further apart than `spacing` ([`DeviationOptions::spacing`]),
 /// since the samples are in triangle order and a triangle's share follows
-/// from its size. Fails if the counts do not add up.
+/// from its shape. Fails if the counts do not add up.
 pub fn triangle_values(
     deviation: &Deviation,
     mesh: &TriangleMesh,
@@ -270,11 +267,11 @@ pub fn triangle_values(
     let mut out = Vec::with_capacity(mesh.triangles.len());
     let mut next = 0usize;
     for t in 0..mesh.triangles.len() {
-        let Some((_, n, _)) = triangle_subdivision(mesh, t, spacing) else {
+        let count = triangle_sample_count(mesh, t, spacing, usize::MAX);
+        if count == 0 {
             out.push(None);
             continue;
-        };
-        let count = n * n;
+        }
         let samples = deviation.points.get(next..next + count).ok_or_else(|| {
             Error::invalid(
                 "deviation",
@@ -302,52 +299,280 @@ pub fn triangle_values(
     Ok(out)
 }
 
-/// The unit normal and the subdivision count `n` of triangle `t` (samples are
-/// the centroids of an n x n subdivision), with its corners; `None` for a
-/// triangle that is degenerate or refers to a missing vertex.
-fn triangle_subdivision(
-    mesh: &TriangleMesh,
-    t: usize,
-    spacing: f64,
-) -> Option<(Vec3, usize, [Point3; 3])> {
+/// The unit normal and corners of triangle `t`; `None` for a triangle that
+/// is degenerate or refers to a missing vertex.
+fn triangle_frame(mesh: &TriangleMesh, t: usize) -> Option<(Vec3, [Point3; 3])> {
     let [a, b, c] = mesh.triangle(t)?;
-    let (ab, ac) = (b - a, c - a);
-    let cross = ab.cross(ac);
+    let cross = (b - a).cross(c - a);
     let area2 = cross.length();
     if area2.is_nan() || area2 <= 1e-18 {
         return None;
     }
-    let normal = cross * (1.0 / area2);
-    let longest = ab.length().max(ac.length()).max((c - b).length());
-    let n = ((longest / spacing).ceil() as usize).clamp(1, 4096);
-    Some((normal, n, [a, b, c]))
+    Some((cross * (1.0 / area2), [a, b, c]))
 }
 
-/// Points on each triangle no further apart than `spacing`: the centroids of
-/// an n x n subdivision, with the triangle's unit normal. Degenerate
-/// triangles give none.
-fn surface_samples(mesh: &TriangleMesh, spacing: f64) -> Vec<(Point3, Vec3)> {
-    let mut out = Vec::new();
-    for t in 0..mesh.triangles.len() {
-        let Some((normal, n, [a, b, c])) = triangle_subdivision(mesh, t, spacing) else {
-            continue;
-        };
-        let (ab, ac) = (b - a, c - a);
-        let step = 1.0 / n as f64;
-        for i in 0..n {
-            for j in 0..n - i {
-                // Upright sub-triangle (i, j), (i+1, j), (i, j+1).
-                let (u, v) = ((i as f64 + 1.0 / 3.0) * step, (j as f64 + 1.0 / 3.0) * step);
-                out.push((a + ab * u + ac * v, normal));
-                // Inverted sub-triangle (i+1, j), (i, j+1), (i+1, j+1).
-                if i + j + 1 < n {
-                    let (u, v) = ((i as f64 + 2.0 / 3.0) * step, (j as f64 + 2.0 / 3.0) * step);
-                    out.push((a + ab * u + ac * v, normal));
+/// A triangle's longest edge over its height beyond which it is sampled on a
+/// lattice rather than subdivided n x n (the faces of a cube, at 2, are not).
+const THIN: f64 = 4.0;
+
+/// Where a triangle's samples go.
+///
+/// A well-shaped triangle is subdivided n x n so that no sub-triangle is
+/// longer than the spacing, and sampled at the centroids (decision record
+/// 0025 item 6). That gives n² samples whatever the area, so a long thin
+/// triangle (an axial strip of a turned part, a blade of a blisk) once had
+/// the square of its length in cells: 74 million samples for the owner's
+/// blisk at 0.1 mm (OI-317). A triangle whose longest edge is more than
+/// [`THIN`] times its height is sampled instead on a square lattice of pitch
+/// `spacing` in its plane, plus points along each edge no further apart than
+/// the spacing: a point further than `spacing / √2` from every edge has a
+/// lattice point within that distance, and one nearer an edge has an edge
+/// point within `spacing √3 / 2`, so every point is within the spacing of a
+/// sample. The count follows the area plus the perimeter in cells.
+enum Plan {
+    /// The n x n subdivision from corner `a` along `ab` and `ac`.
+    Grid {
+        a: Point3,
+        ab: Vec3,
+        ac: Vec3,
+        n: usize,
+    },
+    /// The lattice in the frame `o`, `u` (along the longest edge), `v`, with
+    /// the corners in that frame, and the edges.
+    Lattice {
+        o: Point3,
+        u: Vec3,
+        v: Vec3,
+        flat: [[f64; 2]; 3],
+        corners: [Point3; 3],
+        pitch: f64,
+    },
+}
+
+impl Plan {
+    fn new([a, b, c]: [Point3; 3], spacing: f64) -> Self {
+        // The longest edge, the first of equals, as (start, end, length).
+        let (o, q, longest) = cycle([a, b, c])
+            .map(|(p, q)| (p, q, (q - p).length()))
+            .into_iter()
+            .fold((a, b, f64::NEG_INFINITY), |best, e| {
+                if e.2 > best.2 { e } else { best }
+            });
+        let height = (b - a).cross(c - a).length() / longest;
+        if longest <= THIN * height {
+            return Self::Grid {
+                a,
+                ab: b - a,
+                ac: c - a,
+                n: ((longest / spacing).ceil() as usize).max(1),
+            };
+        }
+        let u = (q - o) * (1.0 / longest);
+        let w = (b - a).cross(c - a);
+        let w = w * (1.0 / w.length());
+        let v = w.cross(u);
+        let flat = [a, b, c].map(|p| [(p - o).dot(u), (p - o).dot(v)]);
+        Self::Lattice {
+            o,
+            u,
+            v,
+            flat,
+            corners: [a, b, c],
+            pitch: spacing,
+        }
+    }
+
+    /// The lattice rows: their count, and for row `j` its height and the
+    /// range of lattice columns inside the triangle.
+    fn rows(&[f0, f1, f2]: &[[f64; 2]; 3], pitch: f64) -> (usize, f64, f64) {
+        let vmin = f0[1].min(f1[1]).min(f2[1]);
+        let vmax = f0[1].max(f1[1]).max(f2[1]);
+        let umin = f0[0].min(f1[0]).min(f2[0]);
+        let rows = ((vmax - vmin) / pitch - 0.5).ceil().max(0.0) as usize;
+        (rows, vmin, umin)
+    }
+
+    fn row(
+        flat: &[[f64; 2]; 3],
+        pitch: f64,
+        vmin: f64,
+        umin: f64,
+        j: usize,
+    ) -> (f64, usize, usize) {
+        let y = vmin + (j as f64 + 0.5) * pitch;
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for (p, q) in cycle(*flat) {
+            let dy = q[1] - p[1];
+            if (p[1] - y) * (q[1] - y) <= 0.0 && dy.abs() > 0.0 {
+                let x = p[0] + (y - p[1]) / dy * (q[0] - p[0]);
+                lo = lo.min(x);
+                hi = hi.max(x);
+            }
+        }
+        // Columns i with umin + (i + 0.5) pitch in [lo, hi].
+        let i0 = ((lo - umin) / pitch - 0.5).ceil().max(0.0);
+        let i1 = ((hi - umin) / pitch - 0.5).floor();
+        if i1 >= i0 {
+            (y, i0 as usize, i1 as usize + 1)
+        } else {
+            (y, 0, 0)
+        }
+    }
+
+    /// Points along each edge, `ceil(length / pitch)` to an edge.
+    fn edge_points(corners: &[Point3; 3], pitch: f64) -> [usize; 3] {
+        cycle(*corners).map(|(p, q)| (((q - p).length() / pitch).ceil() as usize).max(1))
+    }
+
+    /// How many samples, counting no further than just past `limit`.
+    fn count(&self, limit: usize) -> usize {
+        match self {
+            Self::Grid { n, .. } => n.saturating_mul(*n),
+            Self::Lattice {
+                flat,
+                corners,
+                pitch,
+                ..
+            } => {
+                let mut count = Self::edge_points(corners, *pitch)
+                    .iter()
+                    .fold(0usize, |s, k| s.saturating_add(*k));
+                let (rows, vmin, umin) = Self::rows(flat, *pitch);
+                for j in 0..rows {
+                    if count > limit {
+                        break;
+                    }
+                    let (_, i0, i1) = Self::row(flat, *pitch, vmin, umin, j);
+                    count = count.saturating_add(i1 - i0);
+                }
+                count
+            }
+        }
+    }
+
+    /// Gives each sample to `visit`, in a fixed order.
+    fn samples(&self, mut visit: impl FnMut(Point3)) {
+        match *self {
+            Self::Grid { a, ab, ac, n } => {
+                let step = 1.0 / n as f64;
+                for i in 0..n {
+                    for j in 0..n - i {
+                        // Upright sub-triangle (i, j), (i+1, j), (i, j+1).
+                        let (u, v) = ((i as f64 + 1.0 / 3.0) * step, (j as f64 + 1.0 / 3.0) * step);
+                        visit(a + ab * u + ac * v);
+                        // Inverted sub-triangle (i+1, j), (i, j+1), (i+1, j+1).
+                        if i + j + 1 < n {
+                            let (u, v) =
+                                ((i as f64 + 2.0 / 3.0) * step, (j as f64 + 2.0 / 3.0) * step);
+                            visit(a + ab * u + ac * v);
+                        }
+                    }
+                }
+            }
+            Self::Lattice {
+                o,
+                u,
+                v,
+                ref flat,
+                ref corners,
+                pitch,
+            } => {
+                let (rows, vmin, umin) = Self::rows(flat, pitch);
+                for j in 0..rows {
+                    let (y, i0, i1) = Self::row(flat, pitch, vmin, umin, j);
+                    for i in i0..i1 {
+                        let x = umin + (i as f64 + 0.5) * pitch;
+                        visit(o + u * x + v * y);
+                    }
+                }
+                let counts = Self::edge_points(corners, pitch);
+                for ((p, q), n) in cycle(*corners).into_iter().zip(counts) {
+                    for m in 0..n {
+                        visit(p + (q - p) * ((m as f64 + 0.5) / n as f64));
+                    }
                 }
             }
         }
     }
-    out
+}
+
+/// The edges of a triangle, in order: (a, b), (b, c), (c, a).
+fn cycle<T: Copy>([a, b, c]: [T; 3]) -> [(T, T); 3] {
+    [(a, b), (b, c), (c, a)]
+}
+
+/// How many samples triangle `t` has at `spacing` (zero for a degenerate
+/// one), counting no further than just past `limit`.
+fn triangle_sample_count(mesh: &TriangleMesh, t: usize, spacing: f64, limit: usize) -> usize {
+    triangle_frame(mesh, t).map_or(0, |(_, corners)| Plan::new(corners, spacing).count(limit))
+}
+
+/// The most surface samples a comparison may take, a guard against a cell
+/// far too fine for the part (each sample is held once, as its 64-byte
+/// result; the stock's grid has the same guard, [`MAX_COLUMNS`]). The
+/// owner's blisk, 10,550 mm² of surface, has 2.3 million at 0.1 mm.
+///
+/// [`MAX_COLUMNS`]: crate::MAX_COLUMNS
+pub const MAX_DEVIATION_SAMPLES: usize = 64_000_000;
+
+/// Points on each triangle no further apart than `spacing`, with the
+/// triangle's unit normal, as its [`Plan`] places them, in triangle order,
+/// to be measured. Degenerate triangles give none. Fails, before taking any,
+/// when there would be more than [`MAX_DEVIATION_SAMPLES`].
+fn surface_samples(
+    mesh: &TriangleMesh,
+    spacing: f64,
+    context: &JobContext<'_>,
+) -> Result<Vec<DeviationPoint>> {
+    let mut counts = Vec::with_capacity(mesh.triangles.len());
+    let mut total = 0usize;
+    for t in 0..mesh.triangles.len() {
+        let left = MAX_DEVIATION_SAMPLES.saturating_sub(total);
+        let count = triangle_sample_count(mesh, t, spacing, left);
+        total = total.saturating_add(count);
+        if total > MAX_DEVIATION_SAMPLES {
+            return Err(Error::invalid(
+                "simulation.cell",
+                format!(
+                    "comparing the stock with the part at {spacing} mm needs more than the \
+                     {MAX_DEVIATION_SAMPLES} surface samples supported; choose a coarser \
+                     resolution"
+                ),
+            ));
+        }
+        counts.push(count);
+    }
+    let blank = DeviationPoint {
+        point: Point3::new(0.0, 0.0, 0.0),
+        normal: Vec3::new(0.0, 0.0, 0.0),
+        value: 0.0,
+        at_least: false,
+    };
+    let mut points = vec![blank; total];
+    // Each triangle fills its own share, so the order is the triangles'.
+    let mut shares = Vec::with_capacity(counts.len());
+    let mut rest = points.as_mut_slice();
+    for (t, &count) in counts.iter().enumerate() {
+        let (share, tail) = rest.split_at_mut(count);
+        rest = tail;
+        if count > 0 {
+            shares.push((t, share));
+        }
+    }
+    shares.into_par_iter().try_for_each(|(t, share)| {
+        context.check_cancelled()?;
+        if let Some((normal, corners)) = triangle_frame(mesh, t) {
+            let mut slots = share.iter_mut();
+            Plan::new(corners, spacing).samples(|point| {
+                if let Some(slot) = slots.next() {
+                    slot.point = point;
+                    slot.normal = normal;
+                }
+            });
+        }
+        Ok::<(), Error>(())
+    })?;
+    Ok(points)
 }
 
 fn measure(stock: &DexelStock, p: Point3, n: Vec3, options: &DeviationOptions) -> DeviationPoint {
