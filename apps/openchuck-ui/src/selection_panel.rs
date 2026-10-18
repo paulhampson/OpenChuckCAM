@@ -398,6 +398,15 @@ impl SelectionPanel {
         self.filter
     }
 
+    /// The tangent-edge choice a new set takes: only a set of a STEP model's
+    /// edges holds one (decision record 0066 item 9).
+    fn new_set_tangent(&self) -> Option<bool> {
+        match self.working {
+            SelectionTarget::Edges(_) => self.new_tangent,
+            _ => None,
+        }
+    }
+
     /// Whether the tools are named for edges: only edges are picked, or the
     /// working selection holds edges.
     fn names_edges(&self) -> bool {
@@ -731,6 +740,7 @@ impl SelectionPanel {
         let pressed = |key: egui::Key| ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key));
         for key in [egui::Key::Q, egui::Key::W, egui::Key::E, egui::Key::R] {
             if pressed(key)
+                && !(self.filter == PickFilter::Edges && key == egui::Key::R)
                 && let Some(choice) = choice_for_key(key)
             {
                 self.choice = choice;
@@ -791,6 +801,12 @@ impl SelectionPanel {
                                     .clicked()
                                 {
                                     self.filter = filter;
+                                    // Same direction is not offered for edges.
+                                    if filter == PickFilter::Edges
+                                        && self.choice == Choice::Direction
+                                    {
+                                        self.choice = Choice::Triangle;
+                                    }
                                     self.message = None;
                                     self.hover = None;
                                     self.dirty = true;
@@ -920,9 +936,10 @@ impl SelectionPanel {
                 } else {
                     self.name.trim().to_owned()
                 };
+                let tangent = self.new_set_tangent();
                 let saved = app
                     .save_selection(&name, model, self.working.clone())
-                    .and_then(|id| match self.new_tangent {
+                    .and_then(|id| match tangent {
                         Some(keep) => app
                             .edit_selection(id, SelectionEdit::KeepTangentEdges(Some(keep)))
                             .map(|_| id),
@@ -933,6 +950,7 @@ impl SelectionPanel {
                         self.name.clear();
                         self.working = nothing();
                         self.working_model = None;
+                        self.new_tangent = None;
                         self.shown = Some(id);
                         self.dirty = true;
                     }
@@ -1509,6 +1527,20 @@ mod tests {
 
     fn tri(items: &[u32]) -> SelectionTarget {
         SelectionTarget::Triangles(set(items))
+    }
+
+    #[test]
+    fn req_op_08_req_ui_05_only_a_set_of_step_edges_takes_the_tangent_choice() {
+        let mut panel = SelectionPanel {
+            new_tangent: Some(true),
+            ..SelectionPanel::default()
+        };
+        // Chosen while a set of STEP edges was loaded, then the selection
+        // became triangles: the new set takes no tangent choice.
+        panel.working = tri(&[1]);
+        assert_eq!(panel.new_set_tangent(), None);
+        panel.working = SelectionTarget::Edges([openchuck_app::pick::EdgeId(4)].into());
+        assert_eq!(panel.new_set_tangent(), Some(true));
     }
 
     #[test]

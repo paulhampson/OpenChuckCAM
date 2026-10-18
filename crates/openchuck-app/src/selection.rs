@@ -658,6 +658,14 @@ pub(crate) fn mesh_edge_segments(
         if edges.is_empty() {
             return Err(fail(set, "it selects no edges".to_owned()));
         }
+        if set.stock_to_leave.is_some() {
+            return Err(fail(
+                set,
+                "a stock to leave per selection set is not used on followed edges (OP-11); \
+                 clear it on the set and set the operation's depth"
+                    .to_owned(),
+            ));
+        }
         for edge in edges {
             let ends = mesh
                 .triangles
@@ -690,6 +698,22 @@ pub(crate) fn mesh_edge_segments(
             set,
             "it selects triangles, and edge following follows the operation's selected edges; \
              take the triangle set out"
+                .to_owned(),
+        ));
+    }
+    // Chosen edges are followed as they are: a boundary, avoid or check set
+    // would not be honoured, so it is refused rather than dropped (OP-02).
+    if let Some(id) = operation
+        .boundary
+        .iter()
+        .chain(&operation.avoid)
+        .chain(&operation.check)
+        .next()
+    {
+        return Err(fail(
+            find(*id)?,
+            "edge following on chosen edges cannot yet honour a boundary, avoid or check set; \
+             take it out of the operation"
                 .to_owned(),
         ));
     }

@@ -1046,6 +1046,25 @@ fn req_op_08_req_prj_06_chosen_mesh_edges_survive_reopening_and_are_the_only_one
     });
     let e = app.regenerate().unwrap_err().to_string();
     assert!(e.contains("'Front edge'"), "{e}");
+    // Followed, it takes no boundary, avoid or check set of any kind, and no
+    // stock to leave: each would be dropped, so each is refused (OP-02).
+    let roof = top_face(&app, model);
+    let avoid = app.save_selection("Roof", model, roof).unwrap();
+    set_roles(&mut app, op, |o| {
+        o.selections = vec![id];
+        o.boundary = None;
+        o.avoid = vec![avoid];
+    });
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("'Roof'") && e.contains("avoid"), "{e}");
+    set_roles(&mut app, op, |o| o.avoid = Vec::new());
+    app.edit_selection(id, SelectionEdit::StockToLeave(Some(0.5)))
+        .unwrap();
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("'Front edge'") && e.contains("stock to leave"),
+        "{e}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
