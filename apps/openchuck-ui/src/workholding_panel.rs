@@ -35,7 +35,7 @@ pub struct WorkholdingPanel {
     /// What the last check of the setup said.
     findings: Vec<String>,
     message: Option<String>,
-    /// Set for one frame to focus a tab's first field.
+    /// Set for one frame to open the tab just added.
     focus_new_tab: bool,
 }
 
@@ -333,7 +333,7 @@ impl WorkholdingPanel {
                 ui.visuals().text_color()
             }))
             .id_salt(("tab", i))
-            .default_open(focus && i == last || marked)
+            .open((focus && i == last || marked).then_some(true))
             .show(ui, |ui| {
                 let mut action = None;
                 if tab_editor(ui, i, &mut tab, problem, setup.stock.as_ref()) {

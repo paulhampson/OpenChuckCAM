@@ -904,7 +904,19 @@ impl Shell {
                 Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
             }
         } else if edit_workholding {
-            self.workholding_panel = None;
+            // An unapplied draft of this setup stays (11.7); the view shows
+            // the setup the panel edits.
+            if self
+                .workholding_panel
+                .as_ref()
+                .is_none_or(|p| p.setup() != setup_of)
+            {
+                self.workholding_panel = None;
+            }
+            if self.setup != Some(setup_of) {
+                self.setup = Some(setup_of);
+                self.rebuild_scene(true);
+            }
             self.select(Selection::Setup(setup_of));
         }
     }
