@@ -168,6 +168,23 @@ impl BrepEdges {
         self.kept().map(|e| e.id).collect()
     }
 
+    /// The kept edges at the current crease angle, in ID order, each with
+    /// the sharpest turn between its two faces in degrees, or `None` for an
+    /// edge that is always real (a boundary, an edge of three or more faces,
+    /// or one whose normals could not be compared). The viewport draws these
+    /// and selects faces across them (slice 11 item 5; decision record 0066).
+    pub fn edge_turns(&self) -> Vec<(EdgeId, Option<f64>)> {
+        self.kept()
+            .map(|e| {
+                let turn = match e.kind {
+                    Kind::Real => None,
+                    Kind::Between(turn) => Some(turn),
+                };
+                (e.id, turn)
+            })
+            .collect()
+    }
+
     fn kept(&self) -> impl Iterator<Item = &EdgeData> {
         self.edges.iter().filter(|e| match e.kind {
             Kind::Real => true,
