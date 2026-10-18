@@ -28,6 +28,28 @@ pub fn fixed_str(v: f64, decimals: usize) -> String {
     }
 }
 
+/// The fewest significant figures a feed word is written with (decision
+/// record 0076): half a unit of the last of three is at most 0.5 % of the
+/// value, so rounding alone cannot take a move's time past gate 2's 1 %.
+pub const FEED_SIGNIFICANT_FIGURES: usize = 3;
+
+/// A feed as [`fixed_str`] writes it with at least `decimals` places, and
+/// more (up to 9) where the value would otherwise keep fewer than
+/// [`FEED_SIGNIFICANT_FIGURES`] significant figures: `4.237` at one decimal
+/// is `4.24`, `1200.04` stays `1200.0`. Only multiplication by a power of
+/// ten is used, so the text is the same on every platform (NFR-06).
+pub fn feed_str(v: f64, decimals: usize) -> String {
+    // Powers of ten by repeated multiplication, exact at these sizes: `powi`
+    // is not guaranteed the same everywhere.
+    let power = |n: usize| (0..n).fold(1.0_f64, |p, _| p * 10.0);
+    let least = power(FEED_SIGNIFICANT_FIGURES - 1);
+    let mut places = decimals.min(9);
+    while places < 9 && v.abs() * power(places) < least {
+        places += 1;
+    }
+    fixed_str(v, places)
+}
+
 fn number(v: &Value, what: &str) -> std::result::Result<f64, Error> {
     let x = f64::try_from(v.clone()).map_err(|_| {
         Error::new(
@@ -76,6 +98,12 @@ pub fn environment(steps: usize) -> Result<Environment<'static>> {
         "fixed",
         |v: Value, d: Value| -> std::result::Result<String, Error> {
             Ok(fixed_str(number(&v, "fixed")?, decimals(&d)?))
+        },
+    );
+    env.add_filter(
+        "feed",
+        |v: Value, d: Value| -> std::result::Result<String, Error> {
+            Ok(feed_str(number(&v, "feed")?, decimals(&d)?))
         },
     );
     env.add_filter(

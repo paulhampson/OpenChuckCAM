@@ -15,6 +15,8 @@
 //! - [`golden`]: plain-text golden-file comparison (NFR-08).
 //! - [`parts`]: procedurally generated analytic test parts and the
 //!   1M-triangle benchmark model (NFR-08, NFR-03).
+//! - [`brep`] and [`ruled`]: closed-form B-rep models for the drilling and
+//!   swarf tests (OP-10, OP-07).
 
 #![warn(missing_docs)]
 
@@ -25,3 +27,4 @@ pub mod gouge;
 pub mod oracle;
 pub mod parts;
 pub mod region;
+pub mod ruled;

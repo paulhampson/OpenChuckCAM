@@ -5,6 +5,8 @@ All notable changes to `openchuck-geom` are recorded here.
 ## Unreleased
 
 - Slice 11b (lane O, decision 0066): `pick::EdgePicker`, `PickTolerance` and `EdgeHit`: the polyline a ray passes nearest within a reach that may grow with distance, stopped at a surface hit (UI-04 for B-rep and mesh edges).
+- `transform::transform_brep` and `brep_placement`: a B-rep model placed by the same steps as a mesh, with exact frames, radii, UV parameters and outward normals kept under rotate, mirror, scale and move (IMP-05; decision 0056 item 1). New items only.
+- Version 0.9.0 with the library family (decision 0076).
 - Slice 10 (decision 0032): `select` module: flood fill, flood fill by angle, select by direction and `submesh` on triangles (UI-04).
 - `display::feature_edges` for the viewport's edge display (slice 8, decision 0029 item 4).
 - `part_extent`: bounds and largest radius about the rotary axis, for the setup checks (slice 3, decision 0011).

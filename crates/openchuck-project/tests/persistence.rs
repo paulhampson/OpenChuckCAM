@@ -201,6 +201,11 @@ fn order_of(p: &Project) -> Vec<u128> {
     p.operations().iter().map(|o| o.id.as_u128()).collect()
 }
 
+/// The first line of every file this build writes.
+fn current() -> String {
+    format!("schema = {}\n", file::SCHEMA)
+}
+
 #[test]
 fn req_prj_01_saving_twice_is_byte_identical() {
     let p = sample();
@@ -565,19 +570,19 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         (
             "unknown-field",
             op_file,
-            |t| t.replace("schema = 12\n", "schema = 12\nspeed = 3\n"),
+            |t| t.replace(&current(), &format!("{}speed = 3\n", current())),
             "unknown field",
         ),
         (
             "no-schema",
             op_file,
-            |t| t.replace("schema = 12\n", ""),
+            |t| t.replace(&current(), ""),
             "no schema version",
         ),
         (
             "newer",
             "project.toml",
-            |t| t.replace("schema = 12", "schema = 13"),
+            |t| t.replace(&current(), &format!("schema = {}\n", file::SCHEMA + 1)),
             "newer OpenChuckCAM",
         ),
         (
@@ -620,7 +625,7 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // A file not named by an ID, and a file named after another item.
     let dir = temp_dir("damaged-name");
     file::save(&sample(), &dir).unwrap();
-    std::fs::write(dir.join("operations/extra.toml"), "schema = 12\n").unwrap();
+    std::fs::write(dir.join("operations/extra.toml"), current()).unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(err.contains("not a operation ID"), "{err}");
     std::fs::remove_file(dir.join("operations/extra.toml")).unwrap();
@@ -731,14 +736,14 @@ fn req_prj_04_older_folder_migrates_to_the_current_schema() {
     let dir = temp_dir("schema-1-resave");
     file::save(&project, &dir).unwrap();
     for (path, text) in file::render(&project).unwrap() {
-        assert!(text.starts_with("schema = 12\n"), "{path}");
+        assert!(text.starts_with(&current()), "{path}");
         let old = std::fs::read_to_string(fixture.join(&path)).unwrap();
         let mut old: String = old
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect::<String>()
-            .replace("schema = 1\n", "schema = 12\n");
+            .replace("schema = 1\n", &current());
         if path.starts_with("setups/") {
             old.push_str("part_offset = 0.0\n\n[work_offset]\nregister = \"g54\"\nx = 0.0\n");
         }
@@ -968,7 +973,7 @@ fn req_op_11_nfr_07_bad_stock_to_leave_is_refused_and_schema_7_still_loads() {
     for (path, text) in file::render(&q).unwrap() {
         std::fs::write(
             old.join(&path),
-            text.replacen("schema = 12", "schema = 7", 1),
+            text.replacen(&current(), "schema = 7\n", 1),
         )
         .unwrap();
     }
@@ -1047,7 +1052,7 @@ fn req_prj_04_a_schema_10_project_loads_with_default_set_colours() {
     for (path, text) in file::render(&q).unwrap() {
         std::fs::write(
             old.join(&path),
-            text.replacen("schema = 12", "schema = 10", 1),
+            text.replacen(&current(), "schema = 10\n", 1),
         )
         .unwrap();
     }
@@ -1104,7 +1109,7 @@ fn req_prj_04_req_tl_04_centre_cutting_round_trips_and_older_files_load_without_
 
     // A schema 7 project loads, and its tool states nothing.
     let old = copy_tree_with(&base, "centre-schema7", |_, text| {
-        text.replace("schema = 12", "schema = 7")
+        text.replace(&current(), "schema = 7\n")
     });
     let loaded = file::load(&old).unwrap();
     assert_eq!(loaded.tools().first().unwrap().tool.centre_cutting, None);
@@ -1115,20 +1120,20 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
     let base_dir = temp_dir("centre-bad-base");
     file::save(&sample(), &base_dir).unwrap();
     let base = read_tree(&base_dir);
-    let add = |value: &'static str, schema: &'static str| {
+    let add = |value: &'static str, schema: String| {
         move |path: &str, text: &str| {
             if path == TOOL_FILE {
                 text.replace(
                     "flute_count = 2\n",
                     &format!("flute_count = 2\ncentre_cutting = {value}\n"),
                 )
-                .replace("schema = 12", schema)
+                .replace(&current(), &schema)
             } else {
                 text.to_owned()
             }
         }
     };
-    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", "schema = 12"));
+    let bad = copy_tree_with(&base, "centre-yes", add("\"yes\"", current()));
     let err = file::load(&bad).unwrap_err().to_string();
     assert!(
         err.contains("000000000014") && err.contains("centre_cutting"),
@@ -1136,7 +1141,11 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
     );
 
     // The field did not exist in schema 7: its presence there is not guessed at.
-    let early = copy_tree_with(&base, "centre-early", add("false", "schema = 7"));
+    let early = copy_tree_with(
+        &base,
+        "centre-early",
+        add("false", "schema = 7\n".to_owned()),
+    );
     let err = file::load(&early).unwrap_err().to_string();
     assert!(
         err.contains("000000000014") && err.contains("centre_cutting"),
@@ -1181,7 +1190,7 @@ fn req_prj_06_req_op_08_a_mesh_edge_selection_survives_save_and_load() {
     let p = with_mesh_edges();
     file::save(&p, &dir).unwrap();
     let text = std::fs::read_to_string(dir.join(MESH_EDGE_FILE)).unwrap();
-    assert!(text.starts_with("schema = 12\n"), "{text}");
+    assert!(text.starts_with(&current()), "{text}");
     assert!(text.contains("[target]\nmesh_edges = ["), "{text}");
     let loaded = file::load(&dir).unwrap();
     assert_eq!(loaded, p);
@@ -1214,7 +1223,7 @@ fn req_prj_04_req_nfr_07_mesh_edges_need_schema_12_and_a_side_of_0_to_2() {
     let good = std::fs::read_to_string(&path).unwrap();
 
     // Schema 11 had no mesh edges: such a file is refused, naming the target.
-    std::fs::write(&path, good.replacen("schema = 12", "schema = 11", 1)).unwrap();
+    std::fs::write(&path, good.replacen(&current(), "schema = 11\n", 1)).unwrap();
     let err = file::load(&dir).unwrap_err().to_string();
     assert!(
         err.contains("000000000028") && err.contains("mesh_edges") && err.contains("schema 12"),
@@ -1237,7 +1246,7 @@ fn req_prj_04_req_nfr_07_mesh_edges_need_schema_12_and_a_side_of_0_to_2() {
     for (path, text) in file::render(&q).unwrap() {
         let target = old.join(&path);
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-        std::fs::write(target, text.replacen("schema = 12", "schema = 11", 1)).unwrap();
+        std::fs::write(target, text.replacen(&current(), "schema = 11\n", 1)).unwrap();
     }
     assert_eq!(file::load(&old).unwrap(), q);
 }
@@ -1349,7 +1358,7 @@ fn req_prj_04_req_nfr_07_keep_tangent_edges_needs_schema_12_and_an_edge_set() {
     ] {
         let old = copy_tree_with(&base, name, |path, text| {
             if path == file {
-                text.replacen("schema = 12", "schema = 11", 1)
+                text.replacen(&current(), "schema = 11\n", 1)
             } else {
                 text.to_owned()
             }
@@ -1369,7 +1378,7 @@ fn req_prj_04_req_nfr_07_keep_tangent_edges_needs_schema_12_and_an_edge_set() {
             d
         }),
         "tangent-11-plain-copy",
-        |_, text| text.replacen("schema = 12", "schema = 11", 1),
+        |_, text| text.replacen(&current(), "schema = 11\n", 1),
     );
     let loaded = file::load(&old).unwrap();
     assert_eq!(loaded, q);
@@ -1451,7 +1460,7 @@ fn req_prj_04_req_nfr_07_the_selection_reset_warning_setting_needs_schema_12() {
     file::save(&p, &dir).unwrap();
     let old = copy_tree_with(&read_tree(&dir), "reset-warning-11-copy", |path, text| {
         if path == "project.toml" {
-            text.replacen("schema = 12", "schema = 11", 1)
+            text.replacen(&current(), "schema = 11\n", 1)
         } else {
             text.to_owned()
         }

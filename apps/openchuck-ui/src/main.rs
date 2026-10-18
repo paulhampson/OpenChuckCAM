@@ -10,6 +10,11 @@
 //! - `openchuck-ui --bench MODEL [--seconds N] [--mode shaded|edges|wireframe]
 //!   [--out FILE]` runs the NFR-03 frame-time benchmark (verification plan
 //!   4.2) and exits non-zero if it fails.
+//!
+//! On Windows the window uses DX12 when it offers a hardware adapter
+//! (decision record 0059, accepted). `WGPU_BACKEND` (`dx12`, `vulkan`, `gl`)
+//! overrides the choice, and `RUST_LOG` sets what is logged on standard error;
+//! the adapter chosen is logged at `info`, which is on by default.
 
 #![allow(clippy::print_stderr)]
 
@@ -17,8 +22,10 @@ use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 
 mod bench;
+mod export_panel;
 mod floating;
 mod form_panel;
+mod graphics;
 mod import_panel;
 mod machine_panel;
 mod model_panel;
@@ -32,6 +39,7 @@ mod viewport;
 mod workholding_panel;
 
 fn main() -> ExitCode {
+    graphics::init_logging();
     let args: Vec<String> = std::env::args().collect();
     match bench::Options::parse(&args) {
         Some(Ok(options)) => run_bench(options),
@@ -50,6 +58,7 @@ fn native_options(vsync: bool) -> eframe::NativeOptions {
         multisampling: 0,
         ..Default::default()
     };
+    options.wgpu_options.wgpu_setup = graphics::setup();
     if !vsync {
         options.wgpu_options.surface.present_mode =
             openchuck_viewport::wgpu::PresentMode::AutoNoVsync;
@@ -58,10 +67,14 @@ fn native_options(vsync: bool) -> eframe::NativeOptions {
 }
 
 fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
+    let options = native_options(true);
+    graphics::watch_for_stall();
     let result = eframe::run_native(
         "OpenChuckCAM",
-        native_options(true),
+        options,
         Box::new(move |cc| {
+            graphics::reached(graphics::Stage::DeviceReady);
+            graphics::log_adapter(cc.wgpu_render_state.as_ref());
             let available = viewport::install(cc);
             cc.egui_ctx.set_zoom_factor(shell::DEFAULT_ZOOM);
             Ok(Box::new(shell::Shell::new(available, folder)))
@@ -70,7 +83,15 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("error: {error}");
+            let message = graphics::failure_message(&error.to_string());
+            eprintln!("error: {message}");
+            // Started from the desktop, standard error may not be seen.
+            let _ = rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("OpenChuckCAM")
+                .set_description(message)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
             ExitCode::FAILURE
         }
     }
@@ -93,23 +114,21 @@ fn run_bench(options: bench::Options) -> ExitCode {
         "OpenChuckCAM benchmark",
         native,
         Box::new(move |cc| {
+            graphics::log_adapter(cc.wgpu_render_state.as_ref());
             if !viewport::install(cc) {
                 return Err("the benchmark needs the wgpu renderer".into());
             }
-            let adapter = cc.wgpu_render_state.as_ref().map_or_else(String::new, |s| {
-                let info = s.adapter.get_info();
-                format!(
-                    "{} ({:?}, {} {})",
-                    info.name, info.backend, info.driver, info.driver_info
-                )
-            });
+            let adapter = cc
+                .wgpu_render_state
+                .as_ref()
+                .map_or_else(String::new, |s| graphics::describe(&s.adapter.get_info()));
             let run = bench::Run::new(options, adapter, shared);
             Ok(Box::new(shell::Shell::benchmark(app, run)))
         }),
     );
     let _ = std::fs::remove_dir_all(bench::folder());
     if let Err(error) = result {
-        eprintln!("error: {error}");
+        eprintln!("error: {}", graphics::failure_message(&error.to_string()));
         return ExitCode::FAILURE;
     }
     match outcome.get() {

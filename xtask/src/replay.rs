@@ -53,6 +53,7 @@ const EXPECTED_SECONDS: &[(&str, u64)] = &[
     ("sphere_linuxcnc.ngc", 93),
     ("cone_indexed_linuxcnc.ngc", 40),
     ("post_linuxcnc_small_part.ngc", 35),
+    ("drilling_linuxcnc.ngc", 30),
 ];
 
 /// Expected time of a program that is not in the list.

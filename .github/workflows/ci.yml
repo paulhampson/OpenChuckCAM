@@ -6,7 +6,7 @@
 # the golden G-code tests read them).
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
-# heavy jobs (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke and
+# heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
 # fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
 # on a ready pull request or a push, requires every heavy job whose filter is true to succeed.
 name: CI
@@ -25,7 +25,7 @@ permissions:
 # A newer push to a pull request cancels the older run of that pull request: the newer commit is the
 # one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
 # replaced while it waits: its group is its own run, so every merged commit keeps a complete result
-# (and its cache and coverage artifacts), even if several manual runs target one commit
+# (and its cache), even if several manual runs target one commit
 # (decision 0052, Option 1).
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -89,7 +89,9 @@ jobs:
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-path/**'
               - 'crates/openchuck-app/**'
+              - 'crates/openchuck-geom/**'
               - 'testdata/step/**'
+              - 'testdata/golden/reference/drilling_*'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -175,30 +177,67 @@ jobs:
           path: target/replay
           if-no-files-found: ignore
 
+  # Linux and Windows split the test run over two jobs (decision 0052, Option 4):
+  # `--partition hash:I/N` gives each test to one share by a hash of its name, so a
+  # new test never moves the others. macOS stays one job while its runner queue is
+  # the longest. Shard 1 also runs clippy, the doctests and the examples, which the
+  # other shards would only repeat. The partition check below fails a job whose
+  # shares are empty or do not add up to the full list, so no test goes unrun.
   build-test:
-    name: Build and test (${{ matrix.os }})
+    name: Build and test (${{ matrix.os }}, shard ${{ matrix.shard }} of ${{ matrix.shards }})
     needs: changes
     if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - { os: ubuntu-latest, shard: 1, shards: 2 }
+          - { os: ubuntu-latest, shard: 2, shards: 2 }
+          - { os: windows-latest, shard: 1, shards: 2 }
+          - { os: windows-latest, shard: 2, shards: 2 }
+          - { os: macos-latest, shard: 1, shards: 1 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: shard-${{ matrix.shard }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
       - name: clippy (deny warnings, unwrap and unchecked indexing)
+        if: matrix.shard == 1
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Check the test partition
+        shell: bash
+        env:
+          SHARDS: ${{ matrix.shards }}
+        run: |
+          total=$(cargo nextest list --workspace --locked --message-format oneline | wc -l)
+          sum=0
+          for i in $(seq 1 "$SHARDS"); do
+            n=$(cargo nextest list --workspace --locked --message-format oneline --partition "hash:$i/$SHARDS" | wc -l)
+            echo "share $i of $SHARDS: $n tests"
+            if [ "$n" -eq 0 ]; then
+              echo "::error title=Empty test share::share $i of $SHARDS has no tests"
+              exit 1
+            fi
+            sum=$((sum + n))
+          done
+          echo "full list: $total tests, shares add up to $sum"
+          if [ "$sum" -ne "$total" ]; then
+            echo "::error title=Test shares do not add up::the $SHARDS shares hold $sum tests, the full list $total"
+            exit 1
+          fi
       - name: Tests
-        run: cargo nextest run --workspace --locked --no-fail-fast
+        run: cargo nextest run --workspace --locked --no-fail-fast --no-tests=fail --partition "hash:${{ matrix.shard }}/${{ matrix.shards }}"
       - name: Doctests
+        if: matrix.shard == 1
         run: cargo test --workspace --doc --locked
       - name: Examples run
+        if: matrix.shard == 1
         run: |
           cargo run --locked -p openchuck-types --example kinematics
           cargo run --locked -p openchuck-geom --example check_and_place
@@ -317,6 +356,11 @@ jobs:
       # B-rep edges of the corpus as edge chains (OP-08, decision 0053); needs the worker built above.
       - name: B-rep edge chains of the STEP corpus
         run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
+      # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
+      # the `drilling` reference job against its golden files on every platform (OI-28), and every
+      # strategy on corpus STEP parts against the exact B-rep.
+      - name: STEP parts through the application
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
@@ -568,58 +612,9 @@ jobs:
             exit 1
           fi
 
-  coverage:
-    name: Coverage trend
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    env:
-      # The repository tooling (xtask) is not product code; keep it out of every report.
-      COV_IGNORE: 'xtask/'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - run: rustup component add llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov,cargo-nextest
-      # Run the tests once, then render each report format from that run. nextest
-      # schedules tests from every binary in parallel, one process each; plain
-      # `cargo test` ran the binaries one after another, and the two heavy path
-      # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
-      # Doctests are not part of this run (llvm-cov nextest does not run them).
-      # The `coverage` profile (.config/nextest.toml) leaves out the long-running
-      # tests: instrumentation makes them 6 to 11 times slower and one test cannot
-      # be split across cores. The Tests job runs all of them, and the nightly run
-      # repeats them.
-      - name: Run tests with coverage instrumentation
-        run: cargo llvm-cov nextest --profile coverage --workspace --locked --no-report
-      - name: HTML report (browsable, per file and per line)
-        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
-      - name: lcov data (trend tracking)
-        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --lcov --output-path lcov.info
-      - name: Summary on the run page
-        shell: bash
-        run: |
-          {
-            echo '## Coverage'
-            echo
-            echo '```text'
-            cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE"
-            echo '```'
-            echo
-            echo 'The full per-line HTML report is in the `coverage-html` artifact (open `html/index.html`).'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage-html
-          path: target/coverage
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage-lcov
-          path: lcov.info
+  # Coverage is not a pull request or a push job (decision 0102): `coverage.yml` runs it every night,
+  # on the whole suite, and checks the line-coverage target per crate. The pull request gate is the
+  # tests (Build and test runs every test, uninstrumented).
 
   # The single status to require in the branch ruleset for `main` ("CI required checks").
   # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
@@ -647,7 +642,6 @@ jobs:
       - libraries-alone
       - fast-checks
       - fuzz-smoke
-      - coverage
     runs-on: ubuntu-latest
     steps:
       - name: Check the required jobs
@@ -670,9 +664,13 @@ jobs:
           out() { echo "$NEEDS" | jq -r ".changes.outputs.$1"; }
           res() { echo "$NEEDS" | jq -r ".\"$1\".result"; }
           bad=""
+          # Every job in `needs` must be checked below: a job that is listed and never checked
+          # would pass without anyone looking at its result.
+          checked=" changes "
           # check JOB DUE: a job that is due must have succeeded; any other job may have been skipped.
           check() {
             local r
+            checked="$checked$1 "
             r=$(res "$1")
             if [ "$2" = true ]; then
               [ "$r" = success ] || bad="$bad, $1 ($r, due)"
@@ -684,7 +682,6 @@ jobs:
           check build-test "$(out rust)"
           check ui-smoke "$(out rust)"
           check libraries-alone "$(out rust)"
-          check coverage "$(out rust)"
           check step-kernel "$(out step)"
           fast=false
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ]; then fast=true; fi
@@ -692,6 +689,12 @@ jobs:
           fuzz=false
           if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
           check fuzz-smoke "$fuzz"
+          for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
+            case "$checked" in
+              *" $job "*) ;;
+              *) bad="$bad, $job (in needs, never checked)" ;;
+            esac
+          done
           if [ -n "$bad" ]; then
             echo "::error title=Required jobs did not pass::${bad#, }"
             exit 1

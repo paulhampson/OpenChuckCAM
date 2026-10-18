@@ -54,7 +54,8 @@ use crate::cutter::{Contact, ToolLine};
 use crate::error::{PathError, Result};
 use crate::holes::{Hole, find_holes};
 use crate::surface::{
-    FaceClosest, FacePosition, MeshSurface, ParametricFace, RayHit, SurfacePoint, SurfaceSource, Uv,
+    FaceClosest, FacePosition, FaceRef, MeshSurface, ParametricFace, RayHit, SurfacePoint,
+    SurfaceSource, Uv,
 };
 
 fn bad(face: u32, what: impl std::fmt::Display) -> PathError {
@@ -1686,6 +1687,16 @@ impl SurfaceSource for BrepSurface {
 
     fn holes(&self) -> &[Hole] {
         &self.holes
+    }
+
+    fn exact_faces(&self) -> Vec<FaceRef<'_>> {
+        self.faces
+            .iter()
+            .map(|f| FaceRef {
+                number: f.number(),
+                face: f,
+            })
+            .collect()
     }
 
     fn project(&self, point: Point3) -> Option<SurfacePoint> {

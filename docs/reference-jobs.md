@@ -19,6 +19,10 @@ All use the same tool and material: a 3 mm ball end mill (2 flutes, 8 mm flute l
 
 Three more jobs run on the `cone` part with the same tool, material and Z1 profile, one for each new strategy ([decision 0034](decisions/0034-slice-12-baseline-finishing.md)): `cone_axial` (axial finishing, stepover 2 mm, zig-zag), `cone_indexed` (indexed finishing at 0, 90, 180 and 270 degrees) and `cone_axial_lead` (axial finishing with `lead` entry). Golden files `testdata/golden/reference/cone_axial_*`, `cone_indexed_*` and `cone_axial_lead_*` for both posts. `cargo test -p openchuck-app --test reference_jobs` checks gates 1 and 2 and the golden files; `--test golden_audit` (`req_op_04_baseline_finishing_golden_files_pass_the_audit`) checks conventions, that A does not move within a pass, no gouge (deepest 0.0026 mm) and that the two posts reach the same positions. **Gate 3 (the LinuxCNC replay) has not been run for these programs**: `cargo xtask replay` picks them up from the folder and CI runs it; the session that built them had no Docker daemon. Gates 4 and 5 are not run.
 
+## Drilling job (decision 0056)
+
+`drilling` is the first job read from a model file rather than generated: the OpenCASCADE fixture `testdata/step/valid/rotary_blank_drilled.step` (a rod of 24 mm diameter, 60 mm long, with a 6 mm hole across it at X 30), added to the project through the STEP importer and placed turned 30 degrees about the rotary axis, so the hole is drilled at an A other than zero. Radial drilling ([decision 0051](decisions/0051-slice-18-radial-drilling.md)) with a 6 mm, 118 degree, two-flute drill in oak (6000 rpm, 0.03 mm per tooth, plunge 120 mm/min), pecks of 8 mm with a full retract, on the Makera Z1 profile; stock a cylinder of 26 mm diameter, 62 mm long. Golden files `testdata/golden/reference/drilling_makera-z1.nc` and `drilling_linuxcnc.ngc`. Reading the file needs the kernel, so the job is built by `cargo test -p openchuck-app --features kernel-tests --test step_pipeline` (gates 1 and 2, the golden files, 1 and N threads), which the STEP kernel CI job runs on all three platforms; gate 3 replays the LinuxCNC program with the others. One hole at one A (OI-234).
+
 ## Assumptions to settle before gates 4 and 5
 
 - **Axis height.** The owner gave the chuck centre as 45 mm above the bed (13 Oct 2026). The Z1 profile takes the bed at the bottom of the Z travel (-100), so the axis is at machine Z -55, and the safe Z is 50 mm above the axis (5 mm below the top of the travel). That reading of "the bed" is an assumption (OI-60). **Measure the axis height on the machine and rerun the jobs before any trial.** A wrong value moves every Z.
@@ -40,6 +44,7 @@ Three more jobs run on the `cone` part with the same tool, material and Z1 profi
 | `cone_linuxcnc.ngc` | 1086 | 0.1000 | 117.0 s | none |
 | `groove_linuxcnc.ngc` | 1086 | 0.1000 | 151.6 s | none |
 | `lobed_linuxcnc.ngc` | passed in CI (pull request 48, 15 Oct 2026; Docker image, report in the gate 3 artifact) | | | none |
+| `drilling_linuxcnc.ngc` | 15 (17 Oct 2026, the Docker image built from `docker/linuxcnc` in the lane Z session; decision 0056) | 0.0010 | 23.3 s | none |
 
 (0.1000 is the tolerance: some nodes were accepted as passed between two samples when run in the Docker image. An earlier run of the 10 degree programs on a locally built LinuxCNC had differences of 0.034 to 0.067.) The simulator cannot confirm the A direction, or the Z1 post's `G92.4` and feed rule: the Z1 programs share the toolpath and the kinematics with these, and gate 4 checks the rest on the machine. See [tools/linuxcnc/README.md](../tools/linuxcnc/README.md) for how to run it and [docker/linuxcnc](../docker/linuxcnc/Dockerfile) for the image CI uses.
 

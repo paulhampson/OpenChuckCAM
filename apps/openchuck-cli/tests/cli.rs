@@ -115,7 +115,13 @@ fn req_nfr_07_cli_rejects_unknown_arguments_without_panicking() {
 fn req_prj_01_cli_creates_validates_and_resaves_a_project() {
     let project = empty_project("resave");
     let text = std::fs::read_to_string(project.join("project.toml")).unwrap();
-    assert!(text.starts_with("schema = 12\n"), "{text}");
+    assert!(
+        text.starts_with(&format!(
+            "schema = {}\n",
+            openchuck_app::project::file::SCHEMA
+        )),
+        "{text}"
+    );
     let out = run(&["resave".as_ref(), project.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
@@ -782,6 +788,53 @@ fn req_gc_14_gc_11_cli_asks_for_the_tool_numbers_before_writing_g_code() {
     ]);
     assert_ne!(out.code, Some(0));
     assert!(out.stderr.contains("--post"), "{}", out.stderr);
+}
+
+#[test]
+fn req_gc_05_req_gc_12_cli_takes_a_grouping_and_writes_the_setup_sheet() {
+    let project = empty_project("grouping");
+    let out_dir = std::env::temp_dir().join(format!("openchuck-cli-sheet-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out_dir);
+    let p = project.as_os_str();
+    let run_with = |grouping: &str| {
+        run(&[
+            "regenerate".as_ref(),
+            p,
+            "--post".as_ref(),
+            "linuxcnc".as_ref(),
+            "--tool-numbers".as_ref(),
+            "keep".as_ref(),
+            "--grouping".as_ref(),
+            grouping.as_ref(),
+            "--setup-sheet".as_ref(),
+            "--out".as_ref(),
+            out_dir.as_os_str(),
+        ])
+    };
+    for grouping in ["project", "setup", "operation", "tool"] {
+        let out = run_with(grouping);
+        assert_eq!(out.code, Some(0), "{grouping}: {}", out.stderr);
+    }
+    let names: Vec<String> = std::fs::read_dir(&out_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names.iter().any(|n| n.ends_with("-setup-sheet.html")),
+        "{names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.ends_with("-setup-sheet.pdf")),
+        "{names:?}"
+    );
+    let out = run_with("everything");
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("everything"), "{}", out.stderr);
+    // The sheet needs a folder to go in.
+    let out = run(&["regenerate".as_ref(), p, "--setup-sheet".as_ref()]);
+    assert_ne!(out.code, Some(0));
+    assert!(out.stderr.contains("--out"), "{}", out.stderr);
+    std::fs::remove_dir_all(&out_dir).ok();
 }
 
 #[test]
