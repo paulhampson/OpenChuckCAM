@@ -1,9 +1,9 @@
 # OpenChuckCAM user interface specification
 
-- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions.
-- **Date:** 15 Oct 2026.
+- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17.
+- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
-- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release.
+- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
 
 ## 1. Purpose and scope
 
@@ -24,6 +24,8 @@ Each element below names the requirement it serves. An element that serves only 
 | 0 New project (empty state) | 11.1 |
 | 1 Model; 1b Import dialog | 11.2 |
 | 2 Setup | 11.3 |
+| 2c Workholding and tabs | 11.7 |
+| Held regions and tabs in the view | 7.5 |
 | 3 Operations; 3b Inspector, operation in error | 11.4 |
 | 4 Simulate and review | 11.5 |
 | 5 Post and export | 11.6 |
@@ -112,7 +114,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 **One tree in every step** (UI-06). Groups, in pipeline order:
 
 1. **Model.** One row per model, with child rows for its placement and mesh check.
-2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, and work offset and clearance.
+2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, work offset and clearance, and workholding (11.7).
 3. **Selection sets.** Each set's colour swatch, name and size.
 4. **Tools.** Each tool's project tool number chip and name.
 5. **Operations.** In machining order.
@@ -176,7 +178,7 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | Projection: Persp, Ortho | All | UI-02 |
 | Standard views: Front, Top, Iso (all seven in the View menu and on the view cube) | Model, Setup | UI-02 |
 | Fit (F) | All | UI-02 |
-| Show or hide (V): part, stock, rotary axis and work axes, selections, toolpaths by operation | All | UI-03, SIM-01 |
+| Show or hide (V): part, stock, rotary axis and work axes, held regions and tabs, selections, toolpaths by operation | All | UI-03, SIM-01 |
 | Section plane (S) | All | *(UI-21)* |
 | Measure (M): distance, angle, radius about the rotary axis | All | *(UI-21)* |
 | Turn part to A [angle] Turn: turns the part in the view only, never the program; a chip "View turned to A −53.20°" shows while it is turned, and Fit resets it | All | *(UI-21)* |
@@ -190,7 +192,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 | Place | Box | Steps |
 | --- | --- | --- |
 | Top left | Selection tools: Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)* | Operations, while picking |
-| Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid | Operations |
+| Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
 | Top right | View cube; clicking a face gives that standard view | All with a 3D view |
 | Top right, under the cube | Axis triad: X red, Y green, Z blue | All with a 3D view |
 | Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2; its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
@@ -201,7 +203,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 
 ### 7.3 Scene and camera
 
-- **What is drawn** (UI-03; decision 0029 item 3): the part, the stock outline, the rotary axis along model X past both ends, the A+ arrow from the shared kinematics, and the work coordinate system at the work zero labelled X, Y and Z. The A+ label sits an eighth of a turn along the arc so it never covers the Y label.
+- **What is drawn** (UI-03; decision 0029 item 3): the part, the stock outline, the held regions and retaining tabs (7.5), the rotary axis along model X past both ends, the A+ arrow from the shared kinematics, and the work coordinate system at the work zero labelled X, Y and Z. The A+ label sits an eighth of a turn along the arc so it never covers the Y label.
 - **Camera** (decision 0029 item 6):
   - Z-up, model X along the rotary axis.
   - Standard views as that record's table.
@@ -232,7 +234,32 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
 | Clearance cylinder and safe Z | Green `#4cc38a` | Dashed |
 | Machine travel limit | Red `#ff7b72` | Hatched band |
+| Held region | Violet `#9d8df1` at 35% | Cross-hatched fill, solid outline (7.5) |
+| Retaining tab | Sand `#d8b98a`, shaded | Opaque, dark solid outline (7.5) |
 | Deviation | Section 11.5 | |
+
+### 7.5 Held regions and retaining tabs
+
+UI-03 and UI-25 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md)); the solids are those of decision 0045 item 1 (a held region at each end, then each tab; a tab around the axis is `count` solids). The view draws what the setup stores, except while the workholding section has unapplied changes (11.7), when it draws the draft. Board "Held regions and tabs in the view" (section 20).
+
+- **Two roles that differ by more than colour** (principle 4; NFR-15):
+
+  | Role | Colour | Fill | Outline |
+  | --- | --- | --- | --- |
+  | Held region | Violet `#9d8df1` | Translucent (35%), cross-hatched in two directions at 6 pixels on screen | Solid 1.5-pixel line in the role colour round the silhouette and both end circles |
+  | Retaining tab | Sand `#d8b98a` | Opaque and shaded, like the part | Solid 1.5-pixel dark line (`#15171a`) round the silhouette and both end circles |
+
+  The cross-hatch is not the single-direction hatch of avoid surfaces and the travel limit (7.4), and neither role uses dashes, which mean outlines of stock and clearance. A held region is translucent so the part and stock behind it stay visible; a tab is opaque because it is part of the finished surface (decision 0035 item 1).
+- **They turn with the part.** Like the part and the stock, they are fixed to the workpiece, so they turn with A in the machine view and with "Turn part to A" *(UI-21)*.
+- **Show or hide.** The "Show or hide" control (V, 7.1) has one entry, "Held regions and tabs", on by default. Hiding them changes only the view, never what is machined; a line under the entry says so.
+- **Legend.** Whenever the setup has a held region or a tab, the legend of the step lists the roles that are present, with a swatch drawn the way the role is drawn (a hatched violet square, a sand square with a dark border): in the legend strip on Setup, in the path legend on Operations (after "Avoid"), and under the colour scale on Simulate (outline swatches, labelled "Held region (kept)" and "Tab (kept)").
+- **Hover.** Pointing at a held region or a tab outlines the whole solid in the hover yellow `#ffe066` (7.4) and opens a tooltip with its name and size, for example "Tab 2 · frustum · X 14.000 to 16.000 mm · Ø 4.000 to Ø 8.000 mm", or "Held region at the start · 6.000 mm · Ø 26.000 mm (stock)". A tab around the axis adds "1 of 3 at 90.00°". The same outline and tooltip appear when the solid's row in the inspector (11.7) has keyboard focus (principle 9).
+- **Selection.** Clicking one selects its setup, opens the inspector at the workholding section with that held region or tab expanded and its first field focused, and draws the solid with a 2-pixel `accent` outline while it stays selected. Esc clears it. A tab around the axis is selected as one tab, all its solids together.
+- **While picking** (Operations, 11.4) they are drawn as outlines only, with no fill, and cannot be picked: clicks and the hover outline go to the part's triangles, so a selection is never made on a solid. A selection that reaches one gets the warning of 11.7.
+- **A draft that cannot be drawn.** A held region or tab of the draft that fails a check (11.7) is drawn with its outline only, in `error` red `#ff7b72`, and the others as usual. If the setup's own workholding cannot be built (for example, a held region on box stock with no holding diameter, decision 0045 item 2), nothing of it is drawn and the messages panel says why, with "Edit workholding" as its action.
+- **Default tabs offered, not added** (11.7) are drawn as dashed sand outlines with no fill, labelled "Default tab, not added", while the workholding section is open.
+- **On Setup** (11.3), the two orthographic panes draw them in section: in the front view a held region is a cross-hatched violet band over the gripped length, under the chuck jaws, with its length dimensioned ("Held 6.000"), and each tab is its outline (a rectangle or a trapezoid) in sand with a dark border, labelled "Tab 1", "Tab 2". In the end view from +X, a tab on the axis is a circle at its largest diameter; tabs around the axis are small circles at their angles, the first one's angle dimensioned from +Y towards +Z ("Start 90.00°").
+- **On Simulate** (11.5), the stock is coloured by deviation everywhere, held regions and tabs included, since they count as part of the target (decision 0035 item 8; decision 0045 item 6). Over it, each held region and tab is drawn as its outline only, in its role colour, so the colours under it can be read. The probe *(SIM-11)* names it: "Tab 1 (kept as part) · within tolerance".
 
 ## 8. Inspector
 
@@ -297,11 +324,12 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
   - setup checks;
   - generation errors (decision 0032 item 7);
   - selection set problems (decision 0037 item 6);
+  - selections that reach a held region or a tab, and a stored workholding that cannot be built (11.7);
   - job failures.
 - **Clearing.** A message goes away when its cause is fixed.
 - **No pop-up errors.** None, except when a command the user gave fails outright (a failed save, an unreadable file).
 
-**Setup checks:** one row per check, each with a green tick or an amber triangle (SET-06).
+**Setup checks:** one row per check, each with a green tick or an amber triangle (SET-06). The checks of the stored workholding against the part and the tools are rows here (11.7).
 
 **Selection sets:** section 12.2 (decision 0037 items 6 and 7).
 
@@ -383,7 +411,9 @@ Board 2 (SET-01, SET-03, SET-05, SET-06; UI-03).
   - +Y to the right, +Z up, −Y labelled "front";
   - the A+ arrow, with the sentence "A+ turns the top toward the front". This matches decision 0013 and the check on the machine (OI-03).
 
-A legend strip sits under the panes.
+Both panes also draw the held regions and tabs in section (7.5).
+
+A legend strip sits under the panes; it lists the held region and tab roles when the setup has them (7.5).
 
 **Inspector:**
 
@@ -391,6 +421,7 @@ A legend strip sits under the panes.
 2. **Stock** (SET-03): shape (Cylinder, Box, Bounds, where Bounds is the model's bounding box plus an offset), diameter or sizes, length, material. Imported stock (SET-04) is P2.
 3. **Part position** (SET-05): rotation about X, offset along X.
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
+5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
 **Dock:** Setup checks and Messages. While the axis height is a placeholder, the first check is "Safe Z cannot be checked against the Z travel" (OI-60).
 
@@ -403,6 +434,7 @@ Boards 3 and 3b.
 - **Viewport.**
   - The selected operation's toolpath, and the others by the visibility settings (SIM-01).
   - The working selection, saved sets and avoid surfaces.
+  - The held regions and tabs, outlines only while picking (7.5). A selection that reaches one gives the warning of 11.7 under its Geometry role.
   - While picking: the selection tools, using the modes of decision 0037 item 4 (one triangle; connected shell; smooth patch by angle; same direction). Shift adds, and Ctrl (Command on macOS) removes.
 - **Generating.**
   - The footer and the "Generate" item in a row's menu start a job. Its row shows progress and cancel.
@@ -436,6 +468,7 @@ Board 4 (SIM-01 to SIM-07).
   | Up to the scale end (+0.50 mm) | Blue to `#3f78d1` | Material left, more |
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
+- **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
 - **The probe** *(SIM-11)*. Hovering the stock shows a tooltip: the deviation with its sign and unit ("Overcut −0.004 mm"), the position (X and A), and the operation and move that left it.
 
@@ -493,6 +526,117 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - **Once ticked,** the box stays visible, ticked, with "Acknowledged for this project on this computer".
 
 **Footer:** "Export setup sheet (HTML / PDF)" (GC-12) on the left; Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the box is ticked, and its tooltip says which is missing.
+
+### 11.7 Workholding and retaining tabs
+
+UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md); the data is decision 0041, the defaults and checks decision 0035 and its owner's answers, the wiring decision 0045). Board "Workholding and tabs" (section 20). The viewport display is section 7.5.
+
+**Where it lives.**
+
+- **Inspector.** The fifth section of the setup inspector (11.3), "Workholding and tabs", after "Work offset and clearance". Its header has a count chip ("1 held · 2 tabs", or "None") and, while the section has unapplied changes, a second chip "Not applied".
+- **Tree.** A child row of the setup (section 6), "Workholding", after "Work offset and clearance", with the same count chip. Choosing it selects the setup and opens the inspector at this section. It carries the Warning mark (section 6) while a setup check (below) finds a problem with a tab, and the Error mark while the stored workholding cannot be built.
+- **Steps.** It belongs to Setup. On the other steps the inspector shows the same section when the setup is selected, and editing it works the same way. An applied change marks every operation of the setup stale, as any setup edit does (the operation's key includes its setup, decision 0030 item 1), and the footer primary follows section 5.
+
+**Editing a draft.** Unlike the other inspector sections (section 8, "Committing"), this section edits a draft and stores it with **Apply**, because the checks span several rows and the checks against the part and the tools run as a job (decision 0045 items 4 and 8).
+
+- A field's value goes into the draft when the field loses focus or on Enter. Esc in a field puts back its last value in the draft.
+- **Apply** checks the draft against the part and the tools (a job, with a spinner and Cancel in its place), then stores it as one undoable command, "Edit workholding of Setup 1" in the undo history *(UI-22)*. It is disabled while the draft is unchanged or fails a check, with the reason in its tooltip.
+- **Revert** discards the draft and shows the stored values again.
+- The draft is kept while the user selects other items and comes back, until it is applied or reverted, or the project is closed. While it has unapplied changes, the footer status says "Workholding changes not applied", and the viewport draws the draft (7.5) with a chip "Showing unapplied workholding" at the top left of the view.
+- **Undo** (Ctrl Z, UI-08) undoes an applied change. When an undo, a redo or another edit changes the stored workholding while the draft has unapplied changes, the draft is replaced by the stored values and a note under the header says so: "The stored workholding changed (an undo, a redo or another edit), so your unapplied changes were discarded." The note goes when the draft is next edited.
+- Apply is a secondary button (section 5): the footer primary stays the step's own.
+
+**Layout, top to bottom.** Fields follow section 8: a 120-pixel label column, the unit inside the field on its right, the allowed range in the tooltip; lengths and positions in mm to 3 places, angles in degrees to 2 (section 14.3). A segmented control chooses between two exclusive choices.
+
+1. **One sentence** at the top: "Held regions are never machined and links keep clear of them. Tabs keep the part joined to the stock. Both count as part of the finished surface." (SET-09, OP-21.)
+2. **Held at the start** and **Held at the end**, one block each, for the low-X and high-X ends of the stock (decision 0041 item 3):
+
+   | Field | Kind | Unit | Default when turned on | Notes |
+   | --- | --- | --- | --- | --- |
+   | Held | Check box | | Off | Turning it on adds the region; off removes it from the draft |
+   | Grip length | Number | mm | 10.000 | How far the chuck grips the stock from that end |
+   | Holding diameter | Number, may be empty | mm | Empty | Empty shows the hint "Stock diameter (26.000 mm)" (section 8, hint and source). On stock that is not a cylinder it is required (decision 0045 item 2) |
+   | Held span | Read-only | mm | | "X −16.000 to −10.000", worked out from the stock and the grip length |
+
+3. **Head and tail zones**, read-only, from the part's extent against the stored held regions: "Head zone X −10.000 to −8.000 mm (2.000 mm)" and "Tail zone X 8.000 to 16.000 mm (8.000 mm)". A zone with no length reads "No room for a tab". They are worked out as a job when the section opens and after each apply, with a spinner meanwhile, and say "Set the stock first" when there is no stock. Tabs may lie only in these zones (decision 0035, owner's answers).
+4. **Retaining tabs**, a header "Retaining tabs (2)", then one collapsible row per tab, numbered by its place in the list ("Tab 1", "Tab 2"; removing one renumbers the rest, and the messages use the same numbers). A collapsed row shows its number, its shape and span ("Frustum · X −10.000 to −8.000"), its zone ("Head") and, when it matches the default, the "Default" chip (below). An expanded row has:
+
+   | Field | Kind | Unit | Notes |
+   | --- | --- | --- | --- |
+   | Shape | Segmented: Cylinder, Frustum | | Changing to a frustum keeps the diameter as the diameter at the start and makes the far end 1.5 times it; changing to a cylinder keeps the diameter at the start |
+   | Start X | Number | mm | Model X of the tab's low-X end |
+   | Length | Number | mm | Along X |
+   | Diameter | Number | mm | Cylinder only |
+   | Diameter at start X, Diameter at end X | Number, two rows | mm | Frustum only. Under them a derived line says which end faces the part: "Small end towards the part", or in `warning` amber "Large end towards the part" |
+   | Narrowest | Read-only | mm | The smallest diameter, compared with the tools (below) |
+   | Placement | Segmented: On the axis, Around the axis | | |
+   | Count | Whole number, 1 to 64 | | Around the axis only; default 2 |
+   | Start angle | Number | ° | Around the axis only; default 0.00; from +Y towards +Z, evenly spaced after it (decision 0041 item 4); a hint names the angles, "0.00°, 180.00°" |
+   | Offset from axis | Number | mm | Around the axis only; default 5.000; the distance from the rotary axis to each tab's centre line |
+
+   The row's menu (right click, the menu key, or a "⋯" button) has Remove (Del when the row has focus) and Duplicate. Both change the draft only.
+5. **Add tab** and **Add default tabs**, side by side under the list. Add tab adds a cylinder on the axis, 5.000 mm long and a quarter of the stock's diameter across (at least 1.000 mm), starting at the inner edge of the held region at the start (or the start of the stock), expanded with its Start X focused.
+6. **Check against the part and tools**, a secondary button that runs the same checks as Apply without storing anything, then lists what it found under it, or "The tabs are in the head and tail zones and wide enough for the tools."
+7. **Apply** and **Revert**, right-aligned, Apply right-most.
+
+**The default tabs shown as defaults** (decision 0035, owner's answers; decision 0045 item 3; OI-198). The defaults are never applied silently, and the stored data stays explicit (decision 0041 item 2). So:
+
+- **When the setup has no tabs,** the section works out the default tabs (a job, as the zones are) and shows them in the tab list as dimmed rows labelled "Default tab, not added", with their shape, span and diameters, read-only. Over them, an amber Warning line: "No tabs are stored. Without tabs the part is not joined to the stock when its last support is cut." The viewport draws them as in 7.5. "Add default tabs" adds them to the draft as ordinary rows, to be applied or edited.
+- **Add default tabs** is enabled only while the draft has no tabs and its held regions are the stored ones (the defaults fit the stored held regions). Otherwise its tooltip gives the reason: "Remove the tabs first" or "Apply the held regions first: the default tabs fit the stored ones."
+- **No default.** When there is no room in a zone, no default row is shown for it, and a line says why: "No room for a default tab at the head: the held region reaches the part." When the part ends in a point there, "The part comes to a point at X 8.000 mm, so there is no diameter to base a default tab on; add the tab by hand."
+- **After they are added,** a tab whose values all equal, to 0.001 mm, the default for its zone carries the "Default" chip, in its collapsed and expanded row. **Overriding** a default is editing it: as soon as a value differs, the chip goes. Its tooltip says "Same as the default tab for the head zone. Editing a value overrides it." A tab that once was a default but no longer matches is an ordinary tab; nothing records where it came from.
+
+**Validation** (NFR-07; decision 0041 item 5; decision 0045 item 4). Checks on the draft alone run as values are entered; the first problem, in the order of the fields, marks its field with a red border and the reason in red under it, and Apply is disabled. The words are plain (section 15): no field paths, and tabs numbered from 1.
+
+| Check | Marked field | Message |
+| --- | --- | --- |
+| A length or a diameter is zero or less | That field | "Must be more than 0 mm." |
+| Text that is not a number | That field | "Not a number." |
+| A grip length longer than the stock | Grip length | "Longer than the stock (32.000 mm)." |
+| A holding diameter wider than the stock | Holding diameter | "Wider than the stock (26.000 mm)." On box stock: "Wider than the stock's smaller side (20.000 mm)." |
+| No holding diameter on stock that is not a cylinder | Holding diameter | "Needed: box stock has no diameter to hold at." |
+| The two held regions overlap | Grip length, at the end | "Overlaps the held region at the start of the stock." |
+| A tab outside the stock | Start X | "Not inside the stock (X −16.000 to 16.000 mm)." |
+| A tab in a held region | Start X | "Overlaps the held region at the start of the stock." |
+| A tab reaching beyond the stock's radius | Diameter (on the axis) or Offset from axis (around it) | "Reaches 14.000 mm from the axis, outside the stock (radius 13.000 mm)." |
+| Two tabs on the axis overlapping | Start X, of the later tab | "Overlaps tab 1." |
+| A frustum with equal diameters (within 0.001 mm) | Diameter at end X | "The same as the diameter at start X; use a cylinder." |
+| A count out of range | Count | "From 1 to 64." |
+| An offset from the axis below zero | Offset from axis | "Must be 0 mm or more." |
+
+The checks that need the part and the tools run as a job on Apply and on "Check against the part and tools". A finding marks the tab's row header and puts its reason under it: on Apply with the Error mark, in red, and nothing is stored; on a check with the Warning mark, in amber:
+
+| Check | Message |
+| --- | --- |
+| A tab not wholly in the head or the tail zone (OI-180) | "Tab 3 (X −1.000 to 1.000 mm) is not wholly in the head or the tail zone. Tabs lie between the held region (or the end of the stock) and the part, or between the part and the other end." |
+| A tab narrower than a tool of the setup's operations (OI-159) | "Tab 2 is 3.000 mm across at its narrowest, narrower than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough. Make the tab wider or use a smaller tool." |
+| The part, the stock or a tool changed while checking | "The part, stock or tools changed while checking; check again." |
+| The draft changed while it was being checked | "The draft changed while it was being checked; apply it again." |
+
+The same findings for the stored workholding are rows of the Setup checks tab (section 9; SET-06), with "Edit workholding" as their action.
+
+**The warning when an operation's selection reaches one** (UI-25; decision 0045 item 7). A selection the operation cuts in that has a triangle corner inside or on a held region or a tab is a warning, not an error: those regions are never cut, so the operation cuts less than the selection names.
+
+- **In the operation's inspector,** under the Geometry role that holds the set, an amber Warning line with the triangle outline: "The selection 'Groove floor' reaches tab 1, which is never machined. This operation leaves it uncut there." Actions: "Show in view" (selects the tab, 7.5, and shows the set) and "Edit workholding" (selects the setup at this section).
+- **In the messages panel** (section 9), a warning row with the operation as its source and the same actions.
+- **In this section,** under the tab or held region, a muted line names the operations whose selections reach it: "Reached by the selections of 2 Helical finish."
+- It does not change the operation's status mark, and it does not block generating or exporting. It goes away when the selection or the workholding no longer reaches. Working it out reads the part, so it runs as a job when the operation or the setup is shown, and after each change to either.
+
+**Keyboard** (UI-14; section 16). Every field, row header, menu and button is reached with Tab in reading order. Enter on a collapsed row header expands it, and Left and Right arrows collapse and expand it. Del on a focused tab row removes it from the draft. Ctrl Enter anywhere in the section is Apply. Revert has no shortcut, so a stray key cannot discard a draft; Esc keeps its meaning of section 16. Tooltips, including the "Default" chip's, open on focus as well as hover; a focused row's solid is outlined in the view (7.5).
+
+**States.**
+
+| State | What is shown |
+| --- | --- |
+| No stock | The held region and tab blocks work, but the extent checks and the zones wait; a line says "Set the stock first: held regions and tabs are placed on it." Add default tabs is disabled with the same reason |
+| No model | As no stock; the zones and the default tabs need the part: "Import a model first" |
+| Nothing stored | The default tabs offered, with the warning line (above) |
+| Working out the zones or defaults | A spinner in the zones block and in the tab list, "Working out from the part…" |
+| Unapplied changes | The "Not applied" chip, Apply and Revert enabled, the footer note, the draft in the view |
+| A draft that fails a check | The marked field and its message; Apply disabled with the message in its tooltip; the solid outlined red in the view |
+| Checking | Apply replaced by a spinner and Cancel; fields stay editable, and an edit made meanwhile makes the result stale (message above) |
+| A check found problems | The tab rows marked, the messages under them |
+| The stored workholding cannot be built | An error banner at the top of the section (section 8), with the reason; nothing drawn (7.5); the tree row's Error mark |
 
 ## 12. Supporting windows
 
@@ -629,6 +773,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 | Ctrl D, Del, F2 | Duplicate, delete, rename the selected item |
 | Alt ↑, Alt ↓ | Move the selected operation earlier or later |
 | Q, W, E, B | Select one, flood fill, by angle, box (while picking) |
+| Ctrl Enter | Apply the workholding draft (in its section, 11.7) |
 | Space, ←, →, Shift ←, Shift → | Play or pause, step, previous or next operation |
 | Esc | Cancel the running job, or leave picking, or close a popover |
 
@@ -642,7 +787,7 @@ On macOS, Ctrl is Command.
 
 ## 17. Differences from the current build
 
-Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, proposed) built or proposed some things differently. The owner agreed these resolutions with decision 0038 (15 Oct 2026); each is work for the lane named in the work breakdown.
+Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, proposed) built or proposed some things differently. The owner agreed these resolutions with decision 0038 (15 Oct 2026); each is work for the lane named in the work breakdown. D13 was added with sections 7.5 and 11.7 (decision 0104) and is open.
 
 | # | Built or proposed | This specification | Resolution |
 | --- | --- | --- | --- |
@@ -658,6 +803,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | D10 | Steps, the footer primary action and the messages dock are not built | Sections 4, 5 and 9 | New work for lane A or T (decision 0038) |
 | D11 | Size and scale are not remembered (0029, owner's run, observation 1) | Remembered per user (UI-15) | New work |
 | D12 | The part is coloured in six bands by the worst deviation per triangle: overcut deeper than one cell, within one cell, up to 0.25 mm left, 0.25 to 1 mm, more than 1 mm or only a bound, not measured, with a legend giving each band's triangle count (decision 0040 item 10, accepted) | A diverging scale ordered by lightness with its thresholds at the operation's tolerance, +0.10 and +0.50 mm (section 11.5) | Open (OI-194). Until it is decided, decision 0040's bands stand; the colours of section 11.5 apply to them (overcut magenta, on the surface grey, material left in blues by depth, not measured hatched) |
+| D13 | The workholding panel and the display of held regions and tabs (slice 21c item 2, decision 0045 item 8) predate sections 7.5 and 11.7: among other things the panel stands alone in the inspector, shows messages with field paths, offers the default tabs only by a button, and the two roles are opaque shades of blue and amber with no second cue, no legend and no hover | Sections 7.5 and 11.7 | Open (OI-325, which lists every difference). The code and tests are slice 21d item 3, after lane O merges; the layout parts go with slice 22 |
 
 ## 18. Traceability
 
@@ -667,6 +813,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | 4 and 5 Steps and primary action | Requirements section 2 workflow | UI-10 |
 | 6 Project panel | UI-06, UI-09 | UI-11 |
 | 7 Viewport | UI-02, UI-03, UI-04, SIM-01, SIM-02, NFR-03 | UI-21 |
+| 7.5 Held regions and tabs | UI-03, UI-25 (decision 0104), NFR-15 | |
 | 8 Inspector | UI-07, UI-08, SET-01 | UI-13, UI-18, UI-19, SIM-13 |
 | 9 Dock | UI-05, UI-09, PRJ-02, IMP-04, SET-06 | UI-12 |
 | 10 Footer | NFR-12 | UI-18 |
@@ -676,6 +823,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | 11.4 Operations | OP-01, OP-02, OP-16, UI-04 to UI-09 | UI-24 |
 | 11.5 Simulate | SIM-01 to SIM-07 | SIM-11, SIM-12 |
 | 11.6 Export | GC-02, GC-04, GC-05, GC-06, GC-12, GC-14, NFR-12 | GC-15, GC-16 |
+| 11.7 Workholding and tabs | SET-09, OP-21, UI-25 (decision 0104), UI-07, UI-08, UI-14 | UI-22 |
 | 12 Supporting windows | TL-01 to TL-07, TL-11, UI-05, UI-08 | UI-22 |
 | 13 Settings | PRJ-03 (nothing generated or personal in the project) | UI-15 |
 | 14 to 16 Visual design, wording, keyboard | NFR-12 | UI-14, UI-20, NFR-15 |
@@ -689,6 +837,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
 - **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
 - **OI-194 (open):** the deviation display: decision 0040's six bands by triangle against this specification's continuous scale (D12).
+- **OI-325 (open):** what the current workholding panel and viewport display do differently from sections 7.5 and 11.7 (D13).
 
 ## 20. Rendered mockups
 
@@ -710,6 +859,8 @@ Images of the design canvas boards, rendered at 100% scale in headless Chromium 
 | [13-operations-1366x768.png](mockups/13-operations-1366x768.png) | Operations at 1366 × 768 | 3 |
 | [14-operations-light.png](mockups/14-operations-light.png) | Operations, light theme | 14.2 |
 | [15-simulate-light.png](mockups/15-simulate-light.png) | Simulate, light theme | 14.2 |
+| [16-workholding.png](mockups/16-workholding.png) | Workholding and tabs: the setup inspector section with a draft not applied, a default tab and a refused value (18 Oct 2026) | 11.7 |
+| [17-held-regions-and-tabs-view.png](mockups/17-held-regions-and-tabs-view.png) | Held regions and tabs in the view: Setup, Operations with a hovered tab and the selection warning, and Simulate (18 Oct 2026) | 7.5 |
 
 ![Operations step](mockups/03-operations.png)
 
