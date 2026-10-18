@@ -169,6 +169,7 @@ fn req_imp_02_every_face_has_uv_bounds_trims_and_a_tessellation() {
         "filleted_box",
         "rotary_blank_drilled",
         "bspline_face",
+        "hex_bar",
     ] {
         let model = import(&format!("valid/{name}.step"));
         let b = brep(&model);

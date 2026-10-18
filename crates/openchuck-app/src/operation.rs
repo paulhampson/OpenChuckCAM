@@ -20,7 +20,7 @@ use openchuck_path::{
     AcceptAll, AnalyticStock, BrepEdges, BrepSurface, ChosenSegments, CompositeSurface,
     CurveSource, EdgeFollowing, MeshSurface, ParameterValue, Registry, RotaryMapping, StockModel,
     Strategy, StrategyInput, SurfaceSource, drill, edge_following, generate, generate_in_region,
-    generate_in_zones,
+    generate_in_zones, swarf,
 };
 use openchuck_project::id::OperationId;
 use openchuck_project::{ContentHash, ModelRef, Operation, Project, SelectionTarget};
@@ -289,6 +289,11 @@ pub(crate) fn generate_with_part(
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
     let edges = edges.unwrap_or_else(|| edge_options(project, operation));
     let strategy = registry.get(&operation.strategy)?;
+    // Swarf reads rulings from exact faces (decision 0021, OI-96): said
+    // before any selection on a mesh is judged.
+    if let Some(reason) = brep_only(project, operation) {
+        return Err(missing(operation, &reason));
+    }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
     // and the edges below (decision 0056); a mesh part's are triangles, or
@@ -430,6 +435,13 @@ pub(crate) fn generate_with_part(
     // The values as the strategy's schema reads them (a whole number given for
     // a number is a number), resolved once for everything below.
     let parameters = strategy.schema().resolve(&resolved.values)?;
+    if operation.strategy == swarf::NAME && placed.brep.is_some() {
+        swarf_compatibility(
+            operation,
+            model_surface.as_ref(),
+            parameters.number(names::TOLERANCE)?,
+        )?;
+    }
     // A straight plunge needs a tool that can cut straight down (OI-117).
     EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
     let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
@@ -570,6 +582,92 @@ pub(crate) fn on_step_part(project: &Project, operation: &Operation) -> bool {
         })
 }
 
+/// Why `operation` cannot run on its setup's part when its strategy is
+/// swarf and the part is a mesh: swarf is B-rep only, reading rulings from a
+/// STEP model's exact faces (decision 0021, OI-96; OI-238). `None` for any
+/// other strategy, a STEP part, or a setup with no part (which is reported
+/// as missing where the part is read).
+pub(crate) fn brep_only(project: &Project, operation: &Operation) -> Option<String> {
+    if operation.strategy != swarf::NAME || on_step_part(project, operation) {
+        return None;
+    }
+    let part = project
+        .setup(operation.setup)
+        .and_then(|s| s.part)
+        .and_then(|id| project.models().iter().find(|m| m.id == id))?;
+    Some(format!(
+        "swarf is B-rep only: it cuts the faces of a STEP model, and the setup's part '{}' is a \
+         mesh, which has no rulings to follow; add the part as a STEP file",
+        part.path.as_str()
+    ))
+}
+
+/// Why swarf on a STEP part with no face set is refused (decision 0111
+/// item 1).
+const SWARF_NEEDS_FACES: &str = "swarf needs a face set: select the ruled walls to cut with the \
+     side of the tool, save them as a set and put it in the operation";
+
+/// Why `operation` cannot run yet when its strategy is swarf on a STEP part
+/// and none of its selection sets is a face set (decision 0111 item 1), for
+/// the parameter form. Whether the faces suit swarf is judged when it is
+/// generated ([`swarf_compatibility`]).
+pub(crate) fn swarf_needs_faces(project: &Project, operation: &Operation) -> Option<String> {
+    if operation.strategy != swarf::NAME || !on_step_part(project, operation) {
+        return None;
+    }
+    let has_faces = operation.selections.iter().any(|id| {
+        project
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == *id && matches!(&s.target, SelectionTarget::Faces(f) if !f.is_empty()))
+    });
+    (!has_faces).then(|| SWARF_NEEDS_FACES.to_owned())
+}
+
+/// Checks, before swarf runs, that every face of `surface` (the operation's
+/// face set) is one swarf can cut: ruled within `tolerance` in a family whose
+/// rulings do not run along the rotary axis (decision 0061 items 2 and 4,
+/// decision 0111 item 2). Fails naming every face that is not, and why.
+fn swarf_compatibility(
+    operation: &Operation,
+    surface: &dyn SurfaceSource,
+    tolerance: f64,
+) -> Result<(), AppError> {
+    let problems: Vec<String> = surface
+        .exact_faces()
+        .into_iter()
+        .filter_map(|face| {
+            let detection = swarf::detect_rulings(face.face, tolerance);
+            let why = match detection.chosen {
+                None => detection.refusal(),
+                // Within a hundredth of a degree of the axis: no rotation
+                // of the part brings the flank to such a ruling (OI-94).
+                Some(family) if detection.fit(family).along_axis > AXIAL_RULING => Some(
+                    "its rulings run along the rotary axis, so no rotation of the part brings \
+                     the side of the tool to them"
+                        .to_owned(),
+                ),
+                Some(_) => None,
+            };
+            why.map(|why| format!("face {}: {why}", face.number))
+        })
+        .collect();
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(missing(
+        operation,
+        &format!(
+            "its face set has faces swarf cannot cut; take them out of the set ({})",
+            problems.join("; ")
+        ),
+    ))
+}
+
+/// The component along the rotary axis above which a unit ruling is taken
+/// to run along it: the cosine of 0.01 degrees.
+const AXIAL_RULING: f64 = 0.999_999_984_769_129;
+
 /// The default of parameter `name` of `operation` where the application's
 /// differs from the strategy's schema: edge following on a STEP part takes
 /// the B-rep crease angle (decision 0056).
@@ -585,17 +683,17 @@ pub(crate) fn default_override(
 }
 
 /// What an operation on a STEP part selects: the faces whose holes radial
-/// drilling drills, or the edges edge following follows (OP-02, OP-08,
-/// OP-10). Empty lists mean the whole part.
+/// drilling drills or whose walls swarf cuts, or the edges edge following
+/// follows (OP-02, OP-07, OP-08, OP-10). Empty lists mean the whole part.
 struct BrepChoice {
     faces: Vec<FaceId>,
     edges: Vec<EdgeId>,
 }
 
 /// Reads the selections of `operation` on its STEP part `part` (decision
-/// 0056). Only face sets for radial drilling and edge sets for edge
-/// following are honoured so far; anything else is an error that says so,
-/// never a silent drop (OP-02).
+/// 0056). Only face sets for radial drilling and swarf (decision 0061 item 1)
+/// and edge sets for edge following are honoured so far; anything else is an
+/// error that says so, never a silent drop (OP-02).
 fn brep_selection(
     project: &Project,
     operation: &Operation,
@@ -648,11 +746,15 @@ fn brep_selection(
         }
         match &set.target {
             SelectionTarget::Faces(faces) if faces.is_empty() => {
-                return Err(bad(
+                return Err(bad(if operation.strategy == swarf::NAME {
+                    "it selects no faces; select the ruled walls to cut with the side of the \
+                     tool"
+                        .to_owned()
+                } else {
                     "it selects no faces; select the hole walls to drill, or take the set out \
                      of the operation to drill every hole"
-                        .to_owned(),
-                ));
+                        .to_owned()
+                }));
             }
             SelectionTarget::Edges(edges) if edges.is_empty() => {
                 return Err(bad(
@@ -699,10 +801,14 @@ fn brep_selection(
     choice.faces.dedup();
     choice.edges.sort_unstable();
     choice.edges.dedup();
-    if !choice.faces.is_empty() && operation.strategy != drill::NAME {
+    if !choice.faces.is_empty()
+        && operation.strategy != drill::NAME
+        && operation.strategy != swarf::NAME
+    {
         return Err(fail(format!(
             "the strategy '{}' cannot yet be limited to faces of a STEP model (OP-02); only \
-             radial drilling uses selected faces, to choose its holes",
+             radial drilling, to choose its holes, and swarf, to choose the walls it cuts, use \
+             selected faces",
             operation.strategy
         )));
     }
@@ -711,6 +817,11 @@ fn brep_selection(
             "the strategy '{}' does not use selected edges; only edge following does",
             operation.strategy
         )));
+    }
+    // Swarf cuts only the walls the user chose, never every face of the part
+    // (the owner's change to decision 0061 item 1, decision 0111 item 1).
+    if operation.strategy == swarf::NAME && choice.faces.is_empty() {
+        return Err(fail(SWARF_NEEDS_FACES.to_owned()));
     }
     Ok(choice)
 }
@@ -817,6 +928,32 @@ mod tests {
         file: &str,
     ) -> Fixture {
         let (brep, built) = drilled_blank(RADIUS, LENGTH, holes);
+        let drill = Tool {
+            shape: ToolShape::Drill {
+                point_angle: Degrees(118.0),
+            },
+            diameter: Millimetres(DIAMETER),
+            flute_length: Millimetres(30.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(DIAMETER),
+            flute_count: 2,
+            material: None,
+            centre_cutting: Some(true),
+        };
+        fixture_on(strategy, parameters, brep, built, file, drill, RADIUS)
+    }
+
+    /// A project on the STEP file `file` whose placed part is `brep`, in a
+    /// cylinder of stock `radius` + 0.5 mm, cut by `tool`.
+    fn fixture_on(
+        strategy: &str,
+        parameters: &[(&str, Value)],
+        brep: BrepModel,
+        built: Vec<Built>,
+        file: &str,
+        tool: Tool,
+        radius: f64,
+    ) -> Fixture {
         let hash = ContentHash::of_bytes(b"blank.step");
         let mut project = Project::new("blank");
         project
@@ -833,27 +970,15 @@ mod tests {
         let mut setup = Setup::new(setup_id, "Setup 1");
         setup.part = Some(model);
         setup.stock = Some(Stock::Cylinder {
-            diameter: Millimetres(2.0 * RADIUS + 1.0),
+            diameter: Millimetres(2.0 * radius + 1.0),
             length: Millimetres(LENGTH),
             x_start: Millimetres(SHIFT),
         });
-        let tool = ToolId::new();
         let snapshot = ToolSnapshot {
-            id: tool,
+            id: ToolId::new(),
             order: OrderKey::default(),
-            name: "4 mm drill".into(),
-            tool: Tool {
-                shape: ToolShape::Drill {
-                    point_angle: Degrees(118.0),
-                },
-                diameter: Millimetres(DIAMETER),
-                flute_length: Millimetres(30.0),
-                overall_length: Millimetres(60.0),
-                shank_diameter: Millimetres(DIAMETER),
-                flute_count: 2,
-                material: None,
-                centre_cutting: Some(true),
-            },
+            name: "the tool".into(),
+            tool,
             controller: ControllerMapping {
                 number: 1,
                 length_offset: None,
@@ -861,6 +986,7 @@ mod tests {
             },
             cutting_data: BTreeMap::new(),
         };
+        let tool_id = snapshot.id;
         let operation = OperationId::new();
         let mut values: BTreeMap<String, Value> = [
             (names::FEED, Value::Number(200.0)),
@@ -884,7 +1010,7 @@ mod tests {
                 name: "Op".into(),
                 setup: setup_id,
                 strategy: strategy.into(),
-                tool: Some(tool),
+                tool: Some(tool_id),
                 selections: Vec::new(),
                 boundary: None,
                 avoid: Vec::new(),
@@ -1080,7 +1206,7 @@ mod tests {
         let mut cases: Vec<(String, SelectionTarget, Role, bool, &str)> = Vec::new();
         for choice in registry.iter() {
             let strategy = choice.name().to_owned();
-            if strategy != drill::NAME {
+            if strategy != drill::NAME && strategy != swarf::NAME {
                 cases.push((
                     strategy.clone(),
                     faces(),
@@ -1371,5 +1497,120 @@ mod tests {
         assert_eq!(one, whole);
         // The blank, moved by the placement.
         assert!((whole.min.x - SHIFT).abs() < 1e-9 && (whole.max.x - SHIFT - LENGTH).abs() < 1e-9);
+    }
+
+    /// The swarf fixture: a round boss wall (face 0, a cylinder of
+    /// `BOSS_RADIUS` about an axis parallel to Z through X `BOSS_X`, from
+    /// `FOOT` to `TOP` above the rotary axis), a band of a sphere (face 1,
+    /// not ruled) and a cylinder coaxial with the rotary axis (face 2, ruled
+    /// along the axis), as one STEP part, cut by a 6 mm flat end mill.
+    const BOSS_X: f64 = 30.0;
+    const BOSS_RADIUS: f64 = 8.0;
+    const FOOT: f64 = 10.0;
+    const TOP: f64 = 18.0;
+    const FLAT: f64 = 6.0;
+
+    fn swarf_fixture() -> Fixture {
+        use openchuck_testkit::ruled::{boss_cylinder, coaxial_cylinder, sphere_band};
+        let mut brep = boss_cylinder(BOSS_X, BOSS_RADIUS, FOOT, TOP);
+        for (id, mut other) in [
+            (1, sphere_band(50.0, 5.0, -0.5, 0.5)),
+            (2, coaxial_cylinder(6.0, 0.0, 20.0)),
+        ] {
+            for face in &mut other.faces {
+                face.id = FaceId(id);
+            }
+            brep.faces.extend(other.faces);
+        }
+        let flat = Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(FLAT),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(FLAT),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        fixture_on(swarf::NAME, &[], brep, Vec::new(), "boss.step", flat, 20.0)
+    }
+
+    #[test]
+    fn req_op_07_req_op_02_selected_faces_choose_the_swarf_walls_on_a_step_part() {
+        // Swarf needs a face set (decision 0111 item 1): with none, the form
+        // says so and the operation is refused before anything is cut.
+        let f = swarf_fixture();
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
+        assert!(
+            form.notes
+                .first()
+                .is_some_and(|n| n.contains("needs a face set")),
+            "{:?}",
+            form.notes
+        );
+        let err = f.run().unwrap_err().to_string();
+        assert!(
+            err.contains("needs a face set") && err.contains("ruled walls") && err.contains("'Op'"),
+            "{err}"
+        );
+        // A set of the boss wall alone is cut, on its flank: the tip at the
+        // foot, one tool radius outside the wall (decision 0061 items 3 to 5).
+        let mut f = swarf_fixture();
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
+        assert!(
+            !form.notes.iter().any(|n| n.contains("face set")),
+            "{:?}",
+            form.notes
+        );
+        let path = f.run().unwrap();
+        let cuts: Vec<_> = path
+            .group
+            .segments
+            .iter()
+            .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+            .collect();
+        assert!(cuts.len() > 8, "{} cutting moves", cuts.len());
+        for s in &cuts {
+            let tip = s.end.tip;
+            let r = (tip.x - BOSS_X - SHIFT).hypot(tip.y);
+            assert!(
+                (r - BOSS_RADIUS - FLAT / 2.0).abs() < 0.02,
+                "tip at {r} from the boss axis"
+            );
+            assert!((tip.z - FOOT).abs() < 0.02, "tip at Z {}", tip.z);
+        }
+        assert!(
+            path.notes.iter().any(|n| n.contains("face 0")),
+            "{:?}",
+            path.notes
+        );
+        // A set must suit swarf (decision 0111 item 2): every face swarf
+        // cannot cut is named before it runs, the sphere (not ruled) and the
+        // coaxial cylinder (ruled along the rotary axis) together.
+        let mut f = swarf_fixture();
+        f.select(
+            SelectionTarget::Faces([FaceId(0), FaceId(1), FaceId(2)].into()),
+            f.hash,
+        );
+        let err = f.run().unwrap_err().to_string();
+        assert!(
+            err.contains("'Op'")
+                && err.contains("take them out of the set")
+                && err.contains("face 1: it is not a ruled surface")
+                && err.contains("face 2: its rulings run along the rotary axis")
+                && !err.contains("face 0"),
+            "{err}"
+        );
+        // An empty set is refused with swarf's own advice.
+        let mut f = swarf_fixture();
+        f.select(SelectionTarget::Faces(BTreeSet::new()), f.hash);
+        let err = f.run().unwrap_err().to_string();
+        assert!(
+            err.contains("selects no faces") && err.contains("walls to cut"),
+            "{err}"
+        );
     }
 }
