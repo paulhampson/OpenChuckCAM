@@ -616,13 +616,18 @@ fn spawn_generating(project: &Path, out: &Path) -> std::process::Child {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
-    let stderr = std::io::BufReader::new(child.stderr.take().unwrap());
+    let mut stderr = std::io::BufReader::new(child.stderr.take().unwrap());
     let mut seen = Vec::new();
-    for line in stderr.lines() {
-        let line = line.unwrap();
+    let mut line = String::new();
+    while stderr.read_line(&mut line).unwrap() > 0 {
         let started = line.trim_start().starts_with("T1 ");
-        seen.push(line);
+        seen.push(std::mem::take(&mut line));
         if started {
+            // Keep reading, so a later write to standard error never meets a
+            // closed pipe.
+            std::thread::spawn(move || {
+                std::io::copy(&mut stderr, &mut std::io::sink()).ok();
+            });
             return child;
         }
     }

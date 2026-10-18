@@ -74,24 +74,36 @@ jobs:
               - '.cargo/**'
               - '.config/**'
               - '.github/workflows/e2e.yml'
+      # A manual run always runs the suite, whatever the last commit changed.
+      - name: Whether to run the suite
+        id: want
+        env:
+          EVENT: ${{ github.event_name }}
+          CHANGED: ${{ steps.filter.outputs.rust }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ] || [ "$CHANGED" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Nothing the suite reads changed
-        if: steps.filter.outputs.rust != 'true'
+        if: steps.want.outputs.run != 'true'
         run: echo "No change to the workspace, posts, test data or this workflow; the suite is not run."
       - uses: Swatinem/rust-cache@v2
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.want.outputs.run == 'true'
         with:
           key: e2e-offline
       - uses: taiki-e/install-action@v2
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.want.outputs.run == 'true'
         with:
           tool: cargo-nextest
       - name: Fetch and build the suite (network up)
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.want.outputs.run == 'true'
         run: cargo nextest run -p openchuck-cli --locked --no-run
       # `unshare --net` gives the command a new network namespace: no interface but a loopback
       # that is down. The canary must fail to reach the outside, or the run below proves nothing.
       - name: Canary, nothing is reachable without the network
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.want.outputs.run == 'true'
         run: |
           if sudo unshare --net -- curl --silent --show-error --max-time 10 https://github.com > /dev/null; then
             echo "::error title=Network still reachable::the namespace reached github.com, so the offline run would prove nothing"
@@ -101,7 +113,7 @@ jobs:
       # The run itself, as the runner user (sudo is needed only to enter the namespace), with
       # cargo told not to touch the network either.
       - name: CLI end-to-end suite, network unavailable
-        if: steps.filter.outputs.rust == 'true'
+        if: steps.want.outputs.run == 'true'
         run: >
           sudo unshare --net --
           sudo --preserve-env -u "$USER"
