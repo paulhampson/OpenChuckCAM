@@ -523,7 +523,39 @@ fn req_ui_25_req_ui_03_the_view_draws_held_regions_and_tabs_with_outlines() {
         .filter(|l| l.role == SceneRole::HeldRegion)
         .count();
     assert_eq!(tab_lines, 4 * 2, "two end circles each");
-    assert!(held_lines > 2, "end circles and the hatch: {held_lines}");
+    // The cross-hatch is drawn on the screen by the view, not as lines here.
+    assert_eq!(held_lines, 2, "two end circles");
+    // Each solid is named, for hover and selection: a tab around the axis is
+    // three solids of one item.
+    use openchuck_app::scene::WorkholdingItem;
+    let items: Vec<WorkholdingItem> = view.solids.iter().map(|s| s.item).collect();
+    assert_eq!(
+        items,
+        [
+            WorkholdingItem::Start,
+            WorkholdingItem::Tab(0),
+            WorkholdingItem::Tab(1),
+            WorkholdingItem::Tab(1),
+            WorkholdingItem::Tab(1),
+        ]
+    );
+    assert!(view.solids.iter().all(|s| matches!(
+        view.meshes[s.mesh].role,
+        SceneRole::HeldRegion | SceneRole::Tab
+    )));
+    let text: Vec<&str> = view.solids.iter().map(|s| s.description.as_str()).collect();
+    assert_eq!(
+        text[0],
+        "Held region at the start · 6.000 mm · Ø 26.000 mm (stock)"
+    );
+    assert_eq!(
+        text[1],
+        "Tab 1 · cylinder · X -10.000 to -8.000 mm · Ø 4.000 mm"
+    );
+    assert_eq!(
+        text[3],
+        "Tab 2 · cylinder · X 10.000 to 14.000 mm · Ø 2.000 mm · 2 of 3 at 210.00°"
+    );
     // The legend lists the roles that are present.
     assert_eq!(
         openchuck_app::workholding_view::legend(&view),

@@ -18,7 +18,7 @@ use openchuck_types::workholding::{
 };
 
 use crate::AppError;
-use crate::scene::{SceneMesh, ScenePolyline, SceneRole, SceneView};
+use crate::scene::{SceneMesh, ScenePolyline, SceneRole, SceneSolid, SceneView, WorkholdingItem};
 
 /// Which end of the stock a held region is at: low X or high X.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -557,10 +557,8 @@ impl Draft {
     }
 }
 
-/// How many segments the outline circles and the hatch have.
+/// How many segments the solids and their end circles have.
 const SEGMENTS: u32 = 96;
-/// Hatch lines in each of the two directions on a held region.
-const HATCH_LINES: u32 = 8;
 
 fn ring(base: Point3, radius: f64, segments: u32) -> Vec<Point3> {
     (0..=segments)
@@ -571,19 +569,27 @@ fn ring(base: Point3, radius: f64, segments: u32) -> Vec<Point3> {
         .collect()
 }
 
-/// The shaded solids of `workholding` with their outlines, for the viewport
-/// (7.5): every solid has both end circles as polylines of its role, and a
-/// held region also two families of diagonal lines about its wall, so the two
-/// roles differ by more than colour (NFR-15).
+/// The meshes, end circles and solids [`display_items`] gives.
+pub type DisplayItems = (Vec<SceneMesh>, Vec<ScenePolyline>, Vec<SceneSolid>);
+
+/// The shaded solids of `workholding` for the viewport (7.5), each with
+/// both end circles as polylines of its role, and with which held region or
+/// tab it is and its tooltip. The view draws each solid's outline and a held
+/// region's cross-hatch in screen space, so the two roles differ by more
+/// than colour (NFR-15).
 pub fn display_items(
     workholding: &Workholding,
     stock: Option<&Stock>,
     part: &PartExtent,
-) -> Result<(Vec<SceneMesh>, Vec<ScenePolyline>), AppError> {
+) -> Result<DisplayItems, AppError> {
     let mut meshes = Vec::new();
     let mut lines = Vec::new();
+    let mut solids = Vec::new();
+    // The solids of one tab around the axis follow one another.
+    let mut previous: Option<(WorkholdingItem, u32)> = None;
     for (name, solid) in crate::workholding::labelled_solids(workholding, stock, part)? {
-        let role = if name.starts_with("tab") {
+        let item = item_of(&name);
+        let role = if matches!(item, WorkholdingItem::Tab(_)) {
             SceneRole::Tab
         } else {
             SceneRole::HeldRegion
@@ -597,29 +603,16 @@ pub fn display_items(
             role,
             points: ring(top, solid.top_radius(), SEGMENTS),
         });
-        if role == SceneRole::HeldRegion {
-            for direction in [1.0_f64, -1.0] {
-                for k in 0..HATCH_LINES {
-                    let a0 = std::f64::consts::TAU * f64::from(k) / f64::from(HATCH_LINES);
-                    lines.push(ScenePolyline {
-                        role,
-                        points: (0..=24)
-                            .map(|j| {
-                                let t = f64::from(j) / 24.0;
-                                let a = a0 + direction * std::f64::consts::PI * t;
-                                let r = solid.base_radius()
-                                    + (solid.top_radius() - solid.base_radius()) * t;
-                                Point3::new(
-                                    base.x + (top.x - base.x) * t,
-                                    base.y + r * a.cos(),
-                                    base.z + r * a.sin(),
-                                )
-                            })
-                            .collect(),
-                    });
-                }
-            }
-        }
+        let nth = match previous {
+            Some((last, k)) if last == item => k + 1,
+            _ => 0,
+        };
+        previous = Some((item, nth));
+        solids.push(SceneSolid {
+            mesh: meshes.len(),
+            item,
+            description: describe(workholding, item, &solid, nth),
+        });
         meshes.push(SceneMesh {
             role,
             model: None,
@@ -628,7 +621,72 @@ pub fn display_items(
             brep: None,
         });
     }
-    Ok((meshes, lines))
+    Ok((meshes, lines, solids))
+}
+
+/// The item a solid's name from `labelled_solids` stands for.
+fn item_of(name: &str) -> WorkholdingItem {
+    if let Some(n) = name
+        .strip_prefix("tab ")
+        .and_then(|n| n.parse::<usize>().ok())
+    {
+        WorkholdingItem::Tab(n.saturating_sub(1))
+    } else if name.contains("end") {
+        WorkholdingItem::End
+    } else {
+        WorkholdingItem::Start
+    }
+}
+
+/// The tooltip of a solid (7.5): "Tab 2 · frustum · X 14.000 to 16.000 mm ·
+/// Ø 4.000 to Ø 8.000 mm", with "1 of 3 at 90.00°" for a tab around the
+/// axis, or "Held region at the start · 6.000 mm · Ø 26.000 mm (stock)".
+/// `nth` is the solid's place among a tab's solids around the axis.
+fn describe(
+    workholding: &Workholding,
+    item: WorkholdingItem,
+    solid: &openchuck_path::Solid,
+    nth: u32,
+) -> String {
+    let (lo, hi) = (solid.base().x, solid.top().x);
+    match item {
+        WorkholdingItem::Start | WorkholdingItem::End => {
+            let (end, region) = match item {
+                WorkholdingItem::Start => ("start", workholding.start.as_ref()),
+                _ => ("end", workholding.end.as_ref()),
+            };
+            let source = match region.and_then(|r| r.diameter) {
+                Some(_) => "",
+                None => " (stock)",
+            };
+            format!(
+                "Held region at the {end} · {:.3} mm · Ø {:.3} mm{source}",
+                hi - lo,
+                2.0 * solid.base_radius()
+            )
+        }
+        WorkholdingItem::Tab(i) => {
+            let tab = workholding.tabs.get(i);
+            let (d0, d1) = (2.0 * solid.base_radius(), 2.0 * solid.top_radius());
+            let shape = match tab.map(|t| &t.shape) {
+                Some(TabShape::Cylinder { .. }) => {
+                    format!("cylinder · X {lo:.3} to {hi:.3} mm · Ø {d0:.3} mm")
+                }
+                _ => format!("frustum · X {lo:.3} to {hi:.3} mm · Ø {d0:.3} to Ø {d1:.3} mm"),
+            };
+            let around = match tab.map(|t| &t.layout) {
+                Some(TabLayout::AroundAxis {
+                    count, start_angle, ..
+                }) => format!(
+                    " · {} of {count} at {:.2}°",
+                    nth + 1,
+                    start_angle.0 + 360.0 * f64::from(nth) / f64::from((*count).max(1))
+                ),
+                _ => String::new(),
+            };
+            format!("Tab {} · {shape}{around}", i + 1)
+        }
+    }
 }
 
 /// A scene holding only the held regions and tabs of `workholding`: what the
@@ -638,10 +696,11 @@ pub fn display_scene(
     stock: Option<&Stock>,
     part: &PartExtent,
 ) -> Result<SceneView, AppError> {
-    let (meshes, lines) = display_items(workholding, stock, part)?;
+    let (meshes, lines, solids) = display_items(workholding, stock, part)?;
     Ok(SceneView {
         meshes,
         lines,
+        solids,
         ..SceneView::default()
     })
 }

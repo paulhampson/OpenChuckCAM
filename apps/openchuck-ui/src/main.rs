@@ -30,6 +30,7 @@ mod import_panel;
 mod machine_panel;
 mod model_panel;
 mod playback_panel;
+mod roles;
 mod run_panel;
 mod selection_panel;
 mod shell;
@@ -37,6 +38,8 @@ mod testing;
 mod theme;
 mod tool_panel;
 mod viewport;
+mod viewport_overlays;
+mod viewport_toolbar;
 mod workholding_panel;
 
 fn main() -> ExitCode {

@@ -813,6 +813,20 @@ fn req_ui_25_req_nfr_15_a_hatch_is_drawn_on_the_screen_whatever_the_zoom() {
     let pixels = render(&device, &queue, &scene, &f);
     let dense = blue_pixels(&pixels) as f64 / pixels.len() as f64;
     assert!((0.12..0.22).contains(&dense), "{dense}");
+    // A hatched highlight over the surface it lies on, as avoid surfaces are
+    // drawn: the hatch wins the depth test over the part's own face.
+    let block = block([-40.0; 3], [40.0; 3]);
+    let mut part = Scene::default();
+    part.add_mesh(&block, &[], RED, BLACK);
+    let mut avoid = Scene::default();
+    avoid.add_mesh(&some(&block, &[4, 5]), &[], [1.0, 0.0, 0.0, 0.2], BLACK);
+    avoid.meshes[0].hatch = Some(Hatch {
+        colour: BLUE,
+        cross: false,
+    });
+    let pixels = render_over(&device, &queue, &part, Some(&avoid), &front(&fit, 1.0));
+    let share = blue_pixels(&pixels) as f64 / pixels.len() as f64;
+    assert!((0.12..0.22).contains(&share), "{share}");
 }
 
 #[test]

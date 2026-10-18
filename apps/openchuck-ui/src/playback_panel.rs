@@ -13,16 +13,17 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, Color32};
 use openchuck_app::pathview::{DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData};
 use openchuck_app::playback::{Cursor, Playback, PoseSample, ToolMeshes, ViewFrame, tool_meshes};
 use openchuck_app::project::id::{ModelId, SetupId};
 use openchuck_app::stockplay::StockPlayback;
 use openchuck_app::{Application, JobHandle, Regeneration};
 use openchuck_viewport::camera::place;
-use openchuck_viewport::{Colour, Layer, Scene, Slot};
+use openchuck_viewport::{Colour, Layer, LineStyle, Scene, Slot};
 
-use crate::viewport::{Viewport, band_colour};
+use crate::roles;
+use crate::viewport::{ToolReadout, Viewport};
 
 const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
 
@@ -41,30 +42,29 @@ const SPEEDS: [(&str, f64); 5] = [
     ("10 000×", 10_000.0),
 ];
 
-const CUTTER: Colour = [0.74, 0.78, 0.86, 1.0];
-const SHANK: Colour = [0.42, 0.44, 0.48, 1.0];
+/// The tool: a lilac tip (the cutter) on a grey body (the shank), 7.4.
+const CUTTER: Colour = roles::TOOL_TIP;
+const SHANK: Colour = roles::TOOL_BODY;
 const STOCK_GLASS: Colour = [0.85, 0.72, 0.45, 0.30];
 
-/// The colour of a class of move (SIM-01).
-pub fn class_colour(class: PathClass) -> Colour {
+/// How a class of move is drawn (SIM-01; specification 7.4): its colour,
+/// width and line style. Cut moves amber and solid; link moves green, solid
+/// and thinner; rapid moves grey and dotted; entry and exit moves lilac.
+pub fn class_look(class: PathClass) -> (Colour, f32, LineStyle) {
     match class {
-        PathClass::Rapid => [0.95, 0.35, 0.35, 1.0],
-        PathClass::Link => [0.95, 0.80, 0.20, 1.0],
-        PathClass::Entry => [0.30, 0.80, 0.92, 1.0],
-        PathClass::Cut => [0.25, 0.90, 0.45, 1.0],
+        PathClass::Rapid => (roles::RAPID, roles::LINE_WIDTH, LineStyle::Dotted),
+        PathClass::Link => (roles::LINK, roles::LINE_WIDTH, LineStyle::Solid),
+        PathClass::Entry => (roles::ENTRY, roles::PATH_WIDTH, LineStyle::Solid),
+        PathClass::Cut => (roles::CUT, roles::PATH_WIDTH, LineStyle::Solid),
     }
 }
 
-fn to_colour32(c: Colour) -> Color32 {
-    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    Color32::from_rgb(byte(c[0]), byte(c[1]), byte(c[2]))
-}
-
-/// The scene of path lines: one polyline each, in the colour of its class.
+/// The scene of path lines: one polyline each, drawn as its class is.
 pub fn paths_scene(lines: &PathLines) -> Scene {
     let mut scene = Scene::default();
     for line in &lines.lines {
-        scene.add_polyline(&line.points, class_colour(line.class), false);
+        let (colour, width, style) = class_look(line.class);
+        scene.add_styled_polyline(&line.points, colour, false, width, style);
         if let Some(added) = scene.lines.last_mut() {
             added.slot = Slot::Part;
         }
@@ -229,6 +229,7 @@ impl PlaybackPanel {
             }
             viewport.set_bands(None);
             viewport.set_part_turn(0.0);
+            viewport.set_tool_readout(None);
         }
         busy |= self.poll_data();
         busy |= self.poll_lines(app, viewport);
@@ -244,6 +245,10 @@ impl PlaybackPanel {
             viewport.set_part_turn(pose.part_rotation(self.view));
             let placement = pose.placement(self.view);
             viewport.set_tool_transform(place(placement.origin, placement.axis));
+            viewport.set_tool_readout(Some(ToolReadout {
+                work: pose.work,
+                move_number: pose.cursor.done + 1,
+            }));
             busy |= self.update_stock(app, viewport, &pose);
         }
         busy |= self.update_bands(app, viewport);
@@ -631,14 +636,6 @@ impl PlaybackPanel {
                         changed |= ui.checkbox(shown, name).changed();
                     }
                 }
-                ui.horizontal(|ui| {
-                    for class in PathClass::ALL {
-                        ui.label(
-                            RichText::new(format!("■ {}", class.name()))
-                                .color(to_colour32(class_colour(class))),
-                        );
-                    }
-                });
                 if changed {
                     self.lines_dirty = true;
                 }
@@ -651,20 +648,6 @@ impl PlaybackPanel {
             } else {
                 ui.weak(format!("Drawing all {full} points"));
             }
-        }
-        if let Some(bands) = &self.bands {
-            ui.horizontal_wrapped(|ui| {
-                for (band, triangles) in &bands.bands {
-                    ui.label(
-                        RichText::new(format!("■ {} ({})", band.name(), triangles.len()))
-                            .color(to_colour32(band_colour(*band))),
-                    );
-                }
-            });
-            ui.weak(format!(
-                "On the surface means within {:.2} mm, the simulation's cell",
-                bands.tolerance
-            ));
         }
         if let Some(error) = self.stock.error.as_ref().or(self.error.as_ref()) {
             ui.colored_label(PROBLEM, error);
@@ -709,9 +692,14 @@ fn clock(seconds: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
+
+    /// The colour of a class of move.
+    fn class_colour(class: PathClass) -> Colour {
+        class_look(class).0
+    }
 
     #[test]
     fn req_sim_04_the_clock_reads_hours_minutes_and_seconds() {
@@ -730,6 +718,19 @@ mod tests {
             assert!(!seen.contains(&colour), "{class:?} repeats a colour");
             seen.push(colour);
         }
+        // And more than colour (7.4): cut solid, link solid and thinner,
+        // rapid dotted, entry solid; the tool a lilac tip on a grey body.
+        let (cut, link, rapid) = (
+            class_look(PathClass::Cut),
+            class_look(PathClass::Link),
+            class_look(PathClass::Rapid),
+        );
+        assert_eq!(cut.2, LineStyle::Solid);
+        assert!(link.1 < cut.1 && link.2 == LineStyle::Solid);
+        assert_eq!(rapid.2, LineStyle::Dotted);
+        assert_eq!(class_look(PathClass::Entry).0, roles::ENTRY);
+        assert_eq!(cut.0, roles::CUT);
+        assert_eq!((CUTTER, SHANK), (roles::TOOL_TIP, roles::TOOL_BODY));
     }
 
     use std::time::{Duration, Instant};

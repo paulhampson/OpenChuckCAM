@@ -198,6 +198,7 @@ pub struct Renderer {
     glass: wgpu::RenderPipeline,
     fill_hatch: wgpu::RenderPipeline,
     glass_hatch: wgpu::RenderPipeline,
+    highlight_hatch: wgpu::RenderPipeline,
     outline: wgpu::RenderPipeline,
     layers: [GpuLayer; 6],
     mode: DisplayMode,
@@ -394,6 +395,15 @@ impl Renderer {
                 Less,
                 true,
                 push_back,
+            ),
+            highlight_hatch: make(
+                "hatched highlight",
+                "vs_mesh",
+                "fs_hatch",
+                triangles,
+                LessEqual,
+                false,
+                pull_forward,
             ),
             glass_hatch: make(
                 "hatched glass",
@@ -625,7 +635,11 @@ impl Renderer {
                 .filter(|m| !m.translucent && !m.outline_only)
             {
                 if let Some((buffer, count)) = &mesh.triangles {
-                    pass.set_pipeline(&self.highlight);
+                    pass.set_pipeline(if mesh.fill.hatch.is_some() {
+                        &self.highlight_hatch
+                    } else {
+                        &self.highlight
+                    });
                     pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
