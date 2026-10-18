@@ -97,12 +97,18 @@ pub(crate) fn inspect_placed(
     )?;
     context.check_cancelled()?;
     context.report("check mesh", 0, None);
-    let (placed, map, _) = place(&model, transform)?;
+    let (placed, map, brep) = place(&model, transform)?;
     let normals = model
         .stated_normals
         .as_deref()
         .map(|normals| transform_normals(normals, &map));
-    let report = check_mesh(&placed, normals.as_deref())?;
+    // A STEP model's faces are tessellated one by one: their shared corners
+    // are joined first, so a closed part is not reported open at every face
+    // boundary (decision record 0056).
+    let report = match brep {
+        Some(_) => check_brep_tessellation(&placed)?,
+        None => check_mesh(&placed, normals.as_deref())?,
+    };
     let inspection = ModelInspection {
         path: path.to_path_buf(),
         format: model.format,
@@ -115,6 +121,43 @@ pub(crate) fn inspect_placed(
         notes: model.notes,
     };
     Ok((inspection, placed))
+}
+
+/// How close, in millimetres, two corners of a STEP model's face
+/// tessellations must be to be checked as one vertex.
+const WELD_MM: f64 = 1e-6;
+
+/// The mesh checks of a STEP model's joined tessellation (IMP-04). Corners of
+/// neighbouring faces closer than [`WELD_MM`] are joined first, and the
+/// triangles that joining collapses (the slivers a tessellation fans round a
+/// pole, whose corners were distinct but in one place) are left out of the
+/// check; the triangle indices of the report are those of `placed`.
+fn check_brep_tessellation(placed: &TriangleMesh) -> Result<MeshReport, AppError> {
+    let welded = openchuck_geom::check::weld_vertices(placed, WELD_MM);
+    let mut kept = Vec::new();
+    let mut check = TriangleMesh {
+        vertices: welded.vertices.clone(),
+        triangles: Vec::new(),
+    };
+    for (i, (before, after)) in placed.triangles.iter().zip(&welded.triangles).enumerate() {
+        let distinct = |t: &[u32; 3]| t[0] != t[1] && t[1] != t[2] && t[0] != t[2];
+        if distinct(before) && !distinct(after) {
+            continue;
+        }
+        kept.push(u32::try_from(i).unwrap_or(u32::MAX));
+        check.triangles.push(*after);
+    }
+    let mut report = check_mesh(&check, None)?;
+    let back = |list: &mut Vec<u32>| {
+        for t in list.iter_mut() {
+            *t = kept.get(*t as usize).copied().unwrap_or(*t);
+        }
+    };
+    back(&mut report.flipped_triangles);
+    back(&mut report.normal_mismatches);
+    back(&mut report.degenerate_triangles);
+    report.triangles = placed.triangles.len();
+    Ok(report)
 }
 
 /// A model file read, hashed and checked, ready to be added to the project

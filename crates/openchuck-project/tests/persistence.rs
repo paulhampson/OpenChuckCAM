@@ -17,11 +17,11 @@ use std::time::{Duration, SystemTime};
 
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, ModelCheck, ModelRef, Operation, OrderKey, ParameterValue,
+    ContentHash, Item, ItemId, MeshEdge, ModelCheck, ModelRef, Operation, OrderKey, ParameterValue,
     Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
     ToolSnapshot, file,
 };
-use openchuck_types::brep::FaceId;
+use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
 use openchuck_types::units::Millimetres;
 
@@ -107,6 +107,7 @@ fn sample() -> Project {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         }),
         Placement::End,
     )
@@ -504,6 +505,7 @@ fn with_roles() -> Project {
             descriptors: Vec::new(),
             stock_to_leave: None,
             colour: None,
+            keep_tangent_edges: None,
         })
     };
     for n in [31, 32, 33] {
@@ -918,6 +920,7 @@ fn req_prj_06_selections_match_the_model_kind() {
         descriptors: Vec::new(),
         stock_to_leave: None,
         colour: None,
+        keep_tangent_edges: None,
     };
     let stl = placed_model();
     let step = model(1);
@@ -1183,6 +1186,325 @@ fn req_nfr_07_a_malformed_or_premature_centre_cutting_is_refused_naming_the_file
     let err = file::load(&early).unwrap_err().to_string();
     assert!(
         err.contains("000000000014") && err.contains("centre_cutting"),
+        "{err}"
+    );
+}
+
+/// A project with the STL `placed_model()` and a set of edges of its
+/// triangles (schema 12; OI-204, decision record 0066).
+fn with_mesh_edges() -> Project {
+    let stl = placed_model();
+    let mut p = Project::new("mesh edges");
+    p.insert(Item::Model(stl.clone()), Placement::End).unwrap();
+    let edges = [(4, 0), (4, 2), (9, 1), (120, 0)]
+        .into_iter()
+        .map(|(t, s)| MeshEdge::new(t, s).unwrap())
+        .collect();
+    p.insert(
+        Item::SelectionSet(SelectionSet {
+            id: SelectionSetId::from_u128(40),
+            order: OrderKey::default(),
+            name: "Lettering".into(),
+            model: stl.id,
+            model_hash: stl.hash,
+            target: SelectionTarget::MeshEdges(edges),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    p
+}
+
+const MESH_EDGE_FILE: &str = "selections/00000000-0000-0000-0000-000000000028.toml";
+
+#[test]
+fn req_prj_06_req_op_08_a_mesh_edge_selection_survives_save_and_load() {
+    let dir = temp_dir("mesh-edges");
+    let p = with_mesh_edges();
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join(MESH_EDGE_FILE)).unwrap();
+    assert!(text.starts_with(&current()), "{text}");
+    assert!(text.contains("[target]\nmesh_edges = ["), "{text}");
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    let SelectionTarget::MeshEdges(edges) = &loaded.selection_sets()[0].target else {
+        panic!("{:?}", loaded.selection_sets()[0].target);
+    };
+    assert_eq!(
+        edges
+            .iter()
+            .map(|e| (e.triangle, e.side(), e.corners()))
+            .collect::<Vec<_>>(),
+        [
+            (4, 0, [0, 1]),
+            (4, 2, [2, 0]),
+            (9, 1, [1, 2]),
+            (120, 0, [0, 1])
+        ]
+    );
+    // Saving what was loaded writes the same bytes (PRJ-01).
+    let again = temp_dir("mesh-edges-again");
+    file::save(&loaded, &again).unwrap();
+    assert_eq!(read_tree(&again), read_tree(&dir));
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_mesh_edges_need_schema_12_and_a_side_of_0_to_2() {
+    let dir = temp_dir("mesh-edges-bad");
+    file::save(&with_mesh_edges(), &dir).unwrap();
+    let path = dir.join(MESH_EDGE_FILE);
+    let good = std::fs::read_to_string(&path).unwrap();
+
+    // Schema 11 had no mesh edges: such a file is refused, naming the target.
+    std::fs::write(&path, good.replacen(&current(), "schema = 11\n", 1)).unwrap();
+    let err = file::load(&dir).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000028") && err.contains("mesh_edges") && err.contains("schema 12"),
+        "{err}"
+    );
+
+    // A side is 0, 1 or 2.
+    std::fs::write(&path, good.replacen("120,\n    0,", "120,\n    3,", 1)).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_ne!(text, good, "the edit must change the file: {good}");
+    let err = file::load(&dir).unwrap_err().to_string();
+    assert!(
+        err.contains("000000000028") && err.contains("0, 1 or 2"),
+        "{err}"
+    );
+
+    // A schema 11 project without mesh edges loads as it is.
+    let old = temp_dir("mesh-edges-schema-11");
+    let q = with_roles();
+    for (path, text) in file::render(&q).unwrap() {
+        let target = old.join(&path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, text.replacen(&current(), "schema = 11\n", 1)).unwrap();
+    }
+    assert_eq!(file::load(&old).unwrap(), q);
+}
+
+#[test]
+fn req_prj_06_mesh_edges_apply_to_mesh_models_only() {
+    let mut p = with_mesh_edges();
+    let step = model(1);
+    p.insert(Item::Model(step.clone()), Placement::End).unwrap();
+    let mut set = p.selection_sets()[0].clone();
+    set.id = SelectionSetId::from_u128(41);
+    set.model = step.id;
+    set.model_hash = step.hash;
+    let err = p
+        .insert(Item::SelectionSet(set), Placement::End)
+        .unwrap_err();
+    assert!(err.to_string().contains("its own edges"), "{err}");
+    // An STL model stays one while it has mesh edges selected on it.
+    let mut renamed = placed_model();
+    renamed.path = RelativePath::new("models/shaft.step").unwrap();
+    let err = p.replace(Item::Model(renamed)).unwrap_err();
+    assert!(err.to_string().contains("its own edges"), "{err}");
+    assert_eq!(MeshEdge::new(0, 3), None);
+}
+
+/// `sample()` (a STEP model, an operation using set 30) with set 34, a set of
+/// B-rep edges, used by the operation too (decision record 0066).
+fn with_edge_set(keep: Option<bool>) -> Project {
+    let mut p = sample();
+    p.insert(
+        Item::SelectionSet(SelectionSet {
+            id: SelectionSetId::from_u128(34),
+            order: OrderKey::default(),
+            name: "Outline".into(),
+            model: ModelId::from_u128(1),
+            model_hash: model(1).hash,
+            target: SelectionTarget::Edges(BTreeSet::from([EdgeId(4), EdgeId(9)])),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: keep,
+        }),
+        Placement::End,
+    )
+    .unwrap();
+    let mut o = p.operations()[0].clone();
+    o.selections.push(SelectionSetId::from_u128(34));
+    p.replace(Item::Operation(o)).unwrap();
+    p
+}
+
+const EDGE_SET_FILE: &str = "selections/00000000-0000-0000-0000-000000000022.toml";
+
+#[test]
+fn req_prj_06_req_op_08_keep_tangent_edges_survives_save_and_load_per_set_and_for_the_project() {
+    // Unset everywhere: nothing is written, and the project's default is off.
+    let plain = with_edge_set(None);
+    assert!(!plain.keep_tangent_edges());
+    for (path, text) in file::render(&plain).unwrap() {
+        assert!(!text.contains("keep_tangent_edges"), "{path}");
+    }
+    let set = |p: &Project| {
+        p.selection_sets()
+            .iter()
+            .find(|s| s.id == SelectionSetId::from_u128(34))
+            .unwrap()
+            .clone()
+    };
+    assert!(!plain.keeps_tangent_edges(&set(&plain)));
+
+    // A set's own value and the project's default are written and read back.
+    let mut p = with_edge_set(Some(false));
+    assert!(!p.set_keep_tangent_edges(true));
+    let dir = temp_dir("tangent");
+    file::save(&p, &dir).unwrap();
+    let project_text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(
+        project_text.contains("\nkeep_tangent_edges = true\n"),
+        "{project_text}"
+    );
+    let set_text = std::fs::read_to_string(dir.join(EDGE_SET_FILE)).unwrap();
+    assert!(
+        set_text.contains("keep_tangent_edges = false\n"),
+        "{set_text}"
+    );
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    // The set's value wins over the project's default; a set without one
+    // takes the default.
+    assert!(loaded.keep_tangent_edges());
+    assert!(!loaded.keeps_tangent_edges(&set(&loaded)));
+    let mut inherits = set(&loaded);
+    inherits.keep_tangent_edges = None;
+    assert!(loaded.keeps_tangent_edges(&inherits));
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_keep_tangent_edges_needs_schema_12_and_an_edge_set() {
+    let mut p = with_edge_set(Some(true));
+    p.set_keep_tangent_edges(true);
+    let dir = temp_dir("tangent-bad");
+    file::save(&p, &dir).unwrap();
+    let base = read_tree(&dir);
+
+    // In a schema 11 file, in either place, it is refused naming the file.
+    for (name, file) in [
+        ("tangent-11-set", EDGE_SET_FILE),
+        ("tangent-11-project", "project.toml"),
+    ] {
+        let old = copy_tree_with(&base, name, |path, text| {
+            if path == file {
+                text.replacen(&current(), "schema = 11\n", 1)
+            } else {
+                text.to_owned()
+            }
+        });
+        let err = file::load(&old).unwrap_err().to_string();
+        assert!(
+            err.contains("keep_tangent_edges") && err.contains("schema 12"),
+            "{name}: {err}"
+        );
+    }
+    // A schema 11 project without it loads with the default off.
+    let q = with_edge_set(None);
+    let old = copy_tree_with(
+        &read_tree(&{
+            let d = temp_dir("tangent-11-plain");
+            file::save(&q, &d).unwrap();
+            d
+        }),
+        "tangent-11-plain-copy",
+        |_, text| text.replacen(&current(), "schema = 11\n", 1),
+    );
+    let loaded = file::load(&old).unwrap();
+    assert_eq!(loaded, q);
+    assert!(!loaded.keep_tangent_edges());
+
+    // Only a set of B-rep edges may hold it.
+    let mut faces = p.selection_sets()[0].clone();
+    assert!(matches!(faces.target, SelectionTarget::Faces(_)));
+    faces.keep_tangent_edges = Some(true);
+    let err = p
+        .replace(Item::SelectionSet(faces))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("keep_tangent_edges"), "{err}");
+}
+
+#[test]
+fn req_op_08_req_prj_03_keep_tangent_edges_changes_the_cache_key_of_operations_on_edge_sets_only() {
+    let hash = |p: &Project, op: u128| file::selection_inputs_hash(p, op_id(op)).unwrap();
+    // The first operation uses the edge set; operation 102 only the face set.
+    let mut p = with_edge_set(None);
+    let edges_op = p.operations()[0].id;
+    assert_ne!(edges_op, op_id(102));
+    let (before_edges, before_faces) = (
+        file::selection_inputs_hash(&p, edges_op).unwrap(),
+        hash(&p, 102),
+    );
+    // The project's default changes what an inheriting edge set keeps.
+    p.set_keep_tangent_edges(true);
+    assert_ne!(
+        file::selection_inputs_hash(&p, edges_op).unwrap(),
+        before_edges
+    );
+    assert_eq!(hash(&p, 102), before_faces);
+    // A set's own value equal to the resolved one gives the same key.
+    let mut set = p
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == SelectionSetId::from_u128(34))
+        .unwrap()
+        .clone();
+    let inherited = file::selection_inputs_hash(&p, edges_op).unwrap();
+    set.keep_tangent_edges = Some(true);
+    p.replace(Item::SelectionSet(set)).unwrap();
+    assert_eq!(
+        file::selection_inputs_hash(&p, edges_op).unwrap(),
+        inherited
+    );
+}
+
+#[test]
+fn req_prj_06_the_selection_reset_warning_setting_survives_save_and_load() {
+    // On by default and not written.
+    let plain = with_edge_set(None);
+    assert!(plain.warn_on_selection_reset());
+    for (path, text) in file::render(&plain).unwrap() {
+        assert!(!text.contains("warn_on_selection_reset"), "{path}");
+    }
+    // Turned off ("Don't show me this warning again"): written and read back.
+    let mut p = with_edge_set(None);
+    assert!(p.set_warn_on_selection_reset(false));
+    let dir = temp_dir("reset-warning");
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(
+        text.contains("\nwarn_on_selection_reset = false\n"),
+        "{text}"
+    );
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    assert!(!loaded.warn_on_selection_reset());
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_the_selection_reset_warning_setting_needs_schema_12() {
+    let mut p = with_edge_set(None);
+    p.set_warn_on_selection_reset(false);
+    let dir = temp_dir("reset-warning-11");
+    file::save(&p, &dir).unwrap();
+    let old = copy_tree_with(&read_tree(&dir), "reset-warning-11-copy", |path, text| {
+        if path == "project.toml" {
+            text.replacen(&current(), "schema = 11\n", 1)
+        } else {
+            text.to_owned()
+        }
+    });
+    let err = file::load(&old).unwrap_err().to_string();
+    assert!(
+        err.contains("warn_on_selection_reset") && err.contains("schema 12"),
         "{err}"
     );
 }

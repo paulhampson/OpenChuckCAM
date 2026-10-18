@@ -249,25 +249,23 @@ jobs:
     if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
-    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
-    # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
-    # yet proven on hosted runners, so they report without blocking until
-    # their first runs are recorded under OI-129.
+    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb. Windows (WARP) and
+    # macOS (the runner's Metal device) are proven on hosted runners (OI-129), so
+    # all three legs block: a failed leg fails this job and so `CI required checks`
+    # (owner's decision, 17 Oct 2026, OI-320). Every leg must find an adapter: the
+    # render tests skip their assertions without one unless OPENCHUCK_REQUIRE_ADAPTER
+    # is set, and a blocking leg must not pass by skipping.
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             require_adapter: "1"
-            blocking: true
           - os: windows-latest
-            require_adapter: ""
-            blocking: false
+            require_adapter: "1"
           - os: macos-latest
-            require_adapter: ""
-            blocking: false
+            require_adapter: "1"
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ !matrix.blocking }}
     timeout-minutes: 30
     env:
       OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
@@ -357,10 +355,11 @@ jobs:
       - name: B-rep edge chains of the STEP corpus
         run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
       # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
-      # the `drilling` reference job against its golden files on every platform (OI-28), and every
-      # strategy on corpus STEP parts against the exact B-rep.
+      # the `drilling` reference job against its golden files on every platform (OI-28), every
+      # strategy on corpus STEP parts against the exact B-rep, and a STEP part's faces and edges
+      # picked, saved and the same after reopening and a second import (decision 0066).
       - name: STEP parts through the application
-        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 

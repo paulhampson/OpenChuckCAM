@@ -199,7 +199,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | GC-09 | A post-processor for the Makera Z1, the reference machine for the first release; existing Makera machine profiles are inspected during development to derive its rotary-axis conventions. | P1 |
 | GC-10 | A verification post-processor producing LinuxCNC-dialect G-code, to be run in the LinuxCNC simulator to confirm the toolpaths and the post-processing. | P1 |
 | GC-11 | A command-line mode that regenerates G-code from a project file without the UI. | P1 |
-| GC-12 | Export a setup sheet (tools, operations, stock and estimated times) as HTML or PDF; times appear once SIM-08 is available. | P1 |
+| GC-12 | Export a setup sheet (tools, operations, stock and estimated times) as HTML or PDF; times appear once SIM-08 is available. The sheet also records when it was generated and when the project was last saved, the software version and a fingerprint of the project, and a version-control line that is filled in when version control is available, so a printed sheet can be traced to the files it came from. | P1 |
 | GC-13 | An embedded scripting language for post-processors, for logic that text templates cannot express. | P2 |
 | GC-14 | Before G-code is written, show the tool numbers the program will use and let the user confirm them, renumber automatically in operation order, or renumber by hand. The chosen numbers are saved in the project, so the next post gives the same output. | P1 |
 | GC-15 | Refuse to write G-code while an enabled operation is stale or in error, and warn when an operation has not been simulated, listing the checks before writing. | P1 |

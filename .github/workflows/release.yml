@@ -1,0 +1,278 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Releases (work breakdown slice 20 items 8 and 9; decision records 0031 and 0091).
+#
+# Runs only for a release tag, `lib-v<version>` (the library family) or `app-v<version>` (the
+# application binaries), and by hand. The first job runs the release gate (`cargo xtask
+# release-gate`: dependency rules, cargo deny, the golden G-code comparison and the LinuxCNC
+# replay); every build and publish job needs it, so a failing gate publishes nothing. The Z1 air cut
+# (gates 4 and 5) is a manual release-checklist step, not part of the gate (decision record 0106).
+#
+# - `app-v<version>`: the archives for the three platforms (build-archives.yml, shared with the
+#   nightly build) are attached to a GitHub release, not a pre-release, for the existing tag.
+# - `lib-v<version>`: the four library crates pass `cargo publish --dry-run`. Publishing them to
+#   crates.io is not done here: this workflow never publishes a crate (decision 0091 item 4, OI-303).
+#
+# A manual run is a dry run unless `dry_run` is unticked: it runs the gate, builds and checks the
+# archives and the library publish dry run, and publishes nothing. A manual run that publishes
+# must be started on a release tag; started on a branch, it fails before the gate.
+name: Release
+
+on:
+  push:
+    tags:
+      - "lib-v*"
+      - "app-v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify only; publish nothing.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One release run per tag or branch at a time; a second waits rather than replacing the first.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # CMake 4 on the runners rejects OpenCASCADE 7.8.1's cmake_minimum_required (decision 0003).
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  plan:
+    name: What this run releases
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.plan.outputs.app }}
+      lib: ${{ steps.plan.outputs.lib }}
+      publish: ${{ steps.plan.outputs.publish }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      name: ${{ steps.plan.outputs.name }}
+      kind: ${{ steps.plan.outputs.kind }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          # On a tag push there is no input: the run publishes.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          SHA: ${{ github.sha }}
+        run: |
+          # The workspace version, which every crate shares (lockstep, decision 0031 item 2).
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          [ -n "$version" ] || { echo "could not read the workspace version"; exit 1; }
+          tag=""
+          app=true
+          lib=true
+          if [ "$REF_TYPE" = "tag" ]; then
+            tag="$REF_NAME"
+            case "$tag" in
+              app-v*) lib=false ;;
+              lib-v*) app=false ;;
+              *) echo "::error::'$tag' is not a release tag (lib-v<version> or app-v<version>)"; exit 1 ;;
+            esac
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            publish=false
+          elif [ -z "$tag" ]; then
+            echo "::error::A run that publishes must be started on a lib-v or app-v tag, not on $REF. Tick dry_run to build and verify only."
+            exit 1
+          else
+            publish=true
+          fi
+          if [ "$publish" = "true" ]; then
+            kind=release
+            name="openchuckcam-$version"
+          else
+            kind=dry-run
+            name="openchuckcam-dry-run-${SHA:0:9}"
+          fi
+          {
+            echo "app=$app"
+            echo "lib=$lib"
+            echo "publish=$publish"
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "name=$name"
+            echo "kind=$kind"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "Version $version at $SHA (${tag:-no tag}, $EVENT)."
+            echo
+            echo "- Application archives: $app"
+            echo "- Library publish dry run: $lib"
+            echo "- Publishes: $publish"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The release gate (slice 20 item 9). The tag check, the dependency rules, cargo deny, every
+  # golden-file test (with the STEP kernel, for the `drilling` reference job) and the LinuxCNC
+  # replay of every golden program, in one job: the replay alone takes about 22 minutes.
+  gate:
+    name: Release gate
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Built from docker/linuxcnc by the linuxcnc-image workflow (as in CI's gate 3).
+      LINUXCNC_IMAGE: ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/occt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-gate
+          cache-on-failure: true
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Get the LinuxCNC image
+        run: docker pull "$LINUXCNC_IMAGE" || docker build -t "$LINUXCNC_IMAGE" docker/linuxcnc
+      - name: Run the release gate
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: cargo xtask release-gate --docker "$LINUXCNC_IMAGE" --keep-reports target/replay ${TAG:+--tag "$TAG"}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release-gate-replay-reports
+          path: target/replay
+          if-no-files-found: ignore
+
+  archives:
+    name: Archives
+    needs: [plan, gate]
+    if: needs.plan.outputs.app == 'true'
+    uses: ./.github/workflows/build-archives.yml
+    with:
+      name: ${{ needs.plan.outputs.name }}
+      kind: ${{ needs.plan.outputs.kind }}
+      version: ${{ needs.plan.outputs.version }}
+
+  # Every archive is there and readable, on a dry run and before a release alike.
+  check-archives:
+    name: Check the archives
+    needs: [plan, gate, archives]
+    if: needs.plan.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.plan.outputs.name }}-*
+          merge-multiple: true
+          skip-decompress: true
+          path: dist
+      - name: Check the archives
+        env:
+          NAME: ${{ needs.plan.outputs.name }}
+        run: |
+          ls -l dist
+          for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do
+            tar -tzf "dist/$NAME-$target.tar.gz" > list.txt
+            grep -q "^$NAME-$target/README.txt$" list.txt || { echo "no README in the $target archive"; exit 1; }
+            grep -q "^$NAME-$target/openchuck-ui$" list.txt || { echo "no openchuck-ui in the $target archive"; exit 1; }
+          done
+          target=x86_64-pc-windows-msvc
+          unzip -l "dist/$NAME-$target.zip" > list.txt
+          grep -q "$NAME-$target/README.txt" list.txt || { echo "no README in the $target archive"; exit 1; }
+          grep -q "$NAME-$target/openchuck-ui.exe" list.txt || { echo "no openchuck-ui.exe in the $target archive"; exit 1; }
+          count=$(find dist -maxdepth 1 -type f -name "$NAME-*" | wc -l)
+          [ "$count" -eq 3 ] || { echo "expected 3 archives, found $count"; exit 1; }
+          echo "The three archives are complete." >> "$GITHUB_STEP_SUMMARY"
+
+  # The application release: a GitHub release (not a pre-release) for the existing app-v tag.
+  publish-app:
+    name: Publish the application release
+    needs: [plan, gate, archives, check-archives]
+    if: needs.plan.outputs.app == 'true' && needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.plan.outputs.name }}-*
+          merge-multiple: true
+          skip-decompress: true
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          NAME: ${{ needs.plan.outputs.name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if gh release view "$TAG" -R "$REPO" > /dev/null 2>&1; then
+            echo "::error::A release for $TAG exists already; nothing was changed."
+            exit 1
+          fi
+          notice=$(perl -0777 -ne 'if (/VERIFY_GCODE_NOTICE: &str = "(.*?)";/s) { $s = $1; $s =~ s/\\\n\s*//g; print $s }' crates/openchuck-types/src/notice.rs)
+          [ -n "$notice" ] || { echo "could not read the G-code notice"; exit 1; }
+          {
+            echo "OpenChuckCAM $VERSION, built from $SHA."
+            echo
+            echo "**$notice**"
+            echo
+            echo "This release passed the release gate: the dependency rules, cargo deny, the golden G-code comparison and the LinuxCNC replay."
+            echo
+            echo "Makera Z1 machine values that have not been confirmed on the machine are labelled unconfirmed in the application. The Z1 air cut is a manual release step, recorded in the project's decision records (decision 0106)."
+            echo
+            echo "Each archive holds \`openchuck-cli\`, \`openchuck-ui\`, the STEP reader, the licences, the third-party notices and a README. The binaries are not signed: macOS quarantines them and Windows SmartScreen may warn (see the README in each archive)."
+          } > notes.md
+          # Upload to a draft first, so the release appears only once it holds all three archives.
+          gh release create "$TAG" dist/"$NAME"-* -R "$REPO" --verify-tag --draft \
+            --title "OpenChuckCAM $VERSION" --notes-file notes.md
+          assets=$(gh release view "$TAG" -R "$REPO" --json assets --jq '.assets | length')
+          [ "$assets" -eq 3 ] || { echo "the draft holds $assets archives, expected 3; it is left as a draft"; exit 1; }
+          gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false
+          echo "Published the release $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+  # The library family: a publish dry run of the four crates together (cargo resolves their
+  # dependencies on each other locally). Publishing to crates.io is by hand for now (OI-303).
+  library:
+    name: Library publish dry run
+    needs: [plan, gate]
+    if: needs.plan.outputs.lib == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: library-publish
+      - name: cargo publish --dry-run
+        run: cargo publish --dry-run --locked -p openchuck-types -p openchuck-path -p openchuck-post -p openchuck-gcode
+      - name: Summary
+        env:
+          PUBLISH: ${{ needs.plan.outputs.publish }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          {
+            echo "The library family passes the publish dry run."
+            if [ "$PUBLISH" = "true" ]; then
+              echo
+              echo "$TAG passed the release gate. The crates are not published by this workflow: publish them by hand with cargo-release (decision 0091 item 4, OI-303)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

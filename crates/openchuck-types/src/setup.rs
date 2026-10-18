@@ -478,16 +478,31 @@ pub fn check_setup(check: &SetupCheck<'_>) -> Vec<SetupWarning> {
 }
 
 /// Whether `stock` (with model-frame `bounds`) holds every point of `part`.
+/// Relative tolerance of the check that the stock encloses the part: the
+/// 32-bit float epsilon (2^-23, about 1.19e-7) times the size compared,
+/// never less than 1 mm of size. A binary STL stores coordinates as 32-bit
+/// floats, which rounds each to about 6e-8 of its size: a part exactly as
+/// wide as its stock then measures up to 4.6e-7 mm (radius 10 mm) to
+/// 6.5e-6 mm (radius 150 mm) outside it, while double-precision coordinates
+/// (ASCII STL, STEP) measure at most 3e-14 mm (decision 0096, OI-314).
+const ENCLOSE_TOLERANCE: f64 = f32::EPSILON as f64;
+
+/// Whether `a <= b` within [`ENCLOSE_TOLERANCE`] of the larger size.
+fn at_most(a: f64, b: f64) -> bool {
+    a <= b + ENCLOSE_TOLERANCE * a.abs().max(b.abs()).max(1.0)
+}
+
 fn stock_encloses(stock: &Stock, bounds: &Aabb, part: &PartExtent) -> bool {
-    let along = bounds.min.x <= part.bounds.min.x && part.bounds.max.x <= bounds.max.x;
+    let along =
+        at_most(bounds.min.x, part.bounds.min.x) && at_most(part.bounds.max.x, bounds.max.x);
     match stock {
-        Stock::Cylinder { diameter, .. } => along && part.radius.0 <= diameter.0 / 2.0,
+        Stock::Cylinder { diameter, .. } => along && at_most(part.radius.0, diameter.0 / 2.0),
         _ => {
             along
-                && bounds.min.y <= part.bounds.min.y
-                && part.bounds.max.y <= bounds.max.y
-                && bounds.min.z <= part.bounds.min.z
-                && part.bounds.max.z <= bounds.max.z
+                && at_most(bounds.min.y, part.bounds.min.y)
+                && at_most(part.bounds.max.y, bounds.max.y)
+                && at_most(bounds.min.z, part.bounds.min.z)
+                && at_most(part.bounds.max.z, bounds.max.z)
         }
     }
 }
@@ -598,6 +613,97 @@ mod tests {
             part: Some(&part),
         });
         assert!(w[0].unconfirmed.is_empty());
+    }
+
+    /// The largest radius of a ring of `n` points of radius `r` about the X
+    /// axis, with the coordinates kept in double precision or rounded to
+    /// 32-bit floats as a binary STL stores them.
+    fn ring_radius(r: f64, n: u32, f32_coordinates: bool) -> f64 {
+        (0..n)
+            .map(|i| {
+                let angle = f64::from(i) * std::f64::consts::TAU / f64::from(n);
+                let (mut y, mut z) = (r * angle.cos(), r * angle.sin());
+                if f32_coordinates {
+                    (y, z) = (f64::from(y as f32), f64::from(z as f32));
+                }
+                y.hypot(z)
+            })
+            .fold(0.0, f64::max)
+    }
+
+    fn outside(stock: &Stock, part: &PartExtent) -> bool {
+        check_setup(&SetupCheck {
+            profile: &MachineProfile::example_x_rotary(),
+            frame: &SetupFrame::default(),
+            stock: Some(stock),
+            clearance: None,
+            part: Some(part),
+        })
+        .iter()
+        .any(|w| w.kind == SetupWarningKind::PartOutsideStock)
+    }
+
+    fn cylinder_part(radius: f64, length: f64) -> PartExtent {
+        PartExtent {
+            bounds: Aabb {
+                min: Point3::new(0.0, -radius, -radius),
+                max: Point3::new(length, radius, radius),
+            },
+            radius: Millimetres(radius),
+        }
+    }
+
+    fn cylinder_stock(radius: f64, length: f64) -> Stock {
+        Stock::Cylinder {
+            diameter: Millimetres(2.0 * radius),
+            length: Millimetres(length),
+            x_start: Millimetres(0.0),
+        }
+    }
+
+    /// Stock exactly as wide as the part encloses it, whether the part's
+    /// coordinates are double precision or rounded to 32-bit floats (a
+    /// binary STL), at 10 mm and 150 mm; stock 0.01 mm smaller does not
+    /// (OI-314, decision 0096).
+    #[test]
+    fn req_set_03_req_nfr_05_stock_as_wide_as_the_part_encloses_it() {
+        for (radius, f32_coordinates) in
+            [(10.0, false), (10.0, true), (150.0, false), (150.0, true)]
+        {
+            let measured = ring_radius(radius, 144, f32_coordinates);
+            let part = cylinder_part(measured, 30.0);
+            assert!(
+                !outside(&cylinder_stock(radius, 30.0), &part),
+                "radius {radius}, f32 {f32_coordinates}: measured {measured}"
+            );
+            let boxed = Stock::Box {
+                bounds: Aabb {
+                    min: Point3::new(0.0, -radius, -radius),
+                    max: Point3::new(30.0, radius, radius),
+                },
+            };
+            assert!(
+                !outside(&boxed, &part),
+                "box, radius {radius}, f32 {f32_coordinates}"
+            );
+            assert!(
+                outside(&cylinder_stock(radius - 0.01, 30.0), &part),
+                "radius {radius}, f32 {f32_coordinates}: stock 0.01 mm smaller"
+            );
+            let short = Stock::Box {
+                bounds: Aabb {
+                    min: Point3::new(0.01, -radius, -radius),
+                    max: Point3::new(30.0, radius, radius),
+                },
+            };
+            assert!(outside(&short, &part), "box 0.01 mm short, radius {radius}");
+        }
+        // A real overhang of 1e-4 mm on a 10 mm part is far beyond 32-bit
+        // rounding, and still warns.
+        assert!(outside(
+            &cylinder_stock(10.0, 30.0),
+            &cylinder_part(10.0001, 30.0)
+        ));
     }
 
     #[test]
