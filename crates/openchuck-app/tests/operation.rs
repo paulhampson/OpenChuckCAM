@@ -1058,3 +1058,30 @@ fn req_op_11_a_missing_stepdown_is_explained_like_the_other_cutting_data() {
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_op_07_req_nfr_07_swarf_on_a_mesh_part_says_it_is_b_rep_only() {
+    // Swarf reads rulings from exact faces, so it is B-rep only (decision
+    // 0021, OI-96): on a mesh part the form says so before anything is run,
+    // and generating names the part and what to do (OI-238).
+    let (dir, mut app, op) = project("swarf-mesh");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "swarf".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let form = app.parameter_form(op).unwrap();
+    let note = form
+        .notes
+        .iter()
+        .find(|n| n.contains("B-rep only"))
+        .unwrap_or_else(|| panic!("no B-rep only note: {:?}", form.notes));
+    assert!(note.contains("STEP") && note.contains("cube.stl"), "{note}");
+    let e = app.regenerate().unwrap_err();
+    assert!(matches!(e, AppError::Operation { .. }), "{e}");
+    let e = e.to_string();
+    assert!(
+        e.contains("'Ring'") && e.contains("B-rep only") && e.contains("cube.stl"),
+        "{e}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}

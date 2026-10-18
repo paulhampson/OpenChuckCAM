@@ -15,7 +15,7 @@ All use the same tool and material: a 3 mm ball end mill (2 flutes, 8 mm flute l
 
 `cargo test -p openchuck-app --test reference_jobs` posts each job with both shipped posts, requires gates 1 and 2 to pass, checks the output is identical at 1 and 4 threads, and compares it with the golden files (`OPENCHUCK_BLESS=1` rewrites them; review the diff). The operation id in the comment line is replaced by `<id>` in the golden files.
 
-`cargo test -p openchuck-cli --test e2e` builds the same jobs (all but `drilling`) with the command-line tool, from STL import to G-code, and requires each program, regenerated in separate processes at 1, 2 and N threads with both posts, to equal its golden file byte for byte; it also simulates them and runs the undo, redo and cancellation scenarios ([decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md)). A job added here is added there too.
+`cargo test -p openchuck-cli --test e2e` builds the same jobs (all but `drilling` and `swarf`, which are read from STEP files and need the kernel) with the command-line tool, from STL import to G-code, and requires each program, regenerated in separate processes at 1, 2 and N threads with both posts, to equal its golden file byte for byte; it also simulates them and runs the undo, redo and cancellation scenarios ([decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md)). A job added here is added there too.
 
 ## Baseline finishing jobs (slice 12)
 
@@ -24,6 +24,10 @@ Three more jobs run on the `cone` part with the same tool, material and Z1 profi
 ## Drilling job (decision 0056)
 
 `drilling` is the first job read from a model file rather than generated: the OpenCASCADE fixture `testdata/step/valid/rotary_blank_drilled.step` (a rod of 24 mm diameter, 60 mm long, with a 6 mm hole across it at X 30), added to the project through the STEP importer and placed turned 30 degrees about the rotary axis, so the hole is drilled at an A other than zero. Radial drilling ([decision 0051](decisions/0051-slice-18-radial-drilling.md)) with a 6 mm, 118 degree, two-flute drill in oak (6000 rpm, 0.03 mm per tooth, plunge 120 mm/min), pecks of 8 mm with a full retract, on the Makera Z1 profile; stock a cylinder of 26 mm diameter, 62 mm long. Golden files `testdata/golden/reference/drilling_makera-z1.nc` and `drilling_linuxcnc.ngc`. Reading the file needs the kernel, so the job is built by `cargo test -p openchuck-app --features kernel-tests --test step_pipeline` (gates 1 and 2, the golden files, 1 and N threads), which the STEP kernel CI job runs on all three platforms; gate 3 replays the LinuxCNC program with the others. One hole at one A (OI-234).
+
+## Swarf job (decision 0111)
+
+`swarf` is the second job read from a STEP file: the OpenCASCADE fixture `testdata/step/valid/hex_bar.step` (a hexagonal bar along X, 20 mm across the flats, 40 mm long from X 0, a flat on top), added as it is in the file. Its six flats are picked in the scene from outside and saved as one face set, so the operation cuts those faces only ([decision 0111](decisions/0111-swarf-through-the-application.md) item 1). Swarf ([decision 0061](decisions/0061-slice-17-swarf.md)) with a 6 mm two-flute flat end mill with 15 mm of flute in oak (12000 rpm, 0.02 mm per tooth, plunge 150 mm/min) and the strategy's defaults (tolerance 0.01 mm, the tip at the end chosen automatically), on the Makera Z1 profile; stock a cylinder of 24 mm diameter, 42 mm long from X -1. Each flat is one pass along X at one A, the side of the tool on the flat; opposite flats share an A, as the walls either side of the upright tool, so the program turns to three A positions (30, 90 and 150 degrees). Golden files `testdata/golden/reference/swarf_makera-z1.nc` and `swarf_linuxcnc.ngc`. Built by `cargo test -p openchuck-app --features kernel-tests --test step_pipeline` (gates 1 and 2, the golden files, 1 and N threads, and a simulation that cuts nothing of the part), which the STEP kernel CI job runs on all three platforms; gate 3 replays the LinuxCNC program with the others.
 
 ## Blisk jobs (decision 0096)
 
@@ -51,6 +55,7 @@ The owner's blisk, `testdata/stl/blisk.stl`, is the first sample from a real par
 | `groove_linuxcnc.ngc` | 1086 | 0.1000 | 151.6 s | none |
 | `lobed_linuxcnc.ngc` | passed in CI (pull request 48, 15 Oct 2026; Docker image, report in the gate 3 artifact) | | | none |
 | `drilling_linuxcnc.ngc` | 15 (17 Oct 2026, the Docker image built from `docker/linuxcnc` in the lane Z session; then in CI on pull request 79; decision 0056) | 0.0010 | 23.3 s | none |
+| `swarf_linuxcnc.ngc` | 54 (18 Oct 2026, an image built from `docker/linuxcnc` in the lane Q2 session, the session's proxy certificate added; decision 0111; CI's run pending) | 0.0039 | 105.6 s | none |
 
 (0.1000 is the tolerance: some nodes were accepted as passed between two samples when run in the Docker image. An earlier run of the 10 degree programs on a locally built LinuxCNC had differences of 0.034 to 0.067.) The simulator cannot confirm the A direction, or the Z1 post's `G92.4` and feed rule: the Z1 programs share the toolpath and the kinematics with these, and gate 4 checks the rest on the machine. See [tools/linuxcnc/README.md](../tools/linuxcnc/README.md) for how to run it and [docker/linuxcnc](../docker/linuxcnc/Dockerfile) for the image CI uses.
 
