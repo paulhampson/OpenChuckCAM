@@ -529,10 +529,14 @@ fn simulates(name: &str) {
 
 /// One end-to-end test and one simulation test per sample project, so the
 /// test runner spreads them over cores and CI shares. The samples after
-/// `unsimulated` have no simulation test: the blisk's simulation exhausts
-/// memory (OI-317).
+/// `manual` are the owner's blisk: no simulation test, because its simulation
+/// exhausts memory (OI-317), and an end-to-end test that no automated run
+/// executes. Its feed words differ between Linux, Windows and macOS (OI-319),
+/// so by the owner's decision (18 Oct 2026, relayed) it does not gate CI and
+/// runs by hand only:
+/// `cargo nextest run -p openchuck-cli --test e2e --run-ignored only -E 'test(~blisk_)'`.
 macro_rules! sample_tests {
-    ($($name:ident),* ; unsimulated: $($bare:ident),* $(,)?) => {
+    ($($name:ident),* ; manual: $($bare:ident),* $(,)?) => {
         $(mod $name {
             #[test]
             fn req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads() {
@@ -545,6 +549,7 @@ macro_rules! sample_tests {
         })*
         $(mod $bare {
             #[test]
+            #[ignore = "OI-319: feed words differ across platforms; manual run only (owner's decision)"]
             fn req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads() {
                 super::end_to_end(stringify!($bare));
             }
@@ -563,7 +568,7 @@ sample_tests!(
     cone_indexed,
     cone_axial_lead,
     cone_held_tabs;
-    unsimulated: blisk_helical_5,
+    manual: blisk_helical_5,
     blisk_helical_2,
     blisk_axial,
 );
