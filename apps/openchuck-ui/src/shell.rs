@@ -19,6 +19,7 @@ use openchuck_app::{AppError, Application, Command, JobHandle, Threads};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::bench;
+use crate::export_panel::ExportPanel;
 use crate::form_panel::{self, FormState};
 use crate::import_panel::{ImportAction, ImportSession};
 use crate::machine_panel::MachinePanel;
@@ -41,6 +42,7 @@ const REDO: KeyboardShortcut =
 const REDO_ALT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y);
 const GENERATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
 const SIMULATE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F5);
+const EXPORT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::E);
 
 /// Work a dialog hands back to the shell once it closes.
 type Action = Box<dyn FnOnce(&mut Shell)>;
@@ -105,6 +107,10 @@ pub struct Shell {
     selection: SelectionPanel,
     /// Adding operations and generating (slice 9 item 7).
     run: RunPanel,
+    /// Post and export (slice 19 item 4).
+    export: ExportPanel,
+    /// A text field had the keyboard at the end of the last frame.
+    text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
     /// What `model_file_warnings` said when the project opened, for the
@@ -135,6 +141,8 @@ impl Shell {
             form: FormState::default(),
             selection: SelectionPanel::default(),
             run: RunPanel::default(),
+            export: ExportPanel::default(),
+            text_had_focus: false,
             play: PlaybackPanel::default(),
             file_warnings: Vec::new(),
         };
@@ -199,6 +207,7 @@ impl Shell {
         self.file_warnings.clone_from(&warnings);
         self.selection.clear();
         self.run.clear();
+        self.export.clear();
         self.play.clear();
         if !warnings.is_empty() {
             self.dialog = Some(Dialog::Error(format!(
@@ -339,6 +348,9 @@ impl Shell {
         if redo {
             self.redo();
         }
+        if ctx.input_mut(|i| i.consume_shortcut(&EXPORT)) {
+            self.open_export();
+        }
         // Shift+F5 first: it would otherwise be taken for F5.
         let (simulate, generate) =
             ctx.input_mut(|i| (i.consume_shortcut(&SIMULATE), i.consume_shortcut(&GENERATE)));
@@ -346,6 +358,12 @@ impl Shell {
             self.generate(true);
         } else if generate {
             self.generate(false);
+        }
+    }
+
+    fn open_export(&mut self) {
+        if let Some(app) = &self.app {
+            self.export.open(app);
         }
     }
 
@@ -373,6 +391,12 @@ impl Shell {
                 let save = egui::Button::new("Save").shortcut_text(ctx.format_shortcut(&SAVE));
                 if ui.add_enabled(self.app.is_some(), save).clicked() {
                     self.save();
+                }
+                let export = egui::Button::new("Post and export…")
+                    .shortcut_text(ctx.format_shortcut(&EXPORT));
+                if ui.add_enabled(self.app.is_some(), export).clicked() {
+                    self.open_export();
+                    ui.close();
                 }
                 ui.separator();
                 if ui.button("Quit").clicked() {
@@ -885,6 +909,13 @@ impl Shell {
             added = new;
             error = problem;
             self.run.results_window(ctx, app);
+            let outcome = self
+                .export
+                .frame(ctx, app, self.run.last(), self.run.last_error());
+            if let Some(status) = outcome.status {
+                self.status = status;
+            }
+            error = error.or(outcome.error);
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
@@ -903,13 +934,15 @@ impl Shell {
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
         let Some(app) = &self.app else { return };
-        if self.selection.frame(app, input) {
+        if self.selection.frame(app, self.viewport.view(), input) {
             ctx.request_repaint();
         }
-        // Q, W and E choose the click; Esc leaves picking (specification 15).
-        if self.dialog.is_none()
+        // Q, W, E and R choose the click; Esc leaves picking (specification
+        // 15). Not while a dialog or a floating window is open: its keys are
+        // its own, and Esc must not leave picking behind it.
+        if !self.window_open()
             && matches!(self.selected, Some(Selection::Picking | Selection::Set(_)))
-            && self.selection.keys(ctx)
+            && self.selection.keys(ctx, self.text_had_focus)
         {
             self.selected = None;
         }
@@ -917,6 +950,18 @@ impl Shell {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
         }
+        // The warning before a click of the other kind resets the selection.
+        if let Some(app) = &mut self.app
+            && let Some(e) = self.selection.reset_dialog(ctx, app)
+        {
+            self.dialog = Some(Dialog::Error(e));
+        }
+    }
+
+    /// Whether a dialog or a floating window (export, results, add operation)
+    /// is in front of the view.
+    fn window_open(&self) -> bool {
+        self.dialog.is_some() || self.export.is_open() || self.run.has_window()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
@@ -1347,6 +1392,7 @@ fn operation_row(
 impl eframe::App for Shell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.draw(ui);
+        crate::graphics::reached(crate::graphics::Stage::Drawing);
     }
 }
 
@@ -1385,6 +1431,7 @@ impl Shell {
             self.selected,
             Some(Selection::Picking | Selection::Set(_))
         ));
+        self.viewport.set_pick_filter(self.selection.pick_filter());
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
@@ -1399,6 +1446,7 @@ impl Shell {
         self.run_frame(&ctx);
         self.import_frame(&ctx);
         self.dialogs(&ctx);
+        self.text_had_focus = ctx.egui_wants_keyboard_input();
     }
 }
 
@@ -1539,3 +1587,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+#[cfg(test)]
+mod keys_tests;

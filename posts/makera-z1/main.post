@@ -53,7 +53,7 @@
 {% if not st.have or z != st.z %}{% set w = w + ["Z" ~ z] %}{% endif %}
 {% if not st.have or a != st.a %}{% set w = w + [opt.a_letter ~ a] %}{% endif %}
 {% if it.step == "feed" %}
-{% set fs = it.feed.value|fixed(opt.decimals.f) %}
+{% set fs = it.feed.value|feed(opt.decimals.f) %}
 {% if opt.feed_mode == "g93" or fs != st.f %}
 {% set w = w + ["F" ~ fs] %}
 {% set st.f = fs %}

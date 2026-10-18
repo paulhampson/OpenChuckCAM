@@ -19,10 +19,12 @@ use openchuck_app::model::TransformStep;
 use openchuck_app::project::file::selection_inputs_hash;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{
-    Item, Operation, OrderKey, Placement, SelectionTarget, Setup, ToolSnapshot,
+    Item, MeshEdge, Operation, OrderKey, Placement, SelectionTarget, Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
-use openchuck_app::{AppError, Application, Command, Event, RegionRequest, SelectionEdit, Threads};
+use openchuck_app::{
+    AppError, Application, Command, Event, PostSelection, RegionRequest, SelectionEdit, Threads,
+};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
@@ -283,14 +285,15 @@ fn req_ui_05_saving_and_editing_are_undoable_and_checked() {
     assert_eq!(app.project().selection_sets().len(), 1);
 
     let one: BTreeSet<u32> = top.iter().take(1).copied().collect();
-    app.edit_selection(id, SelectionEdit::Remove(one.clone()))
+    app.edit_selection(id, SelectionEdit::Remove(one.clone().into()))
         .unwrap();
     let triangles = |app: &Application| match &app.project().selection_sets()[0].target {
         SelectionTarget::Triangles(t) => t.clone(),
         other => panic!("{other:?}"),
     };
     assert_eq!(triangles(&app).len(), 1);
-    app.edit_selection(id, SelectionEdit::Add(one)).unwrap();
+    app.edit_selection(id, SelectionEdit::Add(one.into()))
+        .unwrap();
     assert_eq!(triangles(&app), top);
     app.edit_selection(id, SelectionEdit::Rename("Roof".into()))
         .unwrap();
@@ -299,10 +302,12 @@ fn req_ui_05_saving_and_editing_are_undoable_and_checked() {
     assert_eq!(app.project().selection_sets()[0].name, "Top");
 
     // Refused: empty, beyond the model, and no such set.
-    assert!(err(app.save_selection("None", model, BTreeSet::new())).contains("no triangles"));
+    assert!(
+        err(app.save_selection("None", model, BTreeSet::<u32>::new())).contains("no triangles")
+    );
     assert!(err(app.save_selection("Far", model, BTreeSet::from([12]))).contains("triangle 12"));
     assert!(
-        err(app.edit_selection(id, SelectionEdit::Replace(BTreeSet::new())))
+        err(app.edit_selection(id, SelectionEdit::Replace(BTreeSet::<u32>::new().into())))
             .contains("no triangles")
     );
     assert!(
@@ -363,7 +368,7 @@ fn req_ui_05_editing_a_set_marks_exactly_the_operations_that_use_it() {
     let before = [hash(&app, op), hash(&app, second), hash(&app, third)];
     let one: BTreeSet<u32> = top.iter().take(1).copied().collect();
     let affected = app
-        .edit_selection(roof, SelectionEdit::Remove(one))
+        .edit_selection(roof, SelectionEdit::Remove(one.into()))
         .unwrap();
     assert_eq!(affected, vec![op, second]);
     let after = [hash(&app, op), hash(&app, second), hash(&app, third)];
@@ -675,5 +680,453 @@ fn req_op_11_a_selection_is_left_its_own_stock_in_place_of_the_operations() {
         .unwrap();
     app.undo().unwrap();
     assert_eq!(app.project().selection_sets()[0].stock_to_leave, None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+// Per-selection stock to leave for rotary roughing: the largest amount over
+// the whole part, with a note (OP-03, OP-11; decision 0058).
+
+/// Makes `op` a rotary roughing operation leaving `operation_leave`, limited
+/// to the set `top` (the cube's top face) and `rest` (every other triangle),
+/// so that it covers the whole part. Returns the two sets.
+fn roughing_in_two_sets(
+    app: &mut Application,
+    op: OperationId,
+    model: ModelId,
+    operation_leave: f64,
+) -> (SelectionSetId, SelectionSetId) {
+    let roof = top_face(app, model);
+    let others: BTreeSet<u32> = (0..12).filter(|t| !roof.contains(t)).collect();
+    let top = app.save_selection("Top", model, roof).unwrap();
+    let rest = app.save_selection("Rest", model, others).unwrap();
+    set_roles(app, op, |o| {
+        o.strategy = "rotary_roughing".into();
+        o.selections = vec![top, rest];
+        o.parameters.insert(
+            "stock_to_leave".into(),
+            openchuck_app::project::ParameterValue::Number(operation_leave),
+        );
+    });
+    (top, rest)
+}
+
+fn set_leave(app: &mut Application, op: OperationId, leave: f64) {
+    set_roles(app, op, |o| {
+        o.parameters.insert(
+            "stock_to_leave".into(),
+            openchuck_app::project::ParameterValue::Number(leave),
+        );
+    });
+}
+
+/// The moves and the G-code of a run, without the project's IDs.
+fn program(app: &Application) -> (Vec<ToolpathGroup>, Vec<(String, String)>, Vec<String>) {
+    let r = app.regenerate().unwrap();
+    assert!(!r.gcode.is_empty());
+    (r.toolpath.groups, r.gcode, r.notes)
+}
+
+fn leave_notes(notes: &[String]) -> Vec<&String> {
+    notes
+        .iter()
+        .filter(|n| n.contains("roughing leaves"))
+        .collect()
+}
+
+#[test]
+fn req_op_11_req_op_03_a_larger_selection_stock_to_leave_raises_roughing_over_the_whole_part() {
+    let (dir, mut app, op, model) = project("rough-leave-larger");
+    app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    let (top, _) = roughing_in_two_sets(&mut app, op, model, 0.3);
+    app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.8)))
+        .unwrap();
+    let (raised, gcode, notes) = program(&app);
+    // The note names the value used, the selection that set it and the
+    // operation's own value.
+    let said = leave_notes(&notes);
+    assert_eq!(said.len(), 1, "{notes:?}");
+    for part in ["'Ring'", "0.8 mm", "'Top'", "0.3 mm"] {
+        assert!(said[0].contains(part), "{part}: {}", said[0]);
+    }
+    // The same program, byte for byte, as the operation leaving 0.8 mm over
+    // the whole part: the floor, the tool-drop heights and so the invariants
+    // of decision 0033 (same sites per layer, no cut deeper than a stepdown,
+    // a second pass cuts nothing) are those of a plain 0.8 mm roughing.
+    app.edit_selection(top, SelectionEdit::StockToLeave(None))
+        .unwrap();
+    set_leave(&mut app, op, 0.8);
+    let (plain, plain_gcode, plain_notes) = program(&app);
+    assert_eq!(raised, plain);
+    assert_eq!(gcode, plain_gcode);
+    assert!(leave_notes(&plain_notes).is_empty(), "{plain_notes:?}");
+    // And not the program of the operation's 0.3 mm.
+    set_leave(&mut app, op, 0.3);
+    assert_ne!(program(&app).1, gcode);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_11_req_op_03_a_smaller_or_equal_selection_stock_to_leave_changes_nothing() {
+    let (dir, mut app, op, model) = project("rough-leave-smaller");
+    app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+    let (top, rest) = roughing_in_two_sets(&mut app, op, model, 0.5);
+    let (alone, gcode, _) = program(&app);
+    for (set, leave) in [(top, 0.2), (rest, 0.0), (top, 0.5)] {
+        app.edit_selection(set, SelectionEdit::StockToLeave(Some(leave)))
+            .unwrap();
+        let (moves, text, notes) = program(&app);
+        assert_eq!(moves, alone, "{leave}");
+        assert_eq!(text, gcode, "{leave}");
+        assert!(leave_notes(&notes).is_empty(), "{notes:?}");
+        app.edit_selection(set, SelectionEdit::StockToLeave(None))
+            .unwrap();
+    }
+    // Two sets with amounts: the largest is named, the operation's value is
+    // below both.
+    app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.6)))
+        .unwrap();
+    app.edit_selection(rest, SelectionEdit::StockToLeave(Some(0.9)))
+        .unwrap();
+    let (_, _, notes) = program(&app);
+    let said = leave_notes(&notes);
+    assert_eq!(said.len(), 1, "{notes:?}");
+    assert!(
+        said[0].contains("0.9 mm") && said[0].contains("'Rest'"),
+        "{}",
+        said[0]
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_11_req_nfr_07_a_strategy_without_leave_zones_other_than_roughing_is_still_refused() {
+    let (dir, mut app, op, model) = project("leave-refused");
+    let (top, _) = roughing_in_two_sets(&mut app, op, model, 0.3);
+    set_roles(&mut app, op, |o| {
+        o.strategy = "simultaneous_finishing".into()
+    });
+    assert!(
+        !app.strategies()
+            .get("simultaneous_finishing")
+            .unwrap()
+            .honours_leave_zones()
+    );
+    app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.8)))
+        .unwrap();
+    let e = err(app.regenerate());
+    assert!(
+        e.contains("'simultaneous_finishing'") && e.contains("OP-11"),
+        "{e}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own() {
+    let (dir, mut app, op, model) = project("rough-leave-sim");
+    // The cube runs from X 0 to 10: stock over all of it, so that every face
+    // has material to leave.
+    let mut setup = app.project().setups()[0].clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(20.0),
+        length: Millimetres(14.0),
+        x_start: Millimetres(-2.0),
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let (top, _) = roughing_in_two_sets(&mut app, op, model, 0.3);
+    app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.8)))
+        .unwrap();
+    // Helical finishing on the same sets after it, which leaves each its own
+    // amount; off for now, to see what roughing alone leaves.
+    let base = app.project().operation(op).unwrap().clone();
+    let finish = Operation {
+        id: OperationId::new(),
+        name: "Finish".into(),
+        strategy: "helical_finishing".into(),
+        ..base.clone()
+    };
+    let finish_id = finish.id;
+    app.execute(Command::Add {
+        item: Item::Operation(finish),
+        placement: Placement::End,
+    })
+    .unwrap();
+    app.execute(Command::SetOperationEnabled {
+        operation: finish_id,
+        enabled: false,
+    })
+    .unwrap();
+    let report = app.simulate().unwrap().simulation.unwrap();
+    let setup = &report.setups[0];
+    let removed = setup.operations[0].removed_volume;
+    println!("roughing removed {removed:.2} mm3");
+    assert!(removed > 100.0, "{removed}");
+    // Everywhere at least the largest amount, to within the 0.1 mm cell.
+    let d = setup.deviation.as_ref().unwrap();
+    let least = d
+        .points
+        .iter()
+        .map(|p| p.value)
+        .fold(f64::INFINITY, f64::min);
+    println!("least left after roughing {least:.3} mm");
+
+    assert!(!d.points.is_empty());
+    assert!(least >= 0.8 - 0.1, "{least}");
+
+    // A second roughing pass over its own result finds nothing to cut
+    // (decision 0033; with selections, decision 0043 item 5 says so).
+    app.execute(Command::Add {
+        item: Item::Operation(Operation {
+            id: OperationId::new(),
+            name: "Again".into(),
+            ..base
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    let e = err(app.simulate());
+    assert!(e.contains("no cut to make"), "{e}");
+    app.undo().unwrap();
+
+    // Finishing then cuts each selection to its own amount: the middle of the
+    // top face keeps 0.8 mm, the middle of the other side faces 0.3 mm.
+    app.execute(Command::SetOperationEnabled {
+        operation: finish_id,
+        enabled: true,
+    })
+    .unwrap();
+    let report = app.simulate().unwrap().simulation.unwrap();
+    let d = report.setups[0].deviation.as_ref().unwrap();
+    let (lo, hi) = d
+        .points
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+            (lo.min(p.point.x), hi.max(p.point.x))
+        });
+    let mid_x = 0.5 * (lo + hi);
+    let middle = |p: &&openchuck_app::sim::DeviationPoint| {
+        p.normal.x.abs() < 1e-9
+            && (p.point.x - mid_x).abs() < 2.0
+            && p.point.y.abs().min(p.point.z.abs()) < 2.0
+    };
+    let mut on_top = Vec::new();
+    let mut on_sides = Vec::new();
+    for p in d.points.iter().filter(middle) {
+        if p.normal.z > 0.5 {
+            on_top.push(p.value);
+        } else {
+            on_sides.push(p.value);
+        }
+    }
+    let range = |v: &[f64]| {
+        v.iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| {
+                (lo.min(*x), hi.max(*x))
+            })
+    };
+    println!(
+        "left on the top {:?}, on the sides {:?}",
+        range(&on_top),
+        range(&on_sides)
+    );
+    assert!(!on_top.is_empty() && !on_sides.is_empty());
+    // Within the cell and the stepover's scallop.
+    assert!(on_top.iter().all(|v| (v - 0.8).abs() <= 0.15), "{on_top:?}");
+    assert!(
+        on_sides.iter().all(|v| (v - 0.3).abs() <= 0.15),
+        "{on_sides:?}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_req_op_11_roughing_with_a_selection_leave_is_the_same_at_any_thread_count()
+{
+    let (dir, mut app, op, model) = project("rough-leave-threads");
+    let (top, _) = roughing_in_two_sets(&mut app, op, model, 0.3);
+    app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.8)))
+        .unwrap();
+    app.save().unwrap();
+    let run = |threads: usize| {
+        let mut app = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+        app.set_post(Some(PostSelection::Builtin("makera-z1".into())));
+        program(&app)
+    };
+    let one = run(1);
+    assert!(!leave_notes(&one.2).is_empty());
+    for threads in [2, 4] {
+        assert!(run(threads) == one, "{threads} threads");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The top front edge of the placed cube (y = -5, z = 5, x from 0 to 10),
+/// picked in the scene and saved as a set of mesh edges (schema 12; OI-204,
+/// decision record 0066).
+fn front_edge(app: &mut Application, model: ModelId) -> (SelectionSetId, BTreeSet<MeshEdge>) {
+    use openchuck_app::pick::{EdgeRef, PickMode, PickTolerance};
+    let view = app.start_scene(None).wait().unwrap();
+    let picker = view.picking.picker().unwrap();
+    let reach = PickTolerance {
+        base: 0.3,
+        per_distance: 0.0,
+    };
+    let pick = picker
+        .pick_edge([5.0, -4.9, 40.0], [0.0, 0.0, -1.0], reach)
+        .unwrap()
+        .expect("the pointer is over the edge");
+    // A cube's corners join three edges, so its chain is the edge alone.
+    let chosen = picker.select_edges(&pick, PickMode::Connected);
+    assert_eq!(chosen.len(), 1);
+    let edges: BTreeSet<MeshEdge> = chosen
+        .into_iter()
+        .map(|e| match e {
+            EdgeRef::Mesh(m) => m,
+            EdgeRef::Brep(_) => panic!("a mesh has no B-rep edges"),
+        })
+        .collect();
+    let id = app
+        .save_selection("Front edge", model, edges.clone())
+        .unwrap();
+    (id, edges)
+}
+
+#[test]
+fn req_op_08_req_prj_06_chosen_mesh_edges_survive_reopening_and_are_the_only_ones_followed() {
+    let (dir, mut app, op, model) = project("mesh-edges");
+    let (id, edges) = front_edge(&mut app, model);
+    app.save().unwrap();
+    drop(app);
+
+    // Reopened, the set names the same edges of the same file.
+    let mut app = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    let set = app
+        .project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == id)
+        .unwrap()
+        .clone();
+    assert_eq!(set.target, SelectionTarget::MeshEdges(edges));
+    assert_eq!(set.target.kind_name(), "edges");
+
+    // Edge following on it engraves that edge and no other.
+    set_roles(&mut app, op, |o| {
+        o.strategy = "edge_following".into();
+        o.selections = vec![id];
+    });
+    let result = app.regenerate().unwrap();
+    let tips: Vec<Point3> = result.toolpath.groups[0]
+        .segments
+        .iter()
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .map(|s| s.end.tip)
+        .collect();
+    assert!(!tips.is_empty());
+    for tip in &tips {
+        // On the edge's radial plane (y = -5, z = 5 is at 135 degrees from
+        // +Y; the tip is cut in radially from it).
+        let angle = tip.z.atan2(tip.y).to_degrees();
+        assert!((angle - 135.0).abs() < 1e-6, "{tip:?} at {angle} degrees");
+        assert!((-1e-6..=10.0 + 1e-6).contains(&tip.x), "{tip:?}");
+    }
+    assert!(tips.iter().any(|t| t.x < 1.0) && tips.iter().any(|t| t.x > 9.0));
+
+    // As a boundary, or for a strategy that does not follow edges, it is
+    // refused with a message naming it.
+    set_roles(&mut app, op, |o| {
+        o.strategy = "helical_finishing".into();
+    });
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("'Front edge'") && e.contains("edges"), "{e}");
+    set_roles(&mut app, op, |o| {
+        o.strategy = "edge_following".into();
+        o.selections = Vec::new();
+        o.boundary = Some(id);
+    });
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("'Front edge'"), "{e}");
+    // Followed, it takes no boundary, avoid or check set of any kind, and no
+    // stock to leave: each would be dropped, so each is refused (OP-02).
+    let roof = top_face(&app, model);
+    let avoid = app.save_selection("Roof", model, roof).unwrap();
+    set_roles(&mut app, op, |o| {
+        o.selections = vec![id];
+        o.boundary = None;
+        o.avoid = vec![avoid];
+    });
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("'Roof'") && e.contains("avoid"), "{e}");
+    set_roles(&mut app, op, |o| o.avoid = Vec::new());
+    app.edit_selection(id, SelectionEdit::StockToLeave(Some(0.5)))
+        .unwrap();
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("'Front edge'") && e.contains("stock to leave"),
+        "{e}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind() {
+    let (dir, mut app, _, model) = project("mesh-edge-edit");
+    let (id, edges) = front_edge(&mut app, model);
+    // A triangle beyond the model, or a side above 2, is refused.
+    let beyond: BTreeSet<MeshEdge> = [MeshEdge::new(99, 0).unwrap()].into();
+    assert!(err(app.save_selection("Beyond", model, beyond)).contains("triangle 99"));
+    // Faces of a mesh are refused; an edit of another kind is refused.
+    let faces: BTreeSet<openchuck_types::brep::FaceId> = [openchuck_types::brep::FaceId(0)].into();
+    assert!(err(app.save_selection("Faces", model, faces)).contains("no faces"));
+    let triangles: BTreeSet<u32> = [0].into();
+    assert!(err(app.edit_selection(id, SelectionEdit::Add(triangles.into()))).contains("one kind"));
+    // Removing its only edge would empty it.
+    assert!(
+        err(app.edit_selection(id, SelectionEdit::Remove(edges.clone().into())))
+            .contains("no edges")
+    );
+    // Adding another edge is an undoable step.
+    let more: BTreeSet<MeshEdge> = [MeshEdge::new(0, 0).unwrap()].into();
+    app.edit_selection(id, SelectionEdit::Add(more.into()))
+        .unwrap();
+    let count = |app: &Application| {
+        app.project()
+            .selection_sets()
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap()
+            .target
+            .len()
+    };
+    assert_eq!(count(&app), edges.len() + 1);
+    app.undo().unwrap();
+    assert_eq!(count(&app), edges.len());
+    // Keeping tangent edges is for a STEP model's edges only; the project's
+    // default is an undoable command (decision record 0066).
+    assert!(
+        err(app.edit_selection(id, SelectionEdit::KeepTangentEdges(Some(true))))
+            .contains("STEP model's edges")
+    );
+    assert!(!app.project().keep_tangent_edges());
+    app.execute(Command::SetKeepTangentEdges(true)).unwrap();
+    assert!(app.project().keep_tangent_edges());
+    app.undo().unwrap();
+    assert!(!app.project().keep_tangent_edges());
+    // So is turning off the warning before a plain click of the other kind
+    // resets the working selection (decision record 0066 item 3).
+    assert!(app.project().warn_on_selection_reset());
+    app.execute(Command::SetWarnOnSelectionReset(false))
+        .unwrap();
+    assert!(!app.project().warn_on_selection_reset());
+    app.undo().unwrap();
+    assert!(app.project().warn_on_selection_reset());
+    // A set's IDs name the file it was made on: once the file changes, an
+    // edit of its target is refused rather than checked against another file.
+    let file = dir.join("models/cube.stl");
+    let mut text = std::fs::read_to_string(&file).unwrap();
+    text.push('\n');
+    std::fs::write(&file, text).unwrap();
+    let more: BTreeSet<MeshEdge> = [MeshEdge::new(1, 0).unwrap()].into();
+    assert!(err(app.edit_selection(id, SelectionEdit::Add(more.into()))).contains("has changed"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
