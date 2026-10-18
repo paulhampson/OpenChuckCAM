@@ -97,7 +97,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 19 output options and setup sheet | In progress | Item 4 built by lane S on `claude/lane-s-slice-19-export-dialogs` ([decision 0071](decisions/0071-slice-19-export-dialogs.md), accepted); the owner closes the slice |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
 | 21 workholding and retaining tabs | Built, pending merge | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation, deviation, forms and the command line, is built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), accepted 16 Oct 2026; OI-195 to OI-198 and OI-209); the fix for walls in the target (OI-209, closed) is merged from lane Y ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction); 21d ([decision 0104](decisions/0104-held-regions-and-tabs-in-the-interface.md), UI-25): the interface specification (sections 7.5 and 11.7) is written by lane 21d on `claude/lane-21d-workholding-ui-spec` and merged; its code and tests (item 3) are built by lane 21d on `claude/lane-21d-workholding-ui-code` (draft pull request; OI-325 closed, what remains is OI-334) |
-| 22 user interface redesign | Not started | The interface design is a proposal on a branch; waits for the UI lanes |
+| 22 user interface conformance pass | In progress | Reframed as a conformance pass ([decision 0105](decisions/0105-slice-22-conformance-pass.md), accepted). Step 1, the conformance report and component inventory, is written by lane X1 on `claude/lane-x1-slice-22-conformance-report` ([decision 0114](decisions/0114-slice-22-conformance-report.md), proposed, awaiting the owner); OI-338 to OI-344 wait for the owner's decisions, OI-334 is mapped to lanes; steps 2 to 4 wait for the record's acceptance and the lane split |
 
 ## Slice order and dependencies
 
@@ -109,7 +109,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 6. Close: slice 19 needs 6 (its export dialogs need 8); slice 20 needs everything, but its packaging, air-cut procedure and safe-practice checklist (items 8, 10 and 12) can be written earlier.
 7. Which parts of these slices can run in parallel, what each lane needs, and the order for project schema numbers are in "Parallel work" below.
 8. Slice 21 (workholding and retaining tabs, decision 0035) is added after most of this plan was in progress, so it is split into sub-slices that leave slices 12, 13 and 14 alone: 21a (the setup data) and 21b (the composite target in `openchuck-path`) need nothing merged first; 21c (application wiring, simulation and the UI) needs both, and its roughing and finishing tests need slices 12 and 14. Slice 20 needs slice 21.
-9. Slice 22 (user interface redesign) is one lane, X. It waits for the owner's updated design and for every lane that adds UI to have merged, so the interface is redesigned once and not reworked per lane. Slice 20 needs it.
+9. Slice 22 (user interface conformance pass, [decision 0105](decisions/0105-slice-22-conformance-pass.md)) starts after lanes O and 21d have merged. Its step 1 is lane X1's conformance report ([decision 0114](decisions/0114-slice-22-conformance-report.md), proposed), which proposes how steps 2 to 4 split into lanes. Slice 20 needs it.
 
 ## Parallel work
 
@@ -150,7 +150,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
 | FZ | 20 item 4: the malformed-input sweep, a fuzz target for every user file and the fuzz CPU hours per parser (built 18 Oct 2026 on `claude/lane-fz-malformed-input-sweep`, [decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), accepted 18 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | BT | OI-316 and OI-253: the blisk's gate 2 failures in lane TE's run were from before decision 0076 (lane TE closes OI-316); an older Makera Z1 machine copy with no library ID now migrates by its name ([decision 0109](decisions/0109-z1-copy-without-an-id-migrates-by-name.md), accepted 18 Oct 2026, relayed; built on `claude/lane-bt-gate2-timing`) | ░░ | ░░ | ░░ | ░░ | ██ |
-| X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
+| X | 22 user interface conformance pass (decision 0105); step 1 is lane X1's report ([decision 0114](decisions/0114-slice-22-conformance-report.md), proposed), which proposes lanes X2 to X8 for steps 2 to 4 | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
@@ -182,7 +182,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
 | FZ | Nothing; its hours accumulate nightly after it merges |
 | BT | Nothing |
-| X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
+| X | O and 21d (decision 0105; both merged). The later lanes' needs are proposed in decision 0114 section E |
 | T | Everything, including W and X |
 
 ### Project schema ordering
@@ -870,7 +870,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 
 ## Slice 22 – User interface conformance pass
 
-**Status:** not started. Reframed on 17 Oct 2026 by the owner ([decision 0105](decisions/0105-slice-22-conformance-pass.md)): it was a redesign waiting on a new design, and the interface specification (decision 0038) is now that design and the lanes built to it. Lane O (selection and viewport, #83) and the lane 21d specification are merged; lane 21d's code (item 3 of slice 21d) is in a draft pull request, and the layout parts of the workholding panel it did not build are OI-334.
+**Status:** in progress. Reframed on 17 Oct 2026 by the owner ([decision 0105](decisions/0105-slice-22-conformance-pass.md)): it was a redesign waiting on a new design, and the interface specification (decision 0038) is now that design and the lanes built to it. Lane O (selection and viewport, #83) and lane 21d (pull request 119) are merged; the parts of the workholding panel lane 21d did not build are OI-334. Item 1, the conformance report and component inventory, is written by lane X1 ([decision 0114](decisions/0114-slice-22-conformance-report.md), proposed): most of the gap is slice 8 items 8 to 12 (UI-10 to UI-16, NFR-15), which are unbuilt, so who builds them is raised as OI-338; the record proposes lanes X2 to X8 for items 2 and 3 and lists the owner's decisions (OI-338 to OI-344).
 
 **Goal:** every screen, panel and dialog follows the interface specification (`docs/ui-design/ui-specification.md`) and its mock-ups, with the same behaviour, requirements and tests. Differences are fixed or recorded as open items; there is no redesign.
 
