@@ -715,6 +715,7 @@ fn req_ui_25_req_nfr_15_an_outline_follows_the_silhouette_and_both_ends() {
     scene.meshes[0].outline = Some(Outline {
         colour: BLUE,
         width: 1.5,
+        style: LineStyle::Solid,
     });
     scene.meshes[0].outline_only = true;
     let mut fit = scene.clone();
@@ -744,6 +745,23 @@ fn req_ui_25_req_nfr_15_an_outline_follows_the_silhouette_and_both_ends() {
     let pixels = render(&device, &queue, &scene, &end);
     let middle = runs(&pixels, SIZE / 2);
     assert_eq!(middle.iter().filter(|(b, _)| *b).count(), 2, "{middle:?}");
+    // Dashed, the top of the silhouette breaks into dashes.
+    let solid_blue = blue_pixels(&render(&device, &queue, &scene, &f));
+    let mut dashed = scene.clone();
+    if let Some(o) = dashed.meshes[0].outline.as_mut() {
+        o.style = LineStyle::Dashed;
+    }
+    let pixels = render(&device, &queue, &dashed, &f);
+    let top = (0..SIZE)
+        .find(|y| (0..SIZE).any(|x| blue_pixels(&[pixels[(y * SIZE + x) as usize]]) == 1))
+        .unwrap();
+    let dashes = (top..top + 3)
+        .map(|y| runs(&pixels, y).iter().filter(|(b, _)| *b).count())
+        .max()
+        .unwrap();
+    let rows: Vec<_> = (top..top + 3).map(|y| runs(&pixels, y)).collect();
+    assert!(dashes >= 3, "{rows:?}");
+    assert!(blue_pixels(&pixels) < solid_blue);
     // With a fill, the outline is drawn over it.
     scene.meshes[0].outline_only = false;
     let pixels = render(&device, &queue, &scene, &f);
@@ -811,6 +829,7 @@ fn req_ui_25_the_focus_layer_draws_over_the_scene() {
     focus.meshes[0].outline = Some(Outline {
         colour: BLUE,
         width: 3.0,
+        style: LineStyle::Solid,
     });
     let f = front(&scene, 1.0);
     let pixels = render_layers(&device, &queue, &scene, None, &[(Layer::Focus, &focus)], &f);

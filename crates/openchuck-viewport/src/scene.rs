@@ -117,6 +117,8 @@ pub struct Outline {
     pub colour: Colour,
     /// Width in logical pixels.
     pub width: f32,
+    /// Solid, or dashed for a default tab offered and not added (7.5).
+    pub style: LineStyle,
 }
 
 /// A triangle mesh to draw.
@@ -323,11 +325,31 @@ fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
-/// An edge of a mesh's outline: its two ends and the normals of the two
-/// faces that meet there. The vertex shader draws it only when one face
-/// looks toward the eye and the other away (the silhouette); an edge with
-/// both normals zero (a crease, or the open boundary) is always drawn.
-pub(crate) type OutlineEdge = [[f32; 3]; 4];
+/// An edge of a mesh's outline: its two ends, the normals of the two faces
+/// that meet there, and its distance along the outline at its first end, for
+/// a dash pattern. The vertex shader draws it only when one face looks
+/// toward the eye and the other away (the silhouette); an edge with both
+/// normals zero (a crease, or the open boundary) is always drawn.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct OutlineEdge {
+    pub a: [f32; 3],
+    pub b: [f32; 3],
+    pub n1: [f32; 3],
+    pub n2: [f32; 3],
+    pub along: f32,
+}
+
+impl OutlineEdge {
+    /// The thirteen floats the GPU reads.
+    pub fn floats(&self) -> impl Iterator<Item = f32> {
+        self.a
+            .into_iter()
+            .chain(self.b)
+            .chain(self.n1)
+            .chain(self.n2)
+            .chain([self.along])
+    }
+}
 
 /// The cosine of the angle between two faces above which their shared edge
 /// is not a crease: 30 degrees, the feature-edge angle of decision 0029
@@ -338,8 +360,10 @@ const CREASE_COS: f32 = 0.866_025_4;
 /// joined first (a solid's seam and caps repeat them), so the faces either
 /// side of a seam are found. Edges shared by two faces at less than 30
 /// degrees are silhouette candidates; creases, boundary edges and edges of
-/// more than two faces are always drawn; the rest are left out. The order
-/// is fixed by the vertex order, so the upload is the same every time.
+/// more than two faces are always drawn. The order is fixed by the vertex
+/// order, so the upload is the same every time, and the distance along runs
+/// on in that order: the edges of a ring follow one another, so a dashed
+/// ring keeps its rhythm.
 pub(crate) fn outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<OutlineEdge> {
     use std::collections::BTreeMap;
     // A tenth of a micrometre joins coincident points without joining
@@ -382,6 +406,7 @@ pub(crate) fn outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<Outl
         }
     }
     let point = |i: u32| positions.get(i as usize).copied().unwrap_or_default();
+    let mut along = 0.0_f32;
     faces
         .into_iter()
         .map(|((a, b), normals)| {
@@ -393,7 +418,16 @@ pub(crate) fn outline_edges(positions: &[[f32; 3]], indices: &[u32]) -> Vec<Outl
                 }
                 _ => always,
             };
-            [point(a), point(b), pair[0], pair[1]]
+            let (pa, pb) = (point(a), point(b));
+            let edge = OutlineEdge {
+                a: pa,
+                b: pb,
+                n1: pair[0],
+                n2: pair[1],
+                along,
+            };
+            along += distance(pa, pb);
+            edge
         })
         .collect()
 }
@@ -467,7 +501,7 @@ mod tests {
         assert_eq!(edges.len(), 18);
         let creases = edges
             .iter()
-            .filter(|e| e[2] == [0.0; 3] && e[3] == [0.0; 3])
+            .filter(|e| e.n1 == [0.0; 3] && e.n2 == [0.0; 3])
             .count();
         assert_eq!(creases, 12);
         // The diagonals lie in a flat face: silhouette candidates with both
@@ -475,9 +509,16 @@ mod tests {
         assert!(
             edges
                 .iter()
-                .filter(|e| e[2] != [0.0; 3])
-                .all(|e| e[2] == e[3])
+                .filter(|e| e.n1 != [0.0; 3])
+                .all(|e| e.n1 == e.n2)
         );
+        // The distance along runs on from edge to edge.
+        assert_eq!(edges[0].along, 0.0);
+        for pair in edges.windows(2) {
+            let step = distance(pair[0].a, pair[0].b);
+            assert!((pair[1].along - pair[0].along - step).abs() < 1e-5);
+        }
+        assert_eq!(edges[0].floats().count(), 13);
         // The same mesh gives the same edges in the same order.
         assert_eq!(edges, outline_edges(&positions, &indices));
     }

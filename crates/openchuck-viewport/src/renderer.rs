@@ -263,12 +263,13 @@ impl Renderer {
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wide_attributes,
         })];
-        // An outline edge: its two ends and the normals of its two faces.
+        // An outline edge: its two ends, the normals of its two faces and its
+        // distance along the outline.
         let outline_attributes = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Float32x3
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Float32x3, 4 => Float32
         ];
         let outline_buffers = [Some(wgpu::VertexBufferLayout {
-            array_stride: 48,
+            array_stride: 52,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &outline_attributes,
         })];
@@ -463,7 +464,7 @@ impl Renderer {
                 outline_only: m.outline_only,
                 outline: m.outline.and_then(|o| {
                     let edges = outline_edges(&m.positions, &m.indices);
-                    let floats: Vec<f32> = edges.iter().flatten().flatten().copied().collect();
+                    let floats: Vec<f32> = edges.iter().flat_map(|e| e.floats()).collect();
                     let count = u32::try_from(edges.len()).ok().filter(|c| *c > 0)?;
                     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("outline edges"),
@@ -472,6 +473,7 @@ impl Renderer {
                     });
                     let look = Look {
                         width: o.width,
+                        pattern: o.style.pattern(),
                         ..Look::colour(o.colour)
                     };
                     Some((buffer, count, self.uniform(device, look)))

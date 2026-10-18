@@ -176,9 +176,11 @@ fn vs_outline(
     @location(1) b: vec3<f32>,
     @location(2) n1: vec3<f32>,
     @location(3) n2: vec3<f32>,
+    @location(4) along: f32,
 ) -> PathOut {
+    var ends = array<u32, 6>(0u, 1u, 0u, 0u, 1u, 1u);
     var out: PathOut;
-    out.along = 0.0;
+    out.along = select(along, along + distance(a, b), ends[corner] == 1u);
     let always = dot(n1, n1) < 1e-12 && dot(n2, n2) < 1e-12;
     let toward_eye = select(u.eye.xyz, u.eye.xyz - 0.5 * (a + b), u.eye.w > 0.5);
     let f1 = dot(n1, toward_eye);
