@@ -124,19 +124,32 @@ fn deny(root: &Path) -> Result<Findings> {
     }
 }
 
-/// Every test whose name says `golden`, with the kernel, so the STEP reference job runs too.
+/// Crates whose tests say `golden` without comparing a golden file: the gate's own tests and the
+/// tests of the comparison helper. Left out of the golden run, so that a run with no golden-file
+/// test cannot pass on their names alone.
+const NOT_GOLDEN_FILE_TESTS: &[&str] = &["xtask", "openchuck-testkit"];
+
+/// The `cargo test` arguments of the golden run: every test whose name says `golden`, with the
+/// kernel so the STEP reference job runs too, outside [`NOT_GOLDEN_FILE_TESTS`].
+fn golden_args() -> Vec<&'static str> {
+    let mut args = vec!["test", "--workspace", "--locked"];
+    for name in NOT_GOLDEN_FILE_TESTS {
+        args.extend(["--exclude", name]);
+    }
+    args.extend([
+        "--features",
+        "openchuck-app/kernel-tests",
+        "--no-fail-fast",
+        "--",
+        "golden",
+    ]);
+    args
+}
+
+/// Every golden-file test (see [`golden_args`]).
 fn golden(root: &Path) -> Result<Findings> {
     let output = Command::new("cargo")
-        .args([
-            "test",
-            "--workspace",
-            "--locked",
-            "--features",
-            "openchuck-app/kernel-tests",
-            "--no-fail-fast",
-            "--",
-            "golden",
-        ])
+        .args(golden_args())
         .current_dir(root)
         .output()
         .context("cannot run cargo test")?;
@@ -306,6 +319,21 @@ mod tests {
         assert!(findings.iter().all(|f| f.contains("x_matches")));
         // A build failure runs no test and fails too.
         assert!(!golden_findings(false, "", "error[E0425]: cannot find value").is_empty());
+    }
+
+    #[test]
+    fn req_nfr_08_the_golden_run_leaves_out_tests_that_compare_no_golden_file() {
+        // These names say `golden` and always pass, so counted they would hide a run in which no
+        // golden-file test ran (CodeRabbit on pull request 99).
+        let args = golden_args();
+        for name in ["xtask", "openchuck-testkit"] {
+            assert!(
+                args.windows(2).any(|w| w == ["--exclude", name]),
+                "{name} is not excluded: {args:?}"
+            );
+        }
+        assert_eq!(args.last(), Some(&"golden"));
+        assert!(args.contains(&"openchuck-app/kernel-tests"));
     }
 
     #[test]
