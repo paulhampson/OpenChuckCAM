@@ -435,6 +435,13 @@ pub(crate) fn generate_with_part(
     // The values as the strategy's schema reads them (a whole number given for
     // a number is a number), resolved once for everything below.
     let parameters = strategy.schema().resolve(&resolved.values)?;
+    if operation.strategy == swarf::NAME && placed.brep.is_some() {
+        swarf_compatibility(
+            operation,
+            model_surface.as_ref(),
+            parameters.number(names::TOLERANCE)?,
+        )?;
+    }
     // A straight plunge needs a tool that can cut straight down (OI-117).
     EntryParameters::read(&parameters)?.check_tool(snapshot.tool.can_plunge())?;
     let operation_leave = parameters.number(names::STOCK_TO_LEAVE)?;
@@ -595,6 +602,72 @@ pub(crate) fn brep_only(project: &Project, operation: &Operation) -> Option<Stri
     ))
 }
 
+/// Why swarf on a STEP part with no face set is refused (decision 0111
+/// item 1).
+const SWARF_NEEDS_FACES: &str = "swarf needs a face set: select the ruled walls to cut with the \
+     side of the tool, save them as a set and put it in the operation";
+
+/// Why `operation` cannot run yet when its strategy is swarf on a STEP part
+/// and none of its selection sets is a face set (decision 0111 item 1), for
+/// the parameter form. Whether the faces suit swarf is judged when it is
+/// generated ([`swarf_compatibility`]).
+pub(crate) fn swarf_needs_faces(project: &Project, operation: &Operation) -> Option<String> {
+    if operation.strategy != swarf::NAME || !on_step_part(project, operation) {
+        return None;
+    }
+    let has_faces = operation.selections.iter().any(|id| {
+        project
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == *id && matches!(&s.target, SelectionTarget::Faces(f) if !f.is_empty()))
+    });
+    (!has_faces).then(|| SWARF_NEEDS_FACES.to_owned())
+}
+
+/// Checks, before swarf runs, that every face of `surface` (the operation's
+/// face set) is one swarf can cut: ruled within `tolerance` in a family whose
+/// rulings do not run along the rotary axis (decision 0061 items 2 and 4,
+/// decision 0111 item 2). Fails naming every face that is not, and why.
+fn swarf_compatibility(
+    operation: &Operation,
+    surface: &dyn SurfaceSource,
+    tolerance: f64,
+) -> Result<(), AppError> {
+    let problems: Vec<String> = surface
+        .exact_faces()
+        .into_iter()
+        .filter_map(|face| {
+            let detection = swarf::detect_rulings(face.face, tolerance);
+            let why = match detection.chosen {
+                None => detection.refusal(),
+                // Within a hundredth of a degree of the axis: no rotation
+                // of the part brings the flank to such a ruling (OI-94).
+                Some(family) if detection.fit(family).along_axis > AXIAL_RULING => Some(
+                    "its rulings run along the rotary axis, so no rotation of the part brings \
+                     the side of the tool to them"
+                        .to_owned(),
+                ),
+                Some(_) => None,
+            };
+            why.map(|why| format!("face {}: {why}", face.number))
+        })
+        .collect();
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(missing(
+        operation,
+        &format!(
+            "its face set has faces swarf cannot cut; take them out of the set ({})",
+            problems.join("; ")
+        ),
+    ))
+}
+
+/// The component along the rotary axis above which a unit ruling is taken
+/// to run along it: the cosine of 0.01 degrees.
+const AXIAL_RULING: f64 = 0.999_999_984_769_129;
+
 /// The default of parameter `name` of `operation` where the application's
 /// differs from the strategy's schema: edge following on a STEP part takes
 /// the B-rep crease angle (decision 0056).
@@ -744,6 +817,11 @@ fn brep_selection(
             "the strategy '{}' does not use selected edges; only edge following does",
             operation.strategy
         )));
+    }
+    // Swarf cuts only the walls the user chose, never every face of the part
+    // (the owner's change to decision 0061 item 1, decision 0111 item 1).
+    if operation.strategy == swarf::NAME && choice.faces.is_empty() {
+        return Err(fail(SWARF_NEEDS_FACES.to_owned()));
     }
     Ok(choice)
 }
@@ -1423,8 +1501,9 @@ mod tests {
 
     /// The swarf fixture: a round boss wall (face 0, a cylinder of
     /// `BOSS_RADIUS` about an axis parallel to Z through X `BOSS_X`, from
-    /// `FOOT` to `TOP` above the rotary axis) and a band of a sphere (face 1,
-    /// not ruled), as one STEP part, cut by a 6 mm flat end mill.
+    /// `FOOT` to `TOP` above the rotary axis), a band of a sphere (face 1,
+    /// not ruled) and a cylinder coaxial with the rotary axis (face 2, ruled
+    /// along the axis), as one STEP part, cut by a 6 mm flat end mill.
     const BOSS_X: f64 = 30.0;
     const BOSS_RADIUS: f64 = 8.0;
     const FOOT: f64 = 10.0;
@@ -1432,13 +1511,17 @@ mod tests {
     const FLAT: f64 = 6.0;
 
     fn swarf_fixture() -> Fixture {
-        use openchuck_testkit::ruled::{boss_cylinder, sphere_band};
+        use openchuck_testkit::ruled::{boss_cylinder, coaxial_cylinder, sphere_band};
         let mut brep = boss_cylinder(BOSS_X, BOSS_RADIUS, FOOT, TOP);
-        let mut sphere = sphere_band(50.0, 5.0, -0.5, 0.5);
-        for face in &mut sphere.faces {
-            face.id = FaceId(1);
+        for (id, mut other) in [
+            (1, sphere_band(50.0, 5.0, -0.5, 0.5)),
+            (2, coaxial_cylinder(6.0, 0.0, 20.0)),
+        ] {
+            for face in &mut other.faces {
+                face.id = FaceId(id);
+            }
+            brep.faces.extend(other.faces);
         }
-        brep.faces.extend(sphere.faces);
         let flat = Tool {
             shape: ToolShape::FlatEnd,
             diameter: Millimetres(FLAT),
@@ -1454,17 +1537,34 @@ mod tests {
 
     #[test]
     fn req_op_07_req_op_02_selected_faces_choose_the_swarf_walls_on_a_step_part() {
-        // With no set, every face is cut, and the sphere is not ruled: the
-        // operation is refused, saying why (decision 0061 item 2).
-        let err = swarf_fixture().run().unwrap_err().to_string();
+        // Swarf needs a face set (decision 0111 item 1): with none, the form
+        // says so and the operation is refused before anything is cut.
+        let f = swarf_fixture();
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
         assert!(
-            err.contains("face 1") && err.contains("not a ruled surface"),
+            form.notes
+                .first()
+                .is_some_and(|n| n.contains("needs a face set")),
+            "{:?}",
+            form.notes
+        );
+        let err = f.run().unwrap_err().to_string();
+        assert!(
+            err.contains("needs a face set") && err.contains("ruled walls") && err.contains("'Op'"),
             "{err}"
         );
         // A set of the boss wall alone is cut, on its flank: the tip at the
         // foot, one tool radius outside the wall (decision 0061 items 3 to 5).
         let mut f = swarf_fixture();
         f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        let form =
+            crate::form::parameter_form(&f.project, &Registry::builtin(), f.operation).unwrap();
+        assert!(
+            !form.notes.iter().any(|n| n.contains("face set")),
+            "{:?}",
+            form.notes
+        );
         let path = f.run().unwrap();
         let cuts: Vec<_> = path
             .group
@@ -1487,11 +1587,23 @@ mod tests {
             "{:?}",
             path.notes
         );
-        // The sphere alone is refused, as the strategy says.
+        // A set must suit swarf (decision 0111 item 2): every face swarf
+        // cannot cut is named before it runs, the sphere (not ruled) and the
+        // coaxial cylinder (ruled along the rotary axis) together.
         let mut f = swarf_fixture();
-        f.select(SelectionTarget::Faces([FaceId(1)].into()), f.hash);
+        f.select(
+            SelectionTarget::Faces([FaceId(0), FaceId(1), FaceId(2)].into()),
+            f.hash,
+        );
         let err = f.run().unwrap_err().to_string();
-        assert!(err.contains("not a ruled surface"), "{err}");
+        assert!(
+            err.contains("'Op'")
+                && err.contains("take them out of the set")
+                && err.contains("face 1: it is not a ruled surface")
+                && err.contains("face 2: its rulings run along the rotary axis")
+                && !err.contains("face 0"),
+            "{err}"
+        );
         // An empty set is refused with swarf's own advice.
         let mut f = swarf_fixture();
         f.select(SelectionTarget::Faces(BTreeSet::new()), f.hash);

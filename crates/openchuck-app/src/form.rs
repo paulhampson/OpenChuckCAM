@@ -132,8 +132,11 @@ pub fn parameter_form(
         Ok(r) => (r.values, r.notes),
         Err(e) => (BTreeMap::new(), vec![e.to_string()]),
     };
-    // Said in the form, before the operation is run (OI-96, OI-238).
-    if let Some(reason) = crate::operation::brep_only(project, op) {
+    // Said in the form, before the operation is run (OI-96, OI-238;
+    // decision 0111 items 1 and 3).
+    if let Some(reason) = crate::operation::brep_only(project, op)
+        .or_else(|| crate::operation::swarf_needs_faces(project, op))
+    {
         notes.insert(0, format!("{}.", reason.replacen("swarf", "Swarf", 1)));
     }
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
