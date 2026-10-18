@@ -12,10 +12,14 @@ use wgpu::util::DeviceExt;
 use crate::camera::{
     Camera, IDENTITY, Mat4, Projection, multiply, rigid_inverse, to_f32, transform,
 };
-use crate::scene::{Colour, DisplayMode, Scene, Slot, wireframe_indices};
+use crate::scene::{
+    Colour, DisplayMode, Hatch, Scene, Slot, line_vertices, outline_edges, wireframe_indices,
+};
 
-/// Bytes of one draw's uniforms: a 4 by 4 matrix, a colour and the eye.
-const UNIFORM_SIZE: u64 = 112;
+/// Bytes of one draw's uniforms: a 4 by 4 matrix, then six vectors of four:
+/// the colour, the eye, the line width and viewport, the dash pattern, the
+/// hatch colour, and the scale and hatch kind.
+const UNIFORM_SIZE: u64 = 160;
 
 /// What a frame needs besides the scene.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -33,9 +37,24 @@ pub struct Frame {
     /// tool's placement and the workpiece's turn with A. Items in a slot are
     /// drawn as if their points were moved by it.
     pub transforms: [Mat4; Slot::COUNT],
+    /// Physical pixels per logical pixel, which a screen-space hatch
+    /// ([`crate::Hatch`]) is measured with.
+    pub pixels_per_point: f32,
 }
 
 impl Frame {
+    /// Logical pixels per millimetre at the camera's target: the scale a
+    /// dash pattern ([`crate::LineStyle`]) is drawn at, so its dashes keep
+    /// their size on screen as the view zooms.
+    pub fn pixels_per_mm(&self) -> f32 {
+        let height = self.camera.visible_height();
+        if height > 0.0 && height.is_finite() {
+            (f64::from(self.viewport[1]) / height) as f32
+        } else {
+            1.0
+        }
+    }
+
     /// Sets the transform of `slot`.
     pub fn set_transform(&mut self, slot: Slot, transform: Mat4) {
         if let Some(t) = self.transforms.get_mut(slot.index()) {
@@ -52,6 +71,7 @@ impl Frame {
             // Until the front end says, the view is taken as 1000 pixels wide.
             viewport: [1000.0, (1000.0 / aspect.max(1e-6)) as f32],
             transforms: [IDENTITY; Slot::COUNT],
+            pixels_per_point: 1.0,
         }
     }
 }
@@ -71,16 +91,21 @@ pub enum Layer {
     Tool,
     /// Selection and hover highlights.
     Overlay,
+    /// The outlines of the hovered or selected held region or tab, kept
+    /// apart from the selection highlights so the two are replaced
+    /// separately.
+    Focus,
 }
 
 impl Layer {
     /// Every layer, in drawing order.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Scene,
         Self::Stock,
         Self::Paths,
         Self::Tool,
         Self::Overlay,
+        Self::Focus,
     ];
 
     /// The layer's position in [`Layer::ALL`], for front ends that keep a
@@ -92,6 +117,7 @@ impl Layer {
             Self::Paths => 2,
             Self::Tool => 3,
             Self::Overlay => 4,
+            Self::Focus => 5,
         }
     }
 }
@@ -102,6 +128,30 @@ struct Uniform {
     buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     colour: Colour,
+    /// A wide line's width; zero for everything else.
+    width: f32,
+    /// A line's dash pattern ([`crate::LineStyle::pattern`]).
+    pattern: [f32; 4],
+    /// A mesh's hatch.
+    hatch: Option<Hatch>,
+}
+
+/// What a draw's uniforms hold besides the matrix and the eye.
+#[derive(Debug, Clone, Copy, Default)]
+struct Look {
+    colour: Colour,
+    width: f32,
+    pattern: [f32; 4],
+    hatch: Option<Hatch>,
+}
+
+impl Look {
+    fn colour(colour: Colour) -> Self {
+        Self {
+            colour,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -117,6 +167,10 @@ struct GpuMesh {
     indices: Vec<u32>,
     fill: Uniform,
     edges: Uniform,
+    /// Only the outline is drawn.
+    outline_only: bool,
+    /// The outline edges, their count and their uniforms.
+    outline: Option<(wgpu::Buffer, u32, Uniform)>,
 }
 
 #[derive(Debug)]
@@ -125,8 +179,6 @@ struct GpuLines {
     vertices: wgpu::Buffer,
     count: u32,
     on_top: bool,
-    /// Wide, so drawn as quads; see [`crate::LineItem::width`].
-    width: f32,
     uniform: Uniform,
 }
 
@@ -144,7 +196,10 @@ pub struct Renderer {
     wide_on_top: wgpu::RenderPipeline,
     highlight: wgpu::RenderPipeline,
     glass: wgpu::RenderPipeline,
-    layers: [GpuLayer; 5],
+    fill_hatch: wgpu::RenderPipeline,
+    glass_hatch: wgpu::RenderPipeline,
+    outline: wgpu::RenderPipeline,
+    layers: [GpuLayer; 6],
     mode: DisplayMode,
 }
 
@@ -191,12 +246,31 @@ impl Renderer {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &attributes,
         })];
-        // A wide line reads the two ends of its segment as one instance.
-        let wide_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        // A line's point carries its distance along the line, for the dashes.
+        let path_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32];
+        let path_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: 16,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &path_attributes,
+        })];
+        // A wide line reads the two ends of its segment, with their
+        // distances, as one instance.
+        let wide_attributes = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32, 2 => Float32x3, 3 => Float32
+        ];
         let wide_buffers = [Some(wgpu::VertexBufferLayout {
-            array_stride: 24,
+            array_stride: 32,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wide_attributes,
+        })];
+        // An outline edge: its two ends and the normals of its two faces.
+        let outline_attributes = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Float32x3
+        ];
+        let outline_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: 48,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &outline_attributes,
         })];
         let make = |label: &str,
                     vertex: &str,
@@ -205,10 +279,11 @@ impl Renderer {
                     compare: wgpu::CompareFunction,
                     write: bool,
                     bias: wgpu::DepthBiasState| {
-            let buffers = if vertex == "vs_wide" {
-                &wide_buffers
-            } else {
-                &buffers
+            let buffers = match vertex {
+                "vs_wide" => &wide_buffers,
+                "vs_path" => &path_buffers,
+                "vs_outline" => &outline_buffers,
+                _ => &buffers,
             };
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
@@ -275,15 +350,15 @@ impl Renderer {
                 "edges", "vs_line", "fs_line", line_list, LessEqual, true, none,
             ),
             lines: make(
-                "lines", "vs_line", "fs_line", line_list, LessEqual, true, none,
+                "lines", "vs_path", "fs_path", line_list, LessEqual, true, none,
             ),
             lines_on_top: make(
-                "guides", "vs_line", "fs_line", line_list, Always, false, none,
+                "guides", "vs_path", "fs_path", line_list, Always, false, none,
             ),
             wide: make(
                 "wide lines",
                 "vs_wide",
-                "fs_line",
+                "fs_path",
                 triangles,
                 LessEqual,
                 true,
@@ -292,7 +367,7 @@ impl Renderer {
             wide_on_top: make(
                 "wide guides",
                 "vs_wide",
-                "fs_line",
+                "fs_path",
                 triangles,
                 Always,
                 false,
@@ -309,6 +384,33 @@ impl Renderer {
             ),
             glass: make(
                 "glass", "vs_mesh", "fs_mesh", triangles, Less, false, push_back,
+            ),
+            fill_hatch: make(
+                "hatched fill",
+                "vs_mesh",
+                "fs_hatch",
+                triangles,
+                Less,
+                true,
+                push_back,
+            ),
+            glass_hatch: make(
+                "hatched glass",
+                "vs_mesh",
+                "fs_hatch",
+                triangles,
+                Less,
+                false,
+                push_back,
+            ),
+            outline: make(
+                "outline",
+                "vs_outline",
+                "fs_path",
+                triangles,
+                LessEqual,
+                true,
+                none,
             ),
             layout,
             layers: Default::default(),
@@ -350,22 +452,57 @@ impl Renderer {
                 feature_edges: index_buffer(device, "mesh feature edges", &m.feature_edges),
                 wireframe: None,
                 indices: m.indices.clone(),
-                fill: self.uniform(device, m.colour),
-                edges: self.uniform(device, m.edge_colour),
+                fill: self.uniform(
+                    device,
+                    Look {
+                        hatch: m.hatch,
+                        ..Look::colour(m.colour)
+                    },
+                ),
+                edges: self.uniform(device, Look::colour(m.edge_colour)),
+                outline_only: m.outline_only,
+                outline: m.outline.and_then(|o| {
+                    let edges = outline_edges(&m.positions, &m.indices);
+                    let floats: Vec<f32> = edges.iter().flatten().flatten().copied().collect();
+                    let count = u32::try_from(edges.len()).ok().filter(|c| *c > 0)?;
+                    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("outline edges"),
+                        contents: &f32_bytes(&floats),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    let look = Look {
+                        width: o.width,
+                        ..Look::colour(o.colour)
+                    };
+                    Some((buffer, count, self.uniform(device, look)))
+                }),
             })
             .collect();
         let lines = scene
             .lines
             .iter()
             .filter(|l| l.segments.len() >= 2)
-            .map(|l| GpuLines {
-                slot: l.slot,
-                vertices: vertex_buffer(device, "lines", &l.segments),
-                // An odd last point has no partner and is left out.
-                count: u32::try_from(l.segments.len() & !1).unwrap_or(!1),
-                on_top: l.on_top,
-                width: l.width,
-                uniform: self.uniform(device, l.colour),
+            .map(|l| {
+                let floats: Vec<f32> = line_vertices(&l.segments).into_iter().flatten().collect();
+                GpuLines {
+                    slot: l.slot,
+                    vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("lines"),
+                        contents: &f32_bytes(&floats),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                    // An odd last point has no partner and is left out.
+                    count: u32::try_from(l.segments.len() & !1).unwrap_or(!1),
+                    on_top: l.on_top,
+                    uniform: self.uniform(
+                        device,
+                        Look {
+                            width: l.width,
+                            pattern: l.style.pattern(),
+                            ..Look::colour(l.colour)
+                        },
+                    ),
+                }
             })
             .collect();
         GpuLayer { meshes, lines }
@@ -397,30 +534,46 @@ impl Renderer {
                 (matrix, [local[0] as f32, local[1] as f32, local[2] as f32])
             })
             .collect();
+        let per_mm = frame.pixels_per_mm();
         #[allow(clippy::cast_possible_truncation)]
-        let write = |u: &Uniform, slot: Slot, width: f32| {
+        let write = |u: &Uniform, slot: Slot| {
             let Some((matrix, eye)) = per_slot.get(slot.index()) else {
                 return;
             };
-            let mut floats = Vec::with_capacity(28);
+            let (hatch, kind) = match u.hatch {
+                Some(h) => (h.colour, if h.cross { 2.0 } else { 1.0 }),
+                None => ([0.0; 4], 0.0),
+            };
+            let mut floats = Vec::with_capacity(40);
             floats.extend(matrix.iter().flatten());
             floats.extend(u.colour);
             floats.extend(eye);
             floats.push(w as f32);
-            floats.extend([width, frame.viewport[0], frame.viewport[1], 0.0]);
+            floats.extend([
+                u.width,
+                frame.viewport[0],
+                frame.viewport[1],
+                frame.pixels_per_point,
+            ]);
+            floats.extend(u.pattern);
+            floats.extend(hatch);
+            floats.extend([per_mm, kind, 0.0, 0.0]);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
         };
         for layer in &mut self.layers {
             for mesh in &mut layer.meshes {
-                write(&mesh.fill, mesh.slot, 0.0);
-                write(&mesh.edges, mesh.slot, 0.0);
+                write(&mesh.fill, mesh.slot);
+                write(&mesh.edges, mesh.slot);
+                if let Some((_, _, uniform)) = &mesh.outline {
+                    write(uniform, mesh.slot);
+                }
                 if frame.mode == DisplayMode::Wireframe && mesh.wireframe.is_none() {
                     mesh.wireframe =
                         index_buffer(device, "wireframe", &wireframe_indices(&mesh.indices));
                 }
             }
             for lines in &layer.lines {
-                write(&lines.uniform, lines.slot, lines.width);
+                write(&lines.uniform, lines.slot);
             }
         }
     }
@@ -428,18 +581,33 @@ impl Renderer {
     /// Draws the scene into `pass`, which must have the colour and depth
     /// formats the renderer was built for.
     pub fn paint(&self, pass: &mut wgpu::RenderPass<'_>) {
+        let highlights = |l: &Layer| matches!(l, Layer::Overlay | Layer::Focus);
         // Opaque meshes of every layer but the highlights.
-        for layer in Layer::ALL.iter().filter(|l| **l != Layer::Overlay) {
-            for mesh in self.layer(*layer).meshes.iter().filter(|m| !m.translucent) {
+        for layer in Layer::ALL.iter().filter(|l| !highlights(l)) {
+            for mesh in self
+                .layer(*layer)
+                .meshes
+                .iter()
+                .filter(|m| !m.translucent && !m.outline_only)
+            {
                 self.paint_mesh(pass, mesh);
             }
         }
         // Translucent meshes over them, without hiding what is behind.
         for layer in Layer::ALL {
-            for mesh in self.layer(layer).meshes.iter().filter(|m| m.translucent) {
+            for mesh in self
+                .layer(layer)
+                .meshes
+                .iter()
+                .filter(|m| m.translucent && !m.outline_only)
+            {
                 if let Some((buffer, count)) = &mesh.triangles {
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-                    pass.set_pipeline(&self.glass);
+                    pass.set_pipeline(if mesh.fill.hatch.is_some() {
+                        &self.glass_hatch
+                    } else {
+                        &self.glass
+                    });
                     pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
                     pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..*count, 0, 0..1);
@@ -447,18 +615,31 @@ impl Renderer {
             }
         }
         // Highlights over the surfaces they cover.
-        for mesh in self
-            .layer(Layer::Overlay)
-            .meshes
-            .iter()
-            .filter(|m| !m.translucent)
-        {
-            if let Some((buffer, count)) = &mesh.triangles {
-                pass.set_pipeline(&self.highlight);
-                pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
-                pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-                pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..*count, 0, 0..1);
+        for layer in Layer::ALL.iter().filter(|l| highlights(l)) {
+            for mesh in self
+                .layer(*layer)
+                .meshes
+                .iter()
+                .filter(|m| !m.translucent && !m.outline_only)
+            {
+                if let Some((buffer, count)) = &mesh.triangles {
+                    pass.set_pipeline(&self.highlight);
+                    pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
+                    pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..*count, 0, 0..1);
+                }
+            }
+        }
+        // Outlines, tested against depth like the lines.
+        for layer in Layer::ALL {
+            for mesh in &self.layer(layer).meshes {
+                if let Some((buffer, count, uniform)) = &mesh.outline {
+                    pass.set_pipeline(&self.outline);
+                    pass.set_bind_group(0, &uniform.bind_group, &[]);
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..6, 0..*count);
+                }
             }
         }
         // Lines tested against depth first, then the guides drawn over everything.
@@ -470,7 +651,7 @@ impl Renderer {
                     .iter()
                     .filter(|l| l.on_top == on_top)
                 {
-                    let wide = lines.width > 1.0;
+                    let wide = lines.uniform.width > 1.0;
                     pass.set_pipeline(match (wide, on_top) {
                         (false, false) => &self.lines,
                         (false, true) => &self.lines_on_top,
@@ -503,7 +684,11 @@ impl Renderer {
         match self.mode {
             DisplayMode::Shaded | DisplayMode::ShadedWithEdges => {
                 if let Some((buffer, count)) = &mesh.triangles {
-                    pass.set_pipeline(&self.fill);
+                    pass.set_pipeline(if mesh.fill.hatch.is_some() {
+                        &self.fill_hatch
+                    } else {
+                        &self.fill
+                    });
                     pass.set_bind_group(0, &mesh.fill.bind_group, &[]);
                     pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..*count, 0, 0..1);
@@ -528,7 +713,7 @@ impl Renderer {
         }
     }
 
-    fn uniform(&self, device: &wgpu::Device, colour: Colour) -> Uniform {
+    fn uniform(&self, device: &wgpu::Device, look: Look) -> Uniform {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("viewport uniforms"),
             size: UNIFORM_SIZE,
@@ -546,7 +731,10 @@ impl Renderer {
         Uniform {
             buffer,
             bind_group,
-            colour,
+            colour: look.colour,
+            width: look.width,
+            pattern: look.pattern,
+            hatch: look.hatch,
         }
     }
 }

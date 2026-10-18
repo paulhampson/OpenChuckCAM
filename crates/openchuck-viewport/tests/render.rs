@@ -22,7 +22,8 @@ use openchuck_types::mesh::TriangleMesh;
 use openchuck_viewport::camera::{IDENTITY, multiply, place, rigid_inverse, rotation_x};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, DisplayMode, Frame, Layer, Projection, Renderer, Scene, Slot, StandardView,
+    Camera, DisplayMode, Frame, Hatch, Layer, LineStyle, Outline, Projection, Renderer, Scene,
+    Slot, StandardView,
 };
 
 const SIZE: u32 = 64;
@@ -576,4 +577,246 @@ fn req_ui_04_req_nfr_15_a_wide_line_is_as_wide_as_asked_whatever_the_zoom() {
         (5..=8).contains(&zoomed_rows),
         "zoomed {zoomed_rows} rows, not {wide_rows}"
     );
+}
+
+/// A front-view frame of `scene` whose viewport is the 64-pixel target.
+fn front(scene: &Scene, zoom: f64) -> Frame {
+    let mut f = frame(
+        StandardView::Front,
+        Projection::Orthographic,
+        DisplayMode::Shaded,
+        scene,
+    );
+    f.viewport = [SIZE as f32, SIZE as f32];
+    f.camera.zoom(zoom);
+    f
+}
+
+/// The lengths of the runs of blue and of other pixels along row `y`.
+fn runs(pixels: &[[u8; 4]], y: u32) -> Vec<(bool, usize)> {
+    let mut out: Vec<(bool, usize)> = Vec::new();
+    for x in 0..SIZE {
+        let blue = blue_pixels(&[pixels[(y * SIZE + x) as usize]]) == 1;
+        match out.last_mut() {
+            Some((b, n)) if *b == blue => *n += 1,
+            _ => out.push((blue, 1)),
+        }
+    }
+    out
+}
+
+/// The row the line along X through the middle of the view covers most.
+fn line_row(pixels: &[[u8; 4]]) -> u32 {
+    (0..SIZE)
+        .max_by_key(|y| {
+            (0..SIZE)
+                .filter(|x| blue_pixels(&[pixels[(y * SIZE + x) as usize]]) == 1)
+                .count()
+        })
+        .unwrap()
+}
+
+#[test]
+fn req_ui_03_req_nfr_15_dashed_lines_keep_their_pattern_whatever_the_zoom() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A long line along X through the middle of the view, so it crosses the
+    // whole 64-pixel width at any of these zooms. The frame is fitted to a
+    // box 40 mm across.
+    let line = [Point3::new(-200.0, 0.0, 0.0), Point3::new(200.0, 0.0, 0.0)];
+    let mut fit = Scene::default();
+    fit.add_mesh(&block([-20.0; 3], [20.0; 3]), &[], RED, BLACK);
+    let draw = |style: LineStyle, width: f32, zoom: f64| {
+        let mut scene = Scene::default();
+        scene.add_styled_polyline(&line, BLUE, true, width, style);
+        let pixels = render(&device, &queue, &scene, &front(&fit, zoom));
+        let row = line_row(&pixels);
+        runs(&pixels, row)
+    };
+    let on = |r: &[(bool, usize)]| {
+        r.iter()
+            .filter(|(b, _)| *b)
+            .map(|(_, n)| *n)
+            .collect::<Vec<_>>()
+    };
+    // Solid: one run across the view.
+    let solid = draw(LineStyle::Solid, 0.0, 1.0);
+    assert_eq!(on(&solid), [SIZE as usize], "{solid:?}");
+    for width in [0.0, 2.0] {
+        // Dashed: 5 on, 4 off, so about seven dashes in 64 pixels; the
+        // dashes inside the view are 4 to 6 pixels long (a wide line adds
+        // its square ends).
+        let dashed = draw(LineStyle::Dashed, width, 1.0);
+        let dashes = on(&dashed);
+        assert!((6..=8).contains(&dashes.len()), "{dashed:?}");
+        let inner = &dashes[1..dashes.len() - 1];
+        assert!(inner.iter().all(|n| (4..=8).contains(n)), "{dashed:?}");
+        // Zoomed in or out, the dashes keep their size on screen.
+        for zoom in [0.5, 2.0] {
+            let zoomed = on(&draw(LineStyle::Dashed, width, zoom));
+            assert!(
+                zoomed.len().abs_diff(dashes.len()) <= 1,
+                "zoom {zoom}: {zoomed:?} against {dashes:?}"
+            );
+        }
+    }
+    // Dotted: 2 on, 4 off, about eleven short dots.
+    let dots = on(&draw(LineStyle::Dotted, 0.0, 1.0));
+    assert!((10..=12).contains(&dots.len()), "{dots:?}");
+    assert!(dots[1..dots.len() - 1].iter().all(|n| (1..=3).contains(n)));
+    // Dash-dot: long dashes and short dots in turn, a period of 24 pixels.
+    let dash_dot = on(&draw(LineStyle::DashDot, 0.0, 1.0));
+    let long = dash_dot.iter().filter(|n| **n >= 10).count();
+    let short = dash_dot.iter().filter(|n| **n <= 3).count();
+    assert!(long >= 2 && short >= 2, "{dash_dot:?}");
+}
+
+/// A cylinder of `radius` along X from `x0` to `x1`, with its end caps.
+fn cylinder(x0: f64, x1: f64, radius: f64, segments: u32) -> TriangleMesh {
+    let mut vertices = Vec::new();
+    let mut triangles = Vec::new();
+    for x in [x0, x1] {
+        for i in 0..segments {
+            let a = std::f64::consts::TAU * f64::from(i) / f64::from(segments);
+            vertices.push(Point3::new(x, radius * a.cos(), radius * a.sin()));
+        }
+    }
+    let n = segments;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        triangles.push([i, j, n + j]);
+        triangles.push([i, n + j, n + i]);
+    }
+    // Caps as fans round a centre point.
+    for (ring, x) in [(0, x0), (n, x1)] {
+        let centre = vertices.len() as u32;
+        vertices.push(Point3::new(x, 0.0, 0.0));
+        for i in 0..n {
+            triangles.push([centre, ring + i, ring + (i + 1) % n]);
+        }
+    }
+    TriangleMesh {
+        vertices,
+        triangles,
+    }
+}
+
+#[test]
+fn req_ui_25_req_nfr_15_an_outline_follows_the_silhouette_and_both_ends() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A cylinder along X drawn as an outline only: seen from the front its
+    // outline is the top and bottom of its silhouette and its two ends, with
+    // nothing between them; seen from the end it is a ring.
+    let mut scene = Scene::default();
+    scene.add_mesh(&cylinder(-15.0, 15.0, 8.0, 48), &[], RED, BLACK);
+    scene.meshes[0].outline = Some(Outline {
+        colour: BLUE,
+        width: 1.5,
+    });
+    scene.meshes[0].outline_only = true;
+    let mut fit = scene.clone();
+    fit.add_mesh(&block([-20.0; 3], [20.0; 3]), &[], RED, BLACK);
+    let f = front(&fit, 1.0);
+    let pixels = render(&device, &queue, &scene, &f);
+    // No fill at all.
+    assert!(
+        !pixels.iter().any(|p| p[0] > 60 && p[1] < 30 && p[2] < 30),
+        "the fill is drawn"
+    );
+    let at = |x: u32, y: u32| blue_pixels(&[pixels[(y * SIZE + x) as usize]]) == 1;
+    // The middle row crosses the outline at the two ends only.
+    let middle: Vec<(bool, usize)> = runs(&pixels, SIZE / 2);
+    assert_eq!(middle.iter().filter(|(b, _)| *b).count(), 2, "{middle:?}");
+    // The middle column crosses it at the top and the bottom only.
+    let column = (0..SIZE).filter(|y| at(SIZE / 2, *y)).count();
+    assert!((2..=6).contains(&column), "{column}");
+    let crossings = (1..SIZE)
+        .filter(|y| at(SIZE / 2, *y) && !at(SIZE / 2, y - 1))
+        .count();
+    assert_eq!(crossings, 2);
+    // From the end, the cap's rim is a ring: blue round the edge, the middle
+    // empty.
+    let mut end = f;
+    end.camera.set_view(StandardView::Right);
+    let pixels = render(&device, &queue, &scene, &end);
+    let middle = runs(&pixels, SIZE / 2);
+    assert_eq!(middle.iter().filter(|(b, _)| *b).count(), 2, "{middle:?}");
+    // With a fill, the outline is drawn over it.
+    scene.meshes[0].outline_only = false;
+    let pixels = render(&device, &queue, &scene, &f);
+    assert!(pixels.iter().filter(|p| p[0] > 60 && p[1] < 30).count() > 200);
+    assert!(blue_pixels(&pixels) > 40);
+}
+
+#[test]
+fn req_ui_25_req_nfr_15_a_hatch_is_drawn_on_the_screen_whatever_the_zoom() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A red face filling the view with a blue hatch over it: lines 1 pixel
+    // wide every 6, so one direction covers about a sixth of the face and
+    // both about a third, at any zoom.
+    let share = |cross: bool, zoom: f64, translucent: bool| {
+        let mut scene = Scene::default();
+        scene.add_mesh(&block([-40.0; 3], [40.0; 3]), &[], RED, BLACK);
+        scene.meshes[0].hatch = Some(Hatch {
+            colour: BLUE,
+            cross,
+        });
+        scene.meshes[0].translucent = translucent;
+        let mut fit = Scene::default();
+        fit.add_mesh(&block([-20.0; 3], [20.0; 3]), &[], RED, BLACK);
+        let pixels = render(&device, &queue, &scene, &front(&fit, zoom));
+        blue_pixels(&pixels) as f64 / pixels.len() as f64
+    };
+    for translucent in [false, true] {
+        let single = share(false, 1.0, translucent);
+        let double = share(true, 1.0, translucent);
+        assert!((0.12..0.22).contains(&single), "{single}");
+        assert!((0.25..0.40).contains(&double), "{double}");
+        let zoomed = share(true, 0.5, translucent);
+        assert!((zoomed - double).abs() < 0.03, "{zoomed} against {double}");
+    }
+    // At twice the pixel density the lines are still 6 logical pixels
+    // apart: the share is the same.
+    let mut scene = Scene::default();
+    scene.add_mesh(&block([-40.0; 3], [40.0; 3]), &[], RED, BLACK);
+    scene.meshes[0].hatch = Some(Hatch {
+        colour: BLUE,
+        cross: false,
+    });
+    let mut fit = Scene::default();
+    fit.add_mesh(&block([-20.0; 3], [20.0; 3]), &[], RED, BLACK);
+    let mut f = front(&fit, 1.0);
+    f.pixels_per_point = 2.0;
+    let pixels = render(&device, &queue, &scene, &f);
+    let dense = blue_pixels(&pixels) as f64 / pixels.len() as f64;
+    assert!((0.12..0.22).contains(&dense), "{dense}");
+}
+
+#[test]
+fn req_ui_25_the_focus_layer_draws_over_the_scene() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A red block with a blue outline of itself in the focus layer, as the
+    // hovered or selected held region or tab is drawn.
+    let mut scene = Scene::default();
+    scene.add_mesh(&block([-10.0; 3], [10.0; 3]), &[], RED, BLACK);
+    let mut focus = scene.clone();
+    focus.meshes[0].outline_only = true;
+    focus.meshes[0].outline = Some(Outline {
+        colour: BLUE,
+        width: 3.0,
+    });
+    let f = front(&scene, 1.0);
+    let pixels = render_layers(&device, &queue, &scene, None, &[(Layer::Focus, &focus)], &f);
+    assert!(blue_pixels(&pixels) > 100, "{}", blue_pixels(&pixels));
+    // The fill is the scene's own, not drawn again by the focus layer.
+    assert!(pixels.iter().filter(|p| p[0] > 60 && p[1] < 30).count() > 500);
+    assert_eq!(Layer::ALL.len(), 6);
+    assert_eq!(Layer::Focus.index(), 5);
 }
