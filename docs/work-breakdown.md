@@ -155,7 +155,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X1 | 22 step 1: the conformance report and component inventory ([decision 0114](decisions/0114-slice-22-conformance-report.md), accepted 18 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X2 | 22: shell frame (window, steps, primary action, tree marks, dock and Messages, footer, empty state, settings; slice 8 items 8, 11, 12) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X3 | 22: viewport drawing (toolbar, overlays, colour roles, dash and hatch lines, held regions and tabs, the OI-341 widths) | ░░ | ░░ | ░░ | ░░ | ░░ |
-| X7a | 22: theme tokens and IBM Plex with the OFL text and notices (new files only; slice 8 item 10) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| X7a | 22: theme tokens and IBM Plex with the OFL text and notices (new files only; slice 8 item 10; built 18 Oct 2026 on `claude/lane-x7a-theme-tokens-fonts`, pull request 124) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X4 | 22: inspectors (field rows, header and error banner, setup sections with two provenance icons, OI-334 layout, part extent) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X5 | 22: Setup step's front and end panes | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets | ░░ | ░░ | ░░ | ░░ | ░░ |
@@ -518,7 +518,7 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 7. Scripted 60-second camera-path benchmark on the 1M-triangle model, run on the physical reference machines, with a software-rendered smoke test in CI because hosted runners typically have no real GPU (native rendering is used wherever a runner offers it) (NFR-03).
 8. Workflow steps with their availability and reasons, the footer and its primary action, and the window layout: resizable and collapsible panels, usable at 1366 by 768 at 100% scale, with 120% as the default scale (UI-10, UI-16; specification sections 3 to 5 and 10).
 9. Machine value provenance icons with tooltips on hover and focus, replacing the list of unconfirmed values (UI-13; specification section 8, D8).
-10. Keyboard map, focus order and tooltips on focus; legibility, scale and contrast (UI-14, NFR-15; specification sections 14 and 16; checked again in slice 20). Bundle the IBM Plex Sans and Mono fonts unmodified, add `LICENSES/OFL-1.1.txt` and the font notice to the nightly and release archives (decision 0038, OI-164; NFR-10).
+10. Keyboard map, focus order and tooltips on focus; legibility, scale and contrast (UI-14, NFR-15; specification sections 14 and 16; checked again in slice 20). Bundle the IBM Plex Sans and Mono fonts unmodified, add `LICENSES/OFL-1.1.txt` and the font notice to the nightly and release archives (decision 0038, OI-164; NFR-10). *Bundled fonts and tokens: built by slice 22 lane X7a (`apps/openchuck-ui/src/theme.rs`, `apps/openchuck-ui/assets/fonts/`, `LICENSES/OFL-1.1.txt`, `LICENSES/IBM-Plex-NOTICE.txt`, the archive notices in `build-archives.yml`); only the fonts are installed so far, and applying the tokens, the keyboard map and the focus order stay with lanes X2 and X7b.*
 11. Per-user settings in the configuration folder: layout, scale, theme, units, recent projects, acknowledgements (UI-15; specification section 13).
 12. Item states in the tree with their legend, and the messages panel collecting import, setup, file, generation and job messages with their actions (UI-11, UI-12; specification sections 6 and 9). First placed in slice 9, which closed on 16 Oct 2026 before they were built.
 
