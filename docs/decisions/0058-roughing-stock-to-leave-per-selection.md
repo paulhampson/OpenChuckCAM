@@ -1,6 +1,6 @@
 # 0058: Per-selection stock to leave for roughing leaves at least the largest value
 
-- **Status:** accepted by the project owner (17 Oct 2026, in the orchestration session, option C of the three offered). The build is not done: it is the scope of a future lane, E2 (work breakdown, Parallel work).
+- **Status:** accepted by the project owner (17 Oct 2026, in the orchestration session, option C of the three offered). Built by lane E2 on `claude/lane-e2-roughing-stock-per-selection` (17 Oct 2026; see "As built" below).
 - **Date:** 17 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-261 is new.
 
@@ -28,6 +28,19 @@ Roughing does not ride the surface. It plans its layers from the floor over the 
 ## Verification
 
 Lane E2 writes the tests, named after OP-11 and OP-03: a selection with a larger stock to leave raises roughing's amount over the whole part and the notes name it; a smaller one changes nothing (byte for byte the same program as the operation's value alone); the simulated leftover after roughing is at least the largest value everywhere; the finishing pass after it leaves each zone its own amount; the second-roughing-pass and stepdown invariants of decision 0033 still hold.
+
+## As built (lane E2, 17 Oct 2026)
+
+- **Where.** `openchuck-app` `operation.rs` only, in `generate_with_part`: when the operation's selections give leave zones and the strategy does not honour them, rotary roughing (`roughing::NAME`) takes the largest of the operation's stock to leave and the `stock_to_leave` of its selected sets as its `stock_to_leave` value and is generated without zones; every other strategy that does not honour zones is still refused with the existing message. `openchuck-path` is unchanged, so no public API, dependency or project format changes, and no number was taken (no schema, no `OI-`).
+- **The note** (item 2) is added only when a set's amount is larger than the operation's, after the notes about values, and reads: "stock to leave: roughing leaves 0.8 mm on the whole part, the amount of the selection set 'Top' (the largest of its selections), in place of the operation's 0.3 mm; roughing leaves one amount everywhere, and a finishing operation cuts each selection to its own". Where two sets hold the same largest amount, the first in the operation's list is named.
+- **Selections on a STEP part** are unchanged: roughing cannot be limited to faces yet, and a set with a stock to leave on a STEP part is refused as before (`req_op_11_req_nfr_07_a_stock_to_leave_on_a_step_selection_is_refused`, which is about the B-rep selection, not roughing, and stays).
+- **Tests** (`crates/openchuck-app/tests/selection.rs`):
+  - `req_op_11_req_op_03_a_larger_selection_stock_to_leave_raises_roughing_over_the_whole_part`: a set at 0.8 mm over an operation at 0.3 mm gives the note (operation, value, set and the operation's value named) and the same toolpath and G-code byte for byte as the operation at 0.8 mm with no set amount, so the floor, the tool-drop heights and the stepdown and same-sites invariants of decision 0033 are those of a plain 0.8 mm roughing.
+  - `req_op_11_req_op_03_a_smaller_or_equal_selection_stock_to_leave_changes_nothing`: a smaller, a zero and an equal amount give the same toolpath and G-code byte for byte and no note; with two sets the largest is named.
+  - `req_op_11_req_op_03_roughing_leaves_at_least_the_largest_and_finishing_each_its_own`: simulated on the dexel stock (0.1 mm cell), the least left anywhere after roughing is 0.749 mm for 0.8 mm (within the cell); a second roughing operation over its result finds no cut to make (decision 0043 item 5's error, so the second-pass invariant holds); helical finishing after it on the same sets leaves the middle of the top face 0.80 to 0.82 mm and the middle of the other side faces 0.30 mm.
+  - `req_op_11_req_nfr_07_a_strategy_without_leave_zones_other_than_roughing_is_still_refused`: simultaneous finishing with a set amount is still refused, naming OP-11.
+  - `req_gc_07_req_nfr_06_req_op_11_roughing_with_a_selection_leave_is_the_same_at_any_thread_count`: the same toolpath, G-code and notes at 1, 2 and 4 threads.
+- **Times** (uninstrumented, `cargo nextest run`, debug build, with the rest of the suite running): 2.4 s, 4.0 s, 47 s, under 0.1 s and 2.6 s. None is long-running.
 
 ## Consequences
 

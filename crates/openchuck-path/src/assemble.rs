@@ -49,7 +49,7 @@ use crate::params::{CommonParameters, EntryParameters, Retract};
 use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwind_turns, unwrap_continuous};
 use crate::stock::{CollisionOracle, StockModel};
 use crate::strategy::{CutPoint, Pass, PassStock, StrategyInput};
-use openchuck_types::machine::MaxFeeds;
+use openchuck_types::machine::{MaxFeeds, RotaryInFeed};
 
 /// Something the user should know about a generated toolpath.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +162,18 @@ impl Builder<'_> {
             0.0
         };
         let line = (dx * dx + dy * dy + dz * dz).sqrt();
+        // A controller that counts A's travel round the part in the feed word
+        // holds that length, not just the line, to the line's limit (decision
+        // record 0076).
+        let counted = if line > EPS && kind.is_fed() {
+            (line + allowance).max(rotary_in_feed(
+                limits.rotary_in_feed,
+                da,
+                to.across.hypot(to.height),
+            ))
+        } else {
+            line + allowance
+        };
         // A move that changes X or Y by less than a written unit may be
         // written with or without that change, so it is checked against
         // either limit: it is timed for the lower (decision record 0050).
@@ -179,7 +191,7 @@ impl Builder<'_> {
                 dz / z,
                 da / rotary,
                 if line > EPS {
-                    (line + allowance) / line_limit
+                    counted / line_limit
                 } else {
                     0.0
                 },
@@ -233,6 +245,29 @@ impl Builder<'_> {
             .to_model(AxisPosition { height, ..at }, self.pose.a);
         let end = self.pose(tip, self.pose.a);
         self.push(MoveKind::Rapid, end, None, None)
+    }
+}
+
+/// How much a change of A can grow when written to three decimals: half a
+/// unit at each end.
+const WRITTEN_A_ALLOWANCE: f64 = 0.001;
+
+/// How much the end point's distance from the rotary axis can grow when its
+/// two coordinates across the axis are written to three decimals.
+const WRITTEN_RADIUS_ALLOWANCE: f64 = 0.001;
+
+/// The length, in millimetres, that a controller counts for a change of A of
+/// `da` degrees ending `radius` from the rotary axis, with the written
+/// rounding allowed for; 0 where A is not counted with the line (decision
+/// record 0076). The Makera Z1 counts `da * (2 pi r + 30) / 360`, with `r` at
+/// least 1 mm (decision record 0007).
+fn rotary_in_feed(rule: RotaryInFeed, da: f64, radius: f64) -> f64 {
+    match rule {
+        RotaryInFeed::Makera if da > EPS => {
+            let r = (radius + WRITTEN_RADIUS_ALLOWANCE).max(1.0);
+            (da + WRITTEN_A_ALLOWANCE) * (std::f64::consts::TAU * r + 30.0) / 360.0
+        }
+        _ => 0.0,
     }
 }
 
@@ -714,7 +749,7 @@ mod tests {
     use crate::stock::AcceptAll;
     use openchuck_types::machine::MachineProfile;
     use openchuck_types::tool::{Tool, ToolShape};
-    use openchuck_types::units::FeedRate;
+    use openchuck_types::units::{FeedRate, RotaryFeedRate};
 
     fn point(x: f64, height: f64, a: f64, contact: Point3) -> CutPoint {
         let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
@@ -753,6 +788,79 @@ mod tests {
         assert!(across[2].distance(across[1]) > 0.5);
         assert_eq!(stopped[..3], [low, low, low]);
         assert_eq!(stopped[3..], [high, high, high]);
+    }
+
+    #[test]
+    fn req_op_13_a_controller_that_counts_a_in_the_feed_word_keeps_it_within_the_limit() {
+        // The ball rolls round a corner 18 mm from the axis: A turns 10
+        // degrees at its limit while X moves 0.01 mm. The Makera Z1 counts
+        // 10 * (2 pi 18 + 30) / 360 = 3.97 mm for that A, so at A's limit
+        // (1/6 s) its F word would be 1430 against 1200 (decision record
+        // 0076; lane Z found F1426 on the corpus box, OI-236).
+        let machine = MachineProfile::example_x_rotary();
+        let rotary = RotaryMapping::of_profile(&machine);
+        let profile = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: openchuck_types::units::Millimetres(3.0),
+            flute_length: openchuck_types::units::Millimetres(8.0),
+            overall_length: openchuck_types::units::Millimetres(40.0),
+            shank_diameter: openchuck_types::units::Millimetres(3.0),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap();
+        let from = point(5.0, 18.0, 0.0, Point3::ORIGIN);
+        let to = point(5.01, 18.0, 10.0, Point3::ORIGIN);
+        let mut feeds = machine.max_feeds;
+        (feeds.linear, feeds.z, feeds.rotary) =
+            (FeedRate(1200.0), FeedRate(600.0), RotaryFeedRate(3600.0));
+        let time = |rule: RotaryInFeed, from: &CutPoint, to: &CutPoint| {
+            let mut b = Builder {
+                rotary,
+                tool_radius: 1.5,
+                profile: &profile,
+                max_feeds: MaxFeeds {
+                    rotary_in_feed: rule,
+                    ..feeds
+                },
+                collision: &AcceptAll,
+                pose: ToolPose {
+                    tip: from.tip,
+                    axis: rotary.tool_axis(from.a),
+                    a: from.a,
+                },
+                contact: from.tip,
+                segments: Vec::new(),
+                notes: Vec::new(),
+            };
+            let end = b.pose(to.tip, to.a);
+            // A contact feed far above the limits, so the axes set the time.
+            b.push(MoveKind::Cutting, end, Some(to.tip), Some(FeedRate(1.0e6)))
+                .unwrap();
+            b.segments[0].duration.0
+        };
+        let makera_f = |seconds: f64| {
+            let p = std::f64::consts::TAU * 18.0 + 30.0;
+            60.0 * (10.0 * p / 360.0) / seconds
+        };
+        // Counted separately, A's limit sets the time and the Z1's F is over.
+        let separate = time(RotaryInFeed::Separate, &from, &to);
+        assert!(
+            (separate - 60.0 * 10.0 / 3600.0).abs() < 1e-12,
+            "{separate}"
+        );
+        assert!(makera_f(separate) > 1400.0, "F{:.1}", makera_f(separate));
+        // Counted as the Z1 does, the move is slowed until it is within.
+        let makera = time(RotaryInFeed::Makera, &from, &to);
+        let f = makera_f(makera);
+        assert!(f <= 1200.0 && f > 1199.0, "F{f:.3}");
+        // An A-only move is held to A's own limit, as before: the Z1 counts
+        // at most a full degree's millimetre for it.
+        let a_only = point(5.0, 18.0, 10.0, Point3::ORIGIN);
+        let seconds = time(RotaryInFeed::Makera, &from, &a_only);
+        assert!((seconds - separate).abs() < 1e-12, "{seconds}");
     }
 
     #[test]

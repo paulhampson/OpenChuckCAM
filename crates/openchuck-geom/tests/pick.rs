@@ -13,7 +13,7 @@
 
 use std::time::Instant;
 
-use openchuck_geom::pick::MeshPicker;
+use openchuck_geom::pick::{EdgePicker, MeshPicker, PickTolerance};
 use openchuck_testkit::parts::{Cylinder, RadialPart, Sphere, benchmark_model_1m};
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
@@ -302,4 +302,133 @@ fn req_ui_04_picking_a_million_triangles_stays_within_its_budget() {
         mesh.triangles.len()
     );
     assert!(p95 <= 1e-3 * relax, "p95 ray cast {:.1} us", p95 * 1e6);
+}
+
+/// The twelve edges of the 10 mm cube as two-point polylines, in a fixed
+/// order: the four bottom edges, the four top edges, then the four verticals.
+fn cube_edges() -> Vec<Vec<Point3>> {
+    let v = |x: f64, y: f64, z: f64| Point3::new(x * 10.0, y * 10.0, z * 10.0);
+    let square = |z: f64| {
+        [
+            v(0.0, 0.0, z),
+            v(1.0, 0.0, z),
+            v(1.0, 1.0, z),
+            v(0.0, 1.0, z),
+        ]
+    };
+    let mut lines = Vec::new();
+    for z in [0.0, 1.0] {
+        let s = square(z);
+        for i in 0..4 {
+            lines.push(vec![s[i], s[(i + 1) % 4]]);
+        }
+    }
+    for (b, t) in square(0.0).into_iter().zip(square(1.0)) {
+        lines.push(vec![b, t]);
+    }
+    lines
+}
+
+#[test]
+fn req_ui_04_the_edge_nearest_the_ray_within_the_reach_is_picked() {
+    let picker = EdgePicker::new(cube_edges()).unwrap();
+    let down = Vec3::new(0.0, 0.0, -2.0);
+    let reach = PickTolerance {
+        base: 0.5,
+        per_distance: 0.0,
+    };
+    // Straight down, 0.3 mm inside the top front edge (y = 0, z = 10).
+    let hit = picker
+        .pick(Point3::new(4.0, 0.3, 30.0), down, reach, f64::INFINITY)
+        .unwrap()
+        .unwrap();
+    assert_eq!((hit.edge, hit.segment), (4, 0));
+    assert!((hit.offset - 0.3).abs() < 1e-12, "{hit:?}");
+    assert!((hit.distance - 20.0).abs() < 1e-12, "{hit:?}");
+    assert!(hit.point.distance(Point3::new(4.0, 0.0, 10.0)) < 1e-12);
+
+    // Too far from every edge: nothing.
+    let miss = picker
+        .pick(Point3::new(4.0, 0.7, 30.0), down, reach, f64::INFINITY)
+        .unwrap();
+    assert_eq!(miss, None);
+
+    // Nearer the right edge than the front one at a corner: the right one.
+    let hit = picker
+        .pick(Point3::new(9.8, 0.4, 30.0), down, reach, f64::INFINITY)
+        .unwrap()
+        .unwrap();
+    assert_eq!(hit.edge, 5, "{hit:?}");
+
+    // Along X past the two front verticals: the nearer one wins the tie.
+    // Stopping the ray at a surface hit leaves out what lies beyond it, so an
+    // edge is never picked through the part.
+    let side = Vec3::new(1.0, 0.0, 0.0);
+    let low = Point3::new(-20.0, 0.2, 5.0);
+    let hit = picker
+        .pick(low, side, reach, f64::INFINITY)
+        .unwrap()
+        .unwrap();
+    assert_eq!(hit.edge, 8, "the vertical at x = 0, y = 0: {hit:?}");
+    let hit = picker.pick(low, side, reach, 19.0).unwrap();
+    assert_eq!(hit, None);
+}
+
+#[test]
+fn req_ui_04_the_reach_grows_with_distance_for_a_perspective_view() {
+    let picker = EdgePicker::new(cube_edges()).unwrap();
+    // 0.02 mm of reach per millimetre: 0.4 mm at the top edge 20 mm away.
+    let cone = PickTolerance {
+        base: 0.0,
+        per_distance: 0.02,
+    };
+    let down = Vec3::new(0.0, 0.0, -1.0);
+    assert!(
+        picker
+            .pick(Point3::new(4.0, 0.35, 30.0), down, cone, f64::INFINITY)
+            .unwrap()
+            .is_some()
+    );
+    // The same offset from 10 mm away is outside the 0.2 mm reach there (the
+    // ray stops at the top face, so the bottom edge, where the reach is 0.4
+    // mm, is not considered).
+    assert!(
+        picker
+            .pick(Point3::new(4.0, 0.35, 20.0), down, cone, 10.0)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn req_nfr_07_a_bad_ray_tolerance_or_edge_is_an_error() {
+    let picker = EdgePicker::new(cube_edges()).unwrap();
+    let o = Point3::new(0.0, 0.0, 30.0);
+    let d = Vec3::new(0.0, 0.0, -1.0);
+    let ok = PickTolerance {
+        base: 1.0,
+        per_distance: 0.0,
+    };
+    for bad in [
+        PickTolerance {
+            base: 0.0,
+            per_distance: 0.0,
+        },
+        PickTolerance {
+            base: -1.0,
+            per_distance: 0.0,
+        },
+        PickTolerance {
+            base: f64::NAN,
+            per_distance: 0.0,
+        },
+    ] {
+        assert!(picker.pick(o, d, bad, f64::INFINITY).is_err(), "{bad:?}");
+    }
+    assert!(picker.pick(o, Vec3::new(0.0, 0.0, 0.0), ok, 1.0).is_err());
+    assert!(picker.pick(o, d, ok, -1.0).is_err());
+    assert!(EdgePicker::new(vec![vec![Point3::new(f64::NAN, 0.0, 0.0)]]).is_err());
+    // A polyline of one point is kept but never picked.
+    let lonely = EdgePicker::new(vec![vec![Point3::new(0.0, 0.0, 0.0)]]).unwrap();
+    assert_eq!(lonely.pick(o, d, ok, f64::INFINITY).unwrap(), None);
 }
