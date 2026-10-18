@@ -40,6 +40,12 @@ pub struct Options {
     pub shard: Option<String>,
 }
 
+/// Largest per-line difference allowed by default, mm or degrees.
+pub const TOLERANCE: f64 = 0.1;
+
+/// Seconds after which one program is given up by default.
+pub const TIMEOUT_SECONDS: u64 = 900;
+
 /// Seconds a LinuxCNC golden program takes in the simulator, which runs in real time, measured
 /// on hosted runners (decision 0052). They only balance the shards: a program missing from this
 /// list, or a changed time, makes a share longer or shorter and never drops a program.

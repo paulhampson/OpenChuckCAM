@@ -896,12 +896,11 @@ fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within
 }
 
 #[test]
-fn req_op_07_req_op_11_the_same_material_left_is_accepted_on_a_roughing_pass_and_refused_on_a_finishing_one()
+fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass_and_a_set_value_wins()
  {
-    // The automatic limit follows the pass's role, read from its stock to
-    // leave (decision 0061 item 7): 0.1 mm for a finishing pass, the larger
-    // of 0.1 mm and the stock to leave for a roughing or semi-finishing one;
-    // a set value wins.
+    // One limit, configured per operation (decision 0061 item 7, revised by
+    // the owner): zero takes 0.1 mm whatever the stock to leave, and a set
+    // value wins.
     let finishing = Settings {
         tolerance: TOL,
         stock_to_leave: 0.0,
@@ -910,7 +909,7 @@ fn req_op_07_req_op_11_the_same_material_left_is_accepted_on_a_roughing_pass_and
         reverse_tip_end: false,
         reverse_direction: false,
     };
-    let roughing = Settings {
+    let with_stock = Settings {
         stock_to_leave: 0.5,
         ..finishing
     };
@@ -920,34 +919,39 @@ fn req_op_07_req_op_11_the_same_material_left_is_accepted_on_a_roughing_pass_and
     };
     let set = Settings {
         max_material_left: 0.02,
-        ..roughing
+        ..with_stock
     };
     assert_eq!(finishing.material_left_limit(), 0.1);
-    assert_eq!(roughing.material_left_limit(), 0.5);
+    assert_eq!(with_stock.material_left_limit(), 0.1);
     assert_eq!(semi.material_left_limit(), 0.1);
     assert_eq!(set.material_left_limit(), 0.02);
-    // The same leftover on a measured face path: a note on the roughing
-    // pass, a refusal on the finishing pass.
+    // The same leftover on a measured face path is judged the same way with
+    // and without stock to leave: refused beyond 0.1 mm, noted within it.
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let f = Fixture::brep(&model, flat());
-    let measured = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &roughing, ctx)).unwrap();
+    let measured = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &with_stock, ctx)).unwrap();
     let path = swarf::FacePath {
         left: 0.3,
         ..measured
     };
-    assert!(path.refusal(TOL, roughing.material_left_limit()).is_none());
+    for settings in [finishing, with_stock] {
+        let why = path.refusal(TOL, settings.material_left_limit()).unwrap();
+        assert!(why.contains("would leave 0.3000 mm"), "{why}");
+        assert!(
+            why.contains("more than the max_material_left of 0.1 mm"),
+            "{why}"
+        );
+    }
+    let noted = swarf::FacePath { left: 0.05, ..path };
     assert!(
-        path.note(TOL, roughing.material_left_limit())
-            .contains("leaves up to 0.3000 mm")
+        noted
+            .refusal(TOL, with_stock.material_left_limit())
+            .is_none()
     );
-    let why = path.refusal(TOL, finishing.material_left_limit()).unwrap();
-    assert!(why.contains("would leave 0.3000 mm"), "{why}");
-    assert!(
-        why.contains("more than the max_material_left of 0.1 mm"),
-        "{why}"
-    );
-    // End to end, the roughing pass runs with its stock to leave and is
-    // silent, and its limit is the one the parameter resolves to.
+    assert!(noted.refusal(TOL, set.material_left_limit()).is_some());
+    // End to end, a pass with stock to leave is silent at the default, and
+    // inside a pocket (where the chord leaves material) a set limit below
+    // the chord refuses it, the set value winning over the default.
     let rough = generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))]);
     assert!(
         !rough
@@ -955,8 +959,6 @@ fn req_op_07_req_op_11_the_same_material_left_is_accepted_on_a_roughing_pass_and
             .iter()
             .any(|n| n.message.contains("leaves up to"))
     );
-    // Inside a pocket the chord leaves material; a set limit below it
-    // refuses the roughing pass too, the set value winning over the role.
     let f = Fixture::brep(&pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat());
     assert_eq!(
         generated(&f, &[(names::STOCK_TO_LEAVE, num(0.5))])
@@ -1207,9 +1209,9 @@ fn req_nfr_06_req_op_07_swarf_is_identical_at_1_2_and_n_threads() {
     })
     .unwrap();
     assert_eq!(runs.len(), 4);
-    // The leftover levels too: the pocket wall's note-free finishing and
-    // roughing paths and its refusal under a limit below the chord are the
-    // same on every pool.
+    // The leftover levels too: the pocket wall's note-free paths with and
+    // without stock to leave and its refusal under a limit below the chord
+    // are the same on every pool.
     let f = Fixture::brep(&pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1), flat());
     let runs = openchuck_testkit::determinism::check(|| {
         let path = generated(&f, &[]);
@@ -1230,7 +1232,8 @@ fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
     let mut model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let mut second = wall_plane(-14.0, 22.0, 38.0, Z0, Z1).faces.remove(0);
     second.id = openchuck_types::brep::FaceId(1);
-    // The wall at y = -14 faces -Y: flip it so its normal faces the tool.
+    // The wall at y = -14 faces +Y, into the part: flip it so its normal
+    // faces -Y, towards the tool.
     second.reversed = true;
     model.faces.push(second);
     let f = Fixture::brep(&model, flat());
@@ -1250,8 +1253,9 @@ fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
             .iter()
             .all(|p| (p.tip.y - (-14.0 - TOOL_RADIUS)).abs() < 1e-9)
     );
-    // The wall at the bottom of the part is cut at A = 180, so the sign of
-    // the face decides the side the tool is on.
+    // The flipped wall's rulings are vertical, so it is cut at A = 0 with
+    // the tool on its -Y side: the sign of the face decides the side the
+    // tool is on.
     assert!(
         on_wall.iter().all(|p| p.a.0.abs() < 1e-9),
         "{:?}",

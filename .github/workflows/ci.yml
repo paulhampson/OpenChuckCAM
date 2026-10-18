@@ -6,7 +6,7 @@
 # the golden G-code tests read them).
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
-# heavy jobs (Build and test, Coverage, Gate 3, Each library alone, STEP kernel, UI smoke and
+# heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
 # fuzz smoke) run when it is marked ready for review. `CI required checks` fails on a draft and,
 # on a ready pull request or a push, requires every heavy job whose filter is true to succeed.
 name: CI
@@ -25,7 +25,7 @@ permissions:
 # A newer push to a pull request cancels the older run of that pull request: the newer commit is the
 # one that is checked. Any other run (a push to `main`, a manual run) is never cancelled and never
 # replaced while it waits: its group is its own run, so every merged commit keeps a complete result
-# (and its cache and coverage artifacts), even if several manual runs target one commit
+# (and its cache), even if several manual runs target one commit
 # (decision 0052, Option 1).
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -249,25 +249,23 @@ jobs:
     if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
     # UI-01, NFR-02 and verification plan 4.2: render offscreen and launch the
     # application, software-rendered where the runner has no GPU (decision
-    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb and must find an
-    # adapter. Windows (WARP) and macOS (the runner's Metal device) are not
-    # yet proven on hosted runners, so they report without blocking until
-    # their first runs are recorded under OI-129.
+    # 0029, OI-129). Linux uses Mesa's lavapipe under Xvfb. Windows (WARP) and
+    # macOS (the runner's Metal device) are proven on hosted runners (OI-129), so
+    # all three legs block: a failed leg fails this job and so `CI required checks`
+    # (owner's decision, 17 Oct 2026, OI-320). Every leg must find an adapter: the
+    # render tests skip their assertions without one unless OPENCHUCK_REQUIRE_ADAPTER
+    # is set, and a blocking leg must not pass by skipping.
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             require_adapter: "1"
-            blocking: true
           - os: windows-latest
-            require_adapter: ""
-            blocking: false
+            require_adapter: "1"
           - os: macos-latest
-            require_adapter: ""
-            blocking: false
+            require_adapter: "1"
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ !matrix.blocking }}
     timeout-minutes: 30
     env:
       OPENCHUCK_REQUIRE_ADAPTER: ${{ matrix.require_adapter }}
@@ -357,10 +355,11 @@ jobs:
       - name: B-rep edge chains of the STEP corpus
         run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
       # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
-      # the `drilling` reference job against its golden files on every platform (OI-28), and every
-      # strategy on corpus STEP parts against the exact B-rep.
+      # the `drilling` reference job against its golden files on every platform (OI-28), every
+      # strategy on corpus STEP parts against the exact B-rep, and a STEP part's faces and edges
+      # picked, saved and the same after reopening and a second import (decision 0066).
       - name: STEP parts through the application
-        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 
@@ -612,58 +611,9 @@ jobs:
             exit 1
           fi
 
-  coverage:
-    name: Coverage trend
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    env:
-      # The repository tooling (xtask) is not product code; keep it out of every report.
-      COV_IGNORE: 'xtask/'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - run: rustup component add llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov,cargo-nextest
-      # Run the tests once, then render each report format from that run. nextest
-      # schedules tests from every binary in parallel, one process each; plain
-      # `cargo test` ran the binaries one after another, and the two heavy path
-      # binaries (helical, unroll) alone took about 17 of the job's 20 minutes.
-      # Doctests are not part of this run (llvm-cov nextest does not run them).
-      # The `coverage` profile (.config/nextest.toml) leaves out the long-running
-      # tests: instrumentation makes them 6 to 11 times slower and one test cannot
-      # be split across cores. The Tests job runs all of them, and the nightly run
-      # repeats them.
-      - name: Run tests with coverage instrumentation
-        run: cargo llvm-cov nextest --profile coverage --workspace --locked --no-report
-      - name: HTML report (browsable, per file and per line)
-        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --html --output-dir target/coverage
-      - name: lcov data (trend tracking)
-        run: cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE" --lcov --output-path lcov.info
-      - name: Summary on the run page
-        shell: bash
-        run: |
-          {
-            echo '## Coverage'
-            echo
-            echo '```text'
-            cargo llvm-cov report --ignore-filename-regex "$COV_IGNORE"
-            echo '```'
-            echo
-            echo 'The full per-line HTML report is in the `coverage-html` artifact (open `html/index.html`).'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage-html
-          path: target/coverage
-      - uses: actions/upload-artifact@v7
-        with:
-          name: coverage-lcov
-          path: lcov.info
+  # Coverage is not a pull request or a push job (decision 0102): `coverage.yml` runs it every night,
+  # on the whole suite, and checks the line-coverage target per crate. The pull request gate is the
+  # tests (Build and test runs every test, uninstrumented).
 
   # The single status to require in the branch ruleset for `main` ("CI required checks").
   # Path filtering skips jobs, and GitHub treats a skipped job as passing, but a
@@ -691,7 +641,6 @@ jobs:
       - libraries-alone
       - fast-checks
       - fuzz-smoke
-      - coverage
     runs-on: ubuntu-latest
     steps:
       - name: Check the required jobs
@@ -714,9 +663,13 @@ jobs:
           out() { echo "$NEEDS" | jq -r ".changes.outputs.$1"; }
           res() { echo "$NEEDS" | jq -r ".\"$1\".result"; }
           bad=""
+          # Every job in `needs` must be checked below: a job that is listed and never checked
+          # would pass without anyone looking at its result.
+          checked=" changes "
           # check JOB DUE: a job that is due must have succeeded; any other job may have been skipped.
           check() {
             local r
+            checked="$checked$1 "
             r=$(res "$1")
             if [ "$2" = true ]; then
               [ "$r" = success ] || bad="$bad, $1 ($r, due)"
@@ -728,7 +681,6 @@ jobs:
           check build-test "$(out rust)"
           check ui-smoke "$(out rust)"
           check libraries-alone "$(out rust)"
-          check coverage "$(out rust)"
           check step-kernel "$(out step)"
           fast=false
           if [ "$(out rust)" = true ] || [ "$(out records)" = true ]; then fast=true; fi
@@ -736,6 +688,12 @@ jobs:
           fuzz=false
           if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi
           check fuzz-smoke "$fuzz"
+          for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
+            case "$checked" in
+              *" $job "*) ;;
+              *) bad="$bad, $job (in needs, never checked)" ;;
+            esac
+          done
           if [ -n "$bad" ]; then
             echo "::error title=Required jobs did not pass::${bad#, }"
             exit 1

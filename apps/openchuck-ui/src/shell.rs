@@ -934,7 +934,7 @@ impl Shell {
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
         let Some(app) = &self.app else { return };
-        if self.selection.frame(app, input) {
+        if self.selection.frame(app, self.viewport.view(), input) {
             ctx.request_repaint();
         }
         // Q, W, E and R choose the click; Esc leaves picking (specification
@@ -949,6 +949,12 @@ impl Shell {
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
+        }
+        // The warning before a click of the other kind resets the selection.
+        if let Some(app) = &mut self.app
+            && let Some(e) = self.selection.reset_dialog(ctx, app)
+        {
+            self.dialog = Some(Dialog::Error(e));
         }
     }
 
@@ -1425,6 +1431,7 @@ impl Shell {
             self.selected,
             Some(Selection::Picking | Selection::Set(_))
         ));
+        self.viewport.set_pick_filter(self.selection.pick_filter());
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {

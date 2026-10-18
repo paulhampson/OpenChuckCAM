@@ -9,19 +9,23 @@
 //!   workspace and recorded in `docs/dependencies.md` (NFR-14).
 //! - `trace`: the traceability report from requirement-ID test names (NFR-08).
 //! - `testdata`: the test-data size policy.
+//! - `coverage`: line coverage per crate from an lcov file against the target (not part of `all`).
 //! - `all`: every check above.
 //!
 //! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
 //! - `replay`: gate 3, LinuxCNC programs in the headless simulator (needs LinuxCNC; not part of `all`).
-//!
-//! The release gate is added in slice 20.
+//! - `release-gate`: the release gate (slice 20 item 9): `deps`, `cargo deny`, the golden G-code
+//!   comparison and `replay`, all of which must pass (needs LinuxCNC, cargo-deny and the STEP
+//!   kernel's toolchain; not part of `all`).
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod coverage;
 mod deps;
 mod golden;
 mod licences;
 mod records;
+mod release_gate;
 mod replay;
 mod testdata;
 mod trace;
@@ -58,6 +62,18 @@ enum Check {
     },
     /// Test-data size policy.
     Testdata,
+    /// Line coverage per crate from an lcov file against the target in `xtask/coverage.toml`.
+    Coverage {
+        /// The lcov file (default `lcov.info` at the workspace root).
+        lcov: Option<PathBuf>,
+        /// Write the Markdown table here (default `target/coverage-summary.md`).
+        #[arg(long)]
+        report: Option<PathBuf>,
+        /// Fail when a gated crate is under its threshold (ignored while `enforce = false`
+        /// in `xtask/coverage.toml`).
+        #[arg(long)]
+        enforce: bool,
+    },
     /// Audit the golden G-code files against the exact parts, the post conventions and the
     /// controller's feed rule, so they need no reading by hand.
     Golden,
@@ -74,16 +90,31 @@ enum Check {
         #[arg(long)]
         keep_reports: Option<PathBuf>,
         /// Largest per-line difference allowed, mm or degrees.
-        #[arg(long, default_value_t = 0.1)]
+        #[arg(long, default_value_t = replay::TOLERANCE)]
         tolerance: f64,
         /// Give up on one program after this many seconds.
-        #[arg(long, default_value_t = 900)]
+        #[arg(long, default_value_t = replay::TIMEOUT_SECONDS)]
         timeout: u64,
         /// Run only one share of the programs, `I/N` (for example `2/3`): the programs are
         /// dealt over N runners by expected run time, so every program belongs to exactly one
         /// share. CI runs one share on each of N runners.
         #[arg(long, value_name = "I/N")]
         shard: Option<String>,
+    },
+    /// The release gate: dependency rules, `cargo deny`, the golden G-code comparison and the
+    /// LinuxCNC replay of every golden program. Fails if any of them fails; none can be skipped.
+    /// Needs LinuxCNC (as for `replay`), cargo-deny and the STEP kernel's toolchain.
+    ReleaseGate {
+        /// Run LinuxCNC in this Docker image (see docker/linuxcnc).
+        #[arg(long)]
+        docker: Option<String>,
+        /// Keep each simulator report in this folder.
+        #[arg(long)]
+        keep_reports: Option<PathBuf>,
+        /// The tag being released (`lib-v<version>` or `app-v<version>`): it must name the
+        /// workspace version.
+        #[arg(long)]
+        tag: Option<String>,
     },
     /// Every check.
     All,
@@ -117,6 +148,14 @@ fn run() -> Result<bool> {
             )]
         }
         Check::Testdata => vec![("testdata", testdata::check(&root)?)],
+        Check::Coverage {
+            lcov,
+            report,
+            enforce,
+        } => vec![(
+            "coverage",
+            coverage::check(&root, lcov.as_deref(), report.as_deref(), enforce)?,
+        )],
         Check::Golden => vec![("golden", golden::check(&root)?)],
         Check::Replay {
             programs,
@@ -139,6 +178,18 @@ fn run() -> Result<bool> {
                 },
             )?,
         )],
+        Check::ReleaseGate {
+            docker,
+            keep_reports,
+            tag,
+        } => release_gate::check(
+            &root,
+            &release_gate::Options {
+                docker,
+                keep_reports,
+                tag,
+            },
+        ),
         Check::All => vec![
             ("deps", deps::check(&root)?),
             ("licences", licences::check(&root)?),
