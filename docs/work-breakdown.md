@@ -807,11 +807,11 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Review checklist**
 
-- [ ] Per-tool files together contain the same moves as the single file
-- [ ] Comments are present and deterministic
-- [ ] The setup sheet lists every tool used with its controller tool number
-- [ ] The sheet opens offline and prints legibly
-- [ ] Writing is refused with a stale or failed enabled operation; the acknowledgement is asked once per project per computer and never stored in the project (GC-15, GC-16)
+- [x] Per-tool files together contain the same moves as the single file (`req_gc_05_every_grouping_reaches_the_same_moves` in `openchuck-app/tests/output_options.rs`: the sorted end positions of the fed moves of every grouping equal the setup file's, and every file passes gates 1 and 2; `req_gc_05_one_file_per_tool_keeps_the_machining_order` and `req_gc_05_one_file_per_tool_gathers_consecutive_operations_of_one_tool` for the tool files)
+- [x] Comments are present and deterministic (`req_gc_06_comments_name_the_operation_and_the_tool_by_name_and_number`, `req_gc_06_a_name_with_brackets_or_accents_is_made_safe_in_the_comment`; determinism: `req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count` and the grouping golden files `req_gc_05_req_nfr_08_each_grouping_matches_its_golden_files`)
+- [x] The setup sheet lists every tool used with its controller tool number (`req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number`; the tool numbers come from the dialog in `req_gc_14_numbers_chosen_in_the_dialog_are_saved_and_give_the_same_bytes_again`; snapshot `req_gc_12_req_nfr_08_the_sheet_content_matches_its_snapshot`)
+- [ ] The sheet opens offline and prints legibly. **Offline is evidenced** (`req_gc_12_the_html_opens_offline`: no script, link, `src`, `@import`, `url(` or `http`). **Prints legibly is evidenced only in part** (`req_gc_12_the_pdf_text_fits_inside_the_page_and_the_html_has_print_rules`: every PDF text line ends inside the page margins in its fixed-width font, and the HTML sets A4, a margin, black on white and wrapping cells; `req_gc_12_a_long_title_and_heading_wrap_in_the_pdf_and_lose_nothing`, `req_gc_12_a_long_sheet_runs_onto_more_pages_and_keeps_every_row`). No test can show how the HTML and PDF look on paper or in a viewer, so the box stays unticked until the owner has looked at a printed or previewed sheet (OI-326).
+- [x] Writing is refused with a stale or failed enabled operation; the acknowledgement is asked once per project per computer and never stored in the project (GC-15, GC-16) (`req_gc_15_an_edit_makes_that_operation_and_the_ones_after_it_stale`, `req_gc_15_a_failed_generation_blocks_and_says_why`, `req_gc_15_writing_is_refused_before_anything_is_generated`, `req_gc_15_disabled_operations_are_listed_as_not_posted_and_do_not_block` in `openchuck-app/tests/export_dialog.rs`; the dialog refuses to write in `export_panel::tests::req_gc_05_req_gc_14_req_gc_15_req_gc_16_the_dialog_writes_files_once_every_check_passes`; `req_gc_16_the_acknowledgement_is_per_project_per_settings_folder_and_never_in_the_project` shows one question per project and settings folder, a fresh folder asks again and the project's files are byte-identical. The failed state is for the whole run, not per operation: OI-249)
 
 ## Slice 21 – Workholding and retaining tabs
 
