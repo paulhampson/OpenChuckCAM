@@ -138,6 +138,9 @@ jobs:
           cp "$occt/LICENSE_LGPL_21.txt" "$occt/OCCT_LGPL_EXCEPTION.txt" "$dir/"
           cp LICENSES/OpenCASCADE-NOTICE.txt "$dir/OPENCASCADE-NOTICE.txt"
           cp THIRD-PARTY-NOTICES.html "$dir/"
+          # The IBM Plex fonts compiled into openchuck-ui (OFL-1.1, NFR-10): the notice and the licence text.
+          cp LICENSES/IBM-Plex-NOTICE.txt "$dir/FONT-NOTICE.txt"
+          cp LICENSES/OFL-1.1.txt "$dir/"
           # The NFR-12 notice, read from its one definition in the code.
           notice=$(perl -0777 -ne 'if (/VERIFY_GCODE_NOTICE: &str = "(.*?)";/s) { $s = $1; $s =~ s/\\\n\s*//g; print $s }' crates/openchuck-types/src/notice.rs)
           [ -n "$notice" ] || { echo "could not read the G-code notice"; exit 1; }
@@ -175,6 +178,8 @@ jobs:
               "LICENSE.txt" "GNU Affero General Public License v3.0 or later" \
               "THIRD-PARTY-NOTICES.html" "licences of the bundled third-party crates" \
               "OPENCASCADE-NOTICE.txt" "the STEP kernel's notice and source offer" \
+              "FONT-NOTICE.txt" "the bundled IBM Plex fonts: source, version, copyright" \
+              "OFL-1.1.txt" "SIL Open Font License 1.1, the licence of the fonts" \
               "LICENSE_LGPL_21.txt" "OpenCASCADE licence (LGPL-2.1)" \
               "OCCT_LGPL_EXCEPTION.txt" "OpenCASCADE licence exception"
             echo

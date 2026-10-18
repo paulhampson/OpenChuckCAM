@@ -34,6 +34,7 @@ mod run_panel;
 mod selection_panel;
 mod shell;
 mod testing;
+mod theme;
 mod tool_panel;
 mod viewport;
 mod workholding_panel;
@@ -88,6 +89,7 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
             graphics::reached(graphics::Stage::DeviceReady);
             graphics::log_adapter(cc.wgpu_render_state.as_ref());
             let available = viewport::install(cc);
+            theme::install_fonts(&cc.egui_ctx);
             cc.egui_ctx.set_zoom_factor(shell::DEFAULT_ZOOM);
             Ok(Box::new(shell::Shell::new(available, folder)))
         }),
