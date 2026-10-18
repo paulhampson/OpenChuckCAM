@@ -130,7 +130,7 @@ impl SurfaceSource for CompositeSurface {
         let mut best = self.model.drop_tool(profile, line);
         for solid in &self.solids {
             // A solid higher by less than a tie keeps the model's contact, so
-            // rounding cannot choose (decision record 0112).
+            // rounding cannot choose (decision record 0113).
             if let Some(c) = solid.drop_tool(profile, line)
                 && best.is_none_or(|b| c.offset > b.offset + crate::cutter::TIP_TIE)
             {

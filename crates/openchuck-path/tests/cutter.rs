@@ -373,7 +373,7 @@ fn req_op_11_the_cutter_contact_is_on_the_tool_stock_away_from_the_surface_point
 }
 
 /// Path fitting measures a move's deviation along the tool's contact normal
-/// (decision record 0112, closing OI-319): for a ball that is the line from
+/// (decision record 0113, closing OI-319): for a ball that is the line from
 /// the contact to the ball's centre, for a flat end it is the tool axis under
 /// the bottom, and a point off the tool's lower envelope has none.
 #[test]

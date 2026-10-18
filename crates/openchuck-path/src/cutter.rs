@@ -17,7 +17,7 @@
 //!   arcs, so its peak is where its derivative changes sign, found by
 //!   bisection to rounding precision (a search that compares heights finds a
 //!   flat peak only to the square root of rounding, about 1e-8 of the edge,
-//!   and that noise differed between platforms: decision record 0112,
+//!   and that noise differed between platforms: decision record 0113,
 //!   OI-319); for concave arcs it is sampled then refined.
 //!
 //! Distances are evaluated directly, never from an expanded quadratic, which
@@ -30,7 +30,7 @@
 //! up to rounding (a ball resting on two flanks at once, a flat tool on a
 //! flat facet and its edges). The contact is then the lowest-numbered
 //! triangle's, and within a triangle the first found, so the choice does not
-//! turn on the platform's last bit (decision record 0112).
+//! turn on the platform's last bit (decision record 0113).
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::tool::profile::{EnvelopePiece, ProfilePiece, RevolvedProfile};
@@ -128,7 +128,7 @@ struct Best {
 }
 
 /// Two tip heights (positions along a tool line, in millimetres) within this
-/// of each other are one answer up to rounding (decision record 0112). It is
+/// of each other are one answer up to rounding (decision record 0113). It is
 /// far above the rounding of any height the solver computes and far below
 /// the written resolution, so a tie is broken by a rule, never by the
 /// platform's last bit: the lowest-numbered triangle wins, and within a
@@ -673,7 +673,7 @@ fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
 /// or vertex, where the surface has none, it is the normal of the surface
 /// the tool can reach there (the offset surface), so path fitting measures
 /// its deviation along a direction that rounding cannot flip between two
-/// facets (decision record 0112). `None` when `contact` is not on the tool's
+/// facets (decision record 0113). `None` when `contact` is not on the tool's
 /// lower envelope (NFR-07: a defensive case for a contact from elsewhere).
 pub fn contact_normal(
     profile: &RevolvedProfile,

@@ -299,7 +299,7 @@ impl Fit<'_> {
         let mut best: Option<(Contact, f64, &RevolvedProfile)> = None;
         for zone in self.zones {
             // A zone higher by less than a tie yields to the one before it,
-            // so rounding cannot choose (decision record 0112).
+            // so rounding cannot choose (decision record 0113).
             if let Some(c) = zone.surface.drop_tool(&zone.profile, line)
                 && best
                     .is_none_or(|(b, l, _)| c.offset + zone.leave > b.offset + l + cutter::TIP_TIE)
@@ -382,7 +382,7 @@ impl Fit<'_> {
     /// its component along the tool's contact normal there (the surface
     /// normal where the tool touches a smooth surface; at a mesh edge or
     /// vertex, where the surface has no normal, the normal of the surface the
-    /// tool can reach, which rounding cannot flip: decision record 0112).
+    /// tool can reach, which rounding cannot flip: decision record 0113).
     /// Should the contact not lie on the tool (NFR-07), the surface's own
     /// normal is used, or the whole displacement where there is none.
     fn along_normal(&self, mid: &Node, delta: Vec3) -> f64 {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The toolpath does not depend on rounding noise (GC-07, NFR-06; decision
-//! record 0112, closing OI-319).
+//! record 0113, closing OI-319).
 //!
 //! The platform's mathematics library (`sin`, `cos`, `atan2`) differs in the
 //! last bit between Linux, Windows and macOS, so every geometric number the

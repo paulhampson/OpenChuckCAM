@@ -198,7 +198,7 @@ pub struct MeshSurface {
 }
 
 /// The fraction of the mesh's size within which two distances from a point
-/// to two triangles count as equal (decision record 0112). A point on a mesh
+/// to two triangles count as equal (decision record 0113). A point on a mesh
 /// edge or at a vertex is as close to every facet that meets there, up to
 /// rounding; which facet a nearest-point search finds first then turns on
 /// the platform's last bit (OI-319). [`SurfaceSource::project`] takes every
@@ -351,7 +351,7 @@ impl SurfaceSource for MeshSurface {
         // Every triangle as near as the nearest, up to rounding: a point on
         // an edge or at a vertex is as close to each facet meeting there, and
         // which the search found first must not decide the answer (decision
-        // record 0112, OI-319). The lowest-numbered gives the point, and the
+        // record 0113, OI-319). The lowest-numbered gives the point, and the
         // normal is the mean of all their normals, the same from either side.
         let limit = nearest + self.tie;
         let mut tied: Vec<(u32, Point3)> = self
