@@ -754,3 +754,88 @@ fn req_gc_12_a_long_title_and_heading_wrap_in_the_pdf_and_lose_nothing() {
     assert!(text.contains("ZEBRA"), "the end of the heading is kept");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Unescapes a PDF literal string (`\\`, `\(`, `\)`) so its length is the
+/// number of characters printed.
+fn pdf_unescape(raw: &str) -> String {
+    let mut out = String::new();
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            out.extend(chars.next());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Legible print (GC-12), the part a test can decide: on the PDF every line
+/// of text, in its fixed-width font, ends inside the page's right margin, and
+/// the text sits inside the page; on the HTML the print rules set A4 paper
+/// with a margin, black text on white and wrapping cells, so a long name
+/// cannot run off the paper. How it looks on a real printer stays a manual
+/// check (work breakdown, slice 19 review checklist).
+#[test]
+fn req_gc_12_the_pdf_text_fits_inside_the_page_and_the_html_has_print_rules() {
+    let (dir, mut app) = sheet_project();
+    let mut setup = app.project().setups()[0].clone();
+    setup.name = "A very long setup name ".repeat(12);
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let sheet = app.setup_sheet(None);
+    let text = check_pdf(&sheet.to_pdf());
+    let width: f64 = text
+        .split("/MediaBox [0 0 ")
+        .nth(1)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut lines = 0;
+    for line in text.lines().filter(|l| l.starts_with("BT /F")) {
+        let size: f64 = line
+            .split(" Tf")
+            .next()
+            .unwrap()
+            .rsplit(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let x: f64 = line
+            .split(" Tf ")
+            .nth(1)
+            .unwrap()
+            .split(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let open = line.find('(').unwrap();
+        let close = line.rfind(") Tj").unwrap();
+        let chars = pdf_unescape(&line[open + 1..close]).chars().count() as f64;
+        // Courier advances 0.6 em per character.
+        let right = x + chars * 0.6 * size;
+        assert!(x >= 36.0, "left margin: {line}");
+        assert!(
+            right <= width - 36.0,
+            "{right} past the right margin: {line}"
+        );
+        lines += 1;
+    }
+    assert!(lines > 20, "the text lines were found");
+    let html = sheet.to_html();
+    for rule in [
+        "@page { size: A4; margin: 15mm; }",
+        "@media print { main { max-width: none; padding: 0; } body { font-size: 11px; } }",
+        "background: #fff; color: #111",
+        "overflow-wrap: anywhere",
+        "section { break-inside: avoid; }",
+        "table { border-collapse: collapse; width: 100%; }",
+    ] {
+        assert!(html.contains(rule), "{rule}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
