@@ -622,7 +622,7 @@ The same findings for the stored workholding are rows of the Setup checks tab (s
 - **In this section,** under the tab or held region, a muted line names the operations whose selections reach it: "Reached by the selections of 2 Helical finish."
 - It does not change the operation's status mark, and it does not block generating or exporting. It goes away when the selection or the workholding no longer reaches. Working it out reads the part, so it runs as a job when the operation or the setup is shown, and after each change to either.
 
-**Keyboard** (UI-14; section 16). Every field, row header, menu and button is reached with Tab in reading order. Enter on a collapsed row header expands it, and Left and Right arrows collapse and expand it. Del on a focused tab row removes it from the draft. Ctrl Enter anywhere in the section is Apply. Revert has no shortcut, so a stray key cannot discard a draft; Esc keeps its meaning of section 16. Tooltips, including the "Default" chip's, open on focus as well as hover; a focused row's solid is outlined in the view (7.5).
+**Keyboard** (UI-14; section 16). Every field, row header, menu and button is reached with Tab in reading order. Enter on a collapsed row header expands it, and Left and Right arrows collapse and expand it. Del on a focused tab row removes it from the draft. Ctrl Enter (Cmd Enter on macOS) anywhere in the section is Apply. Revert has no shortcut, so a stray key cannot discard a draft; Esc keeps its meaning of section 16. Tooltips, including the "Default" chip's, open on focus as well as hover; a focused row's solid is outlined in the view (7.5).
 
 **States.**
 
@@ -773,7 +773,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 | Ctrl D, Del, F2 | Duplicate, delete, rename the selected item |
 | Alt ↑, Alt ↓ | Move the selected operation earlier or later |
 | Q, W, E, B | Select one, flood fill, by angle, box (while picking) |
-| Ctrl Enter | Apply the workholding draft (in its section, 11.7) |
+| Ctrl Enter (Cmd Enter on macOS) | Apply the workholding draft (in its section, 11.7) |
 | Space, ←, →, Shift ←, Shift → | Play or pause, step, previous or next operation |
 | Esc | Cancel the running job, or leave picking, or close a popover |
 
