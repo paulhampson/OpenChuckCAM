@@ -102,6 +102,39 @@ pub struct MaxFeeds {
     pub rapid_z: FeedRate,
     /// Rapid traverse on the rotary axis.
     pub rapid_rotary: RotaryFeedRate,
+    /// How the controller counts A in the feed word of a move that also moves
+    /// X, Y or Z, which the linear (or Z) limit then applies to (decision
+    /// record 0076). Written only when not [`RotaryInFeed::Separate`].
+    #[serde(default, skip_serializing_if = "RotaryInFeed::is_separate")]
+    pub rotary_in_feed: RotaryInFeed,
+}
+
+/// How a controller counts the rotary axis in the feed word of a move that
+/// also moves the linear axes (decision record 0076). The post's feed rule
+/// turns a move's time into the F word (decision record 0007 item 3); this
+/// says which length the machine's feed limit applies to, so path assembly
+/// can time every fed move for it while the IR stays the same for every
+/// post.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RotaryInFeed {
+    /// The feed word is the speed of the XYZ line alone; A has only its own
+    /// limit (LinuxCNC).
+    #[default]
+    Separate,
+    /// The Makera Z1 firmware (decision record 0007): the feed word is the
+    /// speed of `max(L, dA * P / 360)`, with `L` the XYZ line, `dA` the
+    /// change of A in degrees and `P = 2 pi r + 30` mm, `r` the end point's
+    /// distance from the rotary axis, counted as 1 mm when less.
+    Makera,
+}
+
+impl RotaryInFeed {
+    /// Whether this is [`RotaryInFeed::Separate`], the default.
+    pub fn is_separate(&self) -> bool {
+        *self == Self::Separate
+    }
 }
 
 /// Geometry the tool retracts to between cuts (SET-06, OP-14).
@@ -351,6 +384,7 @@ impl MachineProfile {
                 rapid_linear: FeedRate(6000.0),
                 rapid_z: FeedRate(4000.0),
                 rapid_rotary: RotaryFeedRate(14400.0),
+                rotary_in_feed: RotaryInFeed::Separate,
             },
             max_tool_number: DEFAULT_MAX_TOOL_NUMBER,
             clearance: Clearance {

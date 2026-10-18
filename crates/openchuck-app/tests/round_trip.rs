@@ -190,3 +190,99 @@ fn req_gc_08_static_checks_passes_both_posts_and_fails_seeded_faults() {
         );
     }
 }
+
+/// Moves that are almost all A: each turns A by 10 degrees and X by 0.05 mm
+/// in 0.7229 s, so LinuxCNC's F is the X travel's speed, about 4.15 mm/min
+/// (decision record 0076; lane Z found `F4.2` and `F7.8` on corpus parts,
+/// OI-236).
+fn near_a_part() -> openchuck_types::ir::Toolpath {
+    use openchuck_types::ir::{MoveKind, PathTags, Toolpath, ToolpathGroup};
+    let top = 10.0;
+    let mut segments = vec![
+        seg(MoveKind::Rapid, pose(0.0, 0.0, top + 2.0, 0.0), 0.1, 0.0),
+        seg(MoveKind::Plunge, pose(0.0, 0.0, top, 0.0), 1.2, 2.0),
+    ];
+    // The model tip turns against A, so the machine tip stays on top.
+    for i in 1..=12 {
+        let step = f64::from(i);
+        let a = 10.0 * step;
+        let (sin, cos) = a.to_radians().sin_cos();
+        segments.push(seg(
+            MoveKind::Cutting,
+            pose(0.05 * step, top * sin, top * cos, a),
+            3.0 / 4.15,
+            0.05,
+        ));
+    }
+    segments.push(seg(
+        MoveKind::Linking,
+        pose(
+            0.6,
+            (top + 2.0) * 120f64.to_radians().sin(),
+            (top + 2.0) * 120f64.to_radians().cos(),
+            120.0,
+        ),
+        0.4,
+        2.0,
+    ));
+    segments.push(seg(
+        MoveKind::Rapid,
+        pose(
+            0.6,
+            30.0 * 120f64.to_radians().sin(),
+            30.0 * 120f64.to_radians().cos(),
+            120.0,
+        ),
+        0.2,
+        0.0,
+    ));
+    Toolpath {
+        groups: vec![ToolpathGroup {
+            tags: PathTags {
+                operation: "near A".into(),
+                setup: "s1".into(),
+                tool: "t1".into(),
+            },
+            start: pose(0.0, 0.0, 30.0, 0.0),
+            segments,
+        }],
+    }
+}
+
+#[test]
+fn req_op_13_req_gc_10_a_small_feed_is_written_to_keep_its_moves_time_within_gate_2() {
+    let toolpath = near_a_part();
+    let gate_2_of = |text: &str, dialect, rule| {
+        compare(
+            &replay(&read(text).unwrap(), dialect).unwrap(),
+            &toolpath,
+            &job().frame,
+            rule,
+            Tolerances::for_decimals(3, 3),
+        )
+    };
+    let text = builtin_post("linuxcnc")
+        .post(&toolpath, &job())
+        .unwrap()
+        .text;
+    assert!(text.contains("F4.15"), "{text}");
+    let c = gate_2_of(&text, Dialect::Linuxcnc, TimingRule::Linuxcnc).unwrap();
+    assert!(c.max_time_error < 0.005, "{c:?}");
+    let text = builtin_post("makera-z1")
+        .post(&toolpath, &job())
+        .unwrap()
+        .text;
+    gate_2_of(&text, Dialect::MakeraZ1, TimingRule::Makera).unwrap();
+    // One decimal, as the posts wrote F before: `F4.2` (or `F4.1`) is 1.2 %
+    // off the move's time.
+    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(repo("posts/linuxcnc/main.post")).unwrap();
+    let one_decimal = template.replace("|feed(opt.decimals.f)", "|fixed(opt.decimals.f)");
+    assert_ne!(one_decimal, template);
+    let post = TemplatePost::new(
+        PostDefinition::from_parts("one decimal", &manifest, &one_decimal).unwrap(),
+    );
+    let text = post.post(&toolpath, &job()).unwrap().text;
+    let e = gate_2_of(&text, Dialect::Linuxcnc, TimingRule::Linuxcnc).unwrap_err();
+    assert!(e.to_string().contains("time"), "{e}");
+}

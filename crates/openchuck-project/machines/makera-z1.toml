@@ -7,7 +7,7 @@
 # 1.1.2 (decision 0007, 14 Oct 2026) confirmed the A direction. The rest stay
 # unconfirmed until the axis is measured (OI-60).
 # Machine coordinates are the firmware's (G53): home at 0, travel negative.
-schema = 2
+schema = 3
 # Fixed for the built-in profile, so every project copy of it can be compared
 # with it (OI-54, decision 0029 item 16).
 id = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01"
@@ -53,6 +53,10 @@ rotary = 3600.0
 rapid_linear = 1200.0
 rapid_z = 600.0
 rapid_rotary = 3600.0
+# The firmware's F word counts A with X, Y and Z: a move takes
+# max(L, dA * (2 pi r + 30) / 360) / F (decision 0007), so the limits above
+# hold that length, not just the XYZ line (decision 0076).
+rotary_in_feed = "makera"
 
 [machine.clearance]
 radius = 45.0
@@ -80,7 +84,7 @@ source = "spans 200 x 200 x 100 mm: FreeCAD Z1 exactly, Fusion Z1 with 10 mm ext
 
 [machine.provenance.max_feeds]
 state = "confirmed"
-source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 1200 mm/min, Z 600 mm/min, A 3600 deg/min (10 RPM). Consistent with Makera's published A rate, the Z1 and Z1 Pro firmware default config (Carvera and Air differ) and the 1200 reported from Makera Studio; the CAM profiles' figures are template values and were not used (decision 0013)"
+source = "confirmed by the owner from use of the machine (11 Oct 2026): X and Y 1200 mm/min, Z 600 mm/min, A 3600 deg/min (10 RPM). Consistent with Makera's published A rate, the Z1 and Z1 Pro firmware default config (Carvera and Air differ) and the 1200 reported from Makera Studio; the CAM profiles' figures are template values and were not used (decision 0013). How the firmware counts A in the F word was measured by the SP-12 air cut on firmware 1.1.2 (decision 0007, tests T3 and T4); the feed limits are applied to that length (decision 0076)"
 
 [machine.provenance.clearance]
 state = "unconfirmed"

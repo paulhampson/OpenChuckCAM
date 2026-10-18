@@ -9,6 +9,7 @@
 //!   workspace and recorded in `docs/dependencies.md` (NFR-14).
 //! - `trace`: the traceability report from requirement-ID test names (NFR-08).
 //! - `testdata`: the test-data size policy.
+//! - `coverage`: line coverage per crate from an lcov file against the target (not part of `all`).
 //! - `all`: every check above.
 //!
 //! - `golden`: the golden file audit, which checks the committed G-code against the exact parts.
@@ -19,6 +20,7 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod coverage;
 mod deps;
 mod golden;
 mod licences;
@@ -60,6 +62,18 @@ enum Check {
     },
     /// Test-data size policy.
     Testdata,
+    /// Line coverage per crate from an lcov file against the target in `xtask/coverage.toml`.
+    Coverage {
+        /// The lcov file (default `lcov.info` at the workspace root).
+        lcov: Option<PathBuf>,
+        /// Write the Markdown table here (default `target/coverage-summary.md`).
+        #[arg(long)]
+        report: Option<PathBuf>,
+        /// Fail when a gated crate is under its threshold (ignored while `enforce = false`
+        /// in `xtask/coverage.toml`).
+        #[arg(long)]
+        enforce: bool,
+    },
     /// Audit the golden G-code files against the exact parts, the post conventions and the
     /// controller's feed rule, so they need no reading by hand.
     Golden,
@@ -134,6 +148,14 @@ fn run() -> Result<bool> {
             )]
         }
         Check::Testdata => vec![("testdata", testdata::check(&root)?)],
+        Check::Coverage {
+            lcov,
+            report,
+            enforce,
+        } => vec![(
+            "coverage",
+            coverage::check(&root, lcov.as_deref(), report.as_deref(), enforce)?,
+        )],
         Check::Golden => vec![("golden", golden::check(&root)?)],
         Check::Replay {
             programs,
