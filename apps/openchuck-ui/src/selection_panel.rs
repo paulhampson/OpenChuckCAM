@@ -20,7 +20,8 @@ use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_app::project::{ContentHash, SelectionTarget};
 use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
-    Application, JobHandle, SelectionEdit, SelectionRole, SelectionSummary, TriangleSet,
+    Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionRole, SelectionSummary,
+    TriangleSet,
 };
 use openchuck_viewport::{Colour, Scene, Slot};
 
@@ -251,6 +252,27 @@ struct Reset {
     hash: Option<ContentHash>,
 }
 
+/// The widths of a drawn edge, in logical pixels: the part's feature edges
+/// are hairlines, a hovered edge is wider, and a selected edge (the working
+/// selection or a shown set) wider still, so the state shows by width as well
+/// as colour (specification section 16; OI-245, decision record 0112).
+const EDGE_HOVER_WIDTH: f32 = 2.0;
+const EDGE_SELECTED_WIDTH: f32 = 3.0;
+
+/// A save or an edit of a set whose check runs as a job (NFR-04). The panel
+/// stores the set when the job finishes.
+struct Writing {
+    handle: JobHandle<CheckedSet>,
+    what: Write,
+}
+
+enum Write {
+    /// A new set; the tangent choice it takes if it is of STEP edges.
+    Save { tangent: Option<bool> },
+    /// A change to what a set selects.
+    Edit,
+}
+
 struct Pending {
     handle: JobHandle<TriangleSet>,
     model: ModelId,
@@ -276,6 +298,8 @@ pub struct SelectionPanel {
     new_tangent: Option<bool>,
     rename: String,
     pending: Option<Pending>,
+    /// The save or edit of a set being checked against its model.
+    writing: Option<Writing>,
     /// Whether a plain click of the other kind asks first, as the project
     /// says when the click came.
     warn_reset: bool,
@@ -309,6 +333,7 @@ impl Default for SelectionPanel {
             new_tangent: None,
             rename: String::new(),
             pending: None,
+            writing: None,
             warn_reset: true,
             reset: None,
             dont_warn: false,
@@ -365,6 +390,9 @@ impl SelectionPanel {
 
     /// Forgets everything that belongs to the open project.
     pub fn clear(&mut self) {
+        if let Some(writing) = self.writing.take() {
+            writing.handle.cancel();
+        }
         *self = Self {
             choice: self.choice,
             filter: self.filter,
@@ -697,7 +725,7 @@ impl SelectionPanel {
                     .picker()
                     .and_then(|p| p.edge_points(hover.mesh, hover.index))
                 {
-                    scene.add_polyline(points, HOVER, true);
+                    scene.add_wide_polyline(points, HOVER, true, EDGE_HOVER_WIDTH);
                 }
             }
             None => {}
@@ -852,7 +880,7 @@ impl SelectionPanel {
         summaries: &[SelectionSummary],
         view: &SceneView,
     ) -> Option<String> {
-        let mut error = None;
+        let mut error = self.finish_writing(app);
         self.drop_stale_working(app);
         ui.heading("Selection sets");
         if view.picking.picker().is_none() {
@@ -924,7 +952,8 @@ impl SelectionPanel {
                     .hint_text(format!("Selection {}", summaries.len() + 1))
                     .desired_width(120.0),
             );
-            let ready = !self.working.is_empty() && self.working_model.is_some();
+            let ready =
+                !self.working.is_empty() && self.working_model.is_some() && self.writing.is_none();
             if ui
                 .add_enabled(ready, egui::Button::new("New set from selection"))
                 .on_hover_text("Name this selection so operations can use it (UI-05)")
@@ -937,22 +966,12 @@ impl SelectionPanel {
                     self.name.trim().to_owned()
                 };
                 let tangent = self.new_set_tangent();
-                let saved = app
-                    .save_selection(&name, model, self.working.clone())
-                    .and_then(|id| match tangent {
-                        Some(keep) => app
-                            .edit_selection(id, SelectionEdit::KeepTangentEdges(Some(keep)))
-                            .map(|_| id),
-                        None => Ok(id),
-                    });
-                match saved {
-                    Ok(id) => {
-                        self.name.clear();
-                        self.working = nothing();
-                        self.working_model = None;
-                        self.new_tangent = None;
-                        self.shown = Some(id);
-                        self.dirty = true;
+                match app.start_save_selection(&name, model, self.working.clone()) {
+                    Ok(handle) => {
+                        self.writing = Some(Writing {
+                            handle,
+                            what: Write::Save { tangent },
+                        });
                     }
                     Err(e) => error = Some(e.to_string()),
                 }
@@ -994,7 +1013,7 @@ impl SelectionPanel {
                     2,
                 ),
             ] {
-                let enabled = can_edit;
+                let enabled = can_edit && self.writing.is_none();
                 let button = ui.add_enabled(enabled, egui::Button::new(label));
                 if !enabled {
                     button.clone().on_disabled_hover_text(
@@ -1010,13 +1029,33 @@ impl SelectionPanel {
                         1 => SelectionEdit::Remove(target),
                         _ => SelectionEdit::Replace(target),
                     };
-                    match app.edit_selection(set.id, which) {
-                        Ok(_) => self.dirty = true,
+                    match app.start_edit_selection(set.id, which) {
+                        Ok(EditStart::Done(checked)) => match app.finish_edit_selection(*checked) {
+                            Ok(_) => self.dirty = true,
+                            Err(e) => error = Some(e.to_string()),
+                        },
+                        Ok(EditStart::Checking(handle)) => {
+                            self.writing = Some(Writing {
+                                handle,
+                                what: Write::Edit,
+                            });
+                        }
                         Err(e) => error = Some(e.to_string()),
                     }
                 }
             }
         });
+        if self.writing.is_some() {
+            ui.horizontal(|ui| {
+                ui.label("Checking the selection against the model…");
+                if ui.button("Cancel").clicked()
+                    && let Some(writing) = self.writing.take()
+                {
+                    writing.handle.cancel();
+                }
+            });
+            ui.ctx().request_repaint();
+        }
 
         ui.separator();
         if summaries.is_empty() {
@@ -1112,6 +1151,37 @@ impl SelectionPanel {
     /// The table of sets (specification section 12.2): swatch, name, kind,
     /// size, used by, status and the action. A set with a problem is marked
     /// with a triangle as well as red.
+    /// Stores the set of a finished save or edit job. Returns the text of an
+    /// error to show: the check failed, or the project changed meanwhile.
+    fn finish_writing(&mut self, app: &mut Application) -> Option<String> {
+        let result = self.writing.as_ref()?.handle.try_result()?;
+        let Writing { what, .. } = self.writing.take()?;
+        let stored = result.and_then(|checked| match what {
+            Write::Save { tangent } => {
+                let id = app.finish_save_selection(checked)?;
+                if let Some(keep) = tangent {
+                    app.edit_selection(id, SelectionEdit::KeepTangentEdges(Some(keep)))?;
+                }
+                self.name.clear();
+                self.working = nothing();
+                self.working_model = None;
+                self.new_tangent = None;
+                self.shown = Some(id);
+                Ok(())
+            }
+            Write::Edit => app.finish_edit_selection(checked).map(|_| ()),
+        });
+        match stored {
+            Ok(()) => {
+                self.dirty = true;
+                None
+            }
+            // Cancelling is the user's own choice, not a failure.
+            Err(e) if e.is_cancelled() => None,
+            Err(e) => Some(e.to_string()),
+        }
+    }
+
     fn table(&mut self, ui: &mut egui::Ui, app: &Application, summaries: &[SelectionSummary]) {
         egui::ScrollArea::horizontal().show(ui, |ui| {
             egui::Grid::new("selection sets")
@@ -1426,7 +1496,7 @@ fn draw_target(
         SelectionTarget::MeshEdges(m) => edges(m.iter().map(|e| EdgeRef::Mesh(*e)).collect()),
     };
     for points in lines {
-        scene.add_polyline(&points, line, true);
+        scene.add_wide_polyline(&points, line, true, EDGE_SELECTED_WIDTH);
     }
 }
 
@@ -1811,6 +1881,53 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn req_nfr_04_req_ui_05_a_new_set_is_stored_when_its_check_job_finishes() {
+        let (dir, mut app, model) = cube_project("save-job");
+        let mut panel = SelectionPanel {
+            working: tri(&[2, 3]),
+            working_model: Some(model),
+            name: "Top".into(),
+            ..SelectionPanel::default()
+        };
+        let handle = app
+            .start_save_selection("Top", model, set(&[2, 3]))
+            .unwrap();
+        panel.writing = Some(Writing {
+            handle,
+            what: Write::Save { tangent: None },
+        });
+        // Polling stores the set once the job has finished and starts a fresh
+        // selection.
+        let error = loop {
+            let error = panel.finish_writing(&mut app);
+            if panel.writing.is_none() {
+                break error;
+            }
+            std::thread::yield_now();
+        };
+        assert_eq!(error, None);
+        assert_eq!(app.project().selection_sets().len(), 1);
+        assert!(panel.working.is_empty() && panel.name.is_empty());
+        assert_eq!(panel.shown, Some(app.project().selection_sets()[0].id));
+        // A failed check shows its error and stores nothing.
+        let handle = app.start_save_selection("Far", model, set(&[99])).unwrap();
+        panel.writing = Some(Writing {
+            handle,
+            what: Write::Save { tangent: None },
+        });
+        let error = loop {
+            let error = panel.finish_writing(&mut app);
+            if panel.writing.is_none() {
+                break error;
+            }
+            std::thread::yield_now();
+        };
+        assert!(error.unwrap().contains("triangle 99"));
+        assert_eq!(app.project().selection_sets().len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// A project with the corpus cube added, and its model.
     fn cube_project(name: &str) -> (std::path::PathBuf, Application, ModelId) {
         use openchuck_app::Threads;
@@ -2000,6 +2117,12 @@ mod tests {
         );
         assert_eq!(scene.lines[1].colour, HOVER);
         assert!(scene.lines.iter().all(|l| l.on_top && l.slot == Slot::Part));
+        // State is not shown by colour alone (specification 16, OI-245): the
+        // selected edge is wider than the hovered one, and both are wider than
+        // the part's hairline feature edges.
+        assert_eq!(scene.lines[0].width, EDGE_SELECTED_WIDTH);
+        assert_eq!(scene.lines[1].width, EDGE_HOVER_WIDTH);
+        const { assert!(EDGE_SELECTED_WIDTH > EDGE_HOVER_WIDTH && EDGE_HOVER_WIDTH > 1.0) };
         // A surface clicked with Shift is not added to the edges: the click
         // is refused, saying why and the way out, and the edges stay.
         let surface = view

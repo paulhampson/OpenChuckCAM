@@ -47,7 +47,7 @@ use openchuck_project::{
     SelectionTarget,
 };
 use openchuck_types::geometry::Vec3;
-use openchuck_types::job::{CancelToken, JobContext, NoProgress};
+use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
 
 use crate::{AppError, Application, Command, JobHandle};
@@ -184,6 +184,49 @@ pub struct SelectionSummary {
     pub colour: Option<String>,
 }
 
+/// A selection set whose target has been checked against its model, ready to
+/// be stored by [`Application::finish_save_selection`] or
+/// [`Application::finish_edit_selection`].
+#[derive(Debug, Clone)]
+pub struct CheckedSet {
+    set: SelectionSet,
+    /// The set an edit was made from, or `None` for a new set.
+    base: Option<SelectionSet>,
+}
+
+/// The start of an edit: ready at once, or checking against the model as a
+/// background job.
+#[derive(Debug)]
+pub enum EditStart {
+    /// The edit needs no model, so there is nothing to wait for.
+    Done(Box<CheckedSet>),
+    /// The edited target is being checked against the model.
+    Checking(JobHandle<CheckedSet>),
+}
+
+/// Checks an edited set's target against its model as read now, which must
+/// still be the file the set was made on: its IDs name that file.
+fn check_edited(
+    root: &std::path::Path,
+    reference: &openchuck_project::ModelRef,
+    set: &SelectionSet,
+    context: &JobContext<'_>,
+) -> Result<(), AppError> {
+    let placed = crate::model::placed_part(root, reference, context)?;
+    context.check_cancelled()?;
+    if placed.hash != set.model_hash {
+        return Err(selection_error(
+            &set.name,
+            format!(
+                "'{}' has changed since the set was made; select again on the current model \
+                 (PRJ-06)",
+                reference.path.as_str()
+            ),
+        ));
+    }
+    check_target(&set.name, &placed.mesh, placed.brep.as_ref(), &set.target)
+}
+
 fn selection_error(name: &str, reason: impl Into<String>) -> AppError {
     AppError::Selection {
         name: name.to_owned(),
@@ -247,43 +290,89 @@ impl Application {
     /// faces or edges of a STEP model (slice 11 item 7; decision record
     /// 0066). Fails if it selects nothing, names something the model does not
     /// have, is of a kind the model is not selected by, or the model file has
-    /// changed since it was added to the project. Undoable.
+    /// changed since it was added to the project. Undoable. Waits for
+    /// [`start_save_selection`](Self::start_save_selection).
     pub fn save_selection(
         &mut self,
         name: &str,
         model: ModelId,
         target: impl Into<SelectionTarget>,
     ) -> Result<SelectionSetId, AppError> {
+        let job = self.start_save_selection(name, model, target)?;
+        self.finish_save_selection(job.wait()?)
+    }
+
+    /// Starts the check of [`save_selection`](Self::save_selection) as a
+    /// background job, so reading and importing the model never blocks the
+    /// caller (NFR-04). The job is cancellable and reported through the job
+    /// events. Give its result to
+    /// [`finish_save_selection`](Self::finish_save_selection), which stores
+    /// the set. Fails at once if the project has no such model.
+    pub fn start_save_selection(
+        &self,
+        name: &str,
+        model: ModelId,
+        target: impl Into<SelectionTarget>,
+    ) -> Result<JobHandle<CheckedSet>, AppError> {
         let target = target.into();
         let reference = self.model_ref(model)?.clone();
-        let cancel = CancelToken::new();
-        let context = JobContext::new(&cancel, &NoProgress);
-        // A STEP model's faces and edges are checked against its placed B-rep.
-        let placed = crate::model::placed_part(&self.document.location, &reference, &context)?;
-        check_target(name, &placed.mesh, placed.brep.as_ref(), &target)?;
-        if placed.hash != reference.hash {
+        let root = self.document.location.clone();
+        let name = name.to_owned();
+        Ok(self
+            .jobs
+            .submit("save selection", self.events_tx.clone(), move |context| {
+                // A STEP model's faces and edges are checked against its
+                // placed B-rep.
+                let placed = crate::model::placed_part(&root, &reference, context)?;
+                context.check_cancelled()?;
+                check_target(&name, &placed.mesh, placed.brep.as_ref(), &target)?;
+                if placed.hash != reference.hash {
+                    return Err(selection_error(
+                        &name,
+                        format!(
+                            "'{}' has changed since it was added to the project; accept the \
+                             change before selecting on it (PRJ-02)",
+                            reference.path.as_str()
+                        ),
+                    ));
+                }
+                Ok(CheckedSet {
+                    set: SelectionSet {
+                        id: SelectionSetId::new(),
+                        order: Default::default(),
+                        name,
+                        model,
+                        model_hash: placed.hash,
+                        target,
+                        descriptors: Vec::new(),
+                        stock_to_leave: None,
+                        colour: None,
+                        keep_tangent_edges: None,
+                    },
+                    base: None,
+                })
+            }))
+    }
+
+    /// Stores a set whose check [`start_save_selection`](Self::start_save_selection)
+    /// finished, as one undoable step. Fails if the model was taken out of the
+    /// project, or its recorded file changed, while the check ran.
+    pub fn finish_save_selection(
+        &mut self,
+        checked: CheckedSet,
+    ) -> Result<SelectionSetId, AppError> {
+        let set = checked.set;
+        let reference = self.model_ref(set.model)?;
+        if reference.hash != set.model_hash {
             return Err(selection_error(
-                name,
+                &set.name,
                 format!(
-                    "'{}' has changed since it was added to the project; accept the change \
-                     before selecting on it (PRJ-02)",
+                    "'{}' changed in the project while the selection was checked; select again",
                     reference.path.as_str()
                 ),
             ));
         }
-        let id = SelectionSetId::new();
-        let set = SelectionSet {
-            id,
-            order: Default::default(),
-            name: name.to_owned(),
-            model,
-            model_hash: placed.hash,
-            target,
-            descriptors: Vec::new(),
-            stock_to_leave: None,
-            colour: None,
-            keep_tangent_edges: None,
-        };
+        let id = set.id;
         self.execute(Command::Add {
             item: Item::SelectionSet(set),
             placement: Placement::End,
@@ -294,13 +383,35 @@ impl Application {
     /// Changes selection set `set` (UI-05) and returns the operations that
     /// use it, which now need regenerating. The set's model hash is kept as it
     /// was: a set made on one version of the model is not made current by
-    /// editing it. Undoable.
+    /// editing it. Undoable. Waits for
+    /// [`start_edit_selection`](Self::start_edit_selection).
     pub fn edit_selection(
         &mut self,
         set: SelectionSetId,
         edit: SelectionEdit,
     ) -> Result<Vec<openchuck_project::id::OperationId>, AppError> {
-        let mut edited = self
+        match self.start_edit_selection(set, edit)? {
+            EditStart::Done(checked) => self.finish_edit_selection(*checked),
+            EditStart::Checking(job) => {
+                let checked = job.wait()?;
+                self.finish_edit_selection(checked)
+            }
+        }
+    }
+
+    /// Prepares an edit of selection set `set`. An edit that does not change
+    /// what the set selects (a rename, the stock to leave, the colour, the
+    /// tangent choice) needs no model and comes back ready. `Add`, `Remove`
+    /// and `Replace` are checked against the model as a background job, so
+    /// importing it never blocks the caller (NFR-04); the job is cancellable
+    /// and reported through the job events. Give the result to
+    /// [`finish_edit_selection`](Self::finish_edit_selection).
+    pub fn start_edit_selection(
+        &self,
+        set: SelectionSetId,
+        edit: SelectionEdit,
+    ) -> Result<EditStart, AppError> {
+        let base = self
             .document
             .project
             .selection_sets()
@@ -308,6 +419,7 @@ impl Application {
             .find(|s| s.id == set)
             .cloned()
             .ok_or_else(|| AppError::UnknownSelection(set.to_string()))?;
+        let mut edited = base.clone();
         match edit {
             SelectionEdit::Rename(name) => edited.name = name,
             SelectionEdit::StockToLeave(leave) => {
@@ -344,37 +456,53 @@ impl Application {
             SelectionEdit::Remove(other) => combine(&mut edited, other, Join::Remove)?,
             SelectionEdit::Replace(other) => combine(&mut edited, other, Join::Replace)?,
         }
-        let changed_target = self
+        let changed_target = edited.target != base.target;
+        let checked = CheckedSet {
+            set: edited,
+            base: Some(base),
+        };
+        if !changed_target {
+            return Ok(EditStart::Done(Box::new(checked)));
+        }
+        let reference = self.model_ref(checked.set.model)?.clone();
+        let root = self.document.location.clone();
+        Ok(EditStart::Checking(self.jobs.submit(
+            "edit selection",
+            self.events_tx.clone(),
+            move |context| {
+                check_edited(&root, &reference, &checked.set, context)?;
+                Ok(checked)
+            },
+        )))
+    }
+
+    /// Stores an edit prepared by [`start_edit_selection`](Self::start_edit_selection)
+    /// as one undoable step and returns the operations that use the set.
+    /// Fails if the set was changed or removed meanwhile: the edit was made
+    /// from the set as it stood when it started.
+    pub fn finish_edit_selection(
+        &mut self,
+        checked: CheckedSet,
+    ) -> Result<Vec<openchuck_project::id::OperationId>, AppError> {
+        let set = checked.set;
+        let current = self
             .document
             .project
             .selection_sets()
             .iter()
-            .any(|s| s.id == set && s.target != edited.target);
-        if changed_target {
-            self.check_edited(&edited)?;
+            .find(|s| s.id == set.id);
+        if current != checked.base.as_ref() {
+            return match current {
+                None => Err(AppError::UnknownSelection(set.id.to_string())),
+                Some(_) => Err(selection_error(
+                    &set.name,
+                    "the set changed while the edit was checked; edit it again",
+                )),
+            };
         }
-        self.execute(Command::Replace(Item::SelectionSet(edited)))?;
-        Ok(self.document.project.operations_using(set))
-    }
-
-    /// Checks an edited set's target against its model as read now, which
-    /// must still be the file the set was made on: its IDs name that file.
-    fn check_edited(&self, set: &SelectionSet) -> Result<(), AppError> {
-        let reference = self.model_ref(set.model)?;
-        let cancel = CancelToken::new();
-        let context = JobContext::new(&cancel, &NoProgress);
-        let placed = crate::model::placed_part(&self.document.location, reference, &context)?;
-        if placed.hash != set.model_hash {
-            return Err(selection_error(
-                &set.name,
-                format!(
-                    "'{}' has changed since the set was made; select again on the current model \
-                     (PRJ-06)",
-                    reference.path.as_str()
-                ),
-            ));
-        }
-        check_target(&set.name, &placed.mesh, placed.brep.as_ref(), &set.target)
+        let id = set.id;
+        self.execute(Command::Replace(Item::SelectionSet(set)))?;
+        Ok(self.document.project.operations_using(id))
     }
 
     /// Puts `set` in, or takes it out of, `role` of `operation` (OP-02, UI-05).

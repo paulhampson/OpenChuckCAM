@@ -9,7 +9,7 @@
 //! material, and bisects each move until the straight machine move is within
 //! [`CHORD_FACTOR`] times the toolpath tolerance of the dropped tool.
 
-use openchuck_types::geometry::Point3;
+use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
@@ -298,8 +298,11 @@ impl Fit<'_> {
         }
         let mut best: Option<(Contact, f64, &RevolvedProfile)> = None;
         for zone in self.zones {
+            // A zone higher by less than a tie yields to the one before it,
+            // so rounding cannot choose (decision record 0113).
             if let Some(c) = zone.surface.drop_tool(&zone.profile, line)
-                && best.is_none_or(|(b, l, _)| c.offset + zone.leave > b.offset + l)
+                && best
+                    .is_none_or(|(b, l, _)| c.offset + zone.leave > b.offset + l + cutter::TIP_TIE)
             {
                 best = Some((c, zone.leave, &zone.profile));
             }
@@ -331,7 +334,8 @@ impl Fit<'_> {
     }
 
     /// The error of the straight machine move from `a` to `b` at its middle,
-    /// along the surface normal at the dropped contact.
+    /// along the tool's contact normal at the dropped contact
+    /// ([`Self::along_normal`]).
     fn deviation(&self, a: &Node, b: &Node, mid: &Node) -> f64 {
         let rotary = &self.input.rotary;
         let (pa, pb) = (
@@ -346,10 +350,7 @@ impl Fit<'_> {
         let lin_tip = rotary.to_model(lin, mid.a);
         let ideal = self.tip(mid);
         let delta = ideal - lin_tip;
-        match self.input.surface.project(mid.contact.contact) {
-            Some(sp) => delta.dot(sp.normal.get()).abs(),
-            None => delta.length(),
-        }
+        self.along_normal(mid, delta)
     }
 
     /// As [`deviation`](Self::deviation) for a node `mid` anywhere between `a`
@@ -374,7 +375,31 @@ impl Fit<'_> {
         };
         let lin_tip = rotary.to_model(lin, mid.a);
         let delta = self.tip(mid) - lin_tip;
-        match self.input.surface.project(mid.contact.contact) {
+        self.along_normal(mid, delta)
+    }
+
+    /// The part of a tip displacement `delta` at `mid` that changes the cut:
+    /// its component along the tool's contact normal there (the surface
+    /// normal where the tool touches a smooth surface; at a mesh edge or
+    /// vertex, where the surface has no normal, the normal of the surface the
+    /// tool can reach, which rounding cannot flip: decision record 0113).
+    /// Should the contact not lie on the tool (NFR-07), the surface's own
+    /// normal is used, or the whole displacement where there is none.
+    fn along_normal(&self, mid: &Node, delta: Vec3) -> f64 {
+        let axis = self.input.rotary.tool_axis(mid.a);
+        let contact = mid.contact.contact;
+        // The profile that made the drop: the zone's, where the node came
+        // from a zone (its `leave` is the zone's own, copied bit for bit, and
+        // zones with one `leave` share one grown profile).
+        let profile = self
+            .zones
+            .iter()
+            .find(|z| z.leave.to_bits() == mid.leave.to_bits())
+            .map_or(self.drop_profile, |z| &z.profile);
+        if let Some(n) = cutter::contact_normal(profile, mid.contact.tip, axis, contact) {
+            return delta.dot(n.get()).abs();
+        }
+        match self.input.surface.project(contact) {
             Some(sp) => delta.dot(sp.normal.get()).abs(),
             None => delta.length(),
         }

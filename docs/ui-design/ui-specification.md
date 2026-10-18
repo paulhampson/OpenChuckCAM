@@ -1,7 +1,7 @@
 # OpenChuckCAM user interface specification
 
-- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17.
-- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026.
+- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16.
+- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
 - **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
 
@@ -229,6 +229,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Tool | Grey body, lilac tip | |
 | Working selection | Blue `#3d8bff` at 40% | Fill (OI-163, settled) |
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
+| Hovered or selected edge | Hover yellow `#ffe066`; selected in the working selection's blue `#3d8bff` or the shown set's swatch | Line 2 pixels wide hovered, 3 pixels selected, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
 | Saved set | Its own swatch from a fixed set of eight | Fill when shown |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
@@ -253,8 +254,9 @@ UI-03 and UI-25 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-
 - **They turn with the part.** Like the part and the stock, they are fixed to the workpiece, so they turn with A in the machine view and with "Turn part to A" *(UI-21)*.
 - **Show or hide.** The "Show or hide" control (V, 7.1) has one entry, "Held regions and tabs", on by default. Hiding them changes only the view, never what is machined; a line under the entry says so.
 - **Legend.** Whenever the setup has a held region or a tab, the legend of the step lists the roles that are present, with a swatch drawn the way the role is drawn (a hatched violet square, a sand square with a dark border): in the legend strip on Setup, in the path legend on Operations (after "Avoid"), and under the colour scale on Simulate (outline swatches, labelled "Held region (kept)" and "Tab (kept)").
-- **Hover.** Pointing at a held region or a tab outlines the whole solid in the hover yellow `#ffe066` (7.4) and opens a tooltip with its name and size, for example "Tab 2 · frustum · X 14.000 to 16.000 mm · Ø 4.000 to Ø 8.000 mm", or "Held region at the start · 6.000 mm · Ø 26.000 mm (stock)". A tab around the axis adds "1 of 3 at 90.00°". The same outline and tooltip appear when the solid's row in the inspector (11.7) has keyboard focus (principle 9).
-- **Selection.** Clicking one selects its setup, opens the inspector at the workholding section with that held region or tab expanded and its first field focused, and draws the solid with a 2-pixel `accent` outline while it stays selected. Esc clears it. A tab around the axis is selected as one tab, all its solids together.
+- **Hover.** Pointing at a held region or a tab outlines the whole solid with a 2-pixel line in the hover yellow `#ffe066` (7.4) and opens a tooltip with its name and size, for example "Tab 2 · frustum · X 14.000 to 16.000 mm · Ø 4.000 to Ø 8.000 mm", or "Held region at the start · 6.000 mm · Ø 26.000 mm (stock)". A tab around the axis adds "1 of 3 at 90.00°". The same outline and tooltip appear when the solid's row in the inspector (11.7) has keyboard focus (principle 9).
+- **Selection.** Clicking one selects its setup, opens the inspector at the workholding section with that held region or tab expanded and its first field focused, and draws the solid with a 3-pixel `accent` outline while it stays selected. Esc clears it. A tab around the axis is selected as one tab, all its solids together.
+- **Widths.** One scale holds across the view: plain lines and feature edges 1 pixel, role outlines 1.5, hovered 2, selected 3, the same as hovered and selected edges (decision 0112 item 3; decision 0114, OI-341).
 - **While picking** (Operations, 11.4) they are drawn as outlines only, with no fill, and cannot be picked: clicks and the hover outline go to the part's triangles, so a selection is never made on a solid. A selection that reaches one gets the warning of 11.7.
 - **A draft that cannot be drawn.** A held region or tab of the draft that fails a check (11.7) is drawn with its outline only, in `error` red `#ff7b72`, and the others as usual. If the setup's own workholding cannot be built (for example, a held region on box stock with no holding diameter, decision 0045 item 2), nothing of it is drawn and the messages panel says why, with "Edit workholding" as its action.
 - **Default tabs offered, not added** (11.7) are drawn as dashed sand outlines with no fill, labelled "Default tab, not added", while the workholding section is open.
@@ -367,16 +369,17 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 
 - **Opening.** File > Import model, the Model "+", or a dropped file. It opens in its own window.
 - **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15).
-- **Left: the preview.** The placed model, with findings highlighted:
+- **The preview** is the main viewport behind the window, not a pane of it, because a tool window draws no 3D (section 3; decision 0029 item 17). It shows the placed model, with findings highlighted:
   - flipped and degenerate triangles outlined in red;
   - holes ringed in amber;
   - open and non-manifold edges in red.
 
-  A legend sits bottom left, and size, largest radius and volume bottom right.
-- **Right: three blocks.**
+  A legend sits bottom left of the view, and size, largest radius and volume bottom right.
+- **The window: three blocks.**
   1. **Units.** The unit used. The unit question, when the file names another unit or the size is implausible (decision 0010 item 4), is in an amber box. Under it, a unit chooser and the largest side after conversion.
   2. **Mesh check.** One row for each kind of finding, with its count. A tick when there are none; selecting a row highlights its triangles. One sentence says the check changes nothing.
   3. **The STL statement,** word for word as `STL_TESSELLATION_NOTICE`.
+- **Placement.** An orientation choice that places the model on the rotary axis as it is added (IMP-05), shown in the preview; the Model step's placement steps edit it later.
 - **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary).
 
 **Model step** (board 1):
@@ -484,7 +487,7 @@ Board 4 (SIM-01 to SIM-07).
 **Playback dock** (SIM-04):
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation.
-- **Speed:** 1×, 10×, 100× or Max.
+- **Speed:** 1×, 10×, 100×, 1000×, 10 000× or Max, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
@@ -499,7 +502,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 
 1. **Post-processor.**
    - The post for the machine (GC-02).
-   - Feed mode (GC-04): units per minute, or inverse time (G93) where the post offers it.
+   - Feed mode (GC-04), read from the post and shown read-only: units per minute, or inverse time (G93) where the post uses it (decision 0071 item 8).
    - Units, A letter and wrap, read from the post (read-only).
    - Files (GC-05, decision 0028 item 1): Project, Setup (default), Operation or Tool. "Project" is disabled while the project has more than one setup run, with the reason.
    - Output folder.
@@ -663,15 +666,17 @@ TL-01 to TL-07, TL-11; decision 0014; decision 0029 item 12.
 UI-05; decisions 0032 and 0037; a dock tab.
 
 - **Toolbar.**
-  - "New set from selection", "Add selection to set", "Remove from set";
-  - the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example);
-  - a note on what can be selected: triangles on meshes, faces and edges on STEP models;
+  - "New set from selection", "Add selection to set", "Remove from set", "Replace set" (the chosen set takes the working selection) and "Clear" (empties the working selection);
+  - the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example), and the angle for Same direction (default 10°);
+  - a note on what can be selected: triangles and edges on meshes (decision 0066), faces and edges on STEP models;
   - for a working edge selection, and for a chosen edge set of a STEP model, "Tangent edges": "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9);
   - "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*;
   - "Warn before a click starts a new selection" (on by default), until a project and software preferences screen exists to hold it *(OI-260)*.
 - **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
   - A set with a problem is red, with its reason ("12 missing") and "Reselect".
   - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
+  - A set's colour can be chosen from the eight swatches, or left as the default swatch of its place in the list (decision 0046 item 2).
+- **Checking.** Saving or editing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and edit buttons disabled until it ends (decision 0112 item 1).
 - **Footer line:** "Editing a set marks every operation that uses it stale."
 
 ### 12.3 Undo history
@@ -754,7 +759,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **Units.** Every number carries its unit: "mm", "deg" or "°", "mm/min", "rpm". Dates are written "13 Oct 2026".
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
-- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click of the other kind asks first, in a dialog "Start a new selection?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now.", with "Start a new selection", "Cancel" and "Don't show me this warning again".
+- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click of the other kind asks first, in a dialog "Start a new selection?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now.", with "Start a new selection", "Cancel" and "Don't show me this warning again".
 - **The machine.** Machine values are described by provenance ("confirmed on the machine", "from Makera's profile", "unconfirmed placeholder"), not by blame.
 
 ## 16. Keyboard and accessibility
@@ -773,10 +778,10 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 | F, V, S, M | Fit; show or hide; section; measure |
 | Numpad 1, 3, 7, 0 | Front, right, top, isometric |
 | N | New operation |
-| G | Generate selected; Shift G generates every stale operation |
+| G, or F5 | Generate selected; Shift G, or Shift F5, generates every stale operation |
 | Ctrl D, Del, F2 | Duplicate, delete, rename the selected item |
 | Alt ↑, Alt ↓ | Move the selected operation earlier or later |
-| Q, W, E, B | Select one, flood fill, by angle, box (while picking); on an edge, Q, W and E are select one, chain and smooth chain |
+| Q, W, E, R, B | Select one, flood fill, by angle, same direction, box (while picking); on an edge, Q, W and E are select one, chain and smooth chain |
 | Ctrl Enter (Cmd Enter on macOS) | Apply the workholding draft (in its section, 11.7) |
 | Space, ←, →, Shift ←, Shift → | Play or pause, step, previous or next operation |
 | Esc | Cancel the running job, or leave picking, or close a popover |
@@ -841,6 +846,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
 - **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
 - **OI-194 (open):** the deviation display: decision 0040's six bands by triangle against this specification's continuous scale (D12).
+- **OI-340 and OI-341 (closed 18 Oct 2026):** the catch-up edits and the width scale of decision 0114, made here. **OI-342 (open):** the boards re-rendered lane by lane (decision 0114 section E). **OI-345 (open):** UI-13 and section 8 with two provenance states, proposed in decision 0114.
 - **OI-325 (closed 18 Oct 2026):** the differences of the workholding panel and display from sections 7.5 and 11.7 (D13), built by lane 21d. **OI-334 (open):** what lane 21d did not build.
 
 ## 20. Rendered mockups
