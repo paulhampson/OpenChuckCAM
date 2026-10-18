@@ -142,12 +142,14 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | Y | OI-209: path assembly merges the micro-moves path fitting leaves at a wall in the target ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction; merged in pull request 66; its proof on the default tabs is on `claude/lane-y-default-tabs-proof`) | ░░ | ░░ | ██ | | |
 | F | OI-236 (second assignment of the letter; slice 19's lane F is done): the Makera Z1's F word within its limit where A counts in it, and small feeds written to three significant figures ([decision 0076](decisions/0076-feed-word-limit-and-rounding.md), accepted 17 Oct 2026; built on `claude/lane-f-feed-limit-and-rounding`) | ░░ | ░░ | ██ | | |
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (merged in pull request 79, 17 Oct 2026; the STEP inspection fix, OI-259, on `claude/lane-z-step-inspection-weld`; [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
-| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); standard tools and the Z1 set built, open: OI-281, OI-282, the licence OI-269; [decision 0081](decisions/0081-slice-23-default-tool-library.md), accepted) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; built 17 Oct 2026 on `claude/lane-e2-roughing-stock-per-selection`) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TR | 20 items 8 and 9: the release workflow (tags `lib-v*` and `app-v*`, dry-run by default, no crates.io publishing) and `cargo xtask release-gate` (built 17 Oct 2026 on `claude/lane-tr-release-workflow-and-gate`, draft pull request 99; decision record 0091 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TE | 20 items 3, 6 and 7: end-to-end command-line scenarios, the determinism run at 1, 2 and N threads over the sample projects (the reference jobs and the owner's blisk), undo, redo and cancellation, and the no-network run (built 17 Oct 2026 on `claude/lane-te-end-to-end-and-determinism`, pull request 98; [decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md), accepted) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TS | OI-129 and slice 20: a UI smoke test of the built archives on Windows, macOS and Linux under software rendering, `ui-smoke.yml` (built 17 Oct 2026 on `claude/lane-ts-ui-smoke-ci`, draft pull request 95; decision record 0101 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
+| FZ | 20 item 4: the malformed-input sweep, a fuzz target for every user file and the fuzz CPU hours per parser (built 18 Oct 2026 on `claude/lane-fz-malformed-input-sweep`, [decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), accepted 18 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
+| BT | OI-316 and OI-253: the blisk's gate 2 failures in lane TE's run were from before decision 0076 (lane TE closes OI-316); an older Makera Z1 machine copy with no library ID now migrates by its name ([decision 0109](decisions/0109-z1-copy-without-an-id-migrates-by-name.md), accepted 18 Oct 2026, relayed; built on `claude/lane-bt-gate2-timing`) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -178,6 +180,8 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TE | Nothing to start; its sample set grows as strategy lanes merge |
 | TS | Nothing |
 | TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
+| FZ | Nothing; its hours accumulate nightly after it merges |
+| BT | Nothing |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
 
@@ -808,11 +812,11 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Review checklist**
 
-- [ ] Per-tool files together contain the same moves as the single file
-- [ ] Comments are present and deterministic
-- [ ] The setup sheet lists every tool used with its controller tool number
-- [ ] The sheet opens offline and prints legibly
-- [ ] Writing is refused with a stale or failed enabled operation; the acknowledgement is asked once per project per computer and never stored in the project (GC-15, GC-16)
+- [x] Per-tool files together contain the same moves as the single file (`req_gc_05_every_grouping_reaches_the_same_moves` in `openchuck-app/tests/output_options.rs`: the sorted end positions of the fed moves of every grouping equal the setup file's, and every file passes gates 1 and 2; `req_gc_05_one_file_per_tool_keeps_the_machining_order` and `req_gc_05_one_file_per_tool_gathers_consecutive_operations_of_one_tool` for the tool files)
+- [x] Comments are present and deterministic (`req_gc_06_comments_name_the_operation_and_the_tool_by_name_and_number`, `req_gc_06_a_name_with_brackets_or_accents_is_made_safe_in_the_comment`; determinism: `req_gc_05_req_gc_07_every_grouping_gives_the_same_bytes_at_any_thread_count` and the grouping golden files `req_gc_05_req_nfr_08_each_grouping_matches_its_golden_files`)
+- [x] The setup sheet lists every tool used with its controller tool number (`req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number`; the tool numbers come from the dialog in `req_gc_14_numbers_chosen_in_the_dialog_are_saved_and_give_the_same_bytes_again`; snapshot `req_gc_12_req_nfr_08_the_sheet_content_matches_its_snapshot`)
+- [x] The sheet opens offline and prints legibly (owner accepted the printed sheet, 18 Oct 2026, confirmed by the owner in lane BM's session; OI-330 closed). **Offline is evidenced** (`req_gc_12_the_html_opens_offline`: no script, link, `src`, `@import`, `url(` or `http`). **Prints legibly is evidenced only in part** (`req_gc_12_the_pdf_text_fits_inside_the_page_and_the_html_has_print_rules`: every PDF text line ends inside the page margins in its fixed-width font, and the HTML sets A4, a margin, black on white and wrapping cells; `req_gc_12_a_long_title_and_heading_wrap_in_the_pdf_and_lose_nothing`, `req_gc_12_a_long_sheet_runs_onto_more_pages_and_keeps_every_row`). No test can show how the HTML and PDF look on paper or in a viewer, so the box waited until the owner had looked at a printed or previewed sheet (OI-330).
+- [x] Writing is refused with a stale or failed enabled operation; the acknowledgement is asked once per project per computer and never stored in the project (GC-15, GC-16) (`req_gc_15_an_edit_makes_that_operation_and_the_ones_after_it_stale`, `req_gc_15_a_failed_generation_blocks_and_says_why`, `req_gc_15_writing_is_refused_before_anything_is_generated`, `req_gc_15_disabled_operations_are_listed_as_not_posted_and_do_not_block` in `openchuck-app/tests/export_dialog.rs`; the dialog refuses to write in `export_panel::tests::req_gc_05_req_gc_14_req_gc_15_req_gc_16_the_dialog_writes_files_once_every_check_passes`; `req_gc_16_the_acknowledgement_is_per_project_per_settings_folder_and_never_in_the_project` shows one question per project and settings folder, a fresh folder asks again and the project's files are byte-identical. The failed state is for the whole run, not per operation: OI-249)
 
 ## Slice 21 – Workholding and retaining tabs
 
@@ -894,7 +898,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 
 ## Slice 23 – Default tool library
 
-**Status:** not started. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
+**Status:** built except what is still open (lane TL, 17 Oct 2026; [decision 0081](decisions/0081-slice-23-default-tool-library.md), accepted by the owner, relayed; OI-269's licence question stays open): the 23 standard tools and 54 Makera Z1 tools (the 1/8 in set plus the 4 mm and 6 mm shank extension) with the Z1 default tool set (NXX numbers 101 to 504, assigned by this project; the owner approved the tables and the numbers, relayed) are embedded and installed on first run with a ledger, and the explicit restore action is built. **Cutting data (OI-270, decided):** 35 of the 54 Z1 bits ship the Makera reference values (147 entries, source record in decision 0081 item 10); the standard tools and the other 19 Z1 bits ship none (no source states a stepover for them); the sources are combined and their conflicts are listed in the record for the owner. Two 4 mm engraving bits (307, 308) have a derived cutter diameter (OI-283, owner-decided). **Still open:** the UI button for the restore action (the update policy itself is decided, OI-271), thread mills as a P2 item (OI-281, left out), the tools left out of the extension (OI-282) and the licence of the Makera data (OI-269: the owner's route, no legal clearance claimed). The guide is not written. TL-12 is met for the standard tools and the Z1 set except for those items. Added 17 Oct 2026 on the owner's instruction ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md)): slice 4 built the library mechanism and a test sample, but a new user starts with an empty library. This is lane TL.
 
 **Goal:** a new user finds the tools a Makera Z1 normally holds and a set of common standard tools already in the library.
 
@@ -912,12 +916,12 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 
 **Review checklist**
 
-- [ ] The source and licence of the Makera data are recorded, and nothing was copied that the licence does not allow
-- [ ] A first run installs the Z1 tools with their tool set and a standard tool of every type into an empty library; a second run installs nothing (`req_tl_12_*`)
-- [ ] A tool the user edited or deleted is not overwritten or restored by an update
-- [ ] Every default tool validates and its shape matches its closed-form silhouette (TL-02, TL-03)
-- [ ] The data is embedded and read with no network access (NFR-09)
-- [ ] Cutting data that ships has a recorded source
+- [ ] The source and licence of the Makera data are recorded, and nothing was copied that the licence does not allow *(sources are recorded per value; the repositories have no licence file, the owner chose the route, and no legal clearance is claimed, so this stays unticked: OI-269)*
+- [x] A first run installs the Z1 tools with their tool set and a standard tool of every type into an empty library; a second run installs nothing (`req_tl_12_*`)
+- [x] A tool the user edited or deleted is not overwritten or restored by an update
+- [x] Every default tool validates and its shape matches its closed-form silhouette (TL-02, TL-03)
+- [x] The data is embedded and read with no network access (NFR-09)
+- [x] Cutting data that ships has a recorded source *(decision 0081 item 10, OI-270, and each file's header)*
 
 ## Slice 20 – Hardening and first release
 
@@ -930,7 +934,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 1. Safety notice (generated G-code must be verified before use) shown at export in the UI, printed by the CLI and available as an optional post header comment (NFR-12).
 2. Performance pass against NFR-03 and NFR-04 on the reference machine.
 3. Determinism run at 1, 2 and N threads on all sample projects. *Built (lane TE, [decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md), accepted):* `apps/openchuck-cli/tests/e2e.rs` regenerates every sample project in separate `openchuck-cli` processes at 1, 2 and N threads with both posts and requires byte-identical programs; the Tests job runs it on all three platforms. The STEP `drilling` job stays in the kernel job (OI-312).
-4. Malformed-input sweep of every importer, the project loader and every other user-supplied file format (tool library, custom tool profile, machine profile, post definition), with at least 24 cumulative fuzz CPU hours per parser and no unresolved crash (NFR-07).
+4. Malformed-input sweep of every importer, the project loader and every other user-supplied file format (tool library, custom tool profile, machine profile, post definition), with no unresolved crash and a running total of fuzz CPU hours per parser against an advisory target of 24 hours (NFR-07; the 24 hours are advisory, not a release condition, [decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md) item 7). *In progress (lane FZ):* every user file is listed with its target in [fuzzing.md](fuzzing.md); the whole-folder project target and post rendering are fuzzed, all ten targets run nightly with the corpus kept, and the CPU hours are counted per parser there ([decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), accepted 18 Oct 2026). On 18 Oct 2026 no parser has the advisory 24 hours (at most 6) and the 13 Oct crash is fixed; OI-326 to OI-329 are open.
 5. Licence review, third-party notices, SPDX headers and an offline run check (NFR-09, NFR-10).
 6. Sample projects, including the Z1 reference part, end to end. *Built (lane TE, [decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md), accepted):* the reference job set on the Z1 profile is built with the command-line tool from STL import (the operation through the API, OI-310), validated, regenerated through gates 1 and 2, compared with the golden programs and simulated. "The Z1 reference part": the owner chose the reference job set plus the owner's blisk (OI-311), which runs by hand only and does not gate CI, because its F words differ across platforms (OI-319, owner's decision); strategies without a reference job are OI-312.
 7. CLI end-to-end scenarios in CI, including undo and redo and cancellation mid-job. *Built (lane TE, [decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md), accepted):* an interrupted `regenerate` writes no G-code and leaves the project unchanged; a job cancelled mid-run leaves the next run identical; undo and redo on a sample project restore the G-code and the files (through the application API, since the CLI has no undo, OI-313). `.github/workflows/e2e.yml` runs the suite with the network unavailable (NFR-09); the owner made its check required (OI-315; the setting is added once the check has run).

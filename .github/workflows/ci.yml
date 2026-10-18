@@ -532,9 +532,10 @@ jobs:
           fi
           echo "Every check that was due ran and passed."
 
-  # Nine targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three
-  # that share a toolchain install, a cargo-fuzz install and a build cache, instead of nine jobs
-  # that each set up and build from scratch (decision 0052, Option 7). Every target still gets its
+  # Ten targets, one minute each (NFR-07, verification plan section 4.1), in three jobs of three or
+  # four that share a toolchain install, a cargo-fuzz install and a build cache, instead of ten jobs
+  # that each set up and build from scratch (decision 0052, Option 7; `project_folder` joined group
+  # A in decision 0107). Every target still gets its
   # own minute and its own seeded corpus; a failing target is named in the annotation and does not
   # stop the others in its job from running.
   fuzz-smoke:
@@ -547,7 +548,7 @@ jobs:
       matrix:
         group:
           - name: A
-            targets: machine_profile_json machine_profile_toml toolpath_ir_json
+            targets: machine_profile_json machine_profile_toml toolpath_ir_json project_folder
           - name: B
             targets: project_files stl_import tool_library_toml
           - name: C
@@ -584,6 +585,26 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/post_definition
           for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+      - name: Seed the project file corpus from the fixtures
+        if: contains(format(' {0} ', matrix.group.targets), ' project_files ')
+        run: |
+          mkdir -p fuzz/corpus/project_files
+          # The first byte picks the kind of file, as in the target: 0 project, 1 machine, 2 setup,
+          # 3 tool, 4 selection set, 5 operation.
+          find crates/openchuck-project/tests/fixtures -name '*.toml' | sort | while read -r f; do
+            case "$f" in
+              */project.toml) k='\x00' ;; */machine.toml) k='\x01' ;; */setups/*) k='\x02' ;;
+              */tools/*) k='\x03' ;; */selections/*) k='\x04' ;; */operations/*) k='\x05' ;; *) continue ;;
+            esac
+            { printf "$k"; cat "$f"; } > "fuzz/corpus/project_files/$(echo "$f" | tr '/' '_')"
+          done
+      - name: Seed the project folder corpus from the fixtures
+        if: contains(format(' {0} ', matrix.group.targets), ' project_folder ')
+        run: |
+          mkdir -p fuzz/corpus/project_folder
+          for d in crates/openchuck-project/tests/fixtures/*/; do
+            (cd "$d" && find . -name '*.toml' | sort | while read -r f; do printf '=== %s\n' "${f#./}"; cat "$f"; done) > "fuzz/corpus/project_folder/$(basename "$d")"
+          done
       - name: Fuzz each target for one minute
         shell: bash
         env:
@@ -593,7 +614,7 @@ jobs:
           for target in $TARGETS; do
             echo "::group::Fuzz $target"
             set +e
-            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 > "fuzz-$target.log" 2>&1
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$target" -- -max_total_time=60 -timeout=10 > "fuzz-$target.log" 2>&1
             code=$?
             set -e
             cat "fuzz-$target.log"
