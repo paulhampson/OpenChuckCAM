@@ -1120,5 +1120,13 @@ fn req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind() {
     assert!(!app.project().warn_on_selection_reset());
     app.undo().unwrap();
     assert!(app.project().warn_on_selection_reset());
+    // A set's IDs name the file it was made on: once the file changes, an
+    // edit of its target is refused rather than checked against another file.
+    let file = dir.join("models/cube.stl");
+    let mut text = std::fs::read_to_string(&file).unwrap();
+    text.push('\n');
+    std::fs::write(&file, text).unwrap();
+    let more: BTreeSet<MeshEdge> = [MeshEdge::new(1, 0).unwrap()].into();
+    assert!(err(app.edit_selection(id, SelectionEdit::Add(more.into()))).contains("has changed"));
     std::fs::remove_dir_all(&dir).unwrap();
 }

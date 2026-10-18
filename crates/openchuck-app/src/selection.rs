@@ -357,12 +357,23 @@ impl Application {
         Ok(self.document.project.operations_using(set))
     }
 
-    /// Checks an edited set's target against its model as read now.
+    /// Checks an edited set's target against its model as read now, which
+    /// must still be the file the set was made on: its IDs name that file.
     fn check_edited(&self, set: &SelectionSet) -> Result<(), AppError> {
         let reference = self.model_ref(set.model)?;
         let cancel = CancelToken::new();
         let context = JobContext::new(&cancel, &NoProgress);
         let placed = crate::model::placed_part(&self.document.location, reference, &context)?;
+        if placed.hash != set.model_hash {
+            return Err(selection_error(
+                &set.name,
+                format!(
+                    "'{}' has changed since the set was made; select again on the current model \
+                     (PRJ-06)",
+                    reference.path.as_str()
+                ),
+            ));
+        }
         check_target(&set.name, &placed.mesh, placed.brep.as_ref(), &set.target)
     }
 
