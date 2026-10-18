@@ -82,7 +82,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 |---|---|---|
 | UI-01 | Cross-platform desktop application for Windows, macOS and Linux from one codebase. | P1 |
 | UI-02 | Interactive 3D viewport: orbit, pan, zoom, standard views, perspective and orthographic cameras, shaded, wireframe and edge display. | P1 |
-| UI-03 | Display the rotary axis, work coordinate system, stock and part together in the viewport. | P1 |
+| UI-03 | Display the rotary axis, work coordinate system, stock, part, held regions and retaining tabs together in the viewport. | P1 |
 | UI-04 | Select geometry in the viewport: faces and edges on B-rep models; triangle regions on meshes, including select-by-angle and flood fill. | P1 |
 | UI-05 | Save selections as named sets that operations can reference and that update when the selection is edited. | P1 |
 | UI-06 | Project tree listing the model, stock, setups, operations and tools; operations can be reordered, enabled, disabled and duplicated. | P1 |
@@ -104,6 +104,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-22 | Show the undo history and let the user return to any step in it. | P2 |
 | UI-23 | A start page with recent projects, and import by dropping a file on the window. | P2 |
 | UI-24 | When a selection set no longer matches its model, offer to select again, to show what is missing, and to keep the part that still matches. | P2 |
+| UI-25 | View, add, edit and remove a setup's held regions and retaining tabs in the interface, with validation, the default tabs shown as defaults, and a warning when an operation's selection reaches one. | P1 |
 
 ### 3.3 Machine, stock and setup
 
@@ -134,7 +135,8 @@ These requirements define the first usable release unless marked P2. Each has a 
 | TL-09 | A material library holding cutting data per material and tool, used to pre-fill the values in TL-05. | P2 |
 | TL-10 | Import tool tables from other systems (for example LinuxCNC tool tables). | P3 |
 | TL-11 | A default tool set per machine profile: the tools the machine normally holds and their tool numbers, kept with the tool library and used to number a tool when it is added to a project for that machine. Tool numbers belong to the project, not to the library tool. | P1 |
-| TL-12 | A default tool library ships with the application: the reference tools for the Makera Z1 with their tool numbers as the machine's default tool set (TL-11), and a set of common standard tools of each type in TL-02 and TL-03. The user can edit, add and delete tools, and an update never overwrites a tool the user has changed. | P1 |
+| TL-12 | A default tool library ships with the application: the reference tools for the Makera Z1, taken from Makera's published tool pages, with tool numbers assigned by the project as the machine's default tool set (TL-11), and a set of common standard tools of each type in TL-02 and TL-03. The user can edit, add and delete tools, and an update never overwrites a tool the user has changed. | P1 |
+| TL-13 | The tool library supports undercutting tools, starting with thread mills: a profile that cuts below an overhang or in a bore, with its thread pitch and diameter, so operations can use it for thread milling and undercut features. The default tool library does not ship thread mills until this is built. | P2 |
 
 ### 3.5 Machining strategies and toolpath generation
 

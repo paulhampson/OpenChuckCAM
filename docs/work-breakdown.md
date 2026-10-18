@@ -4,7 +4,7 @@ Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2
 
 ## P1 assessment
 
-93 of 147 requirements are P1: IMP 6, UI 16, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
+94 of 148 requirements are P1: IMP 6, UI 17, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
 
 Findings, after reconciling with the architecture:
 
@@ -96,7 +96,7 @@ State of each slice on `main` (16 Oct 2026). **Closed** slices are in `closed_sl
 | 18 | Not started | |
 | 19 output options and setup sheet | In progress | Item 4 built by lane S on `claude/lane-s-slice-19-export-dialogs` ([decision 0071](decisions/0071-slice-19-export-dialogs.md), accepted); the owner closes the slice |
 | 20 hardening and first release | In progress | Preparation is done; the rest runs last |
-| 21 workholding and retaining tabs | Built, pending merge | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation, deviation, forms and the command line, is built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), accepted 16 Oct 2026; OI-195 to OI-198 and OI-209); the fix for walls in the target (OI-209, closed) is merged from lane Y ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction) |
+| 21 workholding and retaining tabs | Built, pending merge | 21a and 21b are merged (lanes U and V); 21c, application wiring, simulation, deviation, forms and the command line, is built by lane W on `claude/lane-w-slice-21c-wiring` ([decision 0045](decisions/0045-slice-21c-wiring.md), accepted 16 Oct 2026; OI-195 to OI-198 and OI-209); the fix for walls in the target (OI-209, closed) is merged from lane Y ([decision 0050](decisions/0050-walls-merge-micro-moves.md), accepted 16 Oct 2026, relayed by the orchestrator session at the owner's instruction); 21d ([decision 0104](decisions/0104-held-regions-and-tabs-in-the-interface.md), UI-25): the interface specification (sections 7.5 and 11.7) is written by lane 21d on `claude/lane-21d-workholding-ui-spec` (draft pull request), and its code and tests wait until lane O (pull request 83) has merged (OI-325) |
 | 22 user interface redesign | Not started | The interface design is a proposal on a branch; waits for the UI lanes |
 
 ## Slice order and dependencies
@@ -144,6 +144,10 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | Z | OI-219 and OI-226: STEP parts through the application pipeline, for lane R's drilling and lane P's B-rep edges; the `drilling` reference job (built 17 Oct 2026 on `claude/lane-z-brep-pipeline`, [decision 0056](decisions/0056-brep-path-through-the-pipeline.md), accepted 17 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TL | 23 default tool library: the Makera Z1 reference tools and common standard tools, installed on first run ([decision 0060](decisions/0060-gc16-command-line-reading-and-tl12-default-tool-library.md); not started) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | E2 | 14 item 4 completed: per-selection stock to leave for rotary roughing as the largest value over the whole part, with a note ([decision 0058](decisions/0058-roughing-stock-to-leave-per-selection.md), accepted 17 Oct 2026; built 17 Oct 2026 on `claude/lane-e2-roughing-stock-per-selection`) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TR | 20 items 8 and 9: the release workflow (tags `lib-v*` and `app-v*`, dry-run by default, no crates.io publishing) and `cargo xtask release-gate` (built 17 Oct 2026 on `claude/lane-tr-release-workflow-and-gate`, draft pull request 99; decision record 0091 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TE | 20 items 3, 6 and 7: end-to-end command-line scenarios, the determinism run at 1, 2 and N threads over the sample projects (the reference jobs and the owner's blisk) and the no-network run (built 17 Oct 2026 on `claude/lane-te-end-to-end-and-determinism`, draft pull request 98; decision record 0096 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TS | OI-129 and slice 20: a UI smoke test of the built archives on Windows, macOS and Linux under software rendering, `ui-smoke.yml` (built 17 Oct 2026 on `claude/lane-ts-ui-smoke-ci`, draft pull request 95; decision record 0101 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
+| TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X | 22 user interface redesign to the updated design | ░░ | ░░ | ░░ | ░░ | ██ |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -170,6 +174,10 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | Z | P and R (both merged), W (the composite target's wiring) |
 | TL | Slice 4 (merged); nothing else |
 | E2 | E and H (both merged): nothing else |
+| TR | Nothing |
+| TE | Nothing to start; its sample set grows as strategy lanes merge |
+| TS | Nothing |
+| TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
 | X | M, N, O, S and W (every lane that adds UI), and the owner's updated design |
 | T | Everything, including W and X |
 
@@ -811,7 +819,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 
 **Goal:** the user says how deep the chuck grips and where the part stays joined to the stock, as a cylindrical or frustum tab, and every operation leaves those regions alone.
 
-**Requirements:** SET-09, OP-21
+**Requirements:** SET-09, OP-21; UI-25 (added by decision 0104; built by 21d)
 
 **Design refinement:** the record's items: the held region and each tab as analytic solids (cylinder, frustum) added to the part for the whole job, where they live (the setup, beside stock), the composite target surface and its determinism, what stock to leave, the gouge checker and the deviation report do with them, and the cut-off.
 
@@ -834,8 +842,20 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 3. Default tabs when none are set, from the part's extent (decision 0035, owner's answers, OI-158): two on the axis, one at the head and one at the tail, frustums with the small end on the model, each the smaller of 10 mm and half the part's local diameter across; the head tab runs from the held region's inner edge to the start of the model and the tail tab from the model's end to the stock's end, kept out of held regions and user-excluded regions. Tabs are restricted to the head and tail zones, and 21c refuses one outside them (OI-180). A tab narrower than the tool is refused (OI-159).
 4. The example tab and held-region project in the golden set, with G-code through all gates (GC-07, NFR-08).
 
+**21d – Interface specification, display and verification (requirement agreed 17 Oct 2026; specification and mock-ups written by lane 21d on `claude/lane-21d-workholding-ui-spec`, in a draft pull request; the code and tests wait until lane O (pull request 83, B-rep selection and viewport) has merged; added at the owner's request)**
+
+Today the workholding panel (`workholding_panel.rs`, edits a draft of the held regions and tabs) and the viewport's held-region and tab colours exist (21c item 2), but no requirement and no part of the interface specification says that held regions and tabs are shown or edited in the interface: SET-09 and OP-21 describe the data and the machining, and UI-03 lists only the rotary axis, work coordinate system, stock and part. 21d closes that gap.
+
+1. The requirement, agreed by the owner on 17 Oct 2026 ([decision 0104](decisions/0104-held-regions-and-tabs-in-the-interface.md)): UI-03 now lists held regions and retaining tabs among what the viewport shows, and the new P1 requirement UI-25 says the user can view, add, edit and remove a setup's held regions and tabs in the interface, with validation, the default tabs shown as defaults and a warning when an operation's selection reaches one.
+2. The interface specification (`docs/ui-design/ui-specification.md`) gains the workholding panel (fields, validation messages, the default tabs and how they are shown as defaults, the warning when an operation's selection reaches a held region or a tab) and the viewport display (colour and shape or outline so the two roles differ by more than colour, a legend entry, hover and selection behaviour), with a mock-up. Written by lane 21d: specification sections 7.5 (the display) and 11.7 (the panel), with mock-ups 16 and 17; what the current code does differently is D13 and OI-325 (open), which item 3 closes.
+3. Tests and screenshots that name the new requirement: the panel edits and validates a tab and a held region and the edit is undoable; the viewport draws them; the UI smoke test opens the panel (UI-07, UI-08, NFR-02). The verification plan gains the row. Not started: it waits until lane O (pull request 83) has merged, because both change the viewport and the shell; it brings the code to sections 7.5 and 11.7 (OI-325), except the layout parts that go with slice 22.
+4. Slice 22 (interface redesign) includes the panel and the display in its component inventory.
+
 **Review checklist**
 
+- [x] A requirement in `docs/requirements.md` says that held regions and retaining tabs are shown in the viewport and edited in the interface (UI-03 amended and UI-25, decision 0104, agreed by the owner 17 Oct 2026)
+- [x] The interface specification describes the workholding panel and the viewport display, with a mock-up (21d item 2: sections 7.5 and 11.7, mock-ups 16 and 17; the differences in the code are OI-325)
+- [ ] Tests that name UI-25 cover editing, undo, display and the selection warning (21d item 3)
 - [x] A held region and each tab validate, persist, migrate and undo; impossible ones are refused with a message (21a tests in `openchuck-project`, `openchuck-app` and `openchuck-cli`; the form and generation refuse the checks that need the part and the tool)
 - [x] Roughing and finishing on the oracle parts never cut into a held region or a tab, and the independent checker agrees (`req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab`; tabs around the axis by the simulation, OI-197)
 - [x] Links and retracts do not cross a held region (the same test: every fed move checked, and no rapid move removes material)
@@ -843,31 +863,33 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 - [x] Results are identical at 1, 2 and N threads (`req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count`, helical finishing on the held cone at 1, 2 and 4 threads; the composite's drops at 1, 2 and 7 are in lane V's tests)
 - [x] A project without a held region or tab produces byte-identical G-code to before this slice (the reference and golden files are unchanged)
 
-## Slice 22 – User interface redesign
+## Slice 22 – User interface conformance pass
 
-**Status:** not started. Waits on the owner's updated design, which does not exist in the repository yet. Added 15 Oct 2026 after lanes A, M, N, O, S and W were planned, so the interface is redesigned once, after they have put every screen, panel and dialog in place.
+**Status:** not started. Reframed on 17 Oct 2026 by the owner ([decision 0105](decisions/0105-slice-22-conformance-pass.md)): it was a redesign waiting on a new design, and the interface specification (decision 0038) is now that design and the lanes built to it. Waits on lane O (selection and viewport, #83) and lane 21d (the workholding specification) being merged.
 
-**Goal:** the application's interface follows the updated design, with the same behaviour, requirements and tests.
+**Goal:** every screen, panel and dialog follows the interface specification (`docs/ui-design/ui-specification.md`) and its mock-ups, with the same behaviour, requirements and tests. Differences are fixed or recorded as open items; there is no redesign.
 
-**Requirements:** none new. It re-verifies UI-01 to UI-09, NFR-02 and NFR-03 (the tests that already name them still pass or are updated with the design), so it is not listed in the traceability table and does not move when those requirements close.
+**Rework is expected.** Screens built earlier were each built to the specification as it stood when their lane ran, and the specification has changed since (selection, the workholding panel, the export dialogs). The owner expects some rework of earlier interface work; it is planned here and is not a defect of the slices that built it.
 
-**Needs:** the updated design from the owner (mock-ups or a document); lanes A, M, N, O, S and W merged.
+**Requirements:** none new. It re-verifies UI-01 to UI-09, NFR-02 and NFR-03 (the tests that already name them still pass or are updated with the specification), so it is not listed in the traceability table and does not move when those requirements close.
 
-**Design refinement:** first step, before any rework. Record the design as a decision record: the screens and panels, the layout and navigation, the interaction for selecting, operating and playing back, theming and text sizes, and what in the design asks for a feature the requirements do not have. Anything that does is raised, not built (UI-xx requirements change only by agreement, and the architecture's view-model boundary stays: the UI imports no engine crate).
+**Needs:** lane O and lane 21d merged (lanes A, M, N, S and W are merged).
 
-1. Component inventory and mapping from today's panels to the design; list what is removed, moved or new.
-2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the design touches) to the design, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
+**Design refinement:** first step, before any rework: a conformance report as a decision record. For every screen, panel, dialog and overlay in the specification, say whether the built interface matches it, and list each difference with a proposed fix (change the code, or change the specification with the owner's agreement). Differences that need a requirement change are raised, not built.
+
+1. The conformance report and the component inventory: today's panels mapped to the specification, with what is removed, moved or new. It includes the setup's workholding panel and the viewport display of held regions and tabs (slice 21d; specification sections 7.5 and 11.7): the panel moves from the setup's whole inspector to its fifth section, the setup gains a "Workholding" tree row, and the Setup step's front and end panes draw the held regions and tabs (OI-325 items a, b and o).
+2. Rework of `openchuck-ui` (and the drawing parts of `openchuck-viewport` the report touches) to the specification, behind the existing view model in `openchuck-app`; view-model additions are the only changes outside the UI crates.
 3. Update the UI smoke tests and the screenshots in the guide; keep the 1M-triangle frame benchmark and rerun it on the reference machines (NFR-03).
-4. No project format change and no engine change. If the design needs one, it is a separate lane with its own schema claim.
+4. No project format change and no engine change. If the specification needs one, it is a separate lane with its own schema claim.
 
 **Review checklist**
 
-- [ ] Every screen, panel and dialog in the design exists, and nothing in the old interface that the requirements need is missing
+- [ ] Every screen, panel and dialog in the specification exists, matches it or has a recorded difference, and nothing the requirements need is missing
 - [ ] The UI imports no engine crate, and only `openchuck-ui` and `openchuck-viewport` use egui or wgpu
 - [ ] The UI smoke test passes on Windows, macOS and Linux (NFR-02)
 - [ ] The frame time on 1M triangles still meets NFR-03 on the reference hardware
 - [ ] Undo, redo and the inline errors behave as before (UI-08, UI-07)
-- [ ] Anything the design asks for beyond the requirements is listed as an open item or a requirement proposal, not built
+- [ ] Anything the specification asks for beyond the requirements is listed as an open item or a requirement proposal, not built
 
 ## Slice 23 – Default tool library
 
@@ -914,7 +936,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 8. Release tooling assessed under NFR-14 (`cargo-release` for the library family, `cargo-dist` or a plain build matrix for binaries, `release-plz` later) and the packaging route decided; separate tag schemes for library and application releases. *Route decided:* [decision 0031](decisions/0031-slice-20-packaging-and-trial-documents.md) (plain build matrix, `lib-v` and `app-v` tags); the workflow is still to build.
 9. Release gate in `xtask`: dependency-rule check, `cargo deny`, golden G-code comparison and LinuxCNC replay must pass before a tag is cut.
 10. Z1 air-cut procedure documented (your hands-on step) and packaging for all three platforms, including a Windows installer and macOS app bundle if the egui app needs them. *Prepared:* the [air-cut procedure](z1-air-cut-procedure.md) is written and reviewed by the operator (14 Oct 2026, OI-133); running it is still the hands-on step; the packaging route is accepted in decision 0031 and the bundle command and release workflow are still to build (signing and extra platforms: OI-135).
-11. Gates 4 and 5 on the Z1 for the reference job set (your hands-on step, attended): an air cut at reduced feed (including a timed simultaneous XYZA move compared with the IR's predicted time), then a first cut in wax or foam. Cut a 3-axis test part first to measure the machine's own repeatability, then set the first-cut limit from it (start at ±0.1 mm). Recheck the G93 result on the installed firmware (SP-12 found it ignored on 1.1.2) and carry the confirmed Z1 rotary conventions into the post definition (also OI-267).
+11. Gates 4 and 5 on the Z1 for the reference job set (your hands-on step, attended; a manual release-checklist item owned by the owner, not enforced by `xtask release-gate`, [decision 0106](decisions/0106-air-cut-is-a-manual-release-step.md)): an air cut at reduced feed (including a timed simultaneous XYZA move compared with the IR's predicted time), then a first cut in wax or foam. Cut a 3-axis test part first to measure the machine's own repeatability, then set the first-cut limit from it (start at ±0.1 mm). Recheck the G93 result on the installed firmware (SP-12 found it ignored on 1.1.2) and carry the confirmed Z1 rotary conventions into the post definition (also OI-267).
 12. Safe-practice checklist for first machine trials, written and reviewed by whoever operates the Z1. *Written and reviewed by the operator (14 Oct 2026):* [z1-safe-practice-checklist.md](z1-safe-practice-checklist.md) (OI-133).
 13. Verification report for the release: results against the exit criteria, waivers, open defects, the commit covered, a written result for every spike, and the plan reviewed against what happened.
 14. Traceability report generated from the requirement ID tags.
@@ -957,7 +979,7 @@ Lane Z wired the B-rep source into the application on `claude/lane-z-brep-pipeli
 | 18 | OP-10 | – |
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
-| 21 | SET-09, OP-21 | – |
+| 21 | SET-09, OP-21, UI-25 | – |
 | 22 | – | – |
 | 23 | TL-12 | – |
 
