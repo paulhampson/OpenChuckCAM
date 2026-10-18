@@ -202,7 +202,8 @@ fn samples() -> Vec<Sample> {
         // and 50 mm long. Simultaneous finishing refuses it at the shoulder
         // (OI-318), so it runs through helical (5 and 2 degree steps) and
         // axial finishing; the tool, material and stock rule are the
-        // reference jobs'. Not simulated until OI-317 closes.
+        // reference jobs'. Not simulated yet: its memory is fixed (OI-317,
+        // decision 0108), and a simulation test is left with OI-311.
         blisk("blisk_helical_5", "helical_finishing", angle_step(5.0)),
         blisk("blisk_helical_2", "helical_finishing", angle_step(2.0)),
         blisk(
@@ -529,8 +530,8 @@ fn simulates(name: &str) {
 
 /// One end-to-end test and one simulation test per sample project, so the
 /// test runner spreads them over cores and CI shares. The samples after
-/// `manual` are the owner's blisk: no simulation test, because its simulation
-/// exhausts memory (OI-317), and an end-to-end test that no automated run
+/// `manual` are the owner's blisk: no simulation test yet (its memory is fixed,
+/// OI-317 and decision 0108), and an end-to-end test that no automated run
 /// executes. Its feed words differ between Linux, Windows and macOS (OI-319),
 /// so by the owner's decision (18 Oct 2026, relayed) it does not gate CI and
 /// runs by hand only:

@@ -620,6 +620,9 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
         }
         let err = file::load(&dir).unwrap_err().to_string();
         assert!(err.contains(expected), "{name}: {err}");
+        // The same texts in memory give the same error.
+        let err = file::load_files(&read_tree(&dir)).unwrap_err().to_string();
+        assert!(err.contains(expected), "{name} in memory: {err}");
     }
 
     // A file not named by an ID, and a file named after another item.
@@ -640,6 +643,37 @@ fn req_nfr_07_damaged_project_folders_are_errors() {
     // No project file.
     let empty = temp_dir("damaged-empty");
     let err = file::load(&empty).unwrap_err();
+    assert!(matches!(err, ProjectError::NotAProject(_)), "{err}");
+}
+
+/// The fuzz target for whole project folders loads them from memory, so
+/// that loader must be the folder loader with its checks (NFR-07).
+#[test]
+fn req_nfr_07_project_texts_load_from_memory_as_from_the_folder() {
+    let dir = temp_dir("in-memory");
+    file::save(&sample(), &dir).unwrap();
+    let mut texts = read_tree(&dir);
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(file::load_files(&texts).unwrap(), loaded);
+
+    // As in a folder, files other than `.toml` files directly in an item
+    // folder are not read.
+    texts.insert("notes.md".into(), "not a project file".into());
+    texts.insert("operations/notes.txt".into(), "not TOML".into());
+    texts.insert("operations/old/extra.toml".into(), "not TOML".into());
+    texts.insert("operations/.toml".into(), "not TOML".into());
+    texts.insert("models/part1.toml".into(), "not TOML".into());
+    assert_eq!(file::load_files(&texts).unwrap(), loaded);
+
+    // An item file not named by an ID is refused, by its key.
+    texts.insert("operations/extra.toml".into(), current());
+    let err = file::load_files(&texts).unwrap_err().to_string();
+    assert!(err.contains("operations/extra.toml"), "{err}");
+    assert!(err.contains("not a operation ID"), "{err}");
+
+    // No project file.
+    texts.remove("project.toml");
+    let err = file::load_files(&texts).unwrap_err();
     assert!(matches!(err, ProjectError::NotAProject(_)), "{err}");
 }
 
@@ -866,6 +900,9 @@ fn req_imp_05_nfr_07_invalid_transforms_are_refused() {
         std::fs::write(&path, text.replace(from, to)).unwrap();
         let err = file::load(&dir).unwrap_err().to_string();
         assert!(err.contains(expected), "{name}: {err}");
+        // The same texts in memory give the same error.
+        let err = file::load_files(&read_tree(&dir)).unwrap_err().to_string();
+        assert!(err.contains(expected), "{name} in memory: {err}");
     }
 }
 

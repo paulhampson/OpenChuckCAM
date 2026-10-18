@@ -56,13 +56,30 @@ fn machine_2_to_3(_kind: FileKind, table: &mut toml::Table) -> Result<(), String
 /// keeps.
 pub const MAKERA_Z1_ID: &str = "8f0c2a4e-1b7d-4e3a-9c61-5d2e7f4a1b01";
 
+/// The built-in Makera Z1 profile's name, which a copy stored without its ID
+/// keeps (decision record 0109).
+const MAKERA_Z1_NAME: &str = "Makera Z1";
+
 /// Migrates a machine file from before `max_feeds.rotary_in_feed` (decision
 /// record 0076): a profile with the built-in Z1's ID came from the Z1, whose
 /// firmware counts A in the feed word (decision record 0007), so it gains
 /// `rotary_in_feed = "makera"`; any other profile keeps the default, A
 /// counted separately, which is how every profile was timed before.
+///
+/// A copy with no ID whose name is the built-in Z1's is the Z1 too: the
+/// application's `SetMachine` stored the profile without its ID (decision
+/// record 0109). Erring this way only slows a move, never speeds one up.
 pub(crate) fn fill_rotary_in_feed(table: &mut toml::Table) {
-    let from_z1 = table.get("id").and_then(toml::Value::as_str) == Some(MAKERA_Z1_ID);
+    let from_z1 = match table.get("id") {
+        Some(id) => id.as_str() == Some(MAKERA_Z1_ID),
+        None => {
+            table
+                .get("machine")
+                .and_then(|m| m.get("name"))
+                .and_then(toml::Value::as_str)
+                == Some(MAKERA_Z1_NAME)
+        }
+    };
     if !from_z1 {
         return;
     }
@@ -282,7 +299,7 @@ mod tests {
     #[test]
     fn req_set_01_builtin_z1_reads_and_marks_every_value() {
         let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
-        assert_eq!(z1.name, "Makera Z1");
+        assert_eq!(z1.name, MAKERA_Z1_NAME);
         assert_eq!(z1.rotary_axis, RotaryAxis::X);
         assert_eq!(z1.a_sense, ASense::Positive);
         // Every field says where it came from.
