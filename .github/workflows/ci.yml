@@ -353,10 +353,11 @@ jobs:
       - name: B-rep edge chains of the STEP corpus
         run: cargo test --locked -p openchuck-app --features kernel-tests --test brep_edges_step
       # STEP parts through the application (decision 0056): drilling a STEP fixture (decision 0051),
-      # the `drilling` reference job against its golden files on every platform (OI-28), and every
-      # strategy on corpus STEP parts against the exact B-rep.
+      # the `drilling` reference job against its golden files on every platform (OI-28), every
+      # strategy on corpus STEP parts against the exact B-rep, and a STEP part's faces and edges
+      # picked, saved and the same after reopening and a second import (decision 0066).
       - name: STEP parts through the application
-        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies
+        run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 

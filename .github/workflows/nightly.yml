@@ -4,7 +4,8 @@
 # sections 4.1 and 8): one hour of fuzzing per parser, a beta-toolchain
 # build to catch breakage early, and the long-running tests listed in
 # .config/nextest.toml. The last job opens one GitHub issue per failing job, comments on it
-# each night the job still fails and closes it when the job passes (decision 0102).
+# each night the job still fails and closes it when the job passes, except the fuzz job, whose
+# issue only a pull request closes (decision 0102).
 name: Nightly
 
 on:
@@ -165,6 +166,8 @@ jobs:
   # One issue per failing job above: the issue with the label `nightly-<job>` is opened by the first
   # failing night, gets a comment on each night the job still fails and is closed with a comment
   # naming the run by the first night it passes. The steps are in .github/actions/nightly-issue.
+  # The fuzz job is the exception: a green night never closes its issue (a pull request that
+  # fixes the failure does), and a failure after a green night opens a new issue.
   # Only this job can write issues, so the jobs that build and test hold a read-only token. It
   # runs on `main` only (a manual run on another branch never touches the issues).
   issues:
@@ -189,7 +192,7 @@ jobs:
           needs: ${{ toJSON(needs) }}
           simulate: ${{ inputs.simulate_failure }}
           jobs: |
-            fuzz|Fuzz |Nightly: a fuzz target failed
+            fuzz|Fuzz |Nightly: a fuzz target failed|fix
             step-mutations|STEP mutation run|Nightly: the STEP mutation run failed
             sanitizer|AddressSanitizer on the STEP wrapper|Nightly: the AddressSanitizer run failed
             long-tests|Long-running tests|Nightly: a long-running test failed

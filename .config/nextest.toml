@@ -22,6 +22,12 @@
 # same prefix. The `reference_jobs_are_identical_at_1_and_n_threads` filter also
 # selects slice 21c's `cone_held_tabs` (81 s when it was listed).
 #
+# Lane TE (decision 0096, 17 Oct 2026, 4 cores): of the command-line end-to-end tests
+# in `apps/openchuck-cli/tests/e2e.rs`, the `lobed` sample's end-to-end test (1, 2 and
+# N threads with both posts) takes 117 s and its simulation 63 s in a full
+# `cargo nextest run -p openchuck-cli` (103 s and 55 s alone on one test thread); every
+# other test there is under 45 s.
+#
 # The STEP kernel tests run only with `--features kernel-tests`, in CI's STEP
 # kernel job (not in the Tests, Coverage or nightly long runs), so their entry
 # below documents the time and selects nothing elsewhere: roughing then rest
@@ -63,6 +69,11 @@ priority = 96
 filter = 'binary_id(=openchuck-app::reference_jobs) & test(=req_gc_07_reference_jobs_are_identical_at_1_and_n_threads)'
 priority = 95
 
+# Lane TE (decision 0096): 117 s in a full uninstrumented run, beside `reference_jobs`.
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-cli::e2e) & test(=lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads)'
+priority = 95
+
 [[profile.coverage-full.overrides]]
 filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_op_06_the_tool_axis_follows_the_normal_within_the_tilt_bound)'
 priority = 94
@@ -82,6 +93,11 @@ priority = 91
 [[profile.coverage-full.overrides]]
 filter = 'binary_id(=openchuck-sim::roughing) & test(=req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)'
 priority = 90
+
+# Lane TE (decision 0096): 63 s in a full uninstrumented run.
+[[profile.coverage-full.overrides]]
+filter = 'binary_id(=openchuck-cli::e2e) & test(=lobed::req_sim_03_req_sim_05_simulates_without_overcut)'
+priority = 89
 
 [[profile.coverage-full.overrides]]
 filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_05_triangle_values_put_the_overcut_on_the_triangles_it_is_on)'
@@ -119,6 +135,8 @@ default-filter = '''not (
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
+  | test(~lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end)
+  | test(~lobed::req_sim_03_req_sim_05_simulates_without_overcut)
   | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
 )'''
 
@@ -134,5 +152,7 @@ default-filter = '''
   | test(~req_op_15_smoothing_has_fewer_a_reversals_than_following_the_normal)
   | test(~req_op_03_indexed_and_continuous_forms_reach_the_same_envelope)
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
+  | test(~lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end)
+  | test(~lobed::req_sim_03_req_sim_05_simulates_without_overcut)
   | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
 '''

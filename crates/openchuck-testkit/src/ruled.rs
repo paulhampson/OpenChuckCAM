@@ -24,7 +24,13 @@ fn frame(origin: Point3, x: Vec3, z: Vec3) -> Frame {
 }
 
 /// The closed-form point of `surface` at (u, v), as the `openchuck_types`
-/// B-rep module documents the parametrisations.
+/// B-rep module documents the parametrisations. Panics on a surface it has
+/// no closed form for (a B-spline): an oracle must fail loudly, never judge
+/// a toolpath against a wrong point.
+#[allow(
+    clippy::panic,
+    reason = "a test oracle must fail loudly on a surface it has no closed form for"
+)]
 pub fn point(surface: &Surface, u: f64, v: f64) -> Point3 {
     let radial = |f: &Frame, u: f64| f.x * u.cos() + f.y * u.sin();
     match surface {
@@ -53,7 +59,10 @@ pub fn point(surface: &Surface, u: f64, v: f64) -> Point3 {
                 + radial(frame, u) * (major + minor * v.cos())
                 + frame.z * (minor * v.sin())
         }
-        _ => Point3::ORIGIN,
+        other => panic!(
+            "ruled::point has no closed form for a {:?} surface",
+            other.kind()
+        ),
     }
 }
 

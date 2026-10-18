@@ -54,8 +54,7 @@
 //!    allowance is silent within the tolerance, a note up to
 //!    `max_material_left`, and beyond that a refusal naming the amount,
 //!    where, and what to change (decision record 0061 item 7). The limit
-//!    is looser on a pass cut with stock to leave, a roughing or
-//!    semi-finishing pass, than on a finishing pass
+//!    is set per operation; zero takes [`DEFAULT_MAX_MATERIAL_LEFT`]
 //!    ([`Settings::material_left_limit`]).
 //!
 //! Everything here is deterministic (NFR-06): the only parallel work is the
@@ -129,12 +128,11 @@ pub const MAX_ANGLE_STEP: f64 = 5.0;
 const MAX_POSES: usize = 20_000;
 /// Needed tapers closer than this, in degrees, are one taper.
 const SAME_TAPER: f64 = 0.05;
-/// The automatic `max_material_left` of a finishing pass (no stock to
-/// leave), in millimetres: ten times the default tolerance, a step a finish
-/// cut shows and the simulation's finest setting resolves (verification plan
-/// 4.1, 0.02 mm). A pass cut with stock to leave is a roughing or
-/// semi-finishing pass and gets the larger of this and its stock to leave
-/// ([`Settings::material_left_limit`]).
+/// The `max_material_left` a zero setting takes, in millimetres, on every
+/// pass: ten times the default tolerance, a step a finish cut shows and the
+/// simulation's finest setting resolves (verification plan 4.1, 0.02 mm).
+/// One limit, configured per operation, is the owner's choice over a rule by
+/// the pass's role (decision record 0061 item 7, revised).
 pub const DEFAULT_MAX_MATERIAL_LEFT: f64 = 0.1;
 /// Below this tilt, in degrees, the four axes hold the ideal axis.
 const NO_TILT: f64 = 1e-3;
@@ -571,7 +569,7 @@ pub struct Settings {
     pub tip_extension: f64,
     /// The most material the flank may leave beyond the stock to leave
     /// before the face is refused; less, but more than the tolerance, is a
-    /// note. Zero chooses the limit by the pass's role
+    /// note. Zero takes [`DEFAULT_MAX_MATERIAL_LEFT`]
     /// ([`Settings::material_left_limit`]).
     pub max_material_left: f64,
     /// Put the tip at the other end of the rulings than the rule chooses.
@@ -582,17 +580,13 @@ pub struct Settings {
 
 impl Settings {
     /// The limit on material left that applies (decision record 0061 item
-    /// 7): `max_material_left` when set, else, for a finishing pass (no stock
-    /// to leave), [`DEFAULT_MAX_MATERIAL_LEFT`], and for a pass cut with
-    /// stock to leave (roughing or semi-finishing, the only sign of the
-    /// pass's role the strategy has) the larger of that and the stock to
-    /// leave, so the finishing cut that follows never meets more than twice
-    /// its allowance.
+    /// 7): `max_material_left` when set, else [`DEFAULT_MAX_MATERIAL_LEFT`],
+    /// the same on every pass whatever its stock to leave.
     pub fn material_left_limit(&self) -> f64 {
         if self.max_material_left > 0.0 {
             self.max_material_left
         } else {
-            DEFAULT_MAX_MATERIAL_LEFT.max(self.stock_to_leave)
+            DEFAULT_MAX_MATERIAL_LEFT
         }
     }
 }
@@ -1349,9 +1343,7 @@ impl Strategy for Swarf {
                 "The most material the flank may leave beyond the stock to leave anywhere on \
                  the face, between poses or where four axes cannot hold the flank on the \
                  rulings. More than the tolerance is reported; more than this refuses the face. \
-                 Zero chooses it by the pass: 0.1 mm for a finishing pass (no stock to leave), \
-                 and for a pass cut with stock to leave, a roughing or semi-finishing pass, the \
-                 larger of 0.1 mm and the stock to leave.",
+                 Zero takes 0.1 mm.",
                 Unit::Millimetres,
                 0.0,
             ),
