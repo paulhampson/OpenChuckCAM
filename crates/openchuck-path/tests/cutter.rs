@@ -406,6 +406,10 @@ fn req_op_12_req_nfr_05_the_contact_normal_is_the_tools_normal_at_the_contact() 
             .get();
         assert!(under.cross(axis.get()).length() < 1e-9, "r {r}: {under:?}");
     }
-    // A point well off the tool is not on its lower envelope.
+    // A point well off the tool is not on its lower envelope, and neither is
+    // one under the tool's radius but at the wrong height (inside the ball:
+    // 1 mm out at the tip's height, where the envelope is 0.38 mm higher).
     assert!(contact_normal(&ball, tip, axis, tip + side * 4.0).is_none());
+    assert!(contact_normal(&ball, tip, axis, tip + side * 1.0).is_none());
+    assert!(contact_normal(&ball, tip, axis, centre + side * 1.0).is_none());
 }

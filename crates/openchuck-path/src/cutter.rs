@@ -666,6 +666,11 @@ fn nearest_on_profile(profile: &RevolvedProfile, r: f64, z: f64) -> (f64, f64) {
     best.1
 }
 
+/// How far, in millimetres, a point may lie off the tool's lower envelope and
+/// still count as a contact on it ([`contact_normal`]): a drop's contact is
+/// on it to rounding, so this is far above that and far below any geometry.
+const CONTACT_ON_TOOL: f64 = 1e-6;
+
 /// The outward unit normal of the tool's surface at `contact`, a point on
 /// the tool whose tip is at `tip` and whose axis is `axis`: the direction a
 /// displacement of the tool must have to change the cut there. Where the
@@ -686,11 +691,16 @@ pub fn contact_normal(
     let z = w.dot(e3);
     let radial = w - e3 * z;
     let r = radial.length();
-    let piece = profile
+    let e = profile
         .envelope()
         .iter()
-        .find(|e| r >= e.r_start - 1e-9 && r <= e.r_end + 1e-9)?
-        .piece;
+        .find(|e| r >= e.r_start - 1e-9 && r <= e.r_end + 1e-9)?;
+    let piece = e.piece;
+    // The point must lie on the envelope, not merely under the tool's radius:
+    // a drop's contact does, to rounding; anything else has no tool normal.
+    if (z - piece.height_at(r.clamp(e.r_start, e.r_end))).abs() > CONTACT_ON_TOOL {
+        return None;
+    }
     let (mut nr, mut nz) = piece_normal(&piece, pp(r, z));
     if let ProfilePiece::Arc { convex: false, .. } = piece {
         (nr, nz) = (-nr, -nz);

@@ -388,7 +388,15 @@ impl Fit<'_> {
     fn along_normal(&self, mid: &Node, delta: Vec3) -> f64 {
         let axis = self.input.rotary.tool_axis(mid.a);
         let contact = mid.contact.contact;
-        if let Some(n) = cutter::contact_normal(self.drop_profile, mid.contact.tip, axis, contact) {
+        // The profile that made the drop: the zone's, where the node came
+        // from a zone (its `leave` is the zone's own, copied bit for bit, and
+        // zones with one `leave` share one grown profile).
+        let profile = self
+            .zones
+            .iter()
+            .find(|z| z.leave.to_bits() == mid.leave.to_bits())
+            .map_or(self.drop_profile, |z| &z.profile);
+        if let Some(n) = cutter::contact_normal(profile, mid.contact.tip, axis, contact) {
             return delta.dot(n.get()).abs();
         }
         match self.input.surface.project(contact) {
