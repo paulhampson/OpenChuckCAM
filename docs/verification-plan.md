@@ -179,7 +179,7 @@ These are starting values, chosen before there is anything to measure. They are 
 | Responsiveness ([decision 0040](decisions/0040-slice-9-display-and-playback.md) item 8) | UI-09, NFR-04 | While a job runs on every core, the interface thread's poll-and-draw gap stays under 17 ms (half a frame of NFR-03); cancel stops a run within 2 s at the default cell and leaves no partial result (measured: worst gap 9 ms; cancel 6 to 12 ms on a small job) |
 | Toolpath display (decision 0040 item 9) | SIM-01, NFR-03 | A path is drawn with at most 1,000,000 points; a level of detail is within its stated tolerance of the path (0.01 to 3 mm) and is chosen in under a second for two million moves (measured: 0.13 s). Frame time with the path layer is checked with the 4.2 run on the reference machines (OI-176) |
 | Determinism | GC-07, NFR-06 | Zero difference, byte for byte, at 1, 2 and all threads |
-| Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; at least 24 cumulative CPU hours per parser with no unresolved crash for release |
+| Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; no unresolved crash for release; 24 cumulative CPU hours per parser is an advisory target, reported for release but not required ([decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md) item 7) |
 | Performance regression | NFR-03, NFR-04 | Flag at 10% on the median of several runs, on a dedicated runner |
 | First-cut part (gate 5) | GC-09 | Start at ±0.1 mm. First cut a 3-axis test part to measure the machine's own repeatability, then set the limit from that result; software tolerance cannot beat what the machine holds |
 

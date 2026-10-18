@@ -1,8 +1,9 @@
 # 0107: Malformed-input sweep: every user file has a fuzz target, and the fuzz CPU hours are counted per parser
 
-- **Status:** accepted by the project owner on 18 Oct 2026, as written, given directly in the lane FZ session (first relayed by the orchestrator session, [decision 0049](0049-relayed-acceptance-of-records.md)). Open items OI-326 to OI-329 stay open for the owner.
+- **Status:** accepted by the project owner on 18 Oct 2026, as written, given directly in the lane FZ session (first relayed by the orchestrator session, [decision 0049](0049-relayed-acceptance-of-records.md)), with one change by the owner on 18 Oct 2026, also given directly in this session after the orchestrator relayed it: the 24 cumulative CPU hours per parser are an advisory target, not a release condition (item 7). Open items OI-326 to OI-329 stay open for the owner.
 - **Date:** 18 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-326 to OI-329 are new.
+- **Amends:** verification plan section 4.1 (the fuzzing row) and work breakdown slice 20 item 4: the 24 CPU hours become advisory (item 7).
 - **Relates to:** work breakdown slice 20 item 4; NFR-07; verification plan sections 4.1 ("at least 24 cumulative CPU hours per parser with no unresolved crash for release") and 8; decisions [0003](0003-step-kernel-route.md) and [0027](0027-slice-11a-step-import.md) (the STEP mutation run, OI-27), [0052](0052-ci-speed-up.md) (fuzz smoke groups) and [0102](0102-coverage-off-pull-requests.md) (nightly issues; a fuzz issue is closed by a pull request).
 
 ## Context
@@ -33,6 +34,7 @@ Slice 20 item 4 asks for a malformed-input sweep of every importer, the project 
    - A night that fails counts zero, and the crash it found is unresolved until a pull request fixes it with a regression test that names NFR-07 (decision 0102 item 5). Hours from before a fix still count: the plan asks for cumulative hours. A rewrite of a parser is the owner's call to reset.
    - Nights before this change, which had no annotation, are counted from the job durations: 60 minutes for each successful fuzz step (the step's other minute or so was the build), and the STEP mutation nights at their step time once only, since the seed was the same each night.
 6. **The totals on 18 Oct 2026** (six scheduled nights, 12 to 17 Oct): `machine_profile_json`, `machine_profile_toml`, `toolpath_ir_json`, `project_files` and `stl_import` 6 h each; `tool_profile_toml` 5 h; `tool_library_toml` 4 h; `gcode_reader`, `post_definition` and `project_folder` 0 h; STEP mutations 0.06 h of distinct mutants (three runs of the same 3,000). At one hour a night, the libFuzzer targets reach 24 hours between 18 and 24 nights after this merges. The STEP run does not reach it at 3,000 mutants a night (OI-326).
+7. **The 24 CPU hours per parser are an advisory target, not a release condition** (the owner's change, 18 Oct 2026). The nightly fuzz runs, the CPU annotations and the running total in [docs/fuzzing.md](../fuzzing.md) stay as above, and the release report gives each parser's total against the 24 hours. A parser short of 24 hours does not block a release. No unresolved crash stays a condition: a crash found by any run is a defect, fixed by a pull request with a regression test that names NFR-07, before the release.
 
 ## Alternatives considered
 
@@ -46,12 +48,12 @@ Slice 20 item 4 asks for a malformed-input sweep of every importer, the project 
 
 - **Code:** `openchuck-project` gains `file::load_files`; `file::load` reads every file and then checks, so an unreadable file is reported before a parse error in an earlier file (the messages are unchanged). A minor API addition, not a breaking change.
 - **CI:** `nightly.yml` gains three targets (three more runner hours a night), the corpus cache, a separate build step and the CPU annotation; the STEP mutation step takes the run number as its seed and builds its program in the build step. `ci.yml` gains the `project_folder` target and two seed steps. Neither workflow's new parts can run before the merge (GitHub runs scheduled workflows from the default branch): the first night is the test (OI-329).
-- **Documents:** [docs/fuzzing.md](../fuzzing.md) is new; the work breakdown's slice 20 item 4 and its "Parallel work" table name lane FZ. The verification plan is unchanged: its row for fuzzing already gives the limits, and this record says how they are measured.
-- **Slice 20 review:** this is evidence toward the release checks that fuzzing ran for a set period on each parser with no unresolved crash (verification plan section 8) and that no severity 1 or 2 defect is open. It does not meet them yet: the hours are short of 24 for every parser, and three gaps are open (OI-326, OI-327, OI-328).
+- **Documents:** [docs/fuzzing.md](../fuzzing.md) is new; the work breakdown's slice 20 item 4 and its "Parallel work" table name lane FZ. The verification plan's fuzzing row (section 4.1) marks the 24 hours as advisory (item 7); this record says how they are measured.
+- **Slice 20 review:** this is evidence toward the release checks that fuzzing ran for a set period on each parser with no unresolved crash (verification plan section 8) and that no severity 1 or 2 defect is open. The 24 hours are advisory (item 7), so a shortfall does not block the release; the release report gives each parser's total. Three gaps are open (OI-326, OI-327, OI-328).
 
 ## Open items
 
-- OI-326: the STEP mutation run reaches 24 CPU hours only with a time budget: about an hour a night (for example a mutant count of 50,000, or a run until a time) would take 24 nights. The owner chooses the budget and whether it counts as fuzzing for NFR-07.
+- OI-326: the STEP mutation run reaches the advisory 24 CPU hours only with a time budget: about an hour a night (for example a mutant count of 50,000, or a run until a time) would take 24 nights. The owner chooses the budget and whether it counts as fuzzing for NFR-07.
 - OI-327: the export acknowledgement file (`settings.toml` in the configuration folder) has no fuzz target. It is read with the `toml` crate and looked up through optional values only, and a corpus test covers a damaged file (`req_gc_16_a_bad_settings_file_asks_again_with_a_message_and_is_kept_and_other_keys_survive`). A target would need `openchuck-app` in the fuzz workspace and a pure entry point for the read. The owner decides whether it is needed for the release.
-- OI-328: whether the nightly fuzz job uses all the runner's cores (`-fork`), which brings the 24 hours in about 6 nights instead of 24.
+- OI-328: whether the nightly fuzz job uses all the runner's cores (`-fork`), which brings the advisory 24 hours in about 6 nights instead of 24.
 - OI-329: the first nightly run after the merge: the three new targets, the corpus cache, the annotations and the seeded STEP run; then the first update of the totals from the annotations.
