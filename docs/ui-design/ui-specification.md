@@ -229,6 +229,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Tool | Grey body, lilac tip | |
 | Working selection | Blue `#3d8bff` at 40% | Fill (OI-163, settled) |
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
+| Hovered or selected edge | Hover yellow `#ffe066`; selected in the working selection's blue `#3d8bff` or the shown set's swatch | Line 2 pixels wide hovered, 3 pixels selected, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
 | Saved set | Its own swatch from a fixed set of eight | Fill when shown |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |

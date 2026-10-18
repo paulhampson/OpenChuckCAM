@@ -525,3 +525,55 @@ fn box_edges() -> Vec<[u32; 2]> {
     }
     edges
 }
+
+/// Blue pixels of `pixels`.
+fn blue_pixels(pixels: &[[u8; 4]]) -> usize {
+    pixels
+        .iter()
+        .filter(|p| p[2] > 200 && p[0] < 60 && p[1] < 60)
+        .count()
+}
+
+#[test]
+fn req_ui_04_req_nfr_15_a_wide_line_is_as_wide_as_asked_whatever_the_zoom() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // A line along X through the middle of the view, drawn as a hairline and
+    // then 6 pixels wide; the view is 64 pixels, and so is the viewport.
+    let line = [Point3::new(-20.0, 0.0, 0.0), Point3::new(20.0, 0.0, 0.0)];
+    let draw = |width: f32, zoom: f64| {
+        let mut scene = Scene::default();
+        scene.add_wide_polyline(&line, BLUE, true, width);
+        let mut f = frame(
+            StandardView::Front,
+            Projection::Orthographic,
+            DisplayMode::Shaded,
+            &scene,
+        );
+        f.viewport = [SIZE as f32, SIZE as f32];
+        f.camera.zoom(zoom);
+        let pixels = render(&device, &queue, &scene, &f);
+        // The rows the line covers, and how many pixels it paints.
+        let rows = (0..SIZE)
+            .filter(|y| (0..SIZE).any(|x| blue_pixels(&[pixels[(y * SIZE + x) as usize]]) == 1))
+            .count();
+        (rows, blue_pixels(&pixels))
+    };
+    let (hair_rows, hair) = draw(0.0, 1.0);
+    let (wide_rows, wide) = draw(6.0, 1.0);
+    assert!(
+        hair_rows <= 2 && hair > 10,
+        "hairline {hair_rows} rows {hair}"
+    );
+    assert!(
+        (5..=8).contains(&wide_rows) && wide > 4 * hair,
+        "wide {wide_rows} rows {wide}"
+    );
+    // Zooming in does not make it wider.
+    let (zoomed_rows, _) = draw(6.0, 0.5);
+    assert!(
+        (5..=8).contains(&zoomed_rows),
+        "zoomed {zoomed_rows} rows, not {wide_rows}"
+    );
+}

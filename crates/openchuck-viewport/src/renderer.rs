@@ -15,7 +15,7 @@ use crate::camera::{
 use crate::scene::{Colour, DisplayMode, Scene, Slot, wireframe_indices};
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, a colour and the eye.
-const UNIFORM_SIZE: u64 = 96;
+const UNIFORM_SIZE: u64 = 112;
 
 /// What a frame needs besides the scene.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -26,6 +26,9 @@ pub struct Frame {
     pub aspect: f64,
     /// How meshes are drawn.
     pub mode: DisplayMode,
+    /// The viewport's size in logical pixels, which a wide line
+    /// ([`crate::LineItem::width`]) is measured in.
+    pub viewport: [f32; 2],
     /// The rigid transform of each [`Slot`], indexed by [`Slot::index`]: the
     /// tool's placement and the workpiece's turn with A. Items in a slot are
     /// drawn as if their points were moved by it.
@@ -46,6 +49,8 @@ impl Frame {
             camera,
             aspect,
             mode,
+            // Until the front end says, the view is taken as 1000 pixels wide.
+            viewport: [1000.0, (1000.0 / aspect.max(1e-6)) as f32],
             transforms: [IDENTITY; Slot::COUNT],
         }
     }
@@ -120,6 +125,8 @@ struct GpuLines {
     vertices: wgpu::Buffer,
     count: u32,
     on_top: bool,
+    /// Wide, so drawn as quads; see [`crate::LineItem::width`].
+    width: f32,
     uniform: Uniform,
 }
 
@@ -133,6 +140,8 @@ pub struct Renderer {
     edges: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     lines_on_top: wgpu::RenderPipeline,
+    wide: wgpu::RenderPipeline,
+    wide_on_top: wgpu::RenderPipeline,
     highlight: wgpu::RenderPipeline,
     glass: wgpu::RenderPipeline,
     layers: [GpuLayer; 5],
@@ -182,6 +191,13 @@ impl Renderer {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &attributes,
         })];
+        // A wide line reads the two ends of its segment as one instance.
+        let wide_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        let wide_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: 24,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wide_attributes,
+        })];
         let make = |label: &str,
                     vertex: &str,
                     fragment: &str,
@@ -189,6 +205,11 @@ impl Renderer {
                     compare: wgpu::CompareFunction,
                     write: bool,
                     bias: wgpu::DepthBiasState| {
+            let buffers = if vertex == "vs_wide" {
+                &wide_buffers
+            } else {
+                &buffers
+            };
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&pipeline_layout),
@@ -196,7 +217,7 @@ impl Renderer {
                     module: &module,
                     entry_point: Some(vertex),
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &buffers,
+                    buffers,
                 },
                 primitive: wgpu::PrimitiveState {
                     topology,
@@ -258,6 +279,24 @@ impl Renderer {
             ),
             lines_on_top: make(
                 "guides", "vs_line", "fs_line", line_list, Always, false, none,
+            ),
+            wide: make(
+                "wide lines",
+                "vs_wide",
+                "fs_line",
+                triangles,
+                LessEqual,
+                true,
+                none,
+            ),
+            wide_on_top: make(
+                "wide guides",
+                "vs_wide",
+                "fs_line",
+                triangles,
+                Always,
+                false,
+                none,
             ),
             highlight: make(
                 "highlight",
@@ -325,6 +364,7 @@ impl Renderer {
                 // An odd last point has no partner and is left out.
                 count: u32::try_from(l.segments.len() & !1).unwrap_or(!1),
                 on_top: l.on_top,
+                width: l.width,
                 uniform: self.uniform(device, l.colour),
             })
             .collect();
@@ -358,28 +398,29 @@ impl Renderer {
             })
             .collect();
         #[allow(clippy::cast_possible_truncation)]
-        let write = |u: &Uniform, slot: Slot| {
+        let write = |u: &Uniform, slot: Slot, width: f32| {
             let Some((matrix, eye)) = per_slot.get(slot.index()) else {
                 return;
             };
-            let mut floats = Vec::with_capacity(24);
+            let mut floats = Vec::with_capacity(28);
             floats.extend(matrix.iter().flatten());
             floats.extend(u.colour);
             floats.extend(eye);
             floats.push(w as f32);
+            floats.extend([width, frame.viewport[0], frame.viewport[1], 0.0]);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
         };
         for layer in &mut self.layers {
             for mesh in &mut layer.meshes {
-                write(&mesh.fill, mesh.slot);
-                write(&mesh.edges, mesh.slot);
+                write(&mesh.fill, mesh.slot, 0.0);
+                write(&mesh.edges, mesh.slot, 0.0);
                 if frame.mode == DisplayMode::Wireframe && mesh.wireframe.is_none() {
                     mesh.wireframe =
                         index_buffer(device, "wireframe", &wireframe_indices(&mesh.indices));
                 }
             }
             for lines in &layer.lines {
-                write(&lines.uniform, lines.slot);
+                write(&lines.uniform, lines.slot, lines.width);
             }
         }
     }
@@ -429,14 +470,21 @@ impl Renderer {
                     .iter()
                     .filter(|l| l.on_top == on_top)
                 {
-                    pass.set_pipeline(if on_top {
-                        &self.lines_on_top
-                    } else {
-                        &self.lines
+                    let wide = lines.width > 1.0;
+                    pass.set_pipeline(match (wide, on_top) {
+                        (false, false) => &self.lines,
+                        (false, true) => &self.lines_on_top,
+                        (true, false) => &self.wide,
+                        (true, true) => &self.wide_on_top,
                     });
                     pass.set_bind_group(0, &lines.uniform.bind_group, &[]);
                     pass.set_vertex_buffer(0, lines.vertices.slice(..));
-                    pass.draw(0..lines.count, 0..1);
+                    if wide {
+                        // Six corners for each segment.
+                        pass.draw(0..6, 0..lines.count / 2);
+                    } else {
+                        pass.draw(0..lines.count, 0..1);
+                    }
                 }
             }
         }

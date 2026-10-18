@@ -149,6 +149,7 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
                 colour,
                 on_top: true,
                 slot: Slot::Part,
+                width: 0.0,
             });
         }
     }
@@ -513,6 +514,7 @@ impl Viewport {
         self.pick(ui, &response, rect);
 
         let mut frame = Frame::new(self.camera, self.aspect, self.mode);
+        frame.viewport = [rect.width(), rect.height()];
         frame.set_transform(Slot::Part, self.part_transform);
         frame.set_transform(Slot::Tool, self.tool_transform);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(

@@ -214,39 +214,148 @@ pub struct EdgeHit {
     pub point: Point3,
 }
 
-/// Polylines with their bounds, for picking edges near a ray (UI-04 for
-/// B-rep edges and mesh edges; slice 11 item 5).
+/// Polylines with a bounding hierarchy over their segments, for picking
+/// edges near a ray (UI-04 for B-rep edges and mesh edges; slice 11 item 5;
+/// OI-243).
 ///
-/// Each polyline is tested segment by segment, after a test against its box
-/// grown by the tolerance; the drawn edges of a part number in the thousands,
-/// not millions, so no hierarchy is built.
+/// The segments of every polyline sit in a binary tree of boxes, split at
+/// the median of the longest axis, so a pick visits only the boxes the ray
+/// passes within reach of, however many edges a scan draws (hundreds of
+/// thousands). The result does not depend on the tree: of equally near
+/// segments the nearer to the origin wins, then the lower edge, then the
+/// lower segment (NFR-06).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EdgePicker {
     polylines: Vec<Vec<Point3>>,
-    boxes: Vec<Aabb>,
+    /// Every segment as `(edge, segment)`, in the order the leaves hold them.
+    segments: Vec<(u32, u32)>,
+    /// The tree, root first; empty when there is no segment.
+    nodes: Vec<EdgeNode>,
+}
+
+/// The most segments a leaf of the edge hierarchy holds.
+const LEAF_SEGMENTS: usize = 4;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct EdgeNode {
+    bounds: Aabb,
+    /// For a leaf, the first of its segments; for an inner node, the index
+    /// of its right child (the left child follows the node).
+    first: u32,
+    /// The number of segments of a leaf, or 0 for an inner node.
+    count: u32,
 }
 
 impl EdgePicker {
     /// Takes the polylines. Fails when a point is not finite; a polyline of
     /// fewer than two points can never be picked.
     pub fn new(polylines: Vec<Vec<Point3>>) -> Result<Self> {
-        let mut boxes = Vec::with_capacity(polylines.len());
+        let mut segments: Vec<(u32, u32)> = Vec::new();
         for (i, line) in polylines.iter().enumerate() {
-            let mut min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
-            let mut max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-            for p in line {
-                if !p.is_finite() {
-                    return Err(Error::invalid(
-                        format!("edge {i}"),
-                        "every point must be finite",
-                    ));
-                }
-                min = Point3::new(min.x.min(p.x), min.y.min(p.y), min.z.min(p.z));
-                max = Point3::new(max.x.max(p.x), max.y.max(p.y), max.z.max(p.z));
+            if line.iter().any(|p| !p.is_finite()) {
+                return Err(Error::invalid(
+                    format!("edge {i}"),
+                    "every point must be finite",
+                ));
             }
-            boxes.push(Aabb { min, max });
+            let edge = u32::try_from(i)
+                .map_err(|_| Error::invalid("edges", "there are too many edges to pick"))?;
+            for segment in 0..line.len().saturating_sub(1) {
+                segments.push((edge, segment as u32));
+            }
         }
-        Ok(Self { polylines, boxes })
+        let mut picker = Self {
+            polylines,
+            segments,
+            nodes: Vec::new(),
+        };
+        if !picker.segments.is_empty() {
+            let end = picker.segments.len();
+            picker.build(0, end);
+        }
+        Ok(picker)
+    }
+
+    /// The ends of segment `index` of the hierarchy's order.
+    fn ends(&self, index: usize) -> Option<(Point3, Point3)> {
+        let &(edge, segment) = self.segments.get(index)?;
+        let line = self.polylines.get(edge as usize)?;
+        let i = segment as usize;
+        Some((*line.get(i)?, *line.get(i + 1)?))
+    }
+
+    /// Builds the node over segments `start..end` and its children after it,
+    /// and returns its index.
+    fn build(&mut self, start: usize, end: usize) -> usize {
+        let mut bounds = Aabb {
+            min: Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY),
+            max: Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+        };
+        for index in start..end {
+            if let Some((a, c)) = self.ends(index) {
+                for p in [a, c] {
+                    bounds.min = Point3::new(
+                        bounds.min.x.min(p.x),
+                        bounds.min.y.min(p.y),
+                        bounds.min.z.min(p.z),
+                    );
+                    bounds.max = Point3::new(
+                        bounds.max.x.max(p.x),
+                        bounds.max.y.max(p.y),
+                        bounds.max.z.max(p.z),
+                    );
+                }
+            }
+        }
+        let me = self.nodes.len();
+        let count = end - start;
+        if count <= LEAF_SEGMENTS {
+            self.nodes.push(EdgeNode {
+                bounds,
+                first: start as u32,
+                count: count as u32,
+            });
+            return me;
+        }
+        self.nodes.push(EdgeNode {
+            bounds,
+            first: 0,
+            count: 0,
+        });
+        // Split at the median of the segment midpoints along the longest
+        // axis; the segment's own number breaks ties, so the tree is the same
+        // on every run.
+        let size = bounds.max - bounds.min;
+        let axis = if size.x >= size.y && size.x >= size.z {
+            0
+        } else if size.y >= size.z {
+            1
+        } else {
+            2
+        };
+        let polylines = &self.polylines;
+        let middle = |&(edge, segment): &(u32, u32)| {
+            let line = polylines.get(edge as usize);
+            let at = |i: usize| line.and_then(|l| l.get(i)).copied().unwrap_or_default();
+            let (a, c) = (at(segment as usize), at(segment as usize + 1));
+            match axis {
+                0 => a.x + c.x,
+                1 => a.y + c.y,
+                _ => a.z + c.z,
+            }
+        };
+        let mid = start + count / 2;
+        if let Some(range) = self.segments.get_mut(start..end) {
+            range.select_nth_unstable_by(count / 2, |x, y| {
+                middle(x).total_cmp(&middle(y)).then(x.cmp(y))
+            });
+        }
+        self.build(start, mid);
+        let right = self.build(mid, end);
+        if let Some(node) = self.nodes.get_mut(me) {
+            node.first = right as u32;
+        }
+        me
     }
 
     /// Number of polylines.
@@ -297,10 +406,15 @@ impl EdgePicker {
         }
         let d = direction * (1.0 / length);
         let mut best: Option<(f64, EdgeHit)> = None;
-        for (edge, (line, b)) in self.polylines.iter().zip(&self.boxes).enumerate() {
-            if line.len() < 2 {
+        let mut stack: Vec<usize> = Vec::new();
+        if !self.nodes.is_empty() {
+            stack.push(0);
+        }
+        while let Some(index) = stack.pop() {
+            let Some(node) = self.nodes.get(index) else {
                 continue;
-            }
+            };
+            let b = &node.bounds;
             // The farthest the box is from the origin bounds the reach there.
             let far = [b.min.x, b.max.x]
                 .iter()
@@ -312,8 +426,18 @@ impl EdgePicker {
             if !ray_meets_box(origin, d, b, reach, max_distance) {
                 continue;
             }
-            for (segment, pair) in line.windows(2).enumerate() {
-                let &[a, c] = pair else { continue };
+            if node.count == 0 {
+                stack.push(node.first as usize);
+                stack.push(index + 1);
+                continue;
+            }
+            let first = node.first as usize;
+            for position in first..first + node.count as usize {
+                let (Some(&(edge, segment)), Some((a, c))) =
+                    (self.segments.get(position), self.ends(position))
+                else {
+                    continue;
+                };
                 let (t, q) = ray_segment(origin, d, a, c);
                 if t > max_distance {
                     continue;
@@ -325,14 +449,19 @@ impl EdgePicker {
                 }
                 let share = offset / allowed;
                 let better = best.is_none_or(|(s, h)| {
-                    share.total_cmp(&s).then(t.total_cmp(&h.distance)).is_lt()
+                    share
+                        .total_cmp(&s)
+                        .then(t.total_cmp(&h.distance))
+                        .then((edge as usize).cmp(&h.edge))
+                        .then((segment as usize).cmp(&h.segment))
+                        .is_lt()
                 });
                 if better {
                     best = Some((
                         share,
                         EdgeHit {
-                            edge,
-                            segment,
+                            edge: edge as usize,
+                            segment: segment as usize,
                             distance: t,
                             offset,
                             point: q,
