@@ -95,6 +95,21 @@ impl Rig {
     }
 
     /// Whether some text on screen contains `needle`.
+    /// Every text painted, with its top edge: what a failed `shows` was up
+    /// against.
+    pub(super) fn texts(&self) -> Vec<(String, f32)> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(t) => out.push((t.galley.text().to_string(), t.pos.y)),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
     pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {

@@ -19,6 +19,10 @@ use crate::import_panel::ImportSession;
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
     let mut rig = Rig::cube(name, None);
+    // The playback tab is a scroll area, and a row below the dock's edge is
+    // not painted. "Go to move" was missing on Windows at the default dock
+    // height (196), so give the dock the height the key tests use.
+    rig.shell.settings.dock.size = 380.0;
     rig.shell.generate(true);
     let deadline = Instant::now() + Duration::from_secs(120);
     while rig.shell.run.last().is_none_or(|r| r.simulation.is_none()) {
@@ -91,7 +95,11 @@ fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons(
     let mut rig = simulated("sim-dock");
     assert_eq!(rig.shell.dock_tab, DockTab::Playback);
     for text in ["Speed", "1000×", "10 000×", "Whole program", "Go to move"] {
-        assert!(rig.shows(text), "{text} is on screen");
+        assert!(
+            rig.shows(text),
+            "{text} is on screen; painted: {:?}",
+            rig.texts()
+        );
     }
     assert!(rig.shows("The simulation results do not change"));
     assert!(!rig.shows("Max"), "there is no Max speed");
