@@ -17,7 +17,7 @@ Every lane adds a row at the end of the decision index (`docs/decisions/README.m
 ## Limits
 
 - GitHub's own mergeability check and its merge button do not apply `.gitattributes` merge drivers. A pull request can still show as conflicting on GitHub until its session merges `main` locally; that merge now resolves itself, but it is still a push and a CI run.
-- `cargo xtask records` checks that each record has an index row, not the order of the rows or a duplicate row (OI-231).
+- `cargo xtask records` checks that each record has an index row, not the order of the rows or a duplicate row (OI-231). *Update, [decision 0130](0130-register-checks.md) (proposed):* it did not check the index at all; it now checks both registers, and the rules for editing them are in that record.
 
 ## Alternatives considered
 
