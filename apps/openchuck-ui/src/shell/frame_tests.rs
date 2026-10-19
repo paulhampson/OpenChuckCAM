@@ -457,7 +457,7 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
         "END VIEW FROM +X",
         "A+ turns the top toward the front",
         "Stock length 14.000",
-        "Chuck",
+        "Chuck exclusion zone (schematic)",
         "A axis",
         "Clearance R",
         "Rotary axis",

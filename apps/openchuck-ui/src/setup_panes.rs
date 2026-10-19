@@ -237,7 +237,7 @@ fn front_bounds(f: &FrontPane) -> ((f64, f64), (f64, f64)) {
     let mut v = (0.0_f64, 0.0_f64);
     let boxes = [
         f.stock.map(|r| (r.h0, r.h1, r.v0, r.v1)),
-        f.chuck.map(|r| (r.h0, r.h1, r.v0, r.v1)),
+        f.exclusion.map(|r| (r.h0, r.h1, r.v0, r.v1)),
         f.clearance.map(|(r, _)| (r.h0, r.h1, r.v0, r.v1)),
         f.safe_z.map(|z| (h.0, h.1, 0.0, z)),
         f.travel_z.map(|z| (h.0, h.1, 0.0, z)),
@@ -294,7 +294,7 @@ fn front_solid(
     points
 }
 
-/// The front view: the stock, part, chuck, rotary axis, work zero,
+/// The front view: the stock, part, chuck exclusion zone, rotary axis, work zero,
 /// clearance, safe Z, travel limit, dimensions, and the held regions and
 /// tabs in section (11.3, 7.5). Returns the solids' screen outlines, for
 /// hover.
@@ -309,8 +309,6 @@ fn front(
     let (h, v) = front_bounds(f);
     let map = Map::fit(rect, h, v);
     let (left, right) = (map.at(h.0, 0.0).x, map.at(h.1, 0.0).x);
-    let muted = roles::OVERLAY_MUTED;
-
     if let Some(z) = f.travel_z {
         let y = map.at(0.0, z).y;
         let band = Rect::from_min_max(pos2(left, y - BAND), pos2(right, y));
@@ -369,21 +367,17 @@ fn front(
             to_color32(roles::CLEARANCE),
         );
     }
-    if let Some(c) = f.chuck {
+    if let Some(c) = f.exclusion {
+        // A red hatched zone with a red outline, as the travel limit's
+        // band is hatched; no chuck is drawn (decision 0129, OI-380).
         let r = Rect::from_two_pos(map.at(c.h0, c.v1), map.at(c.h1, c.v0));
-        painter.rect_filled(r, 0.0, Color32::from_rgb(0x3a, 0x3f, 0x46));
+        let red = to_color32(roles::AVOID);
+        hatch(&painter, r, red, false);
         painter.rect_stroke(
             r,
             0.0,
-            Stroke::new(roles::LINE_WIDTH, roles::OVERLAY_BORDER),
+            Stroke::new(roles::LINE_WIDTH, red),
             egui::StrokeKind::Inside,
-        );
-        label(
-            &painter,
-            r.center_bottom() + vec2(0.0, 14.0),
-            Align2::CENTER_CENTER,
-            "Chuck",
-            muted,
         );
     }
     if f.part.len() > 1 {
@@ -776,6 +770,16 @@ pub fn swatch(painter: &Painter, r: Rect, entry: LegendEntry) {
             let band = Rect::from_center_size(r.center(), vec2(r.width(), 8.0));
             hatch(painter, band, to_color32(roles::AVOID), false);
         }
+        LegendEntry::ChuckZone => {
+            let red = to_color32(roles::AVOID);
+            hatch(painter, r, red, false);
+            painter.rect_stroke(
+                r,
+                0.0,
+                Stroke::new(roles::LINE_WIDTH, red),
+                egui::StrokeKind::Inside,
+            );
+        }
         LegendEntry::YIntoScreen => {
             let green = to_color32(roles::WORK_Y);
             let c = r.center();
@@ -797,7 +801,10 @@ pub fn swatch(painter: &Painter, r: Rect, entry: LegendEntry) {
 /// The legend strip's width for a swatch: lines are wider than boxes.
 pub fn swatch_width(entry: LegendEntry) -> f32 {
     match entry {
-        LegendEntry::HeldRegion | LegendEntry::Tab | LegendEntry::YIntoScreen => 14.0,
+        LegendEntry::HeldRegion
+        | LegendEntry::Tab
+        | LegendEntry::ChuckZone
+        | LegendEntry::YIntoScreen => 14.0,
         _ => 22.0,
     }
 }
@@ -1008,6 +1015,7 @@ mod tests {
                 LegendEntry::Stock,
                 LegendEntry::Clearance,
                 LegendEntry::TravelLimit,
+                LegendEntry::ChuckZone,
                 LegendEntry::YIntoScreen,
                 LegendEntry::HeldRegion,
                 LegendEntry::Tab,

@@ -17,7 +17,7 @@ use openchuck_app::scene::{SceneView, WorkholdingItem};
 use openchuck_app::setup::{
     Aabb, HeldRegion, Millimetres, Point3, Stock, Tab, TabLayout, TabShape, Workholding,
 };
-use openchuck_app::setup_panes::{CHUCK_LENGTH, EndStock, LegendEntry, setup_panes};
+use openchuck_app::setup_panes::{EXCLUSION_LENGTH, EndStock, LegendEntry, setup_panes};
 use openchuck_app::workholding_view::display_items;
 use openchuck_app::{Application, Command, Threads};
 use openchuck_types::setup::PartExtent;
@@ -115,10 +115,11 @@ fn req_ui_03_the_front_view_draws_stock_clearance_safe_z_and_dimensions() {
         (stock.h0, stock.h1, stock.v0, stock.v1),
         (-16.0, 16.0, -13.0, 13.0)
     );
-    // The chuck stands at the low-X end, taller than the stock.
-    let chuck = f.chuck.unwrap();
-    assert_eq!((chuck.h0, chuck.h1), (-16.0 - CHUCK_LENGTH, -16.0));
-    assert!(chuck.v1 > stock.v1);
+    // The chuck is an exclusion zone beside the low-X end of the stock, as
+    // tall as the stock: no chuck outline is invented (OI-380).
+    let chuck = f.exclusion.unwrap();
+    assert_eq!((chuck.h0, chuck.h1), (-16.0 - EXCLUSION_LENGTH, -16.0));
+    assert_eq!((chuck.v0, chuck.v1), (stock.v0, stock.v1));
     // The clearance and safe Z are the machine's defaults (SET-06).
     let machine = app.project().machine().unwrap().clearance;
     assert_eq!(f.safe_z, Some(machine.safe_z.0));
@@ -140,6 +141,7 @@ fn req_ui_03_the_front_view_draws_stock_clearance_safe_z_and_dimensions() {
             LegendEntry::Stock,
             LegendEntry::Clearance,
             LegendEntry::TravelLimit,
+            LegendEntry::ChuckZone,
             LegendEntry::YIntoScreen,
         ]
     );
@@ -223,6 +225,7 @@ fn req_ui_03_the_a_arrow_follows_the_machine_and_is_absent_without_one() {
         [
             LegendEntry::RotaryAxis,
             LegendEntry::Stock,
+            LegendEntry::ChuckZone,
             LegendEntry::YIntoScreen
         ]
     );
@@ -241,7 +244,7 @@ fn req_nfr_07_a_setup_without_stock_or_part_and_an_unknown_setup_draw_what_exist
         ..SceneView::default()
     };
     let panes = setup_panes(app.project(), &bare, &[], &[]).unwrap();
-    assert!(panes.front.stock.is_none() && panes.front.chuck.is_none());
+    assert!(panes.front.stock.is_none() && panes.front.exclusion.is_none());
     assert!(panes.end.stock.is_none() && panes.end.part_radius.is_none());
     // The axis and the clearance still show, round the work zero.
     assert!(panes.front.axis.0 < 0.0 && panes.front.axis.1 > 0.0);
