@@ -40,6 +40,7 @@ use crate::import_panel::{ImportAction, ImportSession};
 use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
 use crate::playback_panel::PlaybackPanel;
+use crate::results_panel::ResultsPanel;
 use crate::run_panel::RunPanel;
 use crate::selection_panel::SelectionPanel;
 use crate::viewport::Viewport;
@@ -105,8 +106,6 @@ enum Dialog {
     /// The folder has no project: offer to create one there (decision record
     /// 0008 item 8).
     OfferCreate { folder: PathBuf },
-    /// Ask for a model file to import, typed or picked (OI-127).
-    ModelFile { path: String },
     /// The project has unsaved changes.
     Unsaved(Next),
     /// Rename an item (F2).
@@ -159,6 +158,8 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
+    /// The results inspector of the Simulate step (SIM-05, SIM-07).
+    results: ResultsPanel,
     /// The workflow step open (UI-10).
     step: Step,
     /// The jobs seen on the event stream (the Jobs tab).
@@ -230,6 +231,7 @@ impl Shell {
             pending_field: None,
             selection: SelectionPanel::default(),
             run: RunPanel::default(),
+            results: ResultsPanel::default(),
             export: ExportPanel::default(),
             text_had_focus: false,
             play: PlaybackPanel::default(),
@@ -545,9 +547,7 @@ impl Shell {
     /// Opens the import dialog (Ctrl I, the Model "+", the workflow bar).
     fn import_model(&mut self) {
         if self.app.is_some() && self.import.is_none() {
-            self.dialog = Some(Dialog::ModelFile {
-                path: String::new(),
-            });
+            self.import = Some(ImportSession::blank());
         }
     }
 
@@ -856,6 +856,10 @@ impl Shell {
                 self.select(Selection::Operation(id));
                 return;
             }
+            TreeAction::ToggleShown(id) => {
+                self.play.toggle_shown(id);
+                return;
+            }
             TreeAction::SelectTool(id) => {
                 self.select(Selection::Tool(id));
                 return;
@@ -941,6 +945,7 @@ impl Shell {
     fn run_frame(&mut self, ctx: &egui::Context) {
         let mut error = None;
         let mut added = None;
+        let windowed = self.window_open();
         if let Some(app) = &mut self.app {
             if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
                 self.jobs.set_summary(job, run_summary(&run));
@@ -958,6 +963,9 @@ impl Shell {
                 self.status = status;
             }
             error = error.or(outcome.error);
+            if self.step == Step::Simulate && !windowed {
+                self.play.handle_keys(ctx);
+            }
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
@@ -1067,12 +1075,33 @@ impl Shell {
     /// Whether a dialog or a floating window (export, results, add operation)
     /// is in front of the view.
     fn window_open(&self) -> bool {
-        self.dialog.is_some() || self.export.is_open() || self.run.has_window()
+        self.dialog.is_some()
+            || self.export.is_open()
+            || self.run.has_window()
+            || self.import.is_some()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
     /// the viewport, and adds the model or closes.
     fn import_frame(&mut self, ctx: &egui::Context) {
+        // A dropped file opens the import window on it (specification 11.2).
+        let dropped = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .first()
+                .map(|f| f.path().to_path_buf())
+                .filter(|p| !p.as_os_str().is_empty())
+        });
+        if let Some(file) = dropped {
+            match (&self.app, &mut self.import) {
+                (Some(app), None) => self.import = Some(ImportSession::new(app, file)),
+                (Some(app), Some(session)) if !session.is_adding() => session.set_path(app, file),
+                (Some(_), Some(_)) => {}
+                (None, _) => {
+                    self.status = "Open or create a project before importing a model.".to_owned();
+                }
+            }
+        }
         let (Some(app), Some(session)) = (&self.app, &mut self.import) else {
             return;
         };
@@ -1085,6 +1114,7 @@ impl Shell {
                 self.viewport.set_scene(preview.scene.clone(), true);
             }
         }
+        session.overlays(ctx, self.viewport.last_rect);
         let action = session.window(ctx, app);
         match action {
             ImportAction::None => {}
@@ -1176,38 +1206,6 @@ impl Shell {
                         folder,
                         name,
                     });
-                }
-            }
-            Dialog::ModelFile { mut path } => {
-                ui.heading("Import model");
-                ui.label("Model file (STL), inside or beside the project folder:");
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut path);
-                    if ui.button("Browse…").clicked()
-                        && let Some(picked) = pick_model(&path, self.app.as_ref())
-                    {
-                        path = picked;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    let ok = ui
-                        .add_enabled(!path.trim().is_empty(), egui::Button::new("Check"))
-                        .clicked();
-                    if ui.button("Cancel").clicked() {
-                        close = true;
-                    }
-                    if ok {
-                        close = true;
-                        let file = PathBuf::from(path.trim());
-                        action = Some(Box::new(move |s: &mut Self| {
-                            if let Some(app) = &s.app {
-                                s.import = Some(ImportSession::new(app, file));
-                            }
-                        }));
-                    }
-                });
-                if !close {
-                    self.dialog = Some(Dialog::ModelFile { path });
                 }
             }
             Dialog::OfferCreate { folder } => {
@@ -1375,7 +1373,7 @@ fn pick_folder(current: &str) -> Option<String> {
 
 /// Asks the platform's file dialog for a model file, starting near `current`
 /// or in the project folder (OI-127).
-fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
+pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
     let mut dialog = rfd::FileDialog::new()
         .set_title("Import model")
         .add_filter("STL model", &["stl", "STL"]);
@@ -1410,6 +1408,8 @@ enum TreeAction {
     Delete(OperationId),
     /// Show this operation's parameters.
     Select(OperationId),
+    /// Show or hide this operation's path in the view (Simulate).
+    ToggleShown(OperationId),
     /// Show this tool's dimensions and profile.
     SelectTool(ToolId),
     /// Show this model's units, placement and checks.
@@ -1660,3 +1660,6 @@ mod keys_tests;
 
 #[cfg(test)]
 mod frame_tests;
+
+#[cfg(test)]
+mod simulate_tests;

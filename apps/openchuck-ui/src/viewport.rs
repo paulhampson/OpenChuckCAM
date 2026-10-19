@@ -512,6 +512,9 @@ pub struct Viewport {
     pub(crate) legend_open: bool,
     /// The "Show or hide" list is open (V).
     pub(crate) show_menu_open: bool,
+    /// Where the view was drawn last frame (the import preview's overlays
+    /// sit at its corners).
+    pub(crate) last_rect: Rect,
 }
 
 /// Where the tool is, for the readout (7.2): X, Y, Z and A as the program
@@ -593,6 +596,7 @@ impl Viewport {
             tool_readout: None,
             legend_open: false,
             show_menu_open: false,
+            last_rect: Rect::NOTHING,
         }
     }
 
@@ -916,6 +920,7 @@ impl Viewport {
 
     /// Draws the view in `rect`, with its overlays, and handles its input.
     fn show_view_in(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        self.last_rect = rect;
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         paint_gradient(ui.painter(), rect);
         if !self.available {

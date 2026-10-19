@@ -436,3 +436,51 @@ fn req_ui_05_the_sets_panel_selects_a_set_in_view_and_takes_its_swatch_colour() 
     assert_eq!(stored, None);
     rig.cleanup();
 }
+
+/// A set made on an older version of the model is not loaded as the working
+/// selection by "Reselect": its numbers may name other geometry now. It is
+/// drawn as a ghost, the user picks again and Replace set makes it current
+/// (specification 12.2; decision 0125).
+#[test]
+fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_ghost() {
+    use openchuck_app::project::{ContentHash, Item};
+    let mut rig = Rig::picking("reselect-stale");
+    let model = rig.model();
+    let app = rig.shell.app.as_mut().unwrap();
+    let id = app
+        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
+        .unwrap();
+    // The working selection is something else.
+    rig.shell.selection.select_set_in_view_for_test(app, id);
+    assert!(!rig.shell.selection.working_triangles().is_empty());
+    // The set becomes stale: made on another version of the file.
+    let mut old = app.project().selection_sets()[0].clone();
+    old.model_hash = ContentHash::of_bytes(b"an older version");
+    app.execute(Command::Replace(Item::SelectionSet(old)))
+        .unwrap();
+    let summary = app.selection_summaries(&[])[0].clone();
+    assert!(summary.problem.is_some());
+    rig.shell.selection.select_set_in_view_for_test(app, id);
+    // Nothing is loaded; the set is shown, with what to do next.
+    assert!(rig.shell.selection.working_triangles().is_empty());
+    assert_eq!(rig.shell.selection.shown_set(), Some(id));
+    assert!(
+        rig.shell
+            .selection
+            .notice()
+            .is_some_and(|m| m.contains("Pick the new selection, then Replace set"))
+    );
+    // The overlay draws the old selection hatched (a ghost), not in the
+    // working colour.
+    rig.shell.selection.mark_dirty_for_test();
+    let overlay = rig
+        .shell
+        .selection
+        .overlay(rig.shell.app.as_ref().unwrap(), rig.shell.viewport.view())
+        .expect("the overlay is rebuilt");
+    assert!(
+        overlay.meshes.iter().any(|m| m.hatch.is_some()),
+        "a ghost is hatched"
+    );
+    rig.cleanup();
+}

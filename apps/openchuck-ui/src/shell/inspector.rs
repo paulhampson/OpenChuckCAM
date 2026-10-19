@@ -12,7 +12,7 @@
 
 use eframe::egui::{self, RichText, Stroke};
 use openchuck_app::Command;
-use openchuck_app::overview::{ItemRef, ItemState, MessageAction, SetupPart, Severity};
+use openchuck_app::overview::{ItemRef, ItemState, MessageAction, SetupPart, Severity, Step};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{Item, Setup};
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
@@ -126,6 +126,10 @@ fn cause_text(cause: &str, state: ItemState) -> String {
 impl Shell {
     /// The inspector: the chosen item (specification section 8).
     pub(super) fn properties(&mut self, ui: &mut egui::Ui) {
+        if self.step == Step::Simulate {
+            self.results_inspector(ui);
+            return;
+        }
         match self.selected {
             Some(Selection::Operation(id)) => self.operation_properties(ui, id),
             Some(Selection::Tool(id)) => self.tool_properties(ui, id),
@@ -142,6 +146,16 @@ impl Shell {
             None => {
                 ui.weak("Choose an item in the project panel to see it here.");
             }
+        }
+    }
+
+    /// The results inspector of the Simulate step (specification 11.5).
+    fn results_inspector(&mut self, ui: &mut egui::Ui) {
+        let run = self.run.last().cloned();
+        let Some(app) = &mut self.app else { return };
+        if self.results.show(ui, app, run.as_ref()) {
+            self.play
+                .set_colour_by(self.results.colour_by, &mut self.viewport);
         }
     }
 
