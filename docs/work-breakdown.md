@@ -163,6 +163,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
+| XC | CI hygiene: `cargo xtask conflicts` fails on unresolved merge conflict markers in tracked files, wired into the CI fast checks and `all` (built 19 Oct 2026 on `claude/lane-xc-conflict-marker-check`; no requirement covers it directly, supports NFR-06; no decision record; no open items) | ██ | | | | |
 | T | 20 hardening and first release | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
@@ -206,6 +207,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
+| XC | Nothing |
 | T | Everything, including W and X1 to X9 |
 
 ### Project schema ordering

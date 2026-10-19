@@ -98,10 +98,9 @@ jobs:
               - 'deny.toml'
               - '.github/workflows/ci.yml'
               - '.github/actions/occt/**'
+            # `docs/**` so the conflict-marker check sees a docs-only change (lane XC).
             records:
-              - 'docs/requirements.md'
-              - 'docs/work-breakdown.md'
-              - 'docs/dependencies.md'
+              - 'docs/**'
               - 'testdata/**'
             gate3:
               - 'crates/openchuck-types/**'
@@ -444,6 +443,10 @@ jobs:
         id: testdata
         if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
         run: cargo xtask testdata
+      - name: Unresolved merge conflict markers
+        id: conflicts
+        if: always()
+        run: cargo xtask conflicts
       - name: Traceability report
         id: trace
         if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
@@ -502,6 +505,7 @@ jobs:
           LICENCES: ${{ steps.licences.outcome }}
           RECORDS_STEP: ${{ steps.records.outcome }}
           TESTDATA: ${{ steps.testdata.outcome }}
+          CONFLICTS: ${{ steps.conflicts.outcome }}
           TRACE: ${{ steps.trace.outcome }}
           DENY: ${{ steps.deny.outcome }}
           AUDIT: ${{ steps.audit.outcome }}
@@ -520,6 +524,7 @@ jobs:
           check "xtask licences" "$repo" "$LICENCES"
           check "xtask records" "$repo" "$RECORDS_STEP"
           check "xtask testdata" "$repo" "$TESTDATA"
+          check "xtask conflicts" true "$CONFLICTS"
           check "xtask trace" "$repo" "$TRACE"
           check "cargo deny" "$RUST" "$DENY"
           check "cargo audit" "$RUST" "$AUDIT"
