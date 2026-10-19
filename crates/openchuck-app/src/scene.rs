@@ -326,24 +326,21 @@ pub(crate) fn build_scene(
     }
 
     // The held regions and tabs, shaded beside the part (SET-09, OP-21;
-    // UI-03). A setup whose workholding cannot be built is noted, not hidden.
+    // UI-03). A setup whose workholding cannot be built draws none of it
+    // (7.5); the project's checks say why, as an error message with "Edit
+    // workholding", so the scene does not note it a second time.
     if let (Some(s), Some(extent)) = (chosen, part.as_ref())
         && !s.workholding.is_empty()
+        && let Ok((meshes, lines, solids)) =
+            crate::workholding_view::display_items(&s.workholding, s.stock.as_ref(), extent)
     {
-        match crate::workholding_view::display_items(&s.workholding, s.stock.as_ref(), extent) {
-            Ok((meshes, lines, solids)) => {
-                let first = view.meshes.len();
-                view.meshes.extend(meshes);
-                view.lines.extend(lines);
-                view.solids.extend(solids.into_iter().map(|mut solid| {
-                    solid.mesh += first;
-                    solid
-                }));
-            }
-            Err(e) => view
-                .notes
-                .push(format!("the workholding cannot be drawn: {e}")),
-        }
+        let first = view.meshes.len();
+        view.meshes.extend(meshes);
+        view.lines.extend(lines);
+        view.solids.extend(solids.into_iter().map(|mut solid| {
+            solid.mesh += first;
+            solid
+        }));
     }
 
     let mut bounds = part.map(|p| p.bounds);
