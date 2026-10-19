@@ -1130,3 +1130,119 @@ fn req_ui_05_mesh_edge_sets_are_checked_and_edited_by_kind() {
     assert!(err(app.edit_selection(id, SelectionEdit::Add(more.into()))).contains("has changed"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_nfr_04_req_ui_05_saving_a_set_is_a_reported_job_with_the_same_result() {
+    let (dir, mut app, _, model) = project("save-job");
+    let top = top_face(&app, model);
+    app.drain_events();
+    let job = app.start_save_selection("Top", model, top.clone()).unwrap();
+    // Nothing is stored until the caller finishes the save on its own thread.
+    let checked = job.wait().unwrap();
+    assert!(app.project().selection_sets().is_empty());
+    let events = app.drain_events();
+    assert!(
+        matches!(events.first(), Some(Event::JobStarted { .. })),
+        "{events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Event::JobFinished { error: None, .. })),
+        "{events:?}"
+    );
+    let id = app.finish_save_selection(checked).unwrap();
+    assert_eq!(
+        app.project().selection_sets()[0].target,
+        SelectionTarget::Triangles(top.clone())
+    );
+    // The synchronous call gives the same set apart from its fresh ID (GC-07).
+    let again = app.save_selection("Top", model, top).unwrap();
+    let sets = app.project().selection_sets();
+    assert_ne!(id, again);
+    assert_eq!(sets[0].target, sets[1].target);
+    assert_eq!(sets[0].model_hash, sets[1].model_hash);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_a_failing_or_cancelled_save_stores_nothing() {
+    let (dir, app, _, model) = project("save-job-fail");
+    // A bad target fails in the job, not before it.
+    let job = app
+        .start_save_selection("Far", model, BTreeSet::from([12u32]))
+        .unwrap();
+    assert!(err(job.wait()).contains("triangle 12"));
+    // A cancelled job gives a cancelled error, so there is nothing to store.
+    let job = app
+        .start_save_selection("Top", model, top_face(&app, model))
+        .unwrap();
+    job.cancel();
+    let _ = job.wait();
+    assert!(app.project().selection_sets().is_empty());
+    // No such model fails at once.
+    assert!(
+        app.start_save_selection("x", ModelId::new(), BTreeSet::from([0u32]))
+            .is_err()
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_req_ui_05_an_edit_of_the_target_is_a_job_and_the_rest_is_ready_at_once() {
+    use openchuck_app::EditStart;
+    let (dir, mut app, _, model) = project("edit-job");
+    let top = top_face(&app, model);
+    let id = app.save_selection("Top", model, top.clone()).unwrap();
+    let one: BTreeSet<u32> = top.iter().take(1).copied().collect();
+    assert!(matches!(
+        app.start_edit_selection(id, SelectionEdit::Rename("Roof".into()))
+            .unwrap(),
+        EditStart::Done(_)
+    ));
+    let EditStart::Checking(job) = app
+        .start_edit_selection(id, SelectionEdit::Remove(one.clone().into()))
+        .unwrap()
+    else {
+        panic!("a change of target is checked as a job");
+    };
+    let checked = job.wait().unwrap();
+    assert_eq!(app.project().selection_sets()[0].target.len(), top.len());
+    app.finish_edit_selection(checked).unwrap();
+    assert_eq!(
+        app.project().selection_sets()[0].target.len(),
+        top.len() - 1
+    );
+    // An edit that is wrong fails in the job.
+    let EditStart::Checking(job) = app
+        .start_edit_selection(id, SelectionEdit::Add(BTreeSet::from([12u32]).into()))
+        .unwrap()
+    else {
+        panic!("checked as a job");
+    };
+    assert!(err(job.wait()).contains("triangle 12"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_an_edit_made_from_an_older_set_is_refused_when_finished() {
+    use openchuck_app::EditStart;
+    let (dir, mut app, _, model) = project("edit-stale");
+    let top = top_face(&app, model);
+    let id = app.save_selection("Top", model, top.clone()).unwrap();
+    let one: BTreeSet<u32> = top.iter().take(1).copied().collect();
+    let EditStart::Checking(job) = app
+        .start_edit_selection(id, SelectionEdit::Remove(one.into()))
+        .unwrap()
+    else {
+        panic!("checked as a job");
+    };
+    let checked = job.wait().unwrap();
+    // The set is renamed while the check ran: finishing would undo the rename.
+    app.edit_selection(id, SelectionEdit::Rename("Roof".into()))
+        .unwrap();
+    assert!(err(app.finish_edit_selection(checked)).contains("changed while the edit"));
+    assert_eq!(app.project().selection_sets()[0].name, "Roof");
+    assert_eq!(app.project().selection_sets()[0].target.len(), top.len());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

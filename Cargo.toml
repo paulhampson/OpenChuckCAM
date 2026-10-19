@@ -113,6 +113,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.openchuck-testkit]
 opt-level = 3
+# The edge picker builds a hierarchy over hundreds of thousands of segments
+# and the pick budget is timed in tests (OI-243).
+[profile.dev.package.openchuck-geom]
+opt-level = 3
 [profile.dev.package.parry3d-f64]
 opt-level = 3
 [profile.dev.package.glamx]
