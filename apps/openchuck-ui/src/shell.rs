@@ -404,8 +404,19 @@ impl Shell {
         };
         let events = app.drain_events();
         if !events.is_empty() {
+            // Only the jobs the log lists change an item's state or a
+            // message; the quick ones (the stock at a playback move, a region
+            // pick) run most frames and must not rebuild the overview.
+            let listed = events.iter().any(|e| match e {
+                openchuck_app::Event::JobStarted { name, .. } => {
+                    openchuck_app::job_label(name).is_some()
+                }
+                openchuck_app::Event::JobProgress { job, .. }
+                | openchuck_app::Event::JobFinished { job, .. } => self.jobs.get(*job).is_some(),
+                _ => true,
+            });
             self.jobs.update(events);
-            self.overview_dirty = true;
+            self.overview_dirty |= listed;
         }
         if let Some(job) = &self.checks_job
             && let Some(result) = job.try_result()
@@ -1612,16 +1623,19 @@ fn run_summary(run: &openchuck_app::Regeneration) -> String {
     if run.simulation.is_some() {
         out.push_str(", simulated");
     }
+    // Only when an enabled operation follows the one it stopped after: G on
+    // the last operation leaves nothing stale.
     if let Some(last) = run.stopped_after {
-        let place = run
-            .project
-            .operations()
-            .iter()
-            .position(|o| o.id == last)
-            .map_or_else(String::new, |i| format!(" {}", i + 1));
-        out.push_str(&format!(
-            "; stopped after operation{place}, so later operations stay stale"
-        ));
+        let ops = run.project.operations();
+        let at = ops.iter().position(|o| o.id == last);
+        if let Some(i) = at
+            && ops.iter().skip(i + 1).any(|o| o.enabled)
+        {
+            out.push_str(&format!(
+                "; stopped after operation {}, so later operations stay stale",
+                i + 1
+            ));
+        }
     }
     out
 }
@@ -1780,6 +1794,32 @@ mod tests {
         );
         assert_eq!(press(Key::Y, Modifiers::COMMAND), (false, false, true));
         assert_eq!(press(Key::S, Modifiers::COMMAND), (true, false, false));
+    }
+
+    #[test]
+    fn req_ui_09_a_run_up_to_the_last_operation_does_not_say_later_ones_stay_stale() {
+        use std::sync::Arc;
+
+        use crate::testing::cube_project;
+
+        let (dir, mut app, op, _) = cube_project("run-summary");
+        let mut run = openchuck_app::Regeneration {
+            generated: vec![op],
+            stopped_after: Some(op),
+            project: Arc::new(app.project().clone()),
+            ..Default::default()
+        };
+        // The only operation: nothing after it stays stale.
+        assert_eq!(run_summary(&run), "Generated 1");
+        // With an enabled operation after it, the summary says so.
+        let copy = openchuck_app::duplicate_operation(app.project(), op).unwrap();
+        app.execute(copy).unwrap();
+        run.project = Arc::new(app.project().clone());
+        assert_eq!(
+            run_summary(&run),
+            "Generated 1; stopped after operation 1, so later operations stay stale"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
