@@ -55,7 +55,7 @@ fn problems(p: &ImportPreview) -> (usize, usize) {
         .scene
         .lines
         .iter()
-        .filter(|l| l.role == SceneRole::Problem)
+        .filter(|l| matches!(l.role, SceneRole::Problem | SceneRole::Hole))
         .count();
     (triangles, edges)
 }
@@ -90,6 +90,15 @@ fn req_imp_04_import_preview_highlights_what_the_checks_list() {
     let hole = preview(&app, "defect_hole.stl", None, &[]);
     assert_eq!(problems(&hole).1, hole.inspection.report.boundary_edges());
     assert!(problems(&hole).1 > 0);
+    // The edges round a hole have a role of their own, so the view rings
+    // them in amber apart from the other problems (specification 7.4).
+    assert!(
+        hole.scene
+            .lines
+            .iter()
+            .filter(|l| l.role != SceneRole::RotaryAxis)
+            .all(|l| l.role == SceneRole::Hole)
+    );
     // A flipped triangle: drawn as a problem mesh.
     let flipped = preview(&app, "defect_flipped.stl", None, &[]);
     assert_eq!(

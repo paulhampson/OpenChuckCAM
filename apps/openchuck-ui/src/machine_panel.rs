@@ -275,11 +275,11 @@ impl MachinePanel {
                     }
                     if a.id.is_none() && !a.source.starts_with("built-in ") {
                         ui.weak(
-                            "This library profile has no ID, so a project copy of it cannot be \
-                             compared with it later.",
+                            "This library profile has no reference, so a project copy of it cannot \
+                             be compared with it later.",
                         );
                         if ui
-                            .button("Give it an ID (rewrites the library file)")
+                            .button("Give it a reference (rewrites the library file)")
                             .clicked()
                         {
                             let with_id = ProfileEntry {
@@ -289,7 +289,7 @@ impl MachinePanel {
                             self.message = Some(
                                 match save_profile_entry(&with_id, std::path::Path::new(&a.source))
                                 {
-                                    Ok(()) => format!("Saved {} with an ID.", a.source),
+                                    Ok(()) => format!("Saved {} with a reference.", a.source),
                                     Err(e) => e.to_string(),
                                 },
                             );

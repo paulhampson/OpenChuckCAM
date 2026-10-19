@@ -16,17 +16,19 @@
 
 use eframe::egui::{self, Color32, Modifiers};
 use openchuck_app::pick::{EdgeRef, PickMode, SceneEdgePick, ScenePick};
-use openchuck_app::project::id::{ModelId, SelectionSetId};
+use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_app::project::{ContentHash, SelectionTarget};
 use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
     Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionSummary, TriangleSet,
 };
-use openchuck_viewport::{Colour, Scene, Slot};
+use openchuck_viewport::{Colour, Hatch, Scene, Slot};
 
+use crate::roles;
+use crate::theme::DARK;
 use crate::viewport::{PickFilter, PickInput};
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
+const PROBLEM: Color32 = DARK.error;
 /// Working selection: blue `#3d8bff` at 40%, a fill (specification 7.4;
 /// decision 0038 amends 0037 item 5).
 const WORKING: Colour = [0.239, 0.545, 1.0, FILL_ALPHA];
@@ -308,6 +310,11 @@ pub struct SelectionPanel {
     dont_warn: bool,
     hover: Option<Hover>,
     shown: Option<SelectionSetId>,
+    /// The operation whose avoid and check sets are drawn, hatched red
+    /// (specification 7.4).
+    roles_of: Option<OperationId>,
+    /// The avoid and check sets drawn for `roles_of`.
+    roles_sets: Option<(Vec<SelectionSetId>, Vec<SelectionSetId>)>,
     /// The last thing that went wrong or the last notice.
     message: Option<String>,
     /// The highlights need drawing again.
@@ -338,6 +345,8 @@ impl Default for SelectionPanel {
             dont_warn: false,
             hover: None,
             shown: None,
+            roles_of: None,
+            roles_sets: None,
             message: None,
             dirty: true,
             #[cfg(test)]
@@ -418,7 +427,22 @@ impl SelectionPanel {
         self.shown
     }
 
-    /// Chooses the set whose triangles are shown in green.
+    /// Draws the avoid and check sets of `operation`, hatched red over the
+    /// part (specification 7.4), or none.
+    /// They are drawn again when the operation's sets change too, as an edit
+    /// in its properties or an undo does.
+    pub fn show_roles_of(&mut self, app: &Application, operation: Option<OperationId>) {
+        let sets = operation
+            .and_then(|id| app.project().operation(id))
+            .map(|op| (op.avoid.clone(), op.check.clone()));
+        if self.roles_of != operation || self.roles_sets != sets {
+            self.roles_of = operation;
+            self.roles_sets = sets;
+            self.dirty = true;
+        }
+    }
+
+    /// Chooses the set whose triangles are shown in its swatch.
     pub fn show_set(&mut self, set: Option<SelectionSetId>) {
         if self.shown != set {
             self.shown = set;
@@ -671,6 +695,36 @@ impl SelectionPanel {
                 .find(|(_, m)| m.role == SceneRole::Part && m.model == Some(model))
         };
         let mut scene = Scene::default();
+        // The surfaces the operation must not cut or must check, hatched red
+        // so they read without colour (7.4).
+        if let Some(op) = self.roles_of.and_then(|id| app.project().operation(id)) {
+            let sets = app.project().selection_sets();
+            for id in op.avoid.iter().chain(&op.check) {
+                let Some(set) = sets.iter().find(|s| s.id == *id) else {
+                    continue;
+                };
+                let Some((index, part)) = part_of(set.model) else {
+                    continue;
+                };
+                let first = scene.meshes.len();
+                let [r, g, b, _] = roles::AVOID;
+                draw_target(
+                    &mut scene,
+                    view,
+                    index,
+                    part,
+                    &set.target,
+                    [r, g, b, 0.18],
+                    roles::AVOID,
+                );
+                for added in scene.meshes.iter_mut().skip(first) {
+                    added.hatch = Some(Hatch {
+                        colour: roles::AVOID,
+                        cross: false,
+                    });
+                }
+            }
+        }
         if let Some(model) = self.shown_model(app)
             && let Some(set) = self.shown_target(app)
             && let Some((index, part)) = part_of(model)
@@ -705,7 +759,12 @@ impl SelectionPanel {
                         // A face is outlined by its edges.
                         (Some(face), Some(brep)) => {
                             for edge in brep.edges.iter().filter(|e| e.faces.contains(&face)) {
-                                scene.add_polyline(&edge.points, HOVER, false);
+                                scene.add_wide_polyline(
+                                    &edge.points,
+                                    HOVER,
+                                    false,
+                                    EDGE_HOVER_WIDTH,
+                                );
                             }
                         }
                         _ => {
@@ -716,8 +775,14 @@ impl SelectionPanel {
                                     .chain(corners.first())
                                     .filter_map(|&i| part.mesh.vertices.get(i as usize).copied())
                                     .collect();
+                                // Hovered marks are 2 pixels wide (7.5; OI-341).
                                 if outline.len() == 4 {
-                                    scene.add_polyline(&outline, HOVER, false);
+                                    scene.add_wide_polyline(
+                                        &outline,
+                                        HOVER,
+                                        false,
+                                        EDGE_HOVER_WIDTH,
+                                    );
                                 }
                             }
                         }
@@ -970,7 +1035,7 @@ impl SelectionPanel {
                 !self.working.is_empty() && self.working_model.is_some() && self.writing.is_none();
             if ui
                 .add_enabled(ready, egui::Button::new("New set from selection"))
-                .on_hover_text("Name this selection so operations can use it (UI-05)")
+                .on_hover_text("Name this selection so operations can use it")
                 .clicked()
                 && let Some(model) = self.working_model
             {
@@ -1528,6 +1593,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
+    use openchuck_app::SelectionRole;
 
     fn set(items: &[u32]) -> TriangleSet {
         items.iter().copied().collect()
@@ -1679,6 +1745,8 @@ mod tests {
         assert_eq!(scene.lines[0].segments.len(), 6);
         assert!(!scene.lines[0].on_top);
         assert_eq!(scene.lines[0].slot, Slot::Part);
+        // Hovered marks are 2 pixels wide (7.5; OI-341).
+        assert_eq!(scene.lines[0].width, EDGE_HOVER_WIDTH);
         let _ = ModelId::new();
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1697,6 +1765,50 @@ mod tests {
         panel.join(b, Combine::Remove, set(&[9]), None);
         assert!(panel.working.is_empty());
         assert_eq!(panel.working_model, None);
+    }
+
+    #[test]
+    fn req_op_02_req_nfr_15_the_operations_avoid_and_check_sets_are_hatched_red() {
+        let (dir, mut app, op, _) = crate::testing::cube_project("avoid-hatch");
+        let model = app.project().models()[0].id;
+        let side = app.save_selection("Side", model, set(&[4, 5])).unwrap();
+        let top = app.save_selection("Top", model, set(&[6])).unwrap();
+        app.set_operation_selection(op, SelectionRole::Avoid, side, true)
+            .unwrap();
+        app.set_operation_selection(op, SelectionRole::Check, top, true)
+            .unwrap();
+        let view = app.start_scene(None).wait().unwrap();
+        let mut panel = SelectionPanel::default();
+        // Nothing while no operation is chosen.
+        let scene = panel.overlay(&app, &view).unwrap();
+        assert!(scene.meshes.is_empty());
+        // With the operation chosen, both sets are drawn red with a single
+        // hatch, a cue besides the colour (7.4).
+        panel.show_roles_of(&app, Some(op));
+        let scene = panel.overlay(&app, &view).unwrap();
+        assert_eq!(scene.meshes.len(), 2);
+        assert_eq!(overlay_triangles(&scene), 3);
+        for mesh in &scene.meshes {
+            assert_eq!(
+                mesh.hatch,
+                Some(Hatch {
+                    colour: roles::AVOID,
+                    cross: false
+                })
+            );
+            assert_eq!(mesh.slot, Slot::Part);
+        }
+        // Choosing it again changes nothing, so nothing is drawn again.
+        panel.show_roles_of(&app, Some(op));
+        assert!(panel.overlay(&app, &view).is_none());
+        // Taking a set out of its role while the operation stays chosen draws
+        // the sets again (#126 review).
+        app.set_operation_selection(op, SelectionRole::Avoid, side, false)
+            .unwrap();
+        panel.show_roles_of(&app, Some(op));
+        let scene = panel.overlay(&app, &view).unwrap();
+        assert_eq!(scene.meshes.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// The triangles of the first mesh the overlay holds.

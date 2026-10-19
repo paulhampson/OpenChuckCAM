@@ -53,9 +53,38 @@ pub enum SceneRole {
     WorkY,
     /// The work coordinate system's Z axis.
     WorkZ,
-    /// Triangles or edges a mesh check lists (IMP-04): holes, non-manifold
-    /// edges, flipped, degenerate or mismatched triangles.
+    /// Triangles or edges a mesh check lists (IMP-04): non-manifold edges,
+    /// flipped, degenerate or mismatched triangles.
     Problem,
+    /// The edges round a hole in a mesh (IMP-04), which the view rings in
+    /// amber apart from the other problems (specification 7.4; decision 0029
+    /// item 13).
+    Hole,
+}
+
+/// Which held region or tab of a setup's workholding a solid of the scene
+/// is (UI-25). A tab around the axis is several solids with one item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WorkholdingItem {
+    /// The held region at the low-X end of the stock.
+    Start,
+    /// The held region at the high-X end of the stock.
+    End,
+    /// The tab at this index, from zero.
+    Tab(usize),
+}
+
+/// A held region or tab solid drawn in the scene, for hover and selection
+/// (specification 7.5).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SceneSolid {
+    /// The index of its mesh in [`SceneView::meshes`].
+    pub mesh: usize,
+    /// Which held region or tab it is.
+    pub item: WorkholdingItem,
+    /// Its name and size, for the tooltip: "Tab 2 · frustum · X 14.000 to
+    /// 16.000 mm · Ø 4.000 to Ø 8.000 mm".
+    pub description: String,
 }
 
 /// A mesh to draw shaded, with the feature edges to draw over it.
@@ -186,6 +215,11 @@ pub struct SceneView {
     pub notes: Vec<String>,
     /// Ray-cast picking on the part meshes (UI-04); empty for a preview.
     pub picking: Picking,
+    /// The held region and tab solids among `meshes`, in mesh order.
+    pub solids: Vec<SceneSolid>,
+    /// The work offset register of the setup shown ("G54"), which names the
+    /// frame of the viewport's readout (specification 7.2).
+    pub work_register: Option<String>,
 }
 
 /// The scene item of the placed part `model`: its triangles `mesh`, and for a
@@ -292,19 +326,21 @@ pub(crate) fn build_scene(
     }
 
     // The held regions and tabs, shaded beside the part (SET-09, OP-21;
-    // UI-03). A setup whose workholding cannot be built is noted, not hidden.
+    // UI-03). A setup whose workholding cannot be built draws none of it
+    // (7.5); the project's checks say why, as an error message with "Edit
+    // workholding", so the scene does not note it a second time.
     if let (Some(s), Some(extent)) = (chosen, part.as_ref())
         && !s.workholding.is_empty()
+        && let Ok((meshes, lines, solids)) =
+            crate::workholding_view::display_items(&s.workholding, s.stock.as_ref(), extent)
     {
-        match crate::workholding_view::display_items(&s.workholding, s.stock.as_ref(), extent) {
-            Ok((meshes, lines)) => {
-                view.meshes.extend(meshes);
-                view.lines.extend(lines);
-            }
-            Err(e) => view
-                .notes
-                .push(format!("the workholding cannot be drawn: {e}")),
-        }
+        let first = view.meshes.len();
+        view.meshes.extend(meshes);
+        view.lines.extend(lines);
+        view.solids.extend(solids.into_iter().map(|mut solid| {
+            solid.mesh += first;
+            solid
+        }));
     }
 
     let mut bounds = part.map(|p| p.bounds);
@@ -322,6 +358,7 @@ pub(crate) fn build_scene(
     }
     let origin = Point3::new(0.0, 0.0, 0.0);
     let work_zero = chosen.map_or(origin, |s| Point3::new(s.frame.work_offset.x.0, 0.0, 0.0));
+    view.work_register = chosen.map(|s| s.frame.work_offset.register.name().to_owned());
     let mut bounds = union(
         bounds,
         Aabb {
@@ -605,19 +642,20 @@ pub(crate) fn model_scene(
             brep: None,
         });
     }
-    // Open and non-manifold edges as lines.
-    for [a, b] in report
-        .holes
-        .iter()
-        .flat_map(|h| h.edges.iter())
-        .chain(&report.non_manifold_edges)
-    {
+    // The edges round holes, and non-manifold edges, as lines.
+    let holes = report.holes.iter().flat_map(|h| h.edges.iter());
+    for (role, [a, b]) in holes.map(|e| (SceneRole::Hole, e)).chain(
+        report
+            .non_manifold_edges
+            .iter()
+            .map(|e| (SceneRole::Problem, e)),
+    ) {
         if let (Some(&p), Some(&q)) = (
             mesh.vertices.get(*a as usize),
             mesh.vertices.get(*b as usize),
         ) {
             view.lines.push(ScenePolyline {
-                role: SceneRole::Problem,
+                role,
                 points: vec![p, q],
             });
         }

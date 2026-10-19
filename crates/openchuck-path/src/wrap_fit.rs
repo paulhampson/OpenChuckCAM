@@ -7,7 +7,10 @@
 //! axial pass holds A and moves X. [`fit_curve`] drops the tool along it,
 //! splits it where a region constraint forbids cutting or the tool is over no
 //! material, and bisects each move until the straight machine move is within
-//! [`CHORD_FACTOR`] times the toolpath tolerance of the dropped tool.
+//! [`CHORD_FACTOR`] times the toolpath tolerance of the dropped tool at the
+//! middle of the move and at the middles of its halves (decision record 0115:
+//! a test at the middle alone is blind to an S-shaped drop whose inflection
+//! falls there, which cut 0.2 mm into the blisk's blades, OI-331).
 
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::job::JobContext;
@@ -496,19 +499,52 @@ impl Fit<'_> {
     }
 
     /// Bisects the move `a` to `b` until the straight machine path is within
-    /// the chord tolerance at its middle; pushes the points after `a`, ending
-    /// with `b`. Where the middle has no material under it (the surface falls
-    /// away between two points that touch it) the move is accepted as it is.
-    /// Where a region constraint forbids cutting at the middle, the move is
-    /// cut short at the limits on each side and a `None` marks the gap.
+    /// the chord tolerance at its middle and at the middles of its halves;
+    /// pushes the points after `a`, ending with `b`. Where the middle has no
+    /// material under it (the surface falls away between two points that
+    /// touch it) the move is accepted as it is. Where a region constraint
+    /// forbids cutting at the middle, the move is cut short at the limits on
+    /// each side and a `None` marks the gap; where it forbids cutting at a
+    /// quarter, the move is halved so that the half finds the gap.
     pub(crate) fn refine(&self, a: &Node, b: &Node, depth: u32, out: &mut Vec<Option<Node>>) {
+        self.refine_from(a, b, depth, None, out);
+    }
+
+    /// [`refine`](Self::refine) with the drop at the middle already known
+    /// (`Some(middle)`), as it is for each half of a move that was split: the
+    /// quarter points of the move are the middles of its halves, so each
+    /// drop is made once.
+    fn refine_from(
+        &self,
+        a: &Node,
+        b: &Node,
+        depth: u32,
+        middle: Option<Option<Node>>,
+        out: &mut Vec<Option<Node>>,
+    ) {
         if depth < MAX_DEPTH {
             let t = 0.5 * (a.t + b.t);
-            match self.node(t) {
-                Some(mid) if self.deviation(a, b, &mid) > self.chord => {
-                    self.refine(a, &mid, depth + 1, out);
-                    self.refine(&mid, b, depth + 1, out);
-                    return;
+            match middle.unwrap_or_else(|| self.node(t)) {
+                Some(mid) => {
+                    // The straight move must hold at the quarter points too
+                    // (decision record 0115). A quarter with no material
+                    // under it is no reason to split, unless a region
+                    // constraint forbids cutting there: then the half finds
+                    // the gap as it would at its own middle.
+                    let quarter = |n: &Option<Node>| match n {
+                        Some(q) => self.deviation_between(a, b, q) > self.chord,
+                        None => self.constrained,
+                    };
+                    let first = self.node(0.5 * (a.t + mid.t));
+                    let second = self.node(0.5 * (mid.t + b.t));
+                    if self.deviation(a, b, &mid) > self.chord
+                        || quarter(&first)
+                        || quarter(&second)
+                    {
+                        self.refine_from(a, &mid, depth + 1, Some(first), out);
+                        self.refine_from(&mid, b, depth + 1, Some(second), out);
+                        return;
+                    }
                 }
                 None if self.constrained => {
                     if let Some(left) = self.edge(a, t) {

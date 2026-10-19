@@ -84,6 +84,15 @@ button{font:inherit;color:inherit;cursor:pointer}
 .vf .mu{color:#a3abb5}
 .vbtn{width:28px;height:28px;border:1px solid #3a3f46;background:#2b2f35;color:#e4e7eb;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .vbtn.on{background:#264466;border-color:#5aa9ff}
+.vseg{display:flex;flex:1;border:1px solid #3a3f46;border-radius:3px;overflow:hidden;height:24px}
+.vseg span{flex:1;display:flex;align-items:center;justify-content:center;background:#16181b;color:#a3abb5;font-size:11px}
+.vseg span.on{background:#264466;color:#fff}
+.vrow{height:26px;display:flex;align-items:center;gap:8px;padding:0 6px;border:1px solid transparent;background:none;color:#e4e7eb;border-radius:3px;width:100%;text-align:left;white-space:nowrap}
+.vrow.on{background:#264466;border-color:#5aa9ff}
+.vrow small{color:#a3abb5;font-size:11px}
+.vrow .k{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a3abb5;border:1px solid #3a3f46;border-radius:3px;padding:0 4px;line-height:16px}
+.legbtn{display:none}
+@media (max-height:800px){.leg{display:none!important}.legbtn{display:inline-flex}}
 .dt{padding:0 12px;height:32px;flex:none;display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--ln);background:var(--p)}
 .dtab{padding:7px 12px;color:var(--mu);border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
 .dtab.on{color:var(--tx);border-bottom-color:var(--ac)}
@@ -161,7 +170,7 @@ button{font:inherit;color:inherit;cursor:pointer}
         <button class="btn" title="Turn the part in the view (does not change the program)">Turn</button>
       </div>
       <div class="vp">
-        <svg viewBox="-80 0 916 608" width="100%" height="100%" role="img" aria-label="Part with helical finishing toolpath on the groove selection, rotary axis, and X, Y, Z axes at the work zero">
+        <svg viewBox="-80 0 916 608" width="100%" height="100%" role="img" aria-label="Part with helical finishing toolpath on the groove selection, a hovered edge in yellow, rotary axis, and X, Y, Z axes at the work zero">
           <defs>
             <pattern id="avoid" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="#ff7b72" opacity=".55"/></pattern>
             <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a93a0"/><stop offset=".45" stop-color="#b7bfca"/><stop offset="1" stop-color="#5d6570"/></linearGradient>
@@ -176,6 +185,8 @@ button{font:inherit;color:inherit;cursor:pointer}
             <rect x="250" y="232" width="34" height="176" fill="url(#avoid)"/>
             <path d="M262 232C278 232 286 408 302 408M288 232C304 232 312 408 328 408M314 232C330 232 338 408 354 408M340 232C356 232 364 408 380 408M366 232C382 232 390 408 406 408M392 232C408 232 416 408 432 408M418 232C434 232 442 408 458 408M444 232C460 232 468 408 484 408M470 232C486 232 494 408 510 408M496 232C512 232 520 408 536 408M522 232C538 232 546 408 562 408" fill="none" stroke="#ffb454" stroke-width="1.6"/>
             <path d="M262 232L262 180L574 180L574 232" fill="none" stroke="#9aa6b5" stroke-dasharray="2 5"/>
+            <path d="M520 232H640" stroke="#ffe066" stroke-width="2"/>
+            <path d="M584 222l7 14 2-6 6-1z" fill="#e4e7eb" stroke="#101215" stroke-width="1"/>
             <path d="M80 320H720" stroke="#35d0e0" stroke-dasharray="14 4 2 4" stroke-width="1.2"/>
             <circle cx="250" cy="320" r="4" fill="#35d0e0"/>
             <g stroke-width="2.5" stroke-linecap="round"><path d="M250 320H306" stroke="#ff7b72"/><path d="M250 320L284 300" stroke="#6fd3a8"/><path d="M250 320V258" stroke="#6fb2ff"/></g>
@@ -185,13 +196,17 @@ button{font:inherit;color:inherit;cursor:pointer}
           <text x="712" y="262" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A+</text>
           <text x="104" y="478" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A axis · about +X</text>
         </svg>
-        <div class="vf" style="left:12px;top:12px;padding:4px;display:flex;flex-direction:column;gap:4px">
-          <button class="vbtn on" aria-label="Select region" title="Select region (Q)"><svg class="ib" viewBox="0 0 16 16"><path d="M3 2l9 6-4 1-2 4z"/></svg></button>
-          <button class="vbtn" aria-label="Flood fill" title="Flood fill (W)"><svg class="ib" viewBox="0 0 16 16"><path d="M3 9l5-6 5 6-5 5zM13 11c1 1.5 1 2.5 0 3"/></svg></button>
-          <button class="vbtn" aria-label="Select by angle" title="Select by angle (E)"><svg class="ib" viewBox="0 0 16 16"><path d="M3 13h10M3 13l6-8M6 13a4 4 0 00-1-3"/></svg></button>
-          <button class="vbtn" aria-label="Box select" title="Box select (B)"><svg class="ib" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" stroke-dasharray="2 2"/></svg></button>
+        <div class="vf" style="left:12px;top:12px;padding:6px;width:196px;display:flex;flex-direction:column;gap:4px" role="toolbar" aria-label="Selection tools">
+          <div style="display:flex;align-items:center;gap:8px;padding:0 0 2px 4px"><span class="mu" style="font-size:11px">Pick</span><div class="vseg" role="radiogroup" aria-label="Pick"><span class="on" title="An edge when the pointer is near one, the surface otherwise">Both</span><span title="Only surfaces">Faces</span><span title="Only edges">Edges</span></div></div>
+          <button class="vrow on" title="Select one (Q)"><svg class="ib" viewBox="0 0 16 16"><path d="M3 2l9 6-4 1-2 4z"/></svg>Select one<span class="k">Q</span></button>
+          <button class="vrow" title="Flood fill (W); on an edge, Chain"><svg class="ib" viewBox="0 0 16 16"><path d="M3 9l5-6 5 6-5 5zM13 11c1 1.5 1 2.5 0 3"/></svg>Flood fill<small>· Chain</small><span class="k">W</span></button>
+          <button class="vrow" title="By angle (E); on an edge, Smooth chain"><svg class="ib" viewBox="0 0 16 16"><path d="M3 13h10M3 13l6-8M6 13a4 4 0 00-1-3"/></svg>By angle<small>· Smooth chain</small><span class="k">E</span></button>
+          <button class="vrow" title="Same direction (R); faces only"><svg class="ib" viewBox="0 0 16 16"><path d="M3 12h10M3 8h10M3 4h10"/></svg>Same direction<span class="k">R</span></button>
+          <button class="vrow" title="Box select (B)"><svg class="ib" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" stroke-dasharray="2 2"/></svg>Box<span class="k">B</span></button>
+          <span class="mu" style="font-size:11px;padding:2px 4px 0;white-space:normal;line-height:1.35">Near an edge: Select one, Chain and Smooth chain.</span>
         </div>
-        <div class="vf" style="left:12px;top:160px;padding:8px 10px;display:flex;flex-direction:column;gap:5px">
+        <button class="vf vbtn legbtn" style="left:12px;top:284px;width:auto;padding:0 10px;gap:6px;height:28px" aria-label="Path legend" title="Path legend"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#ffb454" stroke-width="2"/></svg>Legend</button>
+        <div class="vf leg" style="left:12px;top:284px;padding:8px 10px;display:flex;flex-direction:column;gap:5px">
           <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#ffb454" stroke-width="2"/></svg>Cut</span>
           <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#6fd3a8" stroke-width="2"/></svg>Link</span>
           <span style="display:flex;align-items:center;gap:6px"><svg width="20" height="8" aria-hidden="true"><path d="M0 4H20" stroke="#9aa6b5" stroke-dasharray="2 4" stroke-width="2"/></svg>Rapid</span>

@@ -549,3 +549,99 @@ fn req_imp_03_req_imp_04_req_imp_05_the_model_inspector_shows_its_sections() {
         assert!(rig.shows(needle), "{needle} is not shown");
     }
 }
+
+/// G with a turned-off operation selected is refused, not a full run
+/// (lane X3, OI-352).
+#[test]
+fn req_ui_14_g_on_a_turned_off_operation_is_refused_not_a_full_run() {
+    let mut rig = Rig::cube("frame-generate-off", None);
+    let first = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .execute(openchuck_app::Command::SetOperationEnabled {
+            operation: first,
+            enabled: false,
+        })
+        .unwrap();
+    rig.shell.select(Selection::Operation(first));
+    rig.frame(Vec::new());
+    rig.press(Key::G, Modifiers::NONE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig.shell.run.is_running() {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.settle();
+    }
+    rig.settle();
+    let error = rig.shell.run.last_error().unwrap_or_default();
+    assert!(error.contains("turned off"), "{error:?}");
+    assert!(rig.shell.run.last().is_none());
+}
+
+/// The workholding section drives the view (7.5, 11.7; OI-334 k, OI-355):
+/// an unapplied draft is drawn in place of the stored workholding, whatever
+/// is selected; a click on a solid selects its setup, opens the section at
+/// its row and outlines it; Esc clears that selection.
+#[test]
+fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
+    use openchuck_app::scene::WorkholdingItem;
+    use openchuck_app::setup::{Millimetres, Tab, TabLayout, TabShape};
+    let mut rig = Rig::cube("inspector-draft-view", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, Some(SetupPart::Workholding));
+    // The part-extent job places the solids.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig
+        .shell
+        .workholding_panel
+        .as_ref()
+        .and_then(crate::workholding_panel::WorkholdingPanel::part_extent)
+        .is_none()
+    {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    rig.shell
+        .workholding_panel
+        .as_mut()
+        .unwrap()
+        .draft_mut()
+        .tabs = vec![Tab {
+        x_start: Millimetres(-7.0),
+        length: Millimetres(1.0),
+        shape: TabShape::Cylinder {
+            diameter: Millimetres(4.0),
+        },
+        layout: TabLayout::OnAxis,
+    }];
+    rig.frame(Vec::new());
+    assert!(rig.shell.viewport.shows_draft());
+    // Still drawn with an operation selected (11.7: the draft is kept).
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    rig.frame(Vec::new());
+    assert!(rig.shell.viewport.shows_draft());
+    // A click on the tab's solid.
+    rig.shell.select_solid(WorkholdingItem::Tab(0));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.selected, Some(Selection::Setup(setup)));
+    assert_eq!(
+        rig.shell.viewport.selected_solid(),
+        Some(WorkholdingItem::Tab(0))
+    );
+    assert!(rig.shows("Start X"));
+    // Esc clears it once no field has the keyboard.
+    rig.ctx.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    rig.frame(Vec::new());
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.viewport.selected_solid(), None);
+}

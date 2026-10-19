@@ -454,14 +454,13 @@ impl Shell {
     }
 
     /// Generates the selected operation, up to and including it, when an
-    /// enabled operation is selected (G, F5); otherwise every stale
-    /// operation (specification section 16; decision record 0117, OI-351).
+    /// operation is selected (G, F5); otherwise every stale operation
+    /// (specification section 16; decision record 0117, OI-351). A turned-off
+    /// operation goes to the run too, which refuses it and says why (OI-352).
     fn generate_selected(&mut self) {
         let Some(app) = &self.app else { return };
         match self.selected {
-            Some(Selection::Operation(id))
-                if app.project().operation(id).is_some_and(|o| o.enabled) =>
-            {
+            Some(Selection::Operation(id)) => {
                 self.run.start_until(app, id);
                 self.overview_dirty = true;
             }
@@ -976,6 +975,11 @@ impl Shell {
     /// highlights (slice 10 item 1).
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
+        // A click on a held region or tab selects its setup and opens the
+        // workholding section at it, its first field focused (7.5).
+        if let Some(item) = input.solid_click {
+            self.select_solid(item);
+        }
         let Some(app) = &self.app else { return };
         if self.selection.frame(app, self.viewport.view(), input) {
             ctx.request_repaint();
@@ -989,6 +993,14 @@ impl Shell {
         {
             self.selected = None;
         }
+        // The selected operation's avoid and check sets are drawn hatched (7.4).
+        self.selection.show_roles_of(
+            app,
+            match self.selected {
+                Some(Selection::Operation(id)) => Some(id),
+                _ => None,
+            },
+        );
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
@@ -1003,6 +1015,51 @@ impl Shell {
             if let Some(e) = self.selection.reset_dialog(ctx, app) {
                 self.dialog = Some(Dialog::Error(e));
             }
+        }
+    }
+
+    /// Selects the held region or tab `item` of the setup shown: its setup
+    /// in the inspector at the workholding section, its row open with the
+    /// first field focused, and its solid outlined (7.5).
+    fn select_solid(&mut self, item: openchuck_app::scene::WorkholdingItem) {
+        let Some(setup) = self.setup else { return };
+        self.choose_setup(setup, Some(SetupPart::Workholding));
+        if let Some(panel) = &mut self.workholding_panel {
+            panel.open_item(item);
+        }
+        self.viewport.set_selected_solid(Some(item));
+    }
+
+    /// Gives the view what the workholding section shows (7.5, 11.7; OI-334
+    /// k, OI-355): the draft while it has unapplied changes, whatever is
+    /// selected, and, while its setup is selected, the default tabs offered,
+    /// the failing parts and the row with keyboard focus. The selected solid
+    /// stays while its setup is selected, and Esc clears it.
+    fn workholding_view_frame(&mut self, ctx: &egui::Context) {
+        let shown = self.setup;
+        let setup_selected =
+            matches!(self.selected, Some(Selection::Setup(id)) if Some(id) == shown);
+        let mut focused = None;
+        let draft = match (&self.app, &mut self.workholding_panel) {
+            (Some(app), Some(panel)) if Some(panel.setup()) == shown => {
+                match app.project().setup(panel.setup()) {
+                    Some(setup) if setup_selected || panel.has_unapplied_changes() => {
+                        if setup_selected {
+                            focused = panel.focused();
+                        }
+                        let setup = setup.clone();
+                        panel.viewport_draft(&setup)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        self.viewport.set_workholding_draft(draft);
+        self.viewport.set_focused_solid(focused);
+        let esc = !self.text_had_focus && ctx.input(|i| i.key_pressed(Key::Escape));
+        if self.viewport.selected_solid().is_some() && (!setup_selected || esc) {
+            self.viewport.set_selected_solid(None);
         }
     }
 
@@ -1403,6 +1460,7 @@ impl Shell {
         self.bench_frame(&ctx);
         self.shortcuts(&ctx);
         self.layout(ui);
+        self.workholding_view_frame(&ctx);
         self.pick_frame(&ctx);
         self.run_frame(&ctx);
         self.import_frame(&ctx);

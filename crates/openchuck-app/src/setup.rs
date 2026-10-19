@@ -168,7 +168,7 @@ pub enum MachineSource {
         id: String,
         /// The source profile, to update the copy from.
         profile: Box<MachineProfile>,
-        /// The fields that differ, by their file names.
+        /// The fields that differ, in the user's words.
         fields: Vec<&'static str>,
     },
 }
@@ -214,7 +214,21 @@ pub fn compare_machine(
     }
 }
 
-/// The fields of two profiles that differ, by their file names. The
+/// The user's words for a machine profile value (specification section 15),
+/// never its name in the profile file.
+pub fn profile_field_label(field: ProfileField) -> &'static str {
+    match field {
+        ProfileField::RotaryAxis => "rotary axis",
+        ProfileField::ASense => "A+ direction",
+        ProfileField::RotaryOrigin => "axis height",
+        ProfileField::ARange => "A range",
+        ProfileField::Travel => "travel",
+        ProfileField::MaxFeeds => "maximum feeds",
+        ProfileField::Clearance => "clearance",
+    }
+}
+
+/// The fields of two profiles that differ, in the user's words. The
 /// destructuring is exhaustive, so a field added to the profile fails to
 /// build here until it is compared.
 fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str> {
@@ -232,15 +246,15 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
     } = a;
     let checks = [
         ("name", *name == b.name),
-        ("rotary_axis", *rotary_axis == b.rotary_axis),
-        ("a_sense", *a_sense == b.a_sense),
-        ("rotary_origin", *rotary_origin == b.rotary_origin),
-        ("a_range", *a_range == b.a_range),
+        ("rotary axis", *rotary_axis == b.rotary_axis),
+        ("A+ direction", *a_sense == b.a_sense),
+        ("axis height", *rotary_origin == b.rotary_origin),
+        ("A range", *a_range == b.a_range),
         ("travel", *travel == b.travel),
-        ("max_feeds", *max_feeds == b.max_feeds),
+        ("maximum feeds", *max_feeds == b.max_feeds),
         ("clearance", *clearance == b.clearance),
-        ("max_tool_number", *max_tool_number == b.max_tool_number),
-        ("provenance", *provenance == b.provenance),
+        ("highest tool number", *max_tool_number == b.max_tool_number),
+        ("which values are confirmed", *provenance == b.provenance),
     ];
     checks
         .into_iter()

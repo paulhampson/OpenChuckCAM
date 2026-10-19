@@ -455,9 +455,9 @@ pub(crate) fn generate_with_part(
             return Err(missing(
                 operation,
                 &format!(
-                    "the strategy '{}' cannot leave different stock on different selections \
-                     (OP-11); clear the stock to leave of the selection sets",
-                    operation.strategy
+                    "the strategy '{}' cannot leave different stock on different selections; \
+                     clear the stock to leave of the selection sets",
+                    strategy.label()
                 ),
             ));
         }
@@ -739,7 +739,7 @@ fn brep_selection(
         }
         if set.stock_to_leave.is_some() {
             return Err(bad(
-                "a stock to leave per selection set is not built for STEP parts yet (OP-11); \
+                "a stock to leave per selection set is not built for STEP parts yet; \
                  clear it on the set and set the operation's stock to leave"
                     .to_owned(),
             ));
@@ -1484,7 +1484,7 @@ mod tests {
         set.stock_to_leave = Some(0.2);
         f.project.replace(Item::SelectionSet(set)).unwrap();
         let err = f.run().unwrap_err().to_string();
-        assert!(err.contains("OP-11") && err.contains("'Op'"), "{err}");
+        assert!(err.contains("'Op'") && !err.contains("OP-11"), "{err}");
     }
 
     #[test]

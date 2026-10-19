@@ -24,28 +24,21 @@ use openchuck_app::workholding::{
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, FieldProblem, NO_TABS_WARNING, Zone, check_draft,
-    default_chips, default_tabs_state, held_span, narrowest_line, new_held_region, new_tab,
-    no_default_line, part_facing, set_layout, set_shape, tab_zone, zone_lines,
+    default_chips, default_tabs_state, display_items, held_span, narrowest_line, new_held_region,
+    new_tab, no_default_line, part_facing, set_layout, set_shape, tab_zone, zone_lines,
 };
 use openchuck_app::{Application, Command, JobHandle};
 
 use crate::field_row::{self, FieldState, Outcome, TextRow};
 use crate::theme::DARK;
+use crate::viewport::WorkholdingDraft;
 
 const ERROR: Color32 = DARK.error;
 const NOTE: Color32 = DARK.warning;
 
 /// A held region or a tab of the section: a row of its own, a solid in the
-/// view (7.5).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum HeldItem {
-    /// The held region at the low-X end of the stock.
-    Start,
-    /// The held region at the high-X end of the stock.
-    End,
-    /// The tab at this index, from zero.
-    Tab(usize),
-}
+/// view (7.5). The view model's own item, shared with the viewport.
+pub use openchuck_app::scene::WorkholdingItem as HeldItem;
 
 /// What the view draws for the section (7.5): the draft while it has
 /// unapplied changes, the held regions and tabs of the draft that fail a
@@ -97,6 +90,12 @@ pub struct WorkholdingPanel {
     focus_new_tab: bool,
     /// The row with keyboard focus this frame.
     focused: Option<HeldItem>,
+    /// A held region or tab to open with its first field focused: chosen by
+    /// a click on its solid in the view (7.5).
+    open_request: Option<HeldItem>,
+    /// What the view was last given, with what it was made from, so the
+    /// solids are not built again each frame.
+    view_cache: Option<(String, Option<WorkholdingDraft>)>,
 }
 
 /// The part's extent and default tabs (11.7): worked out as a job when the
@@ -204,6 +203,20 @@ fn reaches(note: &str, item: HeldItem) -> bool {
     }
 }
 
+/// The held region or tab a selection warning names, for its "Show in view"
+/// (11.7).
+pub fn reached_item(note: &str) -> Option<HeldItem> {
+    if reaches(note, HeldItem::Start) {
+        return Some(HeldItem::Start);
+    }
+    if reaches(note, HeldItem::End) {
+        return Some(HeldItem::End);
+    }
+    let rest = note.split("reaches tab ").nth(1)?;
+    let n: usize = rest.split(',').next()?.trim().parse().ok()?;
+    n.checked_sub(1).map(HeldItem::Tab)
+}
+
 /// The muted "Reached by the selections of 2 Helical finish." line under a
 /// held region or tab (11.7).
 fn reached_line(ui: &mut egui::Ui, reach: &[(String, String)], item: HeldItem) {
@@ -250,6 +263,8 @@ impl WorkholdingPanel {
             message: None,
             focus_new_tab: false,
             focused: None,
+            open_request: None,
+            view_cache: None,
         }
     }
 
@@ -262,6 +277,72 @@ impl WorkholdingPanel {
     /// so, 11.7).
     pub fn has_unapplied_changes(&self) -> bool {
         self.draft.is_changed()
+    }
+
+    /// Opens the row of `item` with its first field focused, as a click on
+    /// its solid in the view asks (7.5).
+    pub fn open_item(&mut self, item: HeldItem) {
+        self.open_request = Some(item);
+    }
+
+    /// The draft, to edit from a test as the section's fields would.
+    #[cfg(test)]
+    pub fn draft_mut(&mut self) -> &mut Workholding {
+        self.draft.edit()
+    }
+
+    /// The row with keyboard focus, whose solid the view outlines (7.5).
+    pub fn focused(&self) -> Option<HeldItem> {
+        self.focused
+    }
+
+    /// What the view draws instead of the stored workholding (7.5, 11.7;
+    /// OI-334 k): the draft while it has unapplied changes, its held regions
+    /// and tabs that fail a check, and the default tabs offered; `None` when
+    /// there is nothing of these, or the part's extent is not known yet.
+    /// Built with the view model's `display_items`, again only when what it
+    /// is made from changed.
+    pub fn viewport_draft(&mut self, setup: &Setup) -> Option<WorkholdingDraft> {
+        let view = self.draft_view(setup);
+        let part = view.part?;
+        if view.draft.is_none() && view.offered.is_empty() && view.failing.is_empty() {
+            return None;
+        }
+        let key = format!(
+            "{:?} {:?} {:?} {:?} {:?} {:?}",
+            view.draft, view.failing, view.offered, part, setup.stock, setup.workholding
+        );
+        if let Some((cached, draft)) = &self.view_cache
+            && *cached == key
+        {
+            return draft.clone();
+        }
+        let shown = view.draft.as_ref().unwrap_or(&setup.workholding);
+        let (meshes, solids) = match display_items(shown, setup.stock.as_ref(), &part) {
+            Ok((meshes, _, solids)) => (meshes, solids),
+            // A draft that cannot be built draws no solids; its failing
+            // fields are marked in the section.
+            Err(_) => (Vec::new(), Vec::new()),
+        };
+        let offered = if view.offered.is_empty() {
+            Vec::new()
+        } else {
+            let tabs = Workholding {
+                tabs: view.offered.clone(),
+                ..Workholding::default()
+            };
+            display_items(&tabs, setup.stock.as_ref(), &part)
+                .map(|(meshes, _, _)| meshes)
+                .unwrap_or_default()
+        };
+        let draft = Some(WorkholdingDraft {
+            meshes,
+            solids,
+            failing: view.failing,
+            offered,
+        });
+        self.view_cache = Some((key, draft.clone()));
+        draft
     }
 
     /// The placed part's extent, once the job has worked it out.
@@ -400,6 +481,8 @@ impl WorkholdingPanel {
         let command = self.buttons(ui, app, setup, problem.as_ref());
         // After the controls, so a draft edited or reverted this frame is
         // the draft the finished check is compared with.
+        // A row opened from the view has had its field focused.
+        self.open_request = None;
         command.or_else(|| self.poll_check(ui.ctx(), app, setup))
     }
 
@@ -511,7 +594,7 @@ impl WorkholdingPanel {
             Some(region.length.0),
             None,
             problem_of(problem, Field::Grip(end)),
-            false,
+            self.open_request == Some(item),
         ) {
             self.edit(|w| {
                 set(
@@ -650,7 +733,8 @@ impl WorkholdingPanel {
                 id,
                 false,
             );
-            if (focus && i == last) || marked || !finding.is_empty() && self.refused {
+            let opened = self.open_request == Some(HeldItem::Tab(i));
+            if (focus && i == last) || opened || marked || !finding.is_empty() && self.refused {
                 state.set_open(true);
             }
             let mut menu = None;
@@ -750,7 +834,7 @@ impl WorkholdingPanel {
                 for text in &finding {
                     ui.label(RichText::new(text).color(if self.refused { ERROR } else { NOTE }));
                 }
-                self.tab_editor(ui, i, *tab, problem, tools, focus && i == last);
+                self.tab_editor(ui, i, *tab, problem, tools, focus && i == last || opened);
                 reached_line(ui, &context.reach, HeldItem::Tab(i));
             });
             match menu {
@@ -1614,5 +1698,16 @@ mod tests {
             "The selection 'A' reaches the held region at the start of the stock, which",
             HeldItem::Start
         ));
+        assert_eq!(
+            reached_item("The selection 'A' reaches tab 12, which is never machined."),
+            Some(HeldItem::Tab(11))
+        );
+        assert_eq!(
+            reached_item(
+                "The selection 'A' reaches the held region at the end of the stock, which"
+            ),
+            Some(HeldItem::End)
+        );
+        assert_eq!(reached_item("Something else."), None);
     }
 }

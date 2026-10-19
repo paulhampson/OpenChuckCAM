@@ -466,11 +466,7 @@ impl Shell {
             return;
         };
         let summaries = app.selection_summaries(&[]);
-        let strategy = app
-            .strategy_choices()
-            .into_iter()
-            .find(|c| c.name == operation.strategy)
-            .map_or_else(|| operation.strategy.clone(), |c| c.label);
+        let strategy = app.strategy_label(&operation.strategy);
         let mut delete = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -576,7 +572,7 @@ impl Shell {
         if let Some(edit) = edit {
             let result = app
                 .set_parameter(id, &edit.name, edit.value)
-                .map_err(|e| form_panel::refusal(&e.to_string()));
+                .map_err(|e| form_panel::refusal(&e.user_message()));
             self.form.result(&edit.name, result);
         }
         if let Some((role, set, add)) = role_edit
@@ -594,10 +590,16 @@ impl Shell {
             None => {}
         }
         match reach_action {
-            Some(ReachAction::Show(set)) => {
+            Some(ReachAction::Show(set, item)) => {
+                // Selects the tab or held region (7.5) and shows the set.
                 self.selection.show_set(Some(set));
                 self.choose_setup(operation.setup, Some(SetupPart::Workholding));
-                self.select(Selection::Operation(id));
+                if let Some(item) = item {
+                    if let Some(panel) = &mut self.workholding_panel {
+                        panel.open_item(item);
+                    }
+                    self.viewport.set_selected_solid(Some(item));
+                }
             }
             Some(ReachAction::EditWorkholding) => {
                 // An unapplied draft of this setup stays (11.7); the view
@@ -656,8 +658,8 @@ fn workholding_context(
 /// What a selection warning's link asks for (11.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReachAction {
-    /// Show the set, and the setup's held regions and tabs.
-    Show(SelectionSetId),
+    /// Show the set, and select the held region or tab it reaches.
+    Show(SelectionSetId, Option<crate::workholding_panel::HeldItem>),
     /// Open the setup's workholding section.
     EditWorkholding,
 }
@@ -779,7 +781,10 @@ fn geometry(
                     marks::mark(ui, ItemState::Warning, "Warning");
                     ui.label(RichText::new(note).color(DARK.warning));
                     if ui.link("Show in view").clicked() {
-                        action = Some(ReachAction::Show(*id));
+                        action = Some(ReachAction::Show(
+                            *id,
+                            crate::workholding_panel::reached_item(note),
+                        ));
                     }
                     if ui.link("Edit workholding").clicked() {
                         action = Some(ReachAction::EditWorkholding);

@@ -805,7 +805,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 
 | # | Built or proposed | This specification | Resolution |
 | --- | --- | --- | --- |
-| D1 | The rotary axis is drawn orange (0029, owner's run, observation 3) | Cyan; amber is for cut moves | Change the viewport's role colour |
+| D1 | The rotary axis is drawn orange (0029, owner's run, observation 3) | Cyan; amber is for cut moves | Change the viewport's role colour (done by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)) |
 | D2 | The NFR-12 notice is always in the status bar (0029 item 8) | Kept in short form in the footer, and in full at export with the acknowledgement | Keep both; the mockups omit the footer form and are to be read with this section |
 | D3 | Parameters are applied on focus loss, with Reset (0029 item 11) | The same, plus a changed-value dot, derived values and typed units (UI-18, UI-19, P2) | No change to P1 behaviour |
 | D4 | Inch display is not part of P1 (0029 item 11) | The "mm \| in" switch is P2 (UI-18); with P1 only the footer reads "mm · deg" | As 0029 |
@@ -856,7 +856,7 @@ Tracked in [open-items.md](../open-items.md):
 
 ## 20. Rendered mockups
 
-Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
+Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
 
 | Image | Board | Section |
 | --- | --- | --- |

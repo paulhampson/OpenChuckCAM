@@ -202,7 +202,7 @@ pub fn parameter_form(
     let schema = registry.get(&op.strategy)?.schema();
     let (resolved, mut notes) = match parameter_values(project, op, registry) {
         Ok(r) => (r.values, r.notes),
-        Err(e) => (BTreeMap::new(), vec![e.to_string()]),
+        Err(e) => (BTreeMap::new(), vec![e.user_message()]),
     };
     // Said in the form, before the operation is run (OI-96, OI-238;
     // decision 0111 items 1 and 3).

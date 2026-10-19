@@ -1,43 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The viewport widget: turns the application's scene view model into a
 //! renderer scene, handles orbit, pan and zoom, and draws through an
-//! `egui_wgpu` paint callback (UI-02, UI-03; decision record 0029).
+//! `egui_wgpu` paint callback (UI-02, UI-03; decision record 0029). It draws
+//! the colour roles and line styles of specification 7.4, the held regions
+//! and tabs of 7.5 with their hover and selection, its toolbar (7.1,
+//! [`crate::viewport_toolbar`]) and its overlays (7.2,
+//! [`crate::viewport_overlays`]); decision record 0119.
 
 use std::sync::Arc;
 
 use eframe::egui::{self, Color32, Modifiers, PointerButton, Rect, Sense, pos2};
 use eframe::egui_wgpu;
-use openchuck_app::pathview::{DeviationBand, DeviationBands};
+use openchuck_app::pathview::DeviationBands;
 use openchuck_app::pick::{PickTolerance, SceneEdgePick, ScenePick};
 use openchuck_app::project::id::ModelId;
-use openchuck_app::scene::{Mesh as TriangleMesh, SceneRole, SceneView, triangles_mesh};
+use openchuck_app::scene::{
+    Mesh as TriangleMesh, SceneMesh, SceneRole, SceneSolid, SceneView, WorkholdingItem,
+    triangles_mesh,
+};
 use openchuck_viewport::camera::{IDENTITY, Mat4, rigid_inverse, rotation_x, transform};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, Colour, DisplayMode, Frame, Layer, LineItem, Projection, Renderer, Scene, Slot,
-    StandardView,
+    Camera, Colour, DisplayMode, Frame, Hatch, Layer, LineItem, LineStyle, Outline, Projection,
+    Renderer, Scene, Slot, StandardView,
 };
+
+use crate::roles;
+pub use crate::roles::band_colour;
 
 /// The depth format eframe creates for `depth_buffer: 32`.
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-
-const PART: Colour = [0.62, 0.68, 0.78, 1.0];
-const PART_EDGES: Colour = [0.08, 0.08, 0.1, 1.0];
-const STOCK: Colour = [0.45, 0.45, 0.45, 1.0];
-const AXIS: Colour = [0.95, 0.6, 0.1, 1.0];
-const A_DIRECTION: Colour = [0.85, 0.2, 0.75, 1.0];
-const WORK_X: Colour = [0.9, 0.15, 0.15, 1.0];
-const WORK_Y: Colour = [0.1, 0.7, 0.2, 1.0];
-const WORK_Z: Colour = [0.15, 0.35, 0.95, 1.0];
-/// Violet `#9d8df1`, translucent, with a hatch and an outline in its own
-/// colour; sand `#d8b98a`, opaque, with a dark outline (interface
-/// specification 7.5): the two roles differ by more than colour (NFR-15).
-const HELD: Colour = [0.616, 0.553, 0.945, 0.35];
-const HELD_LINE: Colour = [0.616, 0.553, 0.945, 1.0];
-const TAB: Colour = [0.847, 0.725, 0.541, 1.0];
-const TAB_LINE: Colour = [0.082, 0.09, 0.102, 1.0];
-const PROBLEM: Colour = [0.95, 0.2, 0.2, 1.0];
-const BACKGROUND: Color32 = Color32::from_rgb(38, 40, 46);
 
 /// How near the pointer an edge must pass to be picked, in pixels (decision
 /// record 0066).
@@ -51,66 +43,241 @@ const ZOOM_PER_SCROLL: f64 = 0.0015;
 /// The colour of a scene item, and whether it is a guide drawn over the part.
 fn style(role: SceneRole) -> (Colour, bool) {
     match role {
-        SceneRole::Part => (PART, false),
-        SceneRole::Stock => (STOCK, false),
-        SceneRole::HeldRegion => (HELD, false),
-        SceneRole::Tab => (TAB, false),
-        SceneRole::RotaryAxis => (AXIS, true),
-        SceneRole::ADirection => (A_DIRECTION, true),
-        SceneRole::WorkX => (WORK_X, true),
-        SceneRole::WorkY => (WORK_Y, true),
-        SceneRole::WorkZ => (WORK_Z, true),
-        SceneRole::Problem => (PROBLEM, true),
-        _ => (STOCK, false),
+        SceneRole::Part => (roles::PART, false),
+        SceneRole::Stock => (roles::STOCK, false),
+        SceneRole::HeldRegion => (roles::HELD, false),
+        SceneRole::Tab => (roles::TAB, false),
+        SceneRole::RotaryAxis | SceneRole::ADirection => (roles::ROTARY_AXIS, true),
+        SceneRole::WorkX => (roles::WORK_X, true),
+        SceneRole::WorkY => (roles::WORK_Y, true),
+        SceneRole::WorkZ => (roles::WORK_Z, true),
+        SceneRole::Problem => (roles::FINDING, true),
+        SceneRole::Hole => (roles::HOLE, true),
+        _ => (roles::STOCK, false),
     }
 }
 
-/// The colour a deviation band is drawn in (SIM-05).
-pub fn band_colour(band: DeviationBand) -> Colour {
-    match band {
-        DeviationBand::Overcut => [0.90, 0.12, 0.12, 1.0],
-        DeviationBand::OnTarget => [0.25, 0.75, 0.35, 1.0],
-        DeviationBand::Thin => [0.82, 0.85, 0.22, 1.0],
-        DeviationBand::Medium => [0.95, 0.60, 0.15, 1.0],
-        DeviationBand::Thick => [0.45, 0.40, 0.90, 1.0],
-        _ => [0.5, 0.5, 0.5, 1.0],
+/// What the "Show or hide" control of the toolbar shows (7.1, V). Hiding
+/// changes only the view, never what is machined.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Visibility {
+    /// The part.
+    pub part: bool,
+    /// The stock outline, and the simulated stock.
+    pub stock: bool,
+    /// The rotary axis, the A+ arrow and the work axes.
+    pub axes: bool,
+    /// Held regions and tabs.
+    pub workholding: bool,
+    /// The selection highlights.
+    pub selections: bool,
+    /// Toolpaths.
+    pub toolpaths: bool,
+    /// What the mesh check found (the Model step's "Show findings").
+    pub findings: bool,
+}
+
+impl Default for Visibility {
+    fn default() -> Self {
+        Self {
+            part: true,
+            stock: true,
+            axes: true,
+            workholding: true,
+            selections: true,
+            toolpaths: true,
+            findings: true,
+        }
     }
+}
+
+/// What Simulate shows (7.1: "Show: Stock, Part + path, Both").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SimulateShow {
+    /// Only the simulated stock.
+    Stock,
+    /// The part and the toolpaths, without the stock.
+    PartAndPath,
+    /// Everything.
+    #[default]
+    Both,
+}
+
+/// The workflow step the view is in, which chooses the toolbar's controls
+/// and the overlays (7.1, 7.2). The shell sets it from its step; with none
+/// set the view takes it from what it holds ([`Viewport::step`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewStep {
+    /// Model: the import and its findings.
+    Model,
+    /// Setup.
+    Setup,
+    /// Operations.
+    Operations,
+    /// Simulate.
+    Simulate,
+    /// Post and export.
+    Export,
+}
+
+/// The workholding draft to draw instead of what the setup stores, while
+/// the workholding section has unapplied changes (7.5, 11.7; OI-334 k). The
+/// inspector builds it with `workholding_view::display_items`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WorkholdingDraft {
+    /// The draft's solids.
+    pub meshes: Vec<SceneMesh>,
+    /// Which held region or tab each is, indexing `meshes`.
+    pub solids: Vec<SceneSolid>,
+    /// The held regions and tabs of the draft that fail a check: drawn as
+    /// their outline only, in `error` red.
+    pub failing: Vec<WorkholdingItem>,
+    /// Default tabs offered and not added: dashed sand outlines, no fill.
+    pub offered: Vec<SceneMesh>,
+}
+
+/// How the scene is drawn besides the view model itself.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SceneOptions<'a> {
+    /// The part of `bands.0` drawn in the deviation bands of `bands.1`
+    /// (SIM-05).
+    pub bands: Option<(ModelId, &'a DeviationBands)>,
+    /// Held regions and tabs as outlines only: while picking (11.4) and on
+    /// Simulate (11.5).
+    pub outlines_only: bool,
+    /// What is shown.
+    pub show: Visibility,
+    /// The workholding draft drawn instead of the stored workholding.
+    pub draft: Option<&'a WorkholdingDraft>,
 }
 
 /// The renderer scene for a view model.
 #[cfg(test)]
 pub fn to_scene(view: &SceneView) -> Scene {
-    to_scene_with(view, None)
+    to_scene_with(
+        view,
+        &SceneOptions {
+            show: Visibility::default(),
+            ..SceneOptions::default()
+        },
+    )
 }
 
-/// The renderer scene for a view model, with the part of `bands.0` drawn in
-/// the bands of `bands.1` instead of one colour (SIM-05). The part, the stock
-/// and what is flagged on them are fixed to the workpiece, so they turn with
-/// A in the machine view; the guides stay where they are.
-pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>) -> Scene {
+/// How a held region or tab is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SolidLook {
+    /// Filled: a translucent cross-hatched held region with a violet outline,
+    /// an opaque tab with a dark one.
+    Filled,
+    /// Its outline only, in its role colour.
+    Outline,
+    /// Its outline only, in `error` red: a draft that fails a check.
+    Failing,
+    /// A dashed sand outline: a default tab offered and not added.
+    Offered,
+}
+
+/// Adds a held region or tab solid to `scene` (7.5).
+fn add_solid(scene: &mut Scene, mesh: &TriangleMesh, role: SceneRole, look: SolidLook) {
+    let held = role == SceneRole::HeldRegion;
+    let (fill, line) = if held {
+        (roles::HELD, roles::HELD_LINE)
+    } else {
+        (roles::TAB, roles::TAB_LINE)
+    };
+    scene.add_mesh(mesh, &[], fill, line);
+    let Some(added) = scene.meshes.last_mut() else {
+        return;
+    };
+    added.slot = Slot::Part;
+    let outline = |colour, style| Outline {
+        colour,
+        width: roles::OUTLINE_WIDTH,
+        style,
+    };
+    match look {
+        SolidLook::Filled => {
+            added.translucent = held;
+            added.hatch = held.then_some(Hatch {
+                colour: roles::HELD_LINE,
+                cross: true,
+            });
+            added.outline = Some(outline(line, LineStyle::Solid));
+        }
+        SolidLook::Outline => {
+            let colour = if held { roles::HELD_LINE } else { roles::TAB };
+            added.outline_only = true;
+            added.outline = Some(outline(colour, LineStyle::Solid));
+        }
+        SolidLook::Failing => {
+            added.outline_only = true;
+            added.outline = Some(outline(roles::ERROR, LineStyle::Solid));
+        }
+        SolidLook::Offered => {
+            added.outline_only = true;
+            added.outline = Some(outline(roles::TAB, LineStyle::Dashed));
+        }
+    }
+}
+
+/// The renderer scene for a view model (7.4, 7.5). The part, the stock and
+/// what is flagged or held on them are fixed to the workpiece, so they turn
+/// with A in the machine view; the guides stay where they are.
+pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
+    let show = options.show;
     let mut scene = Scene::default();
     for mesh in &view.meshes {
         let (colour, on_top) = style(mesh.role);
+        match mesh.role {
+            SceneRole::HeldRegion | SceneRole::Tab => {
+                if !show.workholding || options.draft.is_some() {
+                    continue;
+                }
+                let look = if options.outlines_only {
+                    SolidLook::Outline
+                } else {
+                    SolidLook::Filled
+                };
+                add_solid(&mut scene, &mesh.mesh, mesh.role, look);
+                continue;
+            }
+            SceneRole::Part if !show.part => continue,
+            SceneRole::Problem if !show.findings => continue,
+            _ => {}
+        }
         let first = scene.meshes.len();
-        match bands {
+        match options.bands {
             Some((model, bands)) if mesh.role == SceneRole::Part && mesh.model == Some(model) => {
                 // The edges once, then each band's triangles in its colour.
                 let edges_only = TriangleMesh {
                     vertices: mesh.mesh.vertices.clone(),
                     triangles: Vec::new(),
                 };
-                scene.add_mesh(&edges_only, &mesh.feature_edges, colour, PART_EDGES);
+                scene.add_mesh(
+                    &edges_only,
+                    &mesh.feature_edges,
+                    colour,
+                    roles::FEATURE_EDGES,
+                );
                 for (band, triangles) in &bands.bands {
                     let part = triangles_mesh(&mesh.mesh, triangles);
-                    scene.add_mesh(&part, &[], band_colour(*band), PART_EDGES);
+                    scene.add_mesh(&part, &[], band_colour(*band), roles::FEATURE_EDGES);
+                    if roles::band_hatched(*band)
+                        && let Some(added) = scene.meshes.last_mut()
+                    {
+                        added.hatch = Some(Hatch {
+                            colour: roles::UNMEASURED_HATCH,
+                            cross: false,
+                        });
+                    }
                 }
             }
-            _ => scene.add_mesh(&mesh.mesh, &mesh.feature_edges, colour, PART_EDGES),
-        }
-        if mesh.role == SceneRole::HeldRegion
-            && let Some(added) = scene.meshes.last_mut()
-        {
-            added.translucent = true;
+            _ => scene.add_mesh(
+                &mesh.mesh,
+                &mesh.feature_edges,
+                colour,
+                roles::FEATURE_EDGES,
+            ),
         }
         // A STEP part's own edges, drawn as its feature edges are, so the
         // display mode shows or hides them alike (slice 11 item 5).
@@ -123,7 +290,7 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
                 let count = edge.points.len() as u32;
                 pairs.extend((1..count).map(|i| [base + i - 1, base + i]));
             }
-            scene.add_mesh(&edges, &pairs, colour, PART_EDGES);
+            scene.add_mesh(&edges, &pairs, colour, roles::FEATURE_EDGES);
         }
         for added in scene.meshes.iter_mut().skip(first) {
             added.slot = Slot::Part;
@@ -150,18 +317,65 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
                 on_top: true,
                 slot: Slot::Part,
                 width: 0.0,
+                style: LineStyle::Solid,
             });
         }
     }
+    if let Some(draft) = options.draft.filter(|_| show.workholding) {
+        for solid in &draft.solids {
+            let Some(mesh) = draft.meshes.get(solid.mesh) else {
+                continue;
+            };
+            let look = if draft.failing.contains(&solid.item) {
+                SolidLook::Failing
+            } else if options.outlines_only {
+                SolidLook::Outline
+            } else {
+                SolidLook::Filled
+            };
+            add_solid(&mut scene, &mesh.mesh, mesh.role, look);
+        }
+        for offered in &draft.offered {
+            add_solid(
+                &mut scene,
+                &offered.mesh,
+                SceneRole::Tab,
+                SolidLook::Offered,
+            );
+        }
+    }
     for line in &view.lines {
-        let (colour, on_top) = match line.role {
-            SceneRole::HeldRegion => (HELD_LINE, false),
-            SceneRole::Tab => (TAB_LINE, false),
-            role => style(role),
+        let visible = match line.role {
+            // Drawn by the outline of their solid.
+            SceneRole::HeldRegion | SceneRole::Tab => false,
+            SceneRole::Stock => show.stock,
+            SceneRole::RotaryAxis
+            | SceneRole::ADirection
+            | SceneRole::WorkX
+            | SceneRole::WorkY
+            | SceneRole::WorkZ => show.axes,
+            SceneRole::Problem | SceneRole::Hole => show.findings,
+            _ => true,
         };
-        scene.add_polyline(&line.points, colour, on_top);
-        if matches!(line.role, SceneRole::Stock | SceneRole::Problem)
-            && let Some(added) = scene.lines.last_mut()
+        if !visible {
+            continue;
+        }
+        let (colour, on_top) = style(line.role);
+        let (width, line_style) = match line.role {
+            SceneRole::Stock => (roles::LINE_WIDTH, LineStyle::Dashed),
+            SceneRole::RotaryAxis => (roles::LINE_WIDTH, LineStyle::DashDot),
+            SceneRole::ADirection => (roles::OUTLINE_WIDTH, LineStyle::Solid),
+            SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ => {
+                (roles::AXIS_WIDTH, LineStyle::Solid)
+            }
+            SceneRole::Hole => (roles::HOVERED_WIDTH, LineStyle::Solid),
+            _ => (roles::LINE_WIDTH, LineStyle::Solid),
+        };
+        scene.add_styled_polyline(&line.points, colour, on_top, width, line_style);
+        if matches!(
+            line.role,
+            SceneRole::Stock | SceneRole::Problem | SceneRole::Hole
+        ) && let Some(added) = scene.lines.last_mut()
         {
             added.slot = Slot::Part;
         }
@@ -170,8 +384,7 @@ pub fn to_scene_with(view: &SceneView, bands: Option<(ModelId, &DeviationBands)>
 }
 
 fn to_color32(c: Colour) -> Color32 {
-    let byte = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    Color32::from_rgb(byte(c[0]), byte(c[1]), byte(c[2]))
+    roles::to_color32(c)
 }
 
 /// What the renderer keeps between frames, in egui's callback resources.
@@ -262,11 +475,50 @@ pub struct Viewport {
     /// The transform of the part's slot and of the tool's slot.
     part_transform: Mat4,
     tool_transform: Mat4,
+    /// The part's turn about the rotary axis, degrees.
+    part_turn: f64,
     /// Whether the pointer picks triangles of the part (slice 10 item 1).
     picking: bool,
     /// What the pointer may pick (slice 11 item 5).
     filter: PickFilter,
     input: PickInput,
+    /// What is shown (7.1, V).
+    pub(crate) show: Visibility,
+    /// What Simulate shows (7.1).
+    pub(crate) simulate_show: SimulateShow,
+    /// The step set by the shell, or `None` to take it from what is held.
+    step: Option<ViewStep>,
+    /// The workholding draft drawn instead of the stored workholding.
+    draft: Option<WorkholdingDraft>,
+    /// The held region or tab under the pointer, by index into the shown
+    /// solids.
+    hover_solid: Option<usize>,
+    /// The held region or tab whose inspector row has keyboard focus (7.5).
+    focused_item: Option<WorkholdingItem>,
+    /// The selected held region or tab (7.5).
+    selected_item: Option<WorkholdingItem>,
+    /// The highlights of the hovered and selected solids, as last built.
+    focus_key: (Option<WorkholdingItem>, Option<WorkholdingItem>, u64),
+    focus: (Arc<Scene>, u64),
+    /// The point on the surface under the pointer, in the model frame, for
+    /// the readout.
+    pub(crate) cursor_point: Option<[f64; 3]>,
+    /// The tool's position for the readout on Simulate.
+    pub(crate) tool_readout: Option<ToolReadout>,
+    /// The path legend is open while the view is too low to show it (7.2).
+    pub(crate) legend_open: bool,
+    /// The "Show or hide" list is open (V).
+    pub(crate) show_menu_open: bool,
+}
+
+/// Where the tool is, for the readout (7.2): X, Y, Z and A as the program
+/// gives them, in work coordinates, and the move.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToolReadout {
+    /// X, Y, Z in millimetres and A in degrees.
+    pub work: [f64; 4],
+    /// The move, counted from 1.
+    pub move_number: usize,
 }
 
 /// What the pointer may pick (decision record 0066 item 3). With `Both`, the
@@ -294,7 +546,14 @@ pub struct PickInput {
     pub edge_hover: Option<SceneEdgePick>,
     /// The edge clicked, and the keys held.
     pub edge_click: Option<(SceneEdgePick, Modifiers)>,
+    /// The held region or tab clicked (7.5): the shell selects its setup and
+    /// opens the inspector at the workholding section with it expanded.
+    pub solid_click: Option<WorkholdingItem>,
 }
+
+/// The high bit of a layer's generation marks it hidden, so showing it
+/// again uploads it once more.
+const HIDDEN: u64 = 1 << 63;
 
 impl Viewport {
     /// A viewport; `available` is false when there is no wgpu renderer.
@@ -314,20 +573,44 @@ impl Viewport {
             layers: Vec::new(),
             part_transform: IDENTITY,
             tool_transform: IDENTITY,
+            part_turn: 0.0,
             picking: false,
             filter: PickFilter::Both,
             input: PickInput::default(),
+            show: Visibility::default(),
+            simulate_show: SimulateShow::Both,
+            step: None,
+            draft: None,
+            hover_solid: None,
+            focused_item: None,
+            selected_item: None,
+            focus_key: (None, None, 0),
+            focus: (Arc::new(Scene::default()), 0),
+            cursor_point: None,
+            tool_readout: None,
+            legend_open: false,
+            show_menu_open: false,
         }
+    }
+
+    /// Builds the renderer scene again from the view model and the options,
+    /// for the next frame.
+    fn rebuild(&mut self) {
+        let options = SceneOptions {
+            bands: self.bands.as_ref().map(|(m, b)| (*m, b)),
+            outlines_only: self.picking || self.bands.is_some(),
+            show: self.show,
+            draft: self.draft.as_ref(),
+        };
+        self.scene = Arc::new(to_scene_with(&self.view, &options));
+        self.generation += 1;
     }
 
     /// Shows a new scene. With `fit` the camera is fitted to it.
     pub fn set_scene(&mut self, view: SceneView, fit: bool) {
-        self.scene = Arc::new(to_scene_with(
-            &view,
-            self.bands.as_ref().map(|(m, b)| (*m, b)),
-        ));
         self.view = view;
-        self.generation += 1;
+        self.hover_solid = None;
+        self.rebuild();
         self.fit_pending |= fit;
     }
 
@@ -338,11 +621,12 @@ impl Viewport {
             return;
         }
         self.bands = bands;
-        self.scene = Arc::new(to_scene_with(
-            &self.view,
-            self.bands.as_ref().map(|(m, b)| (*m, b)),
-        ));
-        self.generation += 1;
+        self.rebuild();
+    }
+
+    /// The deviation bands shown, for the colour scale.
+    pub(crate) fn bands(&self) -> Option<&DeviationBands> {
+        self.bands.as_ref().map(|(_, b)| b)
     }
 
     /// Replaces the highlights drawn over the scene.
@@ -364,9 +648,112 @@ impl Viewport {
         }
     }
 
+    /// Whether a layer holds anything to draw.
+    fn holds(&self, layer: Layer) -> bool {
+        self.layers
+            .iter()
+            .any(|(l, s, _)| *l == layer && (!s.meshes.is_empty() || !s.lines.is_empty()))
+    }
+
+    /// Sets the step the view is in (7.1, 7.2), or `None` to take it from
+    /// what the view holds.
+    pub fn set_step(&mut self, step: Option<ViewStep>) {
+        self.step = step;
+    }
+
+    /// The step the view is in: the one the shell set, or else Simulate when
+    /// the part is coloured by deviation or the stock is shown, Operations
+    /// while picking or when toolpaths are drawn, Model when the scene has
+    /// findings, and Setup otherwise.
+    pub fn step(&self) -> ViewStep {
+        if let Some(step) = self.step {
+            return step;
+        }
+        if self.bands.is_some() || self.holds(Layer::Stock) {
+            ViewStep::Simulate
+        } else if self.picking || self.holds(Layer::Paths) {
+            ViewStep::Operations
+        } else if self.has_findings() {
+            ViewStep::Model
+        } else {
+            ViewStep::Setup
+        }
+    }
+
+    /// Whether the scene has mesh findings to show or hide.
+    pub(crate) fn has_findings(&self) -> bool {
+        self.view
+            .meshes
+            .iter()
+            .map(|m| m.role)
+            .chain(self.view.lines.iter().map(|l| l.role))
+            .any(|r| matches!(r, SceneRole::Problem | SceneRole::Hole))
+    }
+
+    /// Sets what is shown (7.1, V).
+    pub fn set_visibility(&mut self, show: Visibility) {
+        if self.show != show {
+            self.show = show;
+            self.rebuild();
+        }
+    }
+
+    /// What is shown.
+    pub fn visibility(&self) -> Visibility {
+        self.show
+    }
+
+    /// Draws `draft` instead of the setup's stored workholding, or the
+    /// stored one again for `None` (7.5, 11.7). While a draft is drawn a
+    /// chip says so.
+    pub fn set_workholding_draft(&mut self, draft: Option<WorkholdingDraft>) {
+        if self.draft != draft {
+            self.draft = draft;
+            self.hover_solid = None;
+            self.rebuild();
+        }
+    }
+
+    /// Whether a draft is drawn.
+    pub(crate) fn shows_draft(&self) -> bool {
+        self.draft.is_some()
+    }
+
+    /// The held region or tab solids shown, with the meshes their indices
+    /// name: the draft's while one is drawn.
+    fn solids(&self) -> (&[SceneMesh], &[SceneSolid]) {
+        match &self.draft {
+            Some(d) => (&d.meshes, &d.solids),
+            None => (&self.view.meshes, &self.view.solids),
+        }
+    }
+
+    /// Outlines the held region or tab whose inspector row has keyboard
+    /// focus, as a hover does (7.5, principle 9).
+    pub fn set_focused_solid(&mut self, item: Option<WorkholdingItem>) {
+        self.focused_item = item;
+    }
+
+    /// Selects a held region or tab, drawn with a 3-pixel accent outline
+    /// while it stays selected (7.5), or none.
+    pub fn set_selected_solid(&mut self, item: Option<WorkholdingItem>) {
+        self.selected_item = item;
+    }
+
+    /// The selected held region or tab.
+    pub fn selected_solid(&self) -> Option<WorkholdingItem> {
+        self.selected_item
+    }
+
+    /// The held region or tab under the pointer.
+    pub fn hovered_solid(&self) -> Option<&SceneSolid> {
+        self.hover_solid.and_then(|i| self.solids().1.get(i))
+    }
+
     /// Turns the workpiece (and what is fixed to it) by `degrees` about the
     /// rotary axis in the machine view (SIM-02).
     pub fn set_part_turn(&mut self, degrees: f64) {
+        self.part_turn = degrees;
         self.part_transform = if degrees.abs() < 1e-12 {
             IDENTITY
         } else {
@@ -374,10 +761,20 @@ impl Viewport {
         };
     }
 
+    /// The part's turn about the rotary axis, degrees.
+    pub(crate) fn part_turn(&self) -> f64 {
+        self.part_turn
+    }
+
     /// Puts the tool where the playback is: a transform that takes a tool
     /// built with its tip at the origin and its axis along +Z to its place.
     pub fn set_tool_transform(&mut self, transform: Mat4) {
         self.tool_transform = transform;
+    }
+
+    /// Gives the readout the tool's position and move (7.2), or none.
+    pub fn set_tool_readout(&mut self, readout: Option<ToolReadout>) {
+        self.tool_readout = readout;
     }
 
     /// Whether picking is on.
@@ -392,9 +789,14 @@ impl Viewport {
 
     /// Lets the pointer pick triangles of the part: hover and click are then
     /// reported by [`take_input`](Self::take_input) and a click no longer
-    /// only orbits.
+    /// only orbits. While picking, held regions and tabs are outlines only
+    /// and cannot be picked (7.5).
     pub fn set_picking(&mut self, on: bool) {
-        self.picking = on;
+        if self.picking != on {
+            self.picking = on;
+            self.hover_solid = None;
+            self.rebuild();
+        }
         if !on {
             self.input = PickInput::default();
         }
@@ -408,10 +810,19 @@ impl Viewport {
     /// The scene a layer holds (tests).
     #[cfg(test)]
     pub fn layer(&self, layer: Layer) -> Option<&Scene> {
+        if layer == Layer::Focus {
+            return Some(self.focus.0.as_ref());
+        }
         self.layers
             .iter()
             .find(|(l, ..)| *l == layer)
             .map(|(_, s, _)| s.as_ref())
+    }
+
+    /// The scene drawn (tests).
+    #[cfg(test)]
+    pub fn scene(&self) -> &Scene {
+        &self.scene
     }
 
     /// The transforms of the part's slot and the tool's slot (tests).
@@ -464,18 +875,26 @@ impl Viewport {
         self.camera.projection = projection;
     }
 
-    /// Draws the viewport filling `ui`, and handles its input.
+    /// Draws the toolbar strip (7.1) and under it the view, filling `ui`.
     pub fn show(&mut self, ui: &mut egui::Ui) {
         let rect = ui.available_rect_before_wrap();
+        let height = crate::viewport_toolbar::HEIGHT.min(rect.height());
+        let (strip, view) = rect.split_top_bottom_at_y(rect.top() + height);
+        crate::viewport_toolbar::show(ui, self, strip);
+        self.show_view_in(ui, view);
+    }
+
+    /// Draws the view in `rect`, with its overlays, and handles its input.
+    fn show_view_in(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
-        ui.painter().rect_filled(rect, 0.0, BACKGROUND);
+        paint_gradient(ui.painter(), rect);
         if !self.available {
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "The 3D view needs the wgpu renderer, which is not available.",
                 egui::FontId::proportional(14.0),
-                Color32::LIGHT_GRAY,
+                roles::OVERLAY_TEXT,
             );
             return;
         }
@@ -492,6 +911,10 @@ impl Viewport {
             self.fit();
             self.fit_pending = false;
         }
+        self.keys(ui);
+
+        // The overlays take their clicks before the view does.
+        let overlay_used = crate::viewport_overlays::interact(ui, self, rect);
 
         // Orbit with the primary button, pan with the secondary or middle.
         let delta = response.drag_delta();
@@ -511,38 +934,103 @@ impl Viewport {
             }
         }
 
-        self.pick(ui, &response, rect);
+        if overlay_used {
+            self.input = PickInput::default();
+            self.hover_solid = None;
+            self.cursor_point = None;
+        } else {
+            self.pick(ui, &response, rect);
+        }
+        self.update_focus();
 
         let mut frame = Frame::new(self.camera, self.aspect, self.mode);
         frame.viewport = [rect.width(), rect.height()];
+        frame.pixels_per_point = scale;
         frame.set_transform(Slot::Part, self.part_transform);
         frame.set_transform(Slot::Tool, self.tool_transform);
+        let empty = Arc::new(Scene::default());
+        let layers = std::iter::once((Layer::Scene, self.generation, Arc::clone(&self.scene)))
+            .chain(self.layers.iter().map(|(l, s, g)| {
+                if self.layer_shown(*l) {
+                    (*l, *g, Arc::clone(s))
+                } else {
+                    (*l, *g | HIDDEN, Arc::clone(&empty))
+                }
+            }))
+            .chain(std::iter::once((
+                Layer::Focus,
+                self.focus.1,
+                Arc::clone(&self.focus.0),
+            )))
+            .collect();
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
-            Callback {
-                frame,
-                layers: std::iter::once((Layer::Scene, self.generation, Arc::clone(&self.scene)))
-                    .chain(self.layers.iter().map(|(l, s, g)| (*l, *g, Arc::clone(s))))
-                    .collect(),
-            },
+            Callback { frame, layers },
         ));
         self.drawn = self.generation;
         self.draw_labels(ui, rect);
-        self.draw_legend(ui, rect);
+        if let Some(solid) = self.hovered_solid() {
+            let text = solid.description.clone();
+            response.on_hover_ui_at_pointer(|ui| {
+                ui.label(text);
+            });
+        }
+        crate::viewport_overlays::paint(ui, self, rect);
+    }
+
+    /// Whether a layer other than the scene is drawn, after "Show or hide"
+    /// and Simulate's "Show".
+    fn layer_shown(&self, layer: Layer) -> bool {
+        // The Show choice is Simulate's; it hides nothing on the other steps,
+        // where the toolbar does not offer it (7.1).
+        let simulate = if self.step() == ViewStep::Simulate {
+            self.simulate_show
+        } else {
+            SimulateShow::Both
+        };
+        match layer {
+            Layer::Overlay => self.show.selections,
+            Layer::Paths => self.show.toolpaths && simulate != SimulateShow::Stock,
+            Layer::Stock => self.show.stock && simulate != SimulateShow::PartAndPath,
+            _ => true,
+        }
+    }
+
+    /// F fits, V opens "Show or hide" (7.1, section 16), and Esc clears the
+    /// selected held region or tab (7.5); not while a text field has the
+    /// keyboard.
+    fn keys(&mut self, ui: &egui::Ui) {
+        let ctx = ui.ctx();
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::F)) {
+            self.fit();
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::V)) {
+            self.show_menu_open = !self.show_menu_open;
+        }
+        if !self.picking
+            && self.selected_item.is_some()
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::Escape))
+        {
+            self.selected_item = None;
+        }
     }
 
     /// Hover and click picking (UI-04): the pointer becomes a ray, the scene's
     /// picker finds the edge within reach of it or else the triangle under
     /// it, and the shell is told. Not run while the pointer is dragging the
-    /// camera.
+    /// camera. When not picking, the ray finds the held region or tab under
+    /// the pointer instead (7.5), unless the part is in front of it, and the
+    /// point for the readout.
     fn pick(&mut self, ui: &egui::Ui, response: &egui::Response, rect: Rect) {
         self.input = PickInput::default();
-        if !self.picking || response.dragged() {
+        self.hover_solid = None;
+        self.cursor_point = None;
+        if response.dragged() {
             return;
         }
-        let Some(picker) = self.view.picking.picker() else {
-            return;
-        };
         let Some(pointer) = response.hover_pos() else {
             return;
         };
@@ -557,6 +1045,30 @@ impl Viewport {
         let back = rigid_inverse(&self.part_transform);
         let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
         let d = transform(&back, [direction[0], direction[1], direction[2], 0.0]);
+        let (o, d) = ([o[0], o[1], o[2]], [d[0], d[1], d[2]]);
+        let surface = self
+            .view
+            .picking
+            .picker()
+            .and_then(|p| p.pick(o, d).ok().flatten());
+        self.cursor_point = surface.map(|h| [h.point.x, h.point.y, h.point.z]);
+        if !self.picking {
+            if self.show.workholding {
+                let near = surface.map_or(f64::INFINITY, |h| h.distance);
+                self.hover_solid = self.solid_under(o, d, near);
+                if let Some(solid) = self.hovered_solid() {
+                    let item = solid.item;
+                    if response.clicked_by(PointerButton::Primary) {
+                        self.selected_item = Some(item);
+                        self.input.solid_click = Some(item);
+                    }
+                }
+            }
+            return;
+        }
+        let Some(picker) = self.view.picking.picker() else {
+            return;
+        };
         if self.filter != PickFilter::Faces {
             // The reach is what EDGE_PIXELS span: the ray a few pixels over
             // gives how far apart the rays start and how fast they part.
@@ -573,9 +1085,7 @@ impl Viewport {
                 base: gap(origin, o2),
                 per_distance: gap(unit(direction), unit(d2)),
             };
-            if let Ok(Some(hit)) =
-                picker.pick_edge([o[0], o[1], o[2]], [d[0], d[1], d[2]], tolerance)
-            {
+            if let Ok(Some(hit)) = picker.pick_edge(o, d, tolerance) {
                 self.input.edge_hover = Some(hit);
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
                 if response.clicked_by(PointerButton::Primary) {
@@ -587,7 +1097,7 @@ impl Viewport {
         if self.filter == PickFilter::Edges {
             return;
         }
-        let Ok(Some(hit)) = picker.pick([o[0], o[1], o[2]], [d[0], d[1], d[2]]) else {
+        let Some(hit) = surface else {
             return;
         };
         self.input.hover = Some(hit);
@@ -597,99 +1107,185 @@ impl Viewport {
         }
     }
 
-    /// The legend of the held regions and tabs present (interface
-    /// specification 7.5): a swatch drawn the way the role is drawn, and its
-    /// name.
-    fn draw_legend(&self, ui: &egui::Ui, rect: Rect) {
-        let entries = openchuck_app::workholding_view::legend(&self.view);
-        if entries.is_empty() {
+    /// The nearest held region or tab the ray from `o` along `d` (in the
+    /// part's frame) meets before `near`, by index into the shown solids.
+    fn solid_under(&self, o: [f64; 3], d: [f64; 3], near: f64) -> Option<usize> {
+        let (meshes, solids) = self.solids();
+        let mut best: Option<(f64, usize)> = None;
+        for (i, solid) in solids.iter().enumerate() {
+            let Some(mesh) = meshes.get(solid.mesh) else {
+                continue;
+            };
+            if let Some(t) = ray_mesh(o, d, &mesh.mesh)
+                && t < near
+                && best.is_none_or(|(b, _)| t < b)
+            {
+                best = Some((t, i));
+            }
+        }
+        best.map(|(_, i)| i)
+    }
+
+    /// Builds the outlines of the hovered and selected held region or tab
+    /// (7.5) when they change: hovered 2 pixels in yellow, selected 3 in
+    /// `accent`, a tab around the axis all its solids together.
+    fn update_focus(&mut self) {
+        let hovered = self
+            .hovered_solid()
+            .map(|s| s.item)
+            .or(self.focused_item)
+            .filter(|_| !self.picking && self.show.workholding);
+        let selected = self.selected_item.filter(|_| self.show.workholding);
+        let key = (hovered, selected, self.generation);
+        if key == self.focus_key {
+            return;
+        }
+        self.focus_key = key;
+        let mut scene = Scene::default();
+        let (meshes, solids) = self.solids();
+        for (item, colour, width) in [
+            (selected, roles::ACCENT, roles::SELECTED_WIDTH),
+            (
+                hovered.filter(|h| Some(*h) != selected),
+                roles::HOVER,
+                roles::HOVERED_WIDTH,
+            ),
+        ] {
+            let Some(item) = item else {
+                continue;
+            };
+            for solid in solids.iter().filter(|s| s.item == item) {
+                if let Some(mesh) = meshes.get(solid.mesh) {
+                    scene.add_mesh(&mesh.mesh, &[], colour, colour);
+                    if let Some(added) = scene.meshes.last_mut() {
+                        added.slot = Slot::Part;
+                        added.outline_only = true;
+                        added.outline = Some(Outline {
+                            colour,
+                            width,
+                            style: LineStyle::Solid,
+                        });
+                    }
+                }
+            }
+        }
+        self.focus = (Arc::new(scene), self.focus.1 + 1);
+    }
+
+    /// Draws the scene's labels ("A+", the work axes) at their projected
+    /// points, and an arrowhead at the end of each work axis (7.3, 7.4).
+    fn draw_labels(&self, ui: &egui::Ui, rect: Rect) {
+        if !self.show.axes {
             return;
         }
         let painter = ui.painter_at(rect);
-        let text_colour = ui.visuals().text_color();
-        for (row, name) in entries.iter().rev().enumerate() {
-            let y = rect.bottom() - 10.0 - 18.0 * (row as f32 + 1.0);
-            let swatch = Rect::from_min_size(pos2(rect.left() + 10.0, y), egui::vec2(12.0, 12.0));
-            if *name == "Held region" {
-                let violet = to_color32(HELD_LINE);
-                painter.rect_filled(swatch, 0.0, violet.gamma_multiply(0.35));
-                for step in [4.0_f32, 8.0] {
-                    painter.line_segment(
-                        [
-                            swatch.left_top() + egui::vec2(step, 0.0),
-                            swatch.left_top() + egui::vec2(0.0, step),
-                        ],
-                        egui::Stroke::new(1.0, violet),
-                    );
-                    painter.line_segment(
-                        [
-                            swatch.right_bottom() - egui::vec2(step, 0.0),
-                            swatch.right_bottom() - egui::vec2(0.0, step),
-                        ],
-                        egui::Stroke::new(1.0, violet),
-                    );
-                }
-                painter.rect_stroke(
-                    swatch,
-                    0.0,
-                    egui::Stroke::new(1.5, violet),
-                    egui::StrokeKind::Inside,
-                );
-            } else {
-                painter.rect_filled(swatch, 0.0, to_color32(TAB));
-                painter.rect_stroke(
-                    swatch,
-                    0.0,
-                    egui::Stroke::new(1.5, to_color32(TAB_LINE)),
-                    egui::StrokeKind::Inside,
-                );
-            }
-            painter.text(
-                pos2(swatch.right() + 6.0, swatch.center().y),
-                egui::Align2::LEFT_CENTER,
-                *name,
-                egui::FontId::proportional(12.0),
-                text_colour,
-            );
-        }
-    }
-
-    /// Draws the scene's labels ("A+", the work axes) at their projected points.
-    fn draw_labels(&self, ui: &egui::Ui, rect: Rect) {
-        let painter = ui.painter_at(rect);
-        for label in &self.view.labels {
-            let point = [label.at.x, label.at.y, label.at.z];
-            let Some(ndc) = self.camera.project(point, self.aspect) else {
+        let to_screen = |p: [f64; 3]| {
+            let ndc = self.camera.project(p, self.aspect)?;
+            (0.0..=1.0).contains(&ndc[2]).then(|| {
+                pos2(
+                    rect.left() + ((ndc[0] + 1.0) * 0.5) as f32 * rect.width(),
+                    rect.top() + ((1.0 - ndc[1]) * 0.5) as f32 * rect.height(),
+                )
+            })
+        };
+        for line in self.view.lines.iter().filter(|l| {
+            matches!(
+                l.role,
+                SceneRole::WorkX | SceneRole::WorkY | SceneRole::WorkZ
+            )
+        }) {
+            let (Some(a), Some(b)) = (line.points.first(), line.points.last()) else {
                 continue;
             };
-            if !(0.0..=1.0).contains(&ndc[2]) {
-                continue;
+            if let (Some(a), Some(b)) = (to_screen([a.x, a.y, a.z]), to_screen([b.x, b.y, b.z])) {
+                let (colour, _) = style(line.role);
+                crate::viewport_overlays::arrowhead(&painter, a, b, to_color32(colour));
             }
-            let x = rect.left() + ((ndc[0] + 1.0) * 0.5) as f32 * rect.width();
-            let y = rect.top() + ((1.0 - ndc[1]) * 0.5) as f32 * rect.height();
+        }
+        for label in &self.view.labels {
+            let Some(at) = to_screen([label.at.x, label.at.y, label.at.z]) else {
+                continue;
+            };
             let (colour, _) = style(label.role);
             painter.text(
-                pos2(x + 4.0, y - 4.0),
+                at + egui::vec2(6.0, -4.0),
                 egui::Align2::LEFT_BOTTOM,
                 &label.text,
-                egui::FontId::proportional(14.0),
+                egui::FontId::monospace(12.0),
                 to_color32(colour),
             );
         }
     }
 }
 
+/// The view's dark gradient, `#2c3139` at the top to `#1b1e23` (14.2), in
+/// both themes.
+fn paint_gradient(painter: &egui::Painter, rect: Rect) {
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(rect.left_top(), roles::VIEW_TOP);
+    mesh.colored_vertex(rect.right_top(), roles::VIEW_TOP);
+    mesh.colored_vertex(rect.right_bottom(), roles::VIEW_BOTTOM);
+    mesh.colored_vertex(rect.left_bottom(), roles::VIEW_BOTTOM);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// The distance along the ray from `o` in direction `d` to the nearest
+/// triangle of `mesh` it meets, or `None` (Möller and Trumbore).
+fn ray_mesh(o: [f64; 3], d: [f64; 3], mesh: &TriangleMesh) -> Option<f64> {
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let point = |i: u32| mesh.vertices.get(i as usize).map(|p| [p.x, p.y, p.z]);
+    let mut best: Option<f64> = None;
+    for &[a, b, c] in &mesh.triangles {
+        let (Some(p0), Some(p1), Some(p2)) = (point(a), point(b), point(c)) else {
+            continue;
+        };
+        let (e1, e2) = (sub(p1, p0), sub(p2, p0));
+        let p = cross(d, e2);
+        let det = dot(e1, p);
+        if det.abs() < 1e-12 {
+            continue;
+        }
+        let s = sub(o, p0);
+        let u = dot(s, p) / det;
+        if !(0.0..=1.0).contains(&u) {
+            continue;
+        }
+        let q = cross(s, e1);
+        let v = dot(d, q) / det;
+        if v < 0.0 || u + v > 1.0 {
+            continue;
+        }
+        let t = dot(e2, q) / det;
+        if t > 0.0 && best.is_none_or(|b| t < b) {
+            best = Some(t);
+        }
+    }
+    best
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
 
     use openchuck_app::scene::{SceneLabel, ScenePolyline};
     use openchuck_app::setup::Point3;
 
     use super::*;
+    use crate::roles::{HELD, HELD_LINE, TAB, TAB_LINE, WORK_X};
 
-    #[test]
-    fn req_ui_25_req_ui_03_held_regions_and_tabs_differ_by_more_than_colour() {
+    /// A workholding of a held region at the start and a cylinder tab on the
+    /// axis, on 26 mm stock round a 16 mm part.
+    pub(crate) fn held_and_tab() -> SceneView {
         use openchuck_app::setup::{
             Aabb, HeldRegion, Millimetres, PartExtent, Stock, Tab, TabLayout, TabShape, Workholding,
         };
@@ -720,23 +1316,160 @@ mod tests {
             },
             radius: Millimetres(5.0),
         };
-        let view = openchuck_app::workholding_view::display_scene(&w, Some(&stock), &part).unwrap();
+        openchuck_app::workholding_view::display_scene(&w, Some(&stock), &part).unwrap()
+    }
+
+    #[test]
+    fn req_ui_25_req_ui_03_held_regions_and_tabs_differ_by_more_than_colour() {
+        let view = held_and_tab();
         let scene = to_scene(&view);
-        // The held region is translucent violet, the tab opaque sand.
+        // The held region is translucent violet with a screen cross-hatch,
+        // the tab opaque sand; each has a 1.5-pixel outline, violet for the
+        // held region and dark for the tab: a second cue besides the fill
+        // colour (7.5).
         assert_eq!(scene.meshes.len(), 2);
-        assert!(scene.meshes[0].translucent && !scene.meshes[1].translucent);
-        assert_eq!(scene.meshes[0].colour, HELD);
-        assert_eq!(scene.meshes[1].colour, TAB);
-        // The held region's outline and hatch are in its own colour, the
-        // tab's outline is dark: a second cue besides the fill colour.
-        let hatch = scene.lines.iter().filter(|l| l.colour == HELD_LINE).count();
-        let outlines = scene.lines.iter().filter(|l| l.colour == TAB_LINE).count();
-        assert!(hatch > 2, "{hatch}");
-        assert_eq!(outlines, 2);
+        let (held, tab) = (&scene.meshes[0], &scene.meshes[1]);
+        assert!(held.translucent && !tab.translucent);
+        assert_eq!((held.colour, tab.colour), (HELD, TAB));
         assert_eq!(
-            openchuck_app::workholding_view::legend(&view),
-            vec!["Held region", "Tab"]
+            held.hatch,
+            Some(Hatch {
+                colour: HELD_LINE,
+                cross: true
+            })
         );
+        assert_eq!(tab.hatch, None);
+        let outline = |m: &openchuck_viewport::MeshItem| m.outline.unwrap();
+        assert_eq!(outline(held).colour, HELD_LINE);
+        assert_eq!(outline(tab).colour, TAB_LINE);
+        assert!(scene.meshes.iter().all(|m| outline(m).width == 1.5
+            && outline(m).style == LineStyle::Solid
+            && !m.outline_only
+            && m.slot == Slot::Part));
+        // Their end circles are drawn by the outline, not as lines.
+        assert!(scene.lines.is_empty());
+        assert_eq!(
+            crate::viewport_overlays::workholding_entries(&view)
+                .iter()
+                .map(|e| e.name())
+                .collect::<Vec<_>>(),
+            ["Held region", "Tab"]
+        );
+    }
+
+    #[test]
+    fn req_ui_25_held_regions_and_tabs_are_outlines_while_picking_and_on_simulate() {
+        let view = held_and_tab();
+        let scene = to_scene_with(
+            &view,
+            &SceneOptions {
+                outlines_only: true,
+                show: Visibility::default(),
+                ..SceneOptions::default()
+            },
+        );
+        // Outlines only, in the role colours (sand for a tab), no fill.
+        assert!(scene.meshes.iter().all(|m| m.outline_only));
+        assert_eq!(scene.meshes[0].outline.unwrap().colour, HELD_LINE);
+        assert_eq!(scene.meshes[1].outline.unwrap().colour, TAB);
+        // Hidden by "Show or hide", they are not drawn at all.
+        let hidden = to_scene_with(
+            &view,
+            &SceneOptions {
+                show: Visibility {
+                    workholding: false,
+                    ..Visibility::default()
+                },
+                ..SceneOptions::default()
+            },
+        );
+        assert!(hidden.meshes.is_empty());
+        // The viewport draws them as outlines while picking.
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        assert!(viewport.scene().meshes.iter().all(|m| !m.outline_only));
+        viewport.set_picking(true);
+        assert!(viewport.scene().meshes.iter().all(|m| m.outline_only));
+    }
+
+    #[test]
+    fn req_ui_25_a_draft_is_drawn_instead_with_failing_and_offered_tabs_marked() {
+        let view = held_and_tab();
+        // The draft: the same solids, with the tab failing a check, and one
+        // default tab offered.
+        let draft = WorkholdingDraft {
+            meshes: view.meshes.clone(),
+            solids: view.solids.clone(),
+            failing: vec![WorkholdingItem::Tab(0)],
+            offered: vec![view.meshes[1].clone()],
+        };
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_workholding_draft(Some(draft));
+        assert!(viewport.shows_draft());
+        let meshes = &viewport.scene().meshes;
+        // The stored solids are not drawn; the draft's are, then the offered
+        // tab.
+        assert_eq!(meshes.len(), 3);
+        assert!(!meshes[0].outline_only);
+        assert_eq!(meshes[1].outline.unwrap().colour, roles::ERROR);
+        assert!(meshes[1].outline_only);
+        let offered = meshes[2].outline.unwrap();
+        assert!(meshes[2].outline_only);
+        assert_eq!((offered.colour, offered.style), (TAB, LineStyle::Dashed));
+        viewport.set_workholding_draft(None);
+        assert_eq!(viewport.scene().meshes.len(), 2);
+    }
+
+    #[test]
+    fn req_ui_03_req_nfr_15_roles_have_the_specified_colours_and_line_styles() {
+        let line = |role| ScenePolyline {
+            role,
+            points: vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)],
+        };
+        let view = SceneView {
+            lines: vec![
+                line(SceneRole::Stock),
+                line(SceneRole::RotaryAxis),
+                line(SceneRole::ADirection),
+                line(SceneRole::WorkX),
+                line(SceneRole::Hole),
+                line(SceneRole::Problem),
+            ],
+            ..SceneView::default()
+        };
+        let scene = to_scene(&view);
+        let looks: Vec<(Colour, LineStyle)> =
+            scene.lines.iter().map(|l| (l.colour, l.style)).collect();
+        assert_eq!(
+            looks,
+            [
+                (roles::STOCK, LineStyle::Dashed),
+                (roles::ROTARY_AXIS, LineStyle::DashDot),
+                (roles::ROTARY_AXIS, LineStyle::Solid),
+                (WORK_X, LineStyle::Solid),
+                (roles::HOLE, LineStyle::Solid),
+                (roles::FINDING, LineStyle::Solid),
+            ]
+        );
+        // Holes are ringed wider than the 1-pixel lines; the work axes are
+        // arrows of 2 pixels.
+        assert_eq!(scene.lines[4].width, roles::HOVERED_WIDTH);
+        assert_eq!(scene.lines[3].width, roles::AXIS_WIDTH);
+        // Findings and the guides can be hidden.
+        let hidden = to_scene_with(
+            &view,
+            &SceneOptions {
+                show: Visibility {
+                    findings: false,
+                    axes: false,
+                    stock: false,
+                    ..Visibility::default()
+                },
+                ..SceneOptions::default()
+            },
+        );
+        assert!(hidden.lines.is_empty());
     }
 
     #[test]
@@ -763,7 +1496,7 @@ mod tests {
         let on_top: Vec<bool> = scene.lines.iter().map(|l| l.on_top).collect();
         assert_eq!(on_top, [false, true, true, true]);
         assert_eq!(scene.lines[0].segments.len(), 2);
-        // The work axes keep their conventional colours.
+        // The work axes keep their conventional colours: X red.
         assert_eq!(scene.lines[3].colour, WORK_X);
     }
 
@@ -800,7 +1533,12 @@ mod tests {
             .collect();
         let bands = deviation_bands(&values, 0.1);
         let plain = to_scene(&view);
-        let coloured = to_scene_with(&view, Some((model, &bands)));
+        let with_bands = |model| SceneOptions {
+            bands: Some((model, &bands)),
+            show: Visibility::default(),
+            ..SceneOptions::default()
+        };
+        let coloured = to_scene_with(&view, &with_bands(model));
         // The plain scene has the part once; the coloured one has its edges
         // and then a mesh for each band, in the band's colour, all turning
         // with the workpiece.
@@ -824,7 +1562,7 @@ mod tests {
                 .all(|l| l.slot == Slot::Part || l.slot == Slot::Fixed)
         );
         // A band for another model changes nothing.
-        let other = to_scene_with(&view, Some((ModelId::new(), &bands)));
+        let other = to_scene_with(&view, &with_bands(ModelId::new()));
         assert_eq!(other.meshes.len(), 1);
     }
 
@@ -948,6 +1686,259 @@ mod tests {
         viewport.set_picking(false);
         frame(&mut viewport, &ctx, pos2(200.0, 200.0), true);
         assert_eq!(viewport.take_input(), PickInput::default());
+    }
+
+    /// The outlines the focus layer holds: colour and width.
+    fn focus(viewport: &Viewport) -> Vec<(Colour, f32)> {
+        viewport
+            .layer(Layer::Focus)
+            .unwrap()
+            .meshes
+            .iter()
+            .map(|m| {
+                assert!(m.outline_only);
+                let o = m.outline.unwrap();
+                (o.colour, o.width)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn req_ui_25_req_nfr_15_hovering_and_clicking_outline_the_held_region_or_tab() {
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(held_and_tab(), true);
+        viewport.set_view(StandardView::Front);
+        // The held region (X -16 to -10, 26 mm across) fills the middle of
+        // the view: pointing at it outlines it 2 pixels wide in yellow and
+        // gives its tooltip.
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), false);
+        let hovered = viewport
+            .hovered_solid()
+            .expect("the held region is under the pointer");
+        assert_eq!(hovered.item, WorkholdingItem::Start);
+        assert!(hovered.description.starts_with("Held region at the start"));
+        assert_eq!(focus(&viewport), [(roles::HOVER, roles::HOVERED_WIDTH)]);
+        // A click selects it: a 3-pixel accent outline, and the shell is told.
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), true);
+        assert_eq!(
+            viewport.take_input().solid_click,
+            Some(WorkholdingItem::Start)
+        );
+        assert_eq!(viewport.selected_solid(), Some(WorkholdingItem::Start));
+        assert_eq!(focus(&viewport), [(roles::ACCENT, roles::SELECTED_WIDTH)]);
+        // Away from it, the selection stays and the hover goes.
+        frame(&mut viewport, &ctx, pos2(2.0, 2.0), false);
+        assert!(viewport.hovered_solid().is_none());
+        assert_eq!(focus(&viewport), [(roles::ACCENT, roles::SELECTED_WIDTH)]);
+        // Esc clears it.
+        run_frame(
+            &mut viewport,
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            }],
+        );
+        assert_eq!(viewport.selected_solid(), None);
+        assert!(focus(&viewport).is_empty());
+        // The inspector row with keyboard focus outlines its solid as a hover
+        // does (principle 9), and a selection set from the inspector shows.
+        viewport.set_focused_solid(Some(WorkholdingItem::Tab(0)));
+        viewport.set_selected_solid(Some(WorkholdingItem::Start));
+        frame(&mut viewport, &ctx, pos2(2.0, 2.0), false);
+        assert_eq!(
+            focus(&viewport),
+            [
+                (roles::ACCENT, roles::SELECTED_WIDTH),
+                (roles::HOVER, roles::HOVERED_WIDTH)
+            ]
+        );
+        // While picking they cannot be hovered or clicked (7.5).
+        viewport.set_focused_solid(None);
+        viewport.set_selected_solid(None);
+        viewport.set_picking(true);
+        frame(&mut viewport, &ctx, pos2(200.0, 200.0), true);
+        assert!(viewport.hovered_solid().is_none());
+        assert_eq!(viewport.take_input().solid_click, None);
+    }
+
+    #[test]
+    fn req_ui_03_req_sim_03_the_step_and_show_or_hide_choose_what_is_drawn() {
+        let mut viewport = Viewport::new(true);
+        // With nothing held the view is taken to be on Setup; toolpaths make
+        // it Operations, deviation bands Simulate; the shell can say.
+        assert_eq!(viewport.step(), ViewStep::Setup);
+        let mut paths = Scene::default();
+        paths.add_polyline(
+            &[Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)],
+            roles::CUT,
+            false,
+        );
+        viewport.set_layer(Layer::Paths, paths);
+        assert_eq!(viewport.step(), ViewStep::Operations);
+        viewport.set_step(Some(ViewStep::Export));
+        assert_eq!(viewport.step(), ViewStep::Export);
+        viewport.set_step(None);
+        // Hiding toolpaths or the selections hides their layers; Simulate's
+        // "Show: Stock" hides the toolpaths, "Part + path" the stock.
+        assert!(viewport.layer_shown(Layer::Paths));
+        viewport.set_visibility(Visibility {
+            toolpaths: false,
+            selections: false,
+            ..Visibility::default()
+        });
+        assert!(!viewport.layer_shown(Layer::Paths));
+        assert!(!viewport.layer_shown(Layer::Overlay));
+        viewport.set_visibility(Visibility::default());
+        viewport.set_step(Some(ViewStep::Simulate));
+        viewport.simulate_show = SimulateShow::Stock;
+        assert!(!viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
+        viewport.simulate_show = SimulateShow::PartAndPath;
+        assert!(viewport.layer_shown(Layer::Paths) && !viewport.layer_shown(Layer::Stock));
+        // The choice is Simulate's: on Operations, where it is not offered,
+        // the toolpaths and stock show (OI-355 wiring, #126 review).
+        viewport.simulate_show = SimulateShow::Stock;
+        viewport.set_step(Some(ViewStep::Operations));
+        assert!(viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
+        viewport.set_step(None);
+        // F fits and V opens the list, from the keyboard.
+        let ctx = egui::Context::default();
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        run_frame(&mut viewport, &ctx, vec![key(egui::Key::V)]);
+        assert!(viewport.show_menu_open);
+    }
+
+    /// Runs one frame of `viewport` on a `size` screen with the pointer at
+    /// `pointer`, and returns where its overlays went.
+    fn overlays_at(
+        viewport: &mut Viewport,
+        ctx: &egui::Context,
+        size: egui::Vec2,
+        pointer: egui::Pos2,
+    ) -> (Rect, Vec<Rect>) {
+        let input = |events| egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), size)),
+            events,
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input(vec![egui::Event::PointerMoved(pointer)]), |ui| {
+                viewport.show(ui);
+            });
+            output.textures_delta.clear();
+        }
+        let mut found = (Rect::NOTHING, Vec::new());
+        let mut output = ctx.run_ui(input(Vec::new()), |ui| {
+            let full = ui.available_rect_before_wrap();
+            let view = full.with_min_y(full.top() + crate::viewport_toolbar::HEIGHT);
+            found = (
+                view,
+                crate::viewport_overlays::boxes(ui, viewport, view).all(),
+            );
+        });
+        output.textures_delta.clear();
+        found
+    }
+
+    #[test]
+    fn req_ui_02_req_ui_16_the_overlays_never_overlap_on_any_step() {
+        use openchuck_app::pathview::deviation_bands;
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        let mut view = cube_scene("overlays");
+        let held = held_and_tab();
+        let first = view.meshes.len();
+        view.meshes.extend(held.meshes);
+        view.solids.extend(held.solids.into_iter().map(|mut s| {
+            s.mesh += first;
+            s
+        }));
+        let model = view.meshes[0].model.unwrap();
+        viewport.set_scene(view, true);
+        let check = |viewport: &mut Viewport, size: egui::Vec2, count: usize| {
+            // The pointer over the cube's front face, for the readout.
+            let height = size.y - crate::viewport_toolbar::HEIGHT;
+            let ndc = viewport
+                .camera
+                .project([5.0, 0.0, 5.0], f64::from(size.x / height))
+                .unwrap();
+            let pointer = pos2(
+                ((ndc[0] + 1.0) * 0.5) as f32 * size.x,
+                crate::viewport_toolbar::HEIGHT + ((1.0 - ndc[1]) * 0.5) as f32 * height,
+            );
+            let (rect, boxes) = overlays_at(viewport, &ctx, size, pointer);
+            assert_eq!(
+                boxes.len(),
+                count,
+                "{:?} at {size:?}: {boxes:?}",
+                viewport.step()
+            );
+            for (i, a) in boxes.iter().enumerate() {
+                assert!(rect.contains_rect(*a), "{a:?} outside {rect:?}");
+                for b in boxes.iter().skip(i + 1) {
+                    assert!(!a.intersects(*b), "{a:?} overlaps {b:?}");
+                }
+            }
+        };
+        let large = egui::vec2(1100.0, 760.0);
+        let small = egui::vec2(900.0, 480.0);
+        // Setup: the cube and the triad; the held region and tab legend is
+        // the shell's legend strip under the view.
+        check(&mut viewport, large, 2);
+        // Operations: the path legend and the readout of the point under the
+        // pointer join them; in a low view the legend is a button, and it
+        // opens below it.
+        let mut paths = Scene::default();
+        paths.add_polyline(
+            &[Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)],
+            roles::CUT,
+            false,
+        );
+        viewport.set_layer(Layer::Paths, paths);
+        viewport.set_view(StandardView::Front);
+        check(&mut viewport, large, 4);
+        check(&mut viewport, small, 4);
+        viewport.legend_open = true;
+        check(&mut viewport, small, 5);
+        // Simulate: the colour scale with the kept roles, and the tool at
+        // its move in the readout.
+        let values: Vec<Option<(f64, bool)>> = (0..12)
+            .map(|i| if i == 0 { None } else { Some((0.2, false)) })
+            .collect();
+        viewport.set_bands(Some((model, deviation_bands(&values, 0.1))));
+        viewport.set_tool_readout(Some(ToolReadout {
+            work: [1.0, 2.0, 3.0, 4.0],
+            move_number: 7,
+        }));
+        check(&mut viewport, large, 4);
+        // A draft shows its chip; the scale stays where it is.
+        viewport.set_workholding_draft(Some(WorkholdingDraft::default()));
+        check(&mut viewport, large, 4);
+        // The toolbar offers Simulate's Show choices, and the scene is drawn.
+        assert_eq!(viewport.step(), ViewStep::Simulate);
+        assert!(viewport.is_drawn());
+    }
+
+    #[test]
+    fn req_ui_25_the_ray_meets_the_nearest_triangle_in_front() {
+        let mesh = fixtures::mesh();
+        // The square lies in z = 0 from (0, 0) to (1, 1).
+        let down = ray_mesh([0.5, 0.5, 5.0], [0.0, 0.0, -1.0], &mesh);
+        assert!((down.unwrap() - 5.0).abs() < 1e-12);
+        assert_eq!(ray_mesh([0.5, 0.5, 5.0], [0.0, 0.0, 1.0], &mesh), None);
+        assert_eq!(ray_mesh([2.0, 0.5, 5.0], [0.0, 0.0, -1.0], &mesh), None);
+        // Parallel to the square, nothing.
+        assert_eq!(ray_mesh([0.5, 0.5, 0.0], [1.0, 0.0, 0.0], &mesh), None);
     }
 
     mod fixtures {

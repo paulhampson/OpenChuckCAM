@@ -44,6 +44,15 @@ impl Application {
             .collect()
     }
 
+    /// The name the user reads for the strategy `name` (specification section
+    /// 15): its label, or `name` itself when no such strategy is registered.
+    pub fn strategy_label(&self, name: &str) -> String {
+        self.strategies
+            .iter()
+            .find(|s| s.name() == name)
+            .map_or_else(|| name.to_owned(), |s| s.label().to_owned())
+    }
+
     /// Adds an operation at the end of the list, using `strategy` in `setup`,
     /// with `tool` if given and the strategy's own defaults for everything
     /// else (UI-06, UI-07). One undoable step. Fails, saying why, for an

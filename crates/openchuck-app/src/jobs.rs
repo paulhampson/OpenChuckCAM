@@ -400,6 +400,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn req_nfr_04_polling_never_waits_for_a_running_job() {
+        // The job is held on a gate the test opens only after polling, so it
+        // is certainly running throughout. A poll that waited for it would
+        // never return; the polling runs on its own thread so that this
+        // reads as a failure at the deadline rather than a hung test.
+        use std::time::{Duration, Instant};
+        let manager = JobManager::new(Threads::Exactly(2)).unwrap();
+        let (events, events_rx) = channel();
+        let (open, gate) = channel::<()>();
+        let handle = manager.submit("held", events, move |context| {
+            context.report("held", 0, Some(1));
+            gate.recv().ok();
+            Ok(7)
+        });
+        let (done, polled) = channel();
+        std::thread::spawn(move || {
+            let mut seen = 0;
+            for _ in 0..1000 {
+                assert!(handle.try_result().is_none());
+                seen += events_rx.try_iter().count();
+            }
+            done.send((handle, seen, events_rx)).unwrap();
+        });
+        let (handle, mut seen, events_rx) = polled
+            .recv_timeout(Duration::from_secs(60))
+            .expect("a poll waited for the running job");
+        open.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let result = loop {
+            if let Some(result) = handle.try_result() {
+                break result;
+            }
+            assert!(Instant::now() < deadline, "the released job never ended");
+            std::thread::yield_now();
+        };
+        assert_eq!(result.unwrap(), 7);
+        seen += events_rx.try_iter().count();
+        // Started, the progress report and finished.
+        assert_eq!(seen, 3);
+    }
+
+    #[test]
     fn req_nfr_04_a_polled_result_is_handed_over_once_with_no_gap() {
         // The worker sends the result and drops its end of the channel a
         // moment later; a poll in between must not read as "still running"
