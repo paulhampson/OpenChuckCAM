@@ -7,9 +7,9 @@
 //! inverse of that for redo. A new command clears the redo list. The history
 //! is linear and unbounded.
 
-use openchuck_project::id::{ModelId, OperationId};
+use openchuck_project::id::{ModelId, OperationId, SetupId};
 use openchuck_project::{
-    Item, ItemId, ListKind, ModelRef, OldPlace, OrderKey, ParameterValue, Placement, Project,
+    Item, ItemId, ListKind, ModelRef, OldPlace, OrderKey, ParameterValue, Placement, Project, Setup,
 };
 use openchuck_types::machine::MachineProfile;
 use openchuck_types::simulation::SimulationSettings;
@@ -251,6 +251,28 @@ pub fn duplicate_operation(project: &Project, operation: OperationId) -> Result<
     Ok(Command::Add {
         item: Item::Operation(copy),
         placement: Placement::Index(index + 1),
+    })
+}
+
+/// Whether the project can take a setup from the interface: it has none yet.
+/// More than one setup is SET-07 (P2), not built (decision record 0144).
+pub fn can_add_setup(project: &Project) -> bool {
+    project.setups().is_empty()
+}
+
+/// The command that adds the project's one setup, "Setup 1", with the first
+/// model as its part (none when there is no model yet). Every other field is
+/// the application default of [`Setup::new`] (SET-03, SET-05, SET-06), so the
+/// setup is one undoable edit.
+pub fn new_setup(project: &Project) -> Result<Command, AppError> {
+    if !can_add_setup(project) {
+        return Err(AppError::OneSetupOnly);
+    }
+    let mut setup = Setup::new(SetupId::new(), "Setup 1");
+    setup.part = project.models().first().map(|m| m.id);
+    Ok(Command::Add {
+        item: Item::Setup(setup),
+        placement: Placement::End,
     })
 }
 
