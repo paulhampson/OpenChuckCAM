@@ -645,3 +645,34 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
     rig.frame(Vec::new());
     assert_eq!(rig.shell.viewport.selected_solid(), None);
 }
+
+#[test]
+fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
+    let mut rig = Rig::cube("frame-panes", None);
+    // Operations draws the 3D view.
+    assert_eq!(rig.shell.step, Step::Operations);
+    assert!(!rig.shows("END VIEW FROM +X"));
+    rig.press(Key::Num2, Modifiers::ALT);
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Setup);
+    for text in [
+        "END VIEW FROM +X",
+        "A+ turns the top toward the front",
+        "Stock length 14.000",
+        "A axis",
+        "Clearance R",
+        "Rotary axis",
+        "Clearance and safe Z",
+        "Travel limit",
+        "Y into the screen",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // No chuck is drawn (OI-380).
+    assert!(!rig.shows("Chuck"));
+    // Back on Operations the panes and their legend are gone.
+    rig.press(Key::Num3, Modifiers::ALT);
+    rig.settle();
+    assert!(!rig.shows("END VIEW FROM +X"));
+    assert!(!rig.shows("Travel limit"));
+}

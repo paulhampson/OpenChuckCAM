@@ -721,7 +721,7 @@ impl Viewport {
 
     /// The held region or tab solids shown, with the meshes their indices
     /// name: the draft's while one is drawn.
-    fn solids(&self) -> (&[SceneMesh], &[SceneSolid]) {
+    pub(crate) fn solids(&self) -> (&[SceneMesh], &[SceneSolid]) {
         match &self.draft {
             Some(d) => (&d.meshes, &d.solids),
             None => (&self.view.meshes, &self.view.solids),
@@ -743,6 +743,25 @@ impl Viewport {
     /// The selected held region or tab.
     pub fn selected_solid(&self) -> Option<WorkholdingItem> {
         self.selected_item
+    }
+
+    /// The held regions and tabs of the draft that fail a check, for the
+    /// Setup panes (7.5); none while the stored workholding is drawn.
+    pub(crate) fn failing_solids(&self) -> &[WorkholdingItem] {
+        self.draft.as_ref().map_or(&[], |d| d.failing.as_slice())
+    }
+
+    /// The held regions and tabs the Setup panes outline: the one whose
+    /// inspector row has keyboard focus and the selected one (7.5).
+    pub(crate) fn marked_solids(&self) -> (Option<WorkholdingItem>, Option<WorkholdingItem>) {
+        (self.focused_item, self.selected_item)
+    }
+
+    /// A click on a held region or tab in a Setup pane: selects it and
+    /// reports it as a click in the view does (7.5).
+    pub(crate) fn click_solid(&mut self, item: WorkholdingItem) {
+        self.selected_item = Some(item);
+        self.input.solid_click = Some(item);
     }
 
     /// The held region or tab under the pointer.

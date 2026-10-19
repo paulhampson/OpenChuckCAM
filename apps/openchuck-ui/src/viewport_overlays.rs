@@ -592,7 +592,7 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
 
 /// Diagonal lines 6 pixels apart across `r`, clipped to it: one direction,
 /// or both.
-fn hatch(painter: &egui::Painter, r: Rect, colour: Color32, cross: bool) {
+pub fn hatch(painter: &egui::Painter, r: Rect, colour: Color32, cross: bool) {
     let clipped = painter.with_clip_rect(r);
     let stroke = Stroke::new(1.0, colour);
     let span = r.width() + r.height();

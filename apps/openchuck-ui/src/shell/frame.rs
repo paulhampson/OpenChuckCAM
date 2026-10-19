@@ -286,7 +286,14 @@ impl Shell {
                 self.dock_panel(ui);
                 // The view's toolbar and overlays follow the step (7.1, 7.2).
                 self.viewport.set_step(Some(view_step(self.step)));
-                if toolbar::has_legend(self.step, self.viewport.view()) {
+                // The Setup step shows two orthographic panes instead of the
+                // 3D view (11.3).
+                let panes = self.setup_panes();
+                if let Some(panes) = &panes {
+                    egui::Panel::bottom("legend strip")
+                        .exact_size(LEGEND_STRIP)
+                        .show(ui, |ui| toolbar::pane_legend(ui, &panes.legend));
+                } else if toolbar::has_legend(self.step, self.viewport.view()) {
                     egui::Panel::bottom("legend strip")
                         .exact_size(LEGEND_STRIP)
                         .show(ui, |ui| toolbar::legend(ui, self.viewport.view()));
@@ -304,6 +311,20 @@ impl Shell {
                             self.empty_state(ui);
                             return;
                         }
+                        if let Some(panes) = &panes {
+                            let (focused, selected) = self.viewport.marked_solids();
+                            let marks = crate::setup_panes::Marks { focused, selected };
+                            let seen = crate::setup_panes::show(
+                                ui,
+                                panes,
+                                marks,
+                                self.viewport.shows_draft(),
+                            );
+                            if let Some(item) = seen.clicked {
+                                self.viewport.click_solid(item);
+                            }
+                            return;
+                        }
                         let corner = ui.max_rect().left_top() + egui::vec2(8.0, 8.0);
                         self.viewport.show(ui);
                         // The selection tools sit over the top left of the view.
@@ -312,6 +333,24 @@ impl Shell {
                         }
                     });
             });
+    }
+
+    /// The two orthographic panes of the Setup step for the setup the view
+    /// shows (11.3), or `None` on another step or with no setup to draw. They
+    /// draw the draft while the workholding section has unapplied changes
+    /// (7.5), as the view does.
+    fn setup_panes(&self) -> Option<openchuck_app::setup_panes::SetupPanes> {
+        if self.step != Step::Setup {
+            return None;
+        }
+        let app = self.app.as_ref()?;
+        let (_, solids) = self.viewport.solids();
+        openchuck_app::setup_panes::setup_panes(
+            app.project(),
+            self.viewport.view(),
+            solids,
+            self.viewport.failing_solids(),
+        )
     }
 
     /// The project panel or the inspector, or its rail when collapsed.
