@@ -457,7 +457,6 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
         "END VIEW FROM +X",
         "A+ turns the top toward the front",
         "Stock length 14.000",
-        "Chuck exclusion zone (schematic)",
         "A axis",
         "Clearance R",
         "Rotary axis",
@@ -467,6 +466,8 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
     ] {
         assert!(rig.shows(text), "{text}");
     }
+    // No chuck is drawn (OI-380).
+    assert!(!rig.shows("Chuck"));
     // Back on Operations the panes and their legend are gone.
     rig.press(Key::Num3, Modifiers::ALT);
     rig.settle();

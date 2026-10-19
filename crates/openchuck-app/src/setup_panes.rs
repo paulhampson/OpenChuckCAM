@@ -21,9 +21,9 @@ use crate::scene::{SceneSolid, SceneView, SolidSection, WorkholdingItem};
 
 /// How many strips the part's side silhouette is cut into.
 const SILHOUETTE_STRIPS: usize = 160;
-/// The length of the chuck exclusion zone marked at the low-X end of the
-/// stock, in mm (schematic: the data holds no chuck geometry).
-pub const EXCLUSION_LENGTH: f64 = 14.0;
+/// Room left beside the stock at the low-X end for the axis line and the
+/// safe-Z dimension, in mm.
+const LEAD: f64 = 14.0;
 
 /// A rectangle in a pane's plane, in millimetres.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,11 +72,6 @@ pub struct FrontPane {
     pub stock: Option<Rect2>,
     /// The part's silhouette: X with the lowest and highest Z there.
     pub part: Vec<[f64; 3]>,
-    /// The chuck exclusion zone beside the low-X end of the stock, as (X, Z)
-    /// bounds: drawn as a red hatched region, not as a chuck. Schematic: the
-    /// data holds no chuck geometry (decision 0129, OI-380, the owner's
-    /// choice).
-    pub exclusion: Option<Rect2>,
     /// The rotary axis, from and to X.
     pub axis: (f64, f64),
     /// The work zero's X.
@@ -149,8 +144,6 @@ pub enum LegendEntry {
     Clearance,
     /// The Z+ travel limit, red hatched.
     TravelLimit,
-    /// The chuck exclusion zone, red hatched (schematic).
-    ChuckZone,
     /// The Y axis pointing into the screen.
     YIntoScreen,
     /// A held region.
@@ -167,7 +160,6 @@ impl LegendEntry {
             Self::Stock => "Stock",
             Self::Clearance => "Clearance and safe Z",
             Self::TravelLimit => "Travel limit",
-            Self::ChuckZone => "Chuck exclusion zone (schematic)",
             Self::YIntoScreen => "Y into the screen",
             Self::HeldRegion => "Held region",
             Self::Tab => "Tab",
@@ -285,7 +277,7 @@ pub fn setup_panes(
 
     let mut front = FrontPane {
         part: view.part_silhouette.clone(),
-        axis: (x0 - margin - EXCLUSION_LENGTH, x1 + margin),
+        axis: (x0 - margin - LEAD, x1 + margin),
         work_zero,
         safe_z: clearance.map(|c| c.safe_z.0),
         travel_z: machine.map(|m| travel_limit(m, setup)),
@@ -316,12 +308,6 @@ pub fn setup_panes(
             v1: b.max.z,
         });
         let outer = b.max.z.abs().max(b.min.z.abs());
-        front.exclusion = Some(Rect2 {
-            h0: b.min.x - EXCLUSION_LENGTH,
-            h1: b.min.x,
-            v0: b.min.z,
-            v1: b.max.z,
-        });
         front.dimensions.push(Dimension {
             from: [
                 b.min.x,
@@ -353,8 +339,8 @@ pub fn setup_panes(
     }
     if let Some(z) = front.safe_z {
         front.dimensions.push(Dimension {
-            from: [x0 - margin - 0.5 * EXCLUSION_LENGTH, 0.0],
-            to: [x0 - margin - 0.5 * EXCLUSION_LENGTH, z],
+            from: [x0 - margin - 0.5 * LEAD, 0.0],
+            to: [x0 - margin - 0.5 * LEAD, z],
             text: format!("Axis to safe Z\n{z:.3} mm"),
         });
     }
@@ -428,9 +414,6 @@ pub fn setup_panes(
     }
     if front.travel_z.is_some() {
         legend.push(LegendEntry::TravelLimit);
-    }
-    if front.exclusion.is_some() {
-        legend.push(LegendEntry::ChuckZone);
     }
     legend.push(LegendEntry::YIntoScreen);
     if !front.held.is_empty() {
