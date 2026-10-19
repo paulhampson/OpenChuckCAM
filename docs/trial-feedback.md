@@ -76,3 +76,5 @@ The owner attached the Setup view screenshot to #142 (19 Oct 2026); lane SL is u
 | WP9.2 | [#158](https://github.com/paulhampson/OpenChuckCAM/issues/158) Face labels flat on the cube | F-17 | Bug |
 
 | WP6.4 | [#159](https://github.com/paulhampson/OpenChuckCAM/issues/159) Pick mode control overlaps the toolbar; label versus options (suggested for BUG-SEL with #151) | F-18 | Bug |
+
+Coordinator decision (19 Oct 2026): WP9 (#157, #158) is folded into lane MV, which starts after X4 merges.
