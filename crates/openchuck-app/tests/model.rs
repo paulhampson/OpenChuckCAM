@@ -301,3 +301,46 @@ fn req_prj_02_model_file_warnings_name_changed_and_missing_files() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The Model inspector's "Replace file…" (interface specification 11.2;
+/// decision record 0114 C14): the model keeps its ID, unit and placement and
+/// takes the new file's path and hash, as one undoable step. A damaged file
+/// is refused and nothing changes (NFR-07).
+#[test]
+fn req_imp_01_req_prj_02_replacing_a_models_file_keeps_its_id_and_placement() {
+    use openchuck_app::model::TransformStep;
+    let (dir, mut app) = project_with(
+        "replace",
+        &["cube_binary.stl", "cube_ascii.stl", "broken_garbage.stl"],
+    );
+    let (id, _) = app
+        .add_model(&dir.join("models/cube_binary.stl"), None)
+        .unwrap();
+    app.execute(Command::SetModelTransform {
+        model: id,
+        transform: vec![TransformStep::CentreOnRotaryAxis],
+    })
+    .unwrap();
+    let before = app.find_model(&id.to_string()).unwrap().clone();
+    let prepared = app
+        .start_replace_model(id, &dir.join("models/cube_ascii.stl"))
+        .unwrap()
+        .wait()
+        .unwrap();
+    let inspection = app.replace_model(id, prepared).unwrap();
+    assert_eq!(inspection.summary.triangles, 12);
+    let after = app.find_model(&id.to_string()).unwrap().clone();
+    assert_eq!(after.path.as_str(), "models/cube_ascii.stl");
+    assert_ne!(after.hash, before.hash);
+    assert_eq!(after.transform, before.transform);
+    assert_eq!(app.project().models().len(), 1);
+    assert!(app.undo().unwrap());
+    assert_eq!(app.find_model(&id.to_string()).unwrap(), &before);
+    let damaged = app
+        .start_replace_model(id, &dir.join("models/broken_garbage.stl"))
+        .unwrap()
+        .wait();
+    assert!(damaged.is_err());
+    assert_eq!(app.find_model(&id.to_string()).unwrap(), &before);
+    std::fs::remove_dir_all(dir).unwrap();
+}

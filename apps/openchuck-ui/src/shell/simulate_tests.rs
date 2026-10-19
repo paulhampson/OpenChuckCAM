@@ -194,6 +194,21 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
     ] {
         assert!(rig.shows(text), "{text} is on screen");
     }
+    // Add imports the file that was checked, so it waits while the field
+    // names another (OI-358).
+    let session = rig.shell.import.as_mut().unwrap();
+    assert!(session.can_add());
+    let checked = session.path_text.clone();
+    session.path_text = "another.stl".to_owned();
+    assert!(
+        !session.can_add(),
+        "the field names a file that is not checked"
+    );
+    session.path_text = format!("  {checked} ");
+    assert!(
+        session.can_add(),
+        "spaces round the checked path do not matter"
+    );
     // Escape-free close: Cancel path leaves the project as it was.
     let before = rig.shell.app.as_ref().unwrap().project().models().len();
     rig.shell.import = None;
