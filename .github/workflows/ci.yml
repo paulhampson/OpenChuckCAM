@@ -50,6 +50,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       records: ${{ steps.filter.outputs.records }}
+      any: ${{ steps.filter.outputs.any }}
       fuzz: ${{ steps.filter.outputs.fuzz }}
       step: ${{ steps.filter.outputs.step }}
       gate3: ${{ steps.filter.outputs.gate3 }}
@@ -103,6 +104,9 @@ jobs:
               - 'docs/work-breakdown.md'
               - 'docs/dependencies.md'
               - 'testdata/**'
+            # Any change at all, so the conflict-marker check sees every tracked file (lane XC).
+            any:
+              - '**'
             gate3:
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-post/**'
@@ -406,7 +410,7 @@ jobs:
   fast-checks:
     name: Fast checks (rustfmt, xtask, deny, audit, notices, semver)
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true' || needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     env:
       RUST: ${{ needs.changes.outputs.rust }}
@@ -444,6 +448,10 @@ jobs:
         id: testdata
         if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
         run: cargo xtask testdata
+      - name: Unresolved merge conflict markers
+        id: conflicts
+        if: always()
+        run: cargo xtask conflicts
       - name: Traceability report
         id: trace
         if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
@@ -502,6 +510,7 @@ jobs:
           LICENCES: ${{ steps.licences.outcome }}
           RECORDS_STEP: ${{ steps.records.outcome }}
           TESTDATA: ${{ steps.testdata.outcome }}
+          CONFLICTS: ${{ steps.conflicts.outcome }}
           TRACE: ${{ steps.trace.outcome }}
           DENY: ${{ steps.deny.outcome }}
           AUDIT: ${{ steps.audit.outcome }}
@@ -520,6 +529,7 @@ jobs:
           check "xtask licences" "$repo" "$LICENCES"
           check "xtask records" "$repo" "$RECORDS_STEP"
           check "xtask testdata" "$repo" "$TESTDATA"
+          check "xtask conflicts" true "$CONFLICTS"
           check "xtask trace" "$repo" "$TRACE"
           check "cargo deny" "$RUST" "$DENY"
           check "cargo audit" "$RUST" "$AUDIT"
@@ -704,7 +714,7 @@ jobs:
           check libraries-alone "$(out rust)"
           check step-kernel "$(out step)"
           fast=false
-          if [ "$(out rust)" = true ] || [ "$(out records)" = true ]; then fast=true; fi
+          if [ "$(out rust)" = true ] || [ "$(out records)" = true ] || [ "$(out any)" = true ]; then fast=true; fi
           check fast-checks "$fast"
           fuzz=false
           if [ "$EVENT" = pull_request ] && [ "$(out fuzz)" = true ]; then fuzz=true; fi

@@ -9,6 +9,7 @@
 //!   workspace and recorded in `docs/dependencies.md` (NFR-14).
 //! - `trace`: the traceability report from requirement-ID test names (NFR-08).
 //! - `testdata`: the test-data size policy.
+//! - `conflicts`: no unresolved merge conflict markers in tracked files.
 //! - `coverage`: line coverage per crate from an lcov file against the target (not part of `all`).
 //! - `all`: every check above.
 //!
@@ -20,6 +21,7 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+mod conflicts;
 mod coverage;
 mod deps;
 mod golden;
@@ -62,6 +64,8 @@ enum Check {
     },
     /// Test-data size policy.
     Testdata,
+    /// Unresolved merge conflict markers in tracked files.
+    Conflicts,
     /// Line coverage per crate from an lcov file against the target in `xtask/coverage.toml`.
     Coverage {
         /// The lcov file (default `lcov.info` at the workspace root).
@@ -148,6 +152,7 @@ fn run() -> Result<bool> {
             )]
         }
         Check::Testdata => vec![("testdata", testdata::check(&root)?)],
+        Check::Conflicts => vec![("conflicts", conflicts::check(&root)?)],
         Check::Coverage {
             lcov,
             report,
@@ -195,6 +200,7 @@ fn run() -> Result<bool> {
             ("licences", licences::check(&root)?),
             ("records", records::check(&root)?),
             ("testdata", testdata::check(&root)?),
+            ("conflicts", conflicts::check(&root)?),
             ("trace", trace::check(&root, None, None)?),
         ],
     };
