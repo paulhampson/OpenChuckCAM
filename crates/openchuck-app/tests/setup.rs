@@ -237,7 +237,8 @@ fn req_set_01_machine_copy_is_compared_with_its_source() {
         panic!("expected a difference");
     };
     assert!(source.ends_with("z1-tuned.toml"), "{source}");
-    assert_eq!(fields, ["max_feeds"]);
+    // In the user's words, not the profile file's field names (section 15).
+    assert_eq!(fields, ["maximum feeds"]);
 
     // Updating the copy is one undoable step, and keeps the ID.
     app.execute(Command::SetMachineFrom {

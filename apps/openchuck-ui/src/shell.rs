@@ -1224,7 +1224,7 @@ impl Shell {
         ui.separator();
         let edit = match app.parameter_form(id) {
             Ok(form) => {
-                ui.weak(format!("Strategy: {}", form.strategy));
+                ui.weak(format!("Strategy: {}", app.strategy_label(&form.strategy)));
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .show(ui, |ui| form_panel::show(ui, &form, &mut self.form))
@@ -1238,7 +1238,7 @@ impl Shell {
         if let Some(edit) = edit {
             let result = app
                 .set_parameter(id, &edit.name, edit.value)
-                .map_err(|e| e.to_string());
+                .map_err(|e| e.user_message());
             self.form.result(&edit.name, result);
         }
         if let Some(error) = roles {

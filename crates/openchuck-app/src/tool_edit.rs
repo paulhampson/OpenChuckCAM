@@ -126,7 +126,7 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
     out.push(Field {
         name: FLUTE_COUNT.to_owned(),
         label: "Flutes".to_owned(),
-        description: "Number of flutes, for the feed per tooth (TL-05).".to_owned(),
+        description: "Number of flutes, for the feed per tooth.".to_owned(),
         kind: FieldKind::Integer { min: 1, max: 99 },
         set: Some(ParameterValue::Integer(i64::from(tool.flute_count))),
         value: Some(ParameterValue::Integer(i64::from(tool.flute_count))),

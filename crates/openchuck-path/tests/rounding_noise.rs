@@ -21,7 +21,6 @@
 mod support;
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use openchuck_path::helical::parameter;
 use openchuck_path::params::names;
@@ -30,7 +29,7 @@ use openchuck_path::{
 };
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
-use support::{Fixture, ball, run};
+use support::{Fixture, ball, blisk, run};
 
 fn mesh(vertices: &[[f64; 3]], triangles: &[[u32; 3]]) -> TriangleMesh {
     TriangleMesh {
@@ -204,36 +203,6 @@ fn req_gc_07_req_nfr_06_an_edge_contact_moves_only_by_rounding_under_rounding_no
         worst < 1e-12,
         "the contact moved by {worst:e} mm for one ulp of the tool line"
     );
-}
-
-/// Reads a binary STL as a mesh, one vertex per corner.
-fn read_binary_stl(path: &Path) -> TriangleMesh {
-    let bytes = std::fs::read(path).unwrap();
-    let count = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
-    let mut vertices = Vec::with_capacity(3 * count);
-    let mut triangles = Vec::with_capacity(count);
-    for t in 0..count {
-        let base = 84 + 50 * t + 12;
-        for v in 0..3 {
-            let at = base + 12 * v;
-            let f = |k: usize| {
-                f64::from(f32::from_le_bytes(
-                    bytes[at + 4 * k..at + 4 * k + 4].try_into().unwrap(),
-                ))
-            };
-            vertices.push(Point3::new(f(0), f(1), f(2)));
-        }
-        let i = (3 * t) as u32;
-        triangles.push([i, i + 1, i + 2]);
-    }
-    TriangleMesh {
-        vertices,
-        triangles,
-    }
-}
-
-fn blisk() -> TriangleMesh {
-    read_binary_stl(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/blisk.stl"))
 }
 
 fn helical_on(m: &TriangleMesh) -> GeneratedPath {
