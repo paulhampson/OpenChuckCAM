@@ -441,6 +441,22 @@ impl Shell {
         }
     }
 
+    /// Generates the selected operation, up to and including it, when an
+    /// enabled operation is selected (G, F5); otherwise every stale
+    /// operation (specification section 16; decision record 0117, OI-351).
+    fn generate_selected(&mut self) {
+        let Some(app) = &self.app else { return };
+        match self.selected {
+            Some(Selection::Operation(id))
+                if app.project().operation(id).is_some_and(|o| o.enabled) =>
+            {
+                self.run.start_until(app, id);
+                self.overview_dirty = true;
+            }
+            _ => self.generate(false),
+        }
+    }
+
     /// Starts generating, and simulating when asked (UI-09).
     fn generate(&mut self, simulate: bool) {
         if let Some(app) = &self.app {
@@ -637,8 +653,9 @@ impl Shell {
             }
         }
         // Keys that would type a letter are left to a text field with the
-        // keyboard, and to a window in front of the view.
-        if self.text_had_focus || self.window_open() {
+        // keyboard (a modal dialog returned above). A floating window such as
+        // the results, which opens after each run, does not take them.
+        if self.text_had_focus {
             return;
         }
         let (stale, generate, new_operation) = ctx.input_mut(|i| {
@@ -648,8 +665,10 @@ impl Shell {
             let generate = i.consume_shortcut(&GENERATE) || i.consume_shortcut(&GENERATE_F5);
             (stale, generate, i.consume_shortcut(&NEW_OPERATION))
         });
-        if stale || generate {
+        if stale {
             self.generate(false);
+        } else if generate {
+            self.generate_selected();
         }
         if new_operation {
             self.new_operation();
@@ -885,8 +904,9 @@ impl Shell {
                 self.viewport.fit();
                 return;
             }
-            TreeAction::Generate => {
-                self.generate(false);
+            TreeAction::Generate(id) => {
+                self.select(Selection::Operation(id));
+                self.generate_selected();
                 return;
             }
             TreeAction::Add(group) => {
@@ -1592,6 +1612,17 @@ fn run_summary(run: &openchuck_app::Regeneration) -> String {
     if run.simulation.is_some() {
         out.push_str(", simulated");
     }
+    if let Some(last) = run.stopped_after {
+        let place = run
+            .project
+            .operations()
+            .iter()
+            .position(|o| o.id == last)
+            .map_or_else(String::new, |i| format!(" {}", i + 1));
+        out.push_str(&format!(
+            "; stopped after operation{place}, so later operations stay stale"
+        ));
+    }
     out
 }
 
@@ -1665,8 +1696,8 @@ enum TreeAction {
     Rename(ItemRef),
     /// Select an item and fit the view.
     ShowInView(ItemRef),
-    /// Generate the stale operations.
-    Generate,
+    /// Generate up to and including this operation.
+    Generate(OperationId),
     /// The "+" of a group header.
     Add(tree::Group),
 }

@@ -372,3 +372,47 @@ impl Shell {
         self.primary();
     }
 }
+
+#[test]
+fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
+    let mut rig = Rig::cube("frame-generate", None);
+    let first = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(first));
+    rig.frame(Vec::new());
+    rig.press(Key::D, Modifiers::COMMAND);
+    rig.shell.select(Selection::Operation(first));
+    rig.frame(Vec::new());
+    rig.settle();
+    assert_eq!(rig.shell.overview.stale.len(), 2);
+    // G: the first operation only; the copy after it stays stale.
+    rig.press(Key::G, Modifiers::NONE);
+    assert!(rig.shell.run.is_running());
+    rig.settle();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig.shell.overview.stale.len() != 1 {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.settle();
+    }
+    assert_eq!(
+        rig.shell
+            .overview
+            .status(ItemRef::Operation(first))
+            .unwrap()
+            .state,
+        ItemState::UpToDate
+    );
+    assert!(rig.shell.jobs.finished().any(|e| matches!(
+        &e.outcome,
+        Some(openchuck_app::JobOutcome::Done(Some(s))) if s.contains("later operations stay stale")
+    )));
+    // Shift G: every stale operation, with the results window open after the
+    // last run.
+    assert!(rig.shell.run.has_window());
+    rig.press(Key::G, Modifiers::SHIFT);
+    rig.settle();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !rig.shell.overview.stale.is_empty() {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.settle();
+    }
+}

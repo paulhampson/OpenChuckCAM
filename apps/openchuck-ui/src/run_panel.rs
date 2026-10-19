@@ -206,13 +206,26 @@ impl RunPanel {
         if self.job.is_some() {
             return;
         }
-        self.last_error = None;
-        self.progress = None;
         let handle = if simulate {
             app.start_simulate()
         } else {
             app.start_regenerate()
         };
+        self.begin(handle, simulate);
+    }
+
+    /// Starts generating up to and including `operation` (G, "generate
+    /// selected"; decision record 0117, OI-351). Does nothing while a job
+    /// runs.
+    pub fn start_until(&mut self, app: &Application, operation: OperationId) {
+        if self.job.is_none() {
+            self.begin(app.start_regenerate_until(operation), false);
+        }
+    }
+
+    fn begin(&mut self, handle: JobHandle<Regeneration>, simulate: bool) {
+        self.last_error = None;
+        self.progress = None;
         self.job = Some(RunningJob {
             handle,
             simulate,

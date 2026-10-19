@@ -619,11 +619,20 @@ pub(crate) struct GenerationRecord(Mutex<RecordState>);
 
 #[derive(Debug, Default, Clone)]
 struct RecordState {
-    generated: BTreeMap<OperationId, StatusKey>,
+    generated: BTreeMap<OperationId, Made>,
     simulated: BTreeMap<OperationId, Key>,
     exported: BTreeMap<OperationId, Key>,
     failure: Option<Failure>,
     current: Option<OperationId>,
+}
+
+/// What an operation was made from: its keys, and the own keys of the
+/// enabled operations before it then, which say which earlier operation made
+/// it stale.
+#[derive(Debug, Clone)]
+struct Made {
+    key: StatusKey,
+    before: Vec<(OperationId, Key)>,
 }
 
 #[derive(Debug, Clone)]
@@ -642,12 +651,23 @@ impl GenerationRecord {
         self.with(|s| s.current = operation);
     }
 
-    /// A pipeline run on `project` succeeded.
-    pub(crate) fn succeeded(&self, project: &Project, simulated: bool) {
+    /// A pipeline run on `project` succeeded with `run`. Only the operations
+    /// in it are recorded: a run up to an operation leaves the later ones as
+    /// they were.
+    pub(crate) fn succeeded(&self, project: &Project, simulated: bool, run: &crate::Regeneration) {
         let keys = status_keys(project);
         self.with(|s| {
-            for (id, key) in &keys {
-                s.generated.insert(*id, *key);
+            for (index, (id, key)) in keys.iter().enumerate() {
+                if !run.groups.iter().any(|g| g.operation == *id) {
+                    continue;
+                }
+                let before = keys
+                    .get(..index)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|(id, k)| (*id, k.own))
+                    .collect();
+                s.generated.insert(*id, Made { key: *key, before });
                 if simulated {
                     s.simulated.insert(*id, key.chained);
                 }
@@ -833,6 +853,40 @@ pub(crate) fn run_checks(
         checks.reach.insert(operation.id, (own, notes));
     }
     Ok(checks)
+}
+
+/// Why an operation whose own inputs are unchanged is stale: the first
+/// enabled operation before it whose own key differs from when it was made
+/// ("operation 2 changed", numbered in the whole list), or a change in which
+/// operations come before it.
+fn earlier_change(
+    keys: &[(OperationId, StatusKey)],
+    operations: &[openchuck_project::Operation],
+    operation: OperationId,
+    before: &[(OperationId, Key)],
+) -> String {
+    let now: Vec<(OperationId, Key)> = keys
+        .iter()
+        .take_while(|(id, _)| *id != operation)
+        .map(|(id, k)| (*id, k.own))
+        .collect();
+    let same_order =
+        now.len() == before.len() && now.iter().zip(before).all(|((a, _), (b, _))| a == b);
+    let changed = now
+        .iter()
+        .zip(before)
+        .find(|((_, a), (_, b))| a != b)
+        .map(|((id, _), _)| *id);
+    match changed {
+        Some(id) if same_order => {
+            let place = operations
+                .iter()
+                .position(|o| o.id == id)
+                .map_or(0, |i| i + 1);
+            format!("operation {place} changed")
+        }
+        _ => "an earlier operation was added, removed, moved or turned on or off".to_owned(),
+    }
 }
 
 /// "the setup has no stock" becomes "The setup has no stock."
@@ -1039,7 +1093,8 @@ fn operation_name(index: usize, name: &str) -> String {
 fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview {
     let project = app.project();
     let record = app.record.snapshot();
-    let keys: BTreeMap<OperationId, StatusKey> = status_keys(project).into_iter().collect();
+    let keys_in_order = status_keys(project);
+    let keys: BTreeMap<OperationId, StatusKey> = keys_in_order.iter().copied().collect();
     let summaries: Vec<SelectionSummary> = app.selection_summaries(&file_warnings(project, checks));
     let mut items = BTreeMap::new();
     // Each source's messages, gathered apart so they can be ordered: the
@@ -1074,7 +1129,6 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let mut any_enabled = false;
     let mut any_generated = false;
     let mut exported_all = true;
-    let mut first_own_change: Option<usize> = None;
     for (index, o) in ops.iter().enumerate() {
         let item = ItemRef::Operation(o.id);
         let label = operation_name(index, &o.name);
@@ -1092,14 +1146,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         let key = keys.get(&o.id);
         let made = record.generated.get(&o.id);
         any_generated |= made.is_some();
-        let own_changed = match (key, made) {
-            (Some(k), Some(m)) => k.own != m.own,
-            _ => true,
-        };
-        if own_changed && first_own_change.is_none() {
-            first_own_change = Some(index);
-        }
-        let up_to_date = matches!((key, made), (Some(k), Some(m)) if k.chained == m.chained);
+        let up_to_date = matches!((key, made), (Some(k), Some(m)) if k.chained == m.key.chained);
         let simulated =
             matches!((key, record.simulated.get(&o.id)), (Some(k), Some(s)) if k.chained == *s);
         simulated_all &= simulated;
@@ -1115,15 +1162,12 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             )
         } else {
             stale.push(o.id);
-            let cause = match (made, first_own_change) {
-                (None, _) => "not generated yet".to_owned(),
-                (Some(_), Some(i)) if i == index => {
+            let cause = match (made, key) {
+                (None, _) | (_, None) => "not generated yet".to_owned(),
+                (Some(m), Some(k)) if m.key.own != k.own => {
                     "it, or its setup, tool, model or selection sets, changed".to_owned()
                 }
-                (Some(_), Some(i)) => format!("operation {} changed", i + 1),
-                (Some(_), None) => {
-                    "an earlier operation was added, removed, moved or turned on or off".to_owned()
-                }
+                (Some(m), Some(_)) => earlier_change(&keys_in_order, ops, o.id, &m.before),
             };
             ItemStatus::new(ItemState::Stale, cause)
         };

@@ -959,3 +959,100 @@ fn req_ui_07_the_footer_shows_the_operation_tolerance() {
     assert_eq!(f.app.operation_tolerance(op), Some(0.02));
     assert_eq!(f.app.operation_tolerance(OperationId::new()), None);
 }
+
+/// Two helical finishing operations and a third, on the fixture's cube.
+fn three_operations(name: &str) -> (Fixture, [OperationId; 3]) {
+    let mut f = fixture(name, "cube_ascii.stl");
+    let one = f.add_operation("First", "helical_finishing");
+    let two = f.add_operation("Second", "helical_finishing");
+    let three = f.add_operation("Third", "helical_finishing");
+    f.set_stepover(two, 0.6);
+    f.set_stepover(three, 0.7);
+    (f, [one, two, three])
+}
+
+#[test]
+fn req_ui_14_req_ui_11_generating_up_to_an_operation_leaves_later_ones_stale() {
+    let (mut f, [one, two, three]) = three_operations("until");
+    // G on operation 2: operations 1 and 2 are made, 3 is not.
+    let partial = f.app.regenerate_until(two).unwrap();
+    assert_eq!(partial.stopped_after, Some(two));
+    let made: Vec<_> = partial.groups.iter().map(|g| g.operation).collect();
+    assert_eq!(made, [one, two]);
+    assert!(partial.simulation.is_none());
+    let o = f.overview();
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(f.state(&o, two), ItemState::UpToDate);
+    assert_eq!(f.state(&o, three), ItemState::Stale);
+    assert_eq!(o.stale, [three]);
+    assert_eq!(o.primary(Step::Operations).label, "Generate stale (1)");
+
+    // Generating the rest reuses what the partial run made: no key changed.
+    let full = f.app.regenerate().unwrap();
+    assert_eq!(full.stopped_after, None);
+    assert_eq!(full.reused, [one, two]);
+    assert_eq!(full.generated, [three]);
+    assert_eq!(full.toolpath.groups[..2], partial.toolpath.groups[..]);
+    assert!(f.overview().stale.is_empty());
+
+    // An edit to operation 1, then G on it: 2 and 3 stay stale, and say why.
+    f.set_stepover(one, 0.5);
+    f.app.regenerate_until(one).unwrap();
+    let o = f.overview();
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(o.stale, [two, three]);
+    assert_eq!(
+        o.status(ItemRef::Operation(three)).unwrap().cause,
+        "Stale: operation 1 changed"
+    );
+}
+
+#[test]
+fn req_ui_14_generating_up_to_a_disabled_or_unknown_operation_is_refused() {
+    let (mut f, [_, two, _]) = three_operations("until-refused");
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: two,
+            enabled: false,
+        })
+        .unwrap();
+    let e = f.app.regenerate_until(two).unwrap_err().to_string();
+    assert!(e.contains("turned off"), "{e}");
+    let e = f.app.regenerate_until(OperationId::new()).unwrap_err();
+    assert!(
+        matches!(e, openchuck_app::AppError::UnknownOperation(_)),
+        "{e}"
+    );
+}
+
+#[test]
+fn req_gc_15_a_partial_run_leaves_later_operations_blocking_at_export() {
+    let (f, [_, two, _]) = three_operations("until-export");
+    let partial = f.app.regenerate_until(two).unwrap();
+    let checks = f.app.export_checks(Some(&partial), None, None);
+    let blocking: Vec<_> = checks
+        .checks
+        .iter()
+        .filter(|c| c.level == openchuck_app::CheckLevel::Blocking)
+        .map(|c| c.text.as_str())
+        .collect();
+    assert_eq!(blocking.len(), 1, "{blocking:?}");
+    assert!(blocking[0].contains("'Third'"), "{blocking:?}");
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_threads() {
+    let (f, [_, two, _]) = three_operations("until-threads");
+    f.app.save().unwrap();
+    let runs: Vec<_> = [Threads::Exactly(1), Threads::Exactly(2), Threads::All]
+        .into_iter()
+        .map(|threads| {
+            let app = Application::open(&f.dir, threads).unwrap();
+            app.regenerate_until(two).unwrap()
+        })
+        .collect();
+    for run in &runs[1..] {
+        assert_eq!(run.toolpath, runs[0].toolpath);
+        assert_eq!(run.generated, runs[0].generated);
+    }
+}

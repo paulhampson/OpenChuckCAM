@@ -92,7 +92,10 @@ pub(super) const KEY_MAP: &[(&str, &str)] = &[
         "Collapse the project panel, inspector, dock",
     ),
     ("N", "New operation"),
-    ("G or F5", "Generate"),
+    (
+        "G or F5",
+        "Generate the selected operation, and the ones before it",
+    ),
     ("Shift G or Shift F5", "Generate every stale operation"),
     (
         "Ctrl D, Del, F2",
@@ -669,8 +672,18 @@ impl Shell {
                     ui.close();
                 }
                 ui.separator();
-                let generate = egui::Button::new("Generate").shortcut_text("G");
-                if ui.add_enabled(open && idle, generate).clicked() {
+                let selected = matches!(self.selected, Some(Selection::Operation(_)));
+                let generate = egui::Button::new("Generate selected").shortcut_text("G");
+                if ui
+                    .add_enabled(open && idle && selected, generate)
+                    .on_hover_text("The selected operation, and the operations before it")
+                    .clicked()
+                {
+                    self.generate_selected();
+                    ui.close();
+                }
+                let stale = egui::Button::new("Generate stale").shortcut_text("Shift+G");
+                if ui.add_enabled(open && idle, stale).clicked() {
                     self.generate(false);
                     ui.close();
                 }

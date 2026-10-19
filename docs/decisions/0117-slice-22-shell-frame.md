@@ -1,8 +1,8 @@
 # 0117: Slice 22 shell frame: the view-model queries for steps, item states, messages and the primary action, and the window's regions
 
-- **Status:** proposed. Lane X2, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). The interpretations in item 6 wait for the owner (OI-350, OI-351).
+- **Status:** proposed. Lane X2, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). The owner answered its two questions on 19 Oct 2026, relayed by the coordinator (decision 0049): OI-350 A, the four readings agreed and written into the specification; OI-351 B, a run up to the selected operation (item 9). The record itself waits for the owner's acceptance.
 - **Date:** 18 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-350 and OI-351 are new. OI-342 stays open: this lane re-rendered images 01 and 02, and other lanes' boards remain.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-350 and OI-351 were raised and are closed by the owner's answers. OI-342 stays open: this lane re-rendered images 01 and 02, and other lanes' boards remain.
 
 Numbering: the coordinator assigned this lane records 0117 and 0118 and OI-350 to OI-354. Lane BX-b holds 0115 and 0116 and OI-347 to OI-349, and lane X3 holds 0119 and 0120 and OI-355 to OI-359. This lane uses 0117, OI-350 and OI-351. Record 0118 and OI-352 to OI-354 are unused.
 
@@ -68,7 +68,7 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
   - Setup: a model is in the project.
   - Operations: the project has a machine and a setup has stock.
   - Simulate and Post and export: an enabled operation has been generated.
-- **Complete (the green ring).** The specification does not define it. The lane's reading:
+- **Complete (the green ring).** The specification did not define it. The lane's reading, agreed by the owner (OI-350) and now in specification section 4:
   - Model: there is a model and none is in error.
   - Setup: there is a machine, every setup has stock and a part, and no setup check warns.
   - Operations: every enabled operation is up to date.
@@ -77,7 +77,7 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
 - **The primary action** follows section 5:
   - Model: "Import model…" with no model, else "Continue to setup".
   - Setup: "Continue to operations".
-  - Operations and Simulate: rules 1 to 4. A disabled primary carries the reason as its tooltip and in the footer, and the index of the message it points at.
+  - Operations and Simulate: rules 1 to 4; on Simulate rule 3 is checked before rule 2, since simulating generates (agreed by the owner, OI-350, now in specification section 5). A disabled primary carries the reason as its tooltip and in the footer, and the index of the message it points at.
   - Post and export: "Post and export…", which opens the dialog.
 - **What blocks the primary (rule 1):**
   - an error on a model blocks Continue to setup;
@@ -97,7 +97,7 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
   - failed jobs: building the view, the project checks, adding a model.
 - **Each message** has a plain sentence, its source item and name, and an action: Show, Reselect, Review setup, Edit workholding or Generate.
 - **Clearing.** A message is worked out from the current state, so it goes when its cause is fixed. A job failure clears when a later job of its kind succeeds.
-- **Order.** Messages run errors first, then warnings, then information. Within a severity they come in a fixed order of their sources, from the latest kind of news to the earliest: job failures, generation, selection sets, setups, models. They are worked out from the state and carry no time, so "newest first" cannot be applied as written (OI-350).
+- **Order.** Messages run errors first, then warnings, then information. Within a severity they come in a fixed order of their sources, from the latest kind of news to the earliest: job failures, generation, selection sets, setups, models. They are worked out from the state and carry no time, so "newest first" cannot be applied as written; agreed by the owner (OI-350) and now in specification section 9.
 - **The model-file modal goes.** The modal list of changed model files on opening a project is gone. Those files are messages now (decision 0114 C11).
 
 ### 5. The job log and the Jobs tab (UI-09)
@@ -126,7 +126,7 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
 
 **Collapsing and the small window.**
 - **Collapsing.** The chevrons and Ctrl 1, 2 and 3 collapse a region to a 28-pixel rail. Double-clicking a splitter resets its region to the default size.
-- **The small-window rule (an interpretation, OI-350).** Below 1366 × 768 logical pixels, the dock collapses. If the viewport would then be narrower than 420 pixels, the inspector collapses too. Neither is stored as the user's choice, and the user can open either again until the window is large again.
+- **The small-window rule (OI-350, agreed and now in specification section 3).** Below 1366 × 768 logical pixels, the dock collapses. If the viewport would then be narrower than 420 pixels, the inspector collapses too. Neither is stored as the user's choice, and the user can open either again until the window is large again.
 
 **The tree (UI-06, UI-11; section 6).**
 - **Groups and rows.** The groups run Model, Setups (with five child rows), Selection sets, Tools and Operations. Rows are 28 pixels high, with the status mark, a swatch or the tool number, and a chip. Operations have a drag handle and an enable box.
@@ -142,12 +142,11 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
 - Ctrl N, Ctrl O and Ctrl I.
 - Alt 1 to 5 and Ctrl 1 to 3.
 - N.
-- G and F5 generate. Shift G and Shift F5 generate every stale operation. F5 and Shift F5 were Generate and Generate and simulate; Generate and simulate is now in the Project menu and is the Simulate step's primary.
+- G and F5 generate the selected operation, up to and including it (item 9); with no operation selected they generate every stale one. Shift G and Shift F5 generate every stale operation. F5 and Shift F5 were Generate and Generate and simulate; Generate and simulate is now in the Project menu and is the Simulate step's primary.
 - Ctrl D, Del, F2, and Alt ↑ and ↓.
 - Esc cancels the running job when nothing is being picked.
 - Help > Keyboard shortcuts lists them.
 - F, V, the numpad views, and Space and the arrows for playback come with the toolbar and the playback dock (lanes X3 and X6).
-- G generates every stale operation, not only the selected one (OI-351).
 
 **The rest of the window.**
 - **The viewport toolbar.** `toolbar::strip` and `toolbar::legend` (a new file, `apps/openchuck-ui/src/toolbar.rs`) are the toolbar strip and the legend strip. For now they hold the View menu's controls and no legend. Lane X3 owns their contents and replaces their bodies; the View menu keeps every command (UI-14).
@@ -171,6 +170,17 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
 
 The frame draws with lane X7a's dark tokens (`theme::DARK`, specification 14.1), merged before this lane's pull request. It does not install X7a's style for the whole interface: applying the tokens to the existing panels is lane X7b's work.
 
+### 9. Generating up to the selected operation (OI-351 B, the owner's choice)
+
+- **`Application::start_regenerate_until(operation)`**, and `regenerate_until` which waits, generate the enabled operations in machining order up to and including `operation`, and stop. The operations before it are reused from the cache where nothing they read changed, because it cuts the stock they leave. The operations after it are left as they were. A disabled operation is refused, with "it is turned off", and an unknown one is refused too.
+- **The result** carries `stopped_after: Some(operation)` and holds only the groups it made. It neither simulates nor posts.
+- **States.** The generation record takes only the operations in the run, so the later ones stay stale. Each recorded operation also keeps the own keys of the operations before it when it was made, so a stale operation's cause names the earlier operation that changed ("Stale: operation 1 changed"), even after a run that remade that operation.
+- **Export.** The export check treats an operation that is not in the latest run as out of date (GC-15), so a partial run never lets a later operation through.
+- **The footer and the Jobs tab.** The primary stays "Generate stale (n)" (rule 2). The Jobs tab's summary of a partial run ends "stopped after operation N, so later operations stay stale".
+- **Keys and menus.** G and F5, the row menu's Generate and Project > Generate selected use it. Shift G, Shift F5 and Project > Generate stale generate every stale operation. Specification section 16 stays as written.
+- **Checks.** A run up to an operation is the same at 1, 2 and N threads. A full run afterwards reuses every operation the partial run made, so no cache key changed. Tests: `req_ui_14_req_ui_11_generating_up_to_an_operation_leaves_later_ones_stale`, `req_ui_14_generating_up_to_a_disabled_or_unknown_operation_is_refused`, `req_gc_15_a_partial_run_leaves_later_operations_blocking_at_export`, `req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_threads`, and the shell's `req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one`.
+- **Floating windows and keys.** The shell's letter keys are no longer blocked by a floating window such as the results, which opens after every run; only a text field with the keyboard, or a modal dialog, takes them.
+
 ## Alternatives considered
 
 - **Keep staleness in the interface** by comparing the whole project with the one the latest run was made from, as the run panel did. It cannot say which operations are stale, so editing operation N would mark every operation. Rejected.
@@ -184,7 +194,8 @@ The frame draws with lane X7a's dark tokens (`theme::DARK`, specification 14.1),
 - **`openchuck-app`** gains:
   - the `overview` and `settings` modules;
   - `JobLog`, `JobEntry`, `JobOutcome` and `job_label`;
-  - `Application::revision`, `start_checks`, `overview`, `record_export`, `cancel_job` and `operation_tolerance`;
+  - `Application::revision`, `start_checks`, `overview`, `record_export`, `cancel_job`, `operation_tolerance`, `start_regenerate_until` and `regenerate_until`;
+  - `Regeneration::stopped_after`, and the export check's treatment of operations a run did not make;
   - `JobManager::cancel`;
   - the `cancelled` field of `Event::JobFinished`.
 

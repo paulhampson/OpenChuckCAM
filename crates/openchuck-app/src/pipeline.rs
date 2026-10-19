@@ -86,6 +86,11 @@ pub struct Regeneration {
     /// Operations whose toolpath came from the cache because nothing it
     /// depends on, including the operations before it, changed.
     pub reused: Vec<OperationId>,
+    /// The operation the run stopped after, when it was asked to generate up
+    /// to and including one operation ("generate selected", specification
+    /// section 16; decision record 0117, OI-351). The enabled operations after
+    /// it are not in this run, and stay stale.
+    pub stopped_after: Option<OperationId>,
     /// The project the run was made from. Stock playback and the deviation
     /// colours read the stock, the cell size and the part from here, so they
     /// match the run even if the project has been edited since.
@@ -111,16 +116,34 @@ pub(crate) fn regenerate(
     simulate: bool,
     cache: &PipelineCache,
     record: &crate::overview::GenerationRecord,
+    until: Option<OperationId>,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
-    let operations: Vec<&openchuck_project::Operation> =
+    let mut operations: Vec<&openchuck_project::Operation> =
         project.operations().iter().filter(|o| o.enabled).collect();
+    // Up to and including `until`: the operations before it are made (or
+    // reused) because it cuts the stock they leave; the ones after are not.
+    if let Some(last) = until {
+        let operation = project
+            .operation(last)
+            .ok_or_else(|| AppError::UnknownOperation(last.to_string()))?;
+        if !operation.enabled {
+            return Err(AppError::Operation {
+                name: operation.name.clone(),
+                reason: "it is turned off, so it is not generated; turn it on first".to_owned(),
+            });
+        }
+        if let Some(end) = operations.iter().position(|o| o.id == last) {
+            operations.truncate(end + 1);
+        }
+    }
     let total = operations.len() as u64;
     context.report("regenerate", 0, Some(total));
     let settings = project.simulation();
     let mut regeneration = Regeneration {
         project: Arc::new(project.clone()),
+        stopped_after: until,
         ..Regeneration::default()
     };
     let mut setups: Vec<SetupState> = Vec::new();

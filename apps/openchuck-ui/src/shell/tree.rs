@@ -459,8 +459,13 @@ fn item_menu(
             actions.push(TreeAction::ShowInView(item));
             ui.close();
         }
-        if matches!(item, ItemRef::Operation(_)) && ui.button("Generate").clicked() {
-            actions.push(TreeAction::Generate);
+        if let ItemRef::Operation(id) = item
+            && ui
+                .button("Generate")
+                .on_hover_text("Generate up to and including this operation (G)")
+                .clicked()
+        {
+            actions.push(TreeAction::Generate(id));
             ui.close();
         }
     });

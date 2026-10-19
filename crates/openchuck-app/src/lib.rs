@@ -747,16 +747,36 @@ impl Application {
 
     /// Starts regenerating every operation's toolpath and G-code as a background job.
     pub fn start_regenerate(&self) -> JobHandle<Regeneration> {
-        self.start_pipeline("regenerate", false)
+        self.start_pipeline("regenerate", false, None)
+    }
+
+    /// Starts generating the enabled operations up to and including
+    /// `operation`, in machining order, as a background job; the ones after
+    /// it are left as they are (stale if they were). Operations before it are
+    /// reused from the cache where nothing they read changed. This is
+    /// "generate selected" (G, specification section 16; decision record
+    /// 0117, OI-351). A disabled or unknown operation is refused.
+    pub fn start_regenerate_until(&self, operation: OperationId) -> JobHandle<Regeneration> {
+        self.start_pipeline("regenerate", false, Some(operation))
+    }
+
+    /// [`Application::start_regenerate_until`], waiting for the result.
+    pub fn regenerate_until(&self, operation: OperationId) -> Result<Regeneration, AppError> {
+        self.start_regenerate_until(operation).wait()
     }
 
     /// Starts regenerating and simulating every operation as a background
     /// job: the result carries a simulation report (SIM-03, SIM-05 to SIM-07).
     pub fn start_simulate(&self) -> JobHandle<Regeneration> {
-        self.start_pipeline("simulate", true)
+        self.start_pipeline("simulate", true, None)
     }
 
-    fn start_pipeline(&self, name: &str, simulate: bool) -> JobHandle<Regeneration> {
+    fn start_pipeline(
+        &self,
+        name: &str,
+        simulate: bool,
+        until: Option<OperationId>,
+    ) -> JobHandle<Regeneration> {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
@@ -773,10 +793,11 @@ impl Application {
                     simulate,
                     &cache,
                     &record,
+                    until,
                     context,
                 );
                 match &result {
-                    Ok(_) => record.succeeded(&document.project, simulate),
+                    Ok(run) => record.succeeded(&document.project, simulate, run),
                     Err(e) if e.is_cancelled() => record.cancelled(),
                     Err(e) => record.failed(&document.project, e.to_string()),
                 }
@@ -845,7 +866,7 @@ impl Application {
     ) -> JobHandle<Regeneration> {
         let (before_post, before_grouping) = (self.post.replace(post), self.grouping);
         self.grouping = grouping;
-        let handle = self.start_pipeline("post", false);
+        let handle = self.start_pipeline("post", false, None);
         self.post = before_post;
         self.grouping = before_grouping;
         handle
