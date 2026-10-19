@@ -563,7 +563,8 @@ impl Shell {
 
     /// Creates the project's one setup as a single undoable command, selects
     /// it and opens the Setup step (the Setups "+", the workflow bar;
-    /// decision record 0144). With a setup already there it does nothing.
+    /// decision record 0144). With a setup already there, or no model yet, it
+    /// does nothing.
     fn add_setup(&mut self) {
         let Some(app) = &mut self.app else { return };
         if !openchuck_app::can_add_setup(app.project()) {

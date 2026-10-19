@@ -793,14 +793,10 @@ impl Shell {
                 }
                 Step::Setup => {
                     if let Some(app) = &self.app {
-                        let can_add = openchuck_app::can_add_setup(app.project());
-                        let tip = if can_add {
-                            "New setup"
-                        } else {
-                            super::tree::ONE_SETUP_TIP
-                        };
+                        let blocked = openchuck_app::add_setup_blocked(app.project());
+                        let tip = blocked.unwrap_or("New setup");
                         if ui
-                            .add_enabled(can_add, egui::Button::new("+ Add setup"))
+                            .add_enabled(blocked.is_none(), egui::Button::new("+ Add setup"))
                             .on_disabled_hover_text(tip)
                             .on_hover_text(tip)
                             .clicked()

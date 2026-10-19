@@ -129,7 +129,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | "+" on | Does |
 | --- | --- |
 | Model | Opens the import dialog (11.2) |
-| Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
+| Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and an empty working selection ("Select on the part…", decision 0037 item 7) |
 | Tools | Opens the tool library (12.1) with "Add to project" as its primary action |
 | Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |

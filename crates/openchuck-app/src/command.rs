@@ -254,22 +254,44 @@ pub fn duplicate_operation(project: &Project, operation: OperationId) -> Result<
     })
 }
 
-/// Whether the project can take a setup from the interface: it has none yet.
-/// More than one setup is SET-07 (P2), not built (decision record 0144).
+/// The tooltip of a disabled "add setup" control once the project has its
+/// one setup (decision record 0144).
+pub const ONE_SETUP_REASON: &str = "More than one setup per project is not supported yet (SET-07)";
+
+/// The tooltip of a disabled "add setup" control while the project has no
+/// model (decision record 0144).
+pub const NO_MODEL_REASON: &str = "Import a model first";
+
+/// Why a setup cannot be added from the interface now, or `None` when it
+/// can. One reason at a time: the SET-07 limit once a setup exists, else the
+/// missing model.
+pub fn add_setup_blocked(project: &Project) -> Option<&'static str> {
+    if !project.setups().is_empty() {
+        Some(ONE_SETUP_REASON)
+    } else if project.models().is_empty() {
+        Some(NO_MODEL_REASON)
+    } else {
+        None
+    }
+}
+
+/// Whether the project can take a setup from the interface: it has a model
+/// and no setup yet. More than one setup is SET-07 (P2), not built.
 pub fn can_add_setup(project: &Project) -> bool {
-    project.setups().is_empty()
+    add_setup_blocked(project).is_none()
 }
 
 /// The command that adds the project's one setup, "Setup 1", with the first
-/// model as its part (none when there is no model yet). Every other field is
-/// the application default of [`Setup::new`] (SET-03, SET-05, SET-06), so the
-/// setup is one undoable edit.
+/// model as its part. Every other field is the application default of
+/// [`Setup::new`] (SET-03, SET-05, SET-06), so the setup is one undoable
+/// edit.
 pub fn new_setup(project: &Project) -> Result<Command, AppError> {
-    if !can_add_setup(project) {
+    if !project.setups().is_empty() {
         return Err(AppError::OneSetupOnly);
     }
+    let first = project.models().first().ok_or(AppError::NoModelForSetup)?;
     let mut setup = Setup::new(SetupId::new(), "Setup 1");
-    setup.part = project.models().first().map(|m| m.id);
+    setup.part = Some(first.id);
     Ok(Command::Add {
         item: Item::Setup(setup),
         placement: Placement::End,

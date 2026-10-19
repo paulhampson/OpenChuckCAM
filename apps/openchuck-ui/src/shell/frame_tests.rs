@@ -529,13 +529,14 @@ fn req_set_01_a_second_click_does_nothing_and_undo_allows_the_plus_again() {
     rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
     rig.shell.add_setup();
     rig.settle();
-    let app = rig.shell.app.as_mut().unwrap();
-    assert_eq!(app.project().setups().len(), 1);
-    assert!(!openchuck_app::can_add_setup(app.project()));
+    let project = rig.shell.app.as_ref().unwrap().project();
+    assert_eq!(project.setups().len(), 1);
+    assert_eq!(
+        openchuck_app::add_setup_blocked(project),
+        Some("More than one setup per project is not supported yet (SET-07)")
+    );
     // The workflow bar's action is disabled too, with the same words.
     assert!(rig.shows("Add setup"));
-    assert!(tree::ONE_SETUP_TIP.contains("SET-07"));
-    assert!(tree::ONE_SETUP_TIP.starts_with("More than one setup per project"));
     // Undo removes the setup, so the "+" is enabled again.
     let app = rig.shell.app.as_mut().unwrap();
     assert!(app.undo().unwrap());
@@ -560,20 +561,23 @@ fn req_set_01_a_project_that_has_a_setup_shows_the_plus_disabled() {
 }
 
 #[test]
-fn req_set_01_with_no_model_the_setup_is_created_with_no_part() {
+fn req_set_01_the_plus_is_disabled_until_a_model_is_imported() {
     let mut rig = no_setup_rig("add-setup-no-model", false);
+    assert_eq!(
+        openchuck_app::add_setup_blocked(rig.shell.app.as_ref().unwrap().project()),
+        Some("Import a model first")
+    );
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
     rig.shell.add_setup();
     rig.settle();
-    let project = rig.shell.app.as_ref().unwrap().project();
-    assert_eq!(project.setups().len(), 1);
-    assert_eq!(project.setups()[0].part, None);
-    // The Setup step is closed until a model is imported ("Import a model
-    // first"), so the setup is selected in the tree and the step stays.
-    assert_eq!(rig.shell.step, Step::Model);
-    assert_eq!(
-        rig.shell.selected,
-        Some(Selection::Setup(project.setups()[0].id))
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .setups()
+            .is_empty()
     );
-    rig.settle();
-    assert!(rig.shows("Setup 1"));
+    assert_eq!(rig.shell.step, Step::Model);
 }

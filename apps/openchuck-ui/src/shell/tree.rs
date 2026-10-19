@@ -44,7 +44,8 @@ impl Group {
 
     /// The "+" button's tooltip, or `None` when the group has no "+" yet: the
     /// tool library window is lane X9's. The Setups "+" creates the project's
-    /// one setup (decision record 0144); a second is SET-07 (P2).
+    /// one setup, once there is a model (decision record 0144); a second is
+    /// SET-07 (P2).
     fn add(self) -> Option<&'static str> {
         match self {
             Self::Setups => Some("New setup"),
@@ -111,11 +112,6 @@ fn row(ui: &mut egui::Ui, r: Row<'_>, before: impl FnOnce(&mut egui::Ui)) -> egu
     }
     response
 }
-
-/// The tooltip of the Setups "+" and the workflow bar's "Add setup" once
-/// the project has its one setup (decision record 0144).
-pub(super) const ONE_SETUP_TIP: &str =
-    "More than one setup per project is not supported yet (SET-07)";
 
 /// A group's header: its title, count and "+" (22 pixels).
 fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool {
@@ -223,13 +219,13 @@ impl Shell {
                     item_menu(&response, item, None, &mut actions);
                 }
                 // Setups, with their parts as child rows.
-                let can_add = openchuck_app::can_add_setup(project);
+                let blocked = openchuck_app::add_setup_blocked(project);
                 if header_with(
                     ui,
                     Group::Setups,
                     project.setups().len(),
-                    can_add,
-                    Some(ONE_SETUP_TIP),
+                    blocked.is_none(),
+                    blocked,
                 ) {
                     actions.push(TreeAction::Add(Group::Setups));
                 }

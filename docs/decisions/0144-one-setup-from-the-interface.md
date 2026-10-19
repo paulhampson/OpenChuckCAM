@@ -1,8 +1,8 @@
 # 0144: The Setups "+" creates the project's one setup (lane SU)
 
-- **Status:** proposed. Awaiting the project owner's acceptance. The owner chose the behaviour (option A) on 19 Oct 2026, relayed by the coordinator session; this record writes it down and amends specification section 6. Only the owner accepts it.
+- **Status:** proposed. Awaiting the project owner's acceptance. The owner chose the behaviour (option A) on 19 Oct 2026, and decided OI-425 the same day (no setup without a model), both relayed by the coordinator session; this record writes them down and amends specification section 6. Only the owner accepts it.
 - **Date:** 19 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-425 and OI-426 are new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-425 is new and closed by this record; OI-426 is new.
 
 Numbering: the coordinator assigned this lane records 0144 and 0145 and OI-425 to OI-429. This lane uses 0144, OI-425 and OI-426. Record 0145 and OI-427 to OI-429 are not used.
 
@@ -15,20 +15,20 @@ Requirements: SET-01 to SET-06 (P1) need a setup; UI-10, UI-11 and UI-14 for the
 ## Decision
 
 1. **The "+" is shown and creates exactly one setup.** One click adds "Setup 1" as a single undoable command (`openchuck_app::new_setup`, a `Command::Add` of the setup at the end of the list), selects it and opens the Setup step. Every other field is what `Setup::new` already gives and the command line already uses: no stock or material, the part origin at the rotary reference point, G54 at the model origin, the machine's clearance. No new default is invented. Creating the setup does not happen on import (not option B).
-2. **The part is the project's first model**, or none when there is no model yet. With no model the Setup step is closed by the existing rule ("Import a model first"), so the setup is created and selected in the tree and the step stays where it is; it opens once a model is imported. The owner preferred creating with no part to asking for a model first. What fills the part afterwards is OI-425.
-3. **Once a setup exists the "+" stays visible but disabled** (`openchuck_app::can_add_setup`), with the tooltip "More than one setup per project is not supported yet (SET-07)". A second request does nothing. Undo removes the setup and enables the "+" again.
+2. **A setup needs a model (OI-425, decided by the owner on 19 Oct 2026: "Don't allow creation of a setup without a part imported").** Creation always sets the part to the project's first model, and the "+" and the workflow bar's button are disabled until the project has one, with the tooltip "Import a model first". `new_setup` refuses with `AppError::NoModelForSetup` otherwise. A setup with no part loaded from a file is unaffected, and the import path is unchanged.
+3. **Once a setup exists the "+" stays visible but disabled** (`openchuck_app::can_add_setup`), with the tooltip "More than one setup per project is not supported yet (SET-07)". A second request does nothing. Undo removes the setup and enables the "+" again. When both reasons could apply the control shows one: the SET-07 limit if a setup exists, else the missing model (`add_setup_blocked`).
 4. **The workflow bar's "Add setup"** (specification sections 3 and 5 name it) is a button on the Setup step, with the same enabled state and the same tooltip. It does the same as the tree's "+".
-5. **Specification section 6** is edited in the same change: the Setups row of the "+" table now reads as item 1 and 3 say, replacing "Only once multiple setups ... are built; until then it is hidden". The doc comment on `Group::add` in `shell/tree.rs` says the same.
+5. **Specification section 6** is edited in the same change: the Setups row of the "+" table now reads as items 1 to 3 say, replacing "Only once multiple setups ... are built; until then it is hidden". The doc comment on `Group::add` in `shell/tree.rs` says the same.
 6. **Provenance of the defaults.** The new setup's defaults appear in the setup inspector as the existing form shows them. The "default" and "set" marks lane X4 adds (decision 0123, pending merge) are X4's; whether the new setup's values show as unconfirmed under them is OI-426, to check once X4 has merged.
 
 ## Alternatives considered
 
 - **Option B, a setup created on model import.** Rejected by the owner: it hides a choice the user should see.
-- **Ask for a model first.** Rejected by the owner's preference; the setup without a part is already valid (the checks say what is missing).
+- **A setup with no part, made before any model** (this record's first design). Replaced by the owner's decision on OI-425: the Setup step is closed without a model, so such a setup could not be edited there.
 - **Hide the "+" once a setup exists.** Rejected by the owner: a disabled control with a reason is clearer than one that vanishes.
 
 ## Consequences
 
-- `openchuck-app` gains `new_setup`, `can_add_setup` and `AppError::OneSetupOnly`. The interface changes are `Group::add`, a `header_with` that gives a disabled "+" its own tooltip, the Add handler's Setups arm and `Shell::add_setup` in `shell.rs`, and the Setup step's arm of `workflow_bar` in `shell/frame.rs`.
-- Tests: `crates/openchuck-app/tests/new_setup.rs` and four `req_set_01_*` tests in `shell/frame_tests.rs` (the "+" creates the setup and opens the step, one undo, a second click does nothing, an existing setup shows it disabled, undo enables it, no model gives no part).
-- SET-07 will lift item 3's limit and item 2's "first model".
+- `openchuck-app` gains `new_setup`, `can_add_setup`, `add_setup_blocked`, the two reason strings, and `AppError::OneSetupOnly` and `NoModelForSetup`. The interface changes are `Group::add`, a `header_with` that gives a disabled "+" its own tooltip, the Add handler's Setups arm and `Shell::add_setup` in `shell.rs`, and the Setup step's arm of `workflow_bar` in `shell/frame.rs`.
+- Tests: `crates/openchuck-app/tests/new_setup.rs` and four `req_set_01_*` tests in `shell/frame_tests.rs` (the "+" creates the setup and opens the step, one undo, a second click does nothing, an existing setup shows it disabled, undo enables it, no model leaves it disabled).
+- SET-07 will lift item 3's limit and item 1's "exactly one".

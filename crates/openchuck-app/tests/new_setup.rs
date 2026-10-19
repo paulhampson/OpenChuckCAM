@@ -6,7 +6,10 @@
 
 use std::path::Path;
 
-use openchuck_app::{AppError, Application, Threads, can_add_setup, new_setup};
+use openchuck_app::{
+    AppError, Application, NO_MODEL_REASON, ONE_SETUP_REASON, Threads, add_setup_blocked,
+    can_add_setup, new_setup,
+};
 
 fn project(name: &str, with_model: bool) -> (std::path::PathBuf, Application) {
     let dir =
@@ -43,10 +46,15 @@ fn req_set_01_a_new_project_can_get_its_one_setup_with_the_first_model_as_part()
 }
 
 #[test]
-fn req_set_01_with_no_model_the_setup_has_no_part() {
-    let (dir, mut app) = project("no-model", false);
-    app.execute(new_setup(app.project()).unwrap()).unwrap();
-    assert_eq!(app.project().setups()[0].part, None);
+fn req_set_01_no_setup_can_be_added_before_a_model_is_imported() {
+    let (dir, app) = project("no-model", false);
+    assert!(!can_add_setup(app.project()));
+    assert_eq!(add_setup_blocked(app.project()), Some(NO_MODEL_REASON));
+    assert!(matches!(
+        new_setup(app.project()),
+        Err(AppError::NoModelForSetup)
+    ));
+    assert!(app.project().setups().is_empty());
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -67,6 +75,7 @@ fn req_ui_08_req_set_01_the_new_setup_is_one_undo_and_undo_allows_another() {
 fn req_set_01_a_second_setup_is_refused_until_set_07() {
     let (dir, mut app) = project("second", true);
     app.execute(new_setup(app.project()).unwrap()).unwrap();
+    assert_eq!(add_setup_blocked(app.project()), Some(ONE_SETUP_REASON));
     assert!(matches!(
         new_setup(app.project()),
         Err(AppError::OneSetupOnly)
