@@ -18,6 +18,8 @@ Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet 
 | F-12 | Selection | "Start new selection" triggers only on mode switch. | Expected: it triggers whenever a selection would be cleared. Test: the user is not adding to or removing from a selection (no shift or control held) while elements are already selected, so the modifier key was probably forgotten. Issue [#152](https://github.com/paulhampson/OpenChuckCAM/issues/152). | Answered: warn and ask for confirmation. Applies to any click that might clear or reset the selection, except explicit clear buttons. Reason: avoid losing a high-effort manual selection of many triangles to a misclick. |
 | F-13 | Selection | Selection parameters and options are in the lower window. | Expected: an inspector on the right-hand side. Issue [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153). | Check the UI specification and the X4 inspector layout for the intended place. |
 
+Convention (owner, 19 Oct 2026): from now on, bug fix lanes generated from the trial feedback are prefixed `BUG` (for example `BUG-SEL`). Lanes already named by the coordinator keep their names.
+
 ## Task list (work packages)
 
 Issues are in `paulhampson/OpenChuckCAM`. Lane names are proposals for the coordinator: the `X` lanes are slice 22 lanes in the work breakdown (Parallel work), and the coordinator confirms or changes the mapping and takes any decision, `OI-` and schema numbers (none are claimed here).
