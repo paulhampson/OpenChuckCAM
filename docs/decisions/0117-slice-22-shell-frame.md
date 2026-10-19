@@ -1,6 +1,6 @@
 # 0117: Slice 22 shell frame: the view-model queries for steps, item states, messages and the primary action, and the window's regions
 
-- **Status:** proposed. Lane X2, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). The owner answered its two questions on 19 Oct 2026, relayed by the coordinator (decision 0049): OI-350 A, the four readings agreed and written into the specification; OI-351 B, a run up to the selected operation (item 9). The record itself waits for the owner's acceptance.
+- **Status:** accepted by the project owner on 19 Oct 2026, given directly in the lane X2 session, as built at head 881fd08. Lane X2, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). The owner answered its two questions on 19 Oct 2026, relayed by the coordinator (decision 0049): OI-350 A, the four readings agreed and written into the specification; OI-351 B, a run up to the selected operation (item 9).
 - **Date:** 18 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-350 and OI-351 were raised and are closed by the owner's answers. OI-342 stays open: this lane re-rendered images 01 and 02, and other lanes' boards remain.
 
