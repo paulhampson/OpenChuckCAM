@@ -36,9 +36,6 @@ pub const DEFAULT_POINT_BUDGET: usize = 1_000_000;
 
 /// Program seconds per second of the clock the speed list offers; the last
 /// two play the whole program in a set time.
-/// "Max" plays the whole program in this many seconds.
-const MAX_SPEED_SECONDS: f64 = 1.0;
-
 const SPEEDS: [(&str, f64); 5] = [
     ("1×", 1.0),
     ("10×", 10.0),
@@ -763,13 +760,6 @@ impl PlaybackPanel {
                 {
                     self.playback.set_speed(value);
                 }
-            }
-            let max = Playback::speed_to_finish_in(timeline, MAX_SPEED_SECONDS);
-            if ui
-                .selectable_label((speed - max).abs() < 1e-9, "Max")
-                .clicked()
-            {
-                self.playback.set_speed(max);
             }
             ui.label("Whole program");
             for seconds in [10.0, 60.0] {

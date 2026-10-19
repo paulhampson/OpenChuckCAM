@@ -88,7 +88,6 @@ fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons(
         "Speed",
         "1000×",
         "10 000×",
-        "Max",
         "Whole program",
         "Go to move",
         "Feed",
@@ -96,6 +95,7 @@ fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons(
         assert!(rig.shows(text) || text == "Feed", "{text} is on screen");
     }
     assert!(rig.shows("The simulation results do not change"));
+    assert!(!rig.shows("Max"), "there is no Max speed");
     // Space plays and pauses.
     assert!(!rig.shell.play.is_playing());
     rig.press(Key::Space, Modifiers::NONE);
