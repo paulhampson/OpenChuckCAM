@@ -112,14 +112,24 @@ impl Application {
             return Err(fail("its tool is not in the project".to_owned()));
         }
         if let Some(set) = cut_on {
-            if !self
+            let Some(found) = self
                 .document
                 .project
                 .selection_sets()
                 .iter()
-                .any(|s| s.id == set)
-            {
+                .find(|s| s.id == set)
+            else {
                 return Err(fail("its selection set is not in the project".to_owned()));
+            };
+            // A set made on another model can never be resolved against the
+            // setup's part (as `set_operation_selection` refuses it).
+            if let Some(part) = self.document.project.setup(setup).and_then(|s| s.part)
+                && found.model != part
+            {
+                return Err(fail(format!(
+                    "its selection set '{}' was made on a different model from the setup's part",
+                    found.name
+                )));
             }
             if !self
                 .strategies

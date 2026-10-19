@@ -216,7 +216,7 @@ impl ImportSession {
         self.preview.is_some()
             && self.job.is_none()
             && self.adding.is_none()
-            && *self.path_text.trim() == *self.path
+            && names(&self.path_text, &self.path)
     }
 
     /// Starts reading and checking the model for adding, as a background
@@ -557,11 +557,33 @@ pub fn readout_lines(i: &openchuck_app::model::ModelInspection) -> Vec<(&'static
     lines
 }
 
+/// Whether the path field's `text` names `path`. The field shows the path's
+/// lossy text, so a file name that is not UTF-8 still matches itself.
+fn names(text: &str, path: &std::path::Path) -> bool {
+    text.trim() == path.to_string_lossy()
+}
+
 #[cfg(test)]
 mod tests {
     use openchuck_app::model::MeshReport;
 
     use super::*;
+
+    /// The path field must name the checked file for Add (OI-358): spaces
+    /// round it do not matter, another file does, and a file name that is
+    /// not UTF-8 matches the lossy text the field shows for it.
+    #[test]
+    fn req_imp_01_the_field_names_the_checked_file() {
+        let path = std::path::Path::new("/models/part.stl");
+        assert!(names(" /models/part.stl ", path));
+        assert!(!names("/models/other.stl", path));
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let odd = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/models/p\xffrt.stl"));
+            assert!(names(&odd.display().to_string(), odd));
+        }
+    }
 
     #[test]
     fn req_imp_04_the_mesh_check_has_one_row_per_kind_with_its_count() {

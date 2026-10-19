@@ -420,10 +420,7 @@ impl WorkholdingPanel {
         // Another edit (an undo, the command line) changed the project: start
         // again from what it holds, saying so if that threw changes away.
         if *self.draft.stored() != setup.workholding {
-            self.draft.sync(&setup.workholding);
-            self.fields.clear();
-            self.findings.clear();
-            self.message = None;
+            self.follow_stored(&setup.workholding);
         }
         self.poll_facts(ui.ctx(), app, setup);
         self.focused = None;
@@ -485,6 +482,26 @@ impl WorkholdingPanel {
         // A row opened from the view has had its field focused.
         self.open_request = None;
         command.or_else(|| self.poll_check(ui.ctx(), app, setup))
+    }
+
+    /// Starts again from the stored workholding, which another edit (an
+    /// undo, the command line) changed, saying so if that threw changes away.
+    fn follow_stored(&mut self, stored: &Workholding) {
+        self.draft.sync(stored);
+        self.fields.clear();
+        self.findings.clear();
+        self.refused = false;
+        self.message = None;
+    }
+
+    /// Adds or removes tabs of the draft with `edit`. The tabs after the
+    /// change are numbered anew, so what a check or a refused apply found,
+    /// which names tabs by index, is forgotten even after a refusal.
+    fn renumber_tabs(&mut self, edit: impl FnOnce(&mut Workholding)) {
+        edit(self.draft.edit());
+        self.fields.clear();
+        self.findings.clear();
+        self.refused = false;
     }
 
     /// Edits the draft with `edit`, and forgets what a check found, which
@@ -878,14 +895,12 @@ impl WorkholdingPanel {
         if let Some(i) = duplicate
             && let Some(tab) = self.draft.workholding().tabs.get(i).copied()
         {
-            self.edit(|w| w.tabs.insert(i + 1, tab));
-            self.fields.clear();
+            self.renumber_tabs(|w| w.tabs.insert(i + 1, tab));
         }
         if let Some(i) = remove {
-            self.edit(|w| {
+            self.renumber_tabs(|w| {
                 w.tabs.remove(i);
             });
-            self.fields.clear();
         }
     }
 
@@ -1352,13 +1367,22 @@ impl WorkholdingPanel {
                 }
             }
         }
+        // Without a part there is nothing to work out, and what was worked
+        // out for the part it had no longer holds.
+        if setup.part.is_none() {
+            if let Facts::Running { job, .. } = &self.facts {
+                job.cancel();
+            }
+            self.facts = Facts::None;
+            return;
+        }
         let current = match &self.facts {
             Facts::Found { key, .. } | Facts::Failed { key, .. } | Facts::Running { key, .. } => {
                 Some(key)
             }
             Facts::None => None,
         };
-        if setup.part.is_some() && current != Some(&key) {
+        if current != Some(&key) {
             self.facts = Facts::Running {
                 job: app.start_part_extent(self.setup),
                 key,
@@ -1544,6 +1568,60 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
             drop(text);
         }
+    }
+
+    /// Removing or duplicating a tab renumbers the tabs, so what a refused
+    /// apply found about tab 2 is not shown on whichever tab is second now;
+    /// a change to the stored workholding forgets it too.
+    #[test]
+    fn req_ui_25_findings_are_forgotten_when_the_tabs_are_renumbered() {
+        let (dir, _app, _, setup_id) = cube_project("workholding-renumber");
+        let setup = _app.project().setup(setup_id).unwrap().clone();
+        let mut panel = WorkholdingPanel::new(&setup);
+        let refuse = |panel: &mut WorkholdingPanel| {
+            panel.refused = true;
+            panel.findings = vec![WorkholdingFinding {
+                tab: Some(1),
+                text: "Tab 2 is narrower than the 4 mm tool of 1 Rough".to_owned(),
+            }];
+        };
+        panel.draft.edit().tabs = vec![tab(-6.0, 1.0, 4.0), tab(4.0, 1.0, 2.0)];
+        refuse(&mut panel);
+        assert!(panel.draft_view(&setup).failing.contains(&HeldItem::Tab(1)));
+        panel.renumber_tabs(|w| {
+            w.tabs.remove(0);
+        });
+        assert!(panel.findings.is_empty() && !panel.refused);
+        assert!(panel.draft_view(&setup).failing.is_empty());
+        // Duplicating renumbers too.
+        refuse(&mut panel);
+        panel.renumber_tabs(|w| w.tabs.insert(1, w.tabs[0]));
+        assert!(panel.findings.is_empty() && !panel.refused);
+        // An undo elsewhere replaced the stored workholding.
+        refuse(&mut panel);
+        panel.follow_stored(&Workholding::default());
+        assert!(panel.findings.is_empty() && !panel.refused);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// When the setup loses its part (an undo of the import), the part's
+    /// extent and the default tabs worked out from it are forgotten, so the
+    /// view does not draw defaults for a part that has gone.
+    #[test]
+    fn req_ui_25_the_part_facts_go_with_the_part() {
+        let (dir, app, _, setup_id) = cube_project("workholding-no-part");
+        let setup = app.project().setup(setup_id).unwrap().clone();
+        let mut panel = WorkholdingPanel::new(&setup);
+        let ctx = egui::Context::default();
+        let _ = settle(&mut panel, &ctx, &app, &setup);
+        assert!(panel.part_extent().is_some());
+        assert!(panel.viewport_draft(&setup).is_some());
+        let mut bare = setup.clone();
+        bare.part = None;
+        panel.poll_facts(&ctx, &app, &bare);
+        assert!(panel.part_extent().is_none());
+        assert!(panel.viewport_draft(&bare).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
