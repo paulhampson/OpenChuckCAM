@@ -19,6 +19,7 @@ Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet 
 | F-13 | Selection | Selection parameters and options are in the lower window. | Expected: an inspector on the right-hand side. Issue [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153). | Check the UI specification and the X4 inspector layout for the intended place. |
 
 Convention (owner, 19 Oct 2026): from now on, bug fix lanes generated from the trial feedback are prefixed `BUG` (for example `BUG-SEL`). Lanes already named by the coordinator keep their names.
+| F-14 | UI, Windows | The UI opens a CMD window. | Expected: no console window; the information it prints goes into a log file. Issue [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155). | Log file location, naming and rotation; verbosity; how the user finds the log; the CLI keeps console output (assumed). |
 
 ## Task list (work packages)
 
@@ -55,3 +56,6 @@ Later feedback (sent to the coordinator for mapping)
 | WP6.1 | [#151](https://github.com/paulhampson/OpenChuckCAM/issues/151) Mode indication and hover distinction | F-11 | Bug |
 | WP6.2 | [#152](https://github.com/paulhampson/OpenChuckCAM/issues/152) New-selection notice whenever a selection would be cleared | F-12 | Bug |
 | WP6.3 | [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153) Selection options in a right-hand inspector | F-13 | Bug |
+
+| WP7 | UI logging (lane to be named `BUG-...` by the coordinator) | F-14 | |
+| WP7.1 | [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155) No console window on Windows; output to a log file | F-14 | Bug |
