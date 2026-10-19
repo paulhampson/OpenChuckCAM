@@ -162,7 +162,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
-| SU | 22 (SET-01 to SET-06 from the interface): the Setups "+" and the workflow bar's "Add setup" create the project's one setup ([decision 0144](decisions/0144-one-setup-from-the-interface.md), proposed; OI-425 closed, OI-426; built on `claude/lane-su-add-setup`, draft pull request) | ░░ | ░░ | ░░ | ░░ | ██ |
+| SU | 22 (SET-01 to SET-06 from the interface): the Setups "+" and the workflow bar's "Add setup" create the project's one setup ([decision 0144](decisions/0144-one-setup-from-the-interface.md), accepted 19 Oct 2026; OI-425 closed, OI-426; built on `claude/lane-su-add-setup`, draft pull request) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
 | T | 20 hardening and first release | | | | | ██ |
 

@@ -1,6 +1,6 @@
 # 0144: The Setups "+" creates the project's one setup (lane SU)
 
-- **Status:** proposed. Awaiting the project owner's acceptance. The owner chose the behaviour (option A) on 19 Oct 2026, and decided OI-425 the same day (no setup without a model), both relayed by the coordinator session; this record writes them down and amends specification section 6. Only the owner accepts it.
+- **Status:** accepted by the project owner on 19 Oct 2026, given directly in the lane SU session. The owner chose the behaviour (option A) and decided OI-425 (no setup without a model) the same day, both relayed by the coordinator session before the acceptance. This record amends specification section 6.
 - **Date:** 19 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-425 is new and closed by this record; OI-426 is new.
 
