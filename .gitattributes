@@ -11,3 +11,6 @@ posts/** -text
 # on a conflict (decision record 0054). Put new rows in number order and check any row you edited.
 docs/decisions/README.md merge=union
 docs/open-items.md merge=union
+
+# Bundled fonts are unmodified binaries (OFL-1.1); Git must never touch them.
+*.ttf binary

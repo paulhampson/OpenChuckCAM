@@ -16,8 +16,9 @@ use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use super::{
     DEFAULT_ZOOM, Dialog, EXPORT, IMPORT, NEW, Next, OPEN, REDO, SAVE, Selection, Shell, UNDO,
-    marks, palette,
+    marks,
 };
+use crate::theme::DARK;
 use crate::toolbar;
 
 /// The three regions that collapse to a rail (Ctrl 1, 2 and 3).
@@ -121,7 +122,7 @@ pub(super) fn status_chip(ui: &mut egui::Ui, status: Option<&ItemStatus>) {
 /// A small bordered chip.
 pub(super) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
     egui::Frame::new()
-        .stroke(Stroke::new(1.0, palette::LINE))
+        .stroke(Stroke::new(1.0, DARK.line))
         .corner_radius(3.0)
         .inner_margin(egui::Margin::symmetric(5, 0))
         .show(ui, |ui| ui.label(RichText::new(text).small()))
@@ -131,8 +132,8 @@ pub(super) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
 /// The filled primary button (specification sections 5 and 14.1).
 pub(super) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
     let button = egui::Button::new(RichText::new(label).color(Color32::WHITE).strong())
-        .fill(palette::PRIMARY)
-        .stroke(Stroke::new(1.0, palette::PRIMARY_BORDER))
+        .fill(DARK.primary)
+        .stroke(Stroke::new(1.0, DARK.primary_border))
         .min_size(egui::vec2(0.0, 28.0));
     ui.add_enabled(enabled, button)
 }
@@ -408,12 +409,7 @@ impl Shell {
                 Region::Inspector => "INSPECTOR".to_owned(),
                 Region::Dock => String::new(),
             };
-            ui.label(
-                RichText::new(title)
-                    .small()
-                    .strong()
-                    .color(palette::HEADING),
-            );
+            ui.label(RichText::new(title).small().strong().color(DARK.heading));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let chevron = if region == Region::Project {
                     "«"
@@ -490,11 +486,10 @@ impl Shell {
                 if modified {
                     let (rect, _) =
                         ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                    ui.painter()
-                        .circle_filled(rect.center(), 3.5, palette::MUTED);
-                    ui.label(RichText::new("Edited").color(palette::MUTED));
+                    ui.painter().circle_filled(rect.center(), 3.5, DARK.muted);
+                    ui.label(RichText::new("Edited").color(DARK.muted));
                 } else {
-                    ui.label(RichText::new("· saved").color(palette::MUTED));
+                    ui.label(RichText::new("· saved").color(DARK.muted));
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -749,7 +744,7 @@ impl Shell {
                     ui.add(
                         egui::Label::new(
                             RichText::new("Changing a setup marks its operations stale.")
-                                .color(palette::MUTED),
+                                .color(DARK.muted),
                         )
                         .truncate(),
                     );
@@ -833,7 +828,7 @@ impl Shell {
             };
             if let Some(text) = text
                 && ui
-                    .link(RichText::new(text).color(palette::WARNING))
+                    .link(RichText::new(text).color(DARK.warning))
                     .on_hover_text(format!(
                         "{}. Open the machine in Setup.",
                         warnings.join(", ")
@@ -876,16 +871,14 @@ impl Shell {
                     .as_ref()
                     .is_some_and(crate::workholding_panel::WorkholdingPanel::has_unapplied_changes)
                 {
-                    ui.label(
-                        RichText::new("Workholding changes not applied").color(palette::WARNING),
-                    );
+                    ui.label(RichText::new("Workholding changes not applied").color(DARK.warning));
                     ui.separator();
                 }
                 let note = primary
                     .as_ref()
                     .and_then(|p| p.blocked.clone())
                     .unwrap_or_else(|| step_note(self.step).to_owned());
-                ui.add(egui::Label::new(RichText::new(note).color(palette::MUTED)).truncate());
+                ui.add(egui::Label::new(RichText::new(note).color(DARK.muted)).truncate());
             });
         });
     }
@@ -906,7 +899,7 @@ impl Shell {
         let ctx = ui.ctx().clone();
         let rect = ui.max_rect();
         ui.painter()
-            .rect_filled(rect, 0.0, crate::shell::palette::BAR.gamma_multiply(0.6));
+            .rect_filled(rect, 0.0, DARK.bar.gamma_multiply(0.6));
         let card = egui::Rect::from_center_size(rect.center(), egui::vec2(420.0, 300.0))
             .intersect(rect.shrink(16.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
@@ -938,7 +931,7 @@ impl Shell {
                                 step.name(),
                                 step_purpose(step)
                             ))
-                            .color(palette::MUTED),
+                            .color(DARK.muted),
                         );
                     }
                 });
@@ -948,7 +941,7 @@ impl Shell {
 
 fn bar_frame() -> egui::Frame {
     egui::Frame::new()
-        .fill(palette::BAR)
+        .fill(DARK.bar)
         .inner_margin(egui::Margin::symmetric(8, 0))
 }
 
@@ -976,21 +969,21 @@ fn step_tab(
     let text = if active {
         ui.visuals().strong_text_color()
     } else if available {
-        palette::MUTED
+        DARK.muted
     } else {
-        palette::MUTED.gamma_multiply(0.45)
+        DARK.muted.gamma_multiply(0.45)
     };
     let painter = ui.painter();
     let centre = egui::pos2(rect.left() + 22.0, rect.center().y);
     if active {
-        painter.circle_filled(centre, 10.0, palette::ACCENT);
+        painter.circle_filled(centre, 10.0, DARK.accent);
     } else if state.complete {
-        painter.circle_stroke(centre, 10.0, Stroke::new(2.0, palette::OK));
+        painter.circle_stroke(centre, 10.0, Stroke::new(2.0, DARK.ok));
     } else {
         painter.circle_stroke(centre, 10.0, Stroke::new(1.0, text));
     }
     if active && state.complete {
-        painter.circle_stroke(centre, 11.5, Stroke::new(2.0, palette::OK));
+        painter.circle_stroke(centre, 11.5, Stroke::new(2.0, DARK.ok));
     }
     painter.text(
         centre,
@@ -1008,7 +1001,7 @@ fn step_tab(
         painter.hline(
             rect.x_range(),
             rect.bottom() - 1.0,
-            Stroke::new(2.0, palette::ACCENT),
+            Stroke::new(2.0, DARK.accent),
         );
     }
     let name = step.name();

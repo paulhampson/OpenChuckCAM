@@ -2,9 +2,9 @@
 
 - **Status:** proposed. Lane X2, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). The interpretations in item 6 wait for the owner (OI-350, OI-351).
 - **Date:** 18 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-350, OI-351 and OI-352 are new. OI-342 stays open: this lane re-rendered images 01 and 02, and other lanes' boards remain.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-350 and OI-351 are new. OI-342 stays open: this lane re-rendered images 01 and 02, and other lanes' boards remain.
 
-Numbering: the coordinator assigned this lane records 0117 and 0118 and OI-350 to OI-354. Lane BX-b holds 0115 and 0116 and OI-347 to OI-349, and lane X3 holds 0119 and 0120 and OI-355 to OI-359. This lane uses 0117 and OI-350 to OI-352. Record 0118 and OI-353 and OI-354 are unused.
+Numbering: the coordinator assigned this lane records 0117 and 0118 and OI-350 to OI-354. Lane BX-b holds 0115 and 0116 and OI-347 to OI-349, and lane X3 holds 0119 and 0120 and OI-355 to OI-359. This lane uses 0117, OI-350 and OI-351. Record 0118 and OI-352 to OI-354 are unused.
 
 ## Context
 
@@ -169,7 +169,7 @@ Decision 0114 found that the layout of specification sections 3 to 5, 9 and 10 w
 
 ### 8. Tokens
 
-Lane X7a's theme module was not on `main` when the frame was built. The shell uses a private `palette` with X7a's token names and the hex values of specification 14.1, and nothing else uses it. It is replaced by `theme::Tokens` when X7a has merged (OI-352).
+The frame draws with lane X7a's dark tokens (`theme::DARK`, specification 14.1), merged before this lane's pull request. It does not install X7a's style for the whole interface: applying the tokens to the existing panels is lane X7b's work.
 
 ## Alternatives considered
 
@@ -190,7 +190,7 @@ Lane X7a's theme module was not on `main` when the frame was built. The shell us
 
   It is an application crate, not in the library family, so `cargo-semver-checks` does not apply.
 - **`openchuck-ui`:**
-  - `shell.rs` is split into `shell/frame.rs`, `shell/tree.rs`, `shell/dock.rs`, `shell/marks.rs` and the temporary `shell/palette.rs`;
+  - `shell.rs` is split into `shell/frame.rs`, `shell/tree.rs`, `shell/dock.rs` and `shell/marks.rs`;
   - `toolbar.rs` is new;
   - the run panel reads progress from the job log, and its "generated" and "out of date" badges are replaced by the tree marks;
   - the selection panel gains `poll`, so a save finishes while its tab is closed;

@@ -34,6 +34,7 @@ mod run_panel;
 mod selection_panel;
 mod shell;
 mod testing;
+mod theme;
 mod tool_panel;
 mod toolbar;
 mod viewport;
@@ -98,6 +99,7 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
             graphics::reached(graphics::Stage::DeviceReady);
             graphics::log_adapter(cc.wgpu_render_state.as_ref());
             let available = viewport::install(cc);
+            theme::install_fonts(&cc.egui_ctx);
             // The scale the user chose, kept on this computer (UI-15).
             let shell = shell::Shell::new(available, folder);
             cc.egui_ctx.set_zoom_factor(shell.scale());

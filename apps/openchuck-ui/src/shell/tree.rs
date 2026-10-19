@@ -13,7 +13,8 @@ use eframe::egui::{self, Color32, RichText, Stroke};
 use openchuck_app::overview::{ItemRef, ItemState, SetupPart, setup_row};
 use openchuck_app::project::ItemId;
 
-use super::{Command, Selection, Shell, TreeAction, marks, palette};
+use super::{Command, Selection, Shell, TreeAction, marks};
+use crate::theme::DARK;
 
 /// The height of a row (specification section 6).
 const ROW: f32 = 28.0;
@@ -70,11 +71,11 @@ fn row(ui: &mut egui::Ui, r: Row<'_>, before: impl FnOnce(&mut egui::Ui)) -> egu
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, ROW), egui::Sense::click());
     let painter = ui.painter();
     if r.selected {
-        painter.rect_filled(rect, 0.0, palette::SELECTED);
+        painter.rect_filled(rect, 0.0, DARK.selected);
         painter.vline(
             rect.left() + 1.0,
             rect.y_range(),
-            Stroke::new(2.0, palette::ACCENT),
+            Stroke::new(2.0, DARK.accent),
         );
     } else if response.hovered() {
         painter.rect_filled(rect, 0.0, ui.visuals().widgets.hovered.weak_bg_fill);
@@ -118,7 +119,7 @@ fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool 
             RichText::new(group.title())
                 .small()
                 .strong()
-                .color(palette::MUTED),
+                .color(DARK.muted),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if let Some(tip) = group.add() {
@@ -127,7 +128,7 @@ fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool 
                     add = true;
                 }
             }
-            ui.label(RichText::new(count.to_string()).color(palette::MUTED));
+            ui.label(RichText::new(count.to_string()).color(DARK.muted));
         });
     });
     add
@@ -137,7 +138,7 @@ fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool 
 fn none_yet(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.add_space(8.0 + INDENT);
-        ui.label(RichText::new("None yet").color(palette::MUTED));
+        ui.label(RichText::new("None yet").color(DARK.muted));
     });
 }
 
@@ -246,7 +247,7 @@ impl Shell {
                                 selected: chosen && self.setup_section == Some(part),
                                 status: status(part_item),
                                 swatch: None,
-                                name: RichText::new(r.label).color(palette::MUTED),
+                                name: RichText::new(r.label).color(DARK.muted),
                                 chip,
                             },
                             |_| {},
@@ -323,7 +324,7 @@ impl Shell {
                     let mut name = RichText::new(format!("{} {}", index + 1, o.name));
                     if !o.enabled {
                         // D5: struck through and muted.
-                        name = name.strikethrough().color(palette::MUTED);
+                        name = name.strikethrough().color(DARK.muted);
                     }
                     let tool = o
                         .tool
@@ -348,7 +349,7 @@ impl Shell {
                                     egui::Id::new(("operation drag", id)),
                                     index,
                                     |ui| {
-                                        ui.label(RichText::new("⠿").color(palette::MUTED));
+                                        ui.label(RichText::new("⠿").color(DARK.muted));
                                     },
                                 )
                                 .response;
@@ -380,7 +381,7 @@ impl Shell {
                         ui.painter().hline(
                             response.rect.x_range(),
                             response.rect.top(),
-                            Stroke::new(2.0, palette::ACCENT),
+                            Stroke::new(2.0, DARK.accent),
                         );
                     }
                     if response.clicked() {

@@ -10,7 +10,8 @@ use eframe::egui::{self, RichText};
 use openchuck_app::JobOutcome;
 use openchuck_app::overview::{Severity, Step};
 
-use super::{Dialog, Selection, Shell, marks, palette};
+use super::{Dialog, Selection, Shell, marks};
+use crate::theme::DARK;
 
 /// A tab of the dock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,7 +135,7 @@ impl Shell {
                 let text = RichText::new(format!("{} {count}", severity.name())).color(if *on {
                     marks::colour(severity)
                 } else {
-                    palette::MUTED
+                    DARK.muted
                 });
                 if ui
                     .selectable_label(*on, text)
@@ -152,7 +153,7 @@ impl Shell {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if self.app.is_some() && self.overview.messages.is_empty() {
-                    ui.label(RichText::new("No messages.").color(palette::MUTED));
+                    ui.label(RichText::new("No messages.").color(DARK.muted));
                 }
                 for (index, m) in self.overview.messages.iter().enumerate() {
                     let shown = match m.severity {
@@ -166,7 +167,7 @@ impl Shell {
                     let highlighted = self.highlight == Some(index);
                     let frame = if highlighted {
                         egui::Frame::new()
-                            .fill(palette::SELECTED)
+                            .fill(DARK.selected)
                             .inner_margin(egui::Margin::symmetric(4, 2))
                     } else {
                         egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 2))
@@ -214,7 +215,7 @@ impl Shell {
     /// its rework is lane X6's).
     fn sets_tab(&mut self, ui: &mut egui::Ui) {
         let Some(app) = &mut self.app else {
-            ui.label(RichText::new("No project open.").color(palette::MUTED));
+            ui.label(RichText::new("No project open.").color(DARK.muted));
             return;
         };
         let summaries = app.selection_summaries(&[]);
@@ -244,7 +245,7 @@ impl Shell {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if self.jobs.running().is_empty() && self.jobs.finished().next().is_none() {
-                    ui.label(RichText::new("No jobs yet.").color(palette::MUTED));
+                    ui.label(RichText::new("No jobs yet.").color(DARK.muted));
                 }
                 for entry in self.jobs.running() {
                     ui.horizontal(|ui| {
@@ -258,7 +259,7 @@ impl Shell {
                             );
                         }
                         ui.label(
-                            RichText::new(duration(entry.started.elapsed())).color(palette::MUTED),
+                            RichText::new(duration(entry.started.elapsed())).color(DARK.muted),
                         );
                         if ui.small_button("Cancel").clicked() {
                             cancel = Some(entry.id);
@@ -286,7 +287,7 @@ impl Shell {
                             None => {}
                         }
                         if let Some(took) = entry.took {
-                            ui.label(RichText::new(duration(took)).color(palette::MUTED));
+                            ui.label(RichText::new(duration(took)).color(DARK.muted));
                         }
                     });
                 }
@@ -316,7 +317,7 @@ impl Shell {
                     } else {
                         "Checking…"
                     };
-                    ui.label(RichText::new(text).color(palette::MUTED));
+                    ui.label(RichText::new(text).color(DARK.muted));
                 }
                 for check in rows {
                     ui.horizontal(|ui| {
@@ -354,9 +355,7 @@ impl Shell {
                     .show(ui, |ui| self.play.show(ui, app));
             }
             _ => {
-                ui.label(
-                    RichText::new("Run the simulation to play the cut.").color(palette::MUTED),
-                );
+                ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
             }
         }
     }

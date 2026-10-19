@@ -44,6 +44,7 @@ use crate::model_panel::ModelPanel;
 use crate::playback_panel::PlaybackPanel;
 use crate::run_panel::RunPanel;
 use crate::selection_panel::{self, SelectionPanel};
+use crate::theme::DARK;
 use crate::tool_panel;
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
@@ -51,7 +52,6 @@ use crate::workholding_panel::WorkholdingPanel;
 mod dock;
 mod frame;
 mod marks;
-mod palette;
 mod tree;
 
 use dock::DockTab;
@@ -974,7 +974,7 @@ impl Shell {
             ui.weak(format!("On {path}"));
         }
         if let Some(problem) = &s.problem {
-            ui.colored_label(palette::ERROR, format!("Cannot be used: {problem}."));
+            ui.colored_label(DARK.error, format!("Cannot be used: {problem}."));
         }
         if s.uses.is_empty() {
             ui.weak("No operation uses it.");
@@ -1008,7 +1008,7 @@ impl Shell {
                     egui::RichText::new(section_title(part).to_uppercase())
                         .small()
                         .strong()
-                        .color(palette::HEADING),
+                        .color(DARK.heading),
                 )
                 .id_salt(("setup section", key))
                 .default_open(open);
@@ -1185,7 +1185,7 @@ impl Shell {
             .collect();
         for note in reach {
             ui.horizontal_wrapped(|ui| {
-                ui.colored_label(palette::WARNING, format!("\u{26a0} {note}"));
+                ui.colored_label(DARK.warning, format!("\u{26a0} {note}"));
                 if ui.small_button("Edit workholding").clicked() {
                     edit_workholding = true;
                 }
