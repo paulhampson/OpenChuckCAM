@@ -1,6 +1,6 @@
 # 0129: Slice 22 Setup panes: the front and end views, drawn in 2D from a view model (lane X5)
 
-- **Status:** proposed. Lane X5, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted; [decision 0105](0105-slice-22-conformance-pass.md), accepted). Item 4 is the owner's decision (OI-380); two choices remain the owner's (items 5 and 6; OI-381, OI-382) and are put to the owner through the coordinator. The record is guidance until the owner accepts it.
+- **Status:** accepted by the project owner on 19 Oct 2026, given directly in the lane X5 session, as built at the head of pull request 130. Lane X5, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted; [decision 0105](0105-slice-22-conformance-pass.md), accepted). The owner decided items 4, 5 and 6 (OI-380, OI-381, OI-382) on 19 Oct 2026, relayed by the coordinator (decision 0049).
 - **Date:** 19 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-380 to OI-383 are new. OI-334 stays open with its item (o), the Setup step's panes, built; OI-342 stays open with this lane's board re-rendered.
 
