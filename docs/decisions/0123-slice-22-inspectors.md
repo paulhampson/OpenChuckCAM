@@ -4,7 +4,7 @@
 - **Date:** 19 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-366 to OI-369 are new. OI-366 is closed by the owner's answer (A, relayed). OI-367 to OI-369 are recorded differences. OI-334 items a, c, d, e, i, j, k (the inspector side) and l are built here; its drawing of the draft waits for lane X3's pull request 126 (OI-355). OI-345 stays proposed: the two icons are built on the two states the profile already has, and neither `requirements.md` nor the specification is edited here. OI-342 is updated: this lane re-rendered image 02's machine section.
 
-Numbering: the coordinator assigned this lane records 0123 and 0124 and OI-365 to OI-369. This lane uses 0123 and OI-366 to OI-369; record 0124 and OI-365 are unused. The disabled-operation Generate fallback that lane X2 found (its proposed OI-352) is lane X3's, by the merge manager's assignment, not this lane's.
+Numbering: the coordinator assigned this lane records 0123 and 0124 and OI-366 to OI-369 (OI-365, first assigned here, went to lane X3's pull request 126). This lane uses 0123 and OI-366 to OI-369; record 0124 is unused. The disabled-operation Generate fallback that lane X2 found (its proposed OI-352) is lane X3's, by the merge manager's assignment, not this lane's.
 
 ## Context
 
