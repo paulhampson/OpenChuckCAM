@@ -14,6 +14,9 @@ Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet 
 | F-08 | Import dialog | Dialog is resizable and opens too tall. | Expected: fixed size, with a sensible default height that is not too tall. | Content may need to scroll (for example long check results); the fixing task decides the best approach. Check at 1920x1080 and at 120% UI scale. |
 | F-09 | Import dialog | Loading indicator shifts the layout. | A "refreshing" indicator appears in the import model dialog and pushes the other elements around. When it shows for only a split second, the dialog looks like it is glitching. Expected: no layout shift (reserve space for it, or show it without moving other elements). | Triggered by changing one of the drop-down settings for positioning the part (positioning step). Related to F-08 (fixed-size dialog). |
 | F-10 | Project tree, tool library | Tools should not be in the project tree. | Unexpected to find tools in the project tree. Expected: a separate tool library dialog that lists tools and supports managing them. Tools should be associated with operations. **Conflicts with UI-06** (requirements: project tree lists "the model, stock, setups, operations and tools"), and touches UI specification 12.1 (tool library) and TL-01, TL-07, TL-11. The UI-06 conflict is to be resolved as part of the work on this issue (owner direction), by proposing the requirement change there; do not edit requirements.md to fit. | Answered: the tool library dialog cannot be reached at all in the trial build (a separate defect, or a gap in the UI wiring; check how UI-spec 12.1 is meant to open it). The snapshot state (TL-07) need not be in the tree, only indicated in the operation inspector. Management actions expected: add, edit, delete, duplicate, import/export. |
+| F-11 | Selection | Edge and triangle modes unclear; hover targets hard to tell apart. | The distinction between edge selection and triangle selection is unintuitive. Expected: clearer indication of the active mode and of what is being hovered over. Issue [#151](https://github.com/paulhampson/OpenChuckCAM/issues/151). | Which views and panels show the mode today; what the hover highlight looks like. |
+| F-12 | Selection | "Start new selection" triggers only on mode switch. | Expected: it triggers whenever a selection would be cleared. Test: the user is not adding to or removing from a selection (no shift or control held) while elements are already selected, so the modifier key was probably forgotten. Issue [#152](https://github.com/paulhampson/OpenChuckCAM/issues/152). | What the notice should do (confirm, warn, indicate); which actions it covers. |
+| F-13 | Selection | Selection parameters and options are in the lower window. | Expected: an inspector on the right-hand side. Issue [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153). | Check the UI specification and the X4 inspector layout for the intended place. |
 
 ## Task list (work packages)
 
@@ -42,3 +45,11 @@ Dependencies and notes
 - WP2.2 and WP3.1 both decide which views support which view directions; do them in one decision or sequence them so the view-direction rules are defined once.
 - WP4.1 and WP2.1 both touch the project tree and tool list, and WP4.1 changes what "required information" means for export (a tool per operation).
 - WP5.1 touches `openchuck-ui` and `openchuck-cli` only through a shared build-info source.
+
+Later feedback (sent to the coordinator for mapping)
+| ID | Issue | Log ID | Type |
+| --- | --- | --- | --- |
+| WP6 | Selection (lane to be assigned by the coordinator; relates to slice 10 lane M: picking, hover, selection panel) | F-11, F-12, F-13 | |
+| WP6.1 | [#151](https://github.com/paulhampson/OpenChuckCAM/issues/151) Mode indication and hover distinction | F-11 | Bug |
+| WP6.2 | [#152](https://github.com/paulhampson/OpenChuckCAM/issues/152) New-selection notice whenever a selection would be cleared | F-12 | Bug |
+| WP6.3 | [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153) Selection options in a right-hand inspector | F-13 | Bug |
