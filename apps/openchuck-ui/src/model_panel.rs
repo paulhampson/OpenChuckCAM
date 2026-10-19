@@ -12,7 +12,9 @@ use openchuck_app::project::ModelRef;
 use openchuck_app::project::id::ModelId;
 use openchuck_app::{Command, JobHandle};
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
+use crate::theme::DARK;
+
+const PROBLEM: Color32 = DARK.error;
 
 /// A step being set up before it is added.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -257,7 +259,7 @@ impl ModelPanel {
             }
             Some((_, Ok(i))) => {
                 if let Some(question) = &i.unit_question {
-                    ui.colored_label(Color32::from_rgb(230, 180, 60), question.message());
+                    ui.colored_label(DARK.warning, question.message());
                 }
                 if let Some(b) = i.summary.bounds {
                     ui.label(format!(

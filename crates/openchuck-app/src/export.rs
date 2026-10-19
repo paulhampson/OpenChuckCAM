@@ -257,7 +257,7 @@ pub fn export_checks(
         let fields: Vec<&str> = machine
             .unconfirmed_fields()
             .into_iter()
-            .map(|f| f.name())
+            .map(crate::setup::profile_field_label)
             .collect();
         if !fields.is_empty() {
             push(

@@ -882,6 +882,14 @@ fn req_ui_06_an_operation_is_added_edited_generated_and_deleted_as_undoable_step
     let choices = app.strategy_choices();
     assert!(choices.iter().any(|c| c.name == "helical_finishing"));
     assert!(choices.iter().all(|c| !c.label.is_empty()));
+    // The inspector names a strategy by its label, not its registry name
+    // (specification section 15).
+    let helical = choices.iter().find(|c| c.name == "helical_finishing");
+    assert_eq!(
+        Some(app.strategy_label("helical_finishing")),
+        helical.map(|c| c.label.clone())
+    );
+    assert_eq!(app.strategy_label("not_registered"), "not_registered");
     // Adding: at the end, enabled, with the strategy's defaults.
     let before = app.project().operations().len();
     let second = app

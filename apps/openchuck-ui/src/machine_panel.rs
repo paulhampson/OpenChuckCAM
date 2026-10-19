@@ -12,10 +12,24 @@ use openchuck_app::Command;
 use openchuck_app::library::default_folders;
 use openchuck_app::setup::{
     AvailableMachine, MachineProfile, MachineSource, ProfileEntry, ProfileField, a_direction,
-    available_machines, compare_machine, new_machine_id, save_profile_entry,
+    available_machines, compare_machine, new_machine_id, profile_field_label, save_profile_entry,
 };
 
-const NOTE: Color32 = Color32::from_rgb(230, 180, 60);
+use crate::theme::DARK;
+
+const NOTE: Color32 = DARK.warning;
+
+/// Said under the profile's name when some values are not confirmed: the
+/// values in the user's words, not their names in the profile file
+/// (specification section 15). `None` when every value is confirmed.
+fn unconfirmed_text(profile: &MachineProfile) -> Option<String> {
+    let names: Vec<&str> = ProfileField::ALL
+        .iter()
+        .filter(|f| !profile.is_confirmed(**f))
+        .map(|f| profile_field_label(*f))
+        .collect();
+    (!names.is_empty()).then(|| format!("Not confirmed on the machine: {}.", names.join(", ")))
+}
 
 /// The machine panel's state: the profiles found when it was opened.
 #[derive(Debug)]
@@ -62,16 +76,8 @@ impl MachinePanel {
             Some(profile) => {
                 ui.heading(&profile.name);
                 ui.label(format!("A direction: {}.", a_direction(profile)));
-                let unconfirmed: Vec<&str> = ProfileField::ALL
-                    .iter()
-                    .filter(|f| !profile.is_confirmed(**f))
-                    .map(|f| f.name())
-                    .collect();
-                if !unconfirmed.is_empty() {
-                    ui.colored_label(
-                        NOTE,
-                        format!("Not confirmed on the machine: {}.", unconfirmed.join(", ")),
-                    );
+                if let Some(text) = unconfirmed_text(profile) {
+                    ui.colored_label(NOTE, text);
                 }
             }
         }
@@ -173,11 +179,11 @@ impl MachinePanel {
                     }
                     if a.id.is_none() && !a.source.starts_with("built-in ") {
                         ui.weak(
-                            "This library profile has no ID, so a project copy of it cannot be \
+                            "This library profile has no reference, so a project copy of it cannot be \
                              compared with it later.",
                         );
                         if ui
-                            .button("Give it an ID (rewrites the library file)")
+                            .button("Give it a reference (rewrites the library file)")
                             .clicked()
                         {
                             let with_id = ProfileEntry {
@@ -187,7 +193,7 @@ impl MachinePanel {
                             self.message = Some(
                                 match save_profile_entry(&with_id, std::path::Path::new(&a.source))
                                 {
-                                    Ok(()) => format!("Saved {} with an ID.", a.source),
+                                    Ok(()) => format!("Saved {} with a reference.", a.source),
                                     Err(e) => e.to_string(),
                                 },
                             );
@@ -218,4 +224,21 @@ fn open_folder(dir: &std::path::Path) -> Result<(), String> {
         .spawn()
         .map(drop)
         .map_err(|e| format!("could not open {} with {program}: {e}", dir.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openchuck_app::setup::{MAKERA_Z1, builtin};
+
+    /// Specification section 15 and UI-13: the machine's unconfirmed values
+    /// are named in plain words, never by the file's field names.
+    #[test]
+    fn req_nfr_15_unconfirmed_values_are_named_in_plain_words() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let text = unconfirmed_text(&z1).unwrap();
+        assert!(text.starts_with("Not confirmed on the machine: "), "{text}");
+        assert!(text.contains("axis height"), "{text}");
+        assert!(!text.contains('_'), "{text}");
+    }
 }

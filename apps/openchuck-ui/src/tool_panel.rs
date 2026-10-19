@@ -11,6 +11,8 @@ use openchuck_app::tool_edit::{
 };
 use openchuck_app::tools::{ProfilePoint, ProfileSegment, Tool, ToolProfile};
 
+use crate::theme::DARK;
+
 /// What the user chose in the editor this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProfileAction {
@@ -30,8 +32,8 @@ enum Change {
     Remove(usize),
 }
 
-const VALID: Color32 = Color32::from_rgb(90, 190, 120);
-const INVALID: Color32 = Color32::from_rgb(230, 80, 80);
+const VALID: Color32 = DARK.ok;
+const INVALID: Color32 = DARK.error;
 
 /// Draws the editor for `profile`, a draft of `tool`'s profile.
 pub fn editor(ui: &mut egui::Ui, tool: &Tool, profile: &mut ToolProfile) -> ProfileAction {
@@ -150,7 +152,7 @@ fn preview(ui: &mut egui::Ui, profile: &ToolProfile, valid: bool) {
     let size = ui.available_width().clamp(120.0, 260.0);
     let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 4.0, Color32::from_rgb(30, 32, 36));
+    painter.rect_filled(rect, 4.0, DARK.field);
     let outline = profile_outline(profile);
     let reach = outline
         .iter()

@@ -26,11 +26,12 @@ use openchuck_app::{
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
+use crate::theme::DARK;
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
-const WARNING: Color32 = Color32::from_rgb(230, 180, 60);
-/// The notice band's fill: amber, dark enough for light text in both themes.
-const NOTICE_FILL: Color32 = Color32::from_rgb(70, 52, 8);
+const PROBLEM: Color32 = DARK.error;
+const WARNING: Color32 = DARK.warning;
+/// The safety notice is the warning box of the tokens (14.1).
+const NOTICE_FILL: Color32 = DARK.warning_box.bg;
 /// How many lines of a file the preview shows.
 const PREVIEW_LINES: usize = 14;
 
@@ -495,8 +496,13 @@ impl ExportPanel {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let write = ui.add_enabled(
                         blocker.is_none(),
-                        egui::Button::new(RichText::new("Write G-code").strong())
-                            .fill(ui.visuals().selection.bg_fill),
+                        egui::Button::new(
+                            RichText::new("Write G-code")
+                                .color(DARK.primary_text)
+                                .strong(),
+                        )
+                        .fill(DARK.primary)
+                        .stroke(egui::Stroke::new(1.0, DARK.primary_border)),
                     );
                     let write = match blocker {
                         Some(reason) => write.on_disabled_hover_text(reason),
@@ -816,11 +822,11 @@ impl ExportPanel {
     fn notice(&mut self, ui: &mut egui::Ui) {
         egui::Frame::new()
             .fill(NOTICE_FILL)
-            .stroke(egui::Stroke::new(1.0, WARNING))
+            .stroke(egui::Stroke::new(1.0, DARK.warning_box.border))
             .inner_margin(egui::Margin::same(10))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new(EXPORT_NOTICE).color(Color32::from_rgb(255, 224, 150)));
+                ui.label(RichText::new(EXPORT_NOTICE).color(DARK.warning_box.text));
                 ui.add_space(4.0);
                 if self.ack_lookup.acknowledged {
                     ui.add_enabled(

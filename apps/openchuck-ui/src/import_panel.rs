@@ -19,8 +19,9 @@ use openchuck_app::model::{
 use openchuck_app::{AppError, Application, JobHandle};
 
 use crate::floating::{WindowEvent, floating};
+use crate::theme::DARK;
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
+const PROBLEM: Color32 = DARK.error;
 
 /// How the model is placed on import.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -252,7 +253,7 @@ impl ImportSession {
             if let Some(preview) = &self.preview {
                 let i = &preview.inspection;
                 if let Some(question) = &i.unit_question {
-                    ui.colored_label(Color32::from_rgb(230, 180, 60), question.message());
+                    ui.colored_label(DARK.warning, question.message());
                 }
                 ui.label(format!("Units: {}", i.units.describe()));
                 if let Some(b) = i.summary.bounds {

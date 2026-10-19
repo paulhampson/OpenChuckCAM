@@ -918,17 +918,25 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
     }
 }
 
-/// The user's words for a machine profile value.
-fn field_name(field: ProfileField) -> &'static str {
-    match field {
-        ProfileField::RotaryAxis => "rotary axis",
-        ProfileField::ASense => "A+ direction",
-        ProfileField::RotaryOrigin => "axis height",
-        ProfileField::ARange => "A range",
-        ProfileField::Travel => "travel",
-        ProfileField::MaxFeeds => "maximum feeds",
-        ProfileField::Clearance => "clearance",
+/// A setup warning in the user's words: the library's text, with the machine
+/// values it used named as the machine panel names them, not by their names
+/// in the profile file (specification section 15).
+fn setup_warning_text(warning: &SetupWarning) -> String {
+    let mut plain = warning.clone();
+    plain.unconfirmed.clear();
+    let mut text = plain.to_string();
+    if !warning.unconfirmed.is_empty() {
+        let names: Vec<&str> = warning
+            .unconfirmed
+            .iter()
+            .map(|f| crate::setup::profile_field_label(*f))
+            .collect();
+        text.push_str(&format!(
+            " (uses machine values not confirmed on the machine: {})",
+            names.join(", ")
+        ));
     }
+    text
 }
 
 /// Raises `item`'s state to `status` when it is more serious (error over
@@ -1259,7 +1267,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             m.unconfirmed_fields()
                 .into_iter()
                 .map(|f| {
-                    let name = field_name(f);
+                    let name = crate::setup::profile_field_label(f);
                     let mut chars = name.chars();
                     let name: String = chars
                         .next()
@@ -1297,7 +1305,10 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             Some(m) => {
                 let unconfirmed = m.unconfirmed_fields();
                 if !unconfirmed.is_empty() {
-                    let names: Vec<&str> = unconfirmed.iter().map(|f| field_name(*f)).collect();
+                    let names: Vec<&str> = unconfirmed
+                        .iter()
+                        .map(|f| crate::setup::profile_field_label(*f))
+                        .collect();
                     raise(
                         &mut items,
                         at(SetupPart::Machine),
@@ -1330,7 +1341,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             for w in &found.warnings {
                 let part = part_of(&w.kind);
                 let target = part.map_or(setup, at);
-                let text = sentence(&w.to_string());
+                let text = sentence(&setup_warning_text(w));
                 raise(
                     &mut items,
                     target,
