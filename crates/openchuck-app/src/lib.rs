@@ -36,6 +36,7 @@ pub mod library;
 pub mod model;
 pub mod operation;
 pub mod opflow;
+pub mod overview;
 pub mod pathview;
 pub mod pick;
 mod pipeline;
@@ -43,6 +44,7 @@ pub mod playback;
 mod posting;
 pub mod scene;
 pub mod selection;
+pub mod settings;
 pub mod setup;
 mod setup_sheet;
 pub mod simulation;
@@ -71,7 +73,10 @@ pub use export::{
     Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, ExportChecks,
     PostSummary, builtin_post_summaries, post_summary, write_gcode_files,
 };
-pub use jobs::{JobHandle, JobId, JobManager, Threads};
+pub use jobs::{
+    FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,
+    job_label,
+};
 /// The G-code reader and replay, re-exported so front ends need no engine
 /// crate of their own (architecture section 5.8).
 pub use openchuck_gcode as gcode;
@@ -150,6 +155,8 @@ pub enum Event {
         job: JobId,
         /// `None` on success, or the error message.
         error: Option<String>,
+        /// Whether it stopped because it was cancelled on request.
+        cancelled: bool,
     },
 }
 
@@ -175,6 +182,10 @@ pub struct Application {
     grouping: OutputGrouping,
     events_tx: Sender<Event>,
     events_rx: Receiver<Event>,
+    /// Changes with every command, undo and redo ([`Application::revision`]).
+    revision: u64,
+    /// What generation has made, for the item states (decision record 0117).
+    record: std::sync::Arc<overview::GenerationRecord>,
 }
 
 impl Application {
@@ -219,6 +230,8 @@ impl Application {
             grouping: OutputGrouping::default(),
             events_tx,
             events_rx,
+            revision: 0,
+            record: std::sync::Arc::default(),
         })
     }
 
@@ -607,17 +620,23 @@ impl Application {
     /// Applies a command and records it for undo. On error the project is
     /// unchanged and nothing is recorded.
     pub fn execute(&mut self, command: Command) -> Result<(), AppError> {
-        self.history.execute(&mut self.document.project, command)
+        self.history.execute(&mut self.document.project, command)?;
+        self.revision += 1;
+        Ok(())
     }
 
     /// Undoes the latest command. Returns false when there is nothing to undo.
     pub fn undo(&mut self) -> Result<bool, AppError> {
-        self.history.undo(&mut self.document.project)
+        let undone = self.history.undo(&mut self.document.project)?;
+        self.revision += u64::from(undone);
+        Ok(undone)
     }
 
     /// Redoes the latest undone command. Returns false when there is nothing to redo.
     pub fn redo(&mut self) -> Result<bool, AppError> {
-        self.history.redo(&mut self.document.project)
+        let redone = self.history.redo(&mut self.document.project)?;
+        self.revision += u64::from(redone);
+        Ok(redone)
     }
 
     /// The parameter form of an operation (UI-07).
@@ -728,32 +747,61 @@ impl Application {
 
     /// Starts regenerating every operation's toolpath and G-code as a background job.
     pub fn start_regenerate(&self) -> JobHandle<Regeneration> {
-        self.start_pipeline("regenerate", false)
+        self.start_pipeline("regenerate", false, None)
+    }
+
+    /// Starts generating the enabled operations up to and including
+    /// `operation`, in machining order, as a background job; the ones after
+    /// it are left as they are (stale if they were). Operations before it are
+    /// reused from the cache where nothing they read changed. This is
+    /// "generate selected" (G, specification section 16; decision record
+    /// 0117, OI-351). A disabled or unknown operation is refused.
+    pub fn start_regenerate_until(&self, operation: OperationId) -> JobHandle<Regeneration> {
+        self.start_pipeline("regenerate", false, Some(operation))
+    }
+
+    /// [`Application::start_regenerate_until`], waiting for the result.
+    pub fn regenerate_until(&self, operation: OperationId) -> Result<Regeneration, AppError> {
+        self.start_regenerate_until(operation).wait()
     }
 
     /// Starts regenerating and simulating every operation as a background
     /// job: the result carries a simulation report (SIM-03, SIM-05 to SIM-07).
     pub fn start_simulate(&self) -> JobHandle<Regeneration> {
-        self.start_pipeline("simulate", true)
+        self.start_pipeline("simulate", true, None)
     }
 
-    fn start_pipeline(&self, name: &str, simulate: bool) -> JobHandle<Regeneration> {
+    fn start_pipeline(
+        &self,
+        name: &str,
+        simulate: bool,
+        until: Option<OperationId>,
+    ) -> JobHandle<Regeneration> {
         let document = self.document.clone();
         let strategies = self.strategies.clone();
         let post = self.post.clone();
         let grouping = self.grouping;
         let cache = self.cache.clone();
+        let record = std::sync::Arc::clone(&self.record);
         self.jobs
             .submit(name, self.events_tx.clone(), move |context| {
-                pipeline::regenerate(
+                let result = pipeline::regenerate(
                     &document.location,
                     &document.project,
                     &strategies,
                     post.as_ref().map(|p| (p, grouping)),
                     simulate,
                     &cache,
+                    &record,
+                    until,
                     context,
-                )
+                );
+                match &result {
+                    Ok(run) => record.succeeded(&document.project, simulate, run),
+                    Err(e) if e.is_cancelled() => record.cancelled(),
+                    Err(e) => record.failed(&document.project, e.to_string()),
+                }
+                result
             })
     }
 
@@ -818,7 +866,7 @@ impl Application {
     ) -> JobHandle<Regeneration> {
         let (before_post, before_grouping) = (self.post.replace(post), self.grouping);
         self.grouping = grouping;
-        let handle = self.start_pipeline("post", false);
+        let handle = self.start_pipeline("post", false, None);
         self.post = before_post;
         self.grouping = before_grouping;
         handle

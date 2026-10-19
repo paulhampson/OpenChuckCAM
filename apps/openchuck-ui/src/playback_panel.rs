@@ -749,7 +749,7 @@ mod tests {
         run.start(&app, true);
         let started = Instant::now();
         let finished = loop {
-            if let Some(r) = run.poll(&app, &ctx) {
+            if let Some((r, _)) = run.poll(&openchuck_app::JobLog::default(), &ctx) {
                 break r;
             }
             assert!(started.elapsed() < Duration::from_secs(120));

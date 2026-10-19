@@ -60,3 +60,5 @@ On acceptance the owner also asked for the cause of a flaky test this lane repor
   - The relaxed limit for `CI` is gone.
 
 Under 12 busy loops, six runs gave a p95 of 3 to 5 µs and a worst of 38 to 118 µs. No open item follows.
+
+The shell wiring (OI-355, X2's part) was done in this pull request once pull request 125 had merged. It differs from the plan above in one place: the shell sets the view's step in `layout()` on every frame, not in `Shell::open_step` and `Shell::set_app`, because the shell assigns its step in several more places (adding an operation, the primary action, the tests) and a call in two of them would miss the others. The legend strip under the view on Model and Setup now lists the held region and tab roles, so the bottom-left box item 8 drew until then is removed. In the same push, G on a turned-off operation goes to the run, which refuses it (OI-352, from pull request 125).

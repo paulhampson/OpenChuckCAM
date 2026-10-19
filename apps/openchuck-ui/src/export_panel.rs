@@ -444,6 +444,9 @@ impl ExportPanel {
         let folder = PathBuf::from(self.folder.trim());
         match write_gcode_files(&folder, &files.gcode) {
             Ok(written) => {
+                // The Post and export step is complete until something
+                // changes (UI-10).
+                app.record_export(files);
                 if !self.ack_lookup.acknowledged
                     && let Some(ack) = &self.ack
                 {

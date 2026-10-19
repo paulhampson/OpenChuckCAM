@@ -86,6 +86,11 @@ pub struct Regeneration {
     /// Operations whose toolpath came from the cache because nothing it
     /// depends on, including the operations before it, changed.
     pub reused: Vec<OperationId>,
+    /// The operation the run stopped after, when it was asked to generate up
+    /// to and including one operation ("generate selected", specification
+    /// section 16; decision record 0117, OI-351). The enabled operations after
+    /// it are not in this run, and stay stale.
+    pub stopped_after: Option<OperationId>,
     /// The project the run was made from. Stock playback and the deviation
     /// colours read the stock, the cell size and the part from here, so they
     /// match the run even if the project has been edited since.
@@ -97,7 +102,9 @@ pub struct Regeneration {
 /// generated stops the run with its error: nothing is left out silently
 /// (verification policy 8). A disabled operation is skipped as if it were
 /// absent: no toolpath, no stock removal, no G-code (UI-06; decision record
-/// 0029 item 10).
+/// 0029 item 10). `record` follows which operation is being made, for the
+/// item states (decision record 0117).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn regenerate(
     location: &Path,
     project: &Project,
@@ -108,16 +115,35 @@ pub(crate) fn regenerate(
     )>,
     simulate: bool,
     cache: &PipelineCache,
+    record: &crate::overview::GenerationRecord,
+    until: Option<OperationId>,
     context: &JobContext<'_>,
 ) -> Result<Regeneration, AppError> {
     context.check_cancelled()?;
-    let operations: Vec<&openchuck_project::Operation> =
+    let mut operations: Vec<&openchuck_project::Operation> =
         project.operations().iter().filter(|o| o.enabled).collect();
+    // Up to and including `until`: the operations before it are made (or
+    // reused) because it cuts the stock they leave; the ones after are not.
+    if let Some(last) = until {
+        let operation = project
+            .operation(last)
+            .ok_or_else(|| AppError::UnknownOperation(last.to_string()))?;
+        if !operation.enabled {
+            return Err(AppError::Operation {
+                name: operation.name.clone(),
+                reason: "it is turned off, so it is not generated; turn it on first".to_owned(),
+            });
+        }
+        if let Some(end) = operations.iter().position(|o| o.id == last) {
+            operations.truncate(end + 1);
+        }
+    }
     let total = operations.len() as u64;
     context.report("regenerate", 0, Some(total));
     let settings = project.simulation();
     let mut regeneration = Regeneration {
         project: Arc::new(project.clone()),
+        stopped_after: until,
         ..Regeneration::default()
     };
     let mut setups: Vec<SetupState> = Vec::new();
@@ -136,6 +162,8 @@ pub(crate) fn regenerate(
     let mut previous = None;
     for (i, operation) in operations.iter().enumerate() {
         context.check_cancelled()?;
+        // A failure from here to the next operation is this operation's.
+        record.working_on(Some(operation.id));
         let carried = setups
             .iter()
             .find(|s| s.id == operation.setup)
@@ -215,6 +243,7 @@ pub(crate) fn regenerate(
         });
         context.report("regenerate", i as u64 + 1, Some(total));
     }
+    record.working_on(None);
     if simulate {
         let mut report = SimulationReport {
             settings,

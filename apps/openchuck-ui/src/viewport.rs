@@ -104,8 +104,8 @@ pub enum SimulateShow {
 }
 
 /// The workflow step the view is in, which chooses the toolbar's controls
-/// and the overlays (7.1, 7.2). The shell sets it once it has steps; until
-/// then the view takes it from what it holds ([`Viewport::step`]).
+/// and the overlays (7.1, 7.2). The shell sets it from its step; with none
+/// set the view takes it from what it holds ([`Viewport::step`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewStep {
     /// Model: the import and its findings.
@@ -117,13 +117,6 @@ pub enum ViewStep {
     /// Simulate.
     Simulate,
     /// Post and export.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shell wires it with steps and the workholding inspector (lanes X2 and X4; decision 0119)"
-        )
-    )]
     Export,
 }
 
@@ -662,13 +655,6 @@ impl Viewport {
             .any(|(l, s, _)| *l == layer && (!s.meshes.is_empty() || !s.lines.is_empty()))
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shell wires it with steps and the workholding inspector (lanes X2 and X4; decision 0119)"
-        )
-    )]
     /// Sets the step the view is in (7.1, 7.2), or `None` to take it from
     /// what the view holds.
     pub fn set_step(&mut self, step: Option<ViewStep>) {
@@ -1310,7 +1296,7 @@ fn ray_mesh(o: [f64; 3], d: [f64; 3], mesh: &TriangleMesh) -> Option<f64> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
 
     use openchuck_app::scene::{SceneLabel, ScenePolyline};
@@ -1321,7 +1307,7 @@ mod tests {
 
     /// A workholding of a held region at the start and a cylinder tab on the
     /// axis, on 26 mm stock round a 16 mm part.
-    fn held_and_tab() -> SceneView {
+    pub(crate) fn held_and_tab() -> SceneView {
         use openchuck_app::setup::{
             Aabb, HeldRegion, Millimetres, PartExtent, Stock, Tab, TabLayout, TabShape, Workholding,
         };
@@ -1921,8 +1907,9 @@ mod tests {
         };
         let large = egui::vec2(1100.0, 760.0);
         let small = egui::vec2(900.0, 480.0);
-        // Setup: the cube, the triad and the held region and tab legend.
-        check(&mut viewport, large, 3);
+        // Setup: the cube and the triad; the held region and tab legend is
+        // the shell's legend strip under the view.
+        check(&mut viewport, large, 2);
         // Operations: the path legend and the readout of the point under the
         // pointer join them; in a low view the legend is a button, and it
         // opens below it.

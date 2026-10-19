@@ -35,7 +35,6 @@ pub(crate) struct Boxes {
     legend_button: Option<Rect>,
     readout: Option<Rect>,
     scale: Option<Rect>,
-    held: Option<Rect>,
 }
 
 impl Boxes {
@@ -48,7 +47,6 @@ impl Boxes {
             self.legend_button,
             self.readout,
             self.scale,
-            self.held,
         ]
         .into_iter()
         .flatten()
@@ -317,14 +315,6 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
             pos2(rect.left() + MARGIN, rect.bottom() - MARGIN - height),
             vec2(236.0, height),
         ));
-    } else if matches!(step, ViewStep::Model | ViewStep::Setup) && held > 0.0 {
-        // The legend strip of Setup is the shell's; until it is built the
-        // roles are listed at the bottom left.
-        let height = held * ROW + 12.0;
-        b.held = Some(Rect::from_min_size(
-            pos2(rect.left() + MARGIN, rect.bottom() - MARGIN - height),
-            vec2(124.0, height),
-        ));
     }
     b
 }
@@ -481,21 +471,6 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
         for (i, entry) in path_legend(viewport.view()).into_iter().enumerate() {
             let y = r.top() + 6.0 + ROW * i as f32;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
-            swatch_for(&painter, swatch, entry, false);
-            painter.text(
-                pos2(swatch.right() + 8.0, swatch.center().y),
-                egui::Align2::LEFT_CENTER,
-                entry.name(),
-                font.clone(),
-                roles::OVERLAY_TEXT,
-            );
-        }
-    }
-    if let Some(r) = b.held {
-        frame(&painter, r);
-        for (i, entry) in workholding_entries(viewport.view()).into_iter().enumerate() {
-            let y = r.top() + 6.0 + ROW * i as f32;
-            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(12.0, 12.0));
             swatch_for(&painter, swatch, entry, false);
             painter.text(
                 pos2(swatch.right() + 8.0, swatch.center().y),
