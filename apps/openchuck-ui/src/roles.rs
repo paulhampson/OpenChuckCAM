@@ -2,15 +2,28 @@
 //! The colour roles and line widths of the view (interface specification
 //! sections 7.4, 7.5 and 11.5; NFR-15). The same role has the same colour
 //! everywhere, in both themes, because the viewport stays dark (14.2). The
-//! colours of the dark overlays (7.2) are here too.
+//! colours of the dark overlays (7.2) are here too, from the dark tokens of
+//! [`crate::theme`] (14.1).
 
 use eframe::egui::Color32;
 use openchuck_app::pathview::DeviationBand;
 use openchuck_viewport::Colour;
 
+use crate::theme;
+
 /// A colour from its hex value, opaque.
 const fn hex(rgb: u32) -> Colour {
     with_alpha(rgb, 1.0)
+}
+
+/// A colour from a token.
+const fn token(c: Color32) -> Colour {
+    [
+        c.r() as f32 / 255.0,
+        c.g() as f32 / 255.0,
+        c.b() as f32 / 255.0,
+        1.0,
+    ]
 }
 
 /// A colour from its hex value with an alpha.
@@ -71,10 +84,10 @@ pub const TAB: Colour = hex(0xd8b98a);
 pub const TAB_LINE: Colour = hex(0x15171a);
 /// The `accent` token `#5aa9ff`: the outline of a selected held region or
 /// tab.
-pub const ACCENT: Colour = hex(0x5aa9ff);
+pub const ACCENT: Colour = token(theme::DARK.accent);
 /// The `error` token `#ff7b72`: the outline of a held region or tab of the
 /// draft that fails a check.
-pub const ERROR: Colour = hex(0xff7b72);
+pub const ERROR: Colour = token(theme::DARK.error);
 
 /// Plain lines and feature edges: 1 pixel (decision 0112 item 3; OI-341).
 pub const LINE_WIDTH: f32 = 1.0;
@@ -131,17 +144,17 @@ pub fn band_hatched(band: DeviationBand) -> bool {
 pub const UNMEASURED_HATCH: Colour = hex(0x5d6570);
 
 /// The top of the view's gradient, `#2c3139` (14.2).
-pub const VIEW_TOP: Color32 = Color32::from_rgb(0x2c, 0x31, 0x39);
+pub const VIEW_TOP: Color32 = theme::VIEWPORT_GRADIENT.0;
 /// The bottom of the view's gradient, `#1b1e23`.
-pub const VIEW_BOTTOM: Color32 = Color32::from_rgb(0x1b, 0x1e, 0x23);
+pub const VIEW_BOTTOM: Color32 = theme::VIEWPORT_GRADIENT.1;
 /// An overlay box's fill (7.2): dark in both themes.
 pub const OVERLAY_FILL: Color32 = Color32::from_rgba_premultiplied(20, 22, 25, 235);
 /// An overlay box's border.
 pub const OVERLAY_BORDER: Color32 = Color32::from_rgb(0x3a, 0x3f, 0x46);
 /// Text in an overlay.
-pub const OVERLAY_TEXT: Color32 = Color32::from_rgb(0xe4, 0xe7, 0xeb);
+pub const OVERLAY_TEXT: Color32 = theme::DARK.text;
 /// Secondary text in an overlay.
-pub const OVERLAY_MUTED: Color32 = Color32::from_rgb(0xa3, 0xab, 0xb5);
+pub const OVERLAY_MUTED: Color32 = theme::DARK.muted;
 
 /// A role colour for egui, opaque.
 pub fn to_color32(c: Colour) -> Color32 {
@@ -166,6 +179,9 @@ mod tests {
         assert_eq!(HELD[3], 0.35);
         // D1: the rotary axis is cyan, not the amber of cut moves.
         assert_ne!(ROTARY_AXIS, CUT);
+        // The accent and error outlines are the dark theme's tokens.
+        assert_eq!(to_color32(ACCENT), theme::DARK.accent);
+        assert_eq!(to_color32(ERROR), theme::DARK.error);
     }
 
     #[test]
