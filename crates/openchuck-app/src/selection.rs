@@ -227,6 +227,34 @@ fn check_edited(
     check_target(&set.name, &placed.mesh, placed.brep.as_ref(), &set.target)
 }
 
+/// Checks the target that replaces a set's whole selection, read from the
+/// model as it is now, and makes the set current: the new target was picked
+/// on this file, so the set takes the file's hash. Unlike [`check_edited`],
+/// it does not need the set to have been made on this file, because nothing
+/// of the old target is kept (a stale set is repaired by picking again).
+/// The file must still be the one the project holds.
+fn check_replaced(
+    root: &std::path::Path,
+    reference: &openchuck_project::ModelRef,
+    set: &mut SelectionSet,
+    context: &JobContext<'_>,
+) -> Result<(), AppError> {
+    let placed = crate::model::placed_part(root, reference, context)?;
+    context.check_cancelled()?;
+    if placed.hash != reference.hash {
+        return Err(selection_error(
+            &set.name,
+            format!(
+                "'{}' has changed since it was added to the project; accept the change before \
+                 selecting on it (PRJ-02)",
+                reference.path.as_str()
+            ),
+        ));
+    }
+    set.model_hash = placed.hash;
+    check_target(&set.name, &placed.mesh, placed.brep.as_ref(), &set.target)
+}
+
 fn selection_error(name: &str, reason: impl Into<String>) -> AppError {
     AppError::Selection {
         name: name.to_owned(),
@@ -383,7 +411,11 @@ impl Application {
     /// Changes selection set `set` (UI-05) and returns the operations that
     /// use it, which now need regenerating. The set's model hash is kept as it
     /// was: a set made on one version of the model is not made current by
-    /// editing it. Undoable. Waits for
+    /// adding to it or taking from it (those are refused for a set made on an
+    /// older version). Replacing the whole selection makes the set current,
+    /// since nothing of the old target is kept: it takes the hash of the
+    /// model file the new target was picked on (slice 22 lane X6, decision
+    /// record 0125). Undoable. Waits for
     /// [`start_edit_selection`](Self::start_edit_selection).
     pub fn edit_selection(
         &mut self,
@@ -419,6 +451,7 @@ impl Application {
             .find(|s| s.id == set)
             .cloned()
             .ok_or_else(|| AppError::UnknownSelection(set.to_string()))?;
+        let replaces = matches!(edit, SelectionEdit::Replace(_));
         let mut edited = base.clone();
         match edit {
             SelectionEdit::Rename(name) => edited.name = name,
@@ -461,7 +494,9 @@ impl Application {
             set: edited,
             base: Some(base),
         };
-        if !changed_target {
+        // A replacement is always checked against the file, even with the
+        // same target: it makes a set made on an older version current.
+        if !changed_target && !replaces {
             return Ok(EditStart::Done(Box::new(checked)));
         }
         let reference = self.model_ref(checked.set.model)?.clone();
@@ -470,7 +505,12 @@ impl Application {
             "edit selection",
             self.events_tx.clone(),
             move |context| {
-                check_edited(&root, &reference, &checked.set, context)?;
+                let mut checked = checked;
+                if replaces {
+                    check_replaced(&root, &reference, &mut checked.set, context)?;
+                } else {
+                    check_edited(&root, &reference, &checked.set, context)?;
+                }
                 Ok(checked)
             },
         )))
@@ -499,6 +539,24 @@ impl Application {
                     "the set changed while the edit was checked; edit it again",
                 )),
             };
+        }
+        // A replacement re-stamps the set with the file's hash; the file must
+        // still be the one the project holds.
+        if checked
+            .base
+            .as_ref()
+            .is_some_and(|b| b.model_hash != set.model_hash)
+        {
+            let reference = self.model_ref(set.model)?;
+            if reference.hash != set.model_hash {
+                return Err(selection_error(
+                    &set.name,
+                    format!(
+                        "'{}' changed in the project while the selection was checked; select again",
+                        reference.path.as_str()
+                    ),
+                ));
+            }
         }
         let id = set.id;
         self.execute(Command::Replace(Item::SelectionSet(set)))?;

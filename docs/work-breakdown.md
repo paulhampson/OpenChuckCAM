@@ -159,11 +159,12 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7a | 22: theme tokens and IBM Plex with the OFL text and notices (new files only; slice 8 item 10; built 18 Oct 2026 on `claude/lane-x7a-theme-tokens-fonts`, pull request 124) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X4 | 22: inspectors (field rows, header and error banner, setup sections with two provenance icons, OI-334 layout, part extent) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X5 | 22: Setup step's front and end panes (built 19 Oct 2026 on `claude/lane-x5-setup-panes`, [decision 0129](decisions/0129-slice-22-setup-panes.md), accepted 19 Oct 2026; board 16 re-rendered; OI-380 to OI-383) | ░░ | ░░ | ░░ | ░░ | ██ |
-| X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets | ░░ | ░░ | ░░ | ░░ | ░░ |
+| X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets. Built 19 Oct 2026 on `claude/lane-x6-simulate-import` ([decision 0125](decisions/0125-slice-22-simulate-and-import.md), accepted 19 Oct 2026; OI-370 to OI-374; OI-372 and OI-374 closed); boards 01b, 04, 15 and 11 re-rendered | ░░ | ░░ | ░░ | ░░ | ██ |
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
 | BI | Build traceability: the About window and `--version` report the commit, uncommitted changes, build date, Rust version, target and crate versions, with a licence box and a Copy action (GitHub issue #139; built 19 Oct 2026 on `claude/lane-bi-build-info`, [decision 0151](decisions/0151-build-traceability.md) and [0152](decisions/0152-about-window.md), proposed; OI-443 to OI-447; the tool name and version in the G-code is OI-446; library family 0.11.0; no schema number) | | | | | |
+| XC | CI hygiene: `cargo xtask conflicts` fails on unresolved merge conflict markers in tracked files, wired into the CI fast checks and `all` (built 19 Oct 2026 on `claude/lane-xc-conflict-marker-check`; no requirement covers it directly, supports NFR-06; no decision record; no open items) | ██ | | | | |
 | T | 20 hardening and first release | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
@@ -208,6 +209,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
+| XC | Nothing |
 | T | Everything, including W and X1 to X9 |
 
 ### Project schema ordering

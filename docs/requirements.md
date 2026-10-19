@@ -194,7 +194,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | GC-04 | Post options: units, A-axis letter, direction and wrap behaviour, header and footer, tool change sequence, coolant, work offsets, line numbering, decimal precision, maximum feed, and feed mode for rotary moves. These machine-specific conventions live in the post-processor definition, not in the engine. | P1 |
 | GC-05 | Output as one file for the whole project, or as one file per setup, operation or tool. | P1 |
 | GC-06 | Comments in the output naming the operation and tool, and the estimated time once SIM-08 is available. | P1 |
-| GC-07 | Deterministic output: the same project and post-processor always give byte-identical G-code. | P1 |
+| GC-07 | Deterministic output: the same project, post-processor and software version always give byte-identical G-code. The software version is an input: the generator comment `(OpenChuckCAM <version>)` is the only text that changes with it. | P1 |
 | GC-08 | Check generated G-code for axis limit violations, missing feeds and invalid numbers before export. | P2 |
 | GC-09 | A post-processor for the Makera Z1, the reference machine for the first release; existing Makera machine profiles are inspected during development to derive its rotary-axis conventions. | P1 |
 | GC-10 | A verification post-processor producing LinuxCNC-dialect G-code, to be run in the LinuxCNC simulator to confirm the toolpaths and the post-processing. | P1 |
