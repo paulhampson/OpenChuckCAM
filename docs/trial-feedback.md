@@ -14,3 +14,31 @@ Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet 
 | F-08 | Import dialog | Dialog is resizable and opens too tall. | Expected: fixed size, with a sensible default height that is not too tall. | Content may need to scroll (for example long check results); the fixing task decides the best approach. Check at 1920x1080 and at 120% UI scale. |
 | F-09 | Import dialog | Loading indicator shifts the layout. | A "refreshing" indicator appears in the import model dialog and pushes the other elements around. When it shows for only a split second, the dialog looks like it is glitching. Expected: no layout shift (reserve space for it, or show it without moving other elements). | Triggered by changing one of the drop-down settings for positioning the part (positioning step). Related to F-08 (fixed-size dialog). |
 | F-10 | Project tree, tool library | Tools should not be in the project tree. | Unexpected to find tools in the project tree. Expected: a separate tool library dialog that lists tools and supports managing them. Tools should be associated with operations. **Conflicts with UI-06** (requirements: project tree lists "the model, stock, setups, operations and tools"), and touches UI specification 12.1 (tool library) and TL-01, TL-07, TL-11. The UI-06 conflict is to be resolved as part of the work on this issue (owner direction), by proposing the requirement change there; do not edit requirements.md to fit. | Answered: the tool library dialog cannot be reached at all in the trial build (a separate defect, or a gap in the UI wiring; check how UI-spec 12.1 is meant to open it). The snapshot state (TL-07) need not be in the tree, only indicated in the operation inspector. Management actions expected: add, edit, delete, duplicate, import/export. |
+
+## Task list (work packages)
+
+Issues are in `paulhampson/OpenChuckCAM`. Lane names are proposals for the coordinator: the `X` lanes are slice 22 lanes in the work breakdown (Parallel work), and the coordinator confirms or changes the mapping and takes any decision, `OI-` and schema numbers (none are claimed here).
+
+| ID | Issue | Log ID | Type |
+| --- | --- | --- | --- |
+| WP1 | Import dialog (proposed lane: X6, "one import window") | F-06, F-07, F-08, F-09 | |
+| WP1.1 | [#146](https://github.com/paulhampson/OpenChuckCAM/issues/146) Import dialog fixed size, sensible default height (do first: sets the layout for the rest) | F-08 | Bug |
+| WP1.2 | [#147](https://github.com/paulhampson/OpenChuckCAM/issues/147) Loading indicator must not shift the layout | F-09 | Bug |
+| WP1.3 | [#144](https://github.com/paulhampson/OpenChuckCAM/issues/144) "Check" label does not convey what happens (wording open) | F-06 | Bug |
+| WP1.4 | [#145](https://github.com/paulhampson/OpenChuckCAM/issues/145) Dialog hidden when the app is backgrounded (Windows only tested) | F-07 | Bug |
+| WP2 | Menu bar (proposed lane: X2, shell frame) | F-02, F-03 | |
+| WP2.1 | [#140](https://github.com/paulhampson/OpenChuckCAM/issues/140) Grey out Post and Export until the project is complete (define "required information") | F-02 | Bug |
+| WP2.2 | [#141](https://github.com/paulhampson/OpenChuckCAM/issues/141) View menu: submenus, disable unsupported view directions, UI scale submenu 80/90/100/110/120 % | F-03 | Feature |
+| WP3 | Viewport (proposed lane: X3, viewport drawing; F-05 shares the view directions with WP2.2) | F-04, F-05 | |
+| WP3.1 | [#143](https://github.com/paulhampson/OpenChuckCAM/issues/143) Same front / top / iso selector in every 3D viewport | F-05 | Bug |
+| WP3.2 | [#142](https://github.com/paulhampson/OpenChuckCAM/issues/142) Setup view labels overlap: use callouts (check UI-25, decision 0104; screenshot to be attached by the owner) | F-04 | Bug |
+| WP4 | Tool library (proposed lane: X9, tool library window 12.1) | F-10 | |
+| WP4.1 | [#148](https://github.com/paulhampson/OpenChuckCAM/issues/148) Tools out of the project tree; tool library dialog (currently unreachable); tools associated with operations; snapshot state (TL-07) in the operation inspector. Resolves the UI-06 conflict as part of the work (owner direction). May split out the unreachable dialog as its own defect | F-10 | Feature |
+| WP5 | Build information (new lane; no requirement yet, propose one; relates to decision 0110) | F-01 | |
+| WP5.1 | [#139](https://github.com/paulhampson/OpenChuckCAM/issues/139) About window and CLI `--version`: commit hash, dirty flag, build date, Rust and target triple, library versions, scrollable licence text, copy button | F-01 | Feature |
+
+Dependencies and notes
+- WP1.1 before WP1.2 (a fixed layout decides how the indicator space is reserved).
+- WP2.2 and WP3.1 both decide which views support which view directions; do them in one decision or sequence them so the view-direction rules are defined once.
+- WP4.1 and WP2.1 both touch the project tree and tool list, and WP4.1 changes what "required information" means for export (a tool per operation).
+- WP5.1 touches `openchuck-ui` and `openchuck-cli` only through a shared build-info source.
