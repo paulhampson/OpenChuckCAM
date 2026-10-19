@@ -23,6 +23,7 @@ Convention (owner, 19 Oct 2026): from now on, bug fix lanes generated from the t
 | F-15 | Logging | User action logging (proposed P2 requirement). | So bug fixes can use accurate step information. Builds on F-14's log file. Issue [#156](https://github.com/paulhampson/OpenChuckCAM/issues/156). | Needs a requirement ID and an owner decision; what may be recorded (paths, model names). |
 | F-16 | 3D viewport | XYZ axes gadget placement. | Move it to the bottom-left corner of the 3D viewport and do not draw it in a box. Issue [#157](https://github.com/paulhampson/OpenChuckCAM/issues/157). | Answered: applies to every 3D viewport. Relates to #143 and lane X3. |
 | F-17 | View cube | Face labels always face the user. | Top/Back/Front/Left/Right/Bottom text should lie flat on the cube faces; today it faces the user and snaps in and out of view. Issue [#158](https://github.com/paulhampson/OpenChuckCAM/issues/158). | |
+| F-18 | Selection, viewport | Pick mode control overlaps the toolbar; not clearly selectable. | When selecting faces, the mode selection overlaps the top menu bar of the 3D viewport. It is not obvious that "Pick" is a label and Both / Faces / Edges are selectable options. Issue [#159](https://github.com/paulhampson/OpenChuckCAM/issues/159). Same control as F-11. | |
 
 ## Task list (work packages)
 
@@ -73,3 +74,5 @@ The owner attached the Setup view screenshot to #142 (19 Oct 2026); lane SL is u
 | WP9 | View gadget and cube (lane to be named `BUG-...` by the coordinator; relates to MV #143 and X3) | F-16, F-17 | |
 | WP9.1 | [#157](https://github.com/paulhampson/OpenChuckCAM/issues/157) Axes gadget bottom-left, no box | F-16 | Bug |
 | WP9.2 | [#158](https://github.com/paulhampson/OpenChuckCAM/issues/158) Face labels flat on the cube | F-17 | Bug |
+
+| WP6.4 | [#159](https://github.com/paulhampson/OpenChuckCAM/issues/159) Pick mode control overlaps the toolbar; label versus options (suggested for BUG-SEL with #151) | F-18 | Bug |
