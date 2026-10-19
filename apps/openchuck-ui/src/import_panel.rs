@@ -247,14 +247,19 @@ impl ImportSession {
                         .desired_width(ui.available_width() - 140.0)
                         .hint_text("Path of an STL file"),
                 );
-                if ui.button("Browse…").clicked()
+                // The file being added is the one checked: no new path meanwhile.
+                let busy = self.adding.is_some();
+                if ui
+                    .add_enabled(!busy, egui::Button::new("Browse…"))
+                    .clicked()
                     && let Some(picked) = crate::shell::pick_model(&self.path_text, Some(app))
                 {
                     self.path_text = picked;
                     submit = true;
                 }
-                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                let ready = !self.path_text.trim().is_empty();
+                let enter =
+                    !busy && field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let ready = !busy && !self.path_text.trim().is_empty();
                 if ui.add_enabled(ready, egui::Button::new("Check")).clicked() || enter {
                     submit = true;
                 }

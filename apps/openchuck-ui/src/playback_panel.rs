@@ -194,6 +194,7 @@ impl PlaybackPanel {
         self.cancel_jobs();
         *self = Self {
             open: self.open,
+            colour_by: self.colour_by,
             reset_layers: true,
             ..Self::default()
         };
@@ -208,6 +209,7 @@ impl PlaybackPanel {
             show_tool: self.show_tool,
             show_paths: self.show_paths,
             budget: self.budget,
+            colour_by: self.colour_by,
             reset_layers: true,
             run: Some(Arc::clone(&run)),
             data_job: Some(app.start_playback_data(run)),
@@ -1115,6 +1117,18 @@ mod tests {
         );
         panel.set_colour_by(ColourBy::Deviation, &mut viewport);
         assert_eq!(viewport.bands().unwrap().bands.len(), all);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_sim_05_the_colour_choice_survives_a_new_run_and_a_clear() {
+        let (app, mut panel, mut viewport, dir) = prepared("panel-colour-keeps");
+        panel.set_colour_by(ColourBy::Remaining, &mut viewport);
+        let run = Arc::clone(panel.run.as_ref().unwrap());
+        panel.clear();
+        assert_eq!(panel.colour_by, ColourBy::Remaining);
+        panel.set_run(&app, run);
+        assert_eq!(panel.colour_by, ColourBy::Remaining);
         let _ = std::fs::remove_dir_all(dir);
     }
 

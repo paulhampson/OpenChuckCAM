@@ -56,11 +56,11 @@ impl ColourBy {
     }
 }
 
-/// Histogram edges, millimetres: a bin every 0.05 mm from -0.05 to +0.50.
-pub const HIST_LOW: f64 = -0.05;
 /// The upper end of the histogram, millimetres.
 pub const HIST_HIGH: f64 = 0.50;
-/// The number of histogram bins.
+/// The number of histogram bins. Bin 0 holds every sample cut deeper than the
+/// tolerance (overcut); the others split `-tolerance` to [`HIST_HIGH`]
+/// evenly, so the tolerance band and the overcut always show.
 pub const HIST_BINS: usize = 11;
 
 /// One operation's row of the table.
@@ -90,33 +90,35 @@ pub struct SetupResults {
     pub largest_left: Option<f64>,
     /// The share of samples within the tolerance, 0 to 1, when there are samples.
     pub within: Option<f64>,
-    /// Samples per bin of the histogram, from [`HIST_LOW`] to [`HIST_HIGH`];
-    /// values outside the range fall in the end bins.
+    /// Samples per bin of the histogram (see [`bin_of`]).
     pub histogram: [usize; HIST_BINS],
     /// The operations, in machining order.
     pub operations: Vec<OperationRow>,
 }
 
-/// The bin a value falls in.
-pub fn bin_of(value: f64) -> usize {
-    let width = (HIST_HIGH - HIST_LOW) / HIST_BINS as f64;
-    let i = ((value - HIST_LOW) / width).floor();
-    if i.is_nan() || i < 0.0 {
-        0
-    } else {
-        (i as usize).min(HIST_BINS - 1)
-    }
+/// The width of the bins above the overcut bin, millimetres.
+fn bin_width(tolerance: f64) -> f64 {
+    (HIST_HIGH + tolerance) / (HIST_BINS - 1) as f64
 }
 
-/// The band colour a histogram bin is drawn in: the bins left of the
-/// tolerance are overcut, the bins around zero on the surface, and the rest
-/// the three amounts of material left.
+/// The bin a value falls in, for a tolerance (the cell size).
+pub fn bin_of(value: f64, tolerance: f64) -> usize {
+    if value.is_nan() || value < -tolerance {
+        return 0;
+    }
+    let i = ((value + tolerance) / bin_width(tolerance)).floor();
+    1 + (i as usize).min(HIST_BINS - 2)
+}
+
+/// The band colour a histogram bin is drawn in: bin 0 is overcut, the bins
+/// within the tolerance on the surface, and the rest the amounts of material
+/// left.
 pub fn bin_band(bin: usize, tolerance: f64) -> DeviationBand {
-    let width = (HIST_HIGH - HIST_LOW) / HIST_BINS as f64;
-    let mid = HIST_LOW + width * (bin as f64 + 0.5);
-    if mid < -tolerance {
-        DeviationBand::Overcut
-    } else if mid <= tolerance {
+    if bin == 0 {
+        return DeviationBand::Overcut;
+    }
+    let mid = -tolerance + bin_width(tolerance) * (bin as f64 - 0.5);
+    if mid <= tolerance {
         DeviationBand::OnTarget
     } else if mid > 0.25 {
         DeviationBand::Medium
@@ -140,7 +142,7 @@ pub fn summarise(run: &Regeneration) -> Vec<SetupResults> {
             let (mut largest_overcut, mut largest_left, mut within) = (None, None, None);
             if let Some(d) = &setup.deviation {
                 for p in &d.points {
-                    if let Some(slot) = histogram.get_mut(bin_of(p.value)) {
+                    if let Some(slot) = histogram.get_mut(bin_of(p.value, tolerance)) {
                         *slot += 1;
                     }
                 }
@@ -448,7 +450,11 @@ fn histogram(ui: &mut egui::Ui, r: &SetupResults) {
         Stroke::new(1.0, DARK.line),
     );
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{HIST_LOW:.2}")).small().monospace());
+        ui.label(
+            RichText::new(format!("overcut | -{:.3}", r.tolerance))
+                .small()
+                .monospace(),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new(format!("+{HIST_HIGH:.1} mm"))
@@ -475,21 +481,29 @@ mod tests {
     }
 
     #[test]
-    fn req_sim_05_histogram_bins_cover_the_range_and_clamp_outliers() {
-        assert_eq!(bin_of(-0.05), 0);
-        assert_eq!(bin_of(-5.0), 0);
-        assert_eq!(bin_of(0.0), 1);
-        assert_eq!(bin_of(0.5), HIST_BINS - 1);
-        assert_eq!(bin_of(40.0), HIST_BINS - 1);
-        assert_eq!(bin_of(f64::NAN), 0);
-        // Bins left of the tolerance are overcut, those around zero are on
-        // the surface, the rest are material left.
-        assert_eq!(bin_band(0, 0.05), DeviationBand::OnTarget);
-        assert_eq!(bin_band(0, 0.01), DeviationBand::Overcut);
-        assert_eq!(bin_band(1, 0.05), DeviationBand::OnTarget);
-        assert_eq!(bin_band(1, 0.01), DeviationBand::Thin);
-        assert_eq!(bin_band(3, 0.01), DeviationBand::Thin);
-        assert_eq!(bin_band(HIST_BINS - 1, 0.01), DeviationBand::Medium);
+    fn req_sim_05_histogram_bin_0_is_overcut_whatever_the_cell_size() {
+        use openchuck_app::simulation::{DEFAULT_CELL, FINEST_CELL};
+        for tolerance in [FINEST_CELL, DEFAULT_CELL, 1.0] {
+            // Cut deeper than the tolerance: bin 0, drawn as overcut.
+            assert_eq!(bin_of(-tolerance - 0.001, tolerance), 0);
+            assert_eq!(bin_of(-5.0, tolerance), 0);
+            assert_eq!(bin_of(f64::NAN, tolerance), 0);
+            assert_eq!(bin_band(0, tolerance), DeviationBand::Overcut);
+            // On the surface: within the tolerance, never overcut.
+            let on = bin_of(0.0, tolerance);
+            assert!(on >= 1);
+            assert_eq!(bin_band(on, tolerance), DeviationBand::OnTarget);
+            assert_eq!(
+                bin_band(bin_of(-tolerance, tolerance), tolerance),
+                DeviationBand::OnTarget
+            );
+            // The top: everything above the end is in the last bin.
+            assert_eq!(bin_of(HIST_HIGH, tolerance), HIST_BINS - 1);
+            assert_eq!(bin_of(40.0, tolerance), HIST_BINS - 1);
+        }
+        // Material left is thin, then medium.
+        assert_eq!(bin_band(bin_of(0.15, 0.1), 0.1), DeviationBand::Thin);
+        assert_eq!(bin_band(HIST_BINS - 1, 0.1), DeviationBand::Medium);
     }
 
     #[test]
