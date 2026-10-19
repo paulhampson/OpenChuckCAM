@@ -35,6 +35,7 @@ use openchuck_app::tool_edit;
 use openchuck_app::tools::{self, ToolProfile};
 use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 
+use crate::about;
 use crate::bench;
 use crate::export_panel::ExportPanel;
 use crate::form_panel::{self, FormState};
@@ -1553,11 +1554,8 @@ impl Shell {
                 }
             }
             Dialog::About => {
-                ui.heading("OpenChuckCAM");
-                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                ui.label("Free software under the GNU Affero General Public License, version 3 or later.");
-                ui.label(openchuck_app::VERIFY_GCODE_NOTICE);
-                if ui.button("Close").clicked() {
+                let build = openchuck_buildinfo::current_text();
+                if about::show(ui, build, about::licence_text()).close {
                     close = true;
                 }
             }

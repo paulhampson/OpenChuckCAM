@@ -18,6 +18,7 @@ members = [
     "crates/openchuck-app",
     "crates/openchuck-viewport",
     "crates/openchuck-testkit",
+    "crates/openchuck-buildinfo",
     "apps/openchuck-cli",
     "apps/openchuck-ui",
     "benches",
@@ -48,6 +49,7 @@ openchuck-project = { path = "crates/openchuck-project", version = "0.10.0" }
 openchuck-app = { path = "crates/openchuck-app", version = "0.10.0" }
 openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.10.0" }
 openchuck-testkit = { path = "crates/openchuck-testkit", version = "0.10.0" }
+openchuck-buildinfo = { path = "crates/openchuck-buildinfo", version = "0.10.0" }
 
 # Third-party crates, exact pins (work breakdown slice 0 item 12).
 serde = { version = "=1.0.229", features = ["derive"] }

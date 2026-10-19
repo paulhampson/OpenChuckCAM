@@ -1076,3 +1076,40 @@ fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
         out.stdout
     );
 }
+
+/// NFR-16: `--version` prints every build fact in plain text, in the same format the About window
+/// copies (both read `openchuck_buildinfo`).
+#[test]
+fn req_nfr_16_cli_version_has_every_build_fact() {
+    let out = run(&["--version".as_ref()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    for label in [
+        "OpenChuckCAM ",
+        "Commit: ",
+        "Uncommitted changes: ",
+        "Built: ",
+        "Rust: rustc ",
+        "Target: ",
+        "Crates:",
+        "  openchuck-types ",
+        "  openchuck-ui ",
+        "  openchuck-cli ",
+    ] {
+        assert!(out.stdout.contains(label), "{label:?} in {}", out.stdout);
+    }
+    // clap names the program first; the rest is the build text.
+    assert!(
+        out.stdout.starts_with("openchuck-cli OpenChuckCAM "),
+        "{}",
+        out.stdout
+    );
+}
+
+/// NFR-16: the short flag still prints one line with the version.
+#[test]
+fn req_nfr_16_cli_short_version_is_one_line() {
+    let out = run(&["-V".as_ref()]);
+    assert_eq!(out.code, Some(0));
+    assert_eq!(out.stdout.lines().count(), 1, "{}", out.stdout);
+    assert!(out.stdout.contains(env!("CARGO_PKG_VERSION")));
+}

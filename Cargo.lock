@@ -2256,6 +2256,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "openchuck-buildinfo"
+version = "0.10.0"
+
+[[package]]
 name = "openchuck-cli"
 version = "0.10.0"
 dependencies = [
@@ -2263,6 +2267,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "openchuck-app",
+ "openchuck-buildinfo",
  "openchuck-testkit",
 ]
 
@@ -2380,6 +2385,7 @@ dependencies = [
  "eframe",
  "log",
  "openchuck-app",
+ "openchuck-buildinfo",
  "openchuck-viewport",
  "rfd",
 ]
