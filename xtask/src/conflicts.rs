@@ -44,23 +44,30 @@ fn is_arrow_marker(line: &str, c: char) -> bool {
 pub fn scan_text(path: &str, text: &str) -> Findings {
     let markdown = is_markdown(path);
     let mut findings = Findings::new();
-    let mut fence: Option<char> = None;
+    let mut fence: Option<(char, usize)> = None;
     let mut previous_blank = true;
     for (index, raw) in text.lines().enumerate() {
         let line = raw.trim_end_matches('\r');
         let number = index + 1;
         if markdown {
             let trimmed = line.trim_start();
-            let fence_char = ['`', '~']
-                .into_iter()
-                .find(|c| trimmed.starts_with(&c.to_string().repeat(3)));
-            match (fence, fence_char) {
-                (None, Some(c)) => {
-                    fence = Some(c);
+            let run = ['`', '~'].into_iter().find_map(|c| {
+                let length = trimmed.chars().take_while(|&x| x == c).count();
+                (length >= 3).then_some((c, length))
+            });
+            match (fence, run) {
+                (None, Some(opening)) => {
+                    fence = Some(opening);
                     previous_blank = false;
                     continue;
                 }
-                (Some(open), Some(c)) if open == c => {
+                // A closing fence has the same character, at least as long a run, and nothing
+                // but whitespace after it (CommonMark).
+                (Some((open, length)), Some((c, run_length)))
+                    if open == c
+                        && run_length >= length
+                        && trimmed[run_length..].trim().is_empty() =>
+                {
                     fence = None;
                     previous_blank = false;
                     continue;
@@ -212,6 +219,18 @@ mod tests {
         assert_eq!(scan_text("docs/a.md", &after).len(), 1);
         // Fences mean nothing outside Markdown.
         assert_eq!(scan_text("a.rs", &format!("```\n{}\n", start())).len(), 1);
+    }
+
+    #[test]
+    fn req_nfr_06_a_fence_closes_only_on_a_long_enough_bare_run() {
+        // A shorter run, an info string and another character do not close a four-tick fence.
+        let text = format!("````\n```\n````text\n~~~~\n{}\n````\n{}\n", start(), end());
+        let findings = scan_text("docs/a.md", &text);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].contains("end marker"));
+        // A longer closing run with trailing spaces closes it.
+        let long = format!("```\nx\n`````  \n{}\n", start());
+        assert_eq!(scan_text("docs/a.md", &long).len(), 1);
     }
 
     #[test]
