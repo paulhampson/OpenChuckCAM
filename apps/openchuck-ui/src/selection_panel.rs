@@ -313,6 +313,8 @@ pub struct SelectionPanel {
     /// The operation whose avoid and check sets are drawn, hatched red
     /// (specification 7.4).
     roles_of: Option<OperationId>,
+    /// The avoid and check sets drawn for `roles_of`.
+    roles_sets: Option<(Vec<SelectionSetId>, Vec<SelectionSetId>)>,
     /// The last thing that went wrong or the last notice.
     message: Option<String>,
     /// The highlights need drawing again.
@@ -344,6 +346,7 @@ impl Default for SelectionPanel {
             hover: None,
             shown: None,
             roles_of: None,
+            roles_sets: None,
             message: None,
             dirty: true,
             #[cfg(test)]
@@ -420,9 +423,15 @@ impl SelectionPanel {
 
     /// Draws the avoid and check sets of `operation`, hatched red over the
     /// part (specification 7.4), or none.
-    pub fn show_roles_of(&mut self, operation: Option<OperationId>) {
-        if self.roles_of != operation {
+    /// They are drawn again when the operation's sets change too, as an edit
+    /// in its properties or an undo does.
+    pub fn show_roles_of(&mut self, app: &Application, operation: Option<OperationId>) {
+        let sets = operation
+            .and_then(|id| app.project().operation(id))
+            .map(|op| (op.avoid.clone(), op.check.clone()));
+        if self.roles_of != operation || self.roles_sets != sets {
             self.roles_of = operation;
+            self.roles_sets = sets;
             self.dirty = true;
         }
     }
@@ -1844,7 +1853,7 @@ mod tests {
         assert!(scene.meshes.is_empty());
         // With the operation chosen, both sets are drawn red with a single
         // hatch, a cue besides the colour (7.4).
-        panel.show_roles_of(Some(op));
+        panel.show_roles_of(&app, Some(op));
         let scene = panel.overlay(&app, &view).unwrap();
         assert_eq!(scene.meshes.len(), 2);
         assert_eq!(overlay_triangles(&scene), 3);
@@ -1859,8 +1868,15 @@ mod tests {
             assert_eq!(mesh.slot, Slot::Part);
         }
         // Choosing it again changes nothing, so nothing is drawn again.
-        panel.show_roles_of(Some(op));
+        panel.show_roles_of(&app, Some(op));
         assert!(panel.overlay(&app, &view).is_none());
+        // Taking a set out of its role while the operation stays chosen draws
+        // the sets again (#126 review).
+        app.set_operation_selection(op, SelectionRole::Avoid, side, false)
+            .unwrap();
+        panel.show_roles_of(&app, Some(op));
+        let scene = panel.overlay(&app, &view).unwrap();
+        assert_eq!(scene.meshes.len(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

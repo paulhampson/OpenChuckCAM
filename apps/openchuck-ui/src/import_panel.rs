@@ -282,7 +282,7 @@ impl ImportSession {
                     ui.label("Checks: no problems found.");
                 } else {
                     ui.label(
-                        RichText::new("Checks found problems, shown in red in the view:")
+                        RichText::new("Checks found problems, outlined in the view (holes in amber, the others in red):")
                             .color(PROBLEM),
                     );
                     for p in &problems {

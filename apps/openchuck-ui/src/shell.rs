@@ -1306,10 +1306,13 @@ impl Shell {
             self.selected = None;
         }
         // The selected operation's avoid and check sets are drawn hatched (7.4).
-        self.selection.show_roles_of(match self.selected {
-            Some(Selection::Operation(id)) => Some(id),
-            _ => None,
-        });
+        self.selection.show_roles_of(
+            app,
+            match self.selected {
+                Some(Selection::Operation(id)) => Some(id),
+                _ => None,
+            },
+        );
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();

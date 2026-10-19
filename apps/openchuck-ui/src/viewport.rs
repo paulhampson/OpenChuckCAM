@@ -1009,7 +1009,13 @@ impl Viewport {
     /// Whether a layer other than the scene is drawn, after "Show or hide"
     /// and Simulate's "Show".
     fn layer_shown(&self, layer: Layer) -> bool {
-        let simulate = self.simulate_show;
+        // The Show choice is Simulate's; it hides nothing on the other steps,
+        // where the toolbar does not offer it (7.1).
+        let simulate = if self.step() == ViewStep::Simulate {
+            self.simulate_show
+        } else {
+            SimulateShow::Both
+        };
         match layer {
             Layer::Overlay => self.show.selections,
             Layer::Paths => self.show.toolpaths && simulate != SimulateShow::Stock,
@@ -1816,10 +1822,17 @@ pub(crate) mod tests {
         assert!(!viewport.layer_shown(Layer::Paths));
         assert!(!viewport.layer_shown(Layer::Overlay));
         viewport.set_visibility(Visibility::default());
+        viewport.set_step(Some(ViewStep::Simulate));
         viewport.simulate_show = SimulateShow::Stock;
         assert!(!viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
         viewport.simulate_show = SimulateShow::PartAndPath;
         assert!(viewport.layer_shown(Layer::Paths) && !viewport.layer_shown(Layer::Stock));
+        // The choice is Simulate's: on Operations, where it is not offered,
+        // the toolpaths and stock show (OI-355 wiring, #126 review).
+        viewport.simulate_show = SimulateShow::Stock;
+        viewport.set_step(Some(ViewStep::Operations));
+        assert!(viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
+        viewport.set_step(None);
         // F fits and V opens the list, from the keyboard.
         let ctx = egui::Context::default();
         let key = |key| egui::Event::Key {

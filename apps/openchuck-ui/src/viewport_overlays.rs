@@ -523,6 +523,15 @@ pub const SCALE: [DeviationBand; 5] = [
     DeviationBand::Thick,
 ];
 
+/// The cell of the scale that is on the surface, under which "On" is
+/// written.
+fn on_target_cell() -> usize {
+    SCALE
+        .iter()
+        .position(|b| *b == DeviationBand::OnTarget)
+        .unwrap_or(0)
+}
+
 /// Draws the colour scale: a bar of the bands, its labelled ends, the hatched
 /// "not measured" swatch and the band of "on the surface".
 fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
@@ -544,7 +553,7 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
         roles::OVERLAY_TEXT,
     );
     painter.text(
-        bar.center_bottom() + vec2(-step / 2.0, 4.0),
+        bar.left_bottom() + vec2(step * (on_target_cell() as f32 + 0.5), 4.0),
         egui::Align2::CENTER_TOP,
         "On",
         font.clone(),
