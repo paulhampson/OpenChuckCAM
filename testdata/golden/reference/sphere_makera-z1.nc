@@ -1,4 +1,5 @@
 (sphere - Setup 1)
+(OpenChuckCAM <version>)
 G90 G21 G17
 G54
 (operation <id>)

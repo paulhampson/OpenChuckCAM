@@ -162,6 +162,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | NFR-13 | P1 | T | System | Wrapped C++ libraries build and pass tests on Windows, macOS and Linux |
 | NFR-14 | P1 | A, I | Design | Each dependency has a recorded review against the health criteria, with a written justification for newer crates and those with high AI contribution |
 | NFR-15 | P1 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200%; inspection that no state is shown by colour alone |
+| NFR-16 | P1 | T, I | Unit, integration, system | Unit tests of the build text from a fixed fixture, the dirty-flag logic, the full-hash check and the fallback without Git; a CLI test that `--version` has every field; UI tests that the About window shows the build text and the licence box, that Copy puts exactly the build text on the clipboard, and that Tab reaches the box, Copy and Close; a test that every program carries exactly `(OpenChuckCAM <workspace version>)` after the title and no other build fact; golden files hold the masked version. Inspection: a nightly archive reports its commit and a clean tree |
 
 ### 4.1 Acceptance limits
 

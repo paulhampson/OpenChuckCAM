@@ -163,7 +163,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
-| BI | Build traceability: the About window and `--version` report the commit, uncommitted changes, build date, Rust version, target and crate versions, with a licence box and a Copy action (GitHub issue #139; built 19 Oct 2026 on `claude/lane-bi-build-info`, [decision 0151](decisions/0151-build-traceability.md) and [0152](decisions/0152-about-window.md), proposed; OI-443 to OI-447; the G-code version line is OI-446; no schema number) | | | | | |
+| BI | Build traceability: the About window and `--version` report the commit, uncommitted changes, build date, Rust version, target and crate versions, with a licence box and a Copy action (GitHub issue #139; built 19 Oct 2026 on `claude/lane-bi-build-info`, [decision 0151](decisions/0151-build-traceability.md) and [0152](decisions/0152-about-window.md), proposed; OI-443 to OI-447; the tool name and version in the G-code is OI-446; library family 0.11.0; no schema number) | | | | | |
 | T | 20 hardening and first release | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
@@ -1012,7 +1012,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
 | 21 | SET-09, OP-21, UI-25 | – |
-| 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-15 (with slice 8) | – |
+| 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-16, NFR-15 (with slice 8) | – |
 | 23 | TL-12 | – |
 
 **Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19), NFR-02 (0, 8), and UI-10 to UI-16 and NFR-15 (8, 22: slice 22's lanes build slice 8 items 8 to 12, OI-338). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.

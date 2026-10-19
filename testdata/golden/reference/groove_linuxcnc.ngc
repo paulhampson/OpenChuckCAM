@@ -1,4 +1,5 @@
 (groove - Setup 1)
+(OpenChuckCAM <version>)
 G90 G21 G17
 G61
 G54
