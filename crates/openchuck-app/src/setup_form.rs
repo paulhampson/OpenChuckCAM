@@ -547,4 +547,46 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn req_set_03_box_and_bounds_values_are_checked_in_plain_words() {
+        let s = setup();
+        let boxed = with_stock_shape(&s, StockShape::Box, None);
+        assert_eq!(
+            apply(&boxed, None, SetupField::BoxMax(2), "-50").unwrap_err(),
+            "Must be more than Z from (\u{2212}13.000 mm).".replace('\u{2212}', "-")
+        );
+        let wider = apply(&boxed, None, SetupField::BoxMax(1), "20").unwrap();
+        assert_eq!(stock_rows(&wider)[3].value, "20.000");
+        let lower = apply(&boxed, None, SetupField::BoxMin(0), "-20").unwrap();
+        assert_eq!(stock_rows(&lower)[0].value, "-20.000");
+        let bounds = with_stock_shape(&s, StockShape::Bounds, None);
+        assert_eq!(
+            apply(&bounds, None, SetupField::BoundsOffset, "-1").unwrap_err(),
+            "Must be 0 mm or more."
+        );
+        let grown = apply(&bounds, None, SetupField::BoundsOffset, "2").unwrap();
+        assert_eq!(stock_rows(&grown)[0].value, "2.000");
+        // A row of another shape than the stock's is refused, not misapplied.
+        assert!(apply(&bounds, None, SetupField::Diameter, "3").is_err());
+        // Sized from the part when there is no stock to keep.
+        let part = PartExtent {
+            bounds: Aabb {
+                min: Point3::new(0.0, -4.0, -4.0),
+                max: Point3::new(30.0, 4.0, 4.0),
+            },
+            radius: Millimetres(5.0),
+        };
+        let Stock::Cylinder {
+            diameter,
+            length,
+            x_start,
+        } = stock_of_shape(None, StockShape::Cylinder, Some(&part))
+        else {
+            panic!("not a cylinder");
+        };
+        assert_eq!((diameter.0, length.0, x_start.0), (12.0, 32.0, -1.0));
+        assert_eq!(StockShape::of(None), None);
+        assert_eq!(StockShape::Box.name(), "Box");
+    }
 }

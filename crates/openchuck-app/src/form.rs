@@ -320,3 +320,39 @@ pub(crate) fn check_parameter(
     single.resolve(&values)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod section_tests {
+    use super::FormSection;
+
+    /// Each parameter goes in the inspector section of specification
+    /// section 8; one the list does not name goes with the pattern.
+    #[test]
+    fn req_ui_07_parameters_are_placed_in_the_sections_of_section_8() {
+        assert_eq!(FormSection::of("feed"), FormSection::ToolAndFeeds);
+        assert_eq!(FormSection::of("max_tilt"), FormSection::ToolAxisAndA);
+        assert_eq!(FormSection::of("entry"), FormSection::EntryLinksAndRetract);
+        assert_eq!(FormSection::of("min_length"), FormSection::Advanced);
+        assert_eq!(
+            FormSection::of("stepover"),
+            FormSection::PatternAndTolerance
+        );
+        assert_eq!(
+            FormSection::of("a_new_one"),
+            FormSection::PatternAndTolerance
+        );
+        let titles: Vec<&str> = FormSection::ALL.iter().map(|s| s.title()).collect();
+        assert_eq!(
+            titles,
+            [
+                "Tool and feeds",
+                "Pattern and tolerance",
+                "Tool axis and A",
+                "Entry, links and retract",
+                "Advanced"
+            ]
+        );
+        let keys: Vec<&str> = FormSection::ALL.iter().map(|s| s.key()).collect();
+        assert_eq!(keys, ["tool", "pattern", "axis", "links", "advanced"]);
+    }
+}
