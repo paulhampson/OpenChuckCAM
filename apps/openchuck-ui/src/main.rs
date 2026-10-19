@@ -33,6 +33,7 @@ mod playback_panel;
 mod roles;
 mod run_panel;
 mod selection_panel;
+mod setup_panes;
 mod shell;
 mod testing;
 mod theme;

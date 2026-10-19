@@ -157,7 +157,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X3 | 22: viewport drawing (toolbar, overlays, colour roles, dash and hatch lines, held regions and tabs, the OI-341 widths; built 18 Oct 2026 on `claude/lane-x3-viewport-drawing`, [decision 0119](decisions/0119-slice-22-viewport-drawing.md), accepted 19 Oct 2026; boards 03, 13, 14 and 17 re-rendered; wiring left to X2 and X4 is OI-355) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X7a | 22: theme tokens and IBM Plex with the OFL text and notices (new files only; slice 8 item 10; built 18 Oct 2026 on `claude/lane-x7a-theme-tokens-fonts`, pull request 124) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X4 | 22: inspectors (field rows, header and error banner, setup sections with two provenance icons, OI-334 layout, part extent) | ░░ | ░░ | ░░ | ░░ | ░░ |
-| X5 | 22: Setup step's front and end panes | ░░ | ░░ | ░░ | ░░ | ░░ |
+| X5 | 22: Setup step's front and end panes (built 19 Oct 2026 on `claude/lane-x5-setup-panes`, [decision 0129](decisions/0129-slice-22-setup-panes.md), proposed; board 16 re-rendered; OI-380 to OI-383) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X7b | 22: plain wording and tokens applied to existing panels | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
