@@ -1,6 +1,6 @@
 # 0119: Slice 22 viewport drawing: line styles, screen hatch, outlines, colour roles, toolbar and overlays (lane X3)
 
-- **Status:** proposed. Lane X3, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted; [decision 0105](0105-slice-22-conformance-pass.md), accepted). It records how the lane built differences C5 to C9 and the viewport items of OI-334 (m, n and the drawing of k), and the interface it leaves for lanes X2 and X4. Awaiting the project owner's acceptance.
+- **Status:** accepted by the project owner as proposed (19 Oct 2026), in the lane's own session. Lane X3, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted; [decision 0105](0105-slice-22-conformance-pass.md), accepted). It records how the lane built differences C5 to C9 and the viewport items of OI-334 (m, n and the drawing of k), and the interface it leaves for lanes X2 and X4.
 - **Date:** 18 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-355, OI-356 and OI-357 are new. OI-334 stays open with its viewport items built; OI-342 stays open with this lane's boards re-rendered.
 
@@ -46,3 +46,17 @@ Requirements: UI-02, UI-03, UI-04, UI-25, SIM-01, SIM-03, SIM-05, IMP-04, NFR-03
 - `openchuck-app`: `SceneRole::Hole`, `SceneView::{solids, work_register}`, `SceneSolid`, `WorkholdingItem`; `workholding_view::display_items` returns the solids and no hatch lines; the scene no longer notes a workholding that cannot be built (X2's project checks report it, so it would show twice).
 - `openchuck-ui`: `roles.rs`, `viewport_toolbar.rs`, `viewport_overlays.rs`; the viewport, playback panel and selection panel use them; hovered triangle and face outlines are 2 pixels (OI-341).
 - OI-334: items m and n and the drawing of k are built; the wiring of k, the layout and the Setup panes remain with lanes X4, X2 and X5. OI-342: this lane's boards are done.
+
+## As built
+
+On acceptance the owner also asked for the cause of a flaky test this lane reported: `playback::req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread` in `openchuck-app`, which failed once in a full parallel run and passed alone. The fault was in the test, not the product. The test timed the whole gap between polls, including the 2 ms sleep that stands for a frame's other work. With every core busy (the job's pool and the other tests), the operating system woke the thread from that sleep up to 30 ms late, which failed the 17 ms limit of [decision 0040](0040-slice-9-display-and-playback.md) item 8. The polls themselves took 1 to 90 µs throughout: `try_result` and `drain_events` are `try_recv` calls on channels and never wait. This was reproduced with 8 to 12 busy loops beside the test. It is fixed without loosening the check:
+
+- **New test, no timing:** `jobs::tests::req_nfr_04_polling_never_waits_for_a_running_job` holds a job on a gate that the test opens only after 1,000 polls, so a poll that waited would never return.
+  - The polls run on their own thread with a 60 s deadline, so a wait fails the test rather than hanging it.
+  - Making `try_result` wait fails the test at the deadline.
+- **Playback test:** it now times only the poll calls.
+  - The 95th percentile must be under 17 ms, the poll's share of record 0040's gap.
+  - The slowest poll must be under a quarter of the run. A poll that waited for the job fails this on any machine.
+  - The relaxed limit for `CI` is gone.
+
+Under 12 busy loops, six runs gave a p95 of 3 to 5 µs and a worst of 38 to 118 µs. No open item follows.
