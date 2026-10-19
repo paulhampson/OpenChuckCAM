@@ -23,9 +23,10 @@ use openchuck_viewport::camera::place;
 use openchuck_viewport::{Colour, Layer, LineStyle, Scene, Slot};
 
 use crate::roles;
+use crate::theme::DARK;
 use crate::viewport::{ToolReadout, Viewport};
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
+const PROBLEM: Color32 = DARK.error;
 
 /// Points of toolpath the viewport is asked to draw at most. A million line
 /// vertices is about 24 MB on the GPU and draws well within a frame on the
@@ -620,7 +621,7 @@ impl PlaybackPanel {
                 self.stock_controls(ui, app, &data);
                 ui.checkbox(&mut self.bands_on, "Colour the part by deviation")
                     .on_disabled_hover_text("Generate with a simulation first")
-                    .on_hover_text("Overcut, on the surface, and material left (SIM-05)");
+                    .on_hover_text("Overcut, on the surface, and material left");
             });
             if changed {
                 self.lines_dirty = true;

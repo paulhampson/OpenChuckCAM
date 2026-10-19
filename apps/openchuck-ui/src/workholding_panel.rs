@@ -19,8 +19,10 @@ use openchuck_app::workholding_view::{
 };
 use openchuck_app::{Application, Command, JobHandle};
 
-const ERROR: Color32 = Color32::from_rgb(255, 123, 114);
-const NOTE: Color32 = Color32::from_rgb(230, 180, 60);
+use crate::theme::DARK;
+
+const ERROR: Color32 = DARK.error;
+const NOTE: Color32 = DARK.warning;
 
 /// The workholding panel's state: the draft being edited.
 pub struct WorkholdingPanel {

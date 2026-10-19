@@ -603,3 +603,19 @@ fn req_gc_12_the_setup_sheet_is_written_as_html_and_pdf_named_for_the_project() 
     std::fs::remove_dir_all(out).unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_nfr_15_export_warning_names_machine_values_in_plain_words() {
+    let (dir, mut app) = project("checks-words", false);
+    let run = post(&mut app, OutputGrouping::Setup);
+    let checks = app.export_checks(Some(&run), None, None);
+    let text = warnings(&checks).join(" ");
+    assert!(text.contains("axis height"), "{text}");
+    for field in ["rotary_origin", "rotary_axis", "a_sense", "max_feeds"] {
+        assert!(
+            !text.contains(field),
+            "{field} is a file field name: {text}"
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

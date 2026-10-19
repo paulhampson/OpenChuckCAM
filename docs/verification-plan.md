@@ -138,13 +138,8 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | GC-16 | P1 | T | Integration | The acknowledgement is asked once per project in a settings folder, not asked again in that folder, asked again with a fresh folder, and never written to the project. The command-line tool prints the notice at every run and asks no confirmation |
 | GC-08, GC-13 | P2 | T | Integration | Limit, feed and number checks fire on seeded faults; scripting hook gives output templates cannot |
 | PRJ-01, PRJ-03, PRJ-05 | P1 | T | Unit, integration | Saving twice is byte-identical; a small edit gives a small diff; no generated data in the file; two branches editing different items merge cleanly |
-<<<<<<< HEAD
-| PRJ-02, PRJ-06 | P1 | T | Integration | Model files stay separate with relative paths; a changed model is detected by hash; selections survive save and load |
-| PRJ-04 | P1 | T | Integration | Files from every earlier schema version load and migrate to the current one; a Makera Z1 machine copy from before schema 13 counts A in its feed word, recognised by its library ID or, with none, by its name (`req_prj_04_req_set_01_a_z1_copy_without_an_id_migrates_by_its_name`, [decision 0109](decisions/0109-z1-copy-without-an-id-migrates-by-name.md)) |
-=======
 | PRJ-02, PRJ-06 | P1 | T | Integration | Model files stay separate with relative paths; a changed model is detected by hash; selections survive save and load, including mesh edge sets, the keep-tangent-edges choice of edge sets and of the project, and the project's reset-warning setting (project schema 12: a schema 11 file holding any of them is refused; the choice changes the cache key of operations on edge sets only; [decision 0066](decisions/0066-slice-11b-brep-selection.md)) |
-| PRJ-04 | P1 | T | Integration | Files from every earlier schema version load and migrate to the current one |
->>>>>>> origin/main
+| PRJ-04 | P1 | T | Integration | Files from every earlier schema version load and migrate to the current one; a Makera Z1 machine copy from before schema 13 counts A in its feed word, recognised by its library ID or, with none, by its name (`req_prj_04_req_set_01_a_z1_copy_without_an_id_migrates_by_its_name`, [decision 0109](decisions/0109-z1-copy-without-an-id-migrates-by-name.md)) |
 | PRJ-07, PRJ-08 | P2 | T | Integration | Selections re-match after re-export using descriptors; autosave recovers a project after a forced kill |
 | COL-01 to COL-07 | P2 | T | System | Known collision and clearance cases for tool cutting part, shank, collet, holder, machine head and fixtures, against in-process stock, with the safety margin and a correct, navigable collision list |
 | COL-08 | P3 | T | System | Generated linking moves pass COL-01 to COL-05 checks, when built |
