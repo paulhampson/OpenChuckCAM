@@ -454,14 +454,14 @@ impl Shell {
     }
 
     /// Generates the selected operation, up to and including it, when an
-    /// operation is selected (G, F5); otherwise every stale operation
-    /// (specification section 16; decision record 0117, OI-351). A turned-off
-    /// operation goes to the application too, which refuses it with "it is
-    /// turned off" rather than generating the others (OI-365).
+    /// enabled operation is selected (G, F5); otherwise every stale
+    /// operation (specification section 16; decision record 0117, OI-351).
     fn generate_selected(&mut self) {
         let Some(app) = &self.app else { return };
         match self.selected {
-            Some(Selection::Operation(id)) => {
+            Some(Selection::Operation(id))
+                if app.project().operation(id).is_some_and(|o| o.enabled) =>
+            {
                 self.run.start_until(app, id);
                 self.overview_dirty = true;
             }

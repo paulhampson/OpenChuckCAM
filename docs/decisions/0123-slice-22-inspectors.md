@@ -2,9 +2,9 @@
 
 - **Status:** proposed. Lane X4, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted; it builds on lane X2, [decision 0117](0117-slice-22-shell-frame.md), accepted). The owner accepts it; until then it is guidance.
 - **Date:** 19 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-365 to OI-369 are new. OI-365 is closed by this change. OI-366 waits for the owner (sent to the coordinator, 19 Oct 2026). OI-367 to OI-369 are recorded differences. OI-334 items a, c, d, e, i, j, k (the inspector side) and l are built here; its drawing of the draft waits for lane X3's pull request 126 (OI-355). OI-345 stays proposed: the two icons are built on the two states the profile already has, and neither `requirements.md` nor the specification is edited here. OI-342 is updated: this lane re-rendered image 02's machine section.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-366 to OI-369 are new. OI-366 waits for the owner (sent to the coordinator, 19 Oct 2026). OI-367 to OI-369 are recorded differences. OI-334 items a, c, d, e, i, j, k (the inspector side) and l are built here; its drawing of the draft waits for lane X3's pull request 126 (OI-355). OI-345 stays proposed: the two icons are built on the two states the profile already has, and neither `requirements.md` nor the specification is edited here. OI-342 is updated: this lane re-rendered image 02's machine section.
 
-Numbering: the coordinator assigned this lane records 0123 and 0124 and OI-365 to OI-369. This lane uses 0123 and OI-365 to OI-369; record 0124 is unused. OI-352, which lane X2 used in its pull request for the disabled-operation Generate fallback, was never added to the register; it is recorded here as OI-365.
+Numbering: the coordinator assigned this lane records 0123 and 0124 and OI-365 to OI-369. This lane uses 0123 and OI-366 to OI-369; record 0124 and OI-365 are unused. The disabled-operation Generate fallback that lane X2 found (its proposed OI-352) is lane X3's, by the merge manager's assignment, not this lane's.
 
 ## Context
 
@@ -75,7 +75,6 @@ Sections File, Units, Placement, Mesh check and Source, each remembered.
 ### 6. Operations (11.4; C16)
 
 - **New operation** takes the setup and tool of the selected operation, or else the last tool used in machining order, and the selection set shown or selected, in Cut on. `StrategyChoice::takes_selections` (the strategy's `honours_region`) marks a strategy that cannot cut in a selection: the list shows "ignores selections" after it and it takes none. `Application::add_operation_on` adds the operation with its set as one undoable step and refuses a set for a strategy that ignores selections.
-- **G on a turned-off operation (OI-365).** G and F5 with any operation selected send it to `start_regenerate_until`, which refuses a turned-off operation with "it is turned off". Before, a turned-off operation fell back to generating every stale operation. Lane X2 found this in review (pull request 125) and the owner deferred the fix to this lane.
 - **Not built here:** the progress and Cancel on the operation's own row, and the job's place in the Jobs tab, are lane X2's (decision 0117 item 5). "Use the N matching edges" is UI-24 (P2).
 
 ## Alternatives considered

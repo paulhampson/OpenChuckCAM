@@ -417,34 +417,6 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
     }
 }
 
-/// G with a turned-off operation selected asks the application to generate up
-/// to it, which refuses with "it is turned off", rather than generating every
-/// stale operation instead (OI-365; decision record 0117 item 9).
-#[test]
-fn req_ui_14_g_on_a_turned_off_operation_is_refused_not_a_full_run() {
-    let mut rig = Rig::cube("frame-generate-off", None);
-    let app = rig.shell.app.as_mut().unwrap();
-    let mut op = app.project().operations()[0].clone();
-    op.enabled = false;
-    let id = op.id;
-    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
-        op,
-    )))
-    .unwrap();
-    rig.shell.select(Selection::Operation(id));
-    rig.frame(Vec::new());
-    rig.press(Key::G, Modifiers::NONE);
-    let deadline = Instant::now() + Duration::from_secs(60);
-    while rig.shell.run.is_running() {
-        assert!(Instant::now() < deadline, "timed out");
-        rig.settle();
-    }
-    rig.settle();
-    let error = rig.shell.run.last_error().unwrap_or_default().to_owned();
-    assert!(error.contains("turned off"), "{error}");
-    assert!(rig.shell.run.last().is_none());
-}
-
 /// Choosing a setup shows its five sections (11.3) in field rows: the
 /// machine's values with their provenance (UI-13), the stock, the part
 /// position, and the work offset and clearance with the zero read-only
@@ -541,4 +513,39 @@ fn req_ui_06_req_ui_08_the_header_renames_as_one_undoable_command() {
     rig.shell.select(Selection::Operation(op));
     rig.frame(Vec::new());
     assert!(rig.shows("TOOL AND FEEDS"));
+}
+
+/// Choosing a model shows its inspector (11.2; C14): the file, format,
+/// triangle count and size once the check has run, the unit with where it
+/// came from, the placement steps, the mesh check and the source.
+#[test]
+fn req_imp_03_req_imp_04_req_imp_05_the_model_inspector_shows_its_sections() {
+    let mut rig = Rig::cube("inspector-model", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    rig.shell.select(Selection::Model(model));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        rig.frame(Vec::new());
+        if rig.shows("Triangles") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    rig.frame(Vec::new());
+    for needle in [
+        "FILE",
+        "Format",
+        "STL",
+        "UNITS",
+        "Read in mm",
+        "PLACEMENT",
+        "1. Centre on the rotary axis",
+        "MESH CHECK",
+        "The check changes nothing",
+        "Open full report",
+    ] {
+        assert!(rig.shows(needle), "{needle} is not shown");
+    }
 }
