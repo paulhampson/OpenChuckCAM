@@ -1012,7 +1012,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
 | 21 | SET-09, OP-21, UI-25 | – |
-| 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-15 (with slice 8), NFR-17 (lane BUG-LOG, issue 155) | – |
+| 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-15 (with slice 8), NFR-17 | – |
 | 23 | TL-12 | – |
 
 **Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19), NFR-02 (0, 8), and UI-10 to UI-16 and NFR-15 (8, 22: slice 22's lanes build slice 8 items 8 to 12, OI-338). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
