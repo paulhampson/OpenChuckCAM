@@ -19,7 +19,8 @@ Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet 
 | F-13 | Selection | Selection parameters and options are in the lower window. | Expected: an inspector on the right-hand side. Issue [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153). | Check the UI specification and the X4 inspector layout for the intended place. |
 
 Convention (owner, 19 Oct 2026): from now on, bug fix lanes generated from the trial feedback are prefixed `BUG` (for example `BUG-SEL`). Lanes already named by the coordinator keep their names.
-| F-14 | UI, Windows | The UI opens a CMD window. | Expected: no console window; the information it prints goes into a log file. Issue [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155). | Log file location, naming and rotation; verbosity; how the user finds the log; the CLI keeps console output (assumed). |
+| F-14 | UI, Windows | The UI opens a CMD window. | Expected: no console window; the information it prints goes into a log file. Issue [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155). | Answered: the log file goes in the same location as the binary; verbosity left as is; the About window gets a button to open the log; the CLI keeps printing to the console. Not yet answered: rotation or size limit. |
+| F-15 | Logging | User action logging (proposed P2 requirement). | So bug fixes can use accurate step information. Builds on F-14's log file. Issue [#156](https://github.com/paulhampson/OpenChuckCAM/issues/156). | Needs a requirement ID and an owner decision; what may be recorded (paths, model names). |
 
 ## Task list (work packages)
 
@@ -61,3 +62,8 @@ Later feedback (sent to the coordinator for mapping)
 | WP7.1 | [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155) No console window on Windows; output to a log file | F-14 | Bug |
 
 Lane names confirmed by the coordinator (19 Oct 2026): BI = WP5 (#139, started); IW = WP1 (#146 first, #147, #144, #145; after X6 #129 and X4); MV = #140, #141, #143; SL = #142 (needs the owner's screenshot); X9 widened to #148; BUG-SEL = WP6 (#151, #152, #153; after X4 and SU; records 0153-0154, OI-448..452); BUG-LOG = WP7 (#155; records 0155-0156, OI-453..457; does not depend on X4).
+
+| WP8 | User action logging (feature, P2 proposal; ordinary lane name) | F-15 | |
+| WP8.1 | [#156](https://github.com/paulhampson/OpenChuckCAM/issues/156) User action logging | F-15 | Feature |
+
+The owner attached the Setup view screenshot to #142 (19 Oct 2026); lane SL is unblocked on that point.
