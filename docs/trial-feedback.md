@@ -59,3 +59,5 @@ Later feedback (sent to the coordinator for mapping)
 
 | WP7 | UI logging (lane to be named `BUG-...` by the coordinator) | F-14 | |
 | WP7.1 | [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155) No console window on Windows; output to a log file | F-14 | Bug |
+
+Lane names confirmed by the coordinator (19 Oct 2026): BI = WP5 (#139, started); IW = WP1 (#146 first, #147, #144, #145; after X6 #129 and X4); MV = #140, #141, #143; SL = #142 (needs the owner's screenshot); X9 widened to #148; BUG-SEL = WP6 (#151, #152, #153; after X4 and SU; records 0153-0154, OI-448..452); BUG-LOG = WP7 (#155; records 0155-0156, OI-453..457; does not depend on X4).
