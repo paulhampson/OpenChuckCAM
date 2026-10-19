@@ -14,11 +14,12 @@
 //!
 //! **Path fitting.** The machine moves in a straight line in X, Y, Z and A
 //! between two points, so the points are chosen by bisection: a move is split
-//! until the tool, at the middle of the move on the straight machine path,
-//! is within [`CHORD_FACTOR`] times the toolpath tolerance of where the tool
-//! would be if dropped there, measured **along the surface normal** (the
-//! factor settles OI-08; decision record 0018 item 12). The angle step never
-//! exceeds `max_angle_step`.
+//! until the tool, at the middle of the move and at the middles of its halves
+//! on the straight machine path, is within [`CHORD_FACTOR`] times the
+//! toolpath tolerance of where the tool would be if dropped there, measured
+//! **along the tool's contact normal** (the factor settles OI-08, decision
+//! record 0018 item 12; the normal, decision 0113 item 4; the quarter points,
+//! decision 0115). The angle step never exceeds `max_angle_step`.
 //!
 //! **Stock to leave** drops a tool grown by the amount
 //! ([`crate::cutter::grow_profile`]), so the surface is left `stock_to_leave`

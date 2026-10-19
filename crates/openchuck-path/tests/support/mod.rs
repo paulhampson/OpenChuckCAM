@@ -218,3 +218,39 @@ pub fn run<T>(f: impl FnOnce(&JobContext<'_>) -> T) -> T {
     let context = JobContext::new(&cancel, &NoProgress);
     f(&context)
 }
+
+/// Reads a binary STL as a mesh, one vertex per corner.
+pub fn read_binary_stl(path: &std::path::Path) -> openchuck_types::mesh::TriangleMesh {
+    use openchuck_types::geometry::Point3;
+    let bytes = std::fs::read(path).unwrap();
+    let count = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
+    let mut vertices = Vec::with_capacity(3 * count);
+    let mut triangles = Vec::with_capacity(count);
+    for t in 0..count {
+        let base = 84 + 50 * t + 12;
+        for v in 0..3 {
+            let at = base + 12 * v;
+            let f = |k: usize| {
+                f64::from(f32::from_le_bytes(
+                    bytes[at + 4 * k..at + 4 * k + 4].try_into().unwrap(),
+                ))
+            };
+            vertices.push(Point3::new(f(0), f(1), f(2)));
+        }
+        let i = (3 * t) as u32;
+        triangles.push([i, i + 1, i + 2]);
+    }
+    openchuck_types::mesh::TriangleMesh {
+        vertices,
+        triangles,
+    }
+}
+
+/// The owner's blisk (`testdata/stl/blisk.stl`; OI-311): a disc with a
+/// shoulder at X 10 and ten thin, leaning blades on a conical hub, 40 mm
+/// across and 50 mm long.
+pub fn blisk() -> openchuck_types::mesh::TriangleMesh {
+    read_binary_stl(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/stl/blisk.stl"),
+    )
+}
