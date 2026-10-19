@@ -61,7 +61,7 @@ fn swatch(index: usize) -> [u8; 3] {
 
 /// The colour of a set: the one the user chose (`#rrggbb`), or the default
 /// swatch of its place in the list.
-fn set_rgb(chosen: Option<&str>, index: usize) -> [u8; 3] {
+pub(crate) fn set_rgb(chosen: Option<&str>, index: usize) -> [u8; 3] {
     chosen
         .and_then(|c| {
             let byte = |i: usize| u8::from_str_radix(c.get(i..i + 2)?, 16).ok();
@@ -870,6 +870,15 @@ impl SelectionPanel {
                         }
                     });
             });
+    }
+
+    /// Finishes a save or an edit whose job has ended, whether or not the
+    /// panel is shown this frame (the dock tab may be closed). Returns the
+    /// text of an error to show.
+    pub fn poll(&mut self, app: &mut Application) -> Option<String> {
+        let error = self.finish_writing(app);
+        self.drop_stale_working(app);
+        error
     }
 
     /// Draws the panel. Returns the text of an error to show in a dialog.

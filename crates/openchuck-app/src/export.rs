@@ -146,9 +146,14 @@ fn stale_operations(
     }
     let then = keys(&run.project)?;
     let now = keys(project)?;
+    // An operation the run did not make (a run up to an earlier operation,
+    // decision record 0117) is stale too: it is not in the toolpath.
+    let made = |id: &OperationId| run.groups.iter().any(|g| g.operation == *id);
     Ok(now
         .iter()
-        .filter(|(id, key)| then.iter().find(|(i, _)| i == id).map(|(_, k)| k) != Some(key))
+        .filter(|(id, key)| {
+            !made(id) || then.iter().find(|(i, _)| i == id).map(|(_, k)| k) != Some(key)
+        })
         .map(|(id, _)| *id)
         .collect())
 }

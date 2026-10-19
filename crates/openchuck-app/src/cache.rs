@@ -157,6 +157,19 @@ impl ModelFiles {
         )
     }
 
+    /// The hashes the project recorded for its model files, without reading
+    /// them: what the status keys use, so they can be worked out on the
+    /// interface's thread (decision record 0117).
+    pub(crate) fn recorded(project: &Project) -> Self {
+        Self(
+            project
+                .models()
+                .iter()
+                .map(|m| (m.id, Some(m.hash)))
+                .collect(),
+        )
+    }
+
     /// The part model of `operation`, if it has one.
     fn part<'a>(project: &'a Project, operation: &Operation) -> Option<&'a ModelRef> {
         let id = project.setup(operation.setup)?.part?;
@@ -271,4 +284,39 @@ pub(crate) fn operation_key(
         .map(|h| h.as_bytes().to_vec());
     feed(&mut bytes, "selections", &sets)?;
     Ok(ContentHash::of_bytes(&bytes))
+}
+
+/// The keys that say whether an operation is up to date, for the item states
+/// of the project tree (UI-11; decision record 0117).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StatusKey {
+    /// The key chained from the enabled operations before it, as
+    /// [`operation_key`] makes it, with the model files taken at their
+    /// recorded hashes: it changes when the operation or anything before it
+    /// changes.
+    pub(crate) chained: Key,
+    /// The key of the operation on its own: it changes only when the
+    /// operation's own inputs change, which says which operation made a
+    /// later one stale.
+    pub(crate) own: Key,
+}
+
+/// The status keys of `project`'s enabled operations, in machining order.
+/// Reads no file. An operation whose inputs cannot be hashed is left out,
+/// and reads as not generated.
+pub(crate) fn status_keys(project: &Project) -> Vec<(OperationId, StatusKey)> {
+    let files = ModelFiles::recorded(project);
+    let mut previous = None;
+    let mut keys = Vec::new();
+    for operation in project.operations().iter().filter(|o| o.enabled) {
+        let (Ok(chained), Ok(own)) = (
+            operation_key(project, operation, previous, &files),
+            operation_key(project, operation, None, &files),
+        ) else {
+            continue;
+        };
+        previous = Some(chained);
+        keys.push((operation.id, StatusKey { chained, own }));
+    }
+    keys
 }
