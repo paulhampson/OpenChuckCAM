@@ -6,7 +6,9 @@
 use eframe::egui::{self, vec2};
 use openchuck_app::overview::Step;
 use openchuck_app::scene::SceneView;
+use openchuck_app::setup_panes::LegendEntry;
 
+use crate::setup_panes;
 use crate::viewport_overlays::{swatch_for, workholding_entries};
 
 /// Whether `step` has a legend strip under the view: Model and Setup, where
@@ -22,6 +24,22 @@ pub fn legend(ui: &mut egui::Ui, view: &SceneView) {
         for entry in workholding_entries(view) {
             let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), egui::Sense::hover());
             swatch_for(ui.painter(), r, entry, false);
+            ui.label(entry.name());
+            ui.add_space(12.0);
+        }
+    });
+}
+
+/// The legend strip of the Setup panes: the lines and roles they draw
+/// (11.3), each with a swatch drawn as it is drawn in the panes.
+pub fn pane_legend(ui: &mut egui::Ui, entries: &[LegendEntry]) {
+    ui.horizontal_centered(|ui| {
+        for &entry in entries {
+            let (r, _) = ui.allocate_exact_size(
+                vec2(setup_panes::swatch_width(entry), 14.0),
+                egui::Sense::hover(),
+            );
+            setup_panes::swatch(ui.painter(), r, entry);
             ui.label(entry.name());
             ui.add_space(12.0);
         }
