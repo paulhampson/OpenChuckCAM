@@ -20,6 +20,7 @@ use super::{
 };
 use crate::theme::DARK;
 use crate::toolbar;
+use crate::viewport::ViewStep;
 
 /// The three regions that collapse to a rail (Ctrl 1, 2 and 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +76,6 @@ const SETTINGS_DELAY: Duration = Duration::from_secs(1);
 const TITLE_BAR: f32 = 32.0;
 const WORKFLOW_BAR: f32 = 44.0;
 const FOOTER: f32 = 48.0;
-const VIEW_TOOLBAR: f32 = 44.0;
 const LEGEND_STRIP: f32 = 36.0;
 
 /// The keys, for Help > Keyboard shortcuts (specification section 16). The
@@ -284,13 +284,12 @@ impl Shell {
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
                 self.dock_panel(ui);
-                egui::Panel::top("viewport toolbar")
-                    .exact_size(VIEW_TOOLBAR)
-                    .show(ui, |ui| toolbar::strip(ui, &mut self.viewport, self.step));
-                if toolbar::has_legend(self.step) {
+                // The view's toolbar and overlays follow the step (7.1, 7.2).
+                self.viewport.set_step(Some(view_step(self.step)));
+                if toolbar::has_legend(self.step, self.viewport.view()) {
                     egui::Panel::bottom("legend strip")
                         .exact_size(LEGEND_STRIP)
-                        .show(ui, |ui| toolbar::legend(ui, self.step));
+                        .show(ui, |ui| toolbar::legend(ui, self.viewport.view()));
                 }
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
@@ -1049,5 +1048,16 @@ fn step_note(step: Step) -> &'static str {
         }
         Step::Simulate => "Results show the latest simulation",
         Step::Export => "Write G-code from the export dialog",
+    }
+}
+
+/// The view's step for a workflow step, one to one (decision record 0119).
+fn view_step(step: Step) -> ViewStep {
+    match step {
+        Step::Model => ViewStep::Model,
+        Step::Setup => ViewStep::Setup,
+        Step::Operations => ViewStep::Operations,
+        Step::Simulate => ViewStep::Simulate,
+        Step::Export => ViewStep::Export,
     }
 }

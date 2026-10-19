@@ -232,7 +232,7 @@ impl ImportSession {
                             });
                         ui.end_row();
                         ui.label("Placement").on_hover_text(
-                        "Moves the model in the 3D view behind this dialog; the orange line is the rotary axis.",
+                        "Moves the model in the 3D view behind this dialog; the cyan line is the rotary axis.",
                     );
                         egui::ComboBox::from_id_salt("import orientation")
                             .selected_text(self.orientation.name())
@@ -248,7 +248,7 @@ impl ImportSession {
 
             ui.weak(
                 "The 3D view previews the model as it will be added: the placement moves it \
-                     there, and the orange line is the rotary axis.",
+                     there, and the cyan line is the rotary axis.",
             );
             if let Some(preview) = &self.preview {
                 let i = &preview.inspection;
@@ -283,7 +283,7 @@ impl ImportSession {
                     ui.label("Checks: no problems found.");
                 } else {
                     ui.label(
-                        RichText::new("Checks found problems, shown in red in the view:")
+                        RichText::new("Checks found problems, outlined in the view (holes in amber, the others in red):")
                             .color(PROBLEM),
                     );
                     for p in &problems {

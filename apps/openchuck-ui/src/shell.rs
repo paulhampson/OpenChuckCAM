@@ -453,14 +453,13 @@ impl Shell {
     }
 
     /// Generates the selected operation, up to and including it, when an
-    /// enabled operation is selected (G, F5); otherwise every stale
-    /// operation (specification section 16; decision record 0117, OI-351).
+    /// operation is selected (G, F5); otherwise every stale operation
+    /// (specification section 16; decision record 0117, OI-351). A turned-off
+    /// operation goes to the run too, which refuses it and says why (OI-352).
     fn generate_selected(&mut self) {
         let Some(app) = &self.app else { return };
         match self.selected {
-            Some(Selection::Operation(id))
-                if app.project().operation(id).is_some_and(|o| o.enabled) =>
-            {
+            Some(Selection::Operation(id)) => {
                 self.run.start_until(app, id);
                 self.overview_dirty = true;
             }
@@ -1306,6 +1305,14 @@ impl Shell {
         {
             self.selected = None;
         }
+        // The selected operation's avoid and check sets are drawn hatched (7.4).
+        self.selection.show_roles_of(
+            app,
+            match self.selected {
+                Some(Selection::Operation(id)) => Some(id),
+                _ => None,
+            },
+        );
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();

@@ -27,7 +27,7 @@ BT /F1 8.5 Tf 40 749.50 Td (Machine          Example X rotary) Tj ET
 BT /F1 8.5 Tf 40 738.50 Td (Setups           2) Tj ET
 BT /F1 8.5 Tf 40 727.50 Td (Operations       4) Tj ET
 BT /F1 8.5 Tf 40 716.50 Td (Tools used       2) Tj ET
-BT /F1 8.5 Tf 40 705.50 Td (Programmed time  1:16) Tj ET
+BT /F1 8.5 Tf 40 705.50 Td (Programmed time  1:17) Tj ET
 BT /F2 11 Tf 40 683.50 Td (Setup: Setup 1) Tj ET
 BT /F1 8.5 Tf 40 672.50 Td (Part            models/cube.stl) Tj ET
 BT /F1 8.5 Tf 40 661.50 Td (Stock           cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
@@ -49,7 +49,7 @@ BT /F2 11 Tf 40 463.50 Td (Operations) Tj ET
 BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy           Setup          Tool          Spindle rpm  Time) Tj ET
 BT /F1 8.5 Tf 40 441.50 Td (---------------------------------------------------------------------------------) Tj ET
 BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    helical_finishing  Setup 1        T1 4 mm ball  10000        0:20) Tj ET
-BT /F1 8.5 Tf 40 419.50 Td (2   Finish B    helical_finishing  Setup 1        T2 6 mm ball  10000        0:19) Tj ET
+BT /F1 8.5 Tf 40 419.50 Td (2   Finish B    helical_finishing  Setup 1        T2 6 mm ball  10000        0:20) Tj ET
 BT /F1 8.5 Tf 40 408.50 Td (3   Touch up A  helical_finishing  Setup 1        T1 4 mm ball  10000        0:18) Tj ET
 BT /F1 8.5 Tf 40 397.50 Td (4   Side two    helical_finishing  Flip / side 2  T1 4 mm ball  10000        0:20) Tj ET
 BT /F2 11 Tf 40 375.50 Td (Notes) Tj ET

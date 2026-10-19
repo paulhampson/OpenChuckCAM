@@ -105,6 +105,8 @@ fn req_ui_03_part_stock_axis_and_work_zero_are_drawn_together() {
     }
     let texts: Vec<&str> = view.labels.iter().map(|l| l.text.as_str()).collect();
     assert_eq!(texts, ["A+", "X", "Y", "Z"]);
+    // The readout names the frame by the setup's register (specification 7.2).
+    assert_eq!(view.work_register.as_deref(), Some("G54"));
 
     // The bounds hold the stock and the origin.
     let bounds = view.bounds.unwrap();

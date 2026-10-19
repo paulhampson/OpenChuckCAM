@@ -632,6 +632,16 @@ fn req_set_09_req_op_21_the_scene_shows_them() {
         .filter(|m| m.role == SceneRole::Tab)
         .count();
     assert_eq!((held, tabs), (2, 2));
+    // Each solid names its mesh among the scene's, after the part's, for
+    // hover and selection in the view (specification 7.5).
+    assert_eq!(scene.solids.len(), 4);
+    for solid in &scene.solids {
+        let role = scene.meshes[solid.mesh].role;
+        assert!(
+            matches!(role, SceneRole::HeldRegion | SceneRole::Tab),
+            "{role:?}"
+        );
+    }
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 

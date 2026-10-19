@@ -416,3 +416,30 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
         rig.settle();
     }
 }
+
+#[test]
+fn req_ui_14_g_on_a_turned_off_operation_is_refused_not_a_full_run() {
+    let mut rig = Rig::cube("frame-generate-off", None);
+    let first = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .execute(openchuck_app::Command::SetOperationEnabled {
+            operation: first,
+            enabled: false,
+        })
+        .unwrap();
+    rig.shell.select(Selection::Operation(first));
+    rig.frame(Vec::new());
+    rig.press(Key::G, Modifiers::NONE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig.shell.run.is_running() {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.settle();
+    }
+    rig.settle();
+    let error = rig.shell.run.last_error().unwrap_or_default();
+    assert!(error.contains("turned off"), "{error:?}");
+    assert!(rig.shell.run.last().is_none());
+}
