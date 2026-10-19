@@ -66,6 +66,76 @@ pub enum Source {
     Missing,
 }
 
+/// The section of the operation inspector a field is shown in (interface
+/// specification section 8; decision record 0114 C10). The Geometry section,
+/// which holds the selection roles, has no fields and is not listed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum FormSection {
+    /// The feeds.
+    ToolAndFeeds,
+    /// The pattern of passes, their spacing and the tolerance.
+    PatternAndTolerance,
+    /// How the tool axis is set and how A turns.
+    ToolAxisAndA,
+    /// Entry, links and retract (decision record 0026).
+    EntryLinksAndRetract,
+    /// Limits that most operations leave as they are.
+    Advanced,
+}
+
+impl FormSection {
+    /// Every section, in the order the inspector shows them.
+    pub const ALL: [Self; 5] = [
+        Self::ToolAndFeeds,
+        Self::PatternAndTolerance,
+        Self::ToolAxisAndA,
+        Self::EntryLinksAndRetract,
+        Self::Advanced,
+    ];
+
+    /// The section's title, in sentence case.
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::ToolAndFeeds => "Tool and feeds",
+            Self::PatternAndTolerance => "Pattern and tolerance",
+            Self::ToolAxisAndA => "Tool axis and A",
+            Self::EntryLinksAndRetract => "Entry, links and retract",
+            Self::Advanced => "Advanced",
+        }
+    }
+
+    /// A short key for remembering whether the section is open.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::ToolAndFeeds => "tool",
+            Self::PatternAndTolerance => "pattern",
+            Self::ToolAxisAndA => "axis",
+            Self::EntryLinksAndRetract => "links",
+            Self::Advanced => "advanced",
+        }
+    }
+
+    /// The section of the parameter `name`. A parameter the list does not
+    /// name, such as one a strategy adds later, is shown with the pattern.
+    pub fn of(name: &str) -> Self {
+        match name {
+            "feed" | "plunge_feed" => Self::ToolAndFeeds,
+            "angles" | "count" | "index_angle" | "start_angle" | "rotation" | "lead_angle"
+            | "max_tilt" | "axis_tolerance" | "max_angle_step" | "tip_end" | "tip_extension" => {
+                Self::ToolAxisAndA
+            }
+            "retract" | "approach_distance" | "entry" | "ramp_angle" | "helix_diameter"
+            | "lead_radius" | "reentry_clearance" | "retract_height" | "chip_break_retract"
+            | "peck_mode" | "peck_depth" => Self::EntryLinksAndRetract,
+            "diameter_tolerance" | "crease_angle" | "min_length" | "min_remaining" | "min_cut"
+            | "max_material_left" | "through_allowance" | "max_step" | "max_x_step"
+            | "depth_reference" => Self::Advanced,
+            _ => Self::PatternAndTolerance,
+        }
+    }
+}
+
 /// One parameter of the form.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
@@ -84,6 +154,8 @@ pub struct Field {
     pub value: Option<ParameterValue>,
     /// Where `value` comes from.
     pub source: Source,
+    /// The inspector section it is shown in.
+    pub section: FormSection,
 }
 
 /// An operation's parameter form.
@@ -200,6 +272,7 @@ pub fn parameter_form(
                 (None, None, None) => (None, Source::Missing),
             };
             Field {
+                section: FormSection::of(&spec.name),
                 name: spec.name.clone(),
                 label: spec.label.clone(),
                 description: spec.description.clone(),

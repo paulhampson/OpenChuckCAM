@@ -1246,3 +1246,44 @@ fn req_nfr_04_an_edit_made_from_an_older_set_is_refused_when_finished() {
     assert_eq!(app.project().selection_sets()[0].target.len(), top.len());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// A new operation takes the selection in its Cut on role, as one undoable
+/// step; a strategy that ignores selections is listed as such and refuses one
+/// (interface specification 11.4; decision record 0114 C16).
+#[test]
+fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_ignores_it() {
+    let (dir, mut app, op, model) = project("new-op-takes");
+    let set = app
+        .save_selection(
+            "Top",
+            model,
+            SelectionTarget::Triangles(top_face(&app, model)),
+        )
+        .unwrap();
+    let existing = app.project().operation(op).unwrap().clone();
+    let choices = app.strategy_choices();
+    let taking = choices.iter().find(|c| c.takes_selections).unwrap();
+    let new = app
+        .add_operation_on(
+            "Finish top",
+            &taking.name,
+            existing.setup,
+            existing.tool,
+            Some(set),
+        )
+        .unwrap();
+    assert_eq!(app.project().operation(new).unwrap().selections, [set]);
+    assert!(app.undo().unwrap());
+    assert!(app.project().operation(new).is_none());
+    if let Some(ignoring) = choices.iter().find(|c| !c.takes_selections) {
+        let error = err(app.add_operation_on(
+            "Drill",
+            &ignoring.name,
+            existing.setup,
+            existing.tool,
+            Some(set),
+        ));
+        assert!(error.contains("ignores selections"), "{error}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

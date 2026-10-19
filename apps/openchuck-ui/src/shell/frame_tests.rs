@@ -416,3 +416,129 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
         rig.settle();
     }
 }
+
+/// G with a turned-off operation selected asks the application to generate up
+/// to it, which refuses with "it is turned off", rather than generating every
+/// stale operation instead (OI-365; decision record 0117 item 9).
+#[test]
+fn req_ui_14_g_on_a_turned_off_operation_is_refused_not_a_full_run() {
+    let mut rig = Rig::cube("frame-generate-off", None);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    op.enabled = false;
+    let id = op.id;
+    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
+        op,
+    )))
+    .unwrap();
+    rig.shell.select(Selection::Operation(id));
+    rig.frame(Vec::new());
+    rig.press(Key::G, Modifiers::NONE);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig.shell.run.is_running() {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.settle();
+    }
+    rig.settle();
+    let error = rig.shell.run.last_error().unwrap_or_default().to_owned();
+    assert!(error.contains("turned off"), "{error}");
+    assert!(rig.shell.run.last().is_none());
+}
+
+/// Choosing a setup shows its five sections (11.3) in field rows: the
+/// machine's values with their provenance (UI-13), the stock, the part
+/// position, and the work offset and clearance with the zero read-only
+/// (decision record 0114 C10, C15).
+#[test]
+fn req_ui_07_req_ui_13_the_setup_inspector_shows_its_five_sections() {
+    let mut rig = Rig::cube("inspector-setup", None);
+    // Tall enough that every section is on screen.
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for needle in [
+        "MACHINE",
+        "STOCK",
+        "PART POSITION",
+        "WORK OFFSET AND CLEARANCE",
+        "WORKHOLDING AND TABS",
+        "Rotary axis",
+        "Axis height",
+        "Cylinder",
+        "Diameter",
+        "Offset along X",
+        "On the A axis (Y0 Z0)",
+        "Safe radius",
+    ] {
+        assert!(rig.shows(needle), "{needle} is not shown");
+    }
+    // No file field names in the machine section (section 15).
+    assert!(!rig.shows("rotary_origin"));
+}
+
+/// An operation whose selection set cannot be used shows the error banner of
+/// board 3b with "Reselect in the view", the broken set with a red border in
+/// its Geometry role, and the closing line about export (11.4; C16).
+#[test]
+fn req_ui_11_an_operation_in_error_shows_the_banner_and_its_actions() {
+    use openchuck_app::project::{Item, SelectionTarget};
+    let mut rig = Rig::cube("inspector-error", None);
+    let app = rig.shell.app.as_mut().unwrap();
+    let op = app.project().operations()[0].clone();
+    let model = app.project().models()[0].id;
+    let set = app
+        .save_selection("Lettering", model, SelectionTarget::Triangles([0].into()))
+        .unwrap();
+    app.set_operation_selection(
+        op.id,
+        openchuck_app::selection::SelectionRole::Machine,
+        set,
+        true,
+    )
+    .unwrap();
+    // The set no longer selects anything: a problem up the tree.
+    let mut broken = app
+        .project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == set)
+        .unwrap()
+        .clone();
+    broken.target = SelectionTarget::Triangles(Default::default());
+    app.execute(Command::Replace(Item::SelectionSet(broken)))
+        .unwrap();
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("This operation can't be generated"));
+    assert!(rig.shows("Reselect in the view"));
+    assert!(rig.shows("Show missing"));
+    assert!(rig.shows("Export is blocked while this operation is in error"));
+    assert!(rig.shows("GEOMETRY"));
+    assert!(rig.shows("Cut on"));
+    assert!(rig.shows("Lettering"));
+}
+
+/// The header's name is an editable field: a name is applied as one
+/// undoable command, and an empty one is refused under it (section 8).
+#[test]
+fn req_ui_06_req_ui_08_the_header_renames_as_one_undoable_command() {
+    let mut rig = Rig::cube("inspector-rename", None);
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    let item = ItemRef::Operation(op);
+    assert_eq!(
+        rig.shell.rename_checked(item, "  "),
+        Err("A name cannot be empty. Not applied.".to_owned())
+    );
+    rig.shell.rename_checked(item, "Rough").unwrap();
+    let app = rig.shell.app.as_mut().unwrap();
+    assert_eq!(app.project().operation(op).unwrap().name, "Rough");
+    assert!(app.undo().unwrap());
+    assert_ne!(app.project().operation(op).unwrap().name, "Rough");
+    rig.shell.select(Selection::Operation(op));
+    rig.frame(Vec::new());
+    assert!(rig.shows("TOOL AND FEEDS"));
+}

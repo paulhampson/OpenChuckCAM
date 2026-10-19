@@ -24,6 +24,10 @@ pub struct StrategyChoice {
     pub name: String,
     /// The name shown to the user.
     pub label: String,
+    /// Whether the strategy can cut in a selection (decision record 0032
+    /// item 6); one that cannot is listed with "ignores selections" and takes
+    /// none (interface specification 11.4).
+    pub takes_selections: bool,
 }
 
 impl Application {
@@ -35,6 +39,7 @@ impl Application {
             .map(|s| StrategyChoice {
                 name: s.name().to_owned(),
                 label: s.label().to_owned(),
+                takes_selections: s.honours_region(),
             })
             .collect()
     }
@@ -50,6 +55,22 @@ impl Application {
         strategy: &str,
         setup: SetupId,
         tool: Option<ToolId>,
+    ) -> Result<OperationId, AppError> {
+        self.add_operation_on(name, strategy, setup, tool, None)
+    }
+
+    /// [`Application::add_operation`] with the selection set `cut_on` in its
+    /// Cut on role: the new operation takes the selection (interface
+    /// specification 11.4; decision record 0114 C16). One undoable step.
+    /// Fails, saying why, for a set the project does not have or a strategy
+    /// that cannot cut in a selection.
+    pub fn add_operation_on(
+        &mut self,
+        name: &str,
+        strategy: &str,
+        setup: SetupId,
+        tool: Option<ToolId>,
+        cut_on: Option<openchuck_project::id::SelectionSetId>,
     ) -> Result<OperationId, AppError> {
         let name = name.trim();
         if name.is_empty() {
@@ -81,6 +102,26 @@ impl Application {
         {
             return Err(fail("its tool is not in the project".to_owned()));
         }
+        if let Some(set) = cut_on {
+            if !self
+                .document
+                .project
+                .selection_sets()
+                .iter()
+                .any(|s| s.id == set)
+            {
+                return Err(fail("its selection set is not in the project".to_owned()));
+            }
+            if !self
+                .strategies
+                .get(strategy)
+                .is_ok_and(|s| s.honours_region())
+            {
+                return Err(fail(format!(
+                    "the strategy '{strategy}' ignores selections, so it cannot take one"
+                )));
+            }
+        }
         let id = OperationId::new();
         self.execute(Command::Add {
             item: Item::Operation(Operation {
@@ -90,7 +131,7 @@ impl Application {
                 setup,
                 strategy: strategy.to_owned(),
                 tool,
-                selections: Vec::new(),
+                selections: cut_on.into_iter().collect(),
                 boundary: None,
                 avoid: Vec::new(),
                 check: Vec::new(),

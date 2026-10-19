@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The machine section of the setup inspector as a view model: each machine
+//! profile value in words, whether it is confirmed on the machine, where it
+//! came from and how to confirm it (UI-13, SET-01; interface specification
+//! sections 8 and 11.3; decision record 0029 item 16).
+//!
+//! The profile records two states, confirmed and not (`Confirmation`), and the
+//! owner chose two icons on them (decision record 0114 section F answer 4,
+//! OI-339; the UI-13 wording that follows is proposed as OI-345). Where the
+//! value came from is the profile's own source text, shown in the tooltip.
+
+use crate::setup::{ARange, MachineProfile, ProfileField, a_direction};
+
+/// One machine value as the inspector shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineValue {
+    /// Which value of the profile it is.
+    pub field: ProfileField,
+    /// The label, in sentence case.
+    pub label: &'static str,
+    /// The value in words, with its unit.
+    pub value: String,
+    /// True when it is confirmed on the machine (the green tick); false for
+    /// the amber triangle.
+    pub confirmed: bool,
+    /// The tooltip: confirmed or not, where the value came from, and, when it
+    /// is not confirmed, how to confirm it.
+    pub tooltip: String,
+    /// Shown in the collapsed "Travel and maximum feeds" part (11.3).
+    pub collapsed: bool,
+}
+
+/// How to confirm `field` on the machine, for the tooltip of a value that is
+/// not confirmed.
+pub fn how_to_confirm(field: ProfileField) -> &'static str {
+    match field {
+        ProfileField::RotaryAxis => {
+            "Check which machine axis the chuck turns about, and mark it confirmed in the profile."
+        }
+        ProfileField::ASense => {
+            "Send a small A+ move with a mark on the chuck and see which way its top turns."
+        }
+        ProfileField::RotaryOrigin => {
+            "Measure it by touching the tool tip to the chuck centre and reading G53 Z."
+        }
+        ProfileField::ARange => {
+            "Turn A past a full turn each way and see whether the controller stops it."
+        }
+        ProfileField::Travel => {
+            "Jog each axis to its limits and read the machine coordinates (G53)."
+        }
+        ProfileField::MaxFeeds => {
+            "Take them from the controller's settings or the machine's documented limits."
+        }
+        ProfileField::Clearance => "Set a clearance on the setup to suit its stock.",
+    }
+}
+
+/// The tooltip of `field` in `profile` (section 8): confirmed or not, the
+/// source the profile records, and how to confirm a value that is not.
+pub fn tooltip(profile: &MachineProfile, field: ProfileField) -> String {
+    let source = profile
+        .provenance
+        .get(&field)
+        .map(|p| p.source.trim().trim_end_matches('.'))
+        .filter(|s| !s.is_empty());
+    let source = match source {
+        Some(s) => format!("Source: {s}."),
+        None => "No source is recorded, so it is treated as an unconfirmed placeholder.".to_owned(),
+    };
+    if profile.is_confirmed(field) {
+        format!("Confirmed on the machine. {source}")
+    } else {
+        format!(
+            "Not confirmed on the machine. {source} {}",
+            how_to_confirm(field)
+        )
+    }
+}
+
+fn degrees(v: f64) -> String {
+    format!("{v:.2}\u{b0}")
+}
+
+/// The values of the machine section, in the order of 11.3: rotary axis, A
+/// range, A+ direction, axis height, then travel and the maximum feeds
+/// (collapsed).
+pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
+    let value = |field, label, value: String, collapsed| MachineValue {
+        field,
+        label,
+        value,
+        confirmed: profile.is_confirmed(field),
+        tooltip: tooltip(profile, field),
+        collapsed,
+    };
+    let a_range = match profile.a_range {
+        ARange::Continuous => "Continuous".to_owned(),
+        ARange::Limited { min, max } => format!("{} to {}", degrees(min.0), degrees(max.0)),
+    };
+    let direction = a_direction(profile);
+    let mut direction = direction.replacen("positive A", "A+", 1);
+    if let Some(first) = direction.get(..1) {
+        direction = format!(
+            "{}{}",
+            first.to_uppercase(),
+            direction.get(1..).unwrap_or("")
+        );
+    }
+    let t = &profile.travel;
+    let f = &profile.max_feeds;
+    vec![
+        value(
+            ProfileField::RotaryAxis,
+            "Rotary axis",
+            format!("A, about {}", profile.rotary_axis.name().to_uppercase()),
+            false,
+        ),
+        value(ProfileField::ARange, "A range", a_range, false),
+        value(ProfileField::ASense, "A+ direction", direction, false),
+        value(
+            ProfileField::RotaryOrigin,
+            "Axis height",
+            format!("{:.3} mm (machine Z)", profile.rotary_origin.z),
+            false,
+        ),
+        value(
+            ProfileField::Travel,
+            "Travel",
+            format!(
+                "X {:.3} to {:.3} mm, Y {:.3} to {:.3} mm, Z {:.3} to {:.3} mm",
+                t.min.x, t.max.x, t.min.y, t.max.y, t.min.z, t.max.z
+            ),
+            true,
+        ),
+        value(
+            ProfileField::MaxFeeds,
+            "Maximum feeds",
+            format!(
+                "X and Y {:.0} mm/min, Z {:.0} mm/min, A {:.0} \u{b0}/min",
+                f.linear.0, f.z.0, f.rotary.0
+            ),
+            true,
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use crate::setup::{Confirmation, MAKERA_Z1, Provenance, builtin};
+
+    #[test]
+    fn req_ui_13_each_value_says_whether_it_is_confirmed_its_source_and_how_to_confirm() {
+        let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        let values = machine_values(&z1);
+        let labels: Vec<&str> = values.iter().map(|v| v.label).collect();
+        assert_eq!(
+            labels,
+            [
+                "Rotary axis",
+                "A range",
+                "A+ direction",
+                "Axis height",
+                "Travel",
+                "Maximum feeds"
+            ]
+        );
+        // The Z1's axis height is a placeholder: the amber triangle, with
+        // where it came from and how to confirm it.
+        let height = values.iter().find(|v| v.label == "Axis height").unwrap();
+        assert!(!height.confirmed);
+        assert!(height.value.ends_with("mm (machine Z)"), "{}", height.value);
+        assert!(height.tooltip.starts_with("Not confirmed on the machine."));
+        assert!(height.tooltip.contains("Source: "));
+        assert!(height.tooltip.contains("G53 Z"));
+        // A+ is confirmed: the tick, with no instructions.
+        let sense = values.iter().find(|v| v.label == "A+ direction").unwrap();
+        assert!(sense.confirmed);
+        assert!(sense.tooltip.starts_with("Confirmed on the machine."));
+        assert!(!sense.tooltip.contains("G53"));
+        assert!(sense.value.starts_with("A+ turns"), "{}", sense.value);
+        // No file field names in the words (section 15).
+        for v in &values {
+            assert!(!v.tooltip.contains("rotary_origin"), "{}", v.tooltip);
+            assert!(!v.value.contains('_'), "{}", v.value);
+        }
+        assert!(values.iter().filter(|v| v.collapsed).count() == 2);
+    }
+
+    #[test]
+    fn req_ui_13_a_value_with_no_source_is_an_unconfirmed_placeholder() {
+        let mut z1 = builtin(MAKERA_Z1).unwrap().unwrap();
+        z1.provenance.remove(&ProfileField::Travel);
+        assert!(tooltip(&z1, ProfileField::Travel).contains("unconfirmed placeholder"));
+        z1.provenance.insert(
+            ProfileField::Travel,
+            Provenance {
+                state: Confirmation::Confirmed,
+                source: "measured 1 Oct 2026".to_owned(),
+            },
+        );
+        assert_eq!(
+            tooltip(&z1, ProfileField::Travel),
+            "Confirmed on the machine. Source: measured 1 Oct 2026."
+        );
+    }
+}

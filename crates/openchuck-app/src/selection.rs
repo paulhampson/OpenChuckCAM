@@ -126,11 +126,13 @@ impl SelectionRole {
     /// Every role, in the order the panel lists them.
     pub const ALL: [Self; 4] = [Self::Machine, Self::Boundary, Self::Avoid, Self::Check];
 
-    /// The role's name for a panel.
+    /// The role's name for a panel, as the interface specification names
+    /// it (section 8; decision record 0114 C10). The stored roles keep their
+    /// names.
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Machine => "Machine",
-            Self::Boundary => "Boundary",
+            Self::Machine => "Cut on",
+            Self::Boundary => "Contain within",
             Self::Avoid => "Avoid",
             Self::Check => "Check",
         }

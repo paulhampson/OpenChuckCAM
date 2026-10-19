@@ -679,6 +679,9 @@ fn req_ui_25_check_findings_are_sentences_naming_the_tab_by_its_number() {
         ..Workholding::default()
     };
     let found = app.start_check_workholding(setup, &draft).wait().unwrap();
+    // The finding is on the second tab's row (OI-334 i).
+    assert_eq!(found.iter().map(|f| f.tab).collect::<Vec<_>>(), [Some(1)]);
+    let found: Vec<String> = found.into_iter().map(|f| f.text).collect();
     assert_eq!(
         found,
         vec![
@@ -688,4 +691,53 @@ fn req_ui_25_check_findings_are_sentences_naming_the_tab_by_its_number() {
         ]
     );
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// A collapsed tab row names its zone, and the Narrowest line compares the
+/// tab with the tools of the setup's operations, naming the operation by its
+/// number (interface specification 11.7; OI-334 c and i).
+#[test]
+fn req_ui_25_a_tab_names_its_zone_and_its_narrowest_against_the_tools() {
+    use openchuck_app::workholding::SetupTool;
+    use openchuck_app::workholding_view::{Zone, narrowest_line, tab_zone};
+    let part = openchuck_app::setup::PartExtent {
+        bounds: Aabb {
+            min: Point3::new(-8.0, -5.0, -5.0),
+            max: Point3::new(8.0, 5.0, 5.0),
+        },
+        radius: Millimetres(7.0),
+    };
+    let stored = Workholding {
+        start: Some(held(4.0)),
+        ..Workholding::default()
+    };
+    let stock = cyl();
+    let head = cylinder_tab(-12.0, 3.0, 4.0);
+    assert_eq!(tab_zone(&head, &stored, &stock, &part), Some(Zone::Head));
+    let tail = cylinder_tab(9.0, 2.0, 4.0);
+    assert_eq!(tab_zone(&tail, &stored, &stock, &part), Some(Zone::Tail));
+    let across = cylinder_tab(-1.0, 2.0, 4.0);
+    assert_eq!(tab_zone(&across, &stored, &stock, &part), None);
+
+    let tools = vec![
+        SetupTool {
+            tool: "T1 Ball \u{d8}3".into(),
+            diameter: 3.0,
+            operation: "1 Rough".into(),
+        },
+        SetupTool {
+            tool: "T2 Flat \u{d8}6".into(),
+            diameter: 6.0,
+            operation: "2 Finish".into(),
+        },
+    ];
+    let (line, warning) = narrowest_line(&head, &tools);
+    assert!(warning);
+    assert_eq!(
+        line,
+        "4.000 mm, narrower than the tool T2 Flat \u{d8}6 (6.000 mm) of 2 Finish"
+    );
+    let (line, warning) = narrowest_line(&cylinder_tab(-12.0, 3.0, 8.0), &tools);
+    assert!(!warning, "{line}");
+    assert_eq!(narrowest_line(&head, &[]).0, "4.000 mm");
 }

@@ -246,7 +246,7 @@ fn req_ui_14_the_keys_are_left_to_any_dialog_or_window_in_front_of_the_view() {
         ("the results window", |s| s.run.show_results()),
         ("the add-operation dialog", |s| {
             if let Some(app) = &s.app {
-                s.run.begin_add(app);
+                s.run.begin_add(app, None, None);
             }
         }),
     ];
