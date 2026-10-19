@@ -43,9 +43,13 @@ impl Rig {
         let (dir, app, _, _) = cube_project(name);
         app.save().unwrap();
         drop(app);
-        let mut shell = Shell::new(false, Some(dir.clone()));
         // Not the real configuration folder.
+        let mut shell = Shell::with_settings(false, Some(dir.clone()), None);
         shell.export = ExportPanel::new(None);
+        // The selection sets are a tab of the dock (specification 12.2),
+        // tall enough here to show a set's details under the table.
+        shell.dock_tab = super::dock::DockTab::SelectionSets;
+        shell.settings.dock.size = 380.0;
         let mut rig = Self {
             shell,
             ctx: egui::Context::default(),
@@ -350,7 +354,7 @@ fn req_ui_05_the_sets_panel_selects_a_set_in_view_and_takes_its_swatch_colour() 
     // "Select in view" makes the set the working selection.
     // The table is wider than the panel: scroll it sideways to the link.
     let header = rig.text_centre("Kind").expect("the table is shown");
-    let over_panel = egui::pos2(1250.0, header.y);
+    let over_panel = header;
     rig.frame(vec![Event::PointerMoved(over_panel)]);
     for _ in 0..4 {
         rig.frame(vec![Event::MouseWheel {
@@ -381,6 +385,29 @@ fn req_ui_05_the_sets_panel_selects_a_set_in_view_and_takes_its_swatch_colour() 
     assert_eq!(rig.shell.selection.working_triangles(), vec![0, 1]);
     // The set's details are now shown with a row of swatches: choosing the
     // third stores that colour on the set, through an undoable command.
+    // The details are under the table in the dock: scroll down to them.
+    let mut swatches = rig.square_fills(18.0);
+    for _ in 0..40 {
+        if swatches.len() >= 8 {
+            break;
+        }
+        rig.frame(vec![
+            Event::PointerMoved(over_panel),
+            Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: egui::vec2(0.0, -60.0),
+                modifiers: Modifiers::NONE,
+            },
+        ]);
+        std::thread::sleep(Duration::from_millis(5));
+        swatches = rig.square_fills(18.0);
+    }
+    // Let the scroll settle, so the swatches are where they will be clicked.
+    for _ in 0..20 {
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let swatches = rig.square_fills(18.0);
     assert!(swatches.len() >= 8, "{} swatches", swatches.len());
     let (at, fill) = swatches[2];

@@ -768,27 +768,34 @@ fn req_ui_09_a_timeline_needs_a_run_made_by_the_pipeline_and_a_machine() {
 /// Slice 9 review checklist: "The UI stays responsive during generation
 /// within a stated frame-time budget" (decision record 0040 item 8). The user
 /// interface thread only polls (`try_result`, `drain_events`); this checks
-/// that polling stays cheap and prompt while the pipeline runs on the pool.
+/// that polling stays cheap while the pipeline runs on the pool. That a poll
+/// never waits for the job at all is checked without timing in the job
+/// manager's own tests (`req_nfr_04_polling_never_waits_for_a_running_job`).
+///
+/// Only the poll calls are timed. The 2 ms sleep stands for the frame's other
+/// work, and how promptly the operating system wakes the thread from it says
+/// nothing about the product: with every core busy (the job's pool, and the
+/// other tests of a parallel run) a 2 ms sleep overslept to 30 ms, which
+/// failed the earlier version of this test (decision record 0119, As built).
 #[test]
 fn req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread() {
     let (dir, app, _) = project("responsive");
     app.set_cache_versions(0);
-    // A run long enough to poll many times: simulate at a fine cell.
-    let mut gaps = Vec::new();
+    let mut polls = Vec::new();
+    let mut running = 0;
     let job = app.start_simulate();
-    let mut last = Instant::now();
-    let started = last;
+    let started = Instant::now();
     let mut events = 0;
     loop {
+        let poll = Instant::now();
         let result = job.try_result();
         events += app.drain_events().len();
-        let now = Instant::now();
-        gaps.push(now - last);
-        last = now;
+        polls.push(poll.elapsed());
         if let Some(r) = result {
             r.unwrap();
             break;
         }
+        running += 1;
         // A frame's worth of other work between polls.
         std::thread::sleep(Duration::from_millis(2));
         assert!(
@@ -796,30 +803,30 @@ fn req_ui_09_req_nfr_04_polling_a_running_job_never_blocks_the_interface_thread(
             "the job never finished"
         );
     }
+    let whole = started.elapsed();
     assert!(
         events >= 2,
         "the job reported its start and end ({events} events)"
     );
-    gaps.sort();
-    let worst = *gaps.last().unwrap();
-    eprintln!(
-        "responsiveness: {} polls, p50 {:?}, p95 {:?}, worst {worst:?}",
-        gaps.len(),
-        gaps[gaps.len() / 2],
-        gaps[gaps.len() * 95 / 100]
-    );
-    // Each poll-and-drain, with its 2 ms of other work, fits in half a frame
-    // of the 33 ms budget even though every core is busy with the job.
-    // Hosted CI runners are noisy, so the limit is five times larger there
-    // (`CI` set), as for the pick budget; the strict figure is checked locally.
-    let relax = if std::env::var_os("CI").is_some() {
-        5
-    } else {
-        1
-    };
     assert!(
-        worst < Duration::from_millis(17 * relax),
-        "the longest gap between polls was {worst:?}"
+        running >= 2,
+        "the job was polled while it ran ({running} polls)"
+    );
+    polls.sort();
+    let p95 = polls[polls.len() * 95 / 100];
+    let worst = *polls.last().unwrap();
+    eprintln!(
+        "responsiveness: {} polls over {whole:?}, p50 {:?}, p95 {p95:?}, worst {worst:?}",
+        polls.len(),
+        polls[polls.len() / 2]
+    );
+    // The poll's share of the 17 ms gap of record 0040 (half the 33 ms frame
+    // of NFR-03). The 95th percentile, so that a thread switched out once by a
+    // loaded machine does not decide it; a poll that waited would put most
+    // polls far over the limit.
+    assert!(
+        p95 < Duration::from_millis(17),
+        "95% of polls took under {p95:?}"
     );
     let _ = std::fs::remove_dir_all(dir);
 }

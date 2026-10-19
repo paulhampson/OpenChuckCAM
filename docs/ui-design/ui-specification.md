@@ -1,7 +1,7 @@
 # OpenChuckCAM user interface specification
 
-- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16.
-- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026.
+- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16. On 19 Oct 2026 the four readings of [decision 0117](../decisions/0117-slice-22-shell-frame.md) (lane X2, the shell frame) were written into sections 3, 4, 5 and 9 (OI-350, the owner's answer A, relayed by the coordinator).
+- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026; the decision 0117 readings, 19 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
 - **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
 
@@ -69,7 +69,7 @@ Sizes are logical pixels at 100% scale. The default scale is 120% (decision 0029
 
 - **Splitters** are 5 pixels with a grip mark. Double-clicking one resets its panel to the default size.
 - **Collapsing.** The project panel, the inspector and the dock collapse with the chevron in their headers, or Ctrl 1, Ctrl 2 and Ctrl 3. A collapsed side panel leaves a 28-pixel rail with its icon. *(UI-16)*
-- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 120% a 1366 × 768 screen gives about 1138 × 640 logical pixels, so on such a screen the user reduces the scale once with View > Smaller. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size, the dock and then the inspector collapse first. *(UI-16)*
+- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 120% a 1366 × 768 screen gives about 1138 × 640 logical pixels, so on such a screen the user reduces the scale once with View > Smaller. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size the dock collapses, and the inspector too when the viewport would be narrower than 420 pixels. Neither is kept as the user's choice: the user can open either again, and the rule applies afresh once the window is large again. *(UI-16)*
 - **Remembered layout.** Panel sizes, collapsed panels, open sections, scale and theme are remembered per user on the computer, never in the project (section 13). *(UI-15)*
 - **Dialogs.**
   - Modal dialogs (open, new, unsaved changes, errors) stay inside the main window.
@@ -91,7 +91,12 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 **The step indicator.** Each step shows a numbered circle and a name.
 
 - The active step has an accent underline and a filled circle.
-- A step whose outputs are complete has a green ring round its number.
+- A step whose outputs are complete has a green ring round its number. Complete means:
+  - Model: there is a model and none is in error;
+  - Setup: there is a machine, every setup has stock and a part, and no setup check warns;
+  - Operations: every enabled operation is up to date;
+  - Simulate: every enabled operation has been simulated as it is now;
+  - Post and export: G-code has been written from every enabled operation as it is now.
 - An unavailable step is dimmed, and its tooltip gives the reason.
 - Alt 1 to Alt 5 open the steps.
 
@@ -103,7 +108,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 - **It is the next required step.** It is the first of these that applies:
   1. If an enabled item has an error that blocks the next step, the primary button is disabled. Its tooltip names the problem, and the problem's row in the messages panel is highlighted.
   2. If enabled operations are stale, it is "Generate stale (n)".
-  3. On Simulate, if an operation has not been simulated, it is "Run simulation". If it has not been generated either, it is "Generate and simulate op N".
+  3. On Simulate, if an operation has not been simulated, it is "Run simulation". If it has not been generated either, it is "Generate and simulate op N". On Simulate this rule is checked before rule 2, since simulating generates.
   4. Otherwise it continues to the next step.
 - **Disabled means explained.** A disabled primary button always has a tooltip with the reason, and the footer status says the same.
 - **Dialogs follow the rule.** Import has "Add to project", the tool library "Add to project" (when opened from "+"), and export "Write G-code". Each is bottom right.
@@ -317,7 +322,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
   - one or two plain sentences saying what happened and why;
   - the source item, as a link;
   - an action link ("Reselect", "Review setup", "Generate").
-- **Order.** Errors first, then warnings, then information; newest first within each.
+- **Order.** Errors first, then warnings, then information. Messages are worked out from the project's state and carry no time, so within a severity they follow a fixed order of their sources, from the latest kind of news to the earliest: job failures, generation, selection sets, setups, models.
 - **Filters.** Chips for each severity with their counts.
 - **Links.** Choosing the source selects the item in the tree and the view.
 - **Where messages come from:**
@@ -800,7 +805,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 
 | # | Built or proposed | This specification | Resolution |
 | --- | --- | --- | --- |
-| D1 | The rotary axis is drawn orange (0029, owner's run, observation 3) | Cyan; amber is for cut moves | Change the viewport's role colour |
+| D1 | The rotary axis is drawn orange (0029, owner's run, observation 3) | Cyan; amber is for cut moves | Change the viewport's role colour (done by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)) |
 | D2 | The NFR-12 notice is always in the status bar (0029 item 8) | Kept in short form in the footer, and in full at export with the acknowledgement | Keep both; the mockups omit the footer form and are to be read with this section |
 | D3 | Parameters are applied on focus loss, with Reset (0029 item 11) | The same, plus a changed-value dot, derived values and typed units (UI-18, UI-19, P2) | No change to P1 behaviour |
 | D4 | Inch display is not part of P1 (0029 item 11) | The "mm \| in" switch is P2 (UI-18); with P1 only the footer reads "mm · deg" | As 0029 |
@@ -851,7 +856,7 @@ Tracked in [open-items.md](../open-items.md):
 
 ## 20. Rendered mockups
 
-Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
+Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
 
 | Image | Board | Section |
 | --- | --- | --- |
