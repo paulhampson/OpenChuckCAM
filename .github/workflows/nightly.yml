@@ -47,7 +47,7 @@ jobs:
         with:
           tool: cargo-fuzz
       - name: Restore the corpus of earlier nights
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -113,7 +113,7 @@ jobs:
           exit "$code"
       - name: Keep the corpus for the next night
         if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
