@@ -298,6 +298,138 @@ pub fn held_span(draft: &Workholding, end: End, stock: &Stock) -> Option<String>
     Some(format!("X {} to {}", x(lo), x(hi)))
 }
 
+/// The head or the tail zone (decision 0035, owner's answers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zone {
+    /// Between the held region at the start (or the start of the stock) and
+    /// the part.
+    Head,
+    /// Between the part and the held region at the end (or the end of the
+    /// stock).
+    Tail,
+}
+
+impl Zone {
+    /// The zone's name on a row: "Head", "Tail".
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Head => "Head",
+            Self::Tail => "Tail",
+        }
+    }
+
+    const fn lower(self) -> &'static str {
+        match self {
+            Self::Head => "head",
+            Self::Tail => "tail",
+        }
+    }
+}
+
+/// The read-only zone lines of the section (11.7 item 3), head then tail,
+/// from the part's extent against the stored held regions: "Head zone X
+/// −10.000 to −8.000 mm (2.000 mm)", or "Head zone: no room for a tab".
+/// `None` when the stock's extent is not known.
+pub fn zone_lines(stored: &Workholding, stock: &Stock, part: &PartExtent) -> Option<[String; 2]> {
+    let (head, tail) = openchuck_types::workholding::tab_zones(stored, stock, part)?;
+    let line = |zone: Zone, (lo, hi): (f64, f64)| {
+        if hi - lo <= 1e-6 {
+            format!("{} zone: no room for a tab", zone.name())
+        } else {
+            format!(
+                "{} zone X {} to {} mm ({:.3} mm)",
+                zone.name(),
+                x(lo),
+                x(hi),
+                hi - lo
+            )
+        }
+    };
+    Some([line(Zone::Head, head), line(Zone::Tail, tail)])
+}
+
+/// The zone `tab` lies wholly in, for its collapsed row ("Head"); `None` when
+/// it lies in neither or the stock's extent is not known.
+pub fn tab_zone(tab: &Tab, stored: &Workholding, stock: &Stock, part: &PartExtent) -> Option<Zone> {
+    let (head, tail) = openchuck_types::workholding::tab_zones(stored, stock, part)?;
+    let (lo, hi) = (tab.x_start.0, tab.x_start.0 + tab.length.0);
+    let inside = |(a, b): (f64, f64)| lo >= a - 1e-6 && hi <= b + 1e-6 && b - a > 1e-6;
+    if inside(head) {
+        Some(Zone::Head)
+    } else if inside(tail) {
+        Some(Zone::Tail)
+    } else {
+        None
+    }
+}
+
+/// The line that says why a zone has no default tab (11.7, "No default"), or
+/// `None` when it has one.
+pub fn no_default_line(
+    zone: Zone,
+    default: &crate::workholding::ZoneDefault,
+    stored: &Workholding,
+) -> Option<String> {
+    use crate::workholding::ZoneDefault;
+    match default {
+        ZoneDefault::Tab(_) => None,
+        ZoneDefault::NoRoom => {
+            let held = match zone {
+                Zone::Head => stored.start.is_some(),
+                Zone::Tail => stored.end.is_some(),
+            };
+            Some(format!(
+                "No room for a default tab at the {}: {}.",
+                zone.lower(),
+                if held {
+                    "the held region reaches the part"
+                } else {
+                    "the stock ends at the part"
+                }
+            ))
+        }
+        ZoneDefault::Point { x: at } => Some(format!(
+            "The part comes to a point at X {} mm, so there is no diameter to base a default \
+             tab on; add the tab by hand.",
+            x(*at)
+        )),
+        ZoneDefault::NoFit {
+            stock_diameter,
+            small,
+            x: at,
+        } => Some(format!(
+            "The stock ({stock_diameter:.3} mm across) leaves no room for a default tab of \
+             {small:.3} mm at X {} mm; add the tab by hand.",
+            x(*at)
+        )),
+    }
+}
+
+/// The read-only Narrowest line of a tab compared with the tools of the
+/// setup's operations (11.7 item 4), and whether it is a warning: "3.000 mm,
+/// narrower than the tool T2 Flat Ø6 (6.000 mm) of 1 Rough".
+pub fn narrowest_line(tab: &Tab, tools: &[crate::workholding::SetupTool]) -> (String, bool) {
+    let d = narrowest(tab);
+    let widest = tools
+        .iter()
+        .filter(|t| t.diameter > d + 1e-9)
+        .max_by(|a, b| a.diameter.total_cmp(&b.diameter));
+    match widest {
+        Some(t) => (
+            format!(
+                "{d:.3} mm, narrower than the tool {} ({:.3} mm) of {}",
+                t.tool, t.diameter, t.operation
+            ),
+            true,
+        ),
+        None if tools.is_empty() => (format!("{d:.3} mm"), false),
+        None => (
+            format!("{d:.3} mm, as wide as every tool of the setup's operations or wider"),
+            false,
+        ),
+    }
+}
+
 /// A new held region as the check box turns it on: 10 mm, at the stock's own
 /// diameter.
 pub fn new_held_region() -> HeldRegion {

@@ -23,6 +23,7 @@ use std::sync::{Arc, OnceLock};
 
 mod bench;
 mod export_panel;
+mod field_row;
 mod floating;
 mod form_panel;
 mod graphics;
@@ -30,6 +31,7 @@ mod import_panel;
 mod machine_panel;
 mod model_panel;
 mod playback_panel;
+mod results_panel;
 mod roles;
 mod run_panel;
 mod selection_panel;

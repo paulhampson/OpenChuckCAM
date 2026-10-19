@@ -108,7 +108,7 @@ fn view(id: SetupId) -> SceneView {
 fn req_ui_03_the_front_view_draws_stock_clearance_safe_z_and_dimensions() {
     let (dir, app, id) = project("front", true);
     let view = view(id);
-    let panes = setup_panes(app.project(), &view, &[], &[]).unwrap();
+    let panes = setup_panes(app.project(), &view, &[], &[], &[]).unwrap();
     let f = &panes.front;
     let stock = f.stock.unwrap();
     assert_eq!(
@@ -150,7 +150,14 @@ fn req_ui_25_req_ui_03_both_panes_draw_held_regions_and_tabs_in_section() {
     let view = view(id);
     let wh = workholding();
     let (_, _, solids) = display_items(&wh, Some(&cyl()), &extent()).unwrap();
-    let panes = setup_panes(app.project(), &view, &solids, &[WorkholdingItem::Tab(1)]).unwrap();
+    let panes = setup_panes(
+        app.project(),
+        &view,
+        &solids,
+        &[WorkholdingItem::Tab(1)],
+        &[],
+    )
+    .unwrap();
     let f = &panes.front;
     // One held region, dimensioned "Held 6.000", with no label of its own.
     assert_eq!(f.held.len(), 1);
@@ -196,10 +203,51 @@ fn req_ui_25_req_ui_03_both_panes_draw_held_regions_and_tabs_in_section() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Default tabs offered and not added are drawn in section too, apart from
+/// the stored tabs, labelled "Default tab, not added" (7.5; OI-383).
+#[test]
+fn req_ui_25_the_default_tabs_offered_are_in_both_panes() {
+    let (dir, app, id) = project("offered", true);
+    let offered = Workholding {
+        tabs: vec![Tab {
+            x_start: Millimetres(-12.0),
+            length: Millimetres(3.0),
+            shape: TabShape::Frustum {
+                start_diameter: Millimetres(8.0),
+                end_diameter: Millimetres(4.0),
+            },
+            layout: TabLayout::OnAxis,
+        }],
+        ..Workholding::default()
+    };
+    let (_, _, solids) = display_items(&offered, Some(&cyl()), &extent()).unwrap();
+    let panes = setup_panes(app.project(), &view(id), &[], &[], &solids).unwrap();
+    let f = &panes.front;
+    assert!(f.tabs.is_empty());
+    assert_eq!(f.offered.len(), 1);
+    assert_eq!(
+        f.offered[0].label.as_deref(),
+        Some("Default tab, not added")
+    );
+    assert_eq!(f.offered[0].outline[0], [-12.0, -4.0]);
+    assert_eq!(f.offered[0].outline[1], [-9.0, -2.0]);
+    let e = &panes.end;
+    assert!(e.tabs.is_empty());
+    assert_eq!(e.offered.len(), 1);
+    assert_eq!(
+        (e.offered[0].centre, e.offered[0].radius),
+        ([0.0, 0.0], 4.0)
+    );
+    // Not a stored tab: no start angle, and the legend has no tab entry.
+    assert!(e.start_angle.is_none());
+    assert!(!panes.legend.contains(&LegendEntry::Tab));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn req_ui_03_the_a_arrow_follows_the_machine_and_is_absent_without_one() {
     let (dir, app, id) = project("arrow", true);
-    let panes = setup_panes(app.project(), &view(id), &[], &[]).unwrap();
+    let panes = setup_panes(app.project(), &view(id), &[], &[], &[]).unwrap();
     let arc = &panes.end.a_arc;
     assert_eq!(arc.len(), 55);
     // It starts at the top of the part (Z up) and turns through 270 degrees.
@@ -211,7 +259,7 @@ fn req_ui_03_the_a_arrow_follows_the_machine_and_is_absent_without_one() {
     std::fs::remove_dir_all(dir).unwrap();
 
     let (dir, app, id) = project("noarrow", false);
-    let panes = setup_panes(app.project(), &view(id), &[], &[]).unwrap();
+    let panes = setup_panes(app.project(), &view(id), &[], &[], &[]).unwrap();
     assert!(panes.end.a_arc.is_empty());
     assert!(panes.front.travel_z.is_none());
     // Without a machine, no clearance either: the legend leaves them out.
@@ -238,19 +286,19 @@ fn req_nfr_07_a_setup_without_stock_or_part_and_an_unknown_setup_draw_what_exist
         setup: Some(id),
         ..SceneView::default()
     };
-    let panes = setup_panes(app.project(), &bare, &[], &[]).unwrap();
+    let panes = setup_panes(app.project(), &bare, &[], &[], &[]).unwrap();
     assert!(panes.front.stock.is_none());
     assert!(panes.end.stock.is_none() && panes.end.part_radius.is_none());
     // The axis and the clearance still show, round the work zero.
     assert!(panes.front.axis.0 < 0.0 && panes.front.axis.1 > 0.0);
     assert!(!panes.end.a_arc.is_empty());
     // A scene of no setup, or of one the project does not hold, has no panes.
-    assert!(setup_panes(app.project(), &SceneView::default(), &[], &[]).is_none());
+    assert!(setup_panes(app.project(), &SceneView::default(), &[], &[], &[]).is_none());
     let other = SceneView {
         setup: Some(SetupId::new()),
         ..SceneView::default()
     };
-    assert!(setup_panes(app.project(), &other, &[], &[]).is_none());
+    assert!(setup_panes(app.project(), &other, &[], &[], &[]).is_none());
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -266,7 +314,7 @@ fn req_set_03_box_stock_is_a_rectangle_in_the_end_view() {
         },
     });
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
-    let panes = setup_panes(app.project(), &view(id), &[], &[]).unwrap();
+    let panes = setup_panes(app.project(), &view(id), &[], &[], &[]).unwrap();
     let Some(EndStock::Box(b)) = panes.end.stock else {
         panic!("a box")
     };

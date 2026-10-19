@@ -134,6 +134,9 @@ pub struct WorkholdingDraft {
     pub failing: Vec<WorkholdingItem>,
     /// Default tabs offered and not added: dashed sand outlines, no fill.
     pub offered: Vec<SceneMesh>,
+    /// Which tab each offered mesh is, with its section for the Setup panes,
+    /// indexing `offered`.
+    pub offered_solids: Vec<SceneSolid>,
 }
 
 /// How the scene is drawn besides the view model itself.
@@ -509,6 +512,9 @@ pub struct Viewport {
     pub(crate) legend_open: bool,
     /// The "Show or hide" list is open (V).
     pub(crate) show_menu_open: bool,
+    /// Where the view was drawn last frame (the import preview's overlays
+    /// sit at its corners).
+    pub(crate) last_rect: Rect,
 }
 
 /// Where the tool is, for the readout (7.2): X, Y, Z and A as the program
@@ -590,6 +596,7 @@ impl Viewport {
             tool_readout: None,
             legend_open: false,
             show_menu_open: false,
+            last_rect: Rect::NOTHING,
         }
     }
 
@@ -703,13 +710,6 @@ impl Viewport {
         self.show
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shell wires it with steps and the workholding inspector (lanes X2 and X4; decision 0119)"
-        )
-    )]
     /// Draws `draft` instead of the setup's stored workholding, or the
     /// stored one again for `None` (7.5, 11.7). While a draft is drawn a
     /// chip says so.
@@ -735,42 +735,29 @@ impl Viewport {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shell wires it with steps and the workholding inspector (lanes X2 and X4; decision 0119)"
-        )
-    )]
     /// Outlines the held region or tab whose inspector row has keyboard
     /// focus, as a hover does (7.5, principle 9).
     pub fn set_focused_solid(&mut self, item: Option<WorkholdingItem>) {
         self.focused_item = item;
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shell wires it with steps and the workholding inspector (lanes X2 and X4; decision 0119)"
-        )
-    )]
     /// Selects a held region or tab, drawn with a 3-pixel accent outline
     /// while it stays selected (7.5), or none.
     pub fn set_selected_solid(&mut self, item: Option<WorkholdingItem>) {
         self.selected_item = item;
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shell wires it with steps and the workholding inspector (lanes X2 and X4; decision 0119)"
-        )
-    )]
     /// The selected held region or tab.
     pub fn selected_solid(&self) -> Option<WorkholdingItem> {
         self.selected_item
+    }
+
+    /// The default tabs offered and not added, for the Setup panes (7.5);
+    /// none while the stored workholding is drawn.
+    pub(crate) fn offered_solids(&self) -> &[SceneSolid] {
+        self.draft
+            .as_ref()
+            .map_or(&[], |d| d.offered_solids.as_slice())
     }
 
     /// The held regions and tabs of the draft that fail a check, for the
@@ -933,6 +920,7 @@ impl Viewport {
 
     /// Draws the view in `rect`, with its overlays, and handles its input.
     fn show_view_in(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        self.last_rect = rect;
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         paint_gradient(ui.painter(), rect);
         if !self.available {
@@ -1449,6 +1437,7 @@ pub(crate) mod tests {
             solids: view.solids.clone(),
             failing: vec![WorkholdingItem::Tab(0)],
             offered: vec![view.meshes[1].clone()],
+            offered_solids: vec![view.solids[1].clone()],
         };
         let mut viewport = Viewport::new(true);
         viewport.set_scene(view, true);

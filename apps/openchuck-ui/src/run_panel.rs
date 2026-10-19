@@ -15,7 +15,7 @@ use std::time::Instant;
 
 use eframe::egui::{self, Color32, RichText};
 use openchuck_app::project::Project;
-use openchuck_app::project::id::{OperationId, SetupId, ToolId};
+use openchuck_app::project::id::{OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::{Application, JobHandle, JobId, JobLog, Regeneration, StrategyChoice};
 
 use crate::theme::DARK;
@@ -174,6 +174,8 @@ struct AddOperation {
     strategy: String,
     setup: Option<SetupId>,
     tool: Option<ToolId>,
+    /// The selection set the new operation takes in Cut on, with its name.
+    cut_on: Option<(SelectionSetId, String)>,
 }
 
 /// Generating, its results, and the add-operation dialog.
@@ -283,7 +285,6 @@ impl RunPanel {
                     Ok(run) => {
                         let run = Arc::new(run);
                         self.last = Some(Arc::clone(&run));
-                        self.show_results = true;
                         Some((run, id))
                     }
                     Err(e) if e.is_cancelled() => {
@@ -326,15 +327,47 @@ impl RunPanel {
         self.show_results = true;
     }
 
-    /// Opens the add-operation dialog with the first setup, tool and
-    /// strategy chosen.
-    pub fn begin_add(&mut self, app: &Application) {
+    /// Opens the add-operation dialog (11.4): the setup and tool of the
+    /// operation `from` (the selected one), or else the last tool used in
+    /// machining order, and the selection set `set` for Cut on.
+    pub fn begin_add(
+        &mut self,
+        app: &Application,
+        from: Option<OperationId>,
+        set: Option<SelectionSetId>,
+    ) {
+        let project = app.project();
         let choices = app.strategy_choices();
+        let from = from.and_then(|id| project.operation(id));
+        let tool = from.and_then(|o| o.tool).or_else(|| {
+            project
+                .operations()
+                .iter()
+                .rev()
+                .find_map(|o| o.tool)
+                .or_else(|| project.tools().first().map(|t| t.id))
+        });
+        let cut_on = set.and_then(|id| {
+            project
+                .selection_sets()
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| (id, s.name.clone()))
+        });
+        let strategy = choices
+            .iter()
+            .find(|c| cut_on.is_none() || c.takes_selections)
+            .or(choices.first())
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
         self.adding = Some(AddOperation {
-            name: format!("Operation {}", app.project().operations().len() + 1),
-            strategy: choices.first().map(|c| c.name.clone()).unwrap_or_default(),
-            setup: app.project().setups().first().map(|s| s.id),
-            tool: app.project().tools().first().map(|t| t.id),
+            name: format!("Operation {}", project.operations().len() + 1),
+            strategy,
+            setup: from
+                .map(|o| o.setup)
+                .or_else(|| project.setups().first().map(|s| s.id)),
+            tool,
+            cut_on,
         });
     }
 
@@ -381,7 +414,12 @@ impl RunPanel {
                         .selected_text(shown)
                         .show_ui(ui, |ui| {
                             for c in &choices {
-                                ui.selectable_value(&mut form.strategy, c.name.clone(), &c.label);
+                                let label = if c.takes_selections {
+                                    c.label.clone()
+                                } else {
+                                    format!("{} \u{b7} ignores selections", c.label)
+                                };
+                                ui.selectable_value(&mut form.strategy, c.name.clone(), label);
                             }
                         });
                 });
@@ -414,6 +452,19 @@ impl RunPanel {
                             }
                         });
                 });
+                let takes = choices
+                    .iter()
+                    .find(|c| c.name == form.strategy)
+                    .is_some_and(|c| c.takes_selections);
+                if let Some((_, set)) = &form.cut_on {
+                    if takes {
+                        ui.label(format!("Cut on: {set}"));
+                    } else {
+                        ui.weak(format!(
+                            "This strategy ignores selections, so it does not take '{set}'."
+                        ));
+                    }
+                }
                 ui.weak("Everything else starts at the strategy's defaults; set them in the operation's panel.");
                 ui.horizontal(|ui| {
                     if ui
@@ -430,7 +481,12 @@ impl RunPanel {
         let mut added = None;
         let mut error = None;
         if add && let Some(setup) = form.setup {
-            match app.add_operation(&form.name, &form.strategy, setup, form.tool) {
+            let takes = choices
+                .iter()
+                .find(|c| c.name == form.strategy)
+                .is_some_and(|c| c.takes_selections);
+            let cut_on = form.cut_on.as_ref().filter(|_| takes).map(|(id, _)| *id);
+            match app.add_operation_on(&form.name, &form.strategy, setup, form.tool, cut_on) {
                 Ok(id) => {
                     added = Some(id);
                     close = true;
@@ -564,5 +620,33 @@ mod tests {
         finish(&mut panel);
         assert_eq!(state(&app), Some(ItemState::UpToDate));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A new operation starts with the last tool used and takes the
+    /// selection set shown (interface specification 11.4; decision record
+    /// 0114 C16).
+    #[test]
+    fn req_ui_06_a_new_operation_takes_the_last_tool_and_the_selection() {
+        use openchuck_app::project::SelectionTarget;
+        let (dir, mut app, op, _) = crate::testing::cube_project("run-new-op");
+        let operation = app.project().operation(op).unwrap().clone();
+        let model = app.project().models()[0].id;
+        let set = app
+            .save_selection("Top", model, SelectionTarget::Triangles([0, 1].into()))
+            .unwrap();
+        let mut panel = RunPanel::default();
+        panel.begin_add(&app, None, Some(set));
+        let form = panel.adding.as_ref().unwrap();
+        assert_eq!(form.tool, operation.tool);
+        assert_eq!(form.setup, Some(operation.setup));
+        assert_eq!(form.cut_on.as_ref().map(|(id, _)| *id), Some(set));
+        let takes = app
+            .strategy_choices()
+            .into_iter()
+            .find(|c| c.name == form.strategy)
+            .unwrap()
+            .takes_selections;
+        assert!(takes, "{}", form.strategy);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
