@@ -1847,6 +1847,116 @@ mod tests {
         assert!(viewport.show_menu_open);
     }
 
+    /// Runs one frame of `viewport` on a `size` screen with the pointer at
+    /// `pointer`, and returns where its overlays went.
+    fn overlays_at(
+        viewport: &mut Viewport,
+        ctx: &egui::Context,
+        size: egui::Vec2,
+        pointer: egui::Pos2,
+    ) -> (Rect, Vec<Rect>) {
+        let input = |events| egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), size)),
+            events,
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input(vec![egui::Event::PointerMoved(pointer)]), |ui| {
+                viewport.show(ui);
+            });
+            output.textures_delta.clear();
+        }
+        let mut found = (Rect::NOTHING, Vec::new());
+        let mut output = ctx.run_ui(input(Vec::new()), |ui| {
+            let full = ui.available_rect_before_wrap();
+            let view = full.with_min_y(full.top() + crate::viewport_toolbar::HEIGHT);
+            found = (
+                view,
+                crate::viewport_overlays::boxes(ui, viewport, view).all(),
+            );
+        });
+        output.textures_delta.clear();
+        found
+    }
+
+    #[test]
+    fn req_ui_02_req_ui_16_the_overlays_never_overlap_on_any_step() {
+        use openchuck_app::pathview::deviation_bands;
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        let mut view = cube_scene("overlays");
+        let held = held_and_tab();
+        let first = view.meshes.len();
+        view.meshes.extend(held.meshes);
+        view.solids.extend(held.solids.into_iter().map(|mut s| {
+            s.mesh += first;
+            s
+        }));
+        let model = view.meshes[0].model.unwrap();
+        viewport.set_scene(view, true);
+        let check = |viewport: &mut Viewport, size: egui::Vec2, count: usize| {
+            // The pointer over the cube's front face, for the readout.
+            let height = size.y - crate::viewport_toolbar::HEIGHT;
+            let ndc = viewport
+                .camera
+                .project([5.0, 0.0, 5.0], f64::from(size.x / height))
+                .unwrap();
+            let pointer = pos2(
+                ((ndc[0] + 1.0) * 0.5) as f32 * size.x,
+                crate::viewport_toolbar::HEIGHT + ((1.0 - ndc[1]) * 0.5) as f32 * height,
+            );
+            let (rect, boxes) = overlays_at(viewport, &ctx, size, pointer);
+            assert_eq!(
+                boxes.len(),
+                count,
+                "{:?} at {size:?}: {boxes:?}",
+                viewport.step()
+            );
+            for (i, a) in boxes.iter().enumerate() {
+                assert!(rect.contains_rect(*a), "{a:?} outside {rect:?}");
+                for b in boxes.iter().skip(i + 1) {
+                    assert!(!a.intersects(*b), "{a:?} overlaps {b:?}");
+                }
+            }
+        };
+        let large = egui::vec2(1100.0, 760.0);
+        let small = egui::vec2(900.0, 480.0);
+        // Setup: the cube, the triad and the held region and tab legend.
+        check(&mut viewport, large, 3);
+        // Operations: the path legend and the readout of the point under the
+        // pointer join them; in a low view the legend is a button, and it
+        // opens below it.
+        let mut paths = Scene::default();
+        paths.add_polyline(
+            &[Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)],
+            roles::CUT,
+            false,
+        );
+        viewport.set_layer(Layer::Paths, paths);
+        viewport.set_view(StandardView::Front);
+        check(&mut viewport, large, 4);
+        check(&mut viewport, small, 4);
+        viewport.legend_open = true;
+        check(&mut viewport, small, 5);
+        // Simulate: the colour scale with the kept roles, and the tool at
+        // its move in the readout.
+        let values: Vec<Option<(f64, bool)>> = (0..12)
+            .map(|i| if i == 0 { None } else { Some((0.2, false)) })
+            .collect();
+        viewport.set_bands(Some((model, deviation_bands(&values, 0.1))));
+        viewport.set_tool_readout(Some(ToolReadout {
+            work: [1.0, 2.0, 3.0, 4.0],
+            move_number: 7,
+        }));
+        check(&mut viewport, large, 4);
+        // A draft shows its chip; the scale stays where it is.
+        viewport.set_workholding_draft(Some(WorkholdingDraft::default()));
+        check(&mut viewport, large, 4);
+        // The toolbar offers Simulate's Show choices, and the scene is drawn.
+        assert_eq!(viewport.step(), ViewStep::Simulate);
+        assert!(viewport.is_drawn());
+    }
+
     #[test]
     fn req_ui_25_the_ray_meets_the_nearest_triangle_in_front() {
         let mesh = fixtures::mesh();

@@ -28,7 +28,7 @@ const ROW: f32 = 18.0;
 
 /// Where the boxes are this frame.
 #[derive(Debug, Default)]
-struct Boxes {
+pub(crate) struct Boxes {
     cube: Option<Rect>,
     triad: Option<Rect>,
     legend: Option<Rect>,
@@ -36,6 +36,24 @@ struct Boxes {
     readout: Option<Rect>,
     scale: Option<Rect>,
     held: Option<Rect>,
+}
+
+impl Boxes {
+    /// Every box shown.
+    pub(crate) fn all(&self) -> Vec<Rect> {
+        [
+            self.cube,
+            self.triad,
+            self.legend,
+            self.legend_button,
+            self.readout,
+            self.scale,
+            self.held,
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
 }
 
 /// What the path legend lists (7.2), with the held region and tab roles
@@ -246,7 +264,8 @@ fn cube_face_at(camera: &Camera, cube: Rect, p: Pos2) -> Option<StandardView> {
         .map(|(view, ..)| *view)
 }
 
-fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
+/// Where the overlays go in the view `rect` this frame (7.2).
+pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     let mut b = Boxes::default();
     let step = viewport.step();
     let right = rect.right() - MARGIN;
@@ -319,18 +338,7 @@ pub fn interact(ui: &egui::Ui, viewport: &mut Viewport, rect: Rect) -> bool {
         return false;
     };
     let clicked = ui.input(|i| i.pointer.primary_clicked());
-    let over = [
-        b.cube,
-        b.triad,
-        b.legend,
-        b.legend_button,
-        b.readout,
-        b.scale,
-        b.held,
-    ]
-    .iter()
-    .flatten()
-    .any(|r| r.contains(pointer));
+    let over = b.all().iter().any(|r| r.contains(pointer));
     if clicked {
         if let Some(cube) = b.cube
             && cube.contains(pointer)

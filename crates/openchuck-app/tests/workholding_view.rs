@@ -721,3 +721,58 @@ fn req_ui_25_check_findings_are_sentences_naming_the_tab_by_its_number() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_ui_25_a_frustum_tab_and_a_held_region_with_its_own_diameter_are_described() {
+    use openchuck_app::scene::WorkholdingItem;
+    // The tooltip of 7.5: "Tab 2 · frustum · X 14.000 to 16.000 mm · Ø 4.000
+    // to Ø 8.000 mm"; a held region whose diameter is given does not say
+    // "(stock)".
+    let w = Workholding {
+        start: None,
+        end: Some(HeldRegion {
+            length: Millimetres(4.0),
+            diameter: Some(Millimetres(20.0)),
+        }),
+        tabs: vec![
+            cylinder_tab(-10.0, 2.0, 4.0),
+            Tab {
+                shape: TabShape::Frustum {
+                    start_diameter: Millimetres(4.0),
+                    end_diameter: Millimetres(8.0),
+                },
+                ..cylinder_tab(10.0, 2.0, 4.0)
+            },
+        ],
+    };
+    let part = openchuck_app::setup::PartExtent {
+        bounds: Aabb {
+            min: Point3::new(-8.0, -5.0, -5.0),
+            max: Point3::new(8.0, 5.0, 5.0),
+        },
+        radius: Millimetres(5.0),
+    };
+    let view = openchuck_app::workholding_view::display_scene(&w, Some(&cyl()), &part).unwrap();
+    let described: Vec<(WorkholdingItem, &str)> = view
+        .solids
+        .iter()
+        .map(|s| (s.item, s.description.as_str()))
+        .collect();
+    assert_eq!(
+        described,
+        [
+            (
+                WorkholdingItem::End,
+                "Held region at the end · 4.000 mm · Ø 20.000 mm"
+            ),
+            (
+                WorkholdingItem::Tab(0),
+                "Tab 1 · cylinder · X -10.000 to -8.000 mm · Ø 4.000 mm"
+            ),
+            (
+                WorkholdingItem::Tab(1),
+                "Tab 2 · frustum · X 10.000 to 12.000 mm · Ø 4.000 to Ø 8.000 mm"
+            ),
+        ]
+    );
+}
