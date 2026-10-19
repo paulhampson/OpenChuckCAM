@@ -814,8 +814,11 @@ fn req_op_11_req_nfr_07_a_strategy_without_leave_zones_other_than_roughing_is_st
     app.edit_selection(top, SelectionEdit::StockToLeave(Some(0.8)))
         .unwrap();
     let e = err(app.regenerate());
+    // The strategy is named by its label, and no requirement ID is shown
+    // (specification section 15).
+    let label = app.strategy_label("simultaneous_finishing");
     assert!(
-        e.contains("'simultaneous_finishing'") && e.contains("OP-11"),
+        e.contains(&format!("'{label}'")) && !e.contains("OP-11") && !e.contains("_finishing"),
         "{e}"
     );
     std::fs::remove_dir_all(&dir).unwrap();

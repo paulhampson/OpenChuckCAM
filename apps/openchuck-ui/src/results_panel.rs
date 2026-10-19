@@ -9,6 +9,8 @@
 //! The numbers come from [`summarise`], a plain function over the run, so they
 //! are tested without a window.
 
+use std::sync::Arc;
+
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, Vec2};
 use openchuck_app::pathview::DeviationBand;
 use openchuck_app::setup::Millimetres;
@@ -204,6 +206,8 @@ pub struct ResultsPanel {
     pub colour_by: ColourBy,
     /// The text of the cell size field while it is being edited.
     cell_text: Option<String>,
+    /// The latest run and its numbers.
+    summary: Option<(Arc<Regeneration>, Vec<SetupResults>)>,
     /// Why the cell size was refused.
     pub(crate) error: Option<String>,
 }
@@ -219,7 +223,7 @@ impl ResultsPanel {
         &mut self,
         ui: &mut egui::Ui,
         app: &mut Application,
-        run: Option<&Regeneration>,
+        run: Option<&Arc<Regeneration>>,
     ) -> bool {
         let before = self.colour_by;
         ui.label(
@@ -235,8 +239,21 @@ impl ResultsPanel {
             }
         });
         ui.add_space(6.0);
-        match run.map(|r| (r, summarise(r))) {
-            Some((_, results)) if !results.is_empty() => {
+        // The numbers are worked out once for each run, not every frame.
+        if let Some(r) = run {
+            if !self
+                .summary
+                .as_ref()
+                .is_some_and(|(c, _)| Arc::ptr_eq(c, r))
+            {
+                self.summary = Some((Arc::clone(r), summarise(r)));
+            }
+        } else {
+            self.summary = None;
+        }
+        let results = self.summary.as_ref().map(|(_, r)| r.clone());
+        match results {
+            Some(results) if !results.is_empty() => {
                 if run.is_some_and(|r| *r.project != *app.project()) {
                     ui.colored_label(
                         DARK.warning,
@@ -266,10 +283,17 @@ impl ResultsPanel {
         ui.label(RichText::new("RESOLUTION").strong().color(DARK.muted));
         ui.horizontal(|ui| {
             ui.label("Cell size");
+            // The edit buffer lives only while the field has the keyboard (or
+            // holds a refused value), so a change from outside, such as an
+            // undo, is shown and never written back.
+            let id = ui.make_persistent_id("results cell size");
+            if !ui.memory(|m| m.has_focus(id)) && self.error.is_none() {
+                self.cell_text = None;
+            }
             let text = self
                 .cell_text
                 .get_or_insert_with(|| format!("{current:.3}"));
-            let field = ui.add(egui::TextEdit::singleline(text).desired_width(70.0));
+            let field = ui.add(egui::TextEdit::singleline(text).id(id).desired_width(70.0));
             ui.label(RichText::new("mm").color(DARK.muted));
             let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let reset = ui

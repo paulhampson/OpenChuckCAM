@@ -436,7 +436,7 @@ pub fn assemble_with_entry(
             Some(_) => points.iter().map(|p| p.contact).collect(),
             None => {
                 let breaks = walls::wall_breaks(&rotary, points, tolerance);
-                smoothed_contacts_between(points, &breaks)
+                smoothed_contacts_between(&rotary, points, &breaks)
             }
         };
         b.contact = contacts.first().copied().unwrap_or(head.contact);
@@ -479,42 +479,78 @@ pub fn assemble_with_entry(
 pub const CONTACT_SMOOTHING: usize = 2;
 
 /// The contact points of a pass for measuring its contact path: each the
-/// mean of itself and up to [`CONTACT_SMOOTHING`] neighbours either side
-/// (fewer at the ends, keeping the window centred). On a mesh the contact
-/// jumps from facet to facet by about the tool radius times the facet angle
-/// (decision record 0015); averaging removes that jitter from the contact
-/// length while a smooth path is left almost unchanged.
-pub fn smoothed_contacts(points: &[CutPoint]) -> Vec<Point3> {
-    smoothed_contacts_between(points, &[])
+/// point's own tip plus the mean, over itself and up to
+/// [`CONTACT_SMOOTHING`] neighbours either side (fewer at the ends, keeping
+/// the window centred), of the contact's offset from the tip, taken in the
+/// machine's fixed frame of `rotary`, where the tool stands still and the
+/// part turns, so the offset says where on the tool the contact sits. On a
+/// mesh the contact jumps from facet to facet by about the tool radius times
+/// the facet angle (decision record 0015); averaging the offset removes that
+/// jitter from the contact length while a smooth path is left unchanged.
+/// The position follows the point's own tip, not the mean of the window's
+/// positions, so points spaced unevenly (one that path fitting adds between
+/// two seeds) do not shift their neighbours' contacts along the path, which
+/// made the short moves beside such a point a third slower than programmed
+/// (decision record 0115 item 5; OP-13).
+pub fn smoothed_contacts(rotary: &RotaryMapping, points: &[CutPoint]) -> Vec<Point3> {
+    smoothed_contacts_between(rotary, points, &[])
 }
 
 /// [`smoothed_contacts`] with the window stopped at each index of `breaks`
 /// (in increasing order): the points before a break and those from it on are
 /// smoothed separately, so a wall step's contact jump is not shared with the
 /// moves beside it (decision record 0050).
-fn smoothed_contacts_between(points: &[CutPoint], breaks: &[usize]) -> Vec<Point3> {
+fn smoothed_contacts_between(
+    rotary: &RotaryMapping,
+    points: &[CutPoint],
+    breaks: &[usize],
+) -> Vec<Point3> {
     let mut out = Vec::with_capacity(points.len());
     let mut start = 0;
     for &end in breaks.iter().chain(std::iter::once(&points.len())) {
         if let Some(piece) = points.get(start..end) {
-            out.extend(smoothed_piece(piece));
+            out.extend(smoothed_piece(rotary, piece));
         }
         start = end;
     }
     out
 }
 
-fn smoothed_piece(points: &[CutPoint]) -> Vec<Point3> {
+fn smoothed_piece(rotary: &RotaryMapping, points: &[CutPoint]) -> Vec<Point3> {
     let n = points.len();
+    let fixed = |p: &CutPoint| {
+        let tip = rotary.to_axis(p.tip, p.a);
+        let contact = rotary.to_axis(p.contact, p.a);
+        (
+            tip,
+            [
+                contact.along - tip.along,
+                contact.across - tip.across,
+                contact.height - tip.height,
+            ],
+        )
+    };
     (0..n)
         .map(|i| {
             let half = CONTACT_SMOOTHING.min(i).min(n - 1 - i);
             let window = points.get(i - half..=i + half).unwrap_or_default();
             let count = window.len().max(1) as f64;
-            let sum = window
-                .iter()
-                .fold(Point3::ORIGIN, |acc, p| acc + p.contact.to_vec());
-            Point3::new(sum.x / count, sum.y / count, sum.z / count)
+            let offset = window.iter().fold([0.0; 3], |acc, p| {
+                let (_, o) = fixed(p);
+                [acc[0] + o[0], acc[1] + o[1], acc[2] + o[2]]
+            });
+            let Some(own) = points.get(i) else {
+                return Point3::ORIGIN;
+            };
+            let (tip, _) = fixed(own);
+            rotary.to_model(
+                AxisPosition {
+                    along: tip.along + offset[0] / count,
+                    across: tip.across + offset[1] / count,
+                    height: tip.height + offset[2] / count,
+                },
+                own.a,
+            )
         })
         .collect()
 }
@@ -780,14 +816,45 @@ mod tests {
                 point(f64::from(i) * 0.1, if up { 8.5 } else { 5.0 }, 0.0, c)
             })
             .collect();
-        let across = smoothed_contacts(&points);
-        let stopped = smoothed_contacts_between(&points, &[3]);
+        let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
+        let across = smoothed_contacts(&rotary, &points);
+        let stopped = smoothed_contacts_between(&rotary, &points, &[3]);
         // Smoothed across the wall, the moves beside it share its jump;
         // stopped at it, they keep their own contact and the wall step has
         // the whole jump.
         assert!(across[2].distance(across[1]) > 0.5);
-        assert_eq!(stopped[..3], [low, low, low]);
-        assert_eq!(stopped[3..], [high, high, high]);
+        for (c, expected) in stopped.iter().zip([low, low, low, high, high, high]) {
+            assert!(c.distance(expected) < 1e-9, "{c:?} against {expected:?}");
+        }
+    }
+
+    #[test]
+    fn req_op_13_contact_smoothing_follows_each_tip_whatever_the_spacing() {
+        // Points round the axis 5 degrees apart with one more at 12.5
+        // degrees, as path fitting adds one between two seeds (decision
+        // record 0115), each touching the surface 0.3 mm below its tip.
+        // Averaging the contact positions would pull the points either side
+        // of the odd one 1.5 degrees towards it, and the short moves beside
+        // it would carry a contact path 60 % longer than the tip's (OI-331:
+        // a third slower than programmed on the groove reference job).
+        let rotary = RotaryMapping::of_profile(&MachineProfile::example_x_rotary());
+        let points: Vec<CutPoint> = [0.0, 5.0, 10.0, 12.5, 15.0, 20.0, 25.0]
+            .into_iter()
+            .map(|a| {
+                let p = point(0.0, 10.0, a, Point3::ORIGIN);
+                let contact = p.tip + rotary.tool_axis(Degrees(a)).get() * -0.3;
+                CutPoint { contact, ..p }
+            })
+            .collect();
+        let smoothed = smoothed_contacts(&rotary, &points);
+        for (p, c) in points.iter().zip(&smoothed) {
+            assert!(
+                c.distance(p.contact) < 1e-9,
+                "A {}: smoothed contact {c:?} against {:?}",
+                p.a.0,
+                p.contact
+            );
+        }
     }
 
     #[test]

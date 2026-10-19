@@ -27,7 +27,7 @@ use crate::roles;
 use crate::theme::DARK;
 use crate::viewport::{ToolReadout, Viewport};
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
+const PROBLEM: Color32 = DARK.error;
 
 /// Points of toolpath the viewport is asked to draw at most. A million line
 /// vertices is about 24 MB on the GPU and draws well within a frame on the
@@ -576,7 +576,6 @@ impl PlaybackPanel {
     /// under it. Clicking seeks.
     fn timeline_bar(&mut self, ui: &mut egui::Ui, app: &Application, data: &PlaybackData) {
         let timeline = &data.timeline;
-        let total = timeline.total_time();
         let groups = timeline.group_count();
         let moves = timeline.move_count().max(1);
         // Operations enabled in the project that the run did not make.
@@ -657,14 +656,8 @@ impl PlaybackPanel {
             x += seg_w;
         }
         let made_width = rect.width() * made_total / all;
-        let fraction = if total > 0.0 {
-            (timeline.time_at(self.playback.cursor()) / total) as f32
-        } else {
-            0.0
-        };
         // The playhead sits at the cursor's move, since segments are sized by moves.
         let done = self.pose().map_or(0, |p| p.cursor.done) as f32;
-        let _ = fraction;
         let head = rect.left() + made_width * (done / moves as f32).clamp(0.0, 1.0);
         painter.vline(
             head,
@@ -839,7 +832,7 @@ impl PlaybackPanel {
                 self.stock_controls(ui, app, &data);
                 ui.checkbox(&mut self.bands_on, "Colour the part by deviation")
                     .on_disabled_hover_text("Generate with a simulation first")
-                    .on_hover_text("Overcut, on the surface, and material left (SIM-05)");
+                    .on_hover_text("Overcut, on the surface, and material left");
             });
             if changed {
                 self.lines_dirty = true;

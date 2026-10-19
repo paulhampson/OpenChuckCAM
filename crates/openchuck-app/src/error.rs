@@ -106,4 +106,42 @@ impl AppError {
                 | Self::Import(openchuck_import::ImportError::Cancelled)
         )
     }
+
+    /// The error in plain words for a panel (specification section 15): a
+    /// refused parameter value says what is wrong with it, without the
+    /// parameter's name in the strategy's schema, which the panel shows
+    /// beside the field already.
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::Path(openchuck_path::PathError::Parameter { reason, .. }) => {
+                let mut chars = reason.chars();
+                let mut out: String = chars
+                    .next()
+                    .map(|c| c.to_uppercase().chain(chars).collect())
+                    .unwrap_or_default();
+                if !out.ends_with(['.', '!', '?']) {
+                    out.push('.');
+                }
+                out
+            }
+            other => other.to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Specification section 15: no schema field names in what a panel reads.
+    #[test]
+    fn req_nfr_15_a_refused_parameter_reads_as_a_sentence() {
+        let error = AppError::from(openchuck_path::PathError::parameter(
+            "stepover_mm",
+            "must be above 0 mm",
+        ));
+        assert_eq!(error.user_message(), "Must be above 0 mm.");
+        let cancelled = AppError::Path(openchuck_path::PathError::Cancelled);
+        assert_eq!(cancelled.user_message(), cancelled.to_string());
+    }
 }

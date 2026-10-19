@@ -18,7 +18,9 @@ use openchuck_types::workholding::{
 };
 
 use crate::AppError;
-use crate::scene::{SceneMesh, ScenePolyline, SceneRole, SceneSolid, SceneView, WorkholdingItem};
+use crate::scene::{
+    SceneMesh, ScenePolyline, SceneRole, SceneSolid, SceneView, SolidSection, WorkholdingItem,
+};
 
 /// Which end of the stock a held region is at: low X or high X.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -612,6 +614,11 @@ pub fn display_items(
             mesh: meshes.len(),
             item,
             description: describe(workholding, item, &solid, nth),
+            section: SolidSection {
+                x: (base.x, top.x),
+                radii: (solid.base_radius(), solid.top_radius()),
+                centre: (base.y, base.z),
+            },
         });
         meshes.push(SceneMesh {
             role,

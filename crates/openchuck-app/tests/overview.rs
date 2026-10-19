@@ -1056,3 +1056,29 @@ fn req_gc_07_req_nfr_06_a_run_up_to_an_operation_is_the_same_at_1_2_and_n_thread
         assert_eq!(run.generated, runs[0].generated);
     }
 }
+
+#[test]
+fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
+    let mut f = fixture("plain-machine", "cube_ascii.stl");
+    let z1 = openchuck_app::setup::builtin(openchuck_app::setup::MAKERA_Z1)
+        .unwrap()
+        .unwrap();
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(z1))))
+        .unwrap();
+    // Part offset far along the axis: the stock runs past the X travel.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.frame.part_offset = Millimetres(195.0);
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let text: Vec<&str> = o.messages.iter().map(|m| m.text.as_str()).collect();
+    let uses = text
+        .iter()
+        .find(|t| t.contains("uses machine values"))
+        .unwrap_or_else(|| panic!("{text:?}"));
+    assert!(uses.contains("axis height, travel"), "{uses}");
+    for field in ["rotary_origin", "max_feeds", "a_sense"] {
+        assert!(!text.iter().any(|t| t.contains(field)), "{field}: {text:?}");
+    }
+}

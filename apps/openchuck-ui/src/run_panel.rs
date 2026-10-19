@@ -18,8 +18,10 @@ use openchuck_app::project::Project;
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
 use openchuck_app::{Application, JobHandle, JobId, JobLog, Regeneration, StrategyChoice};
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
-const NOTE: Color32 = Color32::from_rgb(230, 180, 60);
+use crate::theme::DARK;
+
+const PROBLEM: Color32 = DARK.error;
+const NOTE: Color32 = DARK.warning;
 
 /// How serious a line of the results is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

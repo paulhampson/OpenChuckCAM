@@ -85,6 +85,21 @@ pub struct SceneSolid {
     /// Its name and size, for the tooltip: "Tab 2 · frustum · X 14.000 to
     /// 16.000 mm · Ø 4.000 to Ø 8.000 mm".
     pub description: String,
+    /// Its shape as the Setup panes draw it in section (7.5, 11.3).
+    pub section: SolidSection,
+}
+
+/// The shape of a held region or tab solid, a cylinder or a frustum along X,
+/// for the Setup panes' section drawings (specification 7.5, 11.3).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SolidSection {
+    /// Model X of its low-X and high-X ends.
+    pub x: (f64, f64),
+    /// The radius at those ends.
+    pub radii: (f64, f64),
+    /// Where its centre line crosses the Y and Z axes' plane: its offset from
+    /// the rotary axis along model Y and Z.
+    pub centre: (f64, f64),
 }
 
 /// A mesh to draw shaded, with the feature edges to draw over it.
@@ -220,6 +235,13 @@ pub struct SceneView {
     /// The work offset register of the setup shown ("G54"), which names the
     /// frame of the viewport's readout (specification 7.2).
     pub work_register: Option<String>,
+    /// The extent of the placed part, which bounding-box stock and the Setup
+    /// panes measure from (11.3).
+    pub part_extent: Option<PartExtent>,
+    /// The part's silhouette seen from the side, for the Setup panes: model
+    /// X with the lowest and highest model Z of the part there
+    /// ([`crate::setup_panes::silhouette`]).
+    pub part_silhouette: Vec<[f64; 3]>,
 }
 
 /// The scene item of the placed part `model`: its triangles `mesh`, and for a
@@ -306,6 +328,7 @@ pub(crate) fn build_scene(
         match placed_part(root, model, context) {
             Ok(placed) => {
                 part = merge_extent(part, openchuck_geom::part_extent(&placed.mesh));
+                view.part_silhouette = crate::setup_panes::silhouette(&placed.mesh);
                 let item = part_mesh(model, placed.mesh, placed.brep.as_ref(), &mut view.notes)?;
                 view.meshes.push(item);
             }
@@ -343,6 +366,7 @@ pub(crate) fn build_scene(
         }));
     }
 
+    view.part_extent = part;
     let mut bounds = part.map(|p| p.bounds);
     if let Some(stock) = chosen.and_then(|s| s.stock.as_ref()) {
         match stock_outline(stock, part.as_ref()) {

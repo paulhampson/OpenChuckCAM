@@ -70,6 +70,8 @@ pub const HOVER: Colour = hex(0xffe066);
 /// Avoid and check surfaces, the travel limit and mesh findings: red
 /// `#ff7b72`.
 pub const AVOID: Colour = hex(0xff7b72);
+/// The clearance cylinder and the safe Z, green `#4cc38a`, dashed.
+pub const CLEARANCE: Colour = hex(0x4cc38a);
 /// Mesh findings: a red outline.
 pub const FINDING: Colour = hex(0xff7b72);
 /// The ring round a hole in a mesh: amber, the `warning` token `#f2b84b`.

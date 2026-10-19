@@ -159,7 +159,15 @@ impl ImportSession {
         self.preview = None;
         self.error = None;
         self.selected = None;
+        // A unit chosen for the previous file does not apply to this one.
+        self.units = None;
         self.check(app);
+    }
+
+    /// Takes `path` as the file to check, as a dropped file does.
+    pub fn set_path(&mut self, app: &Application, path: PathBuf) {
+        self.path_text = path.display().to_string();
+        self.submit_path(app);
     }
 
     /// The placement steps chosen.

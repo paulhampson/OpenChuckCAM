@@ -9,7 +9,7 @@
 
 use std::time::{Duration, Instant};
 
-use eframe::egui::{Event, Key, Modifiers};
+use eframe::egui::{Key, Modifiers};
 use openchuck_app::overview::Step;
 
 use super::frame_tests::Rig;
@@ -84,15 +84,8 @@ fn req_sim_05_req_sim_07_the_results_inspector_shows_the_numbers_and_the_resolut
 fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons() {
     let mut rig = simulated("sim-dock");
     assert_eq!(rig.shell.dock_tab, DockTab::Playback);
-    for text in [
-        "Speed",
-        "1000×",
-        "10 000×",
-        "Whole program",
-        "Go to move",
-        "Feed",
-    ] {
-        assert!(rig.shows(text) || text == "Feed", "{text} is on screen");
+    for text in ["Speed", "1000×", "10 000×", "Whole program", "Go to move"] {
+        assert!(rig.shows(text), "{text} is on screen");
     }
     assert!(rig.shows("The simulation results do not change"));
     assert!(!rig.shows("Max"), "there is no Max speed");
@@ -162,5 +155,4 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
         rig.shell.app.as_ref().unwrap().project().models().len(),
         before
     );
-    let _ = Event::PointerGone;
 }

@@ -6,9 +6,11 @@
 
 use std::collections::BTreeMap;
 
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, RichText};
 use openchuck_app::form::{Field, FieldKind, ParameterForm, Source};
 use openchuck_app::project::ParameterValue;
+
+use crate::theme::DARK;
 
 /// An edit the user made to one field.
 #[derive(Debug, Clone, PartialEq)]
@@ -147,7 +149,7 @@ pub fn show_fields(
                 ui.end_row();
                 if let Some(error) = state.error(&field.name) {
                     ui.label("");
-                    ui.label(RichText::new(error).color(Color32::from_rgb(230, 80, 80)));
+                    ui.label(RichText::new(error).color(DARK.error));
                     ui.end_row();
                 }
             }
@@ -210,7 +212,7 @@ fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> 
     ui.horizontal(|ui| {
         let note = source_text(field.source);
         if field.source == Source::Missing {
-            ui.label(RichText::new(note).color(Color32::from_rgb(230, 80, 80)));
+            ui.label(RichText::new(note).color(DARK.error));
         } else if !note.is_empty() {
             ui.weak(note);
         }

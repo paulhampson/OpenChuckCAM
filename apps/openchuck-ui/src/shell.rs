@@ -1001,7 +1001,7 @@ impl Shell {
     fn results_inspector(&mut self, ui: &mut egui::Ui) {
         let run = self.run.last().cloned();
         let Some(app) = &mut self.app else { return };
-        if self.results.show(ui, app, run.as_deref()) {
+        if self.results.show(ui, app, run.as_ref()) {
             self.play
                 .set_colour_by(self.results.colour_by, &mut self.viewport);
         }
@@ -1242,7 +1242,7 @@ impl Shell {
         ui.separator();
         let edit = match app.parameter_form(id) {
             Ok(form) => {
-                ui.weak(format!("Strategy: {}", form.strategy));
+                ui.weak(format!("Strategy: {}", app.strategy_label(&form.strategy)));
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .show(ui, |ui| form_panel::show(ui, &form, &mut self.form))
@@ -1256,7 +1256,7 @@ impl Shell {
         if let Some(edit) = edit {
             let result = app
                 .set_parameter(id, &edit.name, edit.value)
-                .map_err(|e| e.to_string());
+                .map_err(|e| e.user_message());
             self.form.result(&edit.name, result);
         }
         if let Some(error) = roles {
@@ -1355,7 +1355,10 @@ impl Shell {
     /// Whether a dialog or a floating window (export, results, add operation)
     /// is in front of the view.
     fn window_open(&self) -> bool {
-        self.dialog.is_some() || self.export.is_open() || self.run.has_window()
+        self.dialog.is_some()
+            || self.export.is_open()
+            || self.run.has_window()
+            || self.import.is_some()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
@@ -1369,8 +1372,15 @@ impl Shell {
                 .map(|f| f.path().to_path_buf())
                 .filter(|p| !p.as_os_str().is_empty())
         });
-        if let (Some(file), Some(app), None) = (dropped, &self.app, &self.import) {
-            self.import = Some(ImportSession::new(app, file));
+        if let Some(file) = dropped {
+            match (&self.app, &mut self.import) {
+                (Some(app), None) => self.import = Some(ImportSession::new(app, file)),
+                (Some(app), Some(session)) if !session.is_adding() => session.set_path(app, file),
+                (Some(_), Some(_)) => {}
+                (None, _) => {
+                    self.status = "Open or create a project before importing a model.".to_owned();
+                }
+            }
         }
         let (Some(app), Some(session)) = (&self.app, &mut self.import) else {
             return;

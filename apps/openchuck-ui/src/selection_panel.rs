@@ -26,9 +26,10 @@ use openchuck_app::{
 use openchuck_viewport::{Colour, Hatch, Scene, Slot};
 
 use crate::roles;
+use crate::theme::DARK;
 use crate::viewport::{PickFilter, PickInput};
 
-const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
+const PROBLEM: Color32 = DARK.error;
 /// Working selection: blue `#3d8bff` at 40%, a fill (specification 7.4;
 /// decision 0038 amends 0037 item 5).
 const WORKING: Colour = [0.239, 0.545, 1.0, FILL_ALPHA];
@@ -1035,7 +1036,7 @@ impl SelectionPanel {
                 !self.working.is_empty() && self.working_model.is_some() && self.writing.is_none();
             if ui
                 .add_enabled(ready, egui::Button::new("New set from selection"))
-                .on_hover_text("Name this selection so operations can use it (UI-05)")
+                .on_hover_text("Name this selection so operations can use it")
                 .clicked()
                 && let Some(model) = self.working_model
             {

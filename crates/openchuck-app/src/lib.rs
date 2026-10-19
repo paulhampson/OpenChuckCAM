@@ -46,6 +46,7 @@ pub mod scene;
 pub mod selection;
 pub mod settings;
 pub mod setup;
+pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
 pub mod stockplay;
