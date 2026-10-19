@@ -1,6 +1,6 @@
 # 0156: `openchuck-ui` is a Windows GUI-subsystem release binary that attaches to the parent console (lane BUG-LOG; issue 155; OI-455)
 
-- **Status:** proposed. Not accepted; only the project owner accepts a record. The coordinator relayed the owner's answer that the CLI keeps printing to the console; the owner approved the plan for the UI binary below as the technical route (relayed by the coordinator); OI-455 lists what the owner checks on Windows.
+- **Status:** accepted by the project owner (19 Oct 2026), directly in the lane BUG-LOG session. The coordinator relayed the owner's answer that the CLI keeps printing to the console; the owner approved the plan for the UI binary below as the technical route (relayed by the coordinator); OI-455 lists what the owner checks on Windows.
 - **Date:** 19 Oct 2026.
 - **Open items:** OI-455.
 

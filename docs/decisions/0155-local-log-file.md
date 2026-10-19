@@ -1,6 +1,6 @@
 # 0155: A local log file for the desktop application (lane BUG-LOG; issue 155; OI-453 to OI-457)
 
-- **Status:** proposed. Not accepted; only the project owner accepts a record. The choices below follow the owner's answers relayed by the coordinator session (location and fall-backs, rotation, verbosity left as is, the About button, CLI unchanged, requirement NFR-17).
+- **Status:** accepted by the project owner (19 Oct 2026), directly in the lane BUG-LOG session. The choices below follow the owner's answers relayed by the coordinator session (location and fall-backs, rotation, verbosity left as is, the About button, CLI unchanged, requirement NFR-17).
 - **Date:** 19 Oct 2026.
 - **Open items:** OI-453 (requirement, closed: NFR-17), OI-454 (About button), OI-455 (Windows checks), OI-456 (closed), OI-457 (issue 156 seam), OI-458 and OI-459 (a log-level flag and a Settings option, not built).
 
