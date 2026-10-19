@@ -163,6 +163,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
+| BUG-LOG | Issue 155 (trial finding F-14): no console window behind the Windows application, a local log file beside the executable, panics logged, the log path for the About window. Built 19 Oct 2026 on `claude/lane-bug-log-console-and-log-file` ([decision 0155](decisions/0155-local-log-file.md) and [decision 0156](decisions/0156-windows-gui-subsystem-and-console-attach.md), both proposed; OI-453 to OI-457; no project format change, no requirement ID yet) | ██ | | | | |
 | T | 20 hardening and first release | | | | | ██ |
 
 `██` is working, `░░` is waiting. The entry module of [decision 0026](decisions/0026-entry-moves.md) (pull request 37) must be on `main` before lanes E, H and L start.
@@ -204,6 +205,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X5 | X2 and X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X6 | X2; its Simulate colours after X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| BUG-LOG | Nothing. Touches `apps/openchuck-ui` `main.rs`, `graphics.rs` (the logger) and the new `logging.rs`, the crate's `Cargo.toml` and the docs; stays out of the files of X4, SU, BI, XC and FIT. The About button is OI-454. |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
 | T | Everything, including W and X1 to X9 |
