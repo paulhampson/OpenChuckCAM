@@ -1,6 +1,6 @@
 # 0125: Slice 22 Simulate results, playback dock, one import window and selection-set rows (lane X6)
 
-- **Status:** proposed. Lane X6, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). It records how the lane built differences C14 (the import window), C17 (Simulate) and C20 (selection sets), and the choices the specification leaves open. It is guidance until the owner accepts it.
+- **Status:** accepted by the project owner as written (19 Oct 2026), in the lane's own session. The owner's decisions on OI-372 (Max removed) and OI-374 (Reselect agreed as built) were relayed by the coordinator before. Lane X6, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). It records how the lane built differences C14 (the import window), C17 (Simulate) and C20 (selection sets), and the choices the specification leaves open.
 - **Date:** 19 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-370 to OI-374 are new; OI-372 and OI-374 are closed. OI-342 stays open (this lane's boards are re-rendered).
 
