@@ -294,6 +294,7 @@ Technology choices (crates, geometry kernel, rendering stack) are made in the ar
 | NFR-13 | Bindings to C++ libraries, for example for STEP import, are acceptable where they are the best-maintained option, provided they build on Windows, macOS and Linux. | P1 |
 | NFR-14 | Choose dependencies for long-term health: well featured, actively maintained, thoroughly documented, tested with CI, and used by several mature open-source projects. Newer crates, and crates with a high proportion of AI-generated contribution, count as a risk that must be justified. | P1 |
 | NFR-15 | The interface is legible and accessible: text at least 12 pixels at 100% scale, scaling from 80% to 200%, contrast of 4.5:1 for text and 3:1 for meaningful graphics, no state shown by colour alone, and colour maps that differ in lightness. | P1 |
+| NFR-17 | The desktop application opens no console window when started from the desktop or a shortcut. It writes a local diagnostic log (start-up, graphics adapter, warnings, errors and panics) to a folder the user can write to, size-limited by rotation, and never sends it anywhere. Output the user asked for on the command line (--bench, --help) still reaches the terminal it was started from. | P1 |
 
 ## 6. Suggested additional features for decision
 

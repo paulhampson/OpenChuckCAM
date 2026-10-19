@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The local log file (issue 155; decision record 0155; requirement NFR-LOG,
-//! proposed, not yet numbered).
+//! The local log file (issue 155; decision record 0155; requirement NFR-17).
 //!
 //! On Windows a release build has no console window, so everything the
 //! program says goes to a file as well as to standard error. The file is
-//! `openchuckcam.log` in the folder of the executable; when that folder
-//! cannot be written (an installed build under `Program Files`) it is in the
-//! per-user configuration folder instead, and when neither works nothing is
-//! written and the program runs on (NFR-07). The file never leaves the
-//! computer (NFR-09).
+//! `openchuckcam.log` in `OPENCHUCK_LOG_DIR` when that is set, else in the
+//! folder of the executable; when that folder cannot be written (an installed
+//! build under `Program Files`) it is in the per-user log folder instead, then
+//! in the system temp folder, and when none works nothing is written and the
+//! program runs on (NFR-07). The file never leaves the computer (NFR-09).
 //!
 //! At start a log over [`MAX_BYTES`] becomes `openchuckcam.1.log`, and the
 //! older ones move up, keeping [`KEEP`] old files. Panics are written too,
@@ -24,11 +23,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+use openchuck_app::library::Platform;
+
 /// The size above which a log file is rotated at start.
 pub const MAX_BYTES: u64 = 1024 * 1024;
 
 /// How many rotated files are kept beside the current one.
-pub const KEEP: usize = 2;
+pub const KEEP: usize = 3;
 
 const STEM: &str = "openchuckcam";
 
@@ -119,22 +120,52 @@ pub fn open_in(folders: &[PathBuf], max_bytes: u64, keep: usize) -> Option<(File
     })
 }
 
-/// The folders to try: beside the executable, then the per-user folder.
-pub fn candidate_folders(exe: Option<&Path>, user: Option<PathBuf>) -> Vec<PathBuf> {
-    exe.and_then(Path::parent)
-        .map(Path::to_path_buf)
-        .into_iter()
+/// The environment variable that names the log folder, tried first.
+pub const FOLDER_VARIABLE: &str = "OPENCHUCK_LOG_DIR";
+
+/// The per-user log folder on `platform`, reading variables with `var`:
+/// `%LOCALAPPDATA%\OpenChuckCAM\logs`, `~/Library/Logs/OpenChuckCAM` or
+/// `$XDG_STATE_HOME/openchuckcam` (`~/.local/state/openchuckcam`). `None`
+/// when the variables it needs are unset, empty or relative.
+pub fn user_folder(
+    platform: Platform,
+    var: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    let absolute = |name: &str| var(name).map(PathBuf::from).filter(|p| p.is_absolute());
+    match platform {
+        Platform::Windows => absolute("LOCALAPPDATA").map(|p| p.join("OpenChuckCAM").join("logs")),
+        Platform::MacOs => absolute("HOME").map(|h| h.join("Library/Logs/OpenChuckCAM")),
+        Platform::Unix => absolute("XDG_STATE_HOME")
+            .or_else(|| absolute("HOME").map(|h| h.join(".local/state")))
+            .map(|p| p.join("openchuckcam")),
+    }
+}
+
+/// The folders to try in order: the override, beside the executable, the
+/// per-user folder, the system temp folder.
+pub fn candidate_folders(
+    over: Option<PathBuf>,
+    exe: Option<&Path>,
+    user: Option<PathBuf>,
+    temp: PathBuf,
+) -> Vec<PathBuf> {
+    over.into_iter()
+        .chain(exe.and_then(Path::parent).map(Path::to_path_buf))
         .chain(user)
+        .chain(std::iter::once(temp.join("openchuckcam")))
         .collect()
 }
 
 fn default_folders() -> Vec<PathBuf> {
-    let user = openchuck_app::library::config_folder_from(
-        openchuck_app::library::Platform::current(),
-        |name| std::env::var_os(name),
+    let over = std::env::var_os(FOLDER_VARIABLE)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute());
+    candidate_folders(
+        over,
+        std::env::current_exe().ok().as_deref(),
+        user_folder(Platform::current(), |name| std::env::var_os(name)),
+        std::env::temp_dir(),
     )
-    .map(|base| base.join(openchuck_app::library::APP_FOLDER).join("logs"));
-    candidate_folders(std::env::current_exe().ok().as_deref(), user)
 }
 
 /// Where log lines go besides standard error.
@@ -244,14 +275,14 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_file_names() {
+    fn req_nfr_17_file_names() {
         let dir = Path::new("d");
         assert_eq!(file_name(dir, 0), dir.join("openchuckcam.log"));
         assert_eq!(file_name(dir, 2), dir.join("openchuckcam.2.log"));
     }
 
     #[test]
-    fn req_nfr_log_rotation_keeps_the_newest_files() {
+    fn req_nfr_17_rotation_keeps_the_newest_files() {
         let dir = scratch("rotate");
         for round in 0..4u8 {
             fs::write(file_name(&dir, 0), vec![b'a' + round; 20]).unwrap();
@@ -265,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_small_file_is_appended_not_rotated() {
+    fn req_nfr_17_small_file_is_appended_not_rotated() {
         let dir = scratch("small");
         fs::write(file_name(&dir, 0), b"short").unwrap();
         rotate(&dir, 10, 2);
@@ -275,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_keep_zero_deletes_the_full_file() {
+    fn req_nfr_17_keep_zero_deletes_the_full_file() {
         let dir = scratch("keep0");
         fs::write(file_name(&dir, 0), vec![0u8; 20]).unwrap();
         rotate(&dir, 10, 0);
@@ -284,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_falls_back_when_the_first_folder_is_unwritable() {
+    fn req_nfr_17_falls_back_when_the_first_folder_is_unwritable() {
         let dir = scratch("fallback");
         // A file where the first folder should be cannot be a folder.
         let blocked = dir.join("blocked");
@@ -298,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_no_writable_folder_gives_nothing() {
+    fn req_nfr_17_no_writable_folder_gives_nothing() {
         let dir = scratch("none");
         let blocked = dir.join("blocked");
         fs::write(&blocked, b"x").unwrap();
@@ -308,20 +339,57 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_prefers_the_executable_folder() {
+    fn req_nfr_17_folders_are_tried_in_order() {
         let folders = candidate_folders(
+            Some(PathBuf::from("/o")),
             Some(Path::new("/opt/oc/openchuck-ui")),
             Some(PathBuf::from("/home/u/logs")),
+            PathBuf::from("/tmp"),
         );
         assert_eq!(
             folders,
-            vec![PathBuf::from("/opt/oc"), PathBuf::from("/home/u/logs")]
+            ["/o", "/opt/oc", "/home/u/logs", "/tmp/openchuckcam"].map(PathBuf::from)
         );
-        assert_eq!(candidate_folders(None, None), Vec::<PathBuf>::new());
+        let bare = candidate_folders(None, None, None, PathBuf::from("/tmp"));
+        assert_eq!(bare, vec![PathBuf::from("/tmp/openchuckcam")]);
     }
 
     #[test]
-    fn req_nfr_log_sink_writes_lines_to_the_file() {
+    fn req_nfr_17_user_folder_per_platform() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == name)
+                    .map(|(_, v)| std::ffi::OsString::from(v))
+            }
+        };
+        assert_eq!(
+            user_folder(Platform::Windows, env(&[("LOCALAPPDATA", "/w/Local")])),
+            Some(PathBuf::from("/w/Local/OpenChuckCAM/logs"))
+        );
+        assert_eq!(
+            user_folder(Platform::MacOs, env(&[("HOME", "/Users/u")])),
+            Some(PathBuf::from("/Users/u/Library/Logs/OpenChuckCAM"))
+        );
+        assert_eq!(
+            user_folder(Platform::Unix, env(&[("HOME", "/home/u")])),
+            Some(PathBuf::from("/home/u/.local/state/openchuckcam"))
+        );
+        assert_eq!(
+            user_folder(
+                Platform::Unix,
+                env(&[("HOME", "/home/u"), ("XDG_STATE_HOME", "/s")])
+            ),
+            Some(PathBuf::from("/s/openchuckcam"))
+        );
+        // Unset or relative variables give nothing.
+        assert_eq!(user_folder(Platform::Windows, env(&[])), None);
+        assert_eq!(user_folder(Platform::Unix, env(&[("HOME", "rel")])), None);
+    }
+
+    #[test]
+    fn req_nfr_17_sink_writes_lines_to_the_file() {
         let dir = scratch("sink");
         let (file, path) = open_in(std::slice::from_ref(&dir), 100, 2).unwrap();
         let sink = Sink::new(file);
@@ -332,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_line_format() {
+    fn req_nfr_17_line_format() {
         let text = line(
             Duration::from_millis(1234),
             log::Level::Warn,
@@ -343,14 +411,14 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_panic_text_names_message_place_and_thread() {
+    fn req_nfr_17_panic_text_names_message_place_and_thread() {
         let text = panic_text("boom", Some(("a.rs", 7)), "main", "trace");
         assert_eq!(text, "panic in thread 'main' at a.rs:7: boom\ntrace");
         assert!(panic_text("x", None, "t", "").starts_with("panic in thread 't': x"));
     }
 
     #[test]
-    fn req_nfr_log_panic_hook_writes_to_the_file() {
+    fn req_nfr_17_panic_hook_writes_to_the_file() {
         // The hook and the logger are process-wide, so this is the one test
         // that installs them; it logs through a private Logger to a file.
         struct ToFile(Sink);
@@ -380,13 +448,13 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_log_error_box_without_a_log_is_the_message() {
+    fn req_nfr_17_error_box_without_a_log_is_the_message() {
         // PATH is set only by `open`, which tests do not call.
         assert_eq!(with_log_hint("boom"), "boom");
     }
 
     #[test]
-    fn req_nfr_log_folder_functions_agree_with_the_path() {
+    fn req_nfr_17_folder_functions_agree_with_the_path() {
         // PATH is set only by `open`, which tests do not call.
         assert_eq!(log_path().is_some(), log_folder().is_some());
     }
