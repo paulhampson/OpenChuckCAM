@@ -400,8 +400,11 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
     rig.settle();
     assert_eq!(rig.shell.overview.stale.len(), 2);
     // G: the first operation only; the copy after it stays stale.
+    assert!(rig.shell.run.last().is_none());
     rig.press(Key::G, Modifiers::NONE);
-    assert!(rig.shell.run.is_running());
+    // G started a run: still going, or on a fast machine already finished
+    // within the frame that pressed G.
+    assert!(rig.shell.run.is_running() || rig.shell.run.last().is_some());
     rig.settle();
     let deadline = Instant::now() + Duration::from_secs(60);
     while rig.shell.overview.stale.len() != 1 {
