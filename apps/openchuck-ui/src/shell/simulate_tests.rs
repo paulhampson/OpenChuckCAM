@@ -9,7 +9,7 @@
 
 use std::time::{Duration, Instant};
 
-use eframe::egui::{Key, Modifiers};
+use eframe::egui::{self, Event, Key, Modifiers};
 use openchuck_app::overview::Step;
 
 use super::frame_tests::Rig;
@@ -19,10 +19,6 @@ use crate::import_panel::ImportSession;
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
     let mut rig = Rig::cube(name, None);
-    // The playback tab is a scroll area, and a row below the dock's edge is
-    // not painted. "Go to move" was missing on Windows at the default dock
-    // height (196), so give the dock the height the key tests use.
-    rig.shell.settings.dock.size = 380.0;
     rig.shell.generate(true);
     let deadline = Instant::now() + Duration::from_secs(120);
     while rig.shell.run.last().is_none_or(|r| r.simulation.is_none()) {
@@ -90,11 +86,46 @@ fn req_sim_05_req_sim_07_the_results_inspector_shows_the_numbers_and_the_resolut
     assert!(rig.shows("times the time"));
 }
 
+/// Scrolls the playback tab of the dock until `text` is painted, in at most
+/// 40 wheel events, and panics with everything painted if it never is.
+///
+/// The tab is a scroll area, and a row below the dock's edge is not painted.
+/// At the font metrics of Windows and a window of 1440 x 900 the dock is only
+/// about 140 px tall, so "Go to move" is below the fold there, while on Linux
+/// it is not. Scrolling to a row is how a user reaches it. This is a choice
+/// of the test, not a change to the product.
+fn scroll_dock_to(rig: &mut Rig, text: &str) {
+    let tab_y = rig
+        .texts()
+        .iter()
+        .find(|(t, _)| t == "Playback")
+        .map(|(_, y)| *y)
+        .expect("the dock's Playback tab is painted");
+    let over_dock = egui::pos2(700.0, tab_y + 40.0);
+    rig.frame(vec![Event::PointerMoved(over_dock)]);
+    for _ in 0..40 {
+        if rig.shows(text) {
+            return;
+        }
+        rig.frame(vec![Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            phase: egui::TouchPhase::Move,
+            delta: egui::vec2(0.0, -60.0),
+            modifiers: Modifiers::NONE,
+        }]);
+    }
+    assert!(
+        rig.shows(text),
+        "{text} is on screen; painted: {:?}",
+        rig.texts()
+    );
+}
+
 #[test]
 fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons() {
     let mut rig = simulated("sim-dock");
     assert_eq!(rig.shell.dock_tab, DockTab::Playback);
-    for text in ["Speed", "1000×", "10 000×", "Whole program", "Go to move"] {
+    for text in ["Speed", "1000×", "10 000×", "Whole program"] {
         assert!(
             rig.shows(text),
             "{text} is on screen; painted: {:?}",
@@ -103,6 +134,8 @@ fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons(
     }
     assert!(rig.shows("The simulation results do not change"));
     assert!(!rig.shows("Max"), "there is no Max speed");
+    // The timeline's "Go to move" is under the speeds: scroll the dock to it.
+    scroll_dock_to(&mut rig, "Go to move");
     // Space plays and pauses.
     assert!(!rig.shell.play.is_playing());
     rig.press(Key::Space, Modifiers::NONE);
