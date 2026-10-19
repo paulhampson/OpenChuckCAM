@@ -281,7 +281,6 @@ impl RunPanel {
                     Ok(run) => {
                         let run = Arc::new(run);
                         self.last = Some(Arc::clone(&run));
-                        self.show_results = true;
                         Some((run, id))
                     }
                     Err(e) if e.is_cancelled() => {

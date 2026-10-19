@@ -298,6 +298,10 @@ pub struct SelectionPanel {
     /// the project's default (decision record 0066).
     new_tangent: Option<bool>,
     rename: String,
+    /// What the row menu of the table asked for, handled after the table.
+    row_action: Option<(SelectionSetId, RowAction)>,
+    /// Why the last delete was refused.
+    delete_note: Option<String>,
     pending: Option<Pending>,
     /// The save or edit of a set being checked against its model.
     writing: Option<Writing>,
@@ -338,6 +342,8 @@ impl Default for SelectionPanel {
             name: String::new(),
             new_tangent: None,
             rename: String::new(),
+            row_action: None,
+            delete_note: None,
             pending: None,
             writing: None,
             warn_reset: true,
@@ -1135,6 +1141,32 @@ impl SelectionPanel {
             ui.weak("No sets yet. Select on the part and make a set from it.");
         } else {
             self.table(ui, app, summaries);
+            if let Some((id, action)) = self.row_action.take()
+                && let Some(summary) = summaries.iter().find(|s| s.id == id)
+            {
+                match action {
+                    RowAction::Rename => {
+                        self.show_set(Some(id));
+                        self.rename = summary.name.clone();
+                    }
+                    RowAction::Delete => match delete_refusal(summary) {
+                        Some(note) => self.delete_note = Some(note),
+                        None => match app.delete_selection(id) {
+                            Ok(()) => {
+                                self.delete_note = None;
+                                if self.shown == Some(id) {
+                                    self.shown = None;
+                                }
+                                self.dirty = true;
+                            }
+                            Err(e) => error = Some(e.to_string()),
+                        },
+                    },
+                }
+            }
+            if let Some(note) = &self.delete_note {
+                ui.colored_label(PROBLEM, note);
+            }
         }
         if let Some(summary) = chosen {
             ui.separator();
@@ -1294,23 +1326,44 @@ impl SelectionPanel {
                         });
                         match &summary.problem {
                             Some(problem) => {
-                                ui.colored_label(PROBLEM, "▲ Problem")
-                                    .on_hover_text(problem);
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(format!("▲ {problem}")).color(PROBLEM),
+                                    )
+                                    .truncate(),
+                                )
+                                .on_hover_text(problem);
                             }
                             None => {
                                 ui.label("● Matches model");
                             }
                         }
-                        let usable = summary.problem.is_none();
-                        if usable
-                            && ui
-                                .link("Select in view")
-                                .on_hover_text("Make the set the working selection, to edit it")
-                                .clicked()
-                            && let Some(t) = set_target(app, summary.id)
-                        {
-                            self.select_set_in_view(app, summary, t);
-                        }
+                        ui.horizontal(|ui| {
+                            let usable = summary.problem.is_none();
+                            let (text, tip) = if usable {
+                                ("Select in view", "Make the set the working selection, to edit it")
+                            } else {
+                                (
+                                    "Reselect",
+                                    "Load the set as the working selection, change it and press Replace set",
+                                )
+                            };
+                            if ui.link(text).on_hover_text(tip).clicked()
+                                && let Some(t) = set_target(app, summary.id)
+                            {
+                                self.select_set_in_view(app, summary, t);
+                            }
+                            ui.menu_button("⋯", |ui| {
+                                if ui.button("Rename").clicked() {
+                                    self.row_action = Some((summary.id, RowAction::Rename));
+                                    ui.close();
+                                }
+                                if ui.button("Delete").clicked() {
+                                    self.row_action = Some((summary.id, RowAction::Delete));
+                                    ui.close();
+                                }
+                            });
+                        });
                         ui.end_row();
                     }
                 });
@@ -1427,22 +1480,34 @@ impl SelectionPanel {
         {
             error = Some(e.to_string());
         }
-        let used = !summary.uses.is_empty();
-        if ui
-            .add_enabled(!used, egui::Button::new("Delete set"))
-            .on_disabled_hover_text("Take the set out of its operations first")
-            .clicked()
-        {
-            match app.delete_selection(summary.id) {
-                Ok(()) => {
-                    self.shown = None;
-                    self.dirty = true;
-                }
-                Err(e) => error = Some(e.to_string()),
-            }
-        }
         error
     }
+}
+
+/// What a row's menu asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowAction {
+    Rename,
+    Delete,
+}
+
+/// Why a set cannot be deleted: the operations that use it, by name, or
+/// `None` when nothing does (specification 12.2).
+fn delete_refusal(summary: &SelectionSummary) -> Option<String> {
+    if summary.uses.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = summary.uses.iter().map(|u| u.name.as_str()).collect();
+    Some(format!(
+        "“{}” is used by {}. Take it out of {} first.",
+        summary.name,
+        names.join(", "),
+        if names.len() == 1 {
+            "that operation"
+        } else {
+            "those operations"
+        }
+    ))
 }
 
 /// The choice of keeping tangent edges, as the user reads it: the project's
@@ -1660,9 +1725,44 @@ pub fn operation_roles(
 
 #[cfg(test)]
 mod tests {
+
     #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
+
+    #[test]
+    fn req_ui_05_a_refused_delete_names_the_operations_that_use_the_set() {
+        use openchuck_app::project::id::OperationId;
+        let mut summary = SelectionSummary {
+            id: SelectionSetId::new(),
+            name: "Rim".to_owned(),
+            model: openchuck_app::project::id::ModelId::new(),
+            model_path: None,
+            kind: "triangles",
+            count: 3,
+            uses: Vec::new(),
+            problem: None,
+            colour: None,
+        };
+        assert_eq!(delete_refusal(&summary), None);
+        let use_of = |name: &str| openchuck_app::SelectionUse {
+            operation: OperationId::new(),
+            name: name.to_owned(),
+            roles: Vec::new(),
+        };
+        summary.uses.push(use_of("2 Finish"));
+        let one = delete_refusal(&summary).unwrap();
+        assert!(
+            one.contains("2 Finish") && one.contains("that operation"),
+            "{one}"
+        );
+        summary.uses.push(use_of("4 Engrave"));
+        let two = delete_refusal(&summary).unwrap();
+        assert!(
+            two.contains("2 Finish, 4 Engrave") && two.contains("those operations"),
+            "{two}"
+        );
+    }
 
     fn set(items: &[u32]) -> TriangleSet {
         items.iter().copied().collect()

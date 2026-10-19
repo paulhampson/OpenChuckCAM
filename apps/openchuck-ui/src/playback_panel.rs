@@ -13,16 +13,18 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{self, Color32};
+use eframe::egui::{self, Color32, RichText};
 use openchuck_app::pathview::{DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData};
 use openchuck_app::playback::{Cursor, Playback, PoseSample, ToolMeshes, ViewFrame, tool_meshes};
-use openchuck_app::project::id::{ModelId, SetupId};
+use openchuck_app::project::id::{ModelId, OperationId, SetupId};
 use openchuck_app::stockplay::StockPlayback;
 use openchuck_app::{Application, JobHandle, Regeneration};
 use openchuck_viewport::camera::place;
 use openchuck_viewport::{Colour, Layer, LineStyle, Scene, Slot};
 
+use crate::results_panel::ColourBy;
 use crate::roles;
+use crate::theme::DARK;
 use crate::viewport::{ToolReadout, Viewport};
 
 const PROBLEM: Color32 = Color32::from_rgb(230, 80, 80);
@@ -34,6 +36,9 @@ pub const DEFAULT_POINT_BUDGET: usize = 1_000_000;
 
 /// Program seconds per second of the clock the speed list offers; the last
 /// two play the whole program in a set time.
+/// "Max" plays the whole program in this many seconds.
+const MAX_SPEED_SECONDS: f64 = 1.0;
+
 const SPEEDS: [(&str, f64); 5] = [
     ("1×", 1.0),
     ("10×", 10.0),
@@ -121,6 +126,10 @@ pub struct PlaybackPanel {
     /// The deviation job running, with the setup it is for.
     bands_job: Option<(SetupId, JobHandle<(ModelId, DeviationBands)>)>,
     bands: Option<DeviationBands>,
+    /// The model the bands colour.
+    bands_model: Option<ModelId>,
+    /// What the part is coloured by (the results inspector's choice).
+    colour_by: ColourBy,
     /// The setup the bands on screen (or being made) belong to.
     bands_setup: Option<SetupId>,
     jump_move: usize,
@@ -151,6 +160,8 @@ impl Default for PlaybackPanel {
             bands_on: false,
             bands_job: None,
             bands: None,
+            bands_model: None,
+            colour_by: ColourBy::default(),
             bands_setup: None,
             jump_move: 1,
             error: None,
@@ -397,6 +408,25 @@ impl PlaybackPanel {
         busy
     }
 
+    /// Sets what the part is coloured by, and redraws the colours.
+    pub fn set_colour_by(&mut self, by: ColourBy, viewport: &mut Viewport) {
+        if self.colour_by != by {
+            self.colour_by = by;
+            self.show_bands(viewport);
+        }
+    }
+
+    /// Hands the viewport the bands that `colour_by` shows: the others are
+    /// left out, so those triangles keep the part's own colour.
+    fn show_bands(&self, viewport: &mut Viewport) {
+        let (Some(bands), Some(model)) = (&self.bands, self.bands_model) else {
+            return;
+        };
+        let mut shown = bands.clone();
+        shown.bands.retain(|(band, _)| self.colour_by.shows(*band));
+        viewport.set_bands(Some((model, shown)));
+    }
+
     fn update_bands(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
         if !self.bands_on {
             if let Some((_, job)) = self.bands_job.take() {
@@ -433,8 +463,9 @@ impl PlaybackPanel {
                     self.bands_job = None;
                     match result {
                         Ok((model, bands)) if Some(for_setup) == self.bands_setup => {
-                            self.bands = Some(bands.clone());
-                            viewport.set_bands(Some((model, bands)));
+                            self.bands = Some(bands);
+                            self.bands_model = Some(model);
+                            self.show_bands(viewport);
                         }
                         Ok(_) => {}
                         Err(e) => {
@@ -455,6 +486,209 @@ impl PlaybackPanel {
         false
     }
 
+    /// Whether the playback is running.
+    #[cfg(test)]
+    pub fn is_playing(&self) -> bool {
+        self.playback.is_playing()
+    }
+
+    /// Plays or pauses (Space).
+    pub fn toggle_play(&mut self, timeline: &openchuck_app::playback::Timeline) {
+        if self.playback.is_playing() {
+            self.playback.pause();
+        } else {
+            self.playback.play(timeline);
+        }
+    }
+
+    fn previous_operation(&mut self, timeline: &openchuck_app::playback::Timeline) {
+        if let Some(g) = self.pose().map(|p| p.group).filter(|g| *g > 0) {
+            self.playback.jump_to_group(timeline, g - 1);
+        }
+    }
+
+    fn next_operation(&mut self, timeline: &openchuck_app::playback::Timeline) {
+        if let Some(g) = self.pose().map(|p| p.group)
+            && g + 1 < timeline.group_count()
+        {
+            self.playback.jump_to_group(timeline, g + 1);
+        }
+    }
+
+    /// Space plays or pauses, the arrows step by a move and Shift with an
+    /// arrow by an operation (SIM-04; specification section 16). Does
+    /// nothing while a text field has the keyboard.
+    pub fn handle_keys(&mut self, ctx: &egui::Context) {
+        let Some(data) = self.data.clone() else {
+            return;
+        };
+        if ctx.memory(|m| m.focused().is_some()) {
+            return;
+        }
+        let timeline = &data.timeline;
+        let key = |k: egui::Key, shift: bool| {
+            ctx.input_mut(|i| {
+                i.consume_key(
+                    if shift {
+                        egui::Modifiers::SHIFT
+                    } else {
+                        egui::Modifiers::NONE
+                    },
+                    k,
+                )
+            })
+        };
+        if key(egui::Key::Space, false) {
+            self.toggle_play(timeline);
+        }
+        if key(egui::Key::ArrowLeft, true) {
+            self.previous_operation(timeline);
+        } else if key(egui::Key::ArrowRight, true) {
+            self.next_operation(timeline);
+        } else if key(egui::Key::ArrowLeft, false) {
+            self.playback.step(timeline, -1);
+        } else if key(egui::Key::ArrowRight, false) {
+            self.playback.step(timeline, 1);
+        }
+    }
+
+    /// Whether the operation's path is drawn, for the tree's eye button;
+    /// `None` when the run has no group of it.
+    pub fn is_shown(&self, operation: OperationId) -> Option<bool> {
+        let data = self.data.as_ref()?;
+        let group = (0..data.timeline.group_count())
+            .find(|g| data.timeline.operation(*g) == Some(operation))?;
+        self.visible.get(group).copied()
+    }
+
+    /// Shows or hides an operation's path, in the view only: the simulation
+    /// results do not change (specification section 11.5).
+    pub fn toggle_shown(&mut self, operation: OperationId) {
+        let Some(data) = &self.data else { return };
+        if let Some(group) = (0..data.timeline.group_count())
+            .find(|g| data.timeline.operation(*g) == Some(operation))
+            && let Some(v) = self.visible.get_mut(group)
+        {
+            *v = !*v;
+            self.lines_dirty = true;
+        }
+    }
+
+    /// The timeline: one segment per enabled operation sized by its moves,
+    /// the ones not generated dashed amber, the playhead, and move numbers
+    /// under it. Clicking seeks.
+    fn timeline_bar(&mut self, ui: &mut egui::Ui, app: &Application, data: &PlaybackData) {
+        let timeline = &data.timeline;
+        let total = timeline.total_time();
+        let groups = timeline.group_count();
+        let moves = timeline.move_count().max(1);
+        // Operations enabled in the project that the run did not make.
+        let made: Vec<_> = (0..groups).filter_map(|g| timeline.operation(g)).collect();
+        let missing: Vec<&str> = app
+            .project()
+            .operations()
+            .iter()
+            .filter(|o| o.enabled && !made.contains(&o.id))
+            .map(|o| o.name.as_str())
+            .collect();
+        let width = ui.available_width().max(160.0);
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::click_and_drag());
+        let painter = ui.painter_at(rect);
+        let weights: Vec<f32> = (0..groups)
+            .map(|g| {
+                let start = timeline.first_move(g).unwrap_or(0);
+                let end = timeline.first_move(g + 1).unwrap_or(moves);
+                end.saturating_sub(start).max(1) as f32
+            })
+            .collect();
+        let made_total: f32 = weights.iter().sum::<f32>().max(1.0);
+        let slot = if groups > 0 {
+            made_total / groups as f32
+        } else {
+            made_total
+        };
+        let all = made_total + slot * missing.len() as f32;
+        let mut x = rect.left();
+        let current = self.pose().map(|p| p.group);
+        for (g, w) in weights.iter().enumerate() {
+            let seg_w = rect.width() * w / all;
+            let seg = egui::Rect::from_min_size(
+                egui::pos2(x, rect.top()),
+                egui::vec2(seg_w, rect.height()),
+            );
+            let fill = if current == Some(g) {
+                DARK.accent
+            } else {
+                DARK.selected
+            };
+            painter.rect_filled(seg.shrink2(egui::vec2(0.5, 0.0)), 2.0, fill);
+            painter.text(
+                seg.left_center() + egui::vec2(6.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                format!("{} {}", g + 1, timeline.operation_name(g).unwrap_or("")),
+                egui::FontId::proportional(12.0),
+                DARK.text,
+            );
+            x += seg_w;
+        }
+        for name in &missing {
+            let seg_w = rect.width() * slot / all;
+            let seg = egui::Rect::from_min_size(
+                egui::pos2(x, rect.top()),
+                egui::vec2(seg_w, rect.height()),
+            );
+            painter.add(egui::Shape::dashed_line(
+                &[
+                    seg.left_top(),
+                    seg.right_top(),
+                    seg.right_bottom(),
+                    seg.left_bottom(),
+                    seg.left_top(),
+                ],
+                egui::Stroke::new(1.0, DARK.warning),
+                4.0,
+                3.0,
+            ));
+            painter.text(
+                seg.left_center() + egui::vec2(6.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                format!("{name}: not generated"),
+                egui::FontId::proportional(12.0),
+                DARK.warning,
+            );
+            x += seg_w;
+        }
+        let made_width = rect.width() * made_total / all;
+        let fraction = if total > 0.0 {
+            (timeline.time_at(self.playback.cursor()) / total) as f32
+        } else {
+            0.0
+        };
+        // The playhead sits at the cursor's move, since segments are sized by moves.
+        let done = self.pose().map_or(0, |p| p.cursor.done) as f32;
+        let _ = fraction;
+        let head = rect.left() + made_width * (done / moves as f32).clamp(0.0, 1.0);
+        painter.vline(
+            head,
+            rect.y_range().expand(3.0),
+            egui::Stroke::new(2.0, DARK.text),
+        );
+        if (response.clicked() || response.dragged())
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let f = ((pos.x - rect.left()) / made_width.max(1.0)).clamp(0.0, 1.0);
+            self.playback
+                .jump_to_move(timeline, (f * moves as f32) as usize);
+        }
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("0").small().monospace());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new(moves.to_string()).small().monospace());
+            });
+        });
+    }
+
     /// Draws the controls.
     pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) {
         let Some(data) = self.data.clone() else {
@@ -473,11 +707,22 @@ impl PlaybackPanel {
         let timeline = &data.timeline;
         let total = timeline.total_time();
         let moves = timeline.move_count();
+        let current = self.pose().map(|p| p.group);
         ui.horizontal(|ui| {
-            if ui.button("⏮").on_hover_text("To the start").clicked() {
-                self.playback.seek(timeline, 0.0);
+            let group_count = timeline.group_count();
+            let first = current.is_none_or(|g| g == 0);
+            if ui
+                .add_enabled(!first, egui::Button::new("⏮"))
+                .on_hover_text("Previous operation (Shift ←)")
+                .clicked()
+            {
+                self.previous_operation(timeline);
             }
-            if ui.button("◀").on_hover_text("Step back one move").clicked() {
+            if ui
+                .button("◀")
+                .on_hover_text("Step back one move (←)")
+                .clicked()
+            {
                 self.playback.step(timeline, -1);
             }
             let label = if self.playback.is_playing() {
@@ -485,82 +730,66 @@ impl PlaybackPanel {
             } else {
                 "▶"
             };
-            if ui.button(label).on_hover_text("Play or pause").clicked() {
-                if self.playback.is_playing() {
-                    self.playback.pause();
-                } else {
-                    self.playback.play(timeline);
-                }
+            if ui
+                .button(label)
+                .on_hover_text("Play or pause (Space)")
+                .clicked()
+            {
+                self.toggle_play(timeline);
             }
-            if ui.button("▶|").on_hover_text("Step on one move").clicked() {
+            if ui
+                .button("▶|")
+                .on_hover_text("Step on one move (→)")
+                .clicked()
+            {
                 self.playback.step(timeline, 1);
             }
-            if ui.button("⏭").on_hover_text("To the end").clicked() {
-                self.playback.seek(timeline, 1.0);
+            let last = current.is_none_or(|g| g + 1 >= group_count);
+            if ui
+                .add_enabled(!last, egui::Button::new("⏭"))
+                .on_hover_text("Next operation (Shift →)")
+                .clicked()
+            {
+                self.next_operation(timeline);
             }
-            ui.separator();
+        });
+        ui.horizontal(|ui| {
             ui.label("Speed");
             let speed = self.playback.speed();
-            let shown = SPEEDS
-                .iter()
-                .find(|(_, s)| (*s - speed).abs() < 1e-9)
-                .map_or_else(|| format!("{speed:.0}×"), |(n, _)| (*n).to_owned());
-            egui::ComboBox::from_id_salt("playback speed")
-                .selected_text(shown)
-                .show_ui(ui, |ui| {
-                    for (name, value) in SPEEDS {
-                        if ui.selectable_label(false, name).clicked() {
-                            self.playback.set_speed(value);
-                        }
-                    }
-                    for seconds in [10.0, 60.0] {
-                        let label = format!("whole program in {seconds:.0} s");
-                        if ui.selectable_label(false, label).clicked() {
-                            self.playback
-                                .set_speed(Playback::speed_to_finish_in(timeline, seconds));
-                        }
-                    }
-                });
-        });
-        let mut fraction = if total > 0.0 {
-            timeline.time_at(self.playback.cursor()) / total
-        } else {
-            0.0
-        };
-        ui.horizontal(|ui| {
-            let slider = egui::Slider::new(&mut fraction, 0.0..=1.0)
-                .show_value(false)
-                .smallest_positive(1e-6);
-            if ui
-                .add_sized([ui.available_width() - 150.0, 18.0], slider)
-                .changed()
-            {
-                self.playback.seek(timeline, fraction);
+            for (name, value) in SPEEDS {
+                if ui
+                    .selectable_label((speed - value).abs() < 1e-9, name)
+                    .clicked()
+                {
+                    self.playback.set_speed(value);
+                }
             }
+            let max = Playback::speed_to_finish_in(timeline, MAX_SPEED_SECONDS);
+            if ui
+                .selectable_label((speed - max).abs() < 1e-9, "Max")
+                .clicked()
+            {
+                self.playback.set_speed(max);
+            }
+            ui.label("Whole program");
+            for seconds in [10.0, 60.0] {
+                let value = Playback::speed_to_finish_in(timeline, seconds);
+                if ui
+                    .selectable_label((speed - value).abs() < 1e-9, format!("{seconds:.0} s"))
+                    .clicked()
+                {
+                    self.playback.set_speed(value);
+                }
+            }
+        });
+        self.timeline_bar(ui, app, &data);
+        ui.horizontal_wrapped(|ui| {
             ui.label(format!(
                 "{} / {}",
                 clock(timeline.time_at(self.playback.cursor())),
                 clock(total)
             ));
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Jump to operation");
-            let current = self.pose().map(|p| p.group);
-            egui::ComboBox::from_id_salt("playback operation")
-                .selected_text(
-                    current
-                        .and_then(|g| timeline.operation_name(g))
-                        .unwrap_or("choose…"),
-                )
-                .show_ui(ui, |ui| {
-                    for g in 0..timeline.group_count() {
-                        let name = timeline.operation_name(g).unwrap_or("(operation)");
-                        if ui.selectable_label(current == Some(g), name).clicked() {
-                            self.playback.jump_to_group(timeline, g);
-                        }
-                    }
-                });
-            ui.label("Move");
+            ui.label("Go to move");
             ui.add(
                 egui::DragValue::new(&mut self.jump_move)
                     .range(1..=moves.max(1))
@@ -583,7 +812,7 @@ impl PlaybackPanel {
             });
             let feed = pose
                 .feed
-                .map_or_else(String::new, |f| format!("   F{f:.0} mm/min"));
+                .map_or_else(String::new, |f| format!("   Feed {f:.0} mm/min"));
             ui.monospace(format!(
                 "{}  move {}  {kind}   X{:.3} Y{:.3} Z{:.3} A{:.3}{feed}",
                 timeline.operation_name(pose.group).unwrap_or(""),
@@ -626,20 +855,6 @@ impl PlaybackPanel {
                 self.lines_dirty = true;
             }
         });
-        egui::CollapsingHeader::new("Operations shown")
-            .default_open(false)
-            .show(ui, |ui| {
-                let mut changed = false;
-                for g in 0..timeline.group_count() {
-                    if let Some(shown) = self.visible.get_mut(g) {
-                        let name = timeline.operation_name(g).unwrap_or("(operation)");
-                        changed |= ui.checkbox(shown, name).changed();
-                    }
-                }
-                if changed {
-                    self.lines_dirty = true;
-                }
-            });
         if let Some((drawn, full, tolerance)) = self.detail {
             if drawn < full {
                 ui.weak(format!(
@@ -896,6 +1111,30 @@ mod tests {
 
     /// Bands belong to the setup playback is in: when it changes, the old
     /// bands are dropped from the viewport and the old job is stopped.
+    #[test]
+    fn req_sim_05_colour_by_leaves_out_the_bands_it_does_not_show() {
+        let (app, mut panel, mut viewport, dir) = prepared("panel-colour-by");
+        panel.bands_on = true;
+        let started = Instant::now();
+        while panel.frame(&app, &mut viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let all = viewport.bands().unwrap().bands.len();
+        assert!(all > 0);
+        panel.set_colour_by(ColourBy::Overcut, &mut viewport);
+        let shown = viewport.bands().unwrap();
+        assert!(
+            shown
+                .bands
+                .iter()
+                .all(|(b, _)| matches!(b, DeviationBand::Overcut | DeviationBand::Unmeasured))
+        );
+        panel.set_colour_by(ColourBy::Deviation, &mut viewport);
+        assert_eq!(viewport.bands().unwrap().bands.len(), all);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn req_sim_05_deviation_bands_do_not_outlive_their_setup() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-bands-setup");

@@ -18,8 +18,8 @@ use super::*;
 use crate::testing::cube_project;
 
 /// A shell drawn frame by frame at a window size.
-struct Rig {
-    shell: Shell,
+pub(super) struct Rig {
+    pub(super) shell: Shell,
     ctx: egui::Context,
     size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
@@ -40,7 +40,7 @@ impl Rig {
     }
 
     /// The cube project open, its scene built and its checks done.
-    fn cube(name: &str, settings: Option<SettingsFile>) -> Self {
+    pub(super) fn cube(name: &str, settings: Option<SettingsFile>) -> Self {
         let (dir, app, _, _) = cube_project(name);
         app.save().unwrap();
         drop(app);
@@ -51,7 +51,7 @@ impl Rig {
     }
 
     /// Draws until the scene, the checks and any run are done.
-    fn settle(&mut self) {
+    pub(super) fn settle(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
             self.frame(Vec::new());
@@ -71,7 +71,7 @@ impl Rig {
         self.frame(Vec::new());
     }
 
-    fn frame(&mut self, events: Vec<Event>) {
+    pub(super) fn frame(&mut self, events: Vec<Event>) {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), self.size)),
             events,
@@ -83,7 +83,7 @@ impl Rig {
         self.shapes = output.shapes;
     }
 
-    fn press(&mut self, key: Key, modifiers: Modifiers) {
+    pub(super) fn press(&mut self, key: Key, modifiers: Modifiers) {
         let event = |pressed| Event::Key {
             key,
             physical_key: None,
@@ -95,7 +95,7 @@ impl Rig {
     }
 
     /// Whether some text on screen contains `needle`.
-    fn shows(&self, needle: &str) -> bool {
+    pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {
                 egui::Shape::Text(t) => t.galley.text().contains(needle),
@@ -405,9 +405,9 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
         &e.outcome,
         Some(openchuck_app::JobOutcome::Done(Some(s))) if s.contains("later operations stay stale")
     )));
-    // Shift G: every stale operation, with the results window open after the
-    // last run.
-    assert!(rig.shell.run.has_window());
+    // Shift G: every stale operation, after the last run (the results show
+    // in the inspector; the floating window opens only on a failure).
+    assert!(rig.shell.run.last().is_some() && !rig.shell.run.has_window());
     rig.press(Key::G, Modifiers::SHIFT);
     rig.settle();
     let deadline = Instant::now() + Duration::from_secs(60);
