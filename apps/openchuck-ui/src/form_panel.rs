@@ -269,7 +269,7 @@ fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> 
                 ui,
                 &field.label,
                 &field.description,
-                &field
+                field
                     .value
                     .as_ref()
                     .map(|v| text(v, ""))

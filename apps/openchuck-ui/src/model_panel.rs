@@ -489,15 +489,13 @@ impl ModelPanel {
             TransformStep::Translate { x, y, z } => {
                 let mut v = [x, y, z];
                 for (k, label) in ["X", "Y", "Z"].into_iter().enumerate() {
+                    let Some(slot) = v.get_mut(k) else { continue };
                     if let Some(n) =
-                        self.number(ui, &format!("step {i} {label}"), label, "mm", v[k])
+                        self.number(ui, &format!("step {i} {label}"), label, "mm", *slot)
                     {
-                        v[k] = n;
-                        edited = Some(TransformStep::Translate {
-                            x: v[0],
-                            y: v[1],
-                            z: v[2],
-                        });
+                        *slot = n;
+                        let [x, y, z] = v;
+                        edited = Some(TransformStep::Translate { x, y, z });
                     }
                 }
             }

@@ -550,7 +550,7 @@ impl WorkholdingPanel {
         if let Some(stock) = &setup.stock
             && let Some(span) = held_span(self.draft.workholding(), end, stock)
         {
-            field_row::read_only_row(ui, "Held span", "", &format!("{span} mm"));
+            field_row::read_only_row(ui, "Held span", "", format!("{span} mm"));
         }
         reached_line(ui, &context.reach, item);
     }

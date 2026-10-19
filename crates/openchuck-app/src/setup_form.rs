@@ -171,17 +171,17 @@ pub fn stock_rows(setup: &Setup) -> Vec<SetupRow> {
             ));
         }
         Some(Stock::Box { bounds }) => {
-            for axis in 0..3 {
+            for (axis, (from, to)) in BOX_MIN.into_iter().zip(BOX_MAX).enumerate() {
                 rows.push(row(
                     SetupField::BoxMin(axis),
-                    BOX_MIN[axis],
+                    from,
                     "The box's lowest coordinate along this model axis.",
                     Some(component(bounds.min, axis)),
                     None,
                 ));
                 rows.push(row(
                     SetupField::BoxMax(axis),
-                    BOX_MAX[axis],
+                    to,
                     "The box's highest coordinate along this model axis.",
                     Some(component(bounds.max, axis)),
                     None,
