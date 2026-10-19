@@ -2,7 +2,7 @@
 
 - **Status:** proposed. OI-366 answered by the owner on 19 Oct 2026 (option A, relayed by the coordinator, decision 0049), and specification 11.3 edited to it. Lane X4, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted; it builds on lane X2, [decision 0117](0117-slice-22-shell-frame.md), accepted). The owner accepts it; until then it is guidance.
 - **Date:** 19 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-366 to OI-369 are new. OI-366 is closed by the owner's answer (A, relayed). OI-367 to OI-369 are recorded differences. OI-334 items a, c, d, e, i, j, k (the inspector side) and l are built here; its drawing of the draft is lane X3's (pull request 126), and this lane wires it (OI-355, closed). OI-345 stays proposed: the two icons are built on the two states the profile already has, and neither `requirements.md` nor the specification is edited here. OI-342 is updated: this lane re-rendered image 02's machine section.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-366 to OI-369 are new, with OI-353 and OI-354 (findings on lane X5's pull request, given to this lane by the coordinator). OI-366 is closed by the owner's answer (A, relayed); OI-353, OI-354 and lane X5's OI-383 are closed by this lane's code. OI-367 to OI-369 are recorded differences. OI-334 items a, c, d, e, i, j, k (the inspector side) and l are built here; its drawing of the draft is lane X3's (pull request 126), and this lane wires it (OI-355, closed). OI-345 stays proposed: the two icons are built on the two states the profile already has, and neither `requirements.md` nor the specification is edited here. OI-342 is updated: this lane re-rendered image 02's machine section.
 
 Numbering: the coordinator assigned this lane records 0123 and 0124 and OI-366 to OI-369 (OI-365, first assigned here, went to lane X3's pull request 126). This lane uses 0123 and OI-366 to OI-369; record 0124 is unused. The disabled-operation Generate fallback that lane X2 found (its proposed OI-352) is lane X3's, by the merge manager's assignment, not this lane's.
 
@@ -100,7 +100,7 @@ Sections File, Units, Placement, Mesh check and Source, each remembered.
 - **Specification and requirements.** `requirements.md` is not edited. Specification 11.3 item 3 is edited to the owner's answer on OI-366. OI-345 (UI-13 and section 8 to two icons) waits for the owner.
 - **For other lanes:**
   - X3: the viewport takes `WorkholdingPanel::viewport_draft` (OI-355, wired).
-  - X5: the default tabs offered in the Setup panes (OI-383).
+  - X5: the default tabs offered are passed to the Setup panes, drawn dashed (OI-383, closed); two findings on X5's pull request are fixed here: a click resolved against the current frame's outlines (OI-353) and Esc on the Setup step (OI-354), both closed.
   - X7b: the wording X7b owns is unchanged here, such as the "parameter {name}:" start of a refusal (C23), the choice words of the operation form ("safe_z") and the machine panel's library actions.
   - X9: the tool library window reuses `field_row`.
 - **Work breakdown:** the lane X4 row; slice 8 item 9 (UI-13) and its review box.

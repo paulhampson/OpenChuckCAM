@@ -1034,7 +1034,8 @@ impl Shell {
     /// k, OI-355): the draft while it has unapplied changes, whatever is
     /// selected, and, while its setup is selected, the default tabs offered,
     /// the failing parts and the row with keyboard focus. The selected solid
-    /// stays while its setup is selected, and Esc clears it.
+    /// stays while its setup is selected, and Esc clears it, on every step,
+    /// the Setup panes included (OI-354).
     fn workholding_view_frame(&mut self, ctx: &egui::Context) {
         let shown = self.setup;
         let setup_selected =

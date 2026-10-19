@@ -646,6 +646,37 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
     assert_eq!(rig.shell.viewport.selected_solid(), None);
 }
 
+/// Esc clears a selected held region or tab on the Setup step too, where
+/// the panes replace the 3D view (7.5; OI-354).
+#[test]
+fn req_ui_25_esc_clears_the_selected_solid_while_the_panes_are_shown() {
+    use openchuck_app::scene::WorkholdingItem;
+    let mut rig = Rig::cube("panes-esc", None);
+    rig.press(Key::Num2, Modifiers::ALT);
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Setup);
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, Some(SetupPart::Workholding));
+    rig.shell
+        .viewport
+        .set_selected_solid(Some(WorkholdingItem::Start));
+    rig.ctx.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    rig.frame(Vec::new());
+    assert!(rig.shows("END VIEW FROM +X"));
+    // It stays selected until Esc.
+    assert_eq!(
+        rig.shell.viewport.selected_solid(),
+        Some(WorkholdingItem::Start)
+    );
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.viewport.selected_solid(), None);
+}
+
 #[test]
 fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
     let mut rig = Rig::cube("frame-panes", None);

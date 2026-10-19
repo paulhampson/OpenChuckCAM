@@ -324,15 +324,15 @@ impl WorkholdingPanel {
             // fields are marked in the section.
             Err(_) => (Vec::new(), Vec::new()),
         };
-        let offered = if view.offered.is_empty() {
-            Vec::new()
+        let (offered, offered_solids) = if view.offered.is_empty() {
+            (Vec::new(), Vec::new())
         } else {
             let tabs = Workholding {
                 tabs: view.offered.clone(),
                 ..Workholding::default()
             };
             display_items(&tabs, setup.stock.as_ref(), &part)
-                .map(|(meshes, _, _)| meshes)
+                .map(|(meshes, _, solids)| (meshes, solids))
                 .unwrap_or_default()
         };
         let draft = Some(WorkholdingDraft {
@@ -340,6 +340,7 @@ impl WorkholdingPanel {
             solids,
             failing: view.failing,
             offered,
+            offered_solids,
         });
         self.view_cache = Some((key, draft.clone()));
         draft
@@ -1570,6 +1571,11 @@ mod tests {
         assert!(!text.contains("Not applied"), "{text}");
         assert_eq!(panel.draft_view(&setup).offered.len(), 1);
         assert!(panel.part_extent().is_some());
+        // The offered default reaches the view as a dashed mesh, and the
+        // Setup panes as a solid in section (OI-383).
+        let draft = panel.viewport_draft(&setup).unwrap();
+        assert_eq!((draft.offered.len(), draft.offered_solids.len()), (1, 1));
+        assert_eq!(draft.offered_solids[0].mesh, 0);
 
         // A grip longer than the stock: the plain message under the field,
         // no field path, and the draft is unapplied.

@@ -134,6 +134,9 @@ pub struct WorkholdingDraft {
     pub failing: Vec<WorkholdingItem>,
     /// Default tabs offered and not added: dashed sand outlines, no fill.
     pub offered: Vec<SceneMesh>,
+    /// Which tab each offered mesh is, with its section for the Setup panes,
+    /// indexing `offered`.
+    pub offered_solids: Vec<SceneSolid>,
 }
 
 /// How the scene is drawn besides the view model itself.
@@ -743,6 +746,14 @@ impl Viewport {
     /// The selected held region or tab.
     pub fn selected_solid(&self) -> Option<WorkholdingItem> {
         self.selected_item
+    }
+
+    /// The default tabs offered and not added, for the Setup panes (7.5);
+    /// none while the stored workholding is drawn.
+    pub(crate) fn offered_solids(&self) -> &[SceneSolid] {
+        self.draft
+            .as_ref()
+            .map_or(&[], |d| d.offered_solids.as_slice())
     }
 
     /// The held regions and tabs of the draft that fail a check, for the
@@ -1421,6 +1432,7 @@ pub(crate) mod tests {
             solids: view.solids.clone(),
             failing: vec![WorkholdingItem::Tab(0)],
             offered: vec![view.meshes[1].clone()],
+            offered_solids: vec![view.solids[1].clone()],
         };
         let mut viewport = Viewport::new(true);
         viewport.set_scene(view, true);
