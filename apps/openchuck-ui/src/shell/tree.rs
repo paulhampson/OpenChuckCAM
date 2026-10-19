@@ -10,7 +10,7 @@
 //! the menu key) opens the row's menu.
 
 use eframe::egui::{self, Color32, RichText, Stroke};
-use openchuck_app::overview::{ItemRef, ItemState, SetupPart, setup_row};
+use openchuck_app::overview::{ItemRef, ItemState, SetupPart, Step, setup_row};
 use openchuck_app::project::ItemId;
 
 use super::{Command, Selection, Shell, TreeAction, marks};
@@ -319,8 +319,14 @@ impl Shell {
                 if count == 0 {
                     none_yet(ui);
                 }
+                let simulating = self.step == Step::Simulate;
                 for (index, o) in project.operations().iter().enumerate() {
                     let item = ItemRef::Operation(o.id);
+                    let eye = if simulating {
+                        self.play.is_shown(o.id)
+                    } else {
+                        None
+                    };
                     let mut name = RichText::new(format!("{} {}", index + 1, o.name));
                     if !o.enabled {
                         // D5: struck through and muted.
@@ -358,6 +364,19 @@ impl Shell {
                                 .checkbox(&mut enabled, "")
                                 .on_hover_text("Include in generation, simulation and G-code")
                                 .changed();
+                            if let Some(shown) = eye {
+                                let text = if shown { "👁" } else { "–" };
+                                if ui
+                                    .small_button(text)
+                                    .on_hover_text(
+                                        "Show or hide this operation in the view only; \
+                                         the results do not change",
+                                    )
+                                    .clicked()
+                                {
+                                    actions.push(TreeAction::ToggleShown(id));
+                                }
+                            }
                         },
                     );
                     if toggled {
@@ -392,6 +411,17 @@ impl Shell {
                         item,
                         Some((o.enabled, index, count)),
                         &mut actions,
+                    );
+                }
+                if simulating {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(
+                            "Hiding an operation changes the view only. \
+                             The simulation results do not change.",
+                        )
+                        .small()
+                        .color(DARK.muted),
                     );
                 }
             });

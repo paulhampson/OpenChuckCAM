@@ -30,6 +30,7 @@ mod import_panel;
 mod machine_panel;
 mod model_panel;
 mod playback_panel;
+mod results_panel;
 mod roles;
 mod run_panel;
 mod selection_panel;
