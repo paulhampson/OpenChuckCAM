@@ -26,12 +26,18 @@ fn simulated(name: &str) -> Rig {
         assert!(Instant::now() < deadline, "timed out");
     }
     rig.shell.open_step(Step::Simulate);
-    // The playback data and the lines are prepared in jobs.
-    for _ in 0..200 {
+    // The playback data and the lines are prepared in jobs, which take longer
+    // on a slow runner: wait for them, with a deadline.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
         rig.frame(Vec::new());
         if rig.shell.play.has_run() && rig.shell.play.pose().is_some() {
             break;
         }
+        assert!(
+            Instant::now() < deadline,
+            "the playback data was never ready"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     rig.settle();

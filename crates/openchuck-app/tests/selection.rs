@@ -1249,3 +1249,55 @@ fn req_nfr_04_an_edit_made_from_an_older_set_is_refused_when_finished() {
     assert_eq!(app.project().selection_sets()[0].target.len(), top.len());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_ui_05_req_prj_06_replacing_a_stale_set_makes_it_current_and_add_and_remove_stay_refused() {
+    let (dir, mut app, op, model) = project("stale-replace");
+    let roof = app
+        .save_selection("Roof", model, top_face(&app, model))
+        .unwrap();
+    set_roles(&mut app, op, |o| o.selections = vec![roof]);
+    let current = app.project().models()[0].hash;
+    // The set was made on an older version of the file.
+    let mut old = app.project().selection_sets()[0].clone();
+    old.model_hash = openchuck_app::project::ContentHash::of_bytes(b"an older version");
+    app.execute(Command::Replace(Item::SelectionSet(old.clone())))
+        .unwrap();
+    let problem = |app: &Application| app.selection_summaries(&[])[0].problem.clone();
+    assert!(problem(&app).unwrap().contains("different version"));
+    // Adding to it or taking from it would mix numbers of two versions.
+    let top = top_face(&app, model);
+    let other: BTreeSet<u32> = (0..12).filter(|t| !top.contains(t)).take(1).collect();
+    let member: BTreeSet<u32> = top.iter().copied().take(1).collect();
+    assert!(err(app.edit_selection(roof, SelectionEdit::Add(other.into()))).contains("changed"));
+    assert!(
+        err(app.edit_selection(roof, SelectionEdit::Remove(member.into()))).contains("changed")
+    );
+    assert_eq!(app.project().selection_sets()[0].model_hash, old.model_hash);
+    // Picking the same triangles again replaces the set all the same: it is
+    // current, keeps its ID and its operations.
+    let users = app
+        .edit_selection(roof, SelectionEdit::Replace(top.clone().into()))
+        .unwrap();
+    assert_eq!(users, vec![op]);
+    let set = app.project().selection_sets()[0].clone();
+    assert_eq!(set.id, roof);
+    assert_eq!(set.model_hash, current);
+    assert_eq!(set.target, SelectionTarget::Triangles(top.clone()));
+    assert!(problem(&app).is_none());
+    // Undo puts the old, stale set back.
+    app.undo().unwrap();
+    assert_eq!(app.project().selection_sets()[0].model_hash, old.model_hash);
+    // A file that changed since it was added is not selected on.
+    let file = dir.join("models/cube.stl");
+    let mut text = std::fs::read_to_string(&file).unwrap();
+    text.push('\n');
+    std::fs::write(&file, text).unwrap();
+    let refused = err(app.edit_selection(roof, SelectionEdit::Replace(top.into())));
+    assert!(
+        refused.contains("has changed since it was added"),
+        "{refused}"
+    );
+    assert_eq!(app.project().selection_sets()[0].model_hash, old.model_hash);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

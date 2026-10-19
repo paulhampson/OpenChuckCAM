@@ -23,7 +23,7 @@ use openchuck_app::{
     Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionRole, SelectionSummary,
     TriangleSet,
 };
-use openchuck_viewport::{Colour, Hatch, Scene, Slot};
+use openchuck_viewport::{Colour, Hatch, LineStyle, Scene, Slot};
 
 use crate::roles;
 use crate::theme::DARK;
@@ -242,6 +242,11 @@ enum Hover {
 }
 
 /// An empty working selection.
+/// The colour of a stale set's ghost: its old selection, which may not match
+/// the model now.
+const GHOST: Colour = [0.72, 0.76, 0.82, 1.0];
+const GHOST_FILL: Colour = [0.72, 0.76, 0.82, 0.12];
+
 fn nothing() -> SelectionTarget {
     SelectionTarget::Triangles(TriangleSet::new())
 }
@@ -449,6 +454,36 @@ impl SelectionPanel {
             self.shown = set;
             self.dirty = true;
         }
+    }
+
+    /// The set whose details and old selection are shown, if any.
+    #[cfg(test)]
+    pub fn shown_set(&self) -> Option<SelectionSetId> {
+        self.shown
+    }
+
+    /// The notice under the toolbar, if any.
+    #[cfg(test)]
+    pub fn notice(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
+    /// Asks for the overlay to be rebuilt on the next call.
+    #[cfg(test)]
+    pub fn mark_dirty_for_test(&mut self) {
+        self.dirty = true;
+    }
+
+    /// "Select in view" or "Reselect" on set `id`, as a click on its link.
+    #[cfg(test)]
+    pub fn select_set_in_view_for_test(&mut self, app: &Application, id: SelectionSetId) {
+        let summary = app
+            .selection_summaries(&[])
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap();
+        let target = set_target(app, id).unwrap();
+        self.select_set_in_view(app, &summary, target);
     }
 
     /// What a click may pick.
@@ -715,8 +750,11 @@ impl SelectionPanel {
                     index,
                     part,
                     &set.target,
-                    [r, g, b, 0.18],
-                    roles::AVOID,
+                    Look {
+                        fill: [r, g, b, 0.18],
+                        line: roles::AVOID,
+                        style: LineStyle::Solid,
+                    },
                 );
                 for added in scene.meshes.iter_mut().skip(first) {
                     added.hatch = Some(Hatch {
@@ -737,21 +775,72 @@ impl SelectionPanel {
                 .unwrap_or(0);
             let chosen = sets.get(place).and_then(|s| s.colour.as_deref());
             let rgb = set_rgb(chosen, place);
-            draw_target(&mut scene, view, index, part, &set, rgb_fill(rgb), {
-                let [r, g, b] = rgb;
-                [
-                    f32::from(r) / 255.0,
-                    f32::from(g) / 255.0,
-                    f32::from(b) / 255.0,
-                    1.0,
-                ]
-            });
+            // A set with a problem (made on an older version of the model,
+            // say) is a ghost: dashed and hatched in grey, because its
+            // numbers may name other geometry on the model now (12.2).
+            let ghost = app
+                .selection_summaries(&[])
+                .iter()
+                .any(|s| Some(s.id) == self.shown && s.problem.is_some());
+            if ghost {
+                let first = scene.meshes.len();
+                draw_target(
+                    &mut scene,
+                    view,
+                    index,
+                    part,
+                    &set,
+                    Look {
+                        fill: GHOST_FILL,
+                        line: GHOST,
+                        style: LineStyle::Dashed,
+                    },
+                );
+                for added in scene.meshes.iter_mut().skip(first) {
+                    added.hatch = Some(Hatch {
+                        colour: GHOST,
+                        cross: false,
+                    });
+                }
+            } else {
+                draw_target(
+                    &mut scene,
+                    view,
+                    index,
+                    part,
+                    &set,
+                    Look {
+                        fill: rgb_fill(rgb),
+                        line: {
+                            let [r, g, b] = rgb;
+                            [
+                                f32::from(r) / 255.0,
+                                f32::from(g) / 255.0,
+                                f32::from(b) / 255.0,
+                                1.0,
+                            ]
+                        },
+                        style: LineStyle::Solid,
+                    },
+                );
+            }
         }
         if let Some(model) = self.working_model
             && let Some((index, part)) = part_of(model)
         {
             let line = [WORKING[0], WORKING[1], WORKING[2], 1.0];
-            draw_target(&mut scene, view, index, part, &self.working, WORKING, line);
+            draw_target(
+                &mut scene,
+                view,
+                index,
+                part,
+                &self.working,
+                Look {
+                    fill: WORKING,
+                    line,
+                    style: LineStyle::Solid,
+                },
+            );
         }
         match self.hover {
             Some(Hover::Surface(hover)) => {
@@ -1383,10 +1472,23 @@ impl SelectionPanel {
         if let Some(pending) = self.pending.take() {
             pending.handle.cancel();
         }
+        self.shown = Some(summary.id);
+        if summary.problem.is_some() {
+            // Its numbers may name other geometry on the model as it is now,
+            // so they are never loaded as the working selection: the old
+            // selection is drawn as a ghost, and the user picks again and
+            // presses Replace set (decision 0125).
+            self.working = nothing();
+            self.working_model = None;
+            self.working_hash = None;
+            self.message = Some("Pick the new selection, then Replace set.".to_owned());
+            self.rename = summary.name.clone();
+            self.dirty = true;
+            return;
+        }
         self.working = target;
         self.working_model = Some(summary.model);
         self.working_hash = recorded_hash(app, summary.model);
-        self.shown = Some(summary.id);
         self.rename = summary.name.clone();
         self.dirty = true;
     }
@@ -1410,6 +1512,9 @@ impl SelectionPanel {
         ));
         if let Some(problem) = &summary.problem {
             ui.colored_label(PROBLEM, format!("▲ {problem}"));
+            ui.label(
+                RichText::new("┄ Old selection, may not match the new model").color(DARK.muted),
+            );
         }
         if summary.uses.is_empty() {
             ui.weak("No operation uses this set.");
@@ -1597,6 +1702,15 @@ fn set_target(app: &Application, id: SelectionSetId) -> Option<SelectionTarget> 
         .map(|s| s.target.clone())
 }
 
+/// How a target is drawn: a fill for surfaces, a line colour and a line style
+/// for edges.
+#[derive(Clone, Copy)]
+struct Look {
+    fill: Colour,
+    line: Colour,
+    style: LineStyle,
+}
+
 /// Draws `target` on `part` (mesh `index` of `view`): surfaces filled in
 /// `fill`, edges as lines in `line` over the part.
 fn draw_target(
@@ -1605,8 +1719,7 @@ fn draw_target(
     index: usize,
     part: &SceneMesh,
     target: &SelectionTarget,
-    fill: Colour,
-    line: Colour,
+    look: Look,
 ) {
     let edges = |refs: std::collections::BTreeSet<EdgeRef>| {
         view.picking
@@ -1621,13 +1734,18 @@ fn draw_target(
     };
     let lines = match target {
         SelectionTarget::Triangles(t) => {
-            scene.add_mesh(&triangles_mesh(&part.mesh, t), &[], fill, NO_EDGES);
+            scene.add_mesh(&triangles_mesh(&part.mesh, t), &[], look.fill, NO_EDGES);
             return;
         }
         SelectionTarget::Faces(faces) => {
             if let Some(brep) = &part.brep {
                 let triangles = brep.triangles_of(faces);
-                scene.add_mesh(&triangles_mesh(&part.mesh, &triangles), &[], fill, NO_EDGES);
+                scene.add_mesh(
+                    &triangles_mesh(&part.mesh, &triangles),
+                    &[],
+                    look.fill,
+                    NO_EDGES,
+                );
             }
             return;
         }
@@ -1635,7 +1753,7 @@ fn draw_target(
         SelectionTarget::MeshEdges(m) => edges(m.iter().map(|e| EdgeRef::Mesh(*e)).collect()),
     };
     for points in lines {
-        scene.add_wide_polyline(&points, line, true, EDGE_SELECTED_WIDTH);
+        scene.add_styled_polyline(&points, look.line, true, EDGE_SELECTED_WIDTH, look.style);
     }
 }
 
