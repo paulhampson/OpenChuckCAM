@@ -33,6 +33,7 @@ mod export;
 pub mod form;
 mod jobs;
 pub mod library;
+pub mod machine_view;
 pub mod model;
 pub mod operation;
 pub mod opflow;
@@ -46,6 +47,7 @@ pub mod scene;
 pub mod selection;
 pub mod settings;
 pub mod setup;
+pub mod setup_form;
 pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
@@ -315,6 +317,22 @@ impl Application {
             })
     }
 
+    /// What the workholding section needs from the placed part of `setup`:
+    /// its extent and the default tab of each zone for the stored held regions
+    /// (interface specification 11.7; decision record 0114, OI-334 c, d and
+    /// e). Reads and places the part, so it runs as a job. Fails when the
+    /// setup has no part.
+    pub fn start_part_extent(
+        &self,
+        setup: openchuck_project::id::SetupId,
+    ) -> JobHandle<workholding::PartFacts> {
+        let document = self.document.clone();
+        self.jobs
+            .submit("part extent", self.events_tx.clone(), move |context| {
+                workholding::part_facts_of(&document.location, &document.project, setup, context)
+            })
+    }
+
     /// What is wrong with `draft` as the workholding of `setup`, from the
     /// part and the tools, which the setup's own validation cannot see: tabs
     /// outside the head and tail zones (OI-180) and tabs narrower than a tool
@@ -326,7 +344,7 @@ impl Application {
         &self,
         setup: openchuck_project::id::SetupId,
         draft: &openchuck_types::workholding::Workholding,
-    ) -> JobHandle<Vec<String>> {
+    ) -> JobHandle<Vec<workholding::WorkholdingFinding>> {
         let document = self.document.clone();
         let draft = draft.clone();
         self.jobs.submit(
@@ -363,6 +381,7 @@ impl Application {
                 },
             )
             .wait()
+            .map(|found| found.into_iter().map(|f| f.text).collect())
     }
 
     /// Notes about the selections of `operation` that reach a held region or a
@@ -478,6 +497,51 @@ impl Application {
             placement: Placement::End,
         })?;
         Ok((id, prepared.inspection))
+    }
+
+    /// Starts reading, hashing, placing and checking `file` to replace the
+    /// file of the project's model `id`, with the model's unit and placement
+    /// (the Model inspector's "Replace file…", interface specification 11.2;
+    /// decision record 0114 C14). [`Application::replace_model`] stores it.
+    /// Selection sets made on the old file then say so, as they do when a
+    /// file changes on disk.
+    pub fn start_replace_model(
+        &self,
+        id: ModelId,
+        file: &Path,
+    ) -> Result<JobHandle<model::PreparedModel>, AppError> {
+        let reference = self
+            .document
+            .project
+            .models()
+            .iter()
+            .find(|m| m.id == id)
+            .ok_or_else(|| AppError::UnknownModel(id.to_string()))?;
+        self.start_prepare_model(file, reference.units, &reference.transform)
+    }
+
+    /// Stores a file prepared by [`Application::start_replace_model`] as the
+    /// file of model `id`, keeping its ID, unit and placement, as one undoable
+    /// step.
+    pub fn replace_model(
+        &mut self,
+        id: ModelId,
+        prepared: model::PreparedModel,
+    ) -> Result<ModelInspection, AppError> {
+        let old = self
+            .document
+            .project
+            .models()
+            .iter()
+            .find(|m| m.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::UnknownModel(id.to_string()))?;
+        let mut reference = prepared.reference;
+        reference.id = id;
+        reference.units = old.units;
+        reference.transform = old.transform;
+        self.execute(Command::Replace(Item::Model(reference)))?;
+        Ok(prepared.inspection)
     }
 
     /// Starts reading, placing and checking a model file that is not yet in

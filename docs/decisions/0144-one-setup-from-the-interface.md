@@ -2,7 +2,7 @@
 
 - **Status:** accepted by the project owner on 19 Oct 2026, given directly in the lane SU session. The owner chose the behaviour (option A) and decided OI-425 (no setup without a model) the same day, both relayed by the coordinator session before the acceptance. This record amends specification section 6.
 - **Date:** 19 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-425 is new and closed by this record; OI-426 is new.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-425 and OI-426 are new and closed (OI-426 on 20 Oct 2026).
 
 Numbering: the coordinator assigned this lane records 0144 and 0145 and OI-425 to OI-429. This lane uses 0144, OI-425 and OI-426. Record 0145 and OI-427 to OI-429 are not used.
 
@@ -19,7 +19,7 @@ Requirements: SET-01 to SET-06 (P1) need a setup; UI-10, UI-11 and UI-14 for the
 3. **Once a setup exists the "+" stays visible but disabled** (`openchuck_app::can_add_setup`), with the tooltip "More than one setup per project is not supported yet (SET-07)". A second request does nothing. Undo removes the setup and enables the "+" again. When both reasons could apply the control shows one: the SET-07 limit if a setup exists, else the missing model (`add_setup_blocked`).
 4. **The workflow bar's "Add setup"** (specification sections 3 and 5 name it) is a button on the Setup step, with the same enabled state and the same tooltip. It does the same as the tree's "+".
 5. **Specification section 6** is edited in the same change: the Setups row of the "+" table now reads as items 1 to 3 say, replacing "Only once multiple setups ... are built; until then it is hidden". The doc comment on `Group::add` in `shell/tree.rs` says the same.
-6. **Provenance of the defaults.** The new setup's defaults appear in the setup inspector as the existing form shows them. The "default" and "set" marks lane X4 adds (decision 0123, pending merge) are X4's; whether the new setup's values show as unconfirmed under them is OI-426, to check once X4 has merged.
+6. **Provenance of the defaults (OI-426, closed).** The new setup's defaults appear in the setup inspector as the existing form shows an unset field: the value that applies with its source (decision 0123, lane X4). The new setup holds the same data as one made by `setup --new`, so no mark is added here.
 
 ## Alternatives considered
 

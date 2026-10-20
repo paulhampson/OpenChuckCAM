@@ -210,18 +210,52 @@ fn narrow_tab_note(
     tool_diameter: f64,
     tool_name: &str,
     operation: &str,
-) -> Option<String> {
+) -> Option<WorkholdingFinding> {
     workholding.tabs.iter().enumerate().find_map(|(i, tab)| {
         let d = narrowest(tab);
-        (d < tool_diameter - 1e-9).then(|| {
-            format!(
+        (d < tool_diameter - 1e-9).then(|| WorkholdingFinding {
+            tab: Some(i),
+            text: format!(
                 "Tab {} is {d:.3} mm across at its narrowest, narrower than the tool \
                  {tool_name} ({tool_diameter:.3} mm) of {operation}. Make the tab wider or use \
                  a smaller tool.",
                 i + 1
-            )
+            ),
         })
     })
+}
+
+/// A finding of a workholding check against the part and the tools, and the
+/// tab it concerns, so the section can put it on that tab's row (interface
+/// specification 11.7; OI-334 i).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkholdingFinding {
+    /// The tab, from zero; `None` for a finding about the whole setup.
+    pub tab: Option<usize>,
+    /// The sentence, naming the tab by its number from 1.
+    pub text: String,
+}
+
+impl std::fmt::Display for WorkholdingFinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
+/// An operation as the messages name it: its number in machining order and
+/// its name, "1 Rough" (interface specification 11.7).
+pub fn operation_label(
+    project: &openchuck_project::Project,
+    operation: &openchuck_project::Operation,
+) -> String {
+    match project
+        .operations()
+        .iter()
+        .position(|o| o.id == operation.id)
+    {
+        Some(i) => format!("{} {}", i + 1, operation.name),
+        None => operation.name.clone(),
+    }
 }
 
 /// A note for each operation of `setup` whose tool is wider than a tab of the
@@ -231,22 +265,57 @@ pub(crate) fn narrow_tab_notes(
     project: &openchuck_project::Project,
     setup: &openchuck_project::Setup,
 ) -> Vec<String> {
+    narrow_tab_findings(project, setup)
+        .into_iter()
+        .map(|f| f.text)
+        .collect()
+}
+
+/// A tool of one of a setup's operations, as the workholding section compares
+/// tabs with it (OI-159; interface specification 11.7).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetupTool {
+    /// The tool with its controller number: "T2 Flat Ø6".
+    pub tool: String,
+    /// Its cutting diameter.
+    pub diameter: f64,
+    /// The operation that uses it: "1 Rough".
+    pub operation: String,
+}
+
+/// The tools of `setup`'s operations, in machining order. Operations without
+/// a tool, or with a profile that cannot be built, are skipped; generation
+/// reports those.
+pub fn setup_tools(
+    project: &openchuck_project::Project,
+    setup: openchuck_project::id::SetupId,
+) -> Vec<SetupTool> {
     project
         .operations()
         .iter()
-        .filter(|o| o.setup == setup.id)
+        .filter(|o| o.setup == setup)
         .filter_map(|operation| {
             let snapshot = operation
                 .tool
                 .and_then(|id| project.tools().iter().find(|t| t.id == id))?;
             let profile = snapshot.tool.profile().ok()?;
-            narrow_tab_note(
-                &setup.workholding,
-                2.0 * profile.cutting_radius(),
-                &format!("T{} {}", snapshot.controller.number, snapshot.name),
-                &operation.name,
-            )
+            Some(SetupTool {
+                tool: format!("T{} {}", snapshot.controller.number, snapshot.name),
+                diameter: 2.0 * profile.cutting_radius(),
+                operation: operation_label(project, operation),
+            })
         })
+        .collect()
+}
+
+/// [`narrow_tab_notes`] with the tab each concerns.
+fn narrow_tab_findings(
+    project: &openchuck_project::Project,
+    setup: &openchuck_project::Setup,
+) -> Vec<WorkholdingFinding> {
+    setup_tools(project, setup.id)
+        .into_iter()
+        .filter_map(|t| narrow_tab_note(&setup.workholding, t.diameter, &t.tool, &t.operation))
         .collect()
 }
 
@@ -259,7 +328,7 @@ pub(crate) fn findings_of(
     project: &openchuck_project::Project,
     setup: &openchuck_project::Setup,
     context: &openchuck_types::job::JobContext<'_>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<WorkholdingFinding>, AppError> {
     let extent = match setup
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
@@ -270,24 +339,30 @@ pub(crate) fn findings_of(
         }
         None => return Ok(Vec::new()),
     };
-    let mut found: Vec<String> =
+    let mut found: Vec<WorkholdingFinding> =
         check_tab_zones(&setup.workholding, setup.stock.as_ref(), extent.as_ref())
             .into_iter()
             .map(|kind| match kind {
-                SetupWarningKind::TabOutsideEndZones { tab, x } => format!(
-                    "Tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail \
-                     zone. Tabs lie between the held region (or the end of the stock) and the \
-                     part, or between the part and the other end.",
-                    x.0, x.1
-                ),
-                other => openchuck_types::setup::SetupWarning {
-                    kind: other,
-                    unconfirmed: Vec::new(),
-                }
-                .to_string(),
+                SetupWarningKind::TabOutsideEndZones { tab, x } => WorkholdingFinding {
+                    tab: tab.checked_sub(1),
+                    text: format!(
+                        "Tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail \
+                         zone. Tabs lie between the held region (or the end of the stock) and \
+                         the part, or between the part and the other end.",
+                        x.0, x.1
+                    ),
+                },
+                other => WorkholdingFinding {
+                    tab: None,
+                    text: openchuck_types::setup::SetupWarning {
+                        kind: other,
+                        unconfirmed: Vec::new(),
+                    }
+                    .to_string(),
+                },
             })
             .collect();
-    found.extend(narrow_tab_notes(project, setup));
+    found.extend(narrow_tab_findings(project, setup));
     Ok(found)
 }
 
@@ -398,20 +473,94 @@ fn local_radius(mesh: &TriangleMesh, x: f64) -> f64 {
     radius
 }
 
-/// The default tabs of decision 0035 (OI-158; owner's answers), as explicit
-/// data to add to the setup: one in the head zone and one in the tail zone,
-/// frustums with the small end on the part. A zone with no length (a held
-/// region reaching the part, or the stock ending at it) gets none.
+/// The default tab of one zone, or why there is none (interface
+/// specification 11.7; OI-334 e).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ZoneDefault {
+    /// The zone's default tab.
+    Tab(Tab),
+    /// The zone has no length: the held region (or the end of the stock)
+    /// reaches the part.
+    NoRoom,
+    /// The part ends in a point at `x`, so there is no diameter to base a
+    /// tab on.
+    Point {
+        /// Model X of the point.
+        x: f64,
+    },
+    /// The stock leaves no room for a frustum of the tab's size.
+    NoFit {
+        /// The stock's diameter.
+        stock_diameter: f64,
+        /// The tab's small end.
+        small: f64,
+        /// Where the tab meets the part.
+        x: f64,
+    },
+}
+
+/// The default tab of each zone, head then tail, for the held regions of
+/// `workholding` (its tabs are ignored), or `None` when the stock's extent is
+/// not known (decision 0035, owner's answers; decision 0045 item 3).
 ///
 /// Each runs the whole length of its zone, from the held region's inner edge
 /// (or the end of the stock) to the part at the head and from the part to the
 /// other held region (or the end of the stock) at the tail. The small end is
 /// the smaller of 10 mm and half the part's diameter where the tab meets it;
 /// the large end is [`DEFAULT_TAB_END_RATIO`] times that, at most the stock's
-/// diameter (decision 0045 item 3). The part never lies in the zones, so a
-/// default can never enter an avoid selection set (OP-02), which holds
-/// triangles of the part. Fails, saying so, when the setup already has tabs,
-/// the part ends in a point, or the tab would not fit the stock.
+/// diameter. The part never lies in the zones, so a default can never enter
+/// an avoid selection set (OP-02), which holds triangles of the part.
+pub fn zone_defaults(
+    workholding: &Workholding,
+    stock: &Stock,
+    mesh: &TriangleMesh,
+    part: &PartExtent,
+) -> Option<[ZoneDefault; 2]> {
+    let (head, tail) = tab_zones(workholding, stock, part)?;
+    let stock_diameter = stock
+        .radius(Some(part))
+        .map_or(f64::INFINITY, |r| 2.0 * r.0);
+    let one = |is_head: bool, (lo, hi): (f64, f64)| {
+        if hi - lo <= 1e-6 {
+            return ZoneDefault::NoRoom;
+        }
+        let at = if is_head { hi } else { lo };
+        let small = DEFAULT_TAB_MAX_DIAMETER.min(local_radius(mesh, at));
+        if small <= 1e-6 {
+            return ZoneDefault::Point { x: at };
+        }
+        let large = (small * DEFAULT_TAB_END_RATIO).min(stock_diameter);
+        if large - small < openchuck_types::workholding::FRUSTUM_MIN_DIFFERENCE {
+            return ZoneDefault::NoFit {
+                stock_diameter,
+                small,
+                x: at,
+            };
+        }
+        let (start_diameter, end_diameter) = if is_head {
+            (large, small)
+        } else {
+            (small, large)
+        };
+        ZoneDefault::Tab(Tab {
+            x_start: Millimetres(lo),
+            length: Millimetres(hi - lo),
+            shape: TabShape::Frustum {
+                start_diameter: Millimetres(start_diameter),
+                end_diameter: Millimetres(end_diameter),
+            },
+            layout: TabLayout::OnAxis,
+        })
+    };
+    Some([one(true, head), one(false, tail)])
+}
+
+/// The default tabs of decision 0035 (OI-158; owner's answers), as explicit
+/// data to add to the setup: one in the head zone and one in the tail zone,
+/// frustums with the small end on the part ([`zone_defaults`]). A zone with
+/// no length (a held region reaching the part, or the stock ending at it)
+/// gets none. Fails, saying so, when the setup already has tabs, the part
+/// ends in a point, or the tab would not fit the stock.
 pub fn default_tabs(
     workholding: &Workholding,
     stock: &Stock,
@@ -423,49 +572,71 @@ pub fn default_tabs(
             "the setup already has tabs; remove them before adding the defaults",
         ));
     }
-    let (head, tail) = tab_zones(workholding, stock, part).ok_or_else(|| {
+    let zones = zone_defaults(workholding, stock, mesh, part).ok_or_else(|| {
         refuse("the stock's extent is not known, so default tabs cannot be placed")
     })?;
-    let stock_diameter = stock
-        .radius(Some(part))
-        .map_or(f64::INFINITY, |r| 2.0 * r.0);
     let mut tabs = Vec::new();
-    for (is_head, (lo, hi)) in [(true, head), (false, tail)] {
-        if hi - lo <= 1e-6 {
-            continue;
+    for zone in zones {
+        match zone {
+            ZoneDefault::Tab(tab) => tabs.push(tab),
+            ZoneDefault::NoRoom => {}
+            ZoneDefault::Point { x } => {
+                return Err(refuse(format!(
+                    "the part comes to a point at X {x:.3} mm, so there is no diameter to base a \
+                     default tab on; add the tab by hand"
+                )));
+            }
+            ZoneDefault::NoFit {
+                stock_diameter,
+                small,
+                x,
+            } => {
+                return Err(refuse(format!(
+                    "the stock ({stock_diameter:.3} mm across) leaves no room for a tab of \
+                     {small:.3} mm at X {x:.3} mm; add the tab by hand"
+                )));
+            }
         }
-        let at = if is_head { hi } else { lo };
-        let radius = local_radius(mesh, at);
-        let small = DEFAULT_TAB_MAX_DIAMETER.min(radius);
-        if small <= 1e-6 {
-            return Err(refuse(format!(
-                "the part comes to a point at X {at:.3} mm, so there is no diameter to base a \
-                 default tab on; add the tab by hand"
-            )));
-        }
-        let large = (small * DEFAULT_TAB_END_RATIO).min(stock_diameter);
-        if large - small < openchuck_types::workholding::FRUSTUM_MIN_DIFFERENCE {
-            return Err(refuse(format!(
-                "the stock ({stock_diameter:.3} mm across) leaves no room for a tab of \
-                 {small:.3} mm at X {at:.3} mm; add the tab by hand"
-            )));
-        }
-        let (start_diameter, end_diameter) = if is_head {
-            (large, small)
-        } else {
-            (small, large)
-        };
-        tabs.push(Tab {
-            x_start: Millimetres(lo),
-            length: Millimetres(hi - lo),
-            shape: TabShape::Frustum {
-                start_diameter: Millimetres(start_diameter),
-                end_diameter: Millimetres(end_diameter),
-            },
-            layout: TabLayout::OnAxis,
-        });
     }
     Ok(tabs)
+}
+
+/// What the workholding section needs from a setup's placed part (interface
+/// specification 11.7; decision record 0114 section C, OI-334 c, d and e): its
+/// extent, for the head and tail zones, the end of a frustum that faces the
+/// part and the checks, and the default tab of each zone for the stored held
+/// regions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartFacts {
+    /// The placed part's extent.
+    pub extent: PartExtent,
+    /// The default tab of the head and the tail zone, or why there is none;
+    /// `None` when the setup has no stock.
+    pub defaults: Option<[ZoneDefault; 2]>,
+}
+
+/// [`PartFacts`] of `setup` of `project`, reading and placing its part.
+pub(crate) fn part_facts_of(
+    root: &std::path::Path,
+    project: &openchuck_project::Project,
+    setup: openchuck_project::id::SetupId,
+    context: &openchuck_types::job::JobContext<'_>,
+) -> Result<PartFacts, AppError> {
+    let setup = project
+        .setup(setup)
+        .ok_or_else(|| AppError::UnknownSetup(setup.to_string()))?;
+    let model = setup
+        .part
+        .and_then(|id| project.models().iter().find(|m| m.id == id))
+        .ok_or_else(|| refuse("the setup has no part"))?;
+    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let extent = openchuck_geom::part_extent(&mesh)
+        .ok_or_else(|| refuse("the setup's part has no extent"))?;
+    let defaults = setup
+        .stock
+        .as_ref()
+        .and_then(|stock| zone_defaults(&setup.workholding, stock, &mesh, &extent));
+    Ok(PartFacts { extent, defaults })
 }
 
 /// [`default_tabs`] for `setup` of `project`, reading and placing its part.

@@ -350,6 +350,7 @@ impl Shell {
             self.viewport.view(),
             solids,
             self.viewport.failing_solids(),
+            self.viewport.offered_solids(),
         )
     }
 

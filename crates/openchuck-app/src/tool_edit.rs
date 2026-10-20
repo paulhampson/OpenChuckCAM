@@ -18,7 +18,7 @@ use openchuck_types::tool::{ProfilePoint, ProfileSegment, Tool, ToolProfile, Too
 use openchuck_types::units::{Degrees, Millimetres};
 
 use crate::AppError;
-use crate::form::{Field, FieldKind, Source};
+use crate::form::{Field, FieldKind, FormSection, Source};
 use crate::tools::with_custom_profile;
 
 /// Field names of the tool form.
@@ -88,6 +88,7 @@ fn number(
         set: Some(ParameterValue::Number(value)),
         value: Some(ParameterValue::Number(value)),
         source: Source::Operation,
+        section: FormSection::ToolAndFeeds,
     }
 }
 
@@ -131,6 +132,7 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
         set: Some(ParameterValue::Integer(i64::from(tool.flute_count))),
         value: Some(ParameterValue::Integer(i64::from(tool.flute_count))),
         source: Source::Operation,
+        section: FormSection::ToolAndFeeds,
     });
     match &tool.shape {
         ToolShape::BullNose { corner_radius } => out.push(mm(

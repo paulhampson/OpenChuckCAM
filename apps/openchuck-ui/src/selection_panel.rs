@@ -20,10 +20,9 @@ use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_app::project::{ContentHash, SelectionTarget};
 use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
-    Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionRole, SelectionSummary,
-    TriangleSet,
+    Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionSummary, TriangleSet,
 };
-use openchuck_viewport::{Colour, Hatch, Scene, Slot};
+use openchuck_viewport::{Colour, Hatch, LineStyle, Scene, Slot};
 
 use crate::roles;
 use crate::theme::DARK;
@@ -242,6 +241,11 @@ enum Hover {
 }
 
 /// An empty working selection.
+/// The colour of a stale set's ghost: its old selection, which may not match
+/// the model now.
+const GHOST: Colour = [0.72, 0.76, 0.82, 1.0];
+const GHOST_FILL: Colour = [0.72, 0.76, 0.82, 0.12];
+
 fn nothing() -> SelectionTarget {
     SelectionTarget::Triangles(TriangleSet::new())
 }
@@ -299,6 +303,10 @@ pub struct SelectionPanel {
     /// the project's default (decision record 0066).
     new_tangent: Option<bool>,
     rename: String,
+    /// What the row menu of the table asked for, handled after the table.
+    row_action: Option<(SelectionSetId, RowAction)>,
+    /// Why the last delete was refused.
+    delete_note: Option<String>,
     pending: Option<Pending>,
     /// The save or edit of a set being checked against its model.
     writing: Option<Writing>,
@@ -339,6 +347,8 @@ impl Default for SelectionPanel {
             name: String::new(),
             new_tangent: None,
             rename: String::new(),
+            row_action: None,
+            delete_note: None,
             pending: None,
             writing: None,
             warn_reset: true,
@@ -422,6 +432,12 @@ impl SelectionPanel {
         self.dirty = true;
     }
 
+    /// The saved set shown on the part, if any: a new operation takes it
+    /// (interface specification 11.4).
+    pub fn shown_set(&self) -> Option<SelectionSetId> {
+        self.shown
+    }
+
     /// Draws the avoid and check sets of `operation`, hatched red over the
     /// part (specification 7.4), or none.
     /// They are drawn again when the operation's sets change too, as an edit
@@ -443,6 +459,30 @@ impl SelectionPanel {
             self.shown = set;
             self.dirty = true;
         }
+    }
+
+    /// The notice under the toolbar, if any.
+    #[cfg(test)]
+    pub fn notice(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
+    /// Asks for the overlay to be rebuilt on the next call.
+    #[cfg(test)]
+    pub fn mark_dirty_for_test(&mut self) {
+        self.dirty = true;
+    }
+
+    /// "Select in view" or "Reselect" on set `id`, as a click on its link.
+    #[cfg(test)]
+    pub fn select_set_in_view_for_test(&mut self, app: &Application, id: SelectionSetId) {
+        let summary = app
+            .selection_summaries(&[])
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap();
+        let target = set_target(app, id).unwrap();
+        self.select_set_in_view(app, &summary, target);
     }
 
     /// What a click may pick.
@@ -709,8 +749,11 @@ impl SelectionPanel {
                     index,
                     part,
                     &set.target,
-                    [r, g, b, 0.18],
-                    roles::AVOID,
+                    Look {
+                        fill: [r, g, b, 0.18],
+                        line: roles::AVOID,
+                        style: LineStyle::Solid,
+                    },
                 );
                 for added in scene.meshes.iter_mut().skip(first) {
                     added.hatch = Some(Hatch {
@@ -731,21 +774,72 @@ impl SelectionPanel {
                 .unwrap_or(0);
             let chosen = sets.get(place).and_then(|s| s.colour.as_deref());
             let rgb = set_rgb(chosen, place);
-            draw_target(&mut scene, view, index, part, &set, rgb_fill(rgb), {
-                let [r, g, b] = rgb;
-                [
-                    f32::from(r) / 255.0,
-                    f32::from(g) / 255.0,
-                    f32::from(b) / 255.0,
-                    1.0,
-                ]
-            });
+            // A set with a problem (made on an older version of the model,
+            // say) is a ghost: dashed and hatched in grey, because its
+            // numbers may name other geometry on the model now (12.2).
+            let ghost = app
+                .selection_summaries(&[])
+                .iter()
+                .any(|s| Some(s.id) == self.shown && s.problem.is_some());
+            if ghost {
+                let first = scene.meshes.len();
+                draw_target(
+                    &mut scene,
+                    view,
+                    index,
+                    part,
+                    &set,
+                    Look {
+                        fill: GHOST_FILL,
+                        line: GHOST,
+                        style: LineStyle::Dashed,
+                    },
+                );
+                for added in scene.meshes.iter_mut().skip(first) {
+                    added.hatch = Some(Hatch {
+                        colour: GHOST,
+                        cross: false,
+                    });
+                }
+            } else {
+                draw_target(
+                    &mut scene,
+                    view,
+                    index,
+                    part,
+                    &set,
+                    Look {
+                        fill: rgb_fill(rgb),
+                        line: {
+                            let [r, g, b] = rgb;
+                            [
+                                f32::from(r) / 255.0,
+                                f32::from(g) / 255.0,
+                                f32::from(b) / 255.0,
+                                1.0,
+                            ]
+                        },
+                        style: LineStyle::Solid,
+                    },
+                );
+            }
         }
         if let Some(model) = self.working_model
             && let Some((index, part)) = part_of(model)
         {
             let line = [WORKING[0], WORKING[1], WORKING[2], 1.0];
-            draw_target(&mut scene, view, index, part, &self.working, WORKING, line);
+            draw_target(
+                &mut scene,
+                view,
+                index,
+                part,
+                &self.working,
+                Look {
+                    fill: WORKING,
+                    line,
+                    style: LineStyle::Solid,
+                },
+            );
         }
         match self.hover {
             Some(Hover::Surface(hover)) => {
@@ -1136,6 +1230,32 @@ impl SelectionPanel {
             ui.weak("No sets yet. Select on the part and make a set from it.");
         } else {
             self.table(ui, app, summaries);
+            if let Some((id, action)) = self.row_action.take()
+                && let Some(summary) = summaries.iter().find(|s| s.id == id)
+            {
+                match action {
+                    RowAction::Rename => {
+                        self.show_set(Some(id));
+                        self.rename = summary.name.clone();
+                    }
+                    RowAction::Delete => match delete_refusal(summary) {
+                        Some(note) => self.delete_note = Some(note),
+                        None => match app.delete_selection(id) {
+                            Ok(()) => {
+                                self.delete_note = None;
+                                if self.shown == Some(id) {
+                                    self.shown = None;
+                                }
+                                self.dirty = true;
+                            }
+                            Err(e) => error = Some(e.to_string()),
+                        },
+                    },
+                }
+            }
+            if let Some(note) = &self.delete_note {
+                ui.colored_label(PROBLEM, note);
+            }
         }
         if let Some(summary) = chosen {
             ui.separator();
@@ -1295,23 +1415,44 @@ impl SelectionPanel {
                         });
                         match &summary.problem {
                             Some(problem) => {
-                                ui.colored_label(PROBLEM, "▲ Problem")
-                                    .on_hover_text(problem);
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(format!("▲ {problem}")).color(PROBLEM),
+                                    )
+                                    .truncate(),
+                                )
+                                .on_hover_text(problem);
                             }
                             None => {
                                 ui.label("● Matches model");
                             }
                         }
-                        let usable = summary.problem.is_none();
-                        if usable
-                            && ui
-                                .link("Select in view")
-                                .on_hover_text("Make the set the working selection, to edit it")
-                                .clicked()
-                            && let Some(t) = set_target(app, summary.id)
-                        {
-                            self.select_set_in_view(app, summary, t);
-                        }
+                        ui.horizontal(|ui| {
+                            let usable = summary.problem.is_none();
+                            let (text, tip) = if usable {
+                                ("Select in view", "Make the set the working selection, to edit it")
+                            } else {
+                                (
+                                    "Reselect",
+                                    "Load the set as the working selection, change it and press Replace set",
+                                )
+                            };
+                            if ui.link(text).on_hover_text(tip).clicked()
+                                && let Some(t) = set_target(app, summary.id)
+                            {
+                                self.select_set_in_view(app, summary, t);
+                            }
+                            ui.menu_button("⋯", |ui| {
+                                if ui.button("Rename").clicked() {
+                                    self.row_action = Some((summary.id, RowAction::Rename));
+                                    ui.close();
+                                }
+                                if ui.button("Delete").clicked() {
+                                    self.row_action = Some((summary.id, RowAction::Delete));
+                                    ui.close();
+                                }
+                            });
+                        });
                         ui.end_row();
                     }
                 });
@@ -1330,10 +1471,23 @@ impl SelectionPanel {
         if let Some(pending) = self.pending.take() {
             pending.handle.cancel();
         }
+        self.shown = Some(summary.id);
+        if summary.problem.is_some() {
+            // Its numbers may name other geometry on the model as it is now,
+            // so they are never loaded as the working selection: the old
+            // selection is drawn as a ghost, and the user picks again and
+            // presses Replace set (decision 0125).
+            self.working = nothing();
+            self.working_model = None;
+            self.working_hash = None;
+            self.message = Some("Pick the new selection, then Replace set.".to_owned());
+            self.rename = summary.name.clone();
+            self.dirty = true;
+            return;
+        }
         self.working = target;
         self.working_model = Some(summary.model);
         self.working_hash = recorded_hash(app, summary.model);
-        self.shown = Some(summary.id);
         self.rename = summary.name.clone();
         self.dirty = true;
     }
@@ -1357,6 +1511,9 @@ impl SelectionPanel {
         ));
         if let Some(problem) = &summary.problem {
             ui.colored_label(PROBLEM, format!("▲ {problem}"));
+            ui.label(
+                RichText::new("┄ Old selection, may not match the new model").color(DARK.muted),
+            );
         }
         if summary.uses.is_empty() {
             ui.weak("No operation uses this set.");
@@ -1428,22 +1585,34 @@ impl SelectionPanel {
         {
             error = Some(e.to_string());
         }
-        let used = !summary.uses.is_empty();
-        if ui
-            .add_enabled(!used, egui::Button::new("Delete set"))
-            .on_disabled_hover_text("Take the set out of its operations first")
-            .clicked()
-        {
-            match app.delete_selection(summary.id) {
-                Ok(()) => {
-                    self.shown = None;
-                    self.dirty = true;
-                }
-                Err(e) => error = Some(e.to_string()),
-            }
-        }
         error
     }
+}
+
+/// What a row's menu asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowAction {
+    Rename,
+    Delete,
+}
+
+/// Why a set cannot be deleted: the operations that use it, by name, or
+/// `None` when nothing does (specification 12.2).
+fn delete_refusal(summary: &SelectionSummary) -> Option<String> {
+    if summary.uses.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = summary.uses.iter().map(|u| u.name.as_str()).collect();
+    Some(format!(
+        "“{}” is used by {}. Take it out of {} first.",
+        summary.name,
+        names.join(", "),
+        if names.len() == 1 {
+            "that operation"
+        } else {
+            "those operations"
+        }
+    ))
 }
 
 /// The choice of keeping tangent edges, as the user reads it: the project's
@@ -1532,6 +1701,15 @@ fn set_target(app: &Application, id: SelectionSetId) -> Option<SelectionTarget> 
         .map(|s| s.target.clone())
 }
 
+/// How a target is drawn: a fill for surfaces, a line colour and a line style
+/// for edges.
+#[derive(Clone, Copy)]
+struct Look {
+    fill: Colour,
+    line: Colour,
+    style: LineStyle,
+}
+
 /// Draws `target` on `part` (mesh `index` of `view`): surfaces filled in
 /// `fill`, edges as lines in `line` over the part.
 fn draw_target(
@@ -1540,8 +1718,7 @@ fn draw_target(
     index: usize,
     part: &SceneMesh,
     target: &SelectionTarget,
-    fill: Colour,
-    line: Colour,
+    look: Look,
 ) {
     let edges = |refs: std::collections::BTreeSet<EdgeRef>| {
         view.picking
@@ -1556,13 +1733,18 @@ fn draw_target(
     };
     let lines = match target {
         SelectionTarget::Triangles(t) => {
-            scene.add_mesh(&triangles_mesh(&part.mesh, t), &[], fill, NO_EDGES);
+            scene.add_mesh(&triangles_mesh(&part.mesh, t), &[], look.fill, NO_EDGES);
             return;
         }
         SelectionTarget::Faces(faces) => {
             if let Some(brep) = &part.brep {
                 let triangles = brep.triangles_of(faces);
-                scene.add_mesh(&triangles_mesh(&part.mesh, &triangles), &[], fill, NO_EDGES);
+                scene.add_mesh(
+                    &triangles_mesh(&part.mesh, &triangles),
+                    &[],
+                    look.fill,
+                    NO_EDGES,
+                );
             }
             return;
         }
@@ -1570,7 +1752,7 @@ fn draw_target(
         SelectionTarget::MeshEdges(m) => edges(m.iter().map(|e| EdgeRef::Mesh(*e)).collect()),
     };
     for points in lines {
-        scene.add_wide_polyline(&points, line, true, EDGE_SELECTED_WIDTH);
+        scene.add_styled_polyline(&points, look.line, true, EDGE_SELECTED_WIDTH, look.style);
     }
 }
 
@@ -1583,87 +1765,47 @@ fn recorded_hash(app: &Application, model: ModelId) -> Option<ContentHash> {
         .map(|m| m.hash)
 }
 
-/// The selections section of an operation's properties (OP-02): for each
-/// role the sets in it, a button to take one out, and a list to add one from.
-/// Returns the text of an error to show in a dialog.
-pub fn operation_roles(
-    ui: &mut egui::Ui,
-    app: &mut Application,
-    operation: OperationId,
-    summaries: &[SelectionSummary],
-) -> Option<String> {
-    let mut error = None;
-    let op = app.project().operation(operation).cloned()?;
-    ui.strong("Selections");
-    if summaries.is_empty() {
-        ui.weak("No selection sets yet. Make some with Select on the part.");
-        return None;
-    }
-    ui.weak("With none in Machine the operation cuts the whole part.");
-    let name_of = |id: SelectionSetId| {
-        summaries
-            .iter()
-            .find(|s| s.id == id)
-            .map_or_else(|| "(missing set)".to_owned(), |s| s.name.clone())
-    };
-    for role in SelectionRole::ALL {
-        let members: Vec<SelectionSetId> = match role {
-            SelectionRole::Machine => op.selections.clone(),
-            SelectionRole::Boundary => op.boundary.into_iter().collect(),
-            SelectionRole::Avoid => op.avoid.clone(),
-            SelectionRole::Check => op.check.clone(),
-            _ => Vec::new(),
-        };
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(role.name()).strong())
-                .on_hover_text(role.description());
-            for id in &members {
-                let problem = summaries
-                    .iter()
-                    .find(|s| s.id == *id)
-                    .and_then(|s| s.problem.clone());
-                let mut text = RichText::new(format!("{} ✕", name_of(*id)));
-                if problem.is_some() {
-                    text = text.color(PROBLEM);
-                }
-                let button = ui.small_button(text);
-                if let Some(problem) = &problem {
-                    button.clone().on_hover_text(format!("⚠ {problem}"));
-                }
-                if button.on_hover_text("Take it out of this role").clicked()
-                    && let Err(e) = app.set_operation_selection(operation, role, *id, false)
-                {
-                    error = Some(e.to_string());
-                }
-            }
-            let free: Vec<&SelectionSummary> = summaries
-                .iter()
-                .filter(|s| !members.contains(&s.id))
-                .collect();
-            if !free.is_empty() {
-                egui::ComboBox::from_id_salt(("role", role.name()))
-                    .selected_text("add…")
-                    .show_ui(ui, |ui| {
-                        for s in free {
-                            if ui.selectable_label(false, &s.name).clicked()
-                                && let Err(e) =
-                                    app.set_operation_selection(operation, role, s.id, true)
-                            {
-                                error = Some(e.to_string());
-                            }
-                        }
-                    });
-            }
-        });
-    }
-    error
-}
-
 #[cfg(test)]
 mod tests {
+
     #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
+    use openchuck_app::SelectionRole;
+
+    #[test]
+    fn req_ui_05_a_refused_delete_names_the_operations_that_use_the_set() {
+        use openchuck_app::project::id::OperationId;
+        let mut summary = SelectionSummary {
+            id: SelectionSetId::new(),
+            name: "Rim".to_owned(),
+            model: openchuck_app::project::id::ModelId::new(),
+            model_path: None,
+            kind: "triangles",
+            count: 3,
+            uses: Vec::new(),
+            problem: None,
+            colour: None,
+        };
+        assert_eq!(delete_refusal(&summary), None);
+        let use_of = |name: &str| openchuck_app::SelectionUse {
+            operation: OperationId::new(),
+            name: name.to_owned(),
+            roles: Vec::new(),
+        };
+        summary.uses.push(use_of("2 Finish"));
+        let one = delete_refusal(&summary).unwrap();
+        assert!(
+            one.contains("2 Finish") && one.contains("that operation"),
+            "{one}"
+        );
+        summary.uses.push(use_of("4 Engrave"));
+        let two = delete_refusal(&summary).unwrap();
+        assert!(
+            two.contains("2 Finish, 4 Engrave") && two.contains("those operations"),
+            "{two}"
+        );
+    }
 
     fn set(items: &[u32]) -> TriangleSet {
         items.iter().copied().collect()
