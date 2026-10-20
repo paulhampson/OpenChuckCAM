@@ -1,6 +1,6 @@
 # 0165: STEP in the model chooser, hidden helper programs, window title and project folder (lane BUG-IMP; #220, #221, #218, #219; OI-581 to OI-584)
 
-- **Status:** proposed. Items 1 and 2 are bug fixes that follow requirements; item 3 follows the owner's choice (OI-581, closed); item 4 follows the owner's rule (OI-583, closed).
+- **Status:** accepted by the project owner (20 Oct 2026), on the owner's instruction given in the lane BUG-IMP session. Items 3 and 4 follow the owner's choices relayed by the coordinator session (title format; warn and ask for an existing folder).
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-581 and OI-583 (closed), OI-582 (owner check on Windows), OI-584.
 
