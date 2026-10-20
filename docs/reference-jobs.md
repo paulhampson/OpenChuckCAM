@@ -42,7 +42,7 @@ The owner's blisk, `testdata/stl/blisk.stl`, is the first sample from a real par
 
 ## Golden file audit
 
-`cargo xtask golden` (also part of the ordinary tests) checks the committed programs against the exact parts, the post conventions and the controller's feed rule, so they need no hand review: see decision 0020 item 14 for what it checks and what it found. Measured on these files: deepest cut into the part 0.0005 to 0.0019 mm (0.0006 mm for `lobed`); contact feed within 2 % (worst 1.98 %; `lobed` median 0.17 %, worst 1.96 %) away from the part's ends; the Z1 and LinuxCNC programs of a job reach the same contact points.
+`cargo xtask golden` (also part of the ordinary tests) checks the committed programs against the exact parts, the post conventions and the controller's feed rule, so they need no hand review: see decision 0020 item 14 for what it checks and what it found. Measured on these files: deepest cut into the part 0.0005 to 0.0019 mm (0.0006 mm for `lobed`); contact feed within 2 % (worst 1.98 %; `lobed` median 0.17 %, worst 1.96 %) away from the part's ends; the Z1 and LinuxCNC programs of a job reach the same contact points. Between its points, on the straight machine moves as the controller runs them, the `lobed` job's tool cuts at most 0.0039 mm into the exact part, the path fitter's chord limit (`fit_interior.rs` in `openchuck-path`; [decision 0133](decisions/0133-simultaneous-fitter-tests-the-quarter-points.md)).
 
 ## Gate 3
 

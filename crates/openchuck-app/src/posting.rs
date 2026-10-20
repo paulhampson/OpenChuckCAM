@@ -129,6 +129,14 @@ pub(crate) fn slug(name: &str, fallback: &str) -> String {
 
 /// A file name stem: the running number, so the files sort in machining
 /// order and no two share a name, then the parts that say what is inside.
+/// The tool and its version for the comment every program carries (NFR-16): the workspace
+/// version only, never a commit or a date, so one version always writes the same program
+/// (GC-07, NFR-06).
+#[must_use]
+fn generator_comment() -> String {
+    format!("OpenChuckCAM {}", env!("CARGO_PKG_VERSION"))
+}
+
 fn file_stem(index: usize, parts: &[String]) -> String {
     let mut stem = format!("{:02}", index + 1);
     for part in parts {
@@ -557,6 +565,7 @@ pub(crate) fn post_toolpath(
                 None => format!("{} - {}", project.name(), setup.name),
             },
             revision: None,
+            generator: Some(generator_comment()),
             work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
         };
         let part = Toolpath { groups };

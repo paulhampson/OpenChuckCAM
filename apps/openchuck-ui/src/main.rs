@@ -11,16 +11,23 @@
 //!   [--out FILE]` runs the NFR-03 frame-time benchmark (verification plan
 //!   4.2) and exits non-zero if it fails.
 //!
+//! A Windows release build is a GUI program: no console window opens from the
+//! desktop. Started from a terminal it attaches to that terminal, so `--bench`
+//! and error text print there as before. Everything is also written to a
+//! local log file (`logging`; decision record 0155).
+//!
 //! On Windows the window uses DX12 when it offers a hardware adapter
 //! (decision record 0059, accepted). `WGPU_BACKEND` (`dx12`, `vulkan`, `gl`)
 //! overrides the choice, and `RUST_LOG` sets what is logged on standard error;
 //! the adapter chosen is logged at `info`, which is on by default.
 
 #![allow(clippy::print_stderr)]
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::process::ExitCode;
 use std::sync::{Arc, OnceLock};
 
+mod about;
 mod bench;
 mod export_panel;
 mod field_row;
@@ -29,6 +36,7 @@ mod form_panel;
 mod graphics;
 mod import_panel;
 mod label_layout;
+mod logging;
 mod machine_panel;
 mod model_panel;
 mod playback_panel;
@@ -48,12 +56,15 @@ mod viewport_toolbar;
 mod workholding_panel;
 
 fn main() -> ExitCode {
+    logging::attach_parent_console();
     graphics::init_logging();
+    logging::install_panic_hook();
     let args: Vec<String> = std::env::args().collect();
     match bench::Options::parse(&args) {
         Some(Ok(options)) => run_bench(options),
         Some(Err(message)) => {
             eprintln!("error: {message}");
+            log::error!("{message}");
             ExitCode::FAILURE
         }
         None => run_app(std::env::args_os().nth(1).map(std::path::PathBuf::from)),
@@ -81,6 +92,7 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
     // configuration folder (`None`) is a supported absence and stays silent.
     if let Some(Err(e)) = openchuck_app::library::install_default_tools_in_default_folder() {
         eprintln!("warning: could not install the default tools: {e}");
+        log::warn!("could not install the default tools: {e}");
         let _ = rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Warning)
             .set_title("OpenChuckCAM")
@@ -119,11 +131,12 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
         Err(error) => {
             let message = graphics::failure_message(&error.to_string());
             eprintln!("error: {message}");
+            log::error!("{message}");
             // Started from the desktop, standard error may not be seen.
             let _ = rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Error)
                 .set_title("OpenChuckCAM")
-                .set_description(message)
+                .set_description(logging::with_log_hint(&message))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
             ExitCode::FAILURE

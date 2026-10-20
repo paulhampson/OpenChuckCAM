@@ -129,7 +129,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | "+" on | Does |
 | --- | --- |
 | Model | Opens the import dialog (11.2) |
-| Setups | Opens Setup with a new setup. Only once multiple setups (SET-07, P2) are built; until then it is hidden |
+| Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and an empty working selection ("Select on the part…", decision 0037 item 7) |
 | Tools | Opens the tool library (12.1) with "Add to project" as its primary action |
 | Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
@@ -692,6 +692,16 @@ UI-05; decisions 0032 and 0037; a dock tab.
 - **Marks.** The current state is highlighted. Undone steps are italic, marked "undone".
 - **Jumping.** Choosing a row undoes or redoes to it.
 - **Text.** A line at the foot gives the shortcuts and says that a new edit after undoing discards the undone steps.
+
+### 12.4 About window
+
+NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from Help, "About OpenChuckCAM…".
+
+- **A modal dialog** in the main window, like the other dialogs (section 3).
+- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates.
+- **Footer.** "Copy build information" on the left (secondary; copies the Build block and nothing else; the window stays open), "Close" bottom right (the one primary button, section 5).
+- **Keyboard.** Tab visits the Licences box, Copy and Close in that order; the box scrolls with the arrow keys; Copy's tooltip opens on focus (section 16).
+- A fact the build could not find reads "unknown".
 
 ## 13. Per-user settings
 

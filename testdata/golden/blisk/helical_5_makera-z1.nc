@@ -1,4 +1,5 @@
 (blisk_helical_5 - Setup 1)
+(OpenChuckCAM <version>)
 G90 G21 G17
 G54
 (operation <id>)

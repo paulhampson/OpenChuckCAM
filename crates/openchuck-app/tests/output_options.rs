@@ -446,6 +446,39 @@ fn req_gc_05_req_nfr_08_each_grouping_matches_its_golden_files() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// NFR-16, GC-07: every program, in every grouping and for both posts, carries exactly one
+/// `(OpenChuckCAM <workspace version>)` comment right after the title, and nothing else about the
+/// build (no commit, date or dirty flag), so one version always writes the same bytes.
+#[test]
+fn req_nfr_16_req_gc_07_every_program_names_the_tool_and_the_workspace_version() {
+    let (dir, mut app) = project("generator", false);
+    let expected = format!("(OpenChuckCAM {})", env!("CARGO_PKG_VERSION"));
+    for grouping in OutputGrouping::ALL {
+        for (name, text) in post(&mut app, grouping).gcode {
+            let lines: Vec<_> = text.lines().collect();
+            assert_eq!(
+                lines.iter().filter(|l| l.contains("OpenChuckCAM")).count(),
+                1,
+                "{name}"
+            );
+            assert_eq!(lines.get(1), Some(&expected.as_str()), "{name}");
+            let commit = has_no_build_facts(&text);
+            assert!(commit, "{name}: no build facts in the program");
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// True when the text has no date, commit hash or dirty flag of a build.
+fn has_no_build_facts(text: &str) -> bool {
+    !text.contains("Uncommitted")
+        && !text.contains("Built:")
+        && !text.lines().any(|l| {
+            l.split(|c: char| !c.is_ascii_hexdigit())
+                .any(|w| w.len() == 40)
+        })
+}
+
 // ---- the setup sheet (GC-12) ----
 
 fn sheet_project() -> (PathBuf, Application) {
