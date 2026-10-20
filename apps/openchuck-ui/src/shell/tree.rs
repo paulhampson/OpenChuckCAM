@@ -350,7 +350,7 @@ impl Shell {
                                     egui::Id::new(("operation drag", id)),
                                     index,
                                     |ui| {
-                                        ui.label(RichText::new("⠿").color(DARK.muted));
+                                        ui.label(RichText::new("\u{2630}").color(DARK.muted));
                                     },
                                 )
                                 .response;

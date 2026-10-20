@@ -910,9 +910,9 @@ fn geometry(
                 let problem = summary.and_then(|s| s.problem.clone());
                 let text = match (&problem, summary) {
                     (Some(_), Some(s)) => {
-                        format!("{name} \u{b7} {} {} not found \u{2715}", s.count, s.kind)
+                        format!("{name} \u{b7} {} {} not found \u{d7}", s.count, s.kind)
                     }
-                    _ => format!("{name} \u{2715}"),
+                    _ => format!("{name} \u{d7}"),
                 };
                 let mut button =
                     egui::Button::new(RichText::new(text).color(if problem.is_some() {

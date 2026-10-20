@@ -711,7 +711,7 @@ impl PlaybackPanel {
                 self.previous_operation(timeline);
             }
             if ui
-                .button("◀")
+                .button("\u{23f4}")
                 .on_hover_text("Step back one move (←)")
                 .clicked()
             {
@@ -720,7 +720,7 @@ impl PlaybackPanel {
             let label = if self.playback.is_playing() {
                 "⏸"
             } else {
-                "▶"
+                "\u{23f5}"
             };
             if ui
                 .button(label)
@@ -730,7 +730,7 @@ impl PlaybackPanel {
                 self.toggle_play(timeline);
             }
             if ui
-                .button("▶|")
+                .button("\u{23f5}|")
                 .on_hover_text("Step on one move (→)")
                 .clicked()
             {

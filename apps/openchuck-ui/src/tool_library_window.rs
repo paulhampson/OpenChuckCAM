@@ -1497,7 +1497,7 @@ fn list(
         .show(ui, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.menu_button("New tool ▾", |ui| {
+                ui.menu_button("New tool \u{23f7}", |ui| {
                     for kind in ToolType::ALL {
                         if ui.button(kind.label()).clicked() {
                             acts.push(Act::New(kind));

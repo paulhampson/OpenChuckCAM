@@ -108,7 +108,7 @@ impl Shell {
             self.dock_tabs(ui);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .small_button("﹀")
+                    .small_button("\u{23f7}")
                     .on_hover_text("Collapse the dock (Ctrl 3)")
                     .clicked()
                 {

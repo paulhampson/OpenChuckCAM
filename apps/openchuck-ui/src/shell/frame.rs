@@ -485,7 +485,7 @@ impl Shell {
                 .show(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         if ui
-                            .small_button("︿")
+                            .small_button("\u{23f6}")
                             .on_hover_text("Open the dock (Ctrl 3)")
                             .clicked()
                         {

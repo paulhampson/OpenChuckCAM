@@ -464,9 +464,9 @@ impl ImportSession {
                             let selected = self.selected == Some(finding_row.kind);
                             ui.horizontal(|ui| {
                                 if finding_row.count == 0 {
-                                    ui.colored_label(DARK.ok, "✔");
+                                    ui.colored_label(DARK.ok, "\u{2713}");
                                 } else {
-                                    ui.colored_label(DARK.warning, "▲");
+                                    ui.colored_label(DARK.warning, "!");
                                 }
                                 let label = ui.selectable_label(selected, finding_row.name);
                                 if label.clicked() && finding_row.count > 0 {

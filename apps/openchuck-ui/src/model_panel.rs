@@ -421,7 +421,7 @@ impl ModelPanel {
             let row = ui.horizontal(|ui| {
                 let handle = ui
                     .add(
-                        egui::Label::new(RichText::new("\u{2807}").color(DARK.muted))
+                        egui::Label::new(RichText::new("\u{2630}").color(DARK.muted))
                             .sense(egui::Sense::drag()),
                     )
                     .on_hover_text("Drag to reorder");
@@ -429,7 +429,7 @@ impl ModelPanel {
                 ui.label(format!("{}. {}", i + 1, describe(step)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
-                        .small_button("\u{2715}")
+                        .small_button("\u{d7}")
                         .on_hover_text("Remove this step (it can be undone)")
                         .clicked()
                     {

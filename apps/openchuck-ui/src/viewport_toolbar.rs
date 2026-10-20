@@ -119,7 +119,7 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             // controls, else they move into the "Show" menu, so none is cut off (OI-529).
             let inline_show = step == ViewStep::Simulate
                 && ui.available_width()
-                    >= text_width(ui, "Show ▾") + button_extra(ui) + simulate_show_width(ui);
+                    >= text_width(ui, "Show \u{23f7}") + button_extra(ui) + simulate_show_width(ui);
             let in_menu = step == ViewStep::Simulate && !inline_show;
             show_or_hide(ui, viewport, in_menu);
             if step == ViewStep::Model && viewport.has_findings() {
@@ -196,7 +196,7 @@ fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, choices: &[(T, &str, &str)],
 
 /// The "Show or hide" button and its list (V).
 fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport, simulate_choices: bool) {
-    let button = ui.button("Show ▾").on_hover_text(
+    let button = ui.button("Show \u{23f7}").on_hover_text(
         "Show or hide: part, stock, axes, held regions and tabs, selections, toolpaths (V)",
     );
     if button.clicked() {
