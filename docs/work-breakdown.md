@@ -149,6 +149,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TE | 20 items 3, 6 and 7: end-to-end command-line scenarios, the determinism run at 1, 2 and N threads over the sample projects (the reference jobs and the owner's blisk), undo, redo and cancellation, and the no-network run (built 17 Oct 2026 on `claude/lane-te-end-to-end-and-determinism`, pull request 98; [decision 0096](decisions/0096-slice-20-end-to-end-and-determinism.md), accepted) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TS | OI-129 and slice 20: a UI smoke test of the built archives on Windows, macOS and Linux under software rendering, `ui-smoke.yml` (built 17 Oct 2026 on `claude/lane-ts-ui-smoke-ci`, draft pull request 95; decision record 0101 on its branch) | ░░ | ░░ | ░░ | ░░ | ██ |
 | TP | 20 publish readiness (OI-302, OI-303): make the library family pass `cargo publish --dry-run` (where the built-in posts live is an architecture question for the owner first), then a real crates.io publish step and name reservation; planned by the owner's decision of 17 Oct 2026; not started | ░░ | ░░ | ░░ | ░░ | ░░ |
+| RH | Register hygiene (OI-231): `cargo xtask records` checks the open-items register and the decision index; the duplicate, misfiled and out-of-order rows that union merges left are cleaned; the rules for editing the registers are written down (built 19 Oct 2026 on `claude/sharp-gates-m8uwwq`, draft pull request; [decision 0130](decisions/0130-register-checks.md), accepted 20 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | FZ | 20 item 4: the malformed-input sweep, a fuzz target for every user file and the fuzz CPU hours per parser (built 18 Oct 2026 on `claude/lane-fz-malformed-input-sweep`, [decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md), accepted 18 Oct 2026) | ░░ | ░░ | ░░ | ░░ | ██ |
 | BT | OI-316 and OI-253: the blisk's gate 2 failures in lane TE's run were from before decision 0076 (lane TE closes OI-316); an older Makera Z1 machine copy with no library ID now migrates by its name ([decision 0109](decisions/0109-z1-copy-without-an-id-migrates-by-name.md), accepted 18 Oct 2026, relayed; built on `claude/lane-bt-gate2-timing`) | ░░ | ░░ | ░░ | ░░ | ██ |
 | BX | OI-319: the blisk's programs the same on Linux, Windows and macOS (toolpath choices that rounding cannot flip: ties at mesh edges, the drop-cutter's tie rule, edge contacts to rounding precision, the fitter's deviation along the tool's contact normal; built 18 Oct 2026 on `claude/lane-bx-cross-platform-f-words`, [decision 0113](decisions/0113-toolpath-choices-rounding-cannot-flip.md), accepted 18 Oct 2026; OI-318 investigated) | ░░ | ░░ | ░░ | ░░ | ██ |
@@ -163,6 +164,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets. Built 19 Oct 2026 on `claude/lane-x6-simulate-import` ([decision 0125](decisions/0125-slice-22-simulate-and-import.md), accepted 19 Oct 2026; OI-370 to OI-374; OI-372 and OI-374 closed); boards 01b, 04, 15 and 11 re-rendered | ░░ | ░░ | ░░ | ░░ | ██ |
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| SL | Bug fix (issue 142, trial feedback F-04): Setup pane labels placed so none overlaps another, with leader lines (`claude/lane-sl-setup-callouts`; no decision record, no format change; OI-440 to OI-442) | | | | | ██ |
 | SU | 22 (SET-01 to SET-06 from the interface): the Setups "+" and the workflow bar's "Add setup" create the project's one setup ([decision 0144](decisions/0144-one-setup-from-the-interface.md), accepted 19 Oct 2026; OI-425 and OI-426 closed; built on `claude/lane-su-add-setup`, draft pull request) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
 | BI | Build traceability: the About window and `--version` report the commit, uncommitted changes, build date, Rust version, target and crate versions, with a licence box and a Copy action (GitHub issue #139; built 19 Oct 2026 on `claude/lane-bi-build-info`, [decision 0151](decisions/0151-build-traceability.md) and [0152](decisions/0152-about-window.md), accepted 19 Oct 2026; OI-443 to OI-447; the tool name and version in the G-code is OI-446; library family 0.11.0; no schema number) | | | | | |
@@ -199,6 +201,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | TE | Nothing to start; its sample set grows as strategy lanes merge |
 | TS | Nothing |
 | TP | The first-release features (so the library API settles), lane TR merged, and the owner's decision on where the built-in posts live (OI-302) |
+| RH | Nothing; widen the `records` path filter first (lane XC) so a register-only pull request runs the check |
 | FZ | Nothing; its hours accumulate nightly after it merges |
 | BT | Nothing |
 | BX-b | BX (decision 0113, merged) |
@@ -213,6 +216,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | BUG-LOG | Nothing. Touches `apps/openchuck-ui` `main.rs`, `graphics.rs` (the logger) and the new `logging.rs`, the crate's `Cargo.toml` and the docs; stays out of the files of X4, SU, BI, XC and FIT. The About button is OI-454. |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| SL | X5 (the Setup panes) and X3 (merged) |
 | X8 | X2 to X7b and X9 |
 | XC | Nothing |
 | T | Everything, including W and X1 to X9 |
@@ -249,7 +253,8 @@ The lanes not listed (B, E, H, I, J, K, L, M, N, P, Q, R, V, W, T) are not expec
 - **Library API.** `cargo-semver-checks` runs on `openchuck-types`, `-path`, `-post` and `-gcode` in every pull request. Before the first release a breaking change is acceptable when it is the better design ([decision 0048](decisions/0048-pre-1-0-api-changes.md)): bump the workspace minor version and add a changelog entry to each affected crate, and the check passes. Do not add a parallel type or function only to avoid the check (decision 0026 did that with `EntryParameters` and `assemble_with_entry`; those stay unless the code is being changed anyway).
 - **Golden files** do not change unless the lane says they should; a plunge entry, a default setting or a refactor must leave them byte for byte as they are.
 - **Spike status.** A lane that touches a spike updates its Status cell in the same pull request (lane D: SP-1 and SP-9).
-- **Before every push** run `cargo fmt --all`, `cargo clippy --workspace --all-targets` (library code denies `unwrap` and unchecked indexing), the tests of the crates you changed, and `cargo xtask deps`, `licences` and `trace`.
+- **Before every push** run `cargo fmt --all`, `cargo clippy --workspace --all-targets` (library code denies `unwrap` and unchecked indexing), the tests of the crates you changed, and `cargo xtask deps`, `licences`, `records` and `trace`.
+- **Registers.** `docs/open-items.md` and the decision index are union-merged, so they keep a row both branches edited. Edit rows in place, move a closed item to the *Closed* table, add new rows in order, and run `cargo xtask records` after merging `main` ([decision 0130](decisions/0130-register-checks.md)).
 - **Review comments.** CodeRabbit reviews code, not `docs/` or Markdown. Answer each finding on its thread and resolve it; a finding that is not worth its code is answered with the path traced and why.
 
 ## Slice 0 – Guardrails and shared data
