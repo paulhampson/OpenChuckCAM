@@ -1,6 +1,6 @@
 # 0149: The axes gadget at the bottom left and the view cube's flat labels (lane MV)
 
-- **Status:** proposed. The gadget's place and the colour scale's move were decided by the owner on issue 157 and in owner decision 3 of the lane (option A, relayed by the coordinator session on 20 Oct 2026); the cube labels follow issue 158. The owner accepts the record in the lane MV session.
+- **Status:** accepted 20 Oct 2026 on the owner's instruction in the lane MV session. The gadget's place and the colour scale's move were decided by the owner on issue 157 and in owner decision 3 of the lane (option A, relayed by the coordinator session on 20 Oct 2026); the cube labels follow issue 158.
 - **Date:** 20 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-438 (closed).
 

@@ -1,6 +1,6 @@
 # 0148: Post and export in the File menu, the View menu and the view directions (lane MV)
 
-- **Status:** proposed. The owner's choices below were given in the trial feedback (issue 140) and relayed by the coordinator session on 20 Oct 2026 (items 1 to 3, owner decisions 1 and 2 of the lane; item 1's step rule is the owner's answer to OI-436, relayed 20 Oct 2026); the owner accepts the record in the lane MV session.
+- **Status:** accepted 20 Oct 2026 on the owner's instruction in the lane MV session. The owner's choices below were given in the trial feedback (issue 140) and relayed by the coordinator session on 20 Oct 2026 (items 1 to 3, owner decisions 1 and 2 of the lane; item 1's step rule is the owner's answer to OI-436, relayed 20 Oct 2026);
 - **Date:** 20 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-435 and OI-436 (closed), OI-437 (open).
 
