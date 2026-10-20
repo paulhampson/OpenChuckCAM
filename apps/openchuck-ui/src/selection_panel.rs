@@ -32,8 +32,8 @@ const PROBLEM: Color32 = DARK.error;
 /// Working selection: blue `#3d8bff` at 40%, a fill (specification 7.4;
 /// decision 0038 amends 0037 item 5).
 const WORKING: Colour = [0.239, 0.545, 1.0, FILL_ALPHA];
-/// The triangle under the pointer: a yellow `#ffe066` outline.
-const HOVER: Colour = [1.0, 0.878, 0.4, 1.0];
+/// The triangle or face under the pointer: a yellow `#ffe066` outline.
+const HOVER: Colour = roles::HOVER;
 const NO_EDGES: Colour = [0.0, 0.0, 0.0, 0.0];
 /// How much of a selection's colour shows over the surface.
 const FILL_ALPHA: f32 = 0.4;
@@ -246,16 +246,48 @@ enum Hover {
 const GHOST: Colour = [0.72, 0.76, 0.82, 1.0];
 const GHOST_FILL: Colour = [0.72, 0.76, 0.82, 0.12];
 
+/// The choices of the Pick control, with their tooltips (specification 7.1).
+const FILTERS: [(PickFilter, &str, &str); 3] = [
+    (
+        PickFilter::Both,
+        "Both",
+        "An edge when the pointer is near one, the surface otherwise.",
+    ),
+    (
+        PickFilter::Faces,
+        "Faces",
+        "Only surfaces: triangles, or the faces of a STEP model.",
+    ),
+    (
+        PickFilter::Edges,
+        "Edges",
+        "Only edges: the edges drawn on the part.",
+    ),
+];
+
+/// Where the selection tools sit in `view`, the area under the toolbar
+/// strip: below the strip, never over it (issue 159; specification 7.1).
+pub fn tools_corner(view: egui::Rect) -> egui::Pos2 {
+    view.left_top() + egui::vec2(8.0, crate::viewport_toolbar::HEIGHT + 8.0)
+}
+
 fn nothing() -> SelectionTarget {
     SelectionTarget::Triangles(TriangleSet::new())
 }
 
-/// A plain click of the other kind waiting for the user to confirm that it
-/// resets the working selection (decision record 0066 item 3).
-struct Reset {
-    model: ModelId,
-    picked: SelectionTarget,
-    hash: Option<ContentHash>,
+/// A change waiting for the user to confirm that it clears the working
+/// selection: a plain click (no Shift or Ctrl), or a switch of the pick
+/// filter to one that cannot hold the selection (issue 152; decision record
+/// 0066 item 3, widened by 0153).
+enum Reset {
+    /// A plain click that picks `picked`.
+    Pick {
+        model: ModelId,
+        picked: SelectionTarget,
+        hash: Option<ContentHash>,
+    },
+    /// A switch to the filter.
+    Filter(PickFilter),
 }
 
 /// The widths of a drawn edge, in logical pixels: the part's feature edges
@@ -670,8 +702,13 @@ impl SelectionPanel {
             self.message = Some(refusal(&self.working, &picked));
             return;
         }
-        if other_kind && self.warn_reset {
-            self.reset = Some(Reset {
+        // A plain click would clear a selection already made, of either kind
+        // or on another model: ask first, unless the project says not to
+        // (issue 152).
+        let clears =
+            combine == Combine::Replace && self.working_model.is_some() && !self.working.is_empty();
+        if clears && self.warn_reset {
+            self.reset = Some(Reset::Pick {
                 model,
                 picked,
                 hash,
@@ -827,7 +864,12 @@ impl SelectionPanel {
         if let Some(model) = self.working_model
             && let Some((index, part)) = part_of(model)
         {
-            let line = [WORKING[0], WORKING[1], WORKING[2], 1.0];
+            // Edges have colours of their own, so they read apart from
+            // triangles and faces (issue 151).
+            let line = match self.working {
+                SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => roles::EDGE_SELECTED,
+                _ => [WORKING[0], WORKING[1], WORKING[2], 1.0],
+            };
             draw_target(
                 &mut scene,
                 view,
@@ -884,7 +926,7 @@ impl SelectionPanel {
                     .picker()
                     .and_then(|p| p.edge_points(hover.mesh, hover.index))
                 {
-                    scene.add_wide_polyline(points, HOVER, true, EDGE_HOVER_WIDTH);
+                    scene.add_wide_polyline(points, roles::EDGE_HOVER, true, EDGE_HOVER_WIDTH);
                 }
             }
             None => {}
@@ -949,6 +991,33 @@ impl SelectionPanel {
         }
     }
 
+    /// What the active filter picks, in words, for the box on the view.
+    fn mode_text(&self) -> &'static str {
+        match self.filter {
+            PickFilter::Both => "Surfaces and edges",
+            PickFilter::Faces => "Surfaces only",
+            PickFilter::Edges => "Edges only",
+        }
+    }
+
+    /// The line under the Pick control: the active mode, and what the pointer
+    /// is over in that thing's own colour (issue 151).
+    fn mode_line(&self, ui: &mut egui::Ui) {
+        ui.label(
+            egui::RichText::new(format!("Picking: {}", self.mode_text()))
+                .color(roles::OVERLAY_TEXT),
+        );
+        let (colour, text) = match self.hover {
+            Some(Hover::Surface(ScenePick { face: Some(_), .. })) => {
+                (roles::to_color32(HOVER), "Over a face")
+            }
+            Some(Hover::Surface(_)) => (roles::to_color32(HOVER), "Over a triangle"),
+            Some(Hover::Edge(_)) => (roles::to_color32(roles::EDGE_HOVER), "Over an edge"),
+            None => (roles::OVERLAY_MUTED, "Over nothing"),
+        };
+        ui.label(egui::RichText::new(format!("■ {text}")).color(colour));
+    }
+
     /// The selection tools box, drawn over the top left of the viewport
     /// (specification section 7.2): one button for each way a click selects,
     /// with its key.
@@ -964,42 +1033,27 @@ impl SelectionPanel {
                     .show(ui, |ui| {
                         ui.visuals_mut().override_text_color = Some(Color32::from_gray(228));
                         ui.horizontal(|ui| {
-                            ui.label("Pick");
-                            for (filter, label, tip) in [
-                                (
-                                    PickFilter::Both,
-                                    "Both",
-                                    "An edge when the pointer is near one, the surface otherwise.",
-                                ),
-                                (
-                                    PickFilter::Faces,
-                                    "Faces",
-                                    "Only surfaces: triangles, or the faces of a STEP model.",
-                                ),
-                                (
-                                    PickFilter::Edges,
-                                    "Edges",
-                                    "Only edges: the edges drawn on the part.",
-                                ),
-                            ] {
-                                if ui
-                                    .selectable_label(self.filter == filter, label)
-                                    .on_hover_text(tip)
-                                    .clicked()
-                                {
-                                    self.filter = filter;
-                                    // Same direction is not offered for edges.
-                                    if filter == PickFilter::Edges
-                                        && self.choice == Choice::Direction
-                                    {
-                                        self.choice = Choice::Triangle;
+                            // "Pick" is a label, in the muted text of a label;
+                            // the three choices are one framed segmented
+                            // control (issue 159).
+                            ui.label(egui::RichText::new("Pick").color(roles::OVERLAY_MUTED));
+                            egui::Frame::new()
+                                .stroke(egui::Stroke::new(1.0, roles::OVERLAY_BORDER))
+                                .corner_radius(3)
+                                .show(ui, |ui| {
+                                    ui.spacing_mut().item_spacing.x = 0.0;
+                                    for (filter, label, tip) in FILTERS {
+                                        if ui
+                                            .selectable_label(self.filter == filter, label)
+                                            .on_hover_text(tip)
+                                            .clicked()
+                                        {
+                                            self.choose_filter(filter);
+                                        }
                                     }
-                                    self.message = None;
-                                    self.hover = None;
-                                    self.dirty = true;
-                                }
-                            }
+                                });
                         });
+                        self.mode_line(ui);
                         ui.separator();
                         for choice in Choice::ALL {
                             if self.filter == PickFilter::Edges && choice == Choice::Direction {
@@ -1069,19 +1123,7 @@ impl SelectionPanel {
             ui.label(format!("Click: {}, {what}.", name.to_lowercase()));
             ui.weak("Choose in the box on the view, or press Q, W, E or R.");
         });
-        ui.add(
-            egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
-                .text("select by angle within")
-                .suffix("°"),
-        )
-        .on_hover_text("The edge angle for smooth patch: the most a surface may turn at an edge.");
-        if self.choice == Choice::Direction {
-            ui.add(
-                egui::Slider::new(&mut self.direction_angle, 1.0..=90.0)
-                    .text("same direction within")
-                    .suffix("°"),
-            );
-        }
+        ui.weak("The angles and options are in the inspector on the right while picking.");
         ui.weak("Click selects. Shift adds. Ctrl removes. Drag to orbit. Esc leaves.");
         match self.hover {
             Some(Hover::Surface(ScenePick {
@@ -1153,16 +1195,6 @@ impl SelectionPanel {
                 self.dirty = true;
             }
         });
-        if matches!(self.working, SelectionTarget::Edges(_))
-            && let Some(choice) = tangent_choice(
-                ui,
-                "new set tangent edges",
-                self.new_tangent,
-                app.project().keep_tangent_edges(),
-            )
-        {
-            self.new_tangent = choice;
-        }
         ui.horizontal_wrapped(|ui| {
             for (label, tip, kind) in [
                 (
@@ -1263,7 +1295,44 @@ impl SelectionPanel {
                 error = Some(e);
             }
         }
+        ui.weak("Editing a set marks every operation that uses it stale.");
+        error
+    }
+
+    /// The selection options, drawn as the "Selection" section of the
+    /// inspector while picking (specification section 8; decision 0153 item
+    /// 5): the angles for selecting by angle and for Same direction, the
+    /// tangent edges choice of a working edge selection, the project's
+    /// default for tangent edges and the warning before a click starts a new
+    /// selection. Returns the text of an error to show in a dialog.
+    pub fn options(&mut self, ui: &mut egui::Ui, app: &mut Application) -> Option<String> {
+        let mut error = None;
         ui.separator();
+        ui.strong("Selection");
+        ui.add(
+            egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
+                .text("select by angle within")
+                .suffix("°"),
+        )
+        .on_hover_text("The edge angle for smooth patch: the most a surface may turn at an edge.");
+        ui.add(
+            egui::Slider::new(&mut self.direction_angle, 1.0..=90.0)
+                .text("same direction within")
+                .suffix("°"),
+        )
+        .on_hover_text(
+            "Same direction: the most a triangle or face may differ from the clicked one.",
+        );
+        if matches!(self.working, SelectionTarget::Edges(_))
+            && let Some(choice) = tangent_choice(
+                ui,
+                "new set tangent edges",
+                self.new_tangent,
+                app.project().keep_tangent_edges(),
+            )
+        {
+            self.new_tangent = choice;
+        }
         let mut keep = app.project().keep_tangent_edges();
         if ui
             .checkbox(&mut keep, "Keep tangent edges by default")
@@ -1280,26 +1349,28 @@ impl SelectionPanel {
         if ui
             .checkbox(&mut warn, "Warn before a click starts a new selection")
             .on_hover_text(
-                "Ask before a click that picks the other kind (an edge on a selection of faces, \
-                 say) clears the selection. Saved with the project.",
+                "Ask before a click without Shift or Ctrl, or a switch of the Pick filter, \
+                 clears the selection. Saved with the project.",
             )
             .changed()
             && let Err(e) = app.execute(openchuck_app::Command::SetWarnOnSelectionReset(warn))
         {
             error = Some(e.to_string());
         }
-        ui.weak("Editing a set marks every operation that uses it stale.");
         error
     }
 
-    /// The warning before a plain click of the other kind resets the working
-    /// selection (decision record 0066 item 3), drawn while one waits.
+    /// The warning before a change clears the working selection (issue 152),
+    /// drawn while one waits: "Clear 1,240 triangles?" with Clear and Cancel.
     /// Returns the text of an error to show in a dialog.
     pub fn reset_dialog(&mut self, ctx: &egui::Context, app: &mut Application) -> Option<String> {
         let reset = self.reset.as_ref()?;
-        let text = reset_warning(&self.working, &reset.picked);
+        let text = match reset {
+            Reset::Pick { picked, .. } => reset_warning(&self.working, picked),
+            Reset::Filter(filter) => filter_warning(&self.working, *filter),
+        };
         let mut answer = None;
-        egui::Window::new("Start a new selection?")
+        egui::Window::new(clear_title(&self.working))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -1307,7 +1378,7 @@ impl SelectionPanel {
                 ui.label(text);
                 ui.checkbox(&mut self.dont_warn, "Don't show me this warning again");
                 ui.horizontal(|ui| {
-                    if ui.button("Start a new selection").clicked() {
+                    if ui.button("Clear").clicked() {
                         answer = Some(true);
                     }
                     if ui.button("Cancel").clicked() {
@@ -1315,19 +1386,15 @@ impl SelectionPanel {
                     }
                 });
             });
-        answer.and_then(|start| self.answer_reset(app, start))
+        answer.and_then(|clear| self.answer_reset(app, clear))
     }
 
-    /// Answers the warning: `start` resets the working selection to the
-    /// click's pick, storing "Don't show me this warning again" as an
-    /// undoable project setting; otherwise the selection stays as it was.
-    fn answer_reset(&mut self, app: &mut Application, start: bool) -> Option<String> {
-        let Reset {
-            model,
-            picked,
-            hash,
-        } = self.reset.take()?;
-        if !start {
+    /// Answers the warning: `clear` goes on with the change, storing "Don't
+    /// show me this warning again" as an undoable project setting; otherwise
+    /// the selection (and the filter) stay as they were.
+    fn answer_reset(&mut self, app: &mut Application, clear: bool) -> Option<String> {
+        let reset = self.reset.take()?;
+        if !clear {
             return None;
         }
         if self.dont_warn
@@ -1335,11 +1402,53 @@ impl SelectionPanel {
         {
             return Some(e.to_string());
         }
-        // The answer is given: this click resets without asking again.
-        self.warn_reset = false;
-        self.join(model, Combine::Replace, picked, hash);
-        self.warn_reset = app.project().warn_on_selection_reset();
+        match reset {
+            Reset::Pick {
+                model,
+                picked,
+                hash,
+            } => {
+                // The answer is given: this click resets without asking again.
+                self.warn_reset = false;
+                self.join(model, Combine::Replace, picked, hash);
+                self.warn_reset = app.project().warn_on_selection_reset();
+            }
+            Reset::Filter(filter) => {
+                self.working = nothing();
+                self.working_model = None;
+                self.working_hash = None;
+                self.set_filter(filter);
+            }
+        }
         None
+    }
+
+    /// Chooses what a click may pick. Switching to a filter that cannot pick
+    /// the kind the working selection holds would leave it stranded, so it
+    /// asks before clearing it, unless the project says not to (issue 152).
+    fn choose_filter(&mut self, filter: PickFilter) {
+        // The warning window does not disable the box on the view; a later
+        // click must not change the mode the open question is about.
+        if self.reset.is_some() || filter == self.filter {
+            return;
+        }
+        if self.warn_reset && !self.working.is_empty() && !filter_holds(filter, &self.working) {
+            self.reset = Some(Reset::Filter(filter));
+            self.dont_warn = false;
+            return;
+        }
+        self.set_filter(filter);
+    }
+
+    fn set_filter(&mut self, filter: PickFilter) {
+        self.filter = filter;
+        // Same direction is not offered for edges.
+        if filter == PickFilter::Edges && self.choice == Choice::Direction {
+            self.choice = Choice::Triangle;
+        }
+        self.message = None;
+        self.hover = None;
+        self.dirty = true;
     }
 
     /// The table of sets (specification section 12.2): swatch, name, kind,
@@ -1677,19 +1786,85 @@ fn refusal(working: &SelectionTarget, picked: &SelectionTarget) -> String {
     )
 }
 
-/// What the warning before a reset says (decision record 0066 item 3).
+/// A count with its noun in the singular or plural, with a thousands
+/// separator: "1 triangle", "1,240 triangles".
+fn counted(target: &SelectionTarget) -> String {
+    let n = target.len();
+    let noun = match target {
+        SelectionTarget::Triangles(_) => "triangle",
+        SelectionTarget::Faces(_) => "face",
+        SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => "edge",
+    };
+    let digits = n.to_string();
+    let mut grouped = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    format!("{grouped} {noun}{}", if n == 1 { "" } else { "s" })
+}
+
+/// The title of the warning before the working selection is cleared (issue
+/// 152): "Clear 1,240 triangles?".
+fn clear_title(working: &SelectionTarget) -> String {
+    format!("Clear {}?", counted(working))
+}
+
+/// What the warning before a plain click clears the selection says (issue
+/// 152; decision record 0066 item 3).
 fn reset_warning(working: &SelectionTarget, picked: &SelectionTarget) -> String {
-    let noun = |t: &SelectionTarget| match t {
+    let kind = |t: &SelectionTarget| match t {
         SelectionTarget::Triangles(_) => ("triangles", "a triangle"),
         SelectionTarget::Faces(_) => ("faces", "a face"),
         SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_) => ("edges", "an edge"),
     };
-    let (holds, _) = noun(working);
-    let (_, one) = noun(picked);
+    let (holds, _) = kind(working);
+    let (picks, one) = kind(picked);
+    let lead = if holds == picks {
+        "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take \
+         from it."
+            .to_owned()
+    } else {
+        format!(
+            "This click picks {one}, and the selection holds {holds}: a selection holds one kind."
+        )
+    };
     format!(
-        "This click picks {one}, and the selection holds {holds}: a selection holds one kind. \
-         Starting a new selection with it clears the {} {holds} selected now.",
-        working.len()
+        "{lead} Starting a new selection with it clears the {} selected now.",
+        counted(working)
+    )
+}
+
+/// What the warning before a switch of the pick filter clears says (issue
+/// 152).
+fn filter_warning(working: &SelectionTarget, filter: PickFilter) -> String {
+    let what = match filter {
+        PickFilter::Edges => "Edges",
+        PickFilter::Faces => "Faces",
+        PickFilter::Both => "Both",
+    };
+    format!(
+        "Picking {what} cannot add to the {} selected now: a selection holds one kind. Switching \
+         clears them.",
+        counted(working)
+    )
+}
+
+/// Whether a click under `filter` can pick the kind `working` holds.
+fn filter_holds(filter: PickFilter, working: &SelectionTarget) -> bool {
+    matches!(
+        (filter, working),
+        (PickFilter::Both, _)
+            | (
+                PickFilter::Faces,
+                SelectionTarget::Triangles(_) | SelectionTarget::Faces(_)
+            )
+            | (
+                PickFilter::Edges,
+                SelectionTarget::Edges(_) | SelectionTarget::MeshEdges(_)
+            )
     )
 }
 
@@ -2144,6 +2319,215 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_04_a_plain_click_asks_before_it_clears_a_selection_of_the_same_kind() {
+        // Issue 152: Shift and Ctrl were probably forgotten.
+        let (dir, mut app, model) = cube_project("plain-click-asks");
+        let hash = recorded_hash(&app, model);
+        let mut panel = SelectionPanel {
+            working: tri(&[1, 2, 3]),
+            working_model: Some(model),
+            warn_reset: true,
+            ..SelectionPanel::default()
+        };
+        panel.join(model, Combine::Replace, tri(&[7]), hash);
+        assert!(matches!(panel.reset, Some(Reset::Pick { .. })));
+        assert_eq!(panel.working, tri(&[1, 2, 3]));
+        let text = reset_warning(&panel.working, &tri(&[7]));
+        assert!(text.contains("Shift"), "{text}");
+        assert!(
+            text.contains("clears the 3 triangles selected now"),
+            "{text}"
+        );
+        assert_eq!(clear_title(&panel.working), "Clear 3 triangles?");
+        // Cancel keeps the selection.
+        assert!(panel.answer_reset(&mut app, false).is_none());
+        assert_eq!(panel.working, tri(&[1, 2, 3]));
+        // Shift and Ctrl never ask.
+        panel.join(model, Combine::Add, tri(&[7]), hash);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.working, tri(&[1, 2, 3, 7]));
+        panel.join(model, Combine::Remove, tri(&[7]), hash);
+        assert!(panel.reset.is_none());
+        // Clear goes on with the click.
+        panel.join(model, Combine::Replace, tri(&[9]), hash);
+        assert!(panel.answer_reset(&mut app, true).is_none());
+        assert_eq!(panel.working, tri(&[9]));
+        // An empty selection has nothing to lose: no question.
+        panel.working = nothing();
+        panel.working_model = None;
+        panel.join(model, Combine::Replace, tri(&[4]), hash);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.working, tri(&[4]));
+        // With the warning off a plain click clears silently.
+        panel.warn_reset = false;
+        panel.join(model, Combine::Replace, tri(&[5]), hash);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.working, tri(&[5]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_switching_to_a_filter_that_cannot_hold_the_selection_asks_first() {
+        let (dir, mut app, model) = cube_project("filter-switch-asks");
+        let mut panel = SelectionPanel {
+            working: tri(&(0..1240).collect::<Vec<_>>()),
+            working_model: Some(model),
+            warn_reset: true,
+            ..SelectionPanel::default()
+        };
+        assert_eq!(clear_title(&panel.working), "Clear 1,240 triangles?");
+        // Both holds anything, and Faces holds triangles: no question.
+        panel.choose_filter(PickFilter::Faces);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Faces);
+        panel.choose_filter(PickFilter::Both);
+        assert!(panel.reset.is_none());
+        // Edges cannot: ask, and change nothing until the answer.
+        panel.choose_filter(PickFilter::Edges);
+        assert!(matches!(
+            panel.reset,
+            Some(Reset::Filter(PickFilter::Edges))
+        ));
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        assert_eq!(panel.working.len(), 1240);
+        let text = filter_warning(&panel.working, PickFilter::Edges);
+        assert!(text.contains("1,240 triangles"), "{text}");
+        // Cancel keeps both; Clear applies the filter and empties it.
+        assert!(panel.answer_reset(&mut app, false).is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        assert_eq!(panel.working.len(), 1240);
+        panel.choose_filter(PickFilter::Edges);
+        assert!(panel.answer_reset(&mut app, true).is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Edges);
+        assert!(panel.working.is_empty());
+        assert!(panel.working_model.is_none());
+        // An empty selection switches without asking.
+        panel.choose_filter(PickFilter::Faces);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Faces);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_a_filter_click_is_ignored_while_the_warning_is_open() {
+        let (dir, mut app, model) = cube_project("filter-while-asking");
+        let mut panel = SelectionPanel {
+            working: tri(&[0, 1, 2]),
+            working_model: Some(model),
+            warn_reset: true,
+            ..SelectionPanel::default()
+        };
+        panel.choose_filter(PickFilter::Edges);
+        assert!(matches!(
+            panel.reset,
+            Some(Reset::Filter(PickFilter::Edges))
+        ));
+        // The box on the view is still live: a second click changes neither
+        // the mode nor the question.
+        panel.choose_filter(PickFilter::Faces);
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        assert!(matches!(
+            panel.reset,
+            Some(Reset::Filter(PickFilter::Edges))
+        ));
+        // Cancel leaves the mode as it was before either click.
+        assert!(panel.answer_reset(&mut app, false).is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        assert_eq!(panel.working.len(), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_the_selection_tools_sit_below_the_toolbar_strip() {
+        // Issue 159: the box never overlaps the strip, at 1366x768 or any size.
+        for size in [egui::vec2(1366.0, 768.0), egui::vec2(480.0, 300.0)] {
+            let view = egui::Rect::from_min_size(egui::pos2(260.0, 40.0), size);
+            let corner = tools_corner(view);
+            assert!(corner.y >= view.top() + crate::viewport_toolbar::HEIGHT);
+            assert!(corner.x > view.left());
+        }
+    }
+
+    /// The text painted by one frame of `add`.
+    fn painted(add: impl FnOnce(&mut egui::Ui)) -> String {
+        let ctx = egui::Context::default();
+        let mut add = Some(add);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            if let Some(add) = add.take() {
+                add(ui);
+            }
+        });
+        output.textures_delta.clear();
+        let mut text = String::new();
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                text.push_str(t.galley.text());
+                text.push('\n');
+            }
+        }
+        text
+    }
+
+    #[test]
+    fn req_ui_05_the_selection_options_are_in_the_inspector_and_not_the_dock_tab() {
+        // Decision 0153 item 5 (issue 153): the owner chose option B.
+        let (dir, mut app, _) = cube_project("options-inspector");
+        let mut panel = SelectionPanel::default();
+        let view = SceneView::default();
+        let inspector = painted(|ui| {
+            assert!(panel.options(ui, &mut app).is_none());
+        });
+        for label in [
+            "Selection",
+            "select by angle within",
+            "same direction within",
+            "Keep tangent edges by default",
+            "Warn before a click starts a new selection",
+        ] {
+            assert!(inspector.contains(label), "{label}: {inspector}");
+        }
+        let dock = painted(|ui| {
+            let summaries = app.selection_summaries(&[]);
+            assert!(panel.show(ui, &mut app, &summaries, &view).is_none());
+        });
+        assert!(dock.contains("New set from selection"), "{dock}");
+        for label in [
+            "select by angle within",
+            "same direction within",
+            "Keep tangent edges by default",
+            "Warn before a click starts a new selection",
+        ] {
+            assert!(!dock.contains(label), "{label}: {dock}");
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_the_warning_option_is_saved_with_the_project_from_the_inspector() {
+        let (dir, mut app, _) = cube_project("options-warn");
+        assert!(app.project().warn_on_selection_reset());
+        app.execute(openchuck_app::Command::SetWarnOnSelectionReset(false))
+            .unwrap();
+        let mut panel = SelectionPanel::default();
+        let text = painted(|ui| {
+            assert!(panel.options(ui, &mut app).is_none());
+        });
+        assert!(text.contains("Warn before"), "{text}");
+        assert!(!app.project().warn_on_selection_reset());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_the_box_names_the_active_mode() {
+        let mut panel = SelectionPanel::default();
+        assert_eq!(panel.mode_text(), "Surfaces and edges");
+        panel.filter = PickFilter::Faces;
+        assert_eq!(panel.mode_text(), "Surfaces only");
+        panel.filter = PickFilter::Edges;
+        assert_eq!(panel.mode_text(), "Edges only");
+    }
+
+    #[test]
     fn req_nfr_04_req_ui_05_a_new_set_is_stored_when_its_check_job_finishes() {
         let (dir, mut app, model) = cube_project("save-job");
         let mut panel = SelectionPanel {
@@ -2258,6 +2642,7 @@ mod tests {
 
         // A model that is no longer in the project drops it too.
         let gone = ModelId::new();
+        panel.warn_reset = false;
         panel.join(gone, Combine::Replace, set(&[3]), Some(new_hash.unwrap()));
         panel.drop_stale_working(&app);
         assert!(panel.working.is_empty());
@@ -2369,15 +2754,13 @@ mod tests {
         assert!(matches!(&panel.working, SelectionTarget::MeshEdges(e) if e.len() == 1));
         assert_eq!(panel.working_model, Some(model));
         let scene = panel.overlay(&app, &view).unwrap();
-        // The selected edge in blue and the hovered one in yellow, both over
+        // The selected edge in orange and the hovered one in magenta, both over
         // the part, and nothing filled.
         assert!(scene.meshes.is_empty());
         assert_eq!(scene.lines.len(), 2);
-        assert_eq!(
-            scene.lines[0].colour,
-            [WORKING[0], WORKING[1], WORKING[2], 1.0]
-        );
-        assert_eq!(scene.lines[1].colour, HOVER);
+        // Edges have their own colours, apart from a triangle's (issue 151).
+        assert_eq!(scene.lines[0].colour, roles::EDGE_SELECTED);
+        assert_eq!(scene.lines[1].colour, roles::EDGE_HOVER);
         assert!(scene.lines.iter().all(|l| l.on_top && l.slot == Slot::Part));
         // State is not shown by colour alone (specification 16, OI-245): the
         // selected edge is wider than the hovered one, and both are wider than
@@ -2409,9 +2792,15 @@ mod tests {
         // the user answers, and Cancel keeps the edges.
         panel.click(&app, &view, &surface, Combine::Replace);
         assert_eq!(panel.working, before);
-        let warning = reset_warning(&panel.working, &panel.reset.as_ref().unwrap().picked);
+        let Some(Reset::Pick { picked, .. }) = panel.reset.as_ref() else {
+            panic!("a plain click of the other kind asks first");
+        };
+        let warning = reset_warning(&panel.working, picked);
         assert!(warning.contains("picks a triangle"), "{warning}");
-        assert!(warning.contains("clears the 1 edges"), "{warning}");
+        assert!(
+            warning.contains("clears the 1 edge selected now"),
+            "{warning}"
+        );
         assert!(panel.answer_reset(&mut app, false).is_none());
         assert_eq!(panel.working, before);
         assert!(panel.reset.is_none());

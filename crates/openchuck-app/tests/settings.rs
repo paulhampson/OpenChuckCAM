@@ -24,10 +24,10 @@ fn req_ui_15_settings_round_trip_in_the_configuration_folder() {
     let loaded = file.load();
     assert_eq!(loaded.settings, UserSettings::default());
     assert!(loaded.problem.is_none());
-    assert_eq!(loaded.settings.scale, 1.2);
+    assert_eq!(loaded.settings.scale, 1.0);
 
     let mut settings = UserSettings {
-        scale: 1.0,
+        scale: 0.9,
         ..UserSettings::default()
     };
     settings.project_panel.size = 300.0;
@@ -132,4 +132,24 @@ fn walk(dir: &PathBuf) -> Vec<PathBuf> {
         out.push(path);
     }
     out
+}
+
+#[test]
+fn req_nfr_18_recording_actions_is_on_by_default_and_the_choice_is_kept() {
+    let config = folder("record-actions");
+    let file = SettingsFile::in_folder(&config);
+    assert!(UserSettings::default().record_actions);
+    assert!(file.load().settings.record_actions);
+    let off = UserSettings {
+        record_actions: false,
+        ..UserSettings::default()
+    };
+    file.save(&off).unwrap();
+    assert!(!file.load().settings.record_actions);
+    // A file written before the field existed reads as on.
+    std::fs::write(file.file(), "[interface]\nscale = 1.0\n").unwrap();
+    let loaded = file.load();
+    assert!(loaded.problem.is_none());
+    assert!(loaded.settings.record_actions);
+    let _ = std::fs::remove_dir_all(config);
 }

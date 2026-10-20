@@ -116,3 +116,52 @@ fn req_ui_09_cancellation_is_told_by_kind_not_by_wording() {
     assert!(failed.to_string().contains("Cancel"));
     assert!(!failed.is_cancelled());
 }
+
+#[test]
+fn req_nfr_18_commands_undo_and_redo_leave_lines_without_values() {
+    use openchuck_app::Command;
+    let dir = empty_project("actions");
+    let mut app = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert!(app.drain_actions().is_empty());
+    app.execute(Command::RenameProject("A private name".into()))
+        .unwrap();
+    assert!(app.undo().unwrap());
+    assert!(app.redo().unwrap());
+    // Nothing to undo twice: the second undo is not an action.
+    assert!(app.undo().unwrap());
+    assert!(!app.undo().unwrap());
+    let lines = app.drain_actions();
+    assert_eq!(
+        lines,
+        [
+            "command: RenameProject",
+            "undo: RenameProject",
+            "redo: RenameProject",
+            "undo: RenameProject",
+        ]
+    );
+    assert!(lines.iter().all(|l| !l.contains("private")));
+    assert!(app.drain_actions().is_empty());
+    // A command that fails is not an action.
+    assert!(
+        app.execute(Command::SetOperationEnabled {
+            operation: openchuck_project::id::OperationId::new(),
+            enabled: false,
+        })
+        .is_err()
+    );
+    assert!(app.drain_actions().is_empty());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_nfr_18_undrained_lines_are_bounded() {
+    use openchuck_app::Command;
+    let dir = empty_project("actions-bound");
+    let mut app = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    for _ in 0..300 {
+        app.execute(Command::SetKeepTangentEdges(true)).unwrap();
+    }
+    assert_eq!(app.drain_actions().len(), 256);
+    let _ = std::fs::remove_dir_all(dir);
+}

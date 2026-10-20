@@ -154,6 +154,45 @@ fn req_ui_10_the_empty_state_offers_a_project_and_dims_the_other_steps() {
 }
 
 #[test]
+fn req_ui_10_req_ui_14_post_and_export_opens_once_the_project_has_what_it_needs() {
+    // Decision 0148 item 1 (issue 140): not before the project has a model,
+    // a setup, a machine, a tool and an operation, and then without the
+    // operation having been generated.
+    let mut rig = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(!rig.shell.export.is_open());
+    assert_eq!(
+        rig.shell.post_blocker(),
+        Some("Open or start a project first")
+    );
+
+    let mut rig = Rig::cube("frame-post", None);
+    assert!(rig.shell.overview.step(Step::Export).is_available());
+    assert_eq!(rig.shell.post_blocker(), None);
+    let id = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.tree_action(super::TreeAction::Delete(id));
+    rig.settle();
+    assert_eq!(rig.shell.post_blocker(), Some("Add an operation first"));
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(!rig.shell.export.is_open());
+    rig.shell.undo();
+    rig.settle();
+    assert_eq!(rig.shell.post_blocker(), None);
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(rig.shell.export.is_open());
+}
+
+#[test]
+fn req_nfr_15_req_ui_16_the_scale_menu_offers_fixed_steps_within_the_range() {
+    use openchuck_app::settings::SCALE_RANGE;
+    assert_eq!(super::frame::UI_SCALES, [80, 90, 100, 110, 120]);
+    for percent in super::frame::UI_SCALES {
+        let scale = percent as f32 / 100.0;
+        assert!((SCALE_RANGE.0..=SCALE_RANGE.1).contains(&scale));
+    }
+}
+
+#[test]
 fn req_ui_10_req_ui_11_the_steps_marks_and_primary_follow_the_project() {
     let mut rig = Rig::cube("frame-steps", None);
     let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
@@ -249,21 +288,21 @@ fn req_ui_15_the_layout_and_scale_survive_a_restart() {
     let mut rig = Rig::cube("frame-settings", Some(file.clone()));
     rig.dirs.push(config.clone());
     rig.press(Key::Num2, Modifiers::COMMAND);
-    rig.ctx.set_zoom_factor(1.0);
+    rig.ctx.set_zoom_factor(0.9);
     rig.frame(Vec::new());
     // Written a moment after the change, or on quitting.
     rig.shell.save_settings();
     let kept = file.load();
     assert!(kept.problem.is_none());
     assert!(kept.settings.inspector.collapsed);
-    assert!((kept.settings.scale - 1.0).abs() < 1e-6);
+    assert!((kept.settings.scale - 0.9).abs() < 1e-6);
     let project = rig.shell.app.as_ref().unwrap().location().to_path_buf();
     let project = std::fs::canonicalize(&project).unwrap_or(project);
     assert_eq!(kept.settings.recent.first(), Some(&project));
     // A restart starts from them.
     let shell = Shell::with_settings(false, None, Some(file));
     assert!(shell.settings.inspector.collapsed);
-    assert!((shell.scale() - 1.0).abs() < 1e-6);
+    assert!((shell.scale() - 0.9).abs() < 1e-6);
     // The scale stays within 80% to 200%.
     rig.ctx.set_zoom_factor(5.0);
     rig.frame(Vec::new());
@@ -724,6 +763,36 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
     rig.settle();
     assert!(!rig.shows("END VIEW FROM +X"));
     assert!(!rig.shows("Travel limit"));
+}
+
+#[test]
+fn req_nfr_18_the_settings_dialog_switches_the_recording_and_keeps_the_choice() {
+    let _held = crate::logging::SWITCH_LOCK.lock().unwrap();
+    let config = temp("frame-record-actions");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = Rig::cube("frame-record-actions", Some(file.clone()));
+    rig.dirs.push(config);
+    assert!(crate::logging::recording());
+    assert!(rig.shell.settings.record_actions);
+    // The File menu's item opens the dialog; a frame with it open names it.
+    rig.shell.dialog = Some(Dialog::Settings);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.recorder_windows(), ["Settings"]);
+    // The checkbox's action turns it off, in the settings and the log.
+    rig.shell.set_record_actions(false);
+    assert!(!crate::logging::recording());
+    rig.shell.save_settings();
+    assert!(!file.load().settings.record_actions);
+    // A restart starts with it off.
+    let shell = Shell::with_settings(false, None, Some(file.clone()));
+    assert!(!crate::logging::recording());
+    assert!(!shell.settings.record_actions);
+    // The file is not changed by turning it back on in memory only.
+    rig.shell.set_record_actions(true);
+    assert!(crate::logging::recording());
+    rig.shell.dialog = None;
+    rig.frame(Vec::new());
+    assert!(rig.shell.recorder_windows().is_empty());
 }
 
 /// A project with a model and no setup, which is what File, New project and
