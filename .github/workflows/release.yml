@@ -10,8 +10,10 @@
 #
 # - `app-v<version>`: the archives for the three platforms (build-archives.yml, shared with the
 #   nightly build) are attached to a GitHub release, not a pre-release, for the existing tag.
-# - `lib-v<version>`: the four library crates pass `cargo publish --dry-run`. Publishing them to
-#   crates.io is not done here: this workflow never publishes a crate (decision 0091 item 4, OI-303).
+# - `lib-v<version>`: the four library crates pass `cargo publish --dry-run`. A tag push never
+#   publishes them to crates.io. Only a manual run on a `lib-v` tag with `dry_run` unticked AND
+#   `publish_crates` ticked publishes them, with the repository secret CARGO_REGISTRY_TOKEN, which
+#   the owner creates (decision 0138, OI-303; docs/releasing.md says what the owner does).
 #
 # A manual run is a dry run unless `dry_run` is unticked: it runs the gate, builds and checks the
 # archives and the library publish dry run, and publishes nothing. A manual run that publishes
@@ -29,6 +31,12 @@ on:
         description: Build and verify only; publish nothing.
         type: boolean
         default: true
+      publish_crates:
+        description: >-
+          Publish the library family to crates.io (a lib-v tag, dry_run unticked and the
+          CARGO_REGISTRY_TOKEN secret are needed). Publishing cannot be undone.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,6 +60,7 @@ jobs:
       app: ${{ steps.plan.outputs.app }}
       lib: ${{ steps.plan.outputs.lib }}
       publish: ${{ steps.plan.outputs.publish }}
+      crates: ${{ steps.plan.outputs.crates }}
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
       name: ${{ steps.plan.outputs.name }}
@@ -68,6 +77,8 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           # On a tag push there is no input: the run publishes.
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          # Only a manual run can publish crates; a tag push has no input, so it never does.
+          PUBLISH_CRATES: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_crates }}
           SHA: ${{ github.sha }}
         run: |
           # The workspace version, which every crate shares (lockstep, decision 0031 item 2).
@@ -92,6 +103,14 @@ jobs:
           else
             publish=true
           fi
+          crates=false
+          if [ "$PUBLISH_CRATES" = "true" ]; then
+            if [ "$publish" != "true" ] || [ "$lib" != "true" ]; then
+              echo "::error::publish_crates needs a run on a lib-v tag with dry_run unticked; nothing was published."
+              exit 1
+            fi
+            crates=true
+          fi
           if [ "$publish" = "true" ]; then
             kind=release
             name="openchuckcam-$version"
@@ -103,6 +122,7 @@ jobs:
             echo "app=$app"
             echo "lib=$lib"
             echo "publish=$publish"
+            echo "crates=$crates"
             echo "tag=$tag"
             echo "version=$version"
             echo "name=$name"
@@ -114,6 +134,7 @@ jobs:
             echo "- Application archives: $app"
             echo "- Library publish dry run: $lib"
             echo "- Publishes: $publish"
+            echo "- Publishes the library family to crates.io: $crates"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # The release gate (slice 20 item 9). The tag check, the dependency rules, cargo deny, every
@@ -249,7 +270,7 @@ jobs:
           echo "Published the release $TAG." >> "$GITHUB_STEP_SUMMARY"
 
   # The library family: a publish dry run of the four crates together (cargo resolves their
-  # dependencies on each other locally). Publishing to crates.io is by hand for now (OI-303).
+  # dependencies on each other locally). `publish-crates` below publishes them, only when asked.
   library:
     name: Library publish dry run
     needs: [plan, gate]
@@ -263,16 +284,61 @@ jobs:
         with:
           key: library-publish
       - name: cargo publish --dry-run
-        run: cargo publish --dry-run --locked -p openchuck-types -p openchuck-path -p openchuck-post -p openchuck-gcode
+        run: cargo publish --dry-run --locked -p openchuck-types -p openchuck-gcode -p openchuck-path -p openchuck-post
       - name: Summary
         env:
           PUBLISH: ${{ needs.plan.outputs.publish }}
+          CRATES: ${{ needs.plan.outputs.crates }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
           {
             echo "The library family passes the publish dry run."
-            if [ "$PUBLISH" = "true" ]; then
+            if [ "$PUBLISH" = "true" ] && [ "$CRATES" != "true" ]; then
               echo
-              echo "$TAG passed the release gate. The crates are not published by this workflow: publish them by hand with cargo-release (decision 0091 item 4, OI-303)."
+              echo "$TAG passed the release gate. The crates were not published: run this workflow by hand on $TAG with dry_run unticked and publish_crates ticked (decision 0138, docs/releasing.md)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Publishes the library family to crates.io (decision 0138, OI-303). It runs only for a manual
+  # run on a lib-v tag with dry_run unticked and publish_crates ticked, after the gate and the dry
+  # run pass, and only with the CARGO_REGISTRY_TOKEN secret. The `crates-io` environment lets the
+  # owner add a required reviewer, so a run waits for approval before it publishes. The crates go
+  # in dependency order; a crate already on crates.io at this version is skipped, so a run that
+  # stopped part way can be run again. Publishing cannot be undone (a version can only be yanked).
+  publish-crates:
+    name: Publish the library family to crates.io
+    needs: [plan, gate, library]
+    if: needs.plan.outputs.lib == 'true' && needs.plan.outputs.crates == 'true'
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: library-publish
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::The CARGO_REGISTRY_TOKEN secret is not set; nothing was published (docs/releasing.md)."
+            exit 1
+          fi
+          # openchuck-types first: the other three depend on it and on nothing else in the family.
+          for crate in openchuck-types openchuck-gcode openchuck-path openchuck-post; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' \
+              -A "OpenChuckCAM release workflow (https://github.com/$REPO)" \
+              "https://crates.io/api/v1/crates/$crate/$VERSION")
+            if [ "$status" = "200" ]; then
+              echo "$crate $VERSION is on crates.io already; skipped." | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            cargo publish --locked -p "$crate"
+            echo "Published $crate $VERSION." | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          echo "The library family $VERSION ($TAG) is on crates.io." >> "$GITHUB_STEP_SUMMARY"

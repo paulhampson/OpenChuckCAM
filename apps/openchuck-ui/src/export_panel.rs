@@ -1087,7 +1087,8 @@ mod tests {
         let (settings_dir, ack) = settings("export-summary-settings");
         let copy = settings_dir.join("post-copy");
         std::fs::create_dir_all(&copy).unwrap();
-        let posts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../posts/linuxcnc");
+        let posts = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/openchuck-post/posts/linuxcnc");
         for name in ["post.toml", "main.post"] {
             std::fs::copy(posts.join(name), copy.join(name)).unwrap();
         }

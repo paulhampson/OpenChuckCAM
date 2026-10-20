@@ -12,6 +12,13 @@ use openchuck_types::kinematics::RotaryFrame;
 use openchuck_types::machine::{ASense, RotaryAxis};
 use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
+/// A path under the built-in posts' folder, which is inside this crate (decision 0103).
+pub fn posts_path(path: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("posts")
+        .join(path)
+}
+
 pub fn repo(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
