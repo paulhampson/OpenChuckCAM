@@ -573,7 +573,9 @@ impl ExportPanel {
                             ("Feed mode", post.feed_mode.as_str()),
                         ] {
                             ui.label(label);
-                            ui.label(value);
+                            // A long value wraps inside its column instead of running under
+                            // the Files pane (UI-16; OI-532).
+                            ui.add(egui::Label::new(value).wrap());
                             ui.end_row();
                         }
                     });
@@ -974,6 +976,51 @@ mod tests {
         output.shapes.iter().any(|clipped| {
             matches!(&clipped.shape, egui::epaint::Shape::Rect(r) if r.fill == DARK.primary)
         })
+    }
+
+    #[test]
+    fn req_ui_16_the_posts_long_wrap_line_stays_in_its_column() {
+        // OI-532: "whole turns dropped without motion" ran under the Files pane.
+        let (dir, mut app, _, _) = cube_project("export-wrap");
+        let mut panel = ExportPanel::new(None);
+        panel.open(&app);
+        let checks = app.export_checks(None, None, None);
+        let ctx = egui::Context::default();
+        let mut paint = || {
+            let mut acts = Vec::new();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::pos2(0.0, 0.0),
+                        egui::vec2(800.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| panel.draw(ui, &app, &checks, None, &mut acts),
+            );
+            output.textures_delta.clear();
+            let mut texts = Vec::new();
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    texts.push((t.galley.text().to_owned(), t.pos.x, t.galley.size().x));
+                }
+            }
+            texts
+        };
+        paint();
+        let texts = paint();
+        let files_x = texts
+            .iter()
+            .find(|(t, _, _)| t == "Files to write")
+            .map(|(_, x, _)| *x)
+            .expect("the right column is drawn");
+        let wrap = texts
+            .iter()
+            .find(|(t, _, _)| t.contains("whole turns"))
+            .expect("the Wrap value is drawn");
+        assert!(wrap.1 + wrap.2 <= files_x, "{wrap:?} against {files_x}");
+        app.set_post(None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

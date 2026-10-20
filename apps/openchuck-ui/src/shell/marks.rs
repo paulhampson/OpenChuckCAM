@@ -122,11 +122,43 @@ pub fn tick(ui: &mut egui::Ui) -> egui::Response {
     response
 }
 
-/// The legend of the marks, pinned under the tree (specification section 6).
+/// Which entries of a wrapped row of `widths` start a new row in `available` width, so that
+/// an entry (a mark with its word) is never split from its word at a row's end (OI-530).
+/// `gap` is the space between entries.
+fn row_starts(widths: &[f32], available: f32, gap: f32) -> Vec<bool> {
+    let mut used = 0.0;
+    widths
+        .iter()
+        .map(|w| {
+            let wraps = used > 0.0 && used + w > available;
+            used = if wraps { *w } else { used + w } + gap;
+            wraps
+        })
+        .collect()
+}
+
+/// The legend of the marks, pinned under the tree (specification section 6). Each mark stays
+/// with its word when the row wraps.
 pub fn legend(ui: &mut egui::Ui) {
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let widths: Vec<f32> = ItemState::ALL
+        .iter()
+        .map(|state| {
+            let word = ui
+                .painter()
+                .layout_no_wrap(state.name().to_owned(), font.clone(), DARK.muted)
+                .size()
+                .x;
+            SIZE + 4.0 + 4.0 + word + 6.0
+        })
+        .collect();
+    let starts = row_starts(&widths, ui.available_width(), 4.0);
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        for state in ItemState::ALL {
+        for (state, wraps) in ItemState::ALL.into_iter().zip(starts) {
+            if wraps {
+                ui.end_row();
+            }
             mark(ui, state, state.name());
             ui.label(egui::RichText::new(state.name()).small().color(DARK.muted));
             ui.add_space(6.0);
@@ -153,5 +185,60 @@ pub fn colour(severity: Severity) -> Color32 {
         Severity::Error => DARK.error,
         Severity::Warning => DARK.warning,
         Severity::Info => DARK.accent,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_ui_11_the_legend_wraps_between_entries_never_inside_one() {
+        // OI-530: an entry is a mark and its word; the row breaks before an entry that does
+        // not fit whole, so a word never lands on the next row apart from its mark.
+        let widths = [60.0, 50.0, 70.0, 40.0, 60.0, 30.0];
+        let starts = row_starts(&widths, 200.0, 4.0);
+        assert_eq!(starts, [false, false, false, true, false, false]);
+        // Every row holds what fits.
+        let mut used = 0.0;
+        for (w, wraps) in widths.iter().zip(&starts) {
+            if *wraps {
+                used = 0.0;
+            }
+            used += w + 4.0;
+            assert!(used - 4.0 <= 200.0, "{used}");
+        }
+        // A single entry wider than the row stays on its own row, never skipped.
+        assert_eq!(row_starts(&[300.0, 20.0], 200.0, 4.0), [false, true]);
+        assert!(row_starts(&[], 200.0, 4.0).is_empty());
+    }
+
+    #[test]
+    fn req_ui_11_the_legend_at_the_tree_width_keeps_each_word_inside_the_panel() {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::pos2(0.0, 0.0),
+                    egui::vec2(240.0, 200.0),
+                )),
+                ..Default::default()
+            },
+            legend,
+        );
+        output.textures_delta.clear();
+        let mut words = Vec::new();
+        for clipped in &output.shapes {
+            if let egui::Shape::Text(t) = &clipped.shape {
+                words.push((t.galley.text().to_owned(), t.pos.x + t.galley.size().x));
+            }
+        }
+        for state in ItemState::ALL {
+            let (_, right) = words
+                .iter()
+                .find(|(t, _)| t == state.name())
+                .unwrap_or_else(|| panic!("{} is drawn", state.name()));
+            assert!(*right <= 240.0, "{} ends at {right}", state.name());
+        }
     }
 }
