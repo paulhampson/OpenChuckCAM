@@ -21,7 +21,7 @@ use crate::testing::cube_project;
 pub(super) struct Rig {
     pub(super) shell: Shell,
     ctx: egui::Context,
-    size: egui::Vec2,
+    pub(super) size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
     dirs: Vec<PathBuf>,
 }

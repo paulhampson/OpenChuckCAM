@@ -690,6 +690,12 @@ impl SelectionPanel {
         picked: impl Into<SelectionTarget>,
         hash: Option<ContentHash>,
     ) {
+        // The warning window does not disable the view: a click while the question is open
+        // changes neither the selection nor the question. `answer_reset` takes the question
+        // away before it joins.
+        if self.reset.is_some() {
+            return;
+        }
         let picked = picked.into();
         // A selection holds one kind (decision record 0066 item 3). Adding or
         // taking away a pick of another kind is refused with the way out, and
@@ -1436,6 +1442,12 @@ impl SelectionPanel {
             self.reset = Some(Reset::Filter(filter));
             self.dont_warn = false;
             return;
+        }
+        if !self.working.is_empty() && !filter_holds(filter, &self.working) {
+            // The warning is off: the selection the filter cannot hold goes with the switch.
+            self.working = nothing();
+            self.working_model = None;
+            self.working_hash = None;
         }
         self.set_filter(filter);
     }
@@ -2405,6 +2417,61 @@ mod tests {
         panel.choose_filter(PickFilter::Faces);
         assert!(panel.reset.is_none());
         assert_eq!(panel.pick_filter(), PickFilter::Faces);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_switching_to_a_filter_that_cannot_hold_the_selection_clears_it_when_not_warning() {
+        // CodeRabbit on pull request 164: with the warning off the filter changes and the
+        // selection it cannot hold must go, not stay stranded and invisible.
+        let (dir, app, model) = cube_project("filter-switch-silent");
+        let mut panel = SelectionPanel {
+            working: tri(&[0, 1, 2]),
+            working_model: Some(model),
+            working_hash: recorded_hash(&app, model),
+            warn_reset: false,
+            ..SelectionPanel::default()
+        };
+        panel.choose_filter(PickFilter::Edges);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Edges);
+        assert!(panel.working.is_empty());
+        assert!(panel.working_model.is_none());
+        assert!(panel.working_hash.is_none());
+        // A filter that can hold it keeps it.
+        let mut panel = SelectionPanel {
+            working: tri(&[0, 1, 2]),
+            working_model: Some(model),
+            warn_reset: false,
+            ..SelectionPanel::default()
+        };
+        panel.choose_filter(PickFilter::Faces);
+        assert_eq!(panel.working.len(), 3);
+        assert_eq!(panel.working_model, Some(model));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_a_pick_is_ignored_while_the_warning_is_open() {
+        // CodeRabbit on pull request 164: a second click while the question is open must not
+        // change the selection or replace the question.
+        let (dir, mut app, model) = cube_project("pick-while-asking");
+        let hash = recorded_hash(&app, model);
+        let mut panel = SelectionPanel {
+            working: tri(&[1, 2, 3]),
+            working_model: Some(model),
+            warn_reset: true,
+            ..SelectionPanel::default()
+        };
+        panel.join(model, Combine::Replace, tri(&[7]), hash);
+        assert!(matches!(panel.reset, Some(Reset::Pick { .. })));
+        for combine in [Combine::Add, Combine::Remove, Combine::Replace] {
+            panel.join(model, combine, tri(&[9]), hash);
+            assert_eq!(panel.working, tri(&[1, 2, 3]), "{combine:?}");
+        }
+        // The question is still the first click's.
+        assert!(panel.answer_reset(&mut app, true).is_none());
+        assert_eq!(panel.working, tri(&[7]));
         let _ = std::fs::remove_dir_all(dir);
     }
 

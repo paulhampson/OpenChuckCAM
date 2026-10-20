@@ -494,16 +494,20 @@ impl ExportPanel {
                     acts.push(Act::WriteSheet);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let write = ui.add_enabled(
-                        blocker.is_none(),
+                    // The primary styling shows the action that can be taken now; a
+                    // blocked one is drawn as an ordinary disabled button (OI-349).
+                    let button = if blocker.is_none() {
                         egui::Button::new(
                             RichText::new("Write G-code")
                                 .color(DARK.primary_text)
                                 .strong(),
                         )
                         .fill(DARK.primary)
-                        .stroke(egui::Stroke::new(1.0, DARK.primary_border)),
-                    );
+                        .stroke(egui::Stroke::new(1.0, DARK.primary_border))
+                    } else {
+                        egui::Button::new("Write G-code")
+                    };
+                    let write = ui.add_enabled(blocker.is_none(), button);
                     let write = match blocker {
                         Some(reason) => write.on_disabled_hover_text(reason),
                         None => write,
@@ -946,6 +950,37 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         (dir.clone(), Acknowledgements::in_folder(&dir))
+    }
+
+    /// Whether one frame of the dialog's body paints a rectangle in the primary fill.
+    fn paints_primary(blocker: Option<&str>) -> bool {
+        let (dir, app, _, _) = cube_project("export-primary");
+        let mut panel = ExportPanel::new(None);
+        let checks = app.export_checks(None, None, None);
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut acts = Vec::new();
+        let mut output = ctx.run_ui(input, |ui| {
+            panel.draw(ui, &app, &checks, blocker, &mut acts);
+        });
+        output.textures_delta.clear();
+        let _ = std::fs::remove_dir_all(dir);
+        output.shapes.iter().any(|clipped| {
+            matches!(&clipped.shape, egui::epaint::Shape::Rect(r) if r.fill == DARK.primary)
+        })
+    }
+
+    #[test]
+    fn req_nfr_15_write_gcode_has_the_primary_styling_only_when_it_can_be_pressed() {
+        // OI-349: a blocked button is an ordinary disabled button, not a dimmed primary.
+        assert!(paints_primary(None));
+        assert!(!paints_primary(Some("Choose an output folder first.")));
     }
 
     #[test]

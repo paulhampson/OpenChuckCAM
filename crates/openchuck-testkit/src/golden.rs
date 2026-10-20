@@ -50,6 +50,19 @@ pub fn mask_generator(text: &str) -> String {
     out
 }
 
+/// Whether a bless run is asked for: the variable's value is exactly `1`.
+#[must_use]
+pub fn is_bless_value(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
+/// Whether this process is a bless run (`OPENCHUCK_BLESS=1`; any other value, set or not, is
+/// not).
+#[must_use]
+pub fn blessing() -> bool {
+    is_bless_value(std::env::var(BLESS_VAR).ok().as_deref())
+}
+
 /// Compares `actual` with the golden file at `path`, after masking the generator version in
 /// `actual` ([`mask_generator`]).
 ///
@@ -58,7 +71,7 @@ pub fn mask_generator(text: &str) -> String {
 pub fn check(path: &Path, actual: &str) -> Result<(), String> {
     let masked = mask_generator(actual);
     let actual = masked.as_str();
-    if std::env::var(BLESS_VAR).is_ok_and(|v| v == "1") {
+    if blessing() {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;

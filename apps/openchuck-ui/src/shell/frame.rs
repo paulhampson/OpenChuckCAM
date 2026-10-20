@@ -286,6 +286,11 @@ impl Shell {
                 self.dock_panel(ui);
                 // The view's toolbar and overlays follow the step (7.1, 7.2).
                 self.viewport.set_step(Some(view_step(self.step)));
+                self.viewport.set_project_has_models(
+                    self.app
+                        .as_ref()
+                        .is_some_and(|a| !a.project().models().is_empty()),
+                );
                 // The Setup step shows two orthographic panes instead of the
                 // 3D view (11.3).
                 let panes = self.setup_panes();
@@ -492,21 +497,34 @@ impl Shell {
             return;
         }
         let (default, min, _) = region::DOCK;
-        let max = (ui.available_height() / 2.0).max(min);
+        // The limit comes from the window, not from what is left after the other panels in
+        // the first frame, which can be small before the window has its size.
+        let max = (ui.ctx().content_rect().height() / 2.0).max(min);
+        let requested = self.settings.dock.size.min(max);
         let mut builder = egui::Panel::bottom("dock")
             .resizable(true)
-            .default_size(self.settings.dock.size.min(max))
+            .default_size(requested)
             .size_range(min..=max);
         if self.reset == Some(Region::Dock) {
             builder = builder.exact_size(default.min(max));
+            self.settings.dock.size = default;
             self.reset = None;
+        } else if self.dock_stale {
+            builder = builder.exact_size(requested);
         }
         let response = builder.show(ui, |ui| self.dock(ui));
         let rect = response.response.rect;
         let top = rect.top();
-        self.remember_size(ui, Region::Dock, rect.height(), |p| {
-            (p.y - top).abs() <= 4.0
-        });
+        let dragging = ui.input(|i| i.pointer.any_down());
+        self.dock_stale = !dragging && (rect.height() - requested).abs() > 0.5;
+        // Only a drag by the user changes the saved size: a size the window clamped is not
+        // the user's choice and must not replace it (OI-359).
+        let size = if dragging {
+            rect.height()
+        } else {
+            self.settings.dock.size
+        };
+        self.remember_size(ui, Region::Dock, size, |p| (p.y - top).abs() <= 4.0);
     }
 
     /// The title bar: the menus, the project's name and save state, and
@@ -684,9 +702,7 @@ impl Shell {
                 });
                 let unavailable = directions_unavailable(
                     self.setup_panes().is_some(),
-                    self.app
-                        .as_ref()
-                        .is_some_and(|a| !a.project().models().is_empty()),
+                    self.viewport.project_has_models(),
                 );
                 ui.menu_button("View direction", |ui| {
                     for view in StandardView::ALL {

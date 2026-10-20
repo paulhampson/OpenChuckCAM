@@ -491,6 +491,9 @@ pub struct Viewport {
     pub(crate) simulate_show: SimulateShow,
     /// The step set by the shell, or `None` to take it from what is held.
     step: Option<ViewStep>,
+    /// Whether the open project holds a model: the one input of the rule that
+    /// switches the view directions on (`viewport_toolbar::directions_unavailable`).
+    project_has_models: bool,
     /// The workholding draft drawn instead of the stored workholding.
     draft: Option<WorkholdingDraft>,
     /// The held region or tab under the pointer, by index into the shown
@@ -586,6 +589,7 @@ impl Viewport {
             show: Visibility::default(),
             simulate_show: SimulateShow::Both,
             step: None,
+            project_has_models: false,
             draft: None,
             hover_solid: None,
             focused_item: None,
@@ -666,6 +670,18 @@ impl Viewport {
     /// what the view holds.
     pub fn set_step(&mut self, step: Option<ViewStep>) {
         self.step = step;
+    }
+
+    /// Tells the view whether the open project holds a model. The toolbar and the View
+    /// menu read the same value, so they never disagree (OI-514).
+    pub fn set_project_has_models(&mut self, has_models: bool) {
+        self.project_has_models = has_models;
+    }
+
+    /// Whether the open project holds a model.
+    #[must_use]
+    pub fn project_has_models(&self) -> bool {
+        self.project_has_models
     }
 
     /// The step the view is in: the one the shell set, or else Simulate when
