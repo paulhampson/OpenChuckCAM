@@ -29,6 +29,7 @@ use std::sync::{Arc, OnceLock};
 
 mod bench;
 mod export_panel;
+mod field_row;
 mod floating;
 mod form_panel;
 mod graphics;

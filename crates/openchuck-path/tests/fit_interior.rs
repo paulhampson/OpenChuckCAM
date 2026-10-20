@@ -227,3 +227,118 @@ fn req_op_12_req_sim_05_the_blisk_helical_pass_cuts_no_deeper_than_the_tolerance
         worst.1.tip
     );
 }
+
+// ---------------------------------------------------------------------------
+// Simultaneous finishing's own fitter (decision record 0036 item 7; OI-348).
+// ---------------------------------------------------------------------------
+
+fn simultaneous_values(pitch: f64, step: f64, tilt: f64) -> BTreeMap<String, ParameterValue> {
+    use openchuck_path::simultaneous::parameter as sp;
+    [
+        (names::STEPOVER, pitch),
+        (names::FEED, 300.0),
+        (names::PLUNGE_FEED, 100.0),
+        (sp::MAX_ANGLE_STEP, step),
+        (sp::MAX_TILT, tilt),
+    ]
+    .into_iter()
+    .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
+    .collect()
+}
+
+/// The deepest cut of the tool into the exact `part` between the points of
+/// `path`, with how many cutting moves cut deeper than the tolerance.
+fn interior_gouge<P: RadialPart + ?Sized + Sync>(
+    part: &P,
+    tool: &openchuck_types::tool::RevolvedProfile,
+    path: &GeneratedPath,
+    n: usize,
+) -> (f64, usize, usize) {
+    let outline = Outline::new(tool);
+    let inside = interior_poses(path, &machine(), n);
+    let per_move: Vec<f64> = inside
+        .par_chunks(n - 1)
+        .map(|poses| max_gouge(&outline, part, poses, 0.05).depth)
+        .collect();
+    let worst = per_move.iter().copied().fold(0.0, f64::max);
+    let over = per_move.iter().filter(|d| **d > 0.01).count();
+    (worst, over, per_move.len())
+}
+
+/// The exact cubic ramp of the test above under simultaneous finishing, with
+/// the tool axis on the normal (`max_tilt` 0): on a surface whose normal lies
+/// in the plane through the axis the path is the helical one (decision 0036
+/// item 1), so the same S-shaped drop along the 72 degree move meets
+/// simultaneous finishing's own fitter, which tested the move at its middle
+/// alone (decision 0036 item 7; OI-348).
+#[test]
+fn req_op_12_req_nfr_05_a_simultaneous_move_is_within_the_chord_between_its_points() {
+    let part = CubicRamp {
+        radius: 40.0,
+        length: 10.0,
+        height: 0.5,
+        centre: 54.0_f64.to_radians(),
+        half_width: 36.0_f64.to_radians(),
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(11, 2880)).unwrap(),
+        42.0,
+        &ball(3.0),
+    );
+    let path = run(|ctx| {
+        generate(
+            &openchuck_path::SimultaneousFinishing,
+            &fixture.input(),
+            &simultaneous_values(2.0, 72.0, 0.0),
+            ctx,
+        )
+    })
+    .unwrap();
+    let (worst, over, moves) = interior_gouge(&part, &fixture.tool, &path, 8);
+    eprintln!("ramp, simultaneous: {moves} moves, worst {worst:.4} mm, {over} over 0.01 mm");
+    assert!(
+        worst <= 0.01,
+        "the tool cuts {worst:.4} mm into the exact surface between two points of the path \
+         ({over} of {moves} moves over the tolerance)"
+    );
+}
+
+/// The `lobed` reference job (decision 0036 item 12; `reference-jobs.md`):
+/// the exact lobed vase, the 3 mm ball, a 2 mm stepover and a 2 degree step,
+/// generated as `openchuck-app/tests/reference_jobs.rs` generates it (the
+/// mesh of 201 rings by 720), checked between the points of every cutting
+/// move against the exact part.
+#[test]
+fn req_op_12_req_nfr_05_the_lobed_reference_job_cuts_no_deeper_than_the_tolerance_between_its_points()
+ {
+    use openchuck_testkit::parts::LobedVase;
+    let part = LobedVase {
+        base: 10.0,
+        wave: 1.5,
+        wave_length: 40.0,
+        lobe: 1.0,
+        lobes: 3,
+        length: 20.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(201, 720)).unwrap(),
+        13.5,
+        &ball(3.0),
+    );
+    let path = run(|ctx| {
+        generate(
+            &openchuck_path::SimultaneousFinishing,
+            &fixture.input(),
+            &simultaneous_values(2.0, 2.0, 10.0),
+            ctx,
+        )
+    })
+    .unwrap();
+    let (worst, over, moves) = interior_gouge(&part, &fixture.tool, &path, 8);
+    eprintln!("lobed, simultaneous: {moves} moves, worst {worst:.4} mm, {over} over 0.01 mm");
+    assert!(
+        worst <= 0.01,
+        "the tool cuts {worst:.4} mm into the exact lobed vase between two points of the path \
+         ({over} of {moves} moves over the tolerance)"
+    );
+}
