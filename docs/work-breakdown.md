@@ -162,16 +162,17 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X5 | 22: Setup step's front and end panes (built 19 Oct 2026 on `claude/lane-x5-setup-panes`, [decision 0129](decisions/0129-slice-22-setup-panes.md), accepted 19 Oct 2026; board 16 re-rendered; OI-380 to OI-383) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets. Built 19 Oct 2026 on `claude/lane-x6-simulate-import` ([decision 0125](decisions/0125-slice-22-simulate-and-import.md), accepted 19 Oct 2026; OI-370 to OI-374; OI-372 and OI-374 closed); boards 01b, 04, 15 and 11 re-rendered | ░░ | ░░ | ░░ | ░░ | ██ |
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
-| X9 | 22: tool library window (12.1), in flight on `claude/lane-x9-tool-library-window` (work in progress; also UI-06 without tools, issue 148) | ░░ | ░░ | ░░ | ░░ | ██ |
+| X9 | 22: tool library window (12.1), in flight on `claude/lane-x9-tool-library-window` (tool library window and tools out of the project tree, issue 148; running, waiting on owner decisions) | ░░ | ░░ | ░░ | ░░ | ██ |
 | SU | 22 (SET-01 to SET-06 from the interface): the Setups "+" and the workflow bar's "Add setup" create the project's one setup ([decision 0144](decisions/0144-one-setup-from-the-interface.md), accepted 19 Oct 2026; OI-425 and OI-426 closed; built on `claude/lane-su-add-setup`, merged, pull request 149) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun; queued | ░░ | ░░ | ░░ | ░░ | ░░ |
 | IW | Trial feedback: import window fixes (fixed size, stable status row, Check and preview, raise on return; OI-430 to OI-432); draft pull request 161 on `claude/lane-iw-import-window-fixes` | ░░ | ░░ | ░░ | ░░ | ██ |
 | SL | Trial feedback (issue 142): Setup pane labels no longer overlap, with a placement function and leader lines (OI-440 to OI-442); draft pull request 162 on `claude/lane-sl-setup-callouts` | ░░ | ░░ | ░░ | ░░ | ██ |
 | UAL | Trial feedback (issue 156): the user-action log (NFR-18), once-only terminal messages (OI-496), a private temporary log folder (OI-497; OI-476 to OI-480); draft pull request 163 on `claude/lane-ual-user-action-logging` | ░░ | ░░ | ░░ | ░░ | ██ |
 | BUG-SEL | Trial feedback (issues 151, 152, 159): selection usability, decision 0153 on its branch (OI-448 to OI-451); draft pull request 164 on `claude/lane-bug-sel-selection-ux` | ░░ | ░░ | ░░ | ░░ | ██ |
-| MV | Trial feedback lane in flight; scope and branch are not visible to the lane SP session, so its row is a placeholder | ░░ | ░░ | ░░ | ░░ | ██ |
+| MV | Trial feedback: the menu bar and 3D view controls (issues 140 Post and Export enable rule, 141 View menu submenus and UI scale submenu, 143 the same view selector in every 3D viewport, 157 axes gadget bottom left without a box, 158 view-cube labels flat on the faces); on `claude/lane-mv-menus-and-view-controls`; records 0148 and 0149, OI-435 to OI-439 and OI-486 to OI-490; running, waiting on owner decisions | ░░ | ░░ | ░░ | ░░ | ██ |
 | RH | Register hygiene: register checks in `cargo xtask records` and a clean register (OI-231, decision 0130 proposed); draft pull request 137 on `claude/sharp-gates-m8uwwq`. It overlaps lane SP's register audit (OI-475) | ░░ | ░░ | ░░ | ░░ | ██ |
-| SP | Docs only: audit and tidy of `docs/open-items.md`, the owner-agreed edits to UI-13, SIM-14 and the specification, and this status refresh (OI-471 to OI-475; no decision record) | ░░ | ░░ | ░░ | ░░ | ██ |
+| DEP | Chore: dependency pin bumps (the Dependabot pull requests 131 to 135); starting | ░░ | ░░ | ░░ | ░░ | ██ |
+| SP | Docs only (draft pull request 165 on `docs/lane-sp-register-audit-and-spec-edits`): audit and tidy of `docs/open-items.md`, the owner-agreed edits to UI-13, SIM-14 and the specification, and this status refresh (OI-471 to OI-475; no decision record). The merge order with RH is the owner's call: RH first, then SP rebases | ░░ | ░░ | ░░ | ░░ | ██ |
 | UIR | User interface end-to-end review of the whole application against the specification, after X8; queued | ░░ | ░░ | ░░ | ░░ | ░░ |
 | REL | The first release (slice 20 item 11 and the release gate); the last lane; queued | ░░ | ░░ | ░░ | ░░ | ░░ |
 | BI | Build traceability: the About window and `--version` report the commit, uncommitted changes, build date, Rust version, target and crate versions, with a licence box and a Copy action (GitHub issue #139; built 19 Oct 2026 on `claude/lane-bi-build-info`, [decision 0151](decisions/0151-build-traceability.md) and [0152](decisions/0152-about-window.md), accepted 19 Oct 2026; OI-443 to OI-447; the tool name and version in the G-code is OI-446; library family 0.11.0; no schema number; merged, pull request 150) | | | | | |
@@ -224,6 +225,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
 | IW, SL, UAL, BUG-SEL, MV | Nothing (trial-feedback fixes); each stays out of the files of the others |
+| DEP | Nothing |
 | RH | Lane XC (merged), whose path filter widening it relies on |
 | SP | Nothing (docs only); merge `main` last, after RH if RH is released first |
 | UIR | X8 and X9 |
