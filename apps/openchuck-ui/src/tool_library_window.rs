@@ -420,6 +420,7 @@ impl ToolLibraryWindow {
             .default_size(300.0)
             .resizable(true)
             .show(ui, |ui| {
+                crate::theme::solid_scroll_bar(ui);
                 egui::ScrollArea::vertical().show(ui, |ui| match &tool {
                     Some(tool) => self.data(ui, tool, project, acts),
                     None => {
@@ -428,6 +429,7 @@ impl ToolLibraryWindow {
                 });
             });
         egui::CentralPanel::default().show(ui, |ui| {
+            crate::theme::solid_scroll_bar(ui);
             egui::ScrollArea::vertical().show(ui, |ui| match &tool {
                 Some(tool) => self.tool_form(ui, tool, acts),
                 None => {

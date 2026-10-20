@@ -366,6 +366,13 @@ fn apply_metrics(style: &mut egui::Style) {
     s.icon_spacing = 2.0 * GRID;
 }
 
+/// Gives the scroll areas drawn in `ui` a bar that takes its own strip, so it
+/// never lies over a field (UI-16; issue 174, F-19). Used where field rows
+/// scroll: the inspector and the tool library window.
+pub fn solid_scroll_bar(ui: &mut egui::Ui) {
+    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+}
+
 /// Installs the visuals and metrics for `theme` on `ctx`: the dark style on
 /// the dark egui theme and the light one on the light theme.
 pub fn install_style(ctx: &egui::Context, theme: Theme) {

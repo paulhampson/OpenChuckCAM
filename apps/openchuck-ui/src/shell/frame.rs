@@ -403,6 +403,7 @@ impl Shell {
             match region {
                 Region::Project => self.tree(ui),
                 _ => {
+                    crate::theme::solid_scroll_bar(ui);
                     egui::ScrollArea::vertical()
                         .id_salt("inspector scroll")
                         .show(ui, |ui| self.properties(ui));

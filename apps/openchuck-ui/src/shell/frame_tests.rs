@@ -16,6 +16,7 @@ use openchuck_app::settings::SettingsFile;
 use super::frame::Region;
 use super::*;
 use crate::testing::cube_project;
+use crate::theme::width;
 
 /// A shell drawn frame by frame at a window size.
 pub(super) struct Rig {
@@ -101,6 +102,21 @@ impl Rig {
         fn walk(shape: &egui::Shape, out: &mut Vec<(String, f32)>) {
             match shape {
                 egui::Shape::Text(t) => out.push((t.galley.text().to_string(), t.pos.y)),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
+    /// The rectangles of every entry box painted (the field fill), left to
+    /// right as drawn.
+    pub(super) fn entry_rects(&self) -> Vec<egui::Rect> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
+            match shape {
+                egui::Shape::Rect(r) if r.fill == crate::theme::DARK.field => out.push(r.rect),
                 egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
                 _ => {}
             }
@@ -900,4 +916,66 @@ fn req_set_01_the_plus_is_disabled_until_a_model_is_imported() {
             .is_empty()
     );
     assert_eq!(rig.shell.step, Step::Model);
+}
+
+/// Draws the Setup inspector at `window` physical pixels, UI `scale` and an
+/// inspector `pane` width (points) and returns the entry boxes in it with the
+/// pane's left and right edges.
+fn setup_entries(window: (f32, f32), scale: f32, pane: f32) -> (Vec<egui::Rect>, f32, f32, f32) {
+    let mut rig = Rig::cube("inspector-width", None);
+    // The application's own style, as the layout depends on its spacing.
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.ctx.set_zoom_factor(scale);
+    rig.size = egui::vec2(window.0 / scale, window.1 / scale);
+    rig.shell.settings.inspector.size = pane;
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, None);
+    for _ in 0..6 {
+        rig.frame(Vec::new());
+    }
+    let right = rig.size.x;
+    let left = right - rig.shell.settings.inspector.size;
+    let entries = rig
+        .entry_rects()
+        .into_iter()
+        .filter(|r| r.left() > left)
+        .collect();
+    let scroll = egui::style::ScrollStyle::solid();
+    let bar = scroll.bar_width + scroll.bar_inner_margin + scroll.bar_outer_margin;
+    (entries, left, right, bar)
+}
+
+/// Field-row layout (specification section 8, UI-16, finding F-19 of issue
+/// 174): the entry boxes use the width the pane leaves after the 120-pixel
+/// label column, and the scroll bar never covers them, at the window sizes
+/// and UI scales of the trial.
+#[test]
+fn req_ui_16_req_ui_07_entry_boxes_fill_the_pane_and_the_scroll_bar_never_covers_them() {
+    for window in [(1366.0, 768.0), (1920.0, 700.0), (1100.0, 700.0)] {
+        for scale in [1.0, 1.2] {
+            for pane in [280.0, 388.0, 520.0] {
+                let (entries, left, right, bar) = setup_entries(window, scale, pane);
+                let texts: Vec<_> = entries.iter().filter(|r| r.width() > 60.0).collect();
+                if entries.is_empty() {
+                    // The inspector collapsed to its rail (UI-16).
+                    assert!(window.0 / scale < 1200.0, "{window:?} x{scale} {pane}");
+                    continue;
+                }
+                let width = right - left;
+                for r in &texts {
+                    let at = format!("{r:?} at {window:?} x{scale}, pane {pane}");
+                    assert!(r.right() <= right - bar, "covered by the scroll bar: {at}");
+                    assert!(
+                        r.left() <= left + 48.0 + width::LABEL_COLUMN + 12.0,
+                        "pushed right of the label column: {at}"
+                    );
+                }
+                let widest = texts.iter().map(|r| r.width()).fold(0.0, f32::max);
+                assert!(
+                    widest >= 0.4 * width,
+                    "entries {widest} wide in a pane {width} wide at {window:?} x{scale}"
+                );
+            }
+        }
+    }
 }

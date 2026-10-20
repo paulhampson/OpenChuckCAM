@@ -125,31 +125,38 @@ pub fn tip(response: egui::Response, text: &str) -> egui::Response {
 /// Returns true when ↺ was clicked.
 fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) -> bool {
     let height = ui.spacing().interact_size.y;
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(width::LABEL_COLUMN, height),
-        egui::Sense::hover(),
-    );
-    let mut clicked = false;
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect)
-            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-    );
-    if reset {
-        child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = ui
-                .add(egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent)).small())
-                .on_hover_text("Reset: the default or the tool's cutting data applies");
-            button.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset {label}"))
-            });
-            clicked = button.clicked();
-            label_text(ui, label, description);
-        });
-    } else {
-        label_text(ui, label, description);
-    }
-    clicked
+    let size = egui::vec2(width::LABEL_COLUMN, height);
+    // Allocated and drawn in one step, so the cell is where the cursor is and
+    // the value follows it directly.
+    ui.allocate_ui_with_layout(
+        size,
+        egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Min),
+        |ui| {
+            let mut clicked = false;
+            if reset {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let button = ui
+                        .add(
+                            egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent)).small(),
+                        )
+                        .on_hover_text("Reset: the default or the tool's cutting data applies");
+                    button.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            true,
+                            format!("Reset {label}"),
+                        )
+                    });
+                    clicked = button.clicked();
+                    label_text(ui, label, description);
+                });
+            } else {
+                label_text(ui, label, description);
+            }
+            clicked
+        },
+    )
+    .inner
 }
 
 fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
