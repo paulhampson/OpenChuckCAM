@@ -329,13 +329,13 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
         placement: Placement::End,
     })
     .unwrap();
-    // Nothing is generated, and the menu item is still enabled.
+    // Nothing is generated, and the menu item is still enabled. So is the
+    // Post and export step, which gives the same reason (OI-436, decision
+    // 0148 item 1); Simulate still needs a generated operation.
     assert_eq!(blocker(&app), None);
-    assert!(
-        !app.overview(None, &JobLog::default())
-            .step(Step::Export)
-            .is_available()
-    );
+    let o = app.overview(None, &JobLog::default());
+    assert!(o.step(Step::Export).is_available());
+    assert!(!o.step(Step::Simulate).is_available());
     drop(app);
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -355,12 +355,19 @@ fn req_ui_10_each_step_says_why_it_is_unavailable() {
         reason(&o, Step::Operations).as_deref(),
         Some("Set up the machine and stock first")
     );
-    for s in [Step::Simulate, Step::Export] {
-        assert_eq!(
-            reason(&o, s).as_deref(),
-            Some("Generate an operation first")
-        );
-    }
+    assert_eq!(
+        reason(&o, Step::Simulate).as_deref(),
+        Some("Generate an operation first")
+    );
+    // Post and export names what the File menu names (decision 0148).
+    assert_eq!(
+        reason(&o, Step::Export).as_deref(),
+        Some("Import a model first")
+    );
+    assert_eq!(
+        reason(&o, Step::Export).as_deref(),
+        o.post_blocker().map(str::to_owned).as_deref()
+    );
     assert_eq!(o.primary(Step::Model).kind, PrimaryKind::ImportModel);
 
     // A model only: Setup opens; Operations still waits for the machine.
@@ -387,6 +394,10 @@ fn req_ui_10_each_step_says_why_it_is_unavailable() {
     let o = f.overview();
     assert!(o.step(Step::Operations).is_available());
     assert!(!o.step(Step::Simulate).is_available());
+    assert_eq!(
+        o.step(Step::Export).unavailable.as_deref(),
+        Some("Add an operation first")
+    );
     assert!(o.step(Step::Model).complete);
     assert!(!o.step(Step::Operations).complete);
 

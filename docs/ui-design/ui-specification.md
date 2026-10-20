@@ -86,7 +86,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 | 2 Setup | Machine, stock, part position, work offset, clearance (SET-01, SET-03, SET-05, SET-06) | A model is in the project | "Import a model first" | "Continue to operations" |
 | 3 Operations | Select geometry, add operations, generate (OP, UI-04 to UI-07) | The setup has a machine and stock | "Set up the machine and stock first" | Section 5 |
 | 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 |
-| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | One enabled operation has been generated | "Generate an operation first" | Opens the export dialog; "Write G-code" is its primary action |
+| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | The project has a model, a setup, a machine, a tool and an operation (generated or not: the dialog makes its own files; decision 0148 item 1) | The first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first" or "Add an operation first". File > Post and export gives the same reason | Opens the export dialog; "Write G-code" is its primary action |
 
 **The step indicator.** Each step shows a numbered circle and a name.
 

@@ -1580,6 +1580,17 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .all(|s| s.stock.is_some() && s.part.is_some())
         && checks.is_some_and(|c| c.setups.iter().all(|s| s.warnings.is_empty()));
     let generated = any_enabled && any_generated;
+    // Post and export, in the File menu and as a step, needs what the dialog
+    // needs to make its files, not generated operations (decision 0148).
+    let post_blocker = [
+        (has_model, "Import a model first"),
+        (!project.setups().is_empty(), "Add a setup first"),
+        (project.machine().is_some(), "Choose a machine first"),
+        (!project.tools().is_empty(), "Add a tool first"),
+        (!project.operations().is_empty(), "Add an operation first"),
+    ]
+    .into_iter()
+    .find_map(|(present, text)| (!present).then_some(text));
     let state = |step, unavailable: Option<&str>, complete| StepState {
         step,
         unavailable: unavailable.map(str::to_owned),
@@ -1602,11 +1613,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             (!generated).then_some("Generate an operation first"),
             any_enabled && simulated_all,
         ),
-        state(
-            Step::Export,
-            (!generated).then_some("Generate an operation first"),
-            any_enabled && exported_all,
-        ),
+        state(Step::Export, post_blocker, any_enabled && exported_all),
     ];
     Overview {
         revision: app.revision,
@@ -1622,15 +1629,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         any_enabled,
         models: project.models().len(),
         blocked_sets,
-        post_blocker: [
-            (has_model, "Import a model first"),
-            (!project.setups().is_empty(), "Add a setup first"),
-            (project.machine().is_some(), "Choose a machine first"),
-            (!project.tools().is_empty(), "Add a tool first"),
-            (!project.operations().is_empty(), "Add an operation first"),
-        ]
-        .into_iter()
-        .find_map(|(present, text)| (!present).then_some(text)),
+        post_blocker,
     }
 }
 

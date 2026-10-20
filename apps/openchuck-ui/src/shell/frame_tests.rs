@@ -167,7 +167,7 @@ fn req_ui_10_req_ui_14_post_and_export_opens_once_the_project_has_what_it_needs(
     );
 
     let mut rig = Rig::cube("frame-post", None);
-    assert!(!rig.shell.overview.step(Step::Export).is_available());
+    assert!(rig.shell.overview.step(Step::Export).is_available());
     assert_eq!(rig.shell.post_blocker(), None);
     let id = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
     rig.shell.tree_action(super::TreeAction::Delete(id));
