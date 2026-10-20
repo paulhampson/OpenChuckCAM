@@ -954,6 +954,12 @@ impl ToolLibraryWindow {
     /// Does `act`; returns a status line for the shell and a tool added for
     /// the New operation dialog.
     fn act(&mut self, act: Act, app: Option<&mut Application>) -> (Option<String>, Option<ToolId>) {
+        if let Act::Choose(chosen) = &act
+            && Some(*chosen) == self.chosen
+        {
+            // The tool already shown: nothing to leave.
+            return (None, None);
+        }
         if act.leaves() && self.is_dirty() {
             self.confirm = Some(Confirm::Discard(Box::new(act)));
             return (None, None);

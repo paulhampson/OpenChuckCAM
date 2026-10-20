@@ -449,6 +449,10 @@ fn req_tl_01_import_previews_conflicts_and_applies_each_choice() {
     assert_eq!(again.get(both).unwrap().name, "New drill");
     // A path that is neither is refused.
     assert!(preview_import(&again, &out.join("missing")).is_err());
+    // A folder with a file that cannot be read imports nothing (NFR-07).
+    std::fs::write(out.join("broken.toml"), "schema = 1\nid = 3\n").unwrap();
+    let err = preview_import(&again, &out).unwrap_err().to_string();
+    assert!(err.contains("nothing imported"), "{err}");
     for d in [src, out, dst] {
         std::fs::remove_dir_all(d).ok();
     }
@@ -501,6 +505,12 @@ fn req_tl_07_req_tl_11_add_update_save_and_the_operation_tool_section() {
     let shown = operation_tool(&project, Some(&lib), OperationId::from_u128(5)).unwrap();
     assert_eq!(shown.tool_set_number, Some(("Makera Z1".into(), 12)));
     assert!(set_project_tool_number(&project, id, 0).is_err());
+    let other = saved(&mut lib, ToolType::Drill, "2 mm drill");
+    add(&mut project, &lib, other);
+    let err = set_project_tool_number(&project, other, 4)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("T4 is already"), "{err}");
 
     // The library tool changes: the copy differs until updated, keeping T4.
     edit_field(&mut draft, "flute_length", &ParameterValue::Number(9.0)).unwrap();
