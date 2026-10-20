@@ -264,6 +264,71 @@ pub fn parse_test_list(text: &str) -> Vec<String> {
     names
 }
 
+/// Names of the `#[test]` functions in a file that a file-level feature gate
+/// (`#![cfg(feature = "...")]`) hides from `cargo test -- --list` in a default
+/// build, sorted. A file with no such gate gives none, because cargo lists its
+/// tests already.
+pub fn feature_gated_tests(text: &str) -> Vec<String> {
+    if !text
+        .lines()
+        .any(|l| l.trim_start().starts_with("#![cfg(feature = "))
+    {
+        return Vec::new();
+    }
+    let mut names = Vec::new();
+    let mut after_test = false;
+    for line in text.lines().map(str::trim) {
+        if line == "#[test]" {
+            after_test = true;
+        } else if after_test && line.starts_with("#[") {
+            // Another attribute on the same function, for example `#[ignore]`.
+        } else if after_test {
+            after_test = false;
+            let rest = line
+                .strip_prefix("pub ")
+                .unwrap_or(line)
+                .strip_prefix("fn ");
+            if let Some(name) = rest.and_then(|r| r.split('(').next()) {
+                names.push(name.trim().to_owned());
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// The tests of every integration test file under `crates/*/tests` and
+/// `apps/*/tests` that a feature gate hides from the default test list (the
+/// STEP kernel tests, decision 0003). Tests in these files are real `#[test]`
+/// functions that the kernel CI job runs; reading them keeps the report from
+/// ignoring them (OI-537).
+pub fn gated_tests(root: &Path) -> Result<Vec<String>> {
+    let mut names = Vec::new();
+    for group in ["crates", "apps"] {
+        let Ok(members) = std::fs::read_dir(root.join(group)) else {
+            continue;
+        };
+        for member in members {
+            let dir = member?.path().join("tests");
+            let Ok(files) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for file in files {
+                let path = file?.path();
+                if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path)
+                        .with_context(|| format!("cannot read {}", path.display()))?;
+                    names.extend(feature_gated_tests(&text));
+                }
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
 /// Runs the traceability check.
 pub fn check(root: &Path, tests_from: Option<&Path>, report: Option<&Path>) -> Result<Findings> {
     let requirements = parse_requirements(
@@ -284,7 +349,14 @@ pub fn check(root: &Path, tests_from: Option<&Path>, report: Option<&Path>) -> R
             &std::fs::read_to_string(path)
                 .with_context(|| format!("cannot read {}", path.display()))?,
         ),
-        None => list_tests(root)?,
+        None => {
+            // `cargo test --list` omits the tests behind the `kernel` features: add them.
+            let mut all = list_tests(root)?;
+            all.extend(gated_tests(root)?);
+            all.sort();
+            all.dedup();
+            all
+        }
     };
     let (rows, findings) = evaluate(&requirements, &slices, &config, &tests);
     let report_path = report.map_or_else(|| root.join("target/traceability.md"), Path::to_path_buf);
@@ -387,5 +459,34 @@ mod tests {
     fn parses_terse_list() {
         let names = parse_test_list("a::req_gc_01_x: test\nb: benchmark\nc::d: test\n");
         assert_eq!(names, vec!["a::req_gc_01_x", "c::d"]);
+    }
+
+    #[test]
+    fn req_nfr_13_a_file_gated_by_a_feature_still_counts_its_tests() {
+        let gated = "// header\n#![cfg(feature = \"kernel\")]\n\n#[test]\nfn req_nfr_13_exits() {}\n\n#[test]\n#[ignore = \"slow\"]\nfn req_imp_06_slow() {}\n\nfn helper() {}\n";
+        assert_eq!(
+            feature_gated_tests(gated),
+            vec!["req_imp_06_slow", "req_nfr_13_exits"]
+        );
+    }
+
+    #[test]
+    fn req_nfr_13_an_ungated_file_adds_nothing_because_cargo_already_lists_it() {
+        let plain = "#[test]\nfn req_nfr_13_exits() {}\n";
+        assert!(feature_gated_tests(plain).is_empty());
+        let outer_gate = "#[cfg(feature = \"kernel\")]\nmod m {\n#[test]\nfn x() {}\n}\n";
+        assert!(feature_gated_tests(outer_gate).is_empty());
+    }
+
+    #[test]
+    fn req_nfr_13_the_kernel_tests_of_this_repository_are_found() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let names = gated_tests(&root).expect("walk");
+        assert!(
+            names
+                .iter()
+                .any(|n| n == "req_nfr_13_the_worker_exits_cleanly"),
+            "{names:?}"
+        );
     }
 }
