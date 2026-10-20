@@ -1,0 +1,71 @@
+# 0162: Simulation results: a histogram that reaches the worst values, the overcut count, and a value probe (lane BUG-RESULTS; issues 217 and 208)
+
+- **Status:** proposed (lane BUG-RESULTS, 20 Oct 2026). The owner decides. It proposes the UI specification 11.5 edits under "Specification entries" below; the specification is not edited until the owner agrees.
+- **Date:** 20 Oct 2026.
+- **Requirements:** SIM-05 (P1), SIM-11 (P2, in part), NFR-12, NFR-05, UI-11.
+- **Open items:** OI-560 to OI-565 (new).
+
+## Context
+
+Issue 217 (trial feedback F-61, NFR-12): the Simulate results showed a largest overcut of 1.020 mm beside a deviation histogram whose axis read from -0.1 to +0.5 mm, so one of the two looked wrong. The owner did not know whether the 1.020 mm was one point or many, or which operations the histogram covered. The owner's example project (`blisk_1_overcut_mismatch.zip`, on issue 217) could not be downloaded in the cloud session: the session's GitHub proxy refuses user-attachment URLs. The cause was found in the code and reproduced in tests instead.
+
+**Root cause.** Neither number was wrong; the histogram hid the overcut.
+
+1. The worst values and the histogram come from the same samples: the setup's stock after all of its operations, measured against the part (and the held regions and tabs where they show) by `openchuck_sim::compare`. The largest overcut is the most negative sample.
+2. The old histogram (`results_panel.rs`, 11 fixed bins) put every sample cut deeper than the tolerance into bin 0, however deep. Its axis read "overcut | -0.100" and "+0.5 mm", so the 1.020 mm sample sat in the leftmost bar with nothing to say how far that bar went. The last bin clamped the same way: material left above +0.5 mm, up to the 3 mm search limit, was drawn as 0.5 mm.
+3. Two smaller mismatches. The equal bins (0.06 mm wide at the 0.1 mm default cell) straddled +tolerance and the band thresholds, so the grey bars did not match the "Within ±0.100 mm" share or the part's colours. "Largest overcut" was also shown in the overcut colour when the deepest cut was within the tolerance, which the bands and the share count as on the surface.
+4. Scope: the histogram and the worst values are per setup, after its last operation; they are not for the selected operation. Per-operation overcut and material left (SIM-14, P2) are not built (OI-371).
+
+Whether the 1.020 mm on the owner's blisk is real tool motion or a measurement effect is not verified (OI-561). Issue 202, on the same project, reports toolpaths inside the held region, and the comparison includes the held region's exposed surface, so the overcut may be there (OI-562).
+
+Issue 208 (F-52) asks to read the value at a point on the part in the deviation, remaining or overcut view. This is part of SIM-11 (P2), whose specification entry (11.5, "The probe") gives the signed deviation, the position (X and A), and the operation and move that left it. The owner answered on issue 208: the tooltip shows the value only, with no position; a click keeps the value on screen; a click off the model hides it. The coordinator assigned issue 208 to this lane. Whether to build it now, ahead of the rest of SIM-11, was put to the owner through the coordinator (OI-560).
+
+## Decision
+
+1. **The histogram reaches the worst values.** `results_panel::histogram` makes a bin for the surface band (-tolerance to +tolerance, closed), and beyond it bins split at the part's colour thresholds (0.25, 0.5 and 1.0 mm, mirrored below the surface for the overcut, as in `deviation_bands`). The outer bins run to the deepest sample and to the largest sample, so the first row starts at the largest overcut and the last ends at the most material left. An edge that the tolerance or the extremes cover is left out. A bin below the surface holds `low <= v < high`; one above holds `low < v <= high`, as the colour bands are bounded. Each bin is drawn in its band's colour.
+2. **Each bin is a labelled row.** The range in millimetres at three decimals (header "Range, mm"), a bar in the band's colour scaled to the largest bin, and the count and share of samples ("12 (0.3%)"). A note above the rows says that below zero is cut under the surface and above zero is material left. An end that is only a bound of the search (the 3 mm limit) is marked "≤" or "≥". The rows fit the inspector at its narrowest width (280); a test checks this.
+3. **The overcut count is shown.** A row "Overcut samples" gives the samples cut deeper than the tolerance and the separate places (2 mm apart, the run lists at most ten: "3 in 10+ places"), so the largest overcut reads as one point or many. "Largest overcut" says "within ±0.100 mm" and drops the overcut colour when the deepest cut is within the tolerance. Material left and an overcut at the search limit read "or more".
+4. **The value probe (SIM-11 in part).** On Simulate, with the part coloured by deviation:
+   - once the pointer has rested for 0.3 s (moved less than 2 points), a tooltip gives the value for the view chosen. Deviation: "Overcut 1.020 mm", "Material left 0.350 mm", or "On the surface, 0.000 mm". Remaining: the material left, or "No material left". Overcut: the overcut, or "No overcut". Values are in millimetres at three decimals, with ", within ±0.100 mm" when inside the tolerance and "or more" at the search limit. There is no position;
+   - a primary click on the part keeps the value on screen, at the point clicked, with a small marker. It follows the view as the camera moves and hides when the point is out of view. A click off the part, a new part, or the colours turned off clears it;
+   - the value is the one the triangle is coloured by: its worst sample, held with the bands (`DeviationBands::values`). On a large triangle it is the worst over the triangle, not at the exact point;
+   - it costs nothing on the GPU. The pick is the CPU ray pick the readout already makes each frame (`ScenePicker`), and the probe only looks up the triangle's value once the pointer rests. No new rendering pass and no read back.
+5. Nothing here changes the toolpaths, the simulation or the G-code (GC-07, NFR-06): the changes are in `openchuck-ui` and one field of `DeviationBands` in `openchuck-app` (not the library family; no semver effect).
+
+## Alternatives considered
+
+- **Keep the 11 equal bins and label the open ends** ("below -0.100", "above +0.500"). Rejected: the extremes would still not be on the axis, and the equal bins would still straddle the tolerance and the colour thresholds.
+- **Vertical bars with tick labels under them.** Rejected: at the inspector's 280 minimum width there is no room for a range label per bin, which issue 217 asks for.
+- **A probe read back from the GPU (an ID buffer).** Rejected for slow graphics (issue 200, Intel UHD 620): it adds a pass and a read back. The CPU pick already runs for the readout.
+- **The probe showing the exact value at the point** (a new measurement under the pointer). Rejected: it needs the stock, which is not held on the user-interface side. It could also disagree with the colour the user sees.
+
+## Specification entries (proposed, not edited)
+
+UI specification 11.5, Results inspector, replace "a deviation histogram in the same colours;" with:
+
+> - "Overcut samples": the samples cut deeper than the tolerance and the separate places, so the largest overcut reads as one point or many;
+> - a deviation histogram in the same colours, one labelled row per bin: the range in millimetres, a bar, and the count and share. The bins are the surface band ±tolerance and the colour thresholds (0.25, 0.5, 1.0 mm, mirrored for the overcut); the first row starts at the largest overcut and the last ends at the most material left, so the worst values are always on it. An end at the search limit is marked ≤ or ≥.
+
+UI specification 11.5, Viewport, replace the probe bullet with:
+
+> - **The probe** *(SIM-11, in part)*. With the part coloured by deviation, resting the pointer on the part (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. The value is the one the triangle is coloured by. Picking is on the CPU from the data already held, only when the pointer rests. The operation and move that left the point are added with the rest of SIM-11.
+
+## Consequences
+
+- Tests (all `openchuck-ui` unless named):
+  - `req_sim_05_the_histogram_range_covers_the_reported_extremes`, the test issue 217 asked for. The old fixed axis (-tolerance to +0.5 mm) fails it on the issue's case and on the search-limited cases.
+  - `req_sim_05_the_histogram_the_worst_values_and_the_shares_agree`: every sample is in one bin; the surface bin is the share within the tolerance; the overcut bins hold the overcut count; each bin's band is the band its values colour the part in.
+  - `req_sim_05_the_bins_are_labelled_and_the_overcut_spread_is_stated` and `req_sim_05_the_labelled_histogram_fits_the_narrowest_inspector`.
+  - `req_sim_11_the_probe_gives_the_value_of_the_view_without_a_position` and `req_sim_11_the_probe_reads_the_value_under_a_resting_pointer_and_a_click_keeps_it`.
+  - `openchuck-app` `req_sim_11_the_bands_keep_each_triangles_value_for_the_probe`.
+- The rest of SIM-11 (the operation and move that left a point, "Go to overcut" and "Go to largest left") needs the engine to attribute each sample to a move; it stays with SIM-11 (OI-560).
+- Keyboard and screen-reader access to the probe's values is not built (OI-563). The worst values, the overcut count and the histogram rows are text in the inspector, so the same facts can be read without a pointer.
+
+## Open items
+
+- OI-560: whether to keep the probe ahead of the rest of SIM-11 (owner, through the coordinator), and the rest of SIM-11 itself.
+- OI-561: the 1.020 mm on the owner's blisk is not checked on the project.
+- OI-562: an overcut on a held region's or tab's exposed surface counts in the worst values and the histogram but is not coloured on the part, and the probe cannot read it.
+- OI-563: keyboard and screen-reader access to the probe.
+- OI-564: the UI specification 11.5 edits above.
+- OI-565: the band visibility requirement of issue 216 (decision 0163).

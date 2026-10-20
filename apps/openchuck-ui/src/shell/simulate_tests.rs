@@ -70,7 +70,7 @@ fn req_sim_05_req_sim_07_the_results_inspector_shows_the_numbers_and_the_resolut
     assert_eq!(summary[0].operations.len(), 1);
     assert_eq!(summary[0].operations[0].name, "Finish");
     assert!(summary[0].within.is_some_and(|w| (0.0..=1.0).contains(&w)));
-    assert!(summary[0].histogram.iter().sum::<usize>() > 0);
+    assert!(summary[0].histogram.iter().map(|b| b.count).sum::<usize>() > 0);
     // The resolution control changes the project's cell, finer than the
     // default at a stated cost, and refuses a value out of range.
     let app = rig.shell.app.as_mut().unwrap();

@@ -25,6 +25,7 @@ use openchuck_viewport::{
     Renderer, Scene, Slot, StandardView,
 };
 
+use crate::results_panel::ColourBy;
 use crate::roles;
 pub use crate::roles::band_colour;
 
@@ -39,6 +40,11 @@ const EDGE_PIXELS: f32 = 6.0;
 const ORBIT_PER_PIXEL: f64 = 0.4;
 /// Zoom per scroll unit: one notch of about 50 points zooms by about 8 %.
 const ZOOM_PER_SCROLL: f64 = 0.0015;
+/// How long the pointer rests before the probe reads the value under it,
+/// seconds (issue 208, decision record 0162).
+pub(crate) const PROBE_PAUSE: f64 = 0.3;
+/// How far the pointer may drift and still be resting, points.
+const PROBE_STILL: f32 = 2.0;
 
 /// The colour of a scene item, and whether it is a guide drawn over the part.
 fn style(role: SceneRole) -> (Colour, bool) {
@@ -477,6 +483,15 @@ pub struct Viewport {
     pixels: [u32; 2],
     /// The part coloured by deviation, when asked for (SIM-05).
     bands: Option<(ModelId, DeviationBands)>,
+    /// What the part is coloured by, for the probe's text.
+    pub(crate) colour_by: ColourBy,
+    /// Where the pointer came to rest and when (`egui` time, seconds).
+    rest: Option<(egui::Pos2, f64)>,
+    /// The triangle of the coloured part under the resting pointer, and the
+    /// one a click kept, with the point clicked in the part's frame (SIM-11
+    /// in part; decision record 0162).
+    pub(crate) probe_hover: Option<u32>,
+    pub(crate) probe_pinned: Option<(u32, [f64; 3])>,
     /// The layers besides the scene: highlights, toolpaths, stock, tool.
     layers: Vec<(Layer, Arc<Scene>, u64)>,
     /// The transform of the part's slot and of the tool's slot.
@@ -583,6 +598,10 @@ impl Viewport {
             drawn: 0,
             pixels: [0, 0],
             bands: None,
+            colour_by: ColourBy::default(),
+            rest: None,
+            probe_hover: None,
+            probe_pinned: None,
             layers: Vec::new(),
             part_transform: IDENTITY,
             tool_transform: IDENTITY,
@@ -634,6 +653,11 @@ impl Viewport {
     pub fn set_bands(&mut self, bands: Option<(ModelId, DeviationBands)>) {
         if self.bands == bands {
             return;
+        }
+        // A kept value belongs to the part it was read on.
+        if bands.as_ref().map(|(m, _)| *m) != self.bands.as_ref().map(|(m, _)| *m) {
+            self.probe_pinned = None;
+            self.probe_hover = None;
         }
         self.bands = bands;
         self.rebuild();
@@ -1030,13 +1054,105 @@ impl Viewport {
         ));
         self.drawn = self.generation;
         self.draw_labels(ui, rect);
+        self.draw_pinned(ui, rect);
         if let Some(solid) = self.hovered_solid() {
             let text = solid.description.clone();
             response.on_hover_ui_at_pointer(|ui| {
                 ui.label(text);
             });
+        } else if let Some(text) = self.probe_hover.and_then(|t| self.probe_text(t)) {
+            response.on_hover_ui_at_pointer(|ui| {
+                ui.label(text);
+            });
         }
         crate::viewport_overlays::paint(ui, self, rect);
+    }
+
+    /// The probe (SIM-11 in part; issue 208, decision record 0162): with the
+    /// part coloured by deviation, the triangle under the pointer once it
+    /// has rested for [`PROBE_PAUSE`], and on a click the triangle clicked,
+    /// kept until a click off the part. It reads the value held with the
+    /// bands; the hit is the one the readout already picked on the CPU.
+    fn probe(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        pointer: egui::Pos2,
+        surface: Option<&ScenePick>,
+    ) {
+        let Some((model, _)) = &self.bands else {
+            self.rest = None;
+            return;
+        };
+        let on_part = surface.filter(|h| h.model == Some(*model));
+        if response.clicked_by(PointerButton::Primary) {
+            self.probe_pinned = on_part.map(|h| (h.triangle, [h.point.x, h.point.y, h.point.z]));
+        }
+        let now = ui.input(|i| i.time);
+        if self
+            .rest
+            .is_none_or(|(at, _)| at.distance(pointer) > PROBE_STILL)
+        {
+            self.rest = Some((pointer, now));
+        }
+        let rested = self.rest.map_or(0.0, |(_, since)| now - since);
+        if rested >= PROBE_PAUSE {
+            self.probe_hover = on_part.map(|h| h.triangle);
+        } else {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(PROBE_PAUSE - rested));
+        }
+    }
+
+    /// The probe's text for a triangle of the coloured part.
+    pub(crate) fn probe_text(&self, triangle: u32) -> Option<String> {
+        let (_, bands) = self.bands.as_ref()?;
+        let value = bands.values.get(triangle as usize).copied().flatten();
+        Some(crate::results_panel::probe_text(
+            self.colour_by,
+            value,
+            bands.tolerance,
+        ))
+    }
+
+    /// Draws the kept probe value at its point, when the point is in view.
+    fn draw_pinned(&self, ui: &egui::Ui, rect: Rect) {
+        let Some((triangle, at)) = self.probe_pinned else {
+            return;
+        };
+        let Some(text) = self.probe_text(triangle) else {
+            return;
+        };
+        let world = transform(&self.part_transform, [at[0], at[1], at[2], 1.0]);
+        let Some(ndc) = self
+            .camera
+            .project([world[0], world[1], world[2]], self.aspect)
+        else {
+            return;
+        };
+        if !(0.0..=1.0).contains(&ndc[2]) {
+            return;
+        }
+        let point = pos2(
+            rect.left() + ((ndc[0] + 1.0) * 0.5) as f32 * rect.width(),
+            rect.top() + ((1.0 - ndc[1]) * 0.5) as f32 * rect.height(),
+        );
+        if !rect.contains(point) {
+            return;
+        }
+        let painter = ui.painter_at(rect);
+        painter.circle(
+            point,
+            3.0,
+            roles::OVERLAY_TEXT,
+            egui::Stroke::new(1.0, Color32::BLACK),
+        );
+        let galley =
+            painter.layout_no_wrap(text, egui::FontId::proportional(13.0), roles::OVERLAY_TEXT);
+        let at = point + egui::vec2(8.0, -8.0 - galley.size().y);
+        let frame = Rect::from_min_size(at, galley.size()).expand(4.0);
+        painter.rect_filled(frame, 3.0, Color32::from_black_alpha(200));
+        painter.galley(at, galley, roles::OVERLAY_TEXT);
     }
 
     /// Whether a layer other than the scene is drawn, after "Show or hide"
@@ -1089,10 +1205,13 @@ impl Viewport {
         self.input = PickInput::default();
         self.hover_solid = None;
         self.cursor_point = None;
+        self.probe_hover = None;
         if response.dragged() {
+            self.rest = None;
             return;
         }
         let Some(pointer) = response.hover_pos() else {
+            self.rest = None;
             return;
         };
         let ndc = [
@@ -1113,6 +1232,9 @@ impl Viewport {
             .picker()
             .and_then(|p| p.pick(o, d).ok().flatten());
         self.cursor_point = surface.map(|h| [h.point.x, h.point.y, h.point.z]);
+        if !self.picking {
+            self.probe(ui, response, pointer, surface.as_ref());
+        }
         if !self.picking {
             if self.show.workholding {
                 let near = surface.map_or(f64::INFINITY, |h| h.distance);
@@ -1749,6 +1871,95 @@ pub(crate) mod tests {
         viewport.set_picking(false);
         frame(&mut viewport, &ctx, pos2(200.0, 200.0), true);
         assert_eq!(viewport.take_input(), PickInput::default());
+    }
+
+    /// Runs one frame at `time` seconds with the pointer at `pointer`, with a
+    /// primary click when `click`.
+    fn frame_at(
+        viewport: &mut Viewport,
+        ctx: &egui::Context,
+        pointer: egui::Pos2,
+        click: bool,
+        time: f64,
+    ) {
+        let mut events = vec![egui::Event::PointerMoved(pointer)];
+        if click {
+            for pressed in [true, false] {
+                events.push(egui::Event::PointerButton {
+                    pos: pointer,
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers: Modifiers::NONE,
+                });
+            }
+        }
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(
+                pos2(0.0, 0.0),
+                egui::vec2(400.0, 400.0),
+            )),
+            events,
+            time: Some(time),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| viewport.show(ui));
+        output.textures_delta.clear();
+    }
+
+    /// Issue 208 (SIM-11 in part, decision record 0162): with the part
+    /// coloured by deviation, the value under the pointer is read once the
+    /// pointer rests, a click keeps it, and a click off the part hides it.
+    #[test]
+    fn req_sim_11_the_probe_reads_the_value_under_a_resting_pointer_and_a_click_keeps_it() {
+        let view = cube_scene("probe");
+        let model = view.meshes[0].model.unwrap();
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_view(StandardView::Top);
+        let middle = pos2(200.0, 200.0);
+        // Inside the view, beside the cube and clear of the overlays.
+        let off = pos2(20.0, 200.0);
+        // Without the colours there is no probe.
+        frame_at(&mut viewport, &ctx, middle, false, 0.0);
+        frame_at(&mut viewport, &ctx, middle, false, 1.0);
+        assert_eq!(viewport.probe_hover, None);
+        let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((-1.02, false))).collect();
+        viewport.set_bands(Some((
+            model,
+            openchuck_app::pathview::deviation_bands(&values, 0.1),
+        )));
+        // Moving, then resting for less than the pause: nothing yet.
+        frame_at(&mut viewport, &ctx, pos2(190.0, 200.0), false, 2.0);
+        frame_at(&mut viewport, &ctx, middle, false, 2.1);
+        frame_at(&mut viewport, &ctx, middle, false, 2.1 + PROBE_PAUSE / 2.0);
+        assert_eq!(viewport.probe_hover, None);
+        // Rested: the triangle under the pointer, and its value for the view.
+        frame_at(&mut viewport, &ctx, middle, false, 2.2 + PROBE_PAUSE);
+        let t = viewport.probe_hover.expect("the cube is under the pointer");
+        assert_eq!(viewport.probe_text(t).as_deref(), Some("Overcut 1.020 mm"));
+        viewport.colour_by = ColourBy::Remaining;
+        assert_eq!(viewport.probe_text(t).as_deref(), Some("No material left"));
+        viewport.colour_by = ColourBy::Deviation;
+        // Off the part, nothing is read.
+        frame_at(&mut viewport, &ctx, off, false, 4.0);
+        frame_at(&mut viewport, &ctx, off, false, 5.0);
+        assert_eq!(viewport.probe_hover, None);
+        // A click on the part keeps its value; a click off it hides it.
+        frame_at(&mut viewport, &ctx, middle, false, 6.0);
+        frame_at(&mut viewport, &ctx, middle, true, 6.05);
+        let (kept, at) = viewport.probe_pinned.expect("the click keeps the value");
+        assert_eq!(kept, t);
+        assert!((at[2] - viewport.cursor_point.unwrap()[2]).abs() < 1e-9);
+        frame_at(&mut viewport, &ctx, off, false, 7.0);
+        assert!(viewport.probe_pinned.is_some(), "moving away keeps it");
+        frame_at(&mut viewport, &ctx, off, true, 7.05);
+        assert_eq!(viewport.probe_pinned, None);
+        // A kept value goes with the colours.
+        frame_at(&mut viewport, &ctx, middle, true, 8.0);
+        assert!(viewport.probe_pinned.is_some());
+        viewport.set_bands(None);
+        assert_eq!(viewport.probe_pinned, None);
     }
 
     /// The outlines the focus layer holds: colour and width.
