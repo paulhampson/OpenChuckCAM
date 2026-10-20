@@ -1,6 +1,6 @@
 # 0164: Tool windows go back inside the main window (lane BUG-IMP; #222; OI-580)
 
-- **Status:** proposed. Only the project owner accepts it. It would amend [decision 0029](0029-slice-8-ui-shell.md) item 17 and the matching text of the user interface specification; neither is edited until the owner decides.
+- **Status:** proposed. The owner chose option A (relayed by the coordinator session, 20 Oct 2026); the record itself is accepted only by the project owner, in this session. It would amend [decision 0029](0029-slice-8-ui-shell.md) item 17 and the matching text of the user interface specification; neither is edited until the owner decides.
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-580.
 
@@ -20,8 +20,15 @@ Decision 0029 item 17 (OI-130) shows the import dialog, and later the tool libra
 2. The specification text that says tool windows open in their own window where the platform allows is replaced by: "inside the main window, sized to fit". The wording is proposed here; the specification is edited only after the owner agrees.
 3. Layout rules in the helper: a dialog is never larger than the main window; the header and footer stay in view and the body scrolls (UI-16); text wraps rather than overlapping the next row; the loading indicator takes its space before the content is known (#147).
 
+## What was built
+
+`floating.rs` now draws every dialog as an `egui::Window` in the main window's frame: sized to fit the main window (never larger, UI-16), first placed in the centre, draggable only inside the main window, with a close box that means Cancel. Import and the tool library keep their sizes; the import dialog is not resizable. The focus-return helper (`FocusReturn`, `raise`; OI-430) is removed, since a dialog inside the main window cannot be left behind it. The import frame test reads where the body, footer text and buttons are painted and checks that none is squashed (#222).
+
+## Proposed specification wording
+
+Replace "tool windows open in their own operating-system window where the platform allows, and inside the main window where it does not" with "tool windows (import, tool library, export) open inside the main window, sized to fit it". The specification is not edited here.
+
 ## Consequences
 
-- Windows-only checks (the dialog cannot be hidden when the application is in the background, #145; size, #146; no shift, #147) are the owner's: OI-580.
-- The smoke test (lane TS) and the frame tests that expect an operating-system window for these dialogs change with the helper.
-- Nothing is built for items 1 to 3 until the owner decides. The squashed step 2 was not reproduced in this container (a footer panel with a right-to-left button row keeps its height over several frames in a unit test), so no layout change is made for it yet; it is rechecked on Windows after the move (OI-580).
+- Windows-only checks (the dialog cannot be hidden when the application is in the background, #145; size, #146; no shift, #147; the squashed step 2 of F-66 does not appear) are the owner's: OI-580.
+- The squashed step 2 was not reproduced in this container before the move (a footer panel with a right-to-left button row keeps its height over several frames in a unit test), so its cause is unknown; after the move the layout test passes, and the owner rechecks on Windows.

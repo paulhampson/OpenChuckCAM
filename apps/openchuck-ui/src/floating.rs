@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Dialogs in their own operating-system windows, so they can be moved
-//! outside the main window, for example to a second screen (OI-130; decision
-//! record 0029 item 17).
-//!
-//! A floating dialog is an egui *immediate* viewport: it is drawn in the same
-//! frame as the main window and may borrow the shell's state. Where the
-//! platform cannot open another window, egui draws it as an ordinary window
-//! inside the main one instead, so the dialog always works. A dialog draws
-//! no 3D: a preview stays in the main window's viewport, so the renderer
-//! needs no second paint path.
+//! Tool dialogs (import, tool library, export) as windows inside the main
+//! window, sized to fit it (UI-16; decision record 0164, which replaces item
+//! 17 of decision 0029). A dialog is an egui window drawn in the main window's
+//! frame, so it may borrow the shell's state, cannot be left behind the main
+//! window, and can be dragged only within it. A dialog draws no 3D: a preview
+//! stays in the main window's viewport.
 
-use eframe::egui::{self, ViewportBuilder, ViewportClass, ViewportId};
+use eframe::egui;
 
-/// What the user did to the dialog's own window this frame.
+/// What the user did to the dialog's window this frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowEvent {
     /// Nothing.
@@ -21,90 +17,43 @@ pub enum WindowEvent {
     CloseRequested,
 }
 
-/// Shows a dialog titled `title`, `size` points large at first, in its own
-/// window. `contents` draws it and its result is returned with what happened
-/// to the window. `key` identifies the dialog across frames.
+/// Shows a dialog titled `title`, `size` points large at first, inside the
+/// main window. `contents` draws it and its result is returned with what
+/// happened to the window. `key` identifies the dialog across frames.
 #[cfg(test)]
-pub fn floating<T>(
+pub fn floating<T: Default>(
     ctx: &egui::Context,
     key: &str,
     title: &str,
     size: [f32; 2],
     contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
-    show(ctx, key, title, size, true, contents)
+    run(ctx, key, title, size, true, true, contents)
 }
 
 /// Like [`floating`], but the contents are not put in a scroll area, so a
 /// dialog can pin its own footer with a bottom panel and scroll the rest.
-pub fn floating_unscrolled<T>(
+pub fn floating_unscrolled<T: Default>(
     ctx: &egui::Context,
     key: &str,
     title: &str,
     size: [f32; 2],
     contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
-    show(ctx, key, title, size, false, contents)
+    run(ctx, key, title, size, true, false, contents)
 }
 
 /// Like [`floating_unscrolled`], but the window has a fixed size: the user
-/// cannot resize or maximise it (UI-16). The contents scroll inside it, with
-/// a footer pinned if the dialog wants one.
-pub fn floating_fixed<T>(
+/// cannot resize it (UI-16). The contents scroll inside it, with a footer
+/// pinned if the dialog wants one.
+pub fn floating_fixed<T: Default>(
     ctx: &egui::Context,
     key: &str,
     title: &str,
     size: [f32; 2],
     contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
-    let builder = placed(ctx, title, size, false);
-    run(ctx, key, builder, false, contents)
-}
-
-/// The viewport a dialog with this `key` is shown in.
-pub fn viewport_id(key: &str) -> ViewportId {
-    ViewportId::from_hash_of(key)
-}
-
-/// Tells when the application comes back to the front after it was in the
-/// background, so a dialog hidden behind the main window can be raised again
-/// (OI-430). The application is active while any of its windows has the
-/// focus; moving between its own windows is not a return. A window whose
-/// focus the platform does not report counts as active, so nothing is raised
-/// where nothing can be known.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FocusReturn {
-    was_active: bool,
-}
-
-impl FocusReturn {
-    /// Starts out active, so opening a dialog does not raise it again.
-    pub fn new() -> Self {
-        Self { was_active: true }
-    }
-
-    /// Takes the focus of the main window and of the dialog this frame;
-    /// returns true on the frame the application becomes active again.
-    pub fn update(&mut self, main: Option<bool>, dialog: Option<bool>) -> bool {
-        let active = main.unwrap_or(true) || dialog.unwrap_or(true);
-        let returned = active && !self.was_active;
-        self.was_active = active;
-        returned
-    }
-}
-
-impl Default for FocusReturn {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Raises the dialog with this `key` above the main window. Does nothing
-/// where dialogs are drawn inside the main window.
-pub fn raise(ctx: &egui::Context, key: &str) {
-    if !ctx.embed_viewports() {
-        ctx.send_viewport_cmd_to(viewport_id(key), egui::ViewportCommand::Focus);
-    }
+    run(ctx, key, title, size, false, false, contents)
 }
 
 /// The room a dialog leaves round it inside the main window, in points.
@@ -132,83 +81,52 @@ pub fn fitted(
     (fit, Some(centre - egui::vec2(fit[0], fit[1]) / 2.0))
 }
 
-/// `size` fitted to the main window `ctx` is drawing, and the position that centres it.
-fn fit_to_window(ctx: &egui::Context, size: [f32; 2]) -> ([f32; 2], Option<egui::Pos2>) {
-    let (inner, outer) = ctx.input(|i| {
-        let v = i.viewport();
-        (v.inner_rect, v.outer_rect)
-    });
-    fitted(size, inner, outer)
+/// The size a dialog asking for `size` gets in the main window `ctx` draws,
+/// and the position that centres it.
+fn place(ctx: &egui::Context, size: [f32; 2]) -> ([f32; 2], egui::Pos2) {
+    let screen = ctx.content_rect();
+    let (fit, position) = fitted(size, Some(screen), Some(screen));
+    (fit, position.unwrap_or(screen.center()))
 }
 
-/// A dialog's viewport, `size` fitted and centred on the window `ctx` draws (UI-16).
-fn placed(ctx: &egui::Context, title: &str, size: [f32; 2], resizable: bool) -> ViewportBuilder {
-    let (size, position) = fit_to_window(ctx, size);
-    let builder = builder(title, size, resizable);
-    match position {
-        Some(p) => builder.with_position(p),
-        None => builder,
-    }
-}
-
-fn builder(title: &str, size: [f32; 2], resizable: bool) -> ViewportBuilder {
-    let builder = ViewportBuilder::default()
-        .with_title(title)
-        .with_inner_size(size);
-    if resizable {
-        builder.with_min_inner_size([size[0].min(240.0), size[1].min(160.0)])
-    } else {
-        builder
-            .with_resizable(false)
-            .with_maximize_button(false)
-            .with_min_inner_size(size)
-            .with_max_inner_size(size)
-    }
-}
-
-fn show<T>(
+fn run<T: Default>(
     ctx: &egui::Context,
     key: &str,
     title: &str,
     size: [f32; 2],
-    scroll: bool,
-    contents: impl FnMut(&mut egui::Ui) -> T,
-) -> (T, WindowEvent) {
-    run(ctx, key, placed(ctx, title, size, true), scroll, contents)
-}
-
-fn run<T>(
-    ctx: &egui::Context,
-    key: &str,
-    builder: ViewportBuilder,
+    resizable: bool,
     scroll: bool,
     mut contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
-    ctx.show_viewport_immediate(viewport_id(key), builder, |ui, class| {
-        let value = match class {
-            // Already inside an egui window that egui made for us.
-            ViewportClass::EmbeddedWindow => contents(ui),
-            _ => {
-                egui::CentralPanel::default()
-                    .show(ui, |ui| {
-                        if scroll {
-                            egui::ScrollArea::vertical().show(ui, &mut contents).inner
-                        } else {
-                            contents(ui)
-                        }
-                    })
-                    .inner
-            }
-        };
-        let event = if class != ViewportClass::EmbeddedWindow
-            && ui.ctx().input(|i| i.viewport().close_requested())
-        {
-            WindowEvent::CloseRequested
+    let (fit, position) = place(ctx, size);
+    let mut open = true;
+    let window = egui::Window::new(title)
+        .id(egui::Id::new(("dialog", key)))
+        .open(&mut open)
+        .collapsible(false)
+        .default_pos(position);
+    let window = if resizable {
+        window
+            .default_size(fit)
+            .min_size([fit[0].min(240.0), fit[1].min(160.0)])
+            .resizable(true)
+    } else {
+        window.fixed_size(fit).resizable(false)
+    };
+    let shown = window.show(ctx, |ui| {
+        if scroll {
+            egui::ScrollArea::vertical().show(ui, &mut contents).inner
         } else {
-            WindowEvent::None
-        };
-        (value, event)
-    })
+            contents(ui)
+        }
+    });
+    let value = shown.and_then(|r| r.inner).unwrap_or_default();
+    let event = if open {
+        WindowEvent::None
+    } else {
+        WindowEvent::CloseRequested
+    };
+    (value, event)
 }
 
 #[cfg(test)]
@@ -216,40 +134,6 @@ mod tests {
     #![allow(clippy::float_cmp, clippy::unwrap_used)]
 
     use super::*;
-
-    /// A fixed dialog cannot be resized or maximised and is exactly the
-    /// size asked for; the others stay resizable (UI-16).
-    #[test]
-    fn req_ui_16_a_fixed_dialog_has_one_size() {
-        let fixed = builder("Fixed", [440.0, 540.0], false);
-        assert_eq!(fixed.resizable, Some(false));
-        assert_eq!(fixed.maximize_button, Some(false));
-        assert_eq!(fixed.min_inner_size, fixed.inner_size);
-        assert_eq!(fixed.max_inner_size, fixed.inner_size);
-        let loose = builder("Loose", [440.0, 540.0], true);
-        assert_ne!(loose.resizable, Some(false));
-    }
-
-    /// The dialog is raised once, when the application returns from the
-    /// background (OI-430), not when focus moves between its own windows.
-    #[test]
-    fn req_ui_14_the_dialog_is_raised_when_the_application_returns() {
-        let mut tracker = FocusReturn::new();
-        assert!(!tracker.update(Some(true), Some(false)), "main in front");
-        assert!(!tracker.update(Some(false), Some(true)), "to the dialog");
-        assert!(!tracker.update(Some(true), Some(false)), "back to main");
-        assert!(
-            !tracker.update(Some(false), Some(false)),
-            "to the background"
-        );
-        assert!(!tracker.update(Some(false), Some(false)), "still away");
-        assert!(tracker.update(Some(true), Some(false)), "returned to main");
-        assert!(!tracker.update(Some(true), Some(false)), "only once");
-        // Unknown focus never counts as a return.
-        let mut unknown = FocusReturn::new();
-        assert!(!unknown.update(None, None));
-        assert!(!unknown.update(None, None));
-    }
 
     /// UI-16: a dialog never opens larger than the window it belongs to, and is centred on it.
     #[test]
@@ -278,12 +162,11 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_01_floating_dialog_draws_its_contents_where_windows_are_embedded() {
-        // A bare egui context embeds viewports, as a platform without
-        // multiple windows does: the dialog is still drawn, inside the main
-        // window, and closing it is left to its own buttons.
+    fn req_ui_01_floating_dialog_draws_its_contents_inside_the_main_window() {
+        // The dialog is an egui window in the main window's own frame
+        // (decision 0164): it is drawn, and closing it is left to its
+        // buttons and its close box.
         let ctx = egui::Context::default();
-        assert!(ctx.embed_viewports());
         let mut drawn = 0;
         let mut event = None;
         for _ in 0..2 {
