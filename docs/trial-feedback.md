@@ -84,3 +84,5 @@ Coordinator decision (19 Oct 2026): WP9 (#157, #158) is folded into lane MV, whi
 | WP10.1 | [#174](https://github.com/paulhampson/OpenChuckCAM/issues/174) Inspector entry boxes use the width; scroll bar must not overlap | F-19 | Bug |
 
 Lane BUG-INSP (Sonnet, branch `claude/lane-bug-insp-field-width`, PR titled "Lane BUG-INSP:") was started by the coordinator for #174 (WP10) on 20 Oct 2026 after X4 (PR 154) merged and did not fix it. The owner had asked that no work package start until the owner gives the go-ahead; whether BUG-INSP may continue is an open question for the owner. The owner attached the screenshot to #174.
+
+Owner decision (20 Oct 2026): BUG-INSP continues local work with no push or PR yet; further bug fixes will be added to it before it is pushed. The hold on lanes that have not started stays until the owner gives the go-ahead.
