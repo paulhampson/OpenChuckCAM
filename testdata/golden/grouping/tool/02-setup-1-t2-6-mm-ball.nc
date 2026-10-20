@@ -1,4 +1,5 @@
 (golden - Setup 1 - T2 6 mm ball)
+(OpenChuckCAM <version>)
 G90 G21 G17
 G54
 (operation Finish B, tool T2 6 mm ball, about 20 s)

@@ -20,9 +20,71 @@ fn post_text(id: &str) -> String {
     builtin_post(id).post(&small_part(), &job()).unwrap().text
 }
 
+fn post_text_with(id: &str, job: &openchuck_post::PostJob) -> String {
+    builtin_post(id).post(&small_part(), job).unwrap().text
+}
+
 fn golden(name: &str, text: &str) {
     let path = repo("testdata/golden").join(name);
     openchuck_testkit::golden::check(&path, text).unwrap_or_else(|m| panic!("{m}"));
+}
+
+/// NFR-16 and GC-07: both posts write the generator comment right after the title, before the
+/// revision; with no generator, or with comments off, the line is not written.
+#[test]
+fn req_nfr_16_both_posts_name_the_tool_and_version_after_the_title() {
+    for id in ["linuxcnc", "makera-z1"] {
+        let text = post_text(id);
+        let head: Vec<_> = text.lines().take(3).collect();
+        assert_eq!(
+            head,
+            [
+                "(Small part)",
+                "(OpenChuckCAM 0.10.0)",
+                "(revision abc1234)"
+            ],
+            "{id}"
+        );
+        let mut without = job();
+        without.generator = None;
+        let text = builtin_post(id).post(&small_part(), &without).unwrap().text;
+        assert!(!text.contains("OpenChuckCAM"), "{id}: {text}");
+        let dir = std::env::temp_dir().join(format!(
+            "openchuck-post-test-quiet-{id}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for file in ["post.toml", "main.post"] {
+            std::fs::copy(repo(&format!("posts/{id}")).join(file), dir.join(file)).unwrap();
+        }
+        let manifest = std::fs::read_to_string(dir.join("post.toml")).unwrap();
+        std::fs::write(
+            dir.join("post.toml"),
+            manifest.replace("comments = true", "comments = false"),
+        )
+        .unwrap();
+        let text = TemplatePost::new(PostDefinition::load_dir(&dir).unwrap())
+            .post(&small_part(), &job())
+            .unwrap()
+            .text;
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(!text.contains("OpenChuckCAM"), "{id}: comments are off");
+    }
+}
+
+/// NFR-16: the version is text from the host; a name that would break a comment is made safe.
+#[test]
+fn req_nfr_16_req_nfr_07_the_generator_comment_is_made_safe() {
+    let mut j = job();
+    j.generator = Some("OpenChuckCAM (1.0)\nG0 X0".into());
+    let text = post_text_with("makera-z1", &j);
+    let line = text.lines().nth(1).unwrap();
+    assert!(
+        line.starts_with("(OpenChuckCAM ") && line.ends_with(')'),
+        "{line}"
+    );
+    assert_eq!(line.matches('(').count(), 1, "{line}");
 }
 
 #[test]
@@ -260,7 +322,10 @@ fn req_nfr_07_comments_from_project_text_are_made_safe() {
         .post(&small_part(), &j)
         .unwrap()
         .text;
-    assert!(text.starts_with("(a [b])\n(revision abc1234)\n"), "{text}");
+    assert!(
+        text.starts_with("(a [b])\n(OpenChuckCAM 0.10.0)\n(revision abc1234)\n"),
+        "{text}"
+    );
 }
 
 #[test]
