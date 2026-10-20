@@ -373,7 +373,9 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 **Import dialog** (IMP-01, IMP-03, IMP-04; decision 0029 item 13; board 1b):
 
 - **Opening.** File > Import model, the Model "+", or a dropped file. It opens in its own window.
-- **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15).
+- **Size.** The window has a fixed size (460 by 520 points) that fits 1366 by 768 at 120% scale; it cannot be resized or maximised. The path, its button and the step line are pinned at the top and the footer at the bottom; the blocks between them scroll (UI-16).
+- **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15) and the button "Check and preview". Under it, a line says where the flow is: "Step 1 of 2: check the file. Nothing is added to the project yet.", then "Step 2 of 2: set the units and placement, then add. Nothing is added until you press Add to project." once the check has run. A status row of fixed height shows the spinner while a check runs, so nothing moves when it appears.
+- **Coming back.** When the application returns from the background, the window is brought to the front once (UI-14).
 - **The preview** is the main viewport behind the window, not a pane of it, because a tool window draws no 3D (section 3; decision 0029 item 17). It shows the placed model, with findings highlighted:
   - flipped and degenerate triangles outlined in red;
   - holes ringed in amber;
@@ -385,7 +387,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
   2. **Mesh check.** One row for each kind of finding, with its count. A tick when there are none; selecting a row highlights its triangles. One sentence says the check changes nothing.
   3. **The STL statement,** word for word as `STL_TESSELLATION_NOTICE`.
 - **Placement.** An orientation choice that places the model on the rotary axis as it is added (IMP-05), shown in the preview; the Model step's placement steps edit it later.
-- **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary).
+- **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary), which stays off until the check has run.
 
 **Model step** (board 1):
 
