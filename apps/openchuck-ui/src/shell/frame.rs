@@ -508,6 +508,7 @@ impl Shell {
         if self.reset == Some(Region::Dock) {
             builder = builder.exact_size(default.min(max));
             self.settings.dock.size = default;
+            self.settings_touched();
             self.reset = None;
         } else if self.dock_stale {
             builder = builder.exact_size(requested);
@@ -515,7 +516,12 @@ impl Shell {
         let response = builder.show(ui, |ui| self.dock(ui));
         let rect = response.response.rect;
         let top = rect.top();
-        let dragging = ui.input(|i| i.pointer.any_down());
+        let dragging = ui.input(|i| {
+            i.pointer.primary_down()
+                && i.pointer
+                    .press_origin()
+                    .is_some_and(|p| (p.y - top).abs() <= 4.0)
+        });
         self.dock_stale = !dragging && (rect.height() - requested).abs() > 0.5;
         // Only a drag by the user changes the saved size: a size the window clamped is not
         // the user's choice and must not replace it (OI-359).

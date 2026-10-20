@@ -1444,7 +1444,11 @@ impl SelectionPanel {
             return;
         }
         if !self.working.is_empty() && !filter_holds(filter, &self.working) {
-            // The warning is off: the selection the filter cannot hold goes with the switch.
+            // The warning is off: the selection the filter cannot hold goes with the switch,
+            // and so does a region pick still running, which would bring it back.
+            if let Some(pending) = self.pending.take() {
+                pending.handle.cancel();
+            }
             self.working = nothing();
             self.working_model = None;
             self.working_hash = None;
@@ -2448,6 +2452,24 @@ mod tests {
         panel.choose_filter(PickFilter::Faces);
         assert_eq!(panel.working.len(), 3);
         assert_eq!(panel.working_model, Some(model));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_switching_the_filter_with_the_warning_off_cancels_a_pending_region_pick() {
+        // CodeRabbit on pull request 173: a running pick would restore the cleared surfaces.
+        let (dir, app, model) = cube_project("filter-switch-pending");
+        let mut panel = SelectionPanel {
+            working: tri(&[0, 1, 2]),
+            working_model: Some(model),
+            warn_reset: false,
+            ..SelectionPanel::default()
+        };
+        panel.hold_region_pick(&app, model);
+        assert!(panel.pending.is_some());
+        panel.choose_filter(PickFilter::Edges);
+        assert!(panel.pending.is_none());
+        assert!(panel.working.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

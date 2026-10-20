@@ -123,9 +123,10 @@ pub fn fitted(
     let Some(inner) = inner else {
         return (size, None);
     };
+    // Never larger than the window, however small it is (UI-16).
     let fit = [
-        size[0].min((inner.width() - 2.0 * MARGIN).max(240.0)),
-        size[1].min((inner.height() - 2.0 * MARGIN).max(160.0)),
+        size[0].min((inner.width() - 2.0 * MARGIN).max(1.0)),
+        size[1].min((inner.height() - 2.0 * MARGIN).max(1.0)),
     ];
     let centre = outer.unwrap_or(inner).center();
     (fit, Some(centre - egui::vec2(fit[0], fit[1]) / 2.0))
@@ -155,7 +156,7 @@ fn builder(title: &str, size: [f32; 2], resizable: bool) -> ViewportBuilder {
         .with_title(title)
         .with_inner_size(size);
     if resizable {
-        builder.with_min_inner_size([240.0, 160.0])
+        builder.with_min_inner_size([size[0].min(240.0), size[1].min(160.0)])
     } else {
         builder
             .with_resizable(false)
@@ -267,9 +268,11 @@ mod tests {
             egui::Rect::from_min_size(position.unwrap(), egui::vec2(460.0, 520.0)).center(),
             window.center()
         );
-        // A tiny window never takes a dialog below its smallest size.
+        // A tiny window still holds the dialog whole.
         let tiny = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0));
-        assert_eq!(fitted([1200.0, 760.0], Some(tiny), None).0, [240.0, 160.0]);
+        let (size, position) = fitted([1200.0, 760.0], Some(tiny), None);
+        let dialog = egui::Rect::from_min_size(position.unwrap(), egui::vec2(size[0], size[1]));
+        assert!(tiny.contains_rect(dialog), "{dialog:?} in {tiny:?}");
         // An unknown window leaves the size and the place to the system.
         assert_eq!(fitted([300.0, 200.0], None, None), ([300.0, 200.0], None));
     }

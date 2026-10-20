@@ -299,6 +299,20 @@ fn req_ui_16_panels_collapse_with_ctrl_1_2_3_and_on_a_small_window() {
 }
 
 #[test]
+fn req_ui_15_a_dock_splitter_reset_is_kept_for_the_next_start() {
+    // CodeRabbit on pull request 173: the reset wrote the default but never marked the
+    // settings changed, so it was lost on a restart.
+    let mut rig = Rig::cube("frame-dock-reset", None);
+    rig.shell.settings.dock.size = 300.0;
+    rig.frame(Vec::new());
+    rig.shell.settings_changed = None;
+    rig.shell.reset = Some(Region::Dock);
+    rig.frame(Vec::new());
+    assert!((rig.shell.settings.dock.size - 196.0).abs() < 0.01);
+    assert!(rig.shell.settings_changed.is_some());
+}
+
+#[test]
 fn req_ui_15_the_layout_and_scale_survive_a_restart() {
     let config = temp("frame-settings");
     let file = SettingsFile::in_folder(&config);
