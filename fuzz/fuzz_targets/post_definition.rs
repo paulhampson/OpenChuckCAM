@@ -3,7 +3,7 @@
 //! slice 6 item 3 and slice 20 item 4): any manifest text and template text
 //! give a definition or an error naming the key or line, and a definition
 //! that loads renders a small toolpath or gives an error, never a crash or a
-//! hang. Seeded from `posts/*/`.
+//! hang. Seeded from `crates/openchuck-post/posts/*/`.
 #![no_main]
 
 use std::collections::BTreeMap;

@@ -4,6 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- Ready to publish to crates.io (decision 0138): an `include` list (the library sources and the files they read; the tests stay out of the package) and a README that links the repository. No API change.
 - Version 0.11.0 with the library family (`PostJob` in `openchuck-post` gains `generator`, a breaking change; decision 0151).
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
 - **Breaking (0.9.0):** `machine::MaxFeeds` has a new public field, `rotary_in_feed` (`RotaryInFeed`: `Separate`, the default, or `Makera`), which says how the controller counts A in the feed word of a move that also moves X, Y or Z, so path assembly can keep that word within the limit (OP-13; decision 0076). Profile files without it read as `Separate`.

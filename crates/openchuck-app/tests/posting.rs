@@ -390,7 +390,8 @@ fn req_gc_04_a_post_with_a_reversed_b_axis_still_passes_the_gate_checks() {
     let (dir, mut app, _) = project("post-reversed");
     let post_dir = dir.join("my-post");
     std::fs::create_dir_all(&post_dir).unwrap();
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../posts/linuxcnc");
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/openchuck-post/posts/linuxcnc");
     let manifest = std::fs::read_to_string(source.join("post.toml"))
         .unwrap()
         .replace("a_letter = \"A\"", "a_letter = \"B\"")

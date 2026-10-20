@@ -66,7 +66,6 @@ jobs:
             rust:
               - 'crates/**'
               - 'apps/**'
-              - 'posts/**'
               - 'testdata/**'
               - 'Cargo.toml'
               - 'Cargo.lock'

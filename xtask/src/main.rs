@@ -11,6 +11,7 @@
 //! - `trace`: the traceability report from requirement-ID test names (NFR-08).
 //! - `testdata`: the test-data size policy.
 //! - `conflicts`: no unresolved merge conflict markers in tracked files.
+//! - `publish`: the library family's manifests are ready for crates.io (decision 0138, OI-302).
 //! - `coverage`: line coverage per crate from an lcov file against the target (not part of `all`).
 //! - `all`: every check above.
 //!
@@ -27,6 +28,7 @@ mod coverage;
 mod deps;
 mod golden;
 mod licences;
+mod publish;
 mod records;
 mod registers;
 mod release_gate;
@@ -68,6 +70,9 @@ enum Check {
     Testdata,
     /// Unresolved merge conflict markers in tracked files.
     Conflicts,
+    /// The library family's manifests are ready for crates.io: metadata, `include` lists,
+    /// embedded files inside the crate, and no unpublishable dependency kept in a manifest.
+    Publish,
     /// Line coverage per crate from an lcov file against the target in `xtask/coverage.toml`.
     Coverage {
         /// The lcov file (default `lcov.info` at the workspace root).
@@ -155,6 +160,7 @@ fn run() -> Result<bool> {
         }
         Check::Testdata => vec![("testdata", testdata::check(&root)?)],
         Check::Conflicts => vec![("conflicts", conflicts::check(&root)?)],
+        Check::Publish => vec![("publish", publish::check(&root)?)],
         Check::Coverage {
             lcov,
             report,
@@ -203,6 +209,7 @@ fn run() -> Result<bool> {
             ("records", records::check(&root)?),
             ("testdata", testdata::check(&root)?),
             ("conflicts", conflicts::check(&root)?),
+            ("publish", publish::check(&root)?),
             ("trace", trace::check(&root, None, None)?),
         ],
     };
