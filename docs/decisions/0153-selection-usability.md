@@ -1,6 +1,6 @@
 # 0153: Selection usability from the nightly-build trial (lane BUG-SEL)
 
-- **Status:** proposed (20 Oct 2026), final for the owner's acceptance. Only the project owner accepts it. Items 3 and 5 record the owner's answers of 20 Oct 2026, relayed by the coordinator session (issue 153: option B; OI-450 and OI-451 confirmed).
+- **Status:** accepted (20 Oct 2026) by the project owner, in the lane's own session. Items 3 and 5 record the owner's earlier answers of 20 Oct 2026, relayed by the coordinator session (issue 153: option B; OI-450 and OI-451 confirmed).
 - **Date:** 20 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-448 to OI-451 are new and closed (owner-decided, 20 Oct 2026). OI-452 and record 0154 are not used.
 
