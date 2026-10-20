@@ -570,6 +570,27 @@ impl Shell {
         }
     }
 
+    /// Creates the project's one setup as a single undoable command, selects
+    /// it and opens the Setup step (the Setups "+", the workflow bar;
+    /// decision record 0144). With a setup already there, or no model yet, it
+    /// does nothing.
+    fn add_setup(&mut self) {
+        let Some(app) = &mut self.app else { return };
+        if !openchuck_app::can_add_setup(app.project()) {
+            return;
+        }
+        let result = openchuck_app::new_setup(app.project()).and_then(|c| app.execute(c));
+        if let Err(e) = result {
+            self.dialog = Some(Dialog::Error(format!("The setup was not added: {e}")));
+            return;
+        }
+        let Some(id) = app.project().setups().first().map(|s| s.id) else {
+            return;
+        };
+        self.open_step(Step::Setup);
+        self.choose_setup(id, None);
+    }
+
     /// Starts picking on the part with an empty working selection (the
     /// Selection sets "+", decision record 0037 item 7).
     fn start_picking(&mut self) {
@@ -899,7 +920,8 @@ impl Shell {
                     tree::Group::Operations => self.new_operation(),
                     // The tool library window is lane X9's (OI-343);
                     // tools are added from the command line until then.
-                    tree::Group::Setups | tree::Group::Tools => {}
+                    tree::Group::Setups => self.add_setup(),
+                    tree::Group::Tools => {}
                 }
                 return;
             }
