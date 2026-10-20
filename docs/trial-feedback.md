@@ -2,6 +2,8 @@
 
 Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet triaged against requirements. Task list and work packages are not yet created.
 
+Convention (owner, 19 Oct 2026): from now on, bug fix lanes generated from the trial feedback are prefixed `BUG` (for example `BUG-SEL`). Lanes already named by the coordinator keep their names.
+
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-01 | About window, CLI | No build traceability. | Show commit hash, dirty flag, build date, Rust version and target triple, library versions. Scrollable licence text box. Copy button. CLI `--version` has the same gap. Candidate new requirement; relates to decision 0110 (traceability data in output). | Confirm where the build info is generated. |
@@ -17,13 +19,12 @@ Source: trial of a nightly build from commit `50fd04ed0`. Raw feedback, not yet 
 | F-11 | Selection | Edge and triangle modes unclear; hover targets hard to tell apart. | The distinction between edge selection and triangle selection is unintuitive. Expected: clearer indication of the active mode and of what is being hovered over. Issue [#151](https://github.com/paulhampson/OpenChuckCAM/issues/151). | Answered: triangles and edges are highlighted in the same colour today; use a different colour for each. Other cues (mode label, cursor) left to the fixing task. |
 | F-12 | Selection | "Start new selection" triggers only on mode switch. | Expected: it triggers whenever a selection would be cleared. Test: the user is not adding to or removing from a selection (no shift or control held) while elements are already selected, so the modifier key was probably forgotten. Issue [#152](https://github.com/paulhampson/OpenChuckCAM/issues/152). | Answered: warn and ask for confirmation. Applies to any click that might clear or reset the selection, except explicit clear buttons. Reason: avoid losing a high-effort manual selection of many triangles to a misclick. |
 | F-13 | Selection | Selection parameters and options are in the lower window. | Expected: an inspector on the right-hand side. Issue [#153](https://github.com/paulhampson/OpenChuckCAM/issues/153). | Check the UI specification and the X4 inspector layout for the intended place. |
-
-Convention (owner, 19 Oct 2026): from now on, bug fix lanes generated from the trial feedback are prefixed `BUG` (for example `BUG-SEL`). Lanes already named by the coordinator keep their names.
 | F-14 | UI, Windows | The UI opens a CMD window. | Expected: no console window; the information it prints goes into a log file. Issue [#155](https://github.com/paulhampson/OpenChuckCAM/issues/155). | Answered: the log file goes in the same location as the binary; verbosity left as is; the About window gets a button to open the log; the CLI keeps printing to the console. Not yet answered: rotation or size limit. |
 | F-15 | Logging | User action logging (proposed P2 requirement). | So bug fixes can use accurate step information. Builds on F-14's log file. Issue [#156](https://github.com/paulhampson/OpenChuckCAM/issues/156). | Needs a requirement ID and an owner decision; what may be recorded (paths, model names). |
 | F-16 | 3D viewport | XYZ axes gadget placement. | Move it to the bottom-left corner of the 3D viewport and do not draw it in a box. Issue [#157](https://github.com/paulhampson/OpenChuckCAM/issues/157). | Answered: applies to every 3D viewport. Relates to #143 and lane X3. |
 | F-17 | View cube | Face labels always face the user. | Top/Back/Front/Left/Right/Bottom text should lie flat on the cube faces; today it faces the user and snaps in and out of view. Issue [#158](https://github.com/paulhampson/OpenChuckCAM/issues/158). | |
 | F-18 | Selection, viewport | Pick mode control overlaps the toolbar; not clearly selectable. | When selecting faces, the mode selection overlaps the top menu bar of the 3D viewport. It is not obvious that "Pick" is a label and Both / Faces / Edges are selectable options. Issue [#159](https://github.com/paulhampson/OpenChuckCAM/issues/159). Same control as F-11. | |
+| F-19 | Inspector | Wasted space; entry boxes cramped right; scroll bar overlaps them. | Seen in the Stock section of the Setup step: the label column is wide, the entry boxes are squeezed to the right, so the scroll bar overlaps them. Expected: entries use the available width and the scroll bar does not overlap. Issue [#160](https://github.com/paulhampson/OpenChuckCAM/issues/174). Lane X4 (inspectors, PR 154) may already cover it. Screenshot to be attached by the owner. | |
 
 ## Task list (work packages)
 
@@ -78,3 +79,6 @@ The owner attached the Setup view screenshot to #142 (19 Oct 2026); lane SL is u
 | WP6.4 | [#159](https://github.com/paulhampson/OpenChuckCAM/issues/159) Pick mode control overlaps the toolbar; label versus options (suggested for BUG-SEL with #151) | F-18 | Bug |
 
 Coordinator decision (19 Oct 2026): WP9 (#157, #158) is folded into lane MV, which starts after X4 merges.
+
+| WP10 | Inspector layout (probably X4, PR 154; else a BUG- lane) | F-19 | |
+| WP10.1 | [#174](https://github.com/paulhampson/OpenChuckCAM/issues/174) Inspector entry boxes use the width; scroll bar must not overlap | F-19 | Bug |
