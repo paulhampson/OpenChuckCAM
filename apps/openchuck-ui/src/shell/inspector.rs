@@ -160,6 +160,11 @@ impl Shell {
                     "Click the part to select. The Selection sets tab of the dock saves and \
                      edits sets; Esc stops picking.",
                 );
+                if let Some(app) = &mut self.app
+                    && let Some(error) = self.selection.options(ui, app)
+                {
+                    self.dialog = Some(Dialog::Error(error));
+                }
             }
             None => {
                 ui.weak("Choose an item in the project panel to see it here.");
@@ -221,6 +226,13 @@ impl Shell {
             for u in &s.uses {
                 ui.label(format!("Used by {}", u.name));
             }
+        }
+        // A set that is selected also turns picking on, so the angles and
+        // options stay in reach here (decision 0153).
+        if let Some(app) = &mut self.app
+            && let Some(error) = self.selection.options(ui, app)
+        {
+            self.dialog = Some(Dialog::Error(error));
         }
     }
 
