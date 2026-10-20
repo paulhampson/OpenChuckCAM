@@ -1,6 +1,6 @@
 # 0158: Log messages once on the terminal, and a private temp log folder (lane UAL; OI-496; OI-497)
 
-- **Status:** proposed. Minor findings of CodeRabbit on pull request 160, assigned to lane UAL by the owner; this record awaits the owner's acceptance. It amends [decision 0155](0155-local-log-file.md) items 2 and 4.
+- **Status:** accepted by the project owner (20 Oct 2026), directly in the lane UAL session. Minor findings of CodeRabbit on pull request 160, assigned to lane UAL by the owner. It amends [decision 0155](0155-local-log-file.md) items 2 and 4.
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-496 and OI-497, both closed by this change.
 
