@@ -57,7 +57,9 @@ fn rerun_when_the_tree_changes(root: &Path) {
     for path in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
         println!("cargo:rerun-if-changed={}", root.join(path).display());
     }
-    for dir in ["crates", "apps", "benches", "posts", "xtask"] {
+    // LICENSES holds the texts the About window includes; the repository root is not watched, as
+    // it holds `target/`.
+    for dir in ["crates", "apps", "benches", "posts", "xtask", "LICENSES"] {
         println!("cargo:rerun-if-changed={}", root.join(dir).display());
     }
     println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
