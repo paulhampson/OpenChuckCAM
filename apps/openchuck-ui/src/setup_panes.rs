@@ -182,6 +182,18 @@ fn outline(
     }
 }
 
+/// The outline of a default tab offered and not added: dashed sand, no fill
+/// (7.5).
+fn offered_outline(painter: &Painter, points: &[Pos2]) {
+    styled(
+        painter,
+        &closed(points.to_vec()),
+        roles::TAB,
+        roles::OUTLINE_WIDTH,
+        LineStyle::Dashed,
+    );
+}
+
 fn label(painter: &Painter, at: Pos2, anchor: Align2, text: &str, colour: Color32) {
     painter.text(at, anchor, text, font(), colour);
 }
@@ -433,6 +445,22 @@ fn front(
             shapes.push((s.item, points, s.description.clone()));
         }
     }
+    // Default tabs offered: dashed sand outlines, not hit (7.5).
+    for s in &f.offered {
+        let points = map.polygon(&s.outline);
+        offered_outline(&painter, &points);
+        if let Some(text) = &s.label {
+            let bottom = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+            let x = points.iter().map(|p| p.x).sum::<f32>() / points.len().max(1) as f32;
+            label(
+                &painter,
+                pos2(x, bottom + 4.0),
+                Align2::CENTER_TOP,
+                text,
+                to_color32(roles::TAB),
+            );
+        }
+    }
 
     // The work zero: X and Z arrows, and Y into the screen (a circle with a
     // cross).
@@ -588,6 +616,10 @@ fn end(
         );
         shapes.push((t.item, points, t.description.clone()));
     }
+    for t in &e.offered {
+        let c = map.at(t.centre[0], t.centre[1]);
+        offered_outline(&painter, &circle_points(c, t.radius as f32 * map.scale));
+    }
     if let Some((angle, text)) = &e.start_angle {
         let dir = vec2(
             angle.to_radians().cos() as f32,
@@ -691,20 +723,25 @@ pub fn show(ui: &mut egui::Ui, panes: &SetupPanes, marks: Marks, draft: bool) ->
         Rect::from_min_max(full.min, pos2(split, full.max.y)),
         Rect::from_min_max(pos2(split, full.min.y), full.max),
     );
-    // Hover is decided from the outlines of the last frame, so each pane is
-    // drawn once.
+    // The hover outline is drawn from the outlines of the last frame, so
+    // each pane is drawn once; what is hovered and clicked is then decided
+    // from this frame's, so a solid that has just gone is never reported
+    // (OI-353).
     let key = ui.id().with("setup panes hits");
+    let under = |hits: &[Hit]| {
+        response.hover_pos().and_then(|p| {
+            hits.iter()
+                .rev()
+                .find(|(_, poly, _)| inside(poly, p))
+                .cloned()
+        })
+    };
     let previous: Vec<Hit> = ui.data(|d| d.get_temp(key)).unwrap_or_default();
-    let hovered = response.hover_pos().and_then(|p| {
-        previous
-            .iter()
-            .rev()
-            .find(|(_, poly, _)| inside(poly, p))
-            .cloned()
-    });
+    let drawn = under(&previous).map(|(i, _, _)| i);
+    let mut hits = front(&painter, front_rect, &panes.front, marks, drawn);
+    hits.extend(end(&painter, end_rect, &panes.end, marks, drawn));
+    let hovered = under(&hits);
     let item = hovered.as_ref().map(|(i, _, _)| *i);
-    let mut hits = front(&painter, front_rect, &panes.front, marks, item);
-    hits.extend(end(&painter, end_rect, &panes.end, marks, item));
     ui.data_mut(|d| d.insert_temp(key, hits));
     if draft {
         let text = "Showing unapplied workholding";
@@ -786,7 +823,7 @@ pub fn swatch_width(entry: LegendEntry) -> f32 {
 mod tests {
     #![allow(clippy::float_cmp, clippy::unwrap_used)]
 
-    use openchuck_app::setup_panes::{FrontSolid, Rect2};
+    use openchuck_app::setup_panes::{EndTab, FrontSolid, Rect2};
 
     use super::*;
 
@@ -929,6 +966,67 @@ mod tests {
         };
         let (_, marked) = frame(&ctx, &panes, marks, None, false);
         assert!(marked.len() > idle.len());
+    }
+
+    /// A click is resolved against what this frame draws, not the last
+    /// frame's outlines: a tab that has just gone is not reported (OI-353).
+    #[test]
+    fn req_ui_25_a_click_on_a_tab_that_has_gone_selects_nothing() {
+        let panes = tab_panes();
+        let ctx = egui::Context::default();
+        let front = Rect::from_min_max(pos2(0.0, 0.0), pos2(630.0, 600.0));
+        let (h, v) = front_bounds(&panes.front);
+        let tab = Map::fit(front, h, v).at(0.0, 0.0);
+        let _ = frame(&ctx, &panes, Marks::default(), None, false);
+        let _ = frame(&ctx, &panes, Marks::default(), Some(tab), false);
+        // The draft drops the tab; the click lands on the same frame.
+        let mut gone = panes.clone();
+        gone.front.tabs.clear();
+        let (seen, _) = frame(&ctx, &gone, Marks::default(), Some(tab), true);
+        assert_eq!(seen, Interaction::default());
+    }
+
+    /// Default tabs offered are dashed sand outlines with their label, in
+    /// both panes, and cannot be hovered or clicked: they are not tabs yet
+    /// (7.5; OI-383).
+    #[test]
+    fn req_ui_25_default_tabs_offered_are_dashed_and_not_picked() {
+        let mut panes = tab_panes();
+        let offered = panes.front.tabs.remove(0);
+        let ctx = egui::Context::default();
+        let (_, without) = frame(&ctx, &panes, Marks::default(), None, false);
+        panes.front.offered = vec![FrontSolid {
+            label: Some("Default tab, not added".to_owned()),
+            ..offered
+        }];
+        panes.end.offered = vec![EndTab {
+            item: WorkholdingItem::Tab(0),
+            centre: [0.0, 0.0],
+            radius: 3.0,
+            description: String::new(),
+            failing: false,
+        }];
+        let (_, with) = frame(&ctx, &panes, Marks::default(), None, false);
+        assert!(texts(&with).iter().any(|t| t == "Default tab, not added"));
+        // Dashes: many short sand segments, no filled polygon.
+        let sand = to_color32(roles::TAB);
+        let dashes = with
+            .iter()
+            .filter(
+                |c| matches!(&c.shape, Shape::LineSegment { stroke, .. } if stroke.color == sand),
+            )
+            .count();
+        assert!(dashes > 10, "{dashes}");
+        assert!(with.len() > without.len());
+        let front = Rect::from_min_max(pos2(0.0, 0.0), pos2(630.0, 600.0));
+        let (h, v) = front_bounds(&panes.front);
+        let at = Map::fit(front, h, v).at(0.0, 0.0);
+        let (seen, _) = frame(&ctx, &panes, Marks::default(), Some(at), true);
+        let (seen2, _) = frame(&ctx, &panes, Marks::default(), Some(at), true);
+        assert_eq!(
+            (seen, seen2),
+            (Interaction::default(), Interaction::default())
+        );
     }
 
     #[test]

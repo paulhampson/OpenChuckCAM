@@ -1,4 +1,5 @@
 (golden - Setup 1)
+(OpenChuckCAM <version>)
 G90 G21 G17
 G54
 (operation Finish A, tool T1 4 mm ball, about 20 s)

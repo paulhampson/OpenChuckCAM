@@ -12,7 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 body{margin:0}
-.w{--p:#23262b;--p2:#2b2f35;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--ac:#5aa9ff;--ok:#4cc38a;--er:#ff7b72;--fld:#16181b;--sel:#264466;--seltx:#fff;--chip:#101215;width:1100px;height:300px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border-top:1px solid var(--ln)}
+.w{--p:#23262b;--p2:#2b2f35;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--ac:#5aa9ff;--ok:#4cc38a;--er:#ff7b72;--fld:#16181b;--sel:#264466;--seltx:#fff;--chip:#101215;width:1100px;height:372px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border-top:1px solid var(--ln)}
 .w.light{--p:#f6f7f9;--p2:#fff;--ln:#c9ced5;--ln2:#e2e5e9;--tx:#1d2125;--mu:#56606b;--ac:#1d6ad0;--ok:#1b7f53;--er:#c22b2b;--fld:#fff;--sel:#d4e5fb;--seltx:#0b2a52;--chip:#eef0f3}
 .w *{box-sizing:border-box}
 .m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
@@ -23,7 +23,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .dt{padding:0 12px;height:32px;flex:none;display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--ln)}
 .dtab{padding:7px 12px;color:var(--mu);border-bottom:2px solid transparent}
 .dtab.on{color:var(--tx);border-bottom-color:var(--ac)}
-.r{display:grid;grid-template-columns:18px 1fr 130px 110px 210px 120px 120px;gap:10px;align-items:center;padding:0 12px;height:34px;border-bottom:1px solid var(--ln2)}
+.r{display:grid;grid-template-columns:18px 1fr 100px 100px 190px 240px 120px;gap:10px;align-items:center;padding:0 12px;height:34px;border-bottom:1px solid var(--ln2)}
 .r.h{height:28px;color:var(--mu);font-size:11px;border-bottom:1px solid var(--ln)}
 .r.sel{background:var(--sel);color:var(--seltx)}
 .sw{width:14px;height:14px;border-radius:2px}
@@ -36,25 +36,34 @@ button{font:inherit;color:inherit;cursor:pointer}
 </helmet>
 <div class="w {{theme}}">
   <div class="dt"><span class="dtab">Messages</span><span class="dtab on">Selection sets</span><span class="dtab">Jobs</span></div>
-  <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ln)">
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ln)">
     <button class="btn">New set from selection</button>
     <button class="btn">Add selection to set</button>
     <button class="btn">Remove from set</button>
+    <button class="btn">Replace set</button>
+    <button class="btn">Clear</button>
     <span style="width:1px;height:20px;background:var(--ln);margin:0 4px"></span>
-    <span class="mu">Select by angle within</span><div class="fld" style="width:80px"><b class="m" style="font-weight:400">15</b><span class="mu">°</span></div>
+    <span class="mu">By angle within</span><div class="fld" style="width:64px"><b class="m" style="font-weight:400">15</b><span class="mu">°</span></div>
+    <span class="mu">Same direction within</span><div class="fld" style="width:64px"><b class="m" style="font-weight:400">10</b><span class="mu">°</span></div>
     <span style="flex:1"></span>
-    <span class="mu">Meshes are selected by triangle; STEP models by face and edge.</span>
+    <span class="mu">Meshes: triangles and edges. STEP models: faces and edges.</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--ln);background:var(--chip)">
+    <svg class="ib" style="color:var(--ac)" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" stroke-dasharray="20 18"/></svg>
+    <span>Checking the selection against the model…</span>
+    <button class="btn" style="height:22px;padding:0 8px">Cancel</button>
+    <span class="mu">The other save and edit buttons wait until it ends.</span>
   </div>
   <div style="flex:1;overflow:hidden">
     <div class="r h"><span></span><span>Name</span><span>Kind</span><span style="text-align:right">Size</span><span>Used by</span><span>Status</span><span></span></div>
-    <div class="r sel"><span class="sw" style="background:#2d6cb5"></span><span style="font-weight:500">Groove floor</span><span>Triangles</span><span class="m" style="text-align:right">8,214</span><span>Op 2 (cut on)</span><span style="display:flex;gap:6px;align-items:center"><span class="st ok"></span>Matches model</span><a class="lk">Select in view</a></div>
-    <div class="r"><span class="sw" style="background:#a04a46"></span><span>Rim (avoid)</span><span>Triangles</span><span class="m" style="text-align:right">1,030</span><span>Op 2 (avoid)</span><span style="display:flex;gap:6px;align-items:center"><span class="st ok"></span>Matches model</span><a class="lk">Select in view</a></div>
-    <div class="r"><span class="sw" style="background:#7d5bb5"></span><span>Lettering</span><span>Edges</span><span class="m" style="text-align:right">28 of 40</span><span>Op 4 (follow)</span><span style="display:flex;gap:6px;align-items:center;color:var(--er)"><span class="st er"></span>12 missing</span><a class="lk">Reselect</a></div>
+    <div class="r sel"><span class="sw" style="background:#2d6cb5"></span><span style="font-weight:500">Groove floor</span><span>Triangles</span><span class="m" style="text-align:right">8,214</span><span>Op 2 (cut on)</span><span style="display:flex;gap:6px;align-items:center"><span class="st ok"></span>Matches model</span><span style="display:flex;gap:10px;align-items:center"><a class="lk">Select in view</a><span class="mu" aria-label="Row menu: Rename, Delete">⋯</span></span></div>
+    <div class="r"><span class="sw" style="background:#a04a46"></span><span>Rim (avoid)</span><span>Triangles</span><span class="m" style="text-align:right">1,030</span><span>Op 2 (avoid)</span><span style="display:flex;gap:6px;align-items:center"><span class="st ok"></span>Matches model</span><span style="display:flex;gap:10px;align-items:center"><a class="lk">Select in view</a><span class="mu" aria-label="Row menu: Rename, Delete">⋯</span></span></div>
+    <div class="r"><span class="sw" style="background:#7d5bb5"></span><span>Lettering</span><span>Edges</span><span class="m" style="text-align:right">28 of 40</span><span>Op 4 (follow)</span><span style="display:flex;gap:6px;align-items:center;color:var(--er)"><span class="st er"></span>12 of 40 edges missing</span><span style="display:flex;gap:10px;align-items:center"><a class="lk">Reselect</a><span class="mu" aria-label="Row menu: Rename, Delete">⋯</span></span></div>
   </div>
-  <div class="mu" style="padding:8px 12px;border-top:1px solid var(--ln)">Editing a set marks every operation that uses it stale.</div>
+  <div class="mu" style="padding:8px 12px;border-top:1px solid var(--ln)">Editing a set marks every operation that uses it stale. Delete is refused while an operation uses the set, and names the operations.</div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1100,"height":300}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1100,"height":372}}'>
 class Component extends DCLogic {
 renderVals() {
 return { theme: this.props.theme ?? 'dark' };

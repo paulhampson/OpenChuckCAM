@@ -1,4 +1,5 @@
 (Small part)
+(OpenChuckCAM <version>)
 (revision abc1234)
 G90 G21 G17
 G61

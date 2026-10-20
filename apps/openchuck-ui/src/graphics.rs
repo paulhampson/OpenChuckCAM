@@ -265,6 +265,8 @@ impl Filter {
 struct Logger {
     filter: Filter,
     started: Instant,
+    /// The local log file (issue 155); `None` when no folder can be written.
+    sink: Option<crate::logging::Sink>,
 }
 
 impl log::Log for Logger {
@@ -274,16 +276,16 @@ impl log::Log for Logger {
 
     fn log(&self, record: &log::Record<'_>) {
         if self.enabled(record.metadata()) {
-            let at = self.started.elapsed();
-            let _ = writeln!(
-                std::io::stderr().lock(),
-                "[{:>4}.{:03} {:<5} {}] {}",
-                at.as_secs(),
-                at.subsec_millis(),
+            let text = crate::logging::line(
+                self.started.elapsed(),
                 record.level(),
                 record.target(),
-                record.args()
+                &record.args().to_string(),
             );
+            let _ = writeln!(std::io::stderr().lock(), "{text}");
+            if let Some(sink) = &self.sink {
+                sink.write_line(&text);
+            }
         }
     }
 
@@ -292,14 +294,15 @@ impl log::Log for Logger {
     }
 }
 
-/// Sends `log` records to standard error under `RUST_LOG`, so that wgpu's
-/// and eframe's own messages reach the user.
+/// Sends `log` records to standard error and the local log file under
+/// `RUST_LOG`, so that wgpu's and eframe's own messages reach the user.
 pub fn init_logging() {
     let filter = Filter::parse(std::env::var("RUST_LOG").ok().as_deref());
     let max = filter.max();
     if log::set_boxed_logger(Box::new(Logger {
         filter,
         started: Instant::now(),
+        sink: crate::logging::open(),
     }))
     .is_ok()
     {

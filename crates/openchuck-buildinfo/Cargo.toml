@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "openchuck-buildinfo"
+description = "Which build is running: commit, uncommitted changes, build date, Rust version, target and crate versions (NFR-16). Used by the two front ends only."
+readme = "README.md"
+publish = false
+build = "build.rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

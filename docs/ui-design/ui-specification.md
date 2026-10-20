@@ -1,7 +1,7 @@
 # OpenChuckCAM user interface specification
 
-- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16. On 19 Oct 2026 the four readings of [decision 0117](../decisions/0117-slice-22-shell-frame.md) (lane X2, the shell frame) were written into sections 3, 4, 5 and 9 (OI-350, the owner's answer A, relayed by the coordinator).
-- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026; the decision 0117 readings, 19 Oct 2026.
+- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16. On 19 Oct 2026 the four readings of [decision 0117](../decisions/0117-slice-22-shell-frame.md) (lane X2, the shell frame) were written into sections 3, 4, 5 and 9 (OI-350, the owner's answer A, relayed by the coordinator). On 19 Oct 2026 section 11.3 item 3 (Part position) was edited to the owner's answer on OI-366 ([decision 0123](../decisions/0123-slice-22-inspectors.md)): the model's turn about the rotary axis is set by its placement steps.
+- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026; the decision 0117 readings, 19 Oct 2026; the decision 0123 edit of 11.3, 19 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
 - **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
 
@@ -129,7 +129,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | "+" on | Does |
 | --- | --- |
 | Model | Opens the import dialog (11.2) |
-| Setups | Opens Setup with a new setup. Only once multiple setups (SET-07, P2) are built; until then it is hidden |
+| Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and an empty working selection ("Select on the part…", decision 0037 item 7) |
 | Tools | Opens the tool library (12.1) with "Add to project" as its primary action |
 | Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
@@ -427,7 +427,7 @@ A legend strip sits under the panes; it lists the held region and tab roles when
 
 1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel.
 2. **Stock** (SET-03): shape (Cylinder, Box, Bounds, where Bounds is the model's bounding box plus an offset), diameter or sizes, length, material. Imported stock (SET-04) is P2.
-3. **Part position** (SET-05): rotation about X, offset along X.
+3. **Part position** (SET-05): offset along X; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
 5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
@@ -692,6 +692,16 @@ UI-05; decisions 0032 and 0037; a dock tab.
 - **Marks.** The current state is highlighted. Undone steps are italic, marked "undone".
 - **Jumping.** Choosing a row undoes or redoes to it.
 - **Text.** A line at the foot gives the shortcuts and says that a new edit after undoing discards the undone steps.
+
+### 12.4 About window
+
+NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from Help, "About OpenChuckCAM…".
+
+- **A modal dialog** in the main window, like the other dialogs (section 3).
+- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates.
+- **Footer.** "Copy build information" on the left (secondary; copies the Build block and nothing else; the window stays open), "Close" bottom right (the one primary button, section 5).
+- **Keyboard.** Tab visits the Licences box, Copy and Close in that order; the box scrolls with the arrow keys; Copy's tooltip opens on focus (section 16).
+- A fact the build could not find reads "unknown".
 
 ## 13. Per-user settings
 

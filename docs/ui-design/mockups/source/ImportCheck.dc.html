@@ -12,7 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 body{margin:0}
-.dlg{--p:#23262b;--p2:#2b2f35;--ln:#383d45;--tx:#e4e7eb;--mu:#9ba3ae;--ac:#5aa9ff;--ok:#4cc38a;--wn:#f2b84b;--er:#ff7b72;width:1040px;height:700px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border:1px solid #4a5059}
+.dlg{--p:#23262b;--p2:#2b2f35;--ln:#383d45;--tx:#e4e7eb;--mu:#9ba3ae;--ac:#5aa9ff;--ok:#4cc38a;--wn:#f2b84b;--er:#ff7b72;width:1280px;height:760px;position:relative;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border:1px solid #4a5059}
 .dlg *{box-sizing:border-box}
 .m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
 .mu{color:var(--mu)}
@@ -26,19 +26,15 @@ button{font:inherit;color:inherit;cursor:pointer}
 .seg span{flex:1;display:flex;align-items:center;justify-content:center;background:#16181b;color:var(--mu)}
 .seg span.on{background:#264466;color:#fff}
 .seg span{min-width:0;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ck{display:grid;grid-template-columns:20px 1fr 70px 20px;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid #2d3137}
+.ck{display:grid;grid-template-columns:20px 1fr 70px 20px;gap:8px;align-items:center;padding:4px 12px;border-bottom:1px solid #2d3137}
 .ck.sel{background:#264466;box-shadow:inset 2px 0 0 var(--ac)}
 .cnt{text-align:right}
 </style>
 </helmet>
 <div class="dlg">
-  <div style="height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#15171a;border-bottom:1px solid var(--ln)">
-    <span style="font-weight:600;font-size:13px">Import model: groove_part.stl</span>
-      </div>
-  <div style="flex:1;min-height:0;display:flex">
-    <!-- preview -->
-    <div style="flex:1;min-width:0;position:relative;background:radial-gradient(ellipse at 50% 40%,#2c3139 0%,#1b1e23 75%)">
-      <svg viewBox="0 0 560 560" width="560" height="560" style="position:absolute;left:0;top:0" role="img" aria-label="Mesh preview with one hole and two flipped triangle regions highlighted">
+  <!-- main viewport behind the window: the placed model with findings, legend bottom left, size radius volume bottom right -->
+  <div style="flex:1;min-width:0;position:relative;background:radial-gradient(ellipse at 40% 45%,#2c3139 0%,#1b1e23 75%)">
+    <svg viewBox="0 0 560 560" preserveAspectRatio="xMidYMid meet" width="760" height="560" style="position:absolute;left:20px;top:60px" role="img" aria-label="Mesh preview with one hole and two flipped triangle regions highlighted">
         <defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a93a0"/><stop offset=".45" stop-color="#b7bfca"/><stop offset="1" stop-color="#5d6570"/></linearGradient></defs>
         <g transform="rotate(-6 280 290)">
           <path d="M110 190H430A30 100 0 0 1 430 390H110A30 100 0 0 1 110 190z" fill="url(#b)" stroke="#d3d9e0"/>
@@ -50,44 +46,56 @@ button{font:inherit;color:inherit;cursor:pointer}
         </g>
         <path d="M280 440H300" stroke="#fff"/>
       </svg>
-      <div style="position:absolute;left:12px;top:12px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px" class="mu">Orbit to inspect. Selecting a finding below highlights its triangles.</div>
-      <div style="position:absolute;left:12px;bottom:12px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px;display:flex;gap:14px;align-items:center">
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:6px;background:#0f1114;border:2px solid var(--wn)"></span>Hole</span>
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;background:var(--er)"></span>Flipped</span>
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;background:#e8b6ff"></span>Degenerate</span>
-      </div>
-      <div class="m" style="position:absolute;right:12px;bottom:12px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px;display:grid;grid-template-columns:auto auto;gap:2px 12px">
-        <span class="mu">Size X</span><span>30.0 mm</span><span class="mu">Size Y</span><span>24.0 mm</span><span class="mu">Size Z</span><span>24.0 mm</span><span class="mu">Volume</span><span>n/a (open mesh)</span>
-      </div>
+    <div style="position:absolute;left:12px;top:12px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px" class="mu">Orbit to inspect. Selecting a finding in the window highlights its triangles here.</div>
+    <div style="position:absolute;left:12px;bottom:12px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px;display:flex;gap:14px;align-items:center">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:0;border-top:2px dashed #35d0e0"></span>Rotary axis</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:6px;background:#0f1114;border:2px solid var(--wn)"></span>Hole</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;background:var(--er)"></span>Flipped</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;background:#e8b6ff"></span>Degenerate</span>
     </div>
-
-    <!-- right column -->
-    <div style="width:440px;flex:none;border-left:1px solid var(--ln);display:flex;flex-direction:column;min-height:0">
+    <div class="m" style="position:absolute;left:12px;bottom:56px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px;display:none"></div>
+    <div class="m" style="position:absolute;right:476px;bottom:12px;background:rgba(27,29,33,.92);border:1px solid var(--ln);border-radius:4px;padding:6px 10px;display:grid;grid-template-columns:auto auto;gap:2px 12px">
+      <span class="mu">Size X</span><span>30.0 mm</span><span class="mu">Size Y</span><span>24.0 mm</span><span class="mu">Size Z</span><span>24.0 mm</span><span class="mu">Largest radius</span><span>12.0 mm</span><span class="mu">Volume</span><span>n/a (open mesh)</span>
+    </div>
+  </div>
+  <!-- the import window -->
+  <div style="position:absolute;right:16px;top:16px;bottom:16px;width:440px;display:flex;flex-direction:column;background:var(--p);border:1px solid #4a5059;border-radius:6px;box-shadow:0 12px 36px rgba(0,0,0,.5);overflow:hidden">
+    <div style="height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#15171a;border-bottom:1px solid var(--ln)"><span style="font-weight:600;font-size:13px">Import model</span><span class="mu">✕</span></div>
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:12px;border-bottom:1px solid var(--ln)">
+        <div class="h" style="margin-bottom:8px">File</div>
+        <div style="display:flex;gap:8px"><div class="fld m" style="flex:1;min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">/home/user/parts/groove_part.stl</span></div><button class="btn">Browse…</button></div>
+      </div>
       <div style="padding:12px;border-bottom:1px solid var(--ln)">
         <div class="h" style="margin-bottom:8px">1 Units</div>
         <div style="padding:8px 10px;border:1px solid #6b5420;background:#2a2316;border-radius:3px;color:#f2d28a;line-height:1.45;margin-bottom:8px">The file says its unit is <b>in</b>, but it has been read as millimetres. Choose the unit before continuing. Nothing is rescaled until you answer.</div>
         <div class="seg" style="margin-bottom:6px"><span>mm</span><span class="on">in</span><span>cm</span><span>m</span><span>µm</span></div>
         <div class="m" style="display:flex;justify-content:space-between"><span class="mu">Largest side after conversion</span><span>762.0 mm</span></div>
       </div>
+      <div style="padding:12px;border-bottom:1px solid var(--ln)">
+        <div class="h" style="margin-bottom:8px">2 Placement</div>
+        <div class="seg" style="margin-bottom:6px"><span class="on">Long side along the axis</span><span>Keep as drawn</span></div>
+        <div class="mu" style="line-height:1.45">Places the model on the rotary axis as it is added (the dashed cyan line in the view). The Model step's placement steps change it later.</div>
+      </div>
       <div style="flex:1;min-height:0;display:flex;flex-direction:column">
-        <div style="padding:10px 12px 6px;display:flex;justify-content:space-between;align-items:center"><span class="h">2 Mesh check</span><span class="mu">412,880 triangles · 206,442 vertices</span></div>
+        <div style="padding:10px 12px 4px;display:flex;justify-content:space-between;align-items:center"><span class="h">3 Mesh check</span><span class="mu">412,880 triangles</span></div>
         <div class="ck sel"><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Holes</span><span class="m cnt">1</span><span class="mu">▸</span></div>
         <div class="ck"><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Flipped triangles</span><span class="m cnt">24</span><span class="mu">▸</span></div>
         <div class="ck"><svg class="ib" style="color:var(--wn)" viewBox="0 0 16 16"><path d="M8 2l7 12H1zM8 7v3M8 12v.5"/></svg><span>Degenerate triangles</span><span class="m cnt">3</span><span class="mu">▸</span></div>
         <div class="ck"><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Non-manifold edges</span><span class="m cnt">0</span><span></span></div>
         <div class="ck"><svg class="ib" style="color:var(--ok)" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg><span>Stated normals against winding</span><span class="m cnt">0</span><span></span></div>
-        <div style="padding:10px 12px;color:var(--mu);line-height:1.5">The check reports problems and changes nothing. Holes and flipped triangles can make a toolpath cut where the part is not; fix the file or accept the risk.</div>
+        <div style="padding:8px 12px;color:var(--mu);line-height:1.5">The check reports problems and changes nothing.</div>
       </div>
       <div style="padding:10px 12px;border-top:1px solid var(--ln);background:#1b1e22;line-height:1.5"><b style="display:flex;align-items:center;gap:6px"><svg class="ib" style="color:var(--ac)" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5v.5"/></svg>STL holds triangles only</b><span class="mu">The tessellation was fixed when the file was exported. Gouge tolerance on this part is measured against this mesh, not the original surface.</span></div>
     </div>
-  </div>
-  <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-top:1px solid var(--ln);background:#1b1e22">
-    <span class="mu">The file is not changed. The model path and hash are stored in the project.</span>
-    <div style="display:flex;gap:8px"><button class="btn">Cancel</button><button class="btn pri">Add to project</button></div>
+    <div style="flex:none;padding:10px 14px;border-top:1px solid var(--ln);background:#1b1e22;display:flex;flex-direction:column;gap:8px">
+      <span class="mu" style="line-height:1.45">The file is not changed. Its path and hash are stored in the project.</span>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn">Cancel</button><button class="btn pri">Add to project</button></div>
+    </div>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1040,"height":700}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 return {};

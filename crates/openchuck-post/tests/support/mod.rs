@@ -95,6 +95,7 @@ pub fn job() -> PostJob {
         title: "Small part".into(),
         operation_names: BTreeMap::new(),
         revision: Some("abc1234".into()),
+        generator: Some("OpenChuckCAM 0.10.0".into()),
         work_offset: None,
     }
 }

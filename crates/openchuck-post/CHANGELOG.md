@@ -4,6 +4,8 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
+- Version 0.11.0 with the library family (`PostJob` in `openchuck-post` gains `generator`, a breaking change; decision 0151).
+- **Breaking (0.11.0):** `PostJob` gains `generator`, the tool and its version (such as `OpenChuckCAM 0.11.0`) that both shipped posts write as a comment after the title, inside the `comments` option (NFR-16). A host passes the software version only, never a commit or a date, so one version always gives the same program (GC-07); a host that does not want the line passes `None`. Golden files hold `(OpenChuckCAM <version>)`, and `openchuck_testkit::golden::check` masks the version before it compares.
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
 - Version 0.9.0 with the library family (decision 0076). New: the template filter `feed` and `feed_str`, which write a feed with at least `decimals.f` places and at least `FEED_SIGNIFICANT_FIGURES` (three) significant figures, so a small F such as `4.237` is `F4.24`, not `F4.2`, and rounding is at most 0.5 % of a move's time. Both shipped posts write F with it; feeds of 100 and more are written as before.
 - Version 0.8.0 with the library family (`Pass` in `openchuck-path` gains `rapids`, a breaking change; decision 0051).

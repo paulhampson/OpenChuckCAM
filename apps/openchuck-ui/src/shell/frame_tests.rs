@@ -18,8 +18,8 @@ use super::*;
 use crate::testing::cube_project;
 
 /// A shell drawn frame by frame at a window size.
-struct Rig {
-    shell: Shell,
+pub(super) struct Rig {
+    pub(super) shell: Shell,
     ctx: egui::Context,
     size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
@@ -40,7 +40,7 @@ impl Rig {
     }
 
     /// The cube project open, its scene built and its checks done.
-    fn cube(name: &str, settings: Option<SettingsFile>) -> Self {
+    pub(super) fn cube(name: &str, settings: Option<SettingsFile>) -> Self {
         let (dir, app, _, _) = cube_project(name);
         app.save().unwrap();
         drop(app);
@@ -51,7 +51,7 @@ impl Rig {
     }
 
     /// Draws until the scene, the checks and any run are done.
-    fn settle(&mut self) {
+    pub(super) fn settle(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
             self.frame(Vec::new());
@@ -71,7 +71,7 @@ impl Rig {
         self.frame(Vec::new());
     }
 
-    fn frame(&mut self, events: Vec<Event>) {
+    pub(super) fn frame(&mut self, events: Vec<Event>) {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), self.size)),
             events,
@@ -83,7 +83,7 @@ impl Rig {
         self.shapes = output.shapes;
     }
 
-    fn press(&mut self, key: Key, modifiers: Modifiers) {
+    pub(super) fn press(&mut self, key: Key, modifiers: Modifiers) {
         let event = |pressed| Event::Key {
             key,
             physical_key: None,
@@ -95,7 +95,22 @@ impl Rig {
     }
 
     /// Whether some text on screen contains `needle`.
-    fn shows(&self, needle: &str) -> bool {
+    /// Every text painted, with its top edge: what a failed `shows` was up
+    /// against.
+    pub(super) fn texts(&self) -> Vec<(String, f32)> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, f32)>) {
+            match shape {
+                egui::Shape::Text(t) => out.push((t.galley.text().to_string(), t.pos.y)),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
+    pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {
                 egui::Shape::Text(t) => t.galley.text().contains(needle),
@@ -385,8 +400,11 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
     rig.settle();
     assert_eq!(rig.shell.overview.stale.len(), 2);
     // G: the first operation only; the copy after it stays stale.
+    assert!(rig.shell.run.last().is_none());
     rig.press(Key::G, Modifiers::NONE);
-    assert!(rig.shell.run.is_running());
+    // G started a run: still going, or on a fast machine already finished
+    // within the frame that pressed G.
+    assert!(rig.shell.run.is_running() || rig.shell.run.last().is_some());
     rig.settle();
     let deadline = Instant::now() + Duration::from_secs(60);
     while rig.shell.overview.stale.len() != 1 {
@@ -405,9 +423,9 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
         &e.outcome,
         Some(openchuck_app::JobOutcome::Done(Some(s))) if s.contains("later operations stay stale")
     )));
-    // Shift G: every stale operation, with the results window open after the
-    // last run.
-    assert!(rig.shell.run.has_window());
+    // Shift G: every stale operation, after the last run (the results show
+    // in the inspector; the floating window opens only on a failure).
+    assert!(rig.shell.run.last().is_some() && !rig.shell.run.has_window());
     rig.press(Key::G, Modifiers::SHIFT);
     rig.settle();
     let deadline = Instant::now() + Duration::from_secs(60);
@@ -417,6 +435,141 @@ fn req_ui_14_g_generates_the_selected_operation_and_shift_g_every_stale_one() {
     }
 }
 
+/// Choosing a setup shows its five sections (11.3) in field rows: the
+/// machine's values with their provenance (UI-13), the stock, the part
+/// position, and the work offset and clearance with the zero read-only
+/// (decision record 0114 C10, C15).
+#[test]
+fn req_ui_07_req_ui_13_the_setup_inspector_shows_its_five_sections() {
+    let mut rig = Rig::cube("inspector-setup", None);
+    // Tall enough that every section is on screen.
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for needle in [
+        "MACHINE",
+        "STOCK",
+        "PART POSITION",
+        "WORK OFFSET AND CLEARANCE",
+        "WORKHOLDING AND TABS",
+        "Rotary axis",
+        "Axis height",
+        "Cylinder",
+        "Diameter",
+        "Offset along X",
+        "On the A axis (Y0 Z0)",
+        "Safe radius",
+    ] {
+        assert!(rig.shows(needle), "{needle} is not shown");
+    }
+    // No file field names in the machine section (section 15).
+    assert!(!rig.shows("rotary_origin"));
+}
+
+/// An operation whose selection set cannot be used shows the error banner of
+/// board 3b with "Reselect in the view", the broken set with a red border in
+/// its Geometry role, and the closing line about export (11.4; C16).
+#[test]
+fn req_ui_11_an_operation_in_error_shows_the_banner_and_its_actions() {
+    use openchuck_app::project::{Item, SelectionTarget};
+    let mut rig = Rig::cube("inspector-error", None);
+    let app = rig.shell.app.as_mut().unwrap();
+    let op = app.project().operations()[0].clone();
+    let model = app.project().models()[0].id;
+    let set = app
+        .save_selection("Lettering", model, SelectionTarget::Triangles([0].into()))
+        .unwrap();
+    app.set_operation_selection(
+        op.id,
+        openchuck_app::selection::SelectionRole::Machine,
+        set,
+        true,
+    )
+    .unwrap();
+    // The set no longer selects anything: a problem up the tree.
+    let mut broken = app
+        .project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == set)
+        .unwrap()
+        .clone();
+    broken.target = SelectionTarget::Triangles(Default::default());
+    app.execute(Command::Replace(Item::SelectionSet(broken)))
+        .unwrap();
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("This operation can't be generated"));
+    assert!(rig.shows("Reselect in the view"));
+    assert!(rig.shows("Show missing"));
+    assert!(rig.shows("Export is blocked while this operation is in error"));
+    assert!(rig.shows("GEOMETRY"));
+    assert!(rig.shows("Cut on"));
+    assert!(rig.shows("Lettering"));
+}
+
+/// The header's name is an editable field: a name is applied as one
+/// undoable command, and an empty one is refused under it (section 8).
+#[test]
+fn req_ui_06_req_ui_08_the_header_renames_as_one_undoable_command() {
+    let mut rig = Rig::cube("inspector-rename", None);
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    let item = ItemRef::Operation(op);
+    assert_eq!(
+        rig.shell.rename_checked(item, "  "),
+        Err("A name cannot be empty. Not applied.".to_owned())
+    );
+    rig.shell.rename_checked(item, "Rough").unwrap();
+    let app = rig.shell.app.as_mut().unwrap();
+    assert_eq!(app.project().operation(op).unwrap().name, "Rough");
+    assert!(app.undo().unwrap());
+    assert_ne!(app.project().operation(op).unwrap().name, "Rough");
+    rig.shell.select(Selection::Operation(op));
+    rig.frame(Vec::new());
+    assert!(rig.shows("TOOL AND FEEDS"));
+}
+
+/// Choosing a model shows its inspector (11.2; C14): the file, format,
+/// triangle count and size once the check has run, the unit with where it
+/// came from, the placement steps, the mesh check and the source.
+#[test]
+fn req_imp_03_req_imp_04_req_imp_05_the_model_inspector_shows_its_sections() {
+    let mut rig = Rig::cube("inspector-model", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    rig.shell.select(Selection::Model(model));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        rig.frame(Vec::new());
+        if rig.shows("Triangles") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    rig.frame(Vec::new());
+    for needle in [
+        "FILE",
+        "Format",
+        "STL",
+        "UNITS",
+        "Read in mm",
+        "PLACEMENT",
+        "1. Centre on the rotary axis",
+        "MESH CHECK",
+        "The check changes nothing",
+        "Open full report",
+    ] {
+        assert!(rig.shows(needle), "{needle} is not shown");
+    }
+}
+
+/// G with a turned-off operation selected is refused, not a full run
+/// (lane X3, OI-352).
 #[test]
 fn req_ui_14_g_on_a_turned_off_operation_is_refused_not_a_full_run() {
     let mut rig = Rig::cube("frame-generate-off", None);
@@ -442,6 +595,104 @@ fn req_ui_14_g_on_a_turned_off_operation_is_refused_not_a_full_run() {
     let error = rig.shell.run.last_error().unwrap_or_default();
     assert!(error.contains("turned off"), "{error:?}");
     assert!(rig.shell.run.last().is_none());
+}
+
+/// The workholding section drives the view (7.5, 11.7; OI-334 k, OI-355):
+/// an unapplied draft is drawn in place of the stored workholding, whatever
+/// is selected; a click on a solid selects its setup, opens the section at
+/// its row and outlines it; Esc clears that selection.
+#[test]
+fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
+    use openchuck_app::scene::WorkholdingItem;
+    use openchuck_app::setup::{Millimetres, Tab, TabLayout, TabShape};
+    let mut rig = Rig::cube("inspector-draft-view", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, Some(SetupPart::Workholding));
+    // The part-extent job places the solids.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while rig
+        .shell
+        .workholding_panel
+        .as_ref()
+        .and_then(crate::workholding_panel::WorkholdingPanel::part_extent)
+        .is_none()
+    {
+        assert!(Instant::now() < deadline, "timed out");
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    rig.shell
+        .workholding_panel
+        .as_mut()
+        .unwrap()
+        .draft_mut()
+        .tabs = vec![Tab {
+        x_start: Millimetres(-7.0),
+        length: Millimetres(1.0),
+        shape: TabShape::Cylinder {
+            diameter: Millimetres(4.0),
+        },
+        layout: TabLayout::OnAxis,
+    }];
+    rig.frame(Vec::new());
+    assert!(rig.shell.viewport.shows_draft());
+    // Still drawn with an operation selected (11.7: the draft is kept).
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    rig.frame(Vec::new());
+    assert!(rig.shell.viewport.shows_draft());
+    // A click on the tab's solid.
+    rig.shell.select_solid(WorkholdingItem::Tab(0));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.selected, Some(Selection::Setup(setup)));
+    assert_eq!(
+        rig.shell.viewport.selected_solid(),
+        Some(WorkholdingItem::Tab(0))
+    );
+    assert!(rig.shows("Start X"));
+    // Esc clears it once no field has the keyboard.
+    rig.ctx.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    rig.frame(Vec::new());
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.viewport.selected_solid(), None);
+}
+
+/// Esc clears a selected held region or tab on the Setup step too, where
+/// the panes replace the 3D view (7.5; OI-354).
+#[test]
+fn req_ui_25_esc_clears_the_selected_solid_while_the_panes_are_shown() {
+    use openchuck_app::scene::WorkholdingItem;
+    let mut rig = Rig::cube("panes-esc", None);
+    rig.press(Key::Num2, Modifiers::ALT);
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Setup);
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, Some(SetupPart::Workholding));
+    rig.shell
+        .viewport
+        .set_selected_solid(Some(WorkholdingItem::Start));
+    rig.ctx.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    rig.frame(Vec::new());
+    assert!(rig.shows("END VIEW FROM +X"));
+    // It stays selected until Esc.
+    assert_eq!(
+        rig.shell.viewport.selected_solid(),
+        Some(WorkholdingItem::Start)
+    );
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.viewport.selected_solid(), None);
 }
 
 #[test]
@@ -473,4 +724,111 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
     rig.settle();
     assert!(!rig.shows("END VIEW FROM +X"));
     assert!(!rig.shows("Travel limit"));
+}
+
+/// A project with a model and no setup, which is what File, New project and
+/// an import give (decision record 0144).
+fn no_setup_rig(name: &str, with_model: bool) -> Rig {
+    let dir = temp(name);
+    let mut app =
+        openchuck_app::Application::create(&dir, name, openchuck_app::Threads::Exactly(2)).unwrap();
+    if with_model {
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+    }
+    app.save().unwrap();
+    drop(app);
+    let shell = Shell::with_settings(false, Some(dir.clone()), None);
+    let mut rig = Rig::new(shell, vec![dir]);
+    rig.settle();
+    rig
+}
+
+#[test]
+fn req_set_01_req_ui_10_the_setups_plus_creates_the_one_setup_and_opens_the_setup_step() {
+    let mut rig = no_setup_rig("add-setup", true);
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .setups()
+            .is_empty()
+    );
+    assert!(rig.shows("SETUPS"));
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.settle();
+    let project = rig.shell.app.as_ref().unwrap().project();
+    assert_eq!(project.setups().len(), 1);
+    let setup = &project.setups()[0];
+    assert_eq!(setup.name, "Setup 1");
+    assert_eq!(setup.part, Some(project.models()[0].id));
+    assert_eq!(rig.shell.step, Step::Setup);
+    assert_eq!(rig.shell.selected, Some(Selection::Setup(setup.id)));
+    assert!(rig.shows("Setup 1"));
+}
+
+#[test]
+fn req_set_01_a_second_click_does_nothing_and_undo_allows_the_plus_again() {
+    let mut rig = no_setup_rig("add-setup-twice", true);
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.settle();
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.shell.add_setup();
+    rig.settle();
+    let project = rig.shell.app.as_ref().unwrap().project();
+    assert_eq!(project.setups().len(), 1);
+    assert_eq!(
+        openchuck_app::add_setup_blocked(project),
+        Some("More than one setup per project is not supported yet (SET-07)")
+    );
+    // The workflow bar's action is disabled too, with the same words.
+    assert!(rig.shows("Add setup"));
+    // Undo removes the setup, so the "+" is enabled again.
+    let app = rig.shell.app.as_mut().unwrap();
+    assert!(app.undo().unwrap());
+    assert!(openchuck_app::can_add_setup(app.project()));
+    rig.shell.add_setup();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().setups().len(), 1);
+}
+
+#[test]
+fn req_set_01_a_project_that_has_a_setup_shows_the_plus_disabled() {
+    // The cube project opens with its setup.
+    let mut rig = Rig::cube("add-setup-existing", None);
+    assert!(!openchuck_app::can_add_setup(
+        rig.shell.app.as_ref().unwrap().project()
+    ));
+    rig.shell.add_setup();
+    rig.settle();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().setups().len(), 1);
+    rig.press(Key::Num2, Modifiers::ALT);
+    rig.settle();
+    assert!(rig.shows("Add setup"));
+}
+
+#[test]
+fn req_set_01_the_plus_is_disabled_until_a_model_is_imported() {
+    let mut rig = no_setup_rig("add-setup-no-model", false);
+    assert_eq!(
+        openchuck_app::add_setup_blocked(rig.shell.app.as_ref().unwrap().project()),
+        Some("Import a model first")
+    );
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.shell.add_setup();
+    rig.settle();
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .setups()
+            .is_empty()
+    );
+    assert_eq!(rig.shell.step, Step::Model);
 }

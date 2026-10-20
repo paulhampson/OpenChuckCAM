@@ -10,11 +10,54 @@ use std::path::Path;
 /// The environment variable that turns comparison into an update.
 pub const BLESS_VAR: &str = "OPENCHUCK_BLESS";
 
-/// Compares `actual` with the golden file at `path`.
+/// The placeholder a golden file holds in place of the software version (NFR-16).
+pub const VERSION_PLACEHOLDER: &str = "<version>";
+
+/// Replaces the version in the generator comment, `(OpenChuckCAM 0.10.0)`, with
+/// [`VERSION_PLACEHOLDER`], so a version bump changes no golden file. The same input and post
+/// still give byte-identical G-code for one software version (GC-07, NFR-06); this only keeps
+/// the stored files stable across versions. Any other text is left as it is.
+#[must_use]
+pub fn mask_generator(text: &str) -> String {
+    const PREFIX: &str = "(OpenChuckCAM ";
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let body = line.trim_end_matches(['\r', '\n']);
+        let ending = &line[body.len()..];
+        // A post with line numbers writes `N20 ` first.
+        let numbered = body
+            .strip_prefix('N')
+            .and_then(|rest| rest.split_once(' '))
+            .filter(|(digits, _)| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()));
+        let (lead, comment) = match numbered {
+            Some((digits, rest)) => (format!("N{digits} "), rest),
+            None => (String::new(), body),
+        };
+        let version = comment
+            .strip_prefix(PREFIX)
+            .and_then(|rest| rest.strip_suffix(')'))
+            .filter(|v| {
+                !v.is_empty()
+                    && v.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'+'))
+            });
+        if version.is_some() {
+            out.push_str(&format!("{lead}{PREFIX}{VERSION_PLACEHOLDER}){ending}"));
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
+/// Compares `actual` with the golden file at `path`, after masking the generator version in
+/// `actual` ([`mask_generator`]).
 ///
 /// Returns a message naming the first differing line, or saying the file is
-/// missing. With `OPENCHUCK_BLESS=1` it writes `actual` to `path` instead.
+/// missing. With `OPENCHUCK_BLESS=1` it writes `actual` (masked) to `path` instead.
 pub fn check(path: &Path, actual: &str) -> Result<(), String> {
+    let masked = mask_generator(actual);
+    let actual = masked.as_str();
     if std::env::var(BLESS_VAR).is_ok_and(|v| v == "1") {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
