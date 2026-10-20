@@ -14,13 +14,11 @@ use openchuck_app::overview::{ItemStatus, Step};
 use openchuck_app::settings::{SCALE_RANGE, region};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
-use super::{
-    DEFAULT_ZOOM, Dialog, EXPORT, IMPORT, NEW, Next, OPEN, REDO, SAVE, Selection, Shell, UNDO,
-    marks,
-};
+use super::{Dialog, EXPORT, IMPORT, NEW, Next, OPEN, REDO, SAVE, Selection, Shell, UNDO, marks};
 use crate::theme::DARK;
 use crate::toolbar;
 use crate::viewport::ViewStep;
+use crate::viewport_toolbar::directions_unavailable;
 
 /// The three regions that collapse to a rail (Ctrl 1, 2 and 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +68,8 @@ const NARROWEST_VIEW: f32 = 420.0;
 /// The width of a collapsed side panel's rail.
 const RAIL: f32 = 28.0;
 /// How long the settings wait after a change before they are written.
+/// The scales the View menu offers, in percent (issue 141; NFR-15).
+pub(super) const UI_SCALES: [u32; 5] = [80, 90, 100, 110, 120];
 const SETTINGS_DELAY: Duration = Duration::from_secs(1);
 
 /// Heights of the bars (specification section 3).
@@ -123,7 +123,7 @@ pub(super) fn status_chip(ui: &mut egui::Ui, status: Option<&ItemStatus>) {
 }
 
 /// A small bordered chip.
-pub(super) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
+pub(crate) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
     egui::Frame::new()
         .stroke(Stroke::new(1.0, DARK.line))
         .corner_radius(3.0)
@@ -133,7 +133,7 @@ pub(super) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
 }
 
 /// The filled primary button (specification sections 5 and 14.1).
-pub(super) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
+pub(crate) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
     let button = egui::Button::new(RichText::new(label).color(Color32::WHITE).strong())
         .fill(DARK.primary)
         .stroke(Stroke::new(1.0, DARK.primary_border))
@@ -590,7 +590,13 @@ impl Shell {
                 }
                 let export = egui::Button::new("Post and export…")
                     .shortcut_text(ctx.format_shortcut(&EXPORT));
-                if ui.add_enabled(open, export).clicked() {
+                let blocker = self.post_blocker();
+                let response = ui.add_enabled(blocker.is_none(), export);
+                let response = match blocker {
+                    Some(reason) => response.on_disabled_hover_text(reason),
+                    None => response,
+                };
+                if response.clicked() {
                     self.open_export();
                     ui.close();
                 }
@@ -656,51 +662,75 @@ impl Shell {
                     }
                 }
                 ui.separator();
-                for region in Region::ALL {
-                    let mut shown = !self.collapsed(region);
-                    let label = match region {
-                        Region::Project => "Project panel",
-                        Region::Inspector => "Inspector",
-                        Region::Dock => "Dock",
-                    };
-                    if ui
-                        .checkbox(&mut shown, format!("{label}  ({})", region.key()))
-                        .changed()
-                    {
-                        self.toggle_region(region);
+                ui.menu_button("Panels", |ui| {
+                    for region in Region::ALL {
+                        let mut shown = !self.collapsed(region);
+                        let label = match region {
+                            Region::Project => "Project panel",
+                            Region::Inspector => "Inspector",
+                            Region::Dock => "Dock",
+                        };
+                        if ui
+                            .checkbox(&mut shown, format!("{label}  ({})", region.key()))
+                            .changed()
+                        {
+                            self.toggle_region(region);
+                        }
                     }
-                }
-                ui.separator();
-                for view in StandardView::ALL {
-                    if ui.button(view.name()).clicked() {
-                        self.viewport.set_view(view);
+                });
+                let unavailable = directions_unavailable(
+                    self.setup_panes().is_some(),
+                    self.app
+                        .as_ref()
+                        .is_some_and(|a| !a.project().models().is_empty()),
+                );
+                ui.menu_button("View direction", |ui| {
+                    for view in StandardView::ALL {
+                        let response =
+                            ui.add_enabled(unavailable.is_none(), egui::Button::new(view.name()));
+                        let response = match unavailable {
+                            Some(reason) => response.on_disabled_hover_text(reason),
+                            None => response,
+                        };
+                        if response.clicked() {
+                            self.viewport.set_view(view);
+                            ui.close();
+                        }
                     }
-                }
+                });
                 if ui.button("Fit all").clicked() {
                     self.viewport.fit();
+                    ui.close();
                 }
-                ui.separator();
-                let mut projection = self.viewport.camera.projection;
-                ui.radio_value(&mut projection, Projection::Perspective, "Perspective");
-                ui.radio_value(&mut projection, Projection::Orthographic, "Orthographic");
-                self.viewport.set_projection(projection);
-                ui.separator();
-                for mode in DisplayMode::ALL {
-                    ui.radio_value(&mut self.viewport.mode, mode, mode.name());
-                }
-                ui.separator();
-                // Text and controls scale together, 80% to 200% (NFR-15).
-                let zoom = ctx.zoom_factor();
-                ui.label(format!("Scale: {:.0} %", zoom * 100.0));
-                if ui.button("Larger").clicked() {
-                    ctx.set_zoom_factor((zoom * 1.1).min(SCALE_RANGE.1));
-                }
-                if ui.button("Smaller").clicked() {
-                    ctx.set_zoom_factor((zoom / 1.1).max(SCALE_RANGE.0));
-                }
-                if ui.button("Reset").clicked() {
-                    ctx.set_zoom_factor(DEFAULT_ZOOM);
-                }
+                ui.menu_button("Projection", |ui| {
+                    let mut projection = self.viewport.camera.projection;
+                    ui.radio_value(&mut projection, Projection::Perspective, "Perspective");
+                    ui.radio_value(&mut projection, Projection::Orthographic, "Orthographic");
+                    self.viewport.set_projection(projection);
+                });
+                ui.menu_button("Display", |ui| {
+                    for mode in DisplayMode::ALL {
+                        ui.radio_value(&mut self.viewport.mode, mode, mode.name());
+                    }
+                });
+                // Text and controls scale together, 80% to 200% (NFR-15); the
+                // menu offers fixed steps, and Ctrl plus and minus the rest.
+                ui.menu_button(
+                    format!("Scale ({:.0} %)", ctx.zoom_factor() * 100.0),
+                    |ui| {
+                        for percent in UI_SCALES {
+                            let scale = percent as f32 / 100.0;
+                            let chosen = (ctx.zoom_factor() - scale).abs() < 0.005;
+                            if ui
+                                .add(egui::Button::selectable(chosen, format!("{percent} %")))
+                                .clicked()
+                            {
+                                ctx.set_zoom_factor(scale);
+                                ui.close();
+                            }
+                        }
+                    },
+                );
             });
             ui.menu_button("Project", |ui| {
                 let idle = !self.run.is_running();
@@ -746,6 +776,17 @@ impl Shell {
                 }
             });
             ui.menu_button("Tools", |ui| {
+                // The tool library opens with or without a project (12.1).
+                if ui.button("Tool library…").clicked() {
+                    let purpose = if open {
+                        super::Purpose::Add
+                    } else {
+                        super::Purpose::Browse
+                    };
+                    self.open_tool_library(purpose, None);
+                    ui.close();
+                }
+                ui.separator();
                 let operations = self.overview.step(Step::Operations).is_available();
                 if ui
                     .add_enabled(open && operations, egui::Button::new("Select on the part…"))
@@ -814,6 +855,13 @@ impl Shell {
                     );
                 }
                 Step::Operations => {
+                    if ui
+                        .button("Tool library…")
+                        .on_hover_text("Open the tool library to add, edit or import tools")
+                        .clicked()
+                    {
+                        self.open_tool_library(super::Purpose::Add, None);
+                    }
                     if ui
                         .button("+ New operation")
                         .on_hover_text("New operation (N)")

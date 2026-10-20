@@ -27,10 +27,9 @@ use openchuck_app::overview::{
     Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
 };
 use openchuck_app::project::ItemId;
-use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
+use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId};
 use openchuck_app::scene::SceneView;
 use openchuck_app::settings::{SettingsFile, UserSettings};
-use openchuck_app::tools::ToolProfile;
 use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 
 use crate::about;
@@ -44,6 +43,7 @@ use crate::playback_panel::PlaybackPanel;
 use crate::results_panel::ResultsPanel;
 use crate::run_panel::RunPanel;
 use crate::selection_panel::SelectionPanel;
+use crate::tool_library_window::{Chosen, Purpose, ToolLibraryWindow};
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
@@ -54,11 +54,8 @@ mod marks;
 mod tree;
 
 use dock::DockTab;
+pub(crate) use frame::{chip, primary_button};
 pub(crate) use marks::{mark, tick};
-
-/// The starting text and control size. egui's own default reads small on
-/// large desktop displays (owner's visual check, 14 Oct 2026; OI-166).
-pub const DEFAULT_ZOOM: f32 = openchuck_app::settings::DEFAULT_SCALE;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
 const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
@@ -135,8 +132,8 @@ pub struct Shell {
     selected: Option<Selection>,
     /// The section of the setup inspector a setup's child row chose.
     setup_section: Option<SetupPart>,
-    /// A custom profile being edited, for this tool (TL-03).
-    profile_draft: Option<(ToolId, ToolProfile)>,
+    /// The tool library window (specification 12.1).
+    tool_library: ToolLibraryWindow,
     /// A model being imported; the viewport shows its preview meanwhile.
     import: Option<ImportSession>,
     /// The chosen model's panel, with its running check.
@@ -223,7 +220,7 @@ impl Shell {
             bench: None,
             selected: None,
             setup_section: None,
-            profile_draft: None,
+            tool_library: ToolLibraryWindow::default(),
             import: None,
             model_panel: None,
             machine_panel: None,
@@ -335,7 +332,6 @@ impl Shell {
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
         self.setup_section = None;
-        self.profile_draft = None;
         // A workholding draft, and its "not applied" note, belong to the
         // project that was open; they must not carry over (lane 21d, #119).
         self.workholding_panel = None;
@@ -552,6 +548,12 @@ impl Shell {
         }
     }
 
+    /// Opens the tool library window (specification 12.1) for `purpose`,
+    /// with `tool` chosen when given.
+    pub(super) fn open_tool_library(&mut self, purpose: Purpose, tool: Option<Chosen>) {
+        self.tool_library.open(purpose, tool);
+    }
+
     /// Opens the new-operation dialog on the Operations step (N, the
     /// Operations "+", the workflow bar).
     fn new_operation(&mut self) {
@@ -723,7 +725,11 @@ impl Shell {
                 i.consume_shortcut(&LATER),
             )
         });
-        if let Some(Selection::Operation(id)) = self.selected {
+        // The tool library window is a floating window, so these keys would
+        // otherwise act on the selected operation behind it.
+        if let Some(Selection::Operation(id)) = self.selected
+            && !self.tool_library.is_open()
+        {
             let action = if duplicate {
                 Some(TreeAction::Duplicate(id))
             } else if delete {
@@ -770,7 +776,6 @@ impl Shell {
             Selection::Operation(id) => Some(ItemRef::Operation(id)),
             Selection::Setup(id) => Some(ItemRef::Setup(id)),
             Selection::Set(id) => Some(ItemRef::SelectionSet(id)),
-            Selection::Tool(id) => Some(ItemRef::Tool(id)),
             Selection::Model(id) => Some(ItemRef::Model(id)),
             Selection::Picking => None,
         }
@@ -808,7 +813,19 @@ impl Shell {
         }
     }
 
+    /// Why Post and export is unavailable, if it is (decision 0148): the
+    /// first thing the project lacks.
+    pub(crate) fn post_blocker(&self) -> Option<&'static str> {
+        if self.app.is_none() {
+            return Some("Open or start a project first");
+        }
+        self.overview.post_blocker()
+    }
+
     fn open_export(&mut self) {
+        if self.post_blocker().is_some() {
+            return;
+        }
         if let Some(app) = &self.app {
             self.export.open(app);
         }
@@ -844,7 +861,9 @@ impl Shell {
                 self.selection.show_set(Some(id));
                 self.select(Selection::Set(id));
             }
-            ItemRef::Tool(id) => self.select(Selection::Tool(id)),
+            // Tools are not in the tree: a tool opens in the tool library
+            // window (decision record 0127).
+            ItemRef::Tool(id) => self.open_tool_library(Purpose::Add, Some(Chosen::Project(id))),
             ItemRef::Operation(id) => self.select(Selection::Operation(id)),
         }
         self.settings.inspector.collapsed = false;
@@ -882,10 +901,6 @@ impl Shell {
                 self.play.toggle_shown(id);
                 return;
             }
-            TreeAction::SelectTool(id) => {
-                self.select(Selection::Tool(id));
-                return;
-            }
             TreeAction::SelectModel(id) => {
                 self.select(Selection::Model(id));
                 return;
@@ -919,10 +934,7 @@ impl Shell {
                     tree::Group::Model => self.import_model(),
                     tree::Group::SelectionSets => self.start_picking(),
                     tree::Group::Operations => self.new_operation(),
-                    // The tool library window is lane X9's (OI-343);
-                    // tools are added from the command line until then.
                     tree::Group::Setups => self.add_setup(),
-                    tree::Group::Tools => {}
                 }
                 return;
             }
@@ -993,6 +1005,17 @@ impl Shell {
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
             }
+        }
+        // The tool library window works with or without a project (12.1).
+        let library = self.tool_library.frame(ctx, self.app.as_mut());
+        if let Some(status) = library.status {
+            self.status = status;
+        }
+        if let Some(tool) = library.for_new_operation {
+            self.run.set_adding_tool(tool);
+        }
+        if self.run.take_library_request() {
+            self.open_tool_library(Purpose::NewOperation, None);
         }
         if let Some(id) = added {
             self.select(Selection::Operation(id));
@@ -1102,6 +1125,7 @@ impl Shell {
             || self.export.is_open()
             || self.run.has_window()
             || self.import.is_some()
+            || self.tool_library.is_open()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
@@ -1430,8 +1454,6 @@ enum TreeAction {
     Select(OperationId),
     /// Show or hide this operation's path in the view (Simulate).
     ToggleShown(OperationId),
-    /// Show this tool's dimensions and profile.
-    SelectTool(ToolId),
     /// Show this model's units, placement and checks.
     SelectModel(ModelId),
     /// Show this selection set.
@@ -1452,7 +1474,6 @@ enum TreeAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Selection {
     Operation(OperationId),
-    Tool(ToolId),
     Model(ModelId),
     /// A setup, its machine and its workholding and tabs.
     Setup(SetupId),
@@ -1683,3 +1704,6 @@ mod frame_tests;
 
 #[cfg(test)]
 mod simulate_tests;
+
+#[cfg(test)]
+mod tool_library_tests;

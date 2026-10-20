@@ -15,6 +15,7 @@ use openchuck_app::setup_panes::{
 };
 use openchuck_viewport::{Colour, LineStyle};
 
+use crate::label_layout::{self, Priority};
 use crate::roles::{self, to_color32};
 use crate::theme;
 use crate::viewport_overlays::{LegendEntry as RoleEntry, hatch, swatch_for};
@@ -25,6 +26,10 @@ pub const END_PANE_WIDTH: f32 = 270.0;
 const MARGIN: f32 = 36.0;
 /// How tall the travel limit's hatched band is.
 const BAND: f32 = 10.0;
+/// The text of the chip that says the panes show unapplied changes (11.7).
+const DRAFT_CHIP: &str = "Showing unapplied workholding";
+/// Space round a label's text inside its rectangle.
+const LABEL_PAD: egui::Vec2 = vec2(2.0, 1.0);
 
 /// What is outlined in the panes besides what is hovered (7.5).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -194,12 +199,97 @@ fn offered_outline(painter: &Painter, points: &[Pos2]) {
     );
 }
 
-fn label(painter: &Painter, at: Pos2, anchor: Align2, text: &str, colour: Color32) {
-    painter.text(at, anchor, text, font(), colour);
+/// The text labels of one pane, collected while the pane is drawn and put
+/// down together by [`label_layout::place`], so that none overlaps another;
+/// a label that has moved is joined to its feature by a leader line (UI-25,
+/// issue 142).
+#[derive(Default)]
+struct Labels {
+    items: Vec<Item>,
+    /// Rectangles of other drawing (a chip) that labels keep clear of.
+    reserved: Vec<Rect>,
+}
+
+struct Item {
+    galley: std::sync::Arc<egui::Galley>,
+    request: label_layout::Request,
+    colour: Color32,
+}
+
+impl Labels {
+    /// A label at `at` (aligned by `align`) that describes the point `feature`.
+    fn add(
+        &mut self,
+        painter: &Painter,
+        (at, align): (Pos2, Align2),
+        feature: Pos2,
+        text: &str,
+        colour: Color32,
+        priority: Priority,
+    ) {
+        let galley = painter.layout_no_wrap(text.to_owned(), font(), colour);
+        let size = galley.size() + LABEL_PAD * 2.0;
+        self.items.push(Item {
+            request: label_layout::Request {
+                id: self.items.len(),
+                anchor: feature,
+                preferred: align.anchor_size(at, size),
+                priority,
+            },
+            galley,
+            colour,
+        });
+    }
+
+    /// A label that stays where it is drawn and keeps the others clear.
+    fn fixed(&mut self, painter: &Painter, at: Pos2, align: Align2, text: &str, colour: Color32) {
+        self.add(painter, (at, align), at, text, colour, Priority::Fixed);
+    }
+
+    /// Draws the labels inside `bounds`, and a note at its corner when some
+    /// had to be left out.
+    fn draw(self, painter: &Painter, bounds: Rect) {
+        let mut requests: Vec<_> = self.items.iter().map(|i| i.request).collect();
+        for (k, rect) in self.reserved.iter().enumerate() {
+            requests.push(label_layout::Request {
+                id: self.items.len() + k,
+                anchor: rect.center(),
+                preferred: *rect,
+                priority: Priority::Fixed,
+            });
+        }
+        let layout = label_layout::place(bounds, &requests);
+        for placed in layout.placed.iter().filter(|p| p.id < self.items.len()) {
+            let Some(item) = self.items.get(placed.id) else {
+                continue;
+            };
+            if let Some([from, to]) = placed.leader {
+                painter.line_segment(
+                    [from, to],
+                    Stroke::new(roles::LINE_WIDTH, item.colour.gamma_multiply(0.7)),
+                );
+                painter.circle_filled(from, 1.5, item.colour);
+            }
+            painter.galley(
+                placed.rect.min + LABEL_PAD,
+                item.galley.clone(),
+                item.colour,
+            );
+        }
+        if !layout.hidden.is_empty() {
+            painter.text(
+                bounds.right_bottom() - vec2(8.0, 8.0),
+                Align2::RIGHT_BOTTOM,
+                format!("+{} labels hidden; see the inspector", layout.hidden.len()),
+                font(),
+                roles::OVERLAY_MUTED,
+            );
+        }
+    }
 }
 
 /// A dimension: a line with ticks at both ends, and its text.
-fn dimension(painter: &Painter, map: &Map, d: &Dimension) {
+fn dimension(painter: &Painter, labels: &mut Labels, map: &Map, d: &Dimension) {
     let (a, b) = (map.at(d.from[0], d.from[1]), map.at(d.to[0], d.to[1]));
     let colour = roles::OVERLAY_TEXT;
     let stroke = Stroke::new(roles::LINE_WIDTH, colour);
@@ -218,23 +308,38 @@ fn dimension(painter: &Painter, map: &Map, d: &Dimension) {
         } else {
             (vec2(0.0, 4.0), Align2::CENTER_TOP)
         };
-        label(painter, mid + offset, anchor, &d.text, colour);
-    } else {
-        label(
+        labels.add(
             painter,
-            mid + vec2(6.0, 0.0),
-            Align2::LEFT_CENTER,
+            (mid + offset, anchor),
+            mid,
             &d.text,
             colour,
+            Priority::Essential,
+        );
+    } else {
+        labels.add(
+            painter,
+            (mid + vec2(6.0, 0.0), Align2::LEFT_CENTER),
+            mid,
+            &d.text,
+            colour,
+            Priority::Essential,
         );
     }
 }
 
 /// An arrow from `from` to `to`, with its head.
-fn arrow(painter: &Painter, from: Pos2, to: Pos2, colour: Color32, text: &str) {
+fn arrow(
+    painter: &Painter,
+    labels: &mut Labels,
+    from: Pos2,
+    to: Pos2,
+    colour: Color32,
+    text: &str,
+) {
     painter.line_segment([from, to], Stroke::new(roles::AXIS_WIDTH, colour));
     crate::viewport_overlays::arrowhead(painter, from, to, colour);
-    label(
+    labels.fixed(
         painter,
         to + (to - from).normalized() * 8.0,
         Align2::CENTER_CENTER,
@@ -264,6 +369,7 @@ fn front_bounds(f: &FrontPane) -> ((f64, f64), (f64, f64)) {
 
 fn front_solid(
     painter: &Painter,
+    labels: &mut Labels,
     map: &Map,
     s: &FrontSolid,
     held: bool,
@@ -294,12 +400,13 @@ fn front_solid(
     if let Some(text) = &s.label {
         let top = points.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
         let x = points.iter().map(|p| p.x).sum::<f32>() / points.len().max(1) as f32;
-        label(
+        labels.add(
             painter,
-            pos2(x, top - 4.0),
-            Align2::CENTER_BOTTOM,
+            (pos2(x, top - 4.0), Align2::CENTER_BOTTOM),
+            pos2(x, top),
             text,
             roles::OVERLAY_TEXT,
+            Priority::Normal,
         );
     }
     points
@@ -312,11 +419,14 @@ fn front_solid(
 fn front(
     painter: &Painter,
     rect: Rect,
+    chip: Option<Rect>,
     f: &FrontPane,
     marks: Marks,
     hovered: Option<WorkholdingItem>,
 ) -> Vec<Hit> {
     let painter = painter.with_clip_rect(rect);
+    let mut labels = Labels::default();
+    labels.reserved.extend(chip);
     let (h, v) = front_bounds(f);
     let map = Map::fit(rect, h, v);
     let (left, right) = (map.at(h.0, 0.0).x, map.at(h.1, 0.0).x);
@@ -329,12 +439,13 @@ fn front(
             [band.left_bottom(), band.right_bottom()],
             Stroke::new(roles::LINE_WIDTH, red),
         );
-        label(
+        labels.add(
             &painter,
-            pos2(right, y - BAND - 2.0),
-            Align2::RIGHT_BOTTOM,
+            (pos2(right, y - BAND - 2.0), Align2::RIGHT_BOTTOM),
+            pos2(right, y - BAND / 2.0),
             "Z+ travel limit",
             red,
+            Priority::Essential,
         );
     }
     if let Some(z) = f.safe_z {
@@ -346,12 +457,13 @@ fn front(
             1.0,
             LineStyle::Dashed,
         );
-        label(
+        labels.add(
             &painter,
-            pos2(right, y - 2.0),
-            Align2::RIGHT_BOTTOM,
+            (pos2(right, y - 2.0), Align2::RIGHT_BOTTOM),
+            pos2(right, y),
             &format!("Safe Z +{z:.0}"),
             to_color32(roles::CLEARANCE),
+            Priority::Essential,
         );
     }
     if let Some((c, radius)) = f.clearance {
@@ -370,12 +482,13 @@ fn front(
             1.0,
             LineStyle::Dashed,
         );
-        label(
+        labels.add(
             &painter,
-            r.left_top() + vec2(8.0, 4.0),
-            Align2::LEFT_TOP,
+            (r.left_top() + vec2(8.0, 4.0), Align2::LEFT_TOP),
+            r.left_top(),
             &format!("Clearance R{radius:.0}"),
             to_color32(roles::CLEARANCE),
+            Priority::Essential,
         );
     }
     if f.part.len() > 1 {
@@ -430,18 +543,19 @@ fn front(
         1.0,
         LineStyle::DashDot,
     );
-    label(
+    labels.add(
         &painter,
-        map.at(f.axis.1, 0.0) + vec2(-4.0, 4.0),
-        Align2::RIGHT_TOP,
+        (map.at(f.axis.1, 0.0) + vec2(-4.0, 4.0), Align2::RIGHT_TOP),
+        map.at(f.axis.1, 0.0),
         "A axis",
         to_color32(roles::ROTARY_AXIS),
+        Priority::Essential,
     );
 
     let mut shapes = Vec::new();
     for (list, held) in [(&f.held, true), (&f.tabs, false)] {
         for s in list {
-            let points = front_solid(&painter, &map, s, held, marks, hovered);
+            let points = front_solid(&painter, &mut labels, &map, s, held, marks, hovered);
             shapes.push((s.item, points, s.description.clone()));
         }
     }
@@ -452,12 +566,13 @@ fn front(
         if let Some(text) = &s.label {
             let bottom = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
             let x = points.iter().map(|p| p.x).sum::<f32>() / points.len().max(1) as f32;
-            label(
+            labels.add(
                 &painter,
-                pos2(x, bottom + 4.0),
-                Align2::CENTER_TOP,
+                (pos2(x, bottom + 4.0), Align2::CENTER_TOP),
+                pos2(x, bottom),
                 text,
                 to_color32(roles::TAB),
+                Priority::Low,
             );
         }
     }
@@ -467,6 +582,7 @@ fn front(
     let zero = map.at(f.work_zero, 0.0);
     arrow(
         &painter,
+        &mut labels,
         zero,
         zero + vec2(26.0, 0.0),
         to_color32(roles::WORK_X),
@@ -474,6 +590,7 @@ fn front(
     );
     arrow(
         &painter,
+        &mut labels,
         zero,
         zero + vec2(0.0, -26.0),
         to_color32(roles::WORK_Z),
@@ -490,8 +607,9 @@ fn front(
         Stroke::new(1.0, green),
     );
     for d in &f.dimensions {
-        dimension(&painter, &map, d);
+        dimension(&painter, &mut labels, &map, d);
     }
+    labels.draw(&painter, rect.shrink(2.0));
     shapes
 }
 
@@ -505,6 +623,7 @@ fn end(
     hovered: Option<WorkholdingItem>,
 ) -> Vec<Hit> {
     let painter = painter.with_clip_rect(rect);
+    let mut labels = Labels::default();
     let reach = e
         .a_arc
         .iter()
@@ -522,7 +641,7 @@ fn end(
     let body = Rect::from_min_max(rect.min + vec2(0.0, 28.0), rect.max - vec2(0.0, 28.0));
     let map = Map::fit(body, (-reach, reach), (-reach, reach));
     let centre = map.at(0.0, 0.0);
-    label(
+    labels.fixed(
         &painter,
         rect.left_top() + vec2(12.0, 12.0),
         Align2::LEFT_TOP,
@@ -630,12 +749,13 @@ fn end(
             [centre, tip],
             Stroke::new(roles::LINE_WIDTH, roles::OVERLAY_TEXT),
         );
-        label(
+        labels.add(
             &painter,
-            tip + dir * 6.0,
-            Align2::LEFT_CENTER,
+            (tip + dir * 6.0, Align2::LEFT_CENTER),
+            tip,
             text,
             roles::OVERLAY_TEXT,
+            Priority::Essential,
         );
     }
     // The A+ arrow, along the arc the kinematics give.
@@ -648,58 +768,60 @@ fn end(
         ));
         crate::viewport_overlays::arrowhead(&painter, *before, *tip, cyan);
         if let Some(start) = points.get(points.len() / 6) {
-            label(
+            labels.add(
                 &painter,
-                *start + vec2(-10.0, -8.0),
-                Align2::CENTER_CENTER,
+                (*start + vec2(-10.0, -8.0), Align2::CENTER_CENTER),
+                *start,
                 "A+",
                 cyan,
+                Priority::Essential,
             );
         }
     }
     let muted = roles::OVERLAY_MUTED;
-    label(
+    labels.fixed(
         &painter,
         centre + vec2(0.0, -r - 6.0),
         Align2::CENTER_BOTTOM,
         "+Z",
         muted,
     );
-    label(
+    labels.fixed(
         &painter,
         centre + vec2(0.0, r + 6.0),
         Align2::CENTER_TOP,
         "−Z",
         muted,
     );
-    label(
+    labels.fixed(
         &painter,
         centre + vec2(r + 6.0, 0.0),
         Align2::LEFT_CENTER,
         "+Y",
         muted,
     );
-    label(
+    labels.fixed(
         &painter,
         centre + vec2(-r - 6.0, 0.0),
         Align2::RIGHT_CENTER,
         "−Y",
         muted,
     );
-    label(
+    labels.fixed(
         &painter,
         centre + vec2(-r - 6.0, 14.0),
         Align2::RIGHT_CENTER,
         "front",
         muted,
     );
-    label(
+    labels.fixed(
         &painter,
         rect.center_bottom() - vec2(0.0, 12.0),
         Align2::CENTER_BOTTOM,
         "A+ turns the top toward the front",
         roles::OVERLAY_TEXT,
     );
+    labels.draw(&painter, rect.shrink(2.0));
     shapes
 }
 
@@ -738,18 +860,20 @@ pub fn show(ui: &mut egui::Ui, panes: &SetupPanes, marks: Marks, draft: bool) ->
     };
     let previous: Vec<Hit> = ui.data(|d| d.get_temp(key)).unwrap_or_default();
     let drawn = under(&previous).map(|(i, _, _)| i);
-    let mut hits = front(&painter, front_rect, &panes.front, marks, drawn);
+    let chip = draft.then(|| {
+        let galley = painter.layout_no_wrap(DRAFT_CHIP.to_owned(), font(), roles::OVERLAY_TEXT);
+        Rect::from_min_size(
+            front_rect.min + vec2(12.0, 12.0),
+            galley.size() + vec2(16.0, 8.0),
+        )
+    });
+    let mut hits = front(&painter, front_rect, chip, &panes.front, marks, drawn);
     hits.extend(end(&painter, end_rect, &panes.end, marks, drawn));
     let hovered = under(&hits);
     let item = hovered.as_ref().map(|(i, _, _)| *i);
     ui.data_mut(|d| d.insert_temp(key, hits));
-    if draft {
-        let text = "Showing unapplied workholding";
-        let galley = painter.layout_no_wrap(text.to_owned(), font(), roles::OVERLAY_TEXT);
-        let chip = Rect::from_min_size(
-            front_rect.min + vec2(12.0, 12.0),
-            galley.size() + vec2(16.0, 8.0),
-        );
+    if let Some(chip) = chip {
+        let galley = painter.layout_no_wrap(DRAFT_CHIP.to_owned(), font(), roles::OVERLAY_TEXT);
         painter.rect_filled(chip, 3.0, roles::OVERLAY_FILL);
         painter.rect_stroke(
             chip,
@@ -936,6 +1060,127 @@ mod tests {
             "front",
         ] {
             assert!(t.iter().any(|s| s == needle), "{needle}: {t:?}");
+        }
+    }
+
+    /// The pane size of a window at a UI scale (logical pixels): the egui
+    /// screen is the window divided by the scale.
+    const WINDOWS: [((f32, f32), f32); 4] = [
+        ((1920.0, 1080.0), 1.0),
+        ((1920.0, 1080.0), 1.2),
+        ((1366.0, 768.0), 1.0),
+        ((1366.0, 768.0), 1.2),
+    ];
+
+    /// Runs `show` for one frame on a screen of `size` and gives the
+    /// rectangle of every text drawn, with the text.
+    fn text_rects(panes: &SetupPanes, size: egui::Vec2, draft: bool) -> Vec<(String, Rect)> {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), size)),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            show(ui, panes, Marks::default(), draft);
+        });
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                Shape::Text(t) => Some((
+                    t.galley.text().to_owned(),
+                    t.galley.rect.translate(t.pos.to_vec2()),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The blisk trial of issue 142: a held region at the chuck end with
+    /// its dimension and the first tab right beside it.
+    fn blisk_panes() -> SetupPanes {
+        let mut panes = tab_panes();
+        panes.front.dimensions = vec![
+            Dimension {
+                from: [-16.0, 17.0],
+                to: [-11.0, 17.0],
+                text: "Held 5.000".to_owned(),
+            },
+            Dimension {
+                from: [-16.0, -16.0],
+                to: [16.0, -16.0],
+                text: "Stock length 32.000".to_owned(),
+            },
+            Dimension {
+                from: [18.0, -13.0],
+                to: [18.0, 13.0],
+                text: "40.000".to_owned(),
+            },
+        ];
+        panes.front.tabs[0].outline = vec![[-11.0, -2.0], [-9.0, -3.0], [-9.0, 3.0], [-11.0, 2.0]];
+        panes
+    }
+
+    fn assert_no_overlap(texts: &[(String, Rect)], screen: Rect, context: &str) {
+        for (i, (a, ra)) in texts.iter().enumerate() {
+            assert!(
+                screen.expand(1.0).contains_rect(*ra),
+                "{context}: {a} {ra:?}"
+            );
+            for (b, rb) in &texts[i + 1..] {
+                assert!(
+                    !ra.intersects(*rb),
+                    "{context}: {a} {ra:?} overlaps {b} {rb:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn req_ui_25_the_blisk_labels_do_not_overlap_in_the_panes() {
+        for (window, scale) in WINDOWS {
+            let size = vec2(window.0 / scale - 560.0, window.1 / scale - 230.0);
+            let texts = text_rects(&blisk_panes(), size, true);
+            let screen = Rect::from_min_size(pos2(0.0, 0.0), size);
+            assert_no_overlap(&texts, screen, &format!("{window:?} at {scale}"));
+            for needle in ["Held 5.000", "Tab 1", "40.000", "A axis"] {
+                assert!(texts.iter().any(|(t, _)| t == needle), "{needle}");
+            }
+        }
+    }
+
+    #[test]
+    fn req_ui_25_many_tabs_keep_their_labels_apart_in_the_panes() {
+        let mut panes = blisk_panes();
+        for k in 0..20 {
+            let x = -8.0 + 0.6 * f64::from(k);
+            panes.front.tabs.push(FrontSolid {
+                item: WorkholdingItem::Tab(k as usize + 1),
+                outline: vec![[x, -2.0], [x + 0.4, -2.0], [x + 0.4, 2.0], [x, 2.0]],
+                label: Some(format!("Tab {}", k + 2)),
+                description: format!("Tab {}", k + 2),
+                failing: false,
+            });
+        }
+        for (window, scale) in WINDOWS {
+            let size = vec2(window.0 / scale - 560.0, window.1 / scale - 230.0);
+            let texts = text_rects(&panes, size, false);
+            let screen = Rect::from_min_size(pos2(0.0, 0.0), size);
+            assert_no_overlap(&texts, screen, &format!("{window:?} at {scale}"));
+            // The essentials stay; the rest may be left out with a note.
+            for needle in [
+                "Held 5.000",
+                "Stock length 32.000",
+                "40.000",
+                "A axis",
+                "Safe Z +20",
+            ] {
+                assert!(texts.iter().any(|(t, _)| t == needle), "{needle}");
+            }
+            let shown = texts.iter().filter(|(t, _)| t.starts_with("Tab ")).count();
+            let note = texts.iter().any(|(t, _)| t.contains("labels hidden"));
+            assert_eq!(note, shown < 21, "{window:?} at {scale}: {shown}");
         }
     }
 

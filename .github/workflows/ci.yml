@@ -174,7 +174,7 @@ jobs:
       # with the replay of the same file (verification plan section 6, gate 3).
       - name: Replay the golden programs in LinuxCNC
         run: cargo xtask replay --docker "$LINUXCNC_IMAGE" --shard "${{ matrix.shard }}/3" --keep-reports target/replay
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: gate3-reports-${{ matrix.shard }}

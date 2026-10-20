@@ -1,9 +1,9 @@
 # OpenChuckCAM user interface specification
 
-- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16. On 19 Oct 2026 the four readings of [decision 0117](../decisions/0117-slice-22-shell-frame.md) (lane X2, the shell frame) were written into sections 3, 4, 5 and 9 (OI-350, the owner's answer A, relayed by the coordinator). On 19 Oct 2026 section 11.3 item 3 (Part position) was edited to the owner's answer on OI-366 ([decision 0123](../decisions/0123-slice-22-inspectors.md)): the model's turn about the rotary axis is set by its placement steps.
-- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026; the decision 0117 readings, 19 Oct 2026; the decision 0123 edit of 11.3, 19 Oct 2026.
+- **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16. On 19 Oct 2026 the four readings of [decision 0117](../decisions/0117-slice-22-shell-frame.md) (lane X2, the shell frame) were written into sections 3, 4, 5 and 9 (OI-350, the owner's answer A, relayed by the coordinator). On 19 Oct 2026 section 11.3 item 3 (Part position) was edited to the owner's answer on OI-366 ([decision 0123](../decisions/0123-slice-22-inspectors.md)): the model's turn about the rotary axis is set by its placement steps. On 20 Oct 2026 sections 3, 5, 6, 8, 11.4 and 12.1 were edited for [decision 0127](../decisions/0127-slice-22-tool-library-window.md) (lane X9, the tool library window, and trial feedback F-10, issue 148; the owner's decisions, relayed by the coordinator): tools leave the project tree (UI-06 as amended), an operation's inspector shows its tool, and the tool library window manages tools.
+- **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026; the decision 0117 readings, 19 Oct 2026; the decision 0123 edit of 11.3, 19 Oct 2026; the decision 0127 edits, 20 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
-- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
+- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2); SIM-14 (P2) was added later for the per-operation deviation. An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
 
 ## 1. Purpose and scope
 
@@ -53,7 +53,7 @@ The user is the one in requirements section 2: a machinist, maker or small-shop 
 
 ## 3. Window structure
 
-Sizes are logical pixels at 100% scale. The default scale is 120% (decision 0029, owner's run, observation 1; kept by the owner on 15 Oct 2026, OI-166), with View > Larger, Smaller and Reset, and the chosen scale is remembered (UI-15).
+Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148 item 3, owner's decision of 20 Oct 2026, which reopened and closed OI-166; it was 120% from decision 0029). View > Scale offers 80, 90, 100, 110 and 120%; Ctrl plus and Ctrl minus still reach the rest of the 80% to 200% range, and the chosen scale is remembered (UI-15), so a saved scale outside the list stays as it is and shows no tick.
 
 | Region | Size | Contents |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ Sizes are logical pixels at 100% scale. The default scale is 120% (decision 0029
 
 - **Splitters** are 5 pixels with a grip mark. Double-clicking one resets its panel to the default size.
 - **Collapsing.** The project panel, the inspector and the dock collapse with the chevron in their headers, or Ctrl 1, Ctrl 2 and Ctrl 3. A collapsed side panel leaves a 28-pixel rail with its icon. *(UI-16)*
-- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 120% a 1366 × 768 screen gives about 1138 × 640 logical pixels, so on such a screen the user reduces the scale once with View > Smaller. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size the dock collapses, and the inspector too when the viewport would be narrower than 420 pixels. Neither is kept as the user's choice: the user can open either again, and the rule applies afresh once the window is large again. *(UI-16)*
+- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 100% a 1366 × 768 screen gives the full 1366 × 768 logical pixels, so no change of scale is needed. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size the dock collapses, and the inspector too when the viewport would be narrower than 420 pixels. Neither is kept as the user's choice: the user can open either again, and the rule applies afresh once the window is large again. *(UI-16)*
 - **Remembered layout.** Panel sizes, collapsed panels, open sections, scale and theme are remembered per user on the computer, never in the project (section 13). *(UI-15)*
 - **Dialogs.**
   - Modal dialogs (open, new, unsaved changes, errors) stay inside the main window.
@@ -86,7 +86,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 | 2 Setup | Machine, stock, part position, work offset, clearance (SET-01, SET-03, SET-05, SET-06) | A model is in the project | "Import a model first" | "Continue to operations" |
 | 3 Operations | Select geometry, add operations, generate (OP, UI-04 to UI-07) | The setup has a machine and stock | "Set up the machine and stock first" | Section 5 |
 | 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 |
-| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | One enabled operation has been generated | "Generate an operation first" | Opens the export dialog; "Write G-code" is its primary action |
+| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | The project has a model, a setup, a machine, a tool and an operation (generated or not: the dialog makes its own files; decision 0148 item 1) | The first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first" or "Add an operation first". File > Post and export gives the same reason | Opens the export dialog; "Write G-code" is its primary action |
 
 **The step indicator.** Each step shows a numbered circle and a name.
 
@@ -111,7 +111,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
   3. On Simulate, if an operation has not been simulated, it is "Run simulation". If it has not been generated either, it is "Generate and simulate op N". On Simulate this rule is checked before rule 2, since simulating generates.
   4. Otherwise it continues to the next step.
 - **Disabled means explained.** A disabled primary button always has a tooltip with the reason, and the footer status says the same.
-- **Dialogs follow the rule.** Import has "Add to project", the tool library "Add to project" (when opened from "+"), and export "Write G-code". Each is bottom right.
+- **Dialogs follow the rule.** Import has "Add to project", the tool library "Add to project" (primary when opened to add a tool or to choose an operation's tool), and export "Write G-code". Each is bottom right.
 - **Other actions go elsewhere.** Actions that start something new (New operation, Add setup, Import model) go in the workflow bar. Row actions go on the row.
 
 ## 6. Project panel
@@ -121,8 +121,9 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 1. **Model.** One row per model, with child rows for its placement and mesh check.
 2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, work offset and clearance, and workholding (11.7).
 3. **Selection sets.** Each set's colour swatch, name and size.
-4. **Tools.** Each tool's project tool number chip and name.
-5. **Operations.** In machining order.
+4. **Operations.** In machining order, each with its tool's number as a chip.
+
+**Tools are not in the tree** (UI-06 as amended; decision 0127). An operation's tool is in the operation's inspector (section 8), and the tool library window (12.1) lists and manages tools: it opens from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, and from an operation's Tool section.
 
 Each group header shows a count and a "+" button (22 pixels):
 
@@ -131,7 +132,6 @@ Each group header shows a count and a "+" button (22 pixels):
 | Model | Opens the import dialog (11.2) |
 | Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and an empty working selection ("Select on the part…", decision 0037 item 7) |
-| Tools | Opens the tool library (12.1) with "Add to project" as its primary action |
 | Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
 
 **Rows** are 28 high. Columns, left to right:
@@ -181,7 +181,7 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | --- | --- | --- |
 | Display: Shaded, Wire, Edges (shaded with feature edges at 30°, decision 0029 item 4) | All | UI-02 |
 | Projection: Persp, Ortho | All | UI-02 |
-| Standard views: Front, Top, Iso (all seven in the View menu and on the view cube) | Model, Setup | UI-02 |
+| Standard views: Front, Top, Iso (all seven in View > View direction and on the view cube). The same rule everywhere (decision 0148 item 2): every 3D view has them; Setup's two fixed panes (11.3) do not, and the menu items are greyed with "Setup shows fixed front and end views" | Every 3D view; not Setup's panes | UI-02 |
 | Fit (F) | All | UI-02 |
 | Show or hide (V): part, stock, rotary axis and work axes, held regions and tabs, selections, toolpaths by operation | All | UI-03, SIM-01 |
 | Section plane (S) | All | *(UI-21)* |
@@ -198,10 +198,9 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 | --- | --- | --- |
 | Top left, under the toolbar strip | Selection tools: a filter, "Pick" (a muted label) with Both, Faces, Edges as one framed segmented control, then a line naming the active mode and what the pointer is over (decision 0153) (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
 | Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
-| Top right | View cube; clicking a face gives that standard view | All with a 3D view |
-| Top right, under the cube | Axis triad: X red, Y green, Z blue | All with a 3D view |
+| Top right | View cube; clicking a face gives that standard view. Its labels lie flat on the faces and turn with them; a face within 15° of edge-on shows none (decision 0149) | All with a 3D view |
 | Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2; its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
-| Bottom left | Colour scale (11.5) | Simulate |
+| Bottom left | Axes gadget: X red, Y green, Z blue, drawn without a box (decision 0149). On Simulate the colour scale (11.5) sits above it, 8 pixels clear | Gadget: all with a 3D view; colour scale: Simulate |
 
 - **Small windows.** When the view is under 480 pixels high, the path legend collapses to a button.
 - **Probe.** A probe tooltip (11.5) may sit anywhere near the pointer, and is drawn above the other boxes.
@@ -271,7 +270,7 @@ UI-03 and UI-25 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-
 
 ## 8. Inspector
 
-The inspector shows the selected item: a model, setup, selection set, tool or operation, or the simulation results on Simulate.
+The inspector shows the selected item: a model, setup, selection set or operation, or the simulation results on Simulate.
 
 **While picking** (Operations, 11.4) the inspector shows a "Selection" section with the options of picking: "select by angle within" (default 30°, decision 0037 item 4), "same direction within" (default 10°), "Tangent edges" for a working edge selection, "Keep tangent edges by default" and "Warn before a click starts a new selection" (decision 0153, owner's decision on issue 153). The Selection sets tab of the dock keeps the table of sets and the buttons that act on them (12.2).
 
@@ -283,6 +282,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 4. **Basic and Advanced switch.** *(UI-19)* Without it, every field is shown, grouped.
 5. **Sections.** Collapsible, with their open state remembered per item kind. For an operation:
    - Geometry: Cut on, Contain within, Avoid and Check, the roles of decision 0032 item 5, with a list to add from and a button to remove;
+   - Tool (decision 0127): the tool's name and size; its project tool number (TL-06), editable, with the machine tool set's number under it when the two differ (TL-11); how the project's copy stands against the library (TL-07): "Same as the library", "Differs from the library: " and the fields, or "Not in the library (kept in the project)"; "Update from library" (one undoable step, keeping the number), "Edit tool…" (the tool library window on the project's copy) and "Save to library…" (a confirmation naming the fields it changes); a list of the project's tools to choose another, and "From the library…";
    - Tool and feeds;
    - Pattern and tolerance;
    - Tool axis and A;
@@ -303,11 +303,10 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 **Status icons in the machine panel** *(UI-13; data from decision 0011 item 8, `provenance`)*:
 
 - **Placement.** Each machine value has a 20-pixel icon at the right end of its label, so the icons line up in one column.
-- **The three icons:**
+- **The two icons:**
   - green tick in a circle: confirmed on the machine;
-  - blue "i" in a circle: taken from the vendor's profile, not checked on the machine;
-  - amber triangle: an unconfirmed placeholder.
-- **Tooltip.** It opens on hover and on keyboard focus, and gives the date or source and, for a placeholder, how to confirm it. For example: "Unconfirmed placeholder. Measure it by touching the tool tip to the chuck centre and reading G53 Z."
+  - amber triangle: not confirmed on the machine.
+- **Tooltip.** It opens on hover and on keyboard focus, and gives where the value came from (the date it was confirmed, the vendor's profile, or a placeholder) and, when it is not confirmed, how to confirm it. For example: "Unconfirmed placeholder. Measure it by touching the tool tip to the chuck centre and reading G53 Z."
 - **The rest of the machine panel** (decision 0029 item 16):
   - the profile chooser;
   - "copy stored in project";
@@ -376,7 +375,9 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 **Import dialog** (IMP-01, IMP-03, IMP-04; decision 0029 item 13; board 1b):
 
 - **Opening.** File > Import model, the Model "+", or a dropped file. It opens in its own window.
-- **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15).
+- **Size.** The window has a fixed size (460 by 520 points) that fits 1366 by 768 at 120% scale; it cannot be resized or maximised. The path, its button and the step line are pinned at the top and the footer at the bottom; the blocks between them scroll (UI-16).
+- **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15) and the button "Check and preview". Under it, a line says where the flow is: "Step 1 of 2: check the file. Nothing is added to the project yet.", then "Step 2 of 2: set the units and placement, then add. Nothing is added until you press Add to project." once the check has run. A status row of fixed height shows the spinner while a check runs, so nothing moves when it appears.
+- **Coming back.** When the application returns from the background, the window is brought to the front once (UI-14).
 - **The preview** is the main viewport behind the window, not a pane of it, because a tool window draws no 3D (section 3; decision 0029 item 17). It shows the placed model, with findings highlighted:
   - flipped and degenerate triangles outlined in red;
   - holes ringed in amber;
@@ -388,7 +389,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
   2. **Mesh check.** One row for each kind of finding, with its count. A tick when there are none; selecting a row highlights its triangles. One sentence says the check changes nothing.
   3. **The STL statement,** word for word as `STL_TESSELLATION_NOTICE`.
 - **Placement.** An orientation choice that places the model on the rotary axis as it is added (IMP-05), shown in the preview; the Model step's placement steps edit it later.
-- **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary).
+- **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary), which stays off until the check has run.
 
 **Model step** (board 1):
 
@@ -413,7 +414,7 @@ Board 2 (SET-01, SET-03, SET-05, SET-06; UI-03).
 **Viewport: two panes side by side.**
 
 - **Front view,** orthographic (looking from −Y). It shows:
-  - the chuck, stock and part, and the rotary axis;
+  - the stock and part, and the rotary axis. No chuck is drawn at this stage: the project holds no chuck geometry, and the held region already shows what the chuck grips (decision 0129 item 4; OI-380, deferred until a data change);
   - the work zero, with X and Z arrows and Y marked as into the screen (a circle with a cross);
   - the clearance cylinder and its radius;
   - the safe Z line, the Z+ travel limit, and the dimensions (stock length, stock diameter, axis to safe Z).
@@ -451,7 +452,7 @@ Boards 3 and 3b.
   - The footer and the "Generate" item in a row's menu start a job. Its row shows progress and cancel.
   - Several operations generate in chain order. An operation served from the cache shows "reused" in the Jobs tab.
   - Cancelling leaves no partial result: the operation stays stale.
-- **New operation.** Choose a strategy from the menu; the new operation takes the selection and the last tool used. A strategy that cannot honour a region (decision 0032 item 6) is listed with "ignores selections" and cannot take one.
+- **New operation.** Choose a strategy from the menu; the new operation takes the selection and the last tool used. Its dialog lists the project's tools and offers "From the library…", which opens the tool library and gives the new operation the tool added (decision 0127). A strategy that cannot honour a region (decision 0032 item 6) is listed with "ignores selections" and cannot take one.
 - **An operation in error** (board 3b):
   - **Banner:** "This operation can't be generated", then the cause in one sentence, for example "The selection 'Lettering' no longer matches the model. 12 of its 40 edges were not found after the model file changed".
   - **Actions:** "Reselect in the view" (primary in the banner) and "Show missing". "Use the N matching edges" is *(UI-24)*.
@@ -486,16 +487,16 @@ Board 4 (SIM-01 to SIM-07).
 **Results inspector:**
 
 - colour by (Deviation, Remaining, Overcut);
-- worst values after the current operation: largest overcut, largest material left, the share within tolerance;
+- worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - a deviation histogram in the same colours;
-- a table by operation (overcut, left, status);
+- a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
 **Playback dock** (SIM-04):
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation.
-- **Speed:** 1×, 10×, 100×, 1000×, 10 000× or Max, or the whole program in 10 s or 60 s.
+- **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
@@ -653,21 +654,28 @@ The same findings for the stored workholding are rows of the Setup checks tab (s
 
 ### 12.1 Tool library and profile editor
 
-TL-01 to TL-07, TL-11; decision 0014; decision 0029 item 12.
+TL-01 to TL-07, TL-11, TL-12; decision 0014; decision 0029 item 12; decision 0127 (the owner's decisions on editing, deleting, drafts, import and the project's tools).
 
-- **Left: the tool list.** A search field, the tools grouped by type, a chip "in project", and New tool and Duplicate.
-- **Centre top: the tool form.** Name, type, diameter ("from profile" for a custom profile), flutes, flute length, shank diameter, overall length, material.
+- **Opens** from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, from an operation's Tool section ("Edit tool…", "From the library…") and from the New operation dialog ("From the library…"). It opens without a project, to edit the library.
+- **Left: the tool list.** A search field (name, type or material); "This project" first, one row per project tool with its tool number chip; then the library's tools grouped by type, with a chip "in project" on a library tool the project holds; New tool (by type), Duplicate and Delete.
+- **Two kinds of tool** (decision 0127 items 1 and 4):
+  - **A project tool** is the project's own copy (TL-07). Each change is one undoable step; the library is untouched.
+  - **A library tool** is edited as a draft: nothing is written until Save; Cancel drops the changes; leaving a draft with changes (another tool, New tool, Duplicate, Import library, Close) asks "Discard the changes?" first. New tool starts from the default standard tool of its type (TL-12), named "New <type>"; Duplicate makes a library draft "<name> copy" with a new ID, no tool set numbers and not in the project.
+- **Centre top: the tool form.** Name, type (changing it keeps the sizes), diameter ("from profile" for a custom profile), flutes, flute length, shank diameter, overall length, material. For a library tool, Save and Cancel, with "New: not saved yet", "Changed: not saved yet" or "Saved in the library".
 - **Centre: the profile editor,** for a custom profile.
   - **Preview.** The revolved silhouette to scale on both sides of the axis. The selected segment and its end points are highlighted. The outline is green when valid and red when not.
-  - **Segment table.** Number, type, end (r, z), arc radius or centre.
+  - **Segment table.** Number, type, end (r, z), arc radius; the selected arc's centre can be edited under the table.
   - **Editing.** "+ Line", "+ Arc", move up, move down, delete.
   - **The verdict.** Live, naming the failing segment, with the same rules as a profile file.
   - **Files.** Import and export of a profile file.
-  - **Apply.** One undoable step on a project tool. Library edits save the library file.
+  - **Apply.** One undoable step on a project tool; on a library tool it changes the draft, which Save writes.
 - **Right: data for the tool.**
-  - Cutting data by material (TL-05): rpm, feed per tooth, plunge, then stepover and stepdown in detail.
-  - The machine tool sets (TL-11): the suggested number for each machine, with a note that the project keeps its own number.
-- **Footer.** Import library and Export library (TL-01) on the left; Close, and "Add to project" (primary when opened from "+") on the right.
+  - Cutting data by material (TL-05): rpm, feed per tooth, plunge, then stepover and stepdown in detail; "Add material".
+  - For a library tool, the machine tool sets (TL-11): the suggested number for each machine, with a note that the project keeps its own number.
+  - For a project tool, "In this project": its tool number (TL-06), how it stands against the library with "Update from library" and "Save to library" (a confirmation naming the fields it changes), the operations that use it, and "Remove from project" (refused while an operation uses it, naming them).
+- **Delete** (a library tool) asks first, naming what it affects: the project's copy stays and its operations then show "Not in the library"; the tool is taken out of the machine tool sets that list it; a default tool is not installed again (TL-12). It cannot be undone.
+- **Footer.** Import library and Export library (TL-01) on the left; Close, and "Add to project" on the right: primary when opened to add a tool or choose an operation's tool, where it also gives the operation the tool in the same undoable step ("Use for the operation" for a tool the project holds). It is disabled while a library draft has unsaved changes.
+- **Import library** reads a library folder and lists what it would do before writing anything: new tools, tools the same as the library's, and tools that differ, with their fields. For each that differs, or for all: "Keep mine" (chosen at first), "Replace", or "Keep both" (the import is added with a new ID and " (imported)" after its name). Tool sets are not imported.
 
 ### 12.2 Selection sets
 
@@ -679,7 +687,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
   - the tangent edges choice of a chosen edge set of a STEP model, "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9).
 - **Options in the inspector, not here** (decision 0153 item 5, owner's decision on issue 153). While picking, the inspector's "Selection" section (section 8) holds: the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example) and the angle for Same direction (default 10°); "Tangent edges" for a working edge selection; "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*; and "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until such a screen exists *(OI-260)*.
 - **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
-  - A set with a problem is red, with its reason ("12 missing") and "Reselect".
+  - A set with a problem is red, with its reason as a sentence in the row (not the example "12 missing") and "Reselect". "Reselect" starts a fresh pick: it clears the working selection, shows the set's old selection on the model as a dashed grey ghost, and says "Pick the new selection, then Replace set."; "Replace set" makes the set current again (decision 0125, "As built"; OI-374).
   - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
   - A set's colour can be chosen from the eight swatches, or left as the default swatch of its place in the list (decision 0046 item 2).
 - **Checking.** Saving or editing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and edit buttons disabled until it ends (decision 0112 item 1).
@@ -699,9 +707,9 @@ UI-05; decisions 0032 and 0037; a dock tab.
 NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from Help, "About OpenChuckCAM…".
 
 - **A modal dialog** in the main window, like the other dialogs (section 3).
-- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates.
+- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates; **Log file** (NFR-17, decision 0155), the path of the file this run writes its log to (or "This run is not writing a log file.") and an "Open log folder" button that shows the folder in the file browser, with a failure written under the button.
 - **Footer.** "Copy build information" on the left (secondary; copies the Build block and nothing else; the window stays open), "Close" bottom right (the one primary button, section 5).
-- **Keyboard.** Tab visits the Licences box, Copy and Close in that order; the box scrolls with the arrow keys; Copy's tooltip opens on focus (section 16).
+- **Keyboard.** Tab visits the Licences box, Open log folder, Copy and Close in that order; the box scrolls with the arrow keys; The tooltips of Open log folder and Copy open on focus (section 16).
 - A fact the build could not find reads "unknown".
 
 ## 13. Per-user settings
@@ -776,7 +784,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
 - **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click (no Shift or Ctrl) asks first whenever the working selection is not empty, in a dialog titled with what it clears, "Clear 12 faces?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now." (for a pick of the same kind: "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take from it. ..."), with "Clear", "Cancel" and "Don't show me this warning again". Switching the filter to one that cannot hold the selection (Edges on triangles or faces, Faces on edges) asks the same way. The "Clear" button of the selection sets tab and Esc (which ends picking and keeps the working selection) do not ask (decision 0153).
-- **The machine.** Machine values are described by provenance ("confirmed on the machine", "from Makera's profile", "unconfirmed placeholder"), not by blame.
+- **The machine.** Machine values are described by provenance ("confirmed on the machine", "not confirmed on the machine"), not by blame.
 
 ## 16. Keyboard and accessibility
 
@@ -816,7 +824,7 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 
 | # | Built or proposed | This specification | Resolution |
 | --- | --- | --- | --- |
-| D1 | The rotary axis is drawn orange (0029, owner's run, observation 3) | Cyan; amber is for cut moves | Change the viewport's role colour (done by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)) |
+| D1 | The rotary axis is drawn orange (0029, owner's run, observation 3) | Cyan; amber is for cut moves | Change the viewport's role colour (done by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md); image 10 again on 20 Oct 2026 by lane X9, [decision 0127](../decisions/0127-slice-22-tool-library-window.md)) |
 | D2 | The NFR-12 notice is always in the status bar (0029 item 8) | Kept in short form in the footer, and in full at export with the acknowledgement | Keep both; the mockups omit the footer form and are to be read with this section |
 | D3 | Parameters are applied on focus loss, with Reset (0029 item 11) | The same, plus a changed-value dot, derived values and typed units (UI-18, UI-19, P2) | No change to P1 behaviour |
 | D4 | Inch display is not part of P1 (0029 item 11) | The "mm \| in" switch is P2 (UI-18); with P1 only the footer reads "mm · deg" | As 0029 |
@@ -839,17 +847,17 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | 6 Project panel | UI-06, UI-09 | UI-11 |
 | 7 Viewport | UI-02, UI-03, UI-04, SIM-01, SIM-02, NFR-03 | UI-21 |
 | 7.5 Held regions and tabs | UI-03, UI-25 (decision 0104), NFR-15 | |
-| 8 Inspector | UI-07, UI-08, SET-01 | UI-13, UI-18, UI-19, SIM-13 |
+| 8 Inspector | UI-07, UI-08, SET-01, UI-13 | UI-18, UI-19, SIM-13 |
 | 9 Dock | UI-05, UI-09, PRJ-02, IMP-04, SET-06 | UI-12 |
 | 10 Footer | NFR-12 | UI-18 |
 | 11.1 Empty state | | UI-23 |
 | 11.2 Model | IMP-01 to IMP-06 | |
-| 11.3 Setup | SET-01, SET-03, SET-05, SET-06, UI-03 | UI-13 |
+| 11.3 Setup | SET-01, SET-03, SET-05, SET-06, UI-03, UI-13 | |
 | 11.4 Operations | OP-01, OP-02, OP-16, UI-04 to UI-09 | UI-24 |
-| 11.5 Simulate | SIM-01 to SIM-07 | SIM-11, SIM-12 |
+| 11.5 Simulate | SIM-01 to SIM-07 | SIM-11, SIM-12, SIM-14 |
 | 11.6 Export | GC-02, GC-04, GC-05, GC-06, GC-12, GC-14, NFR-12 | GC-15, GC-16 |
 | 11.7 Workholding and tabs | SET-09, OP-21, UI-25 (decision 0104), UI-07, UI-08, UI-14 | UI-22 |
-| 12 Supporting windows | TL-01 to TL-07, TL-11, UI-05, UI-08 | UI-22 |
+| 12 Supporting windows | TL-01 to TL-07, TL-11, TL-12, UI-05, UI-08 | UI-22 |
 | 13 Settings | PRJ-03 (nothing generated or personal in the project) | UI-15 |
 | 14 to 16 Visual design, wording, keyboard | NFR-12 | UI-14, UI-20, NFR-15 |
 
@@ -860,7 +868,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-163 (closed 15 Oct 2026):** selection highlight colours are the ones in section 7.4 (D7).
 - **OI-164 (closed 15 Oct 2026):** the typeface is IBM Plex Sans and Mono, bundled under the OFL (section 14.3).
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
-- **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
+- **OI-166 (closed 15 Oct 2026, reopened and closed again 20 Oct 2026):** the default scale was kept at 120% on 15 Oct and became 100% on 20 Oct 2026 (decision 0148 item 3, OI-435); UI-16 is measured at 100% scale (section 3).
 - **OI-194 (open):** the deviation display: decision 0040's six bands by triangle against this specification's continuous scale (D12).
 - **OI-340 and OI-341 (closed 18 Oct 2026):** the catch-up edits and the width scale of decision 0114, made here. **OI-342 (open):** the boards re-rendered lane by lane (decision 0114 section E). **OI-345 (open):** UI-13 and section 8 with two provenance states, proposed in decision 0114.
 - **OI-325 (closed 18 Oct 2026):** the differences of the workholding panel and display from sections 7.5 and 11.7 (D13), built by lane 21d. **OI-334 (open):** what lane 21d did not build.

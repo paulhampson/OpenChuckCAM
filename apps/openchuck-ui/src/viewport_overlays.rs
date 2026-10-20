@@ -3,8 +3,9 @@
 //! SIM-05, UI-25): at most five dark boxes in fixed places, never
 //! overlapping, dark in both themes. Top left is the selection tools box,
 //! which the selection panel draws; under it the path legend (Operations);
-//! top right the view cube and under it the axis triad; bottom right the
-//! readout (Operations, Simulate); bottom left the colour scale (Simulate).
+//! top right the view cube; bottom left the axes gadget, without a box, and
+//! above it on Simulate the colour scale; bottom right the readout
+//! (Operations, Simulate).
 //! Held regions and tabs join the legend of the step (7.5).
 
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, pos2, vec2};
@@ -19,7 +20,12 @@ use crate::viewport::{ViewStep, Viewport};
 const MARGIN: f32 = 12.0;
 /// The view cube's box.
 const CUBE: f32 = 84.0;
-/// The triad's box height.
+/// The size of the view cube's labels, in pixels at a face seen square-on.
+const CUBE_LABEL: f32 = 8.0;
+/// How squarely a cube face must face the eye for its label to show: the
+/// sine of 15 degrees.
+const LABEL_FACING: f32 = 0.258_819;
+/// The axes gadget's size.
 const TRIAD: f32 = 78.0;
 /// Below this height the path legend collapses to a button (7.2).
 pub const LEGEND_MIN_HEIGHT: f32 = 480.0;
@@ -174,12 +180,31 @@ fn readout(viewport: &Viewport) -> Option<([f64; 4], String)> {
     ))
 }
 
-/// The faces of the view cube that face the eye, back to front: the view
-/// each gives, its label, its corners on screen about the cube's centre (in
-/// units of the cube's half size, y down) and how squarely it faces the eye.
-pub fn cube_faces(camera: &Camera) -> Vec<(StandardView, &'static str, [[f32; 2]; 4], f32)> {
+/// One face of the view cube as seen from the eye.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CubeFace {
+    /// The standard view the face gives.
+    pub view: StandardView,
+    /// Its label.
+    pub label: &'static str,
+    /// Its corners on screen about the cube's centre, in units of the cube's
+    /// half size, y down.
+    pub corners: [[f32; 2]; 4],
+    /// How squarely it faces the eye, 0 to 1.
+    pub facing: f32,
+    /// The screen direction (y down, in the same units) the label's text runs
+    /// in on the face, so the label lies on the face and reads from outside.
+    pub right: [f32; 2],
+    /// The screen direction of the label's upright.
+    pub up: [f32; 2],
+}
+
+/// The faces of the view cube that face the eye, back to front (7.2; issue
+/// 158: the labels lie flat on the faces).
+pub fn cube_faces(camera: &Camera) -> Vec<CubeFace> {
     let (right, up, back) = camera.basis();
     let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let screen = |p: [f64; 3]| [dot(p, right) as f32, -dot(p, up) as f32];
     let faces: [(StandardView, &str, [f64; 3]); 6] = [
         (StandardView::Front, "FRONT", [0.0, -1.0, 0.0]),
         (StandardView::Back, "BACK", [0.0, 1.0, 0.0]),
@@ -188,7 +213,7 @@ pub fn cube_faces(camera: &Camera) -> Vec<(StandardView, &'static str, [[f32; 2]
         (StandardView::Top, "TOP", [0.0, 0.0, 1.0]),
         (StandardView::Bottom, "BOTTOM", [0.0, 0.0, -1.0]),
     ];
-    let mut out: Vec<(StandardView, &str, [[f32; 2]; 4], f32)> = faces
+    let mut out: Vec<CubeFace> = faces
         .iter()
         .filter_map(|&(view, label, n)| {
             let facing = dot(n, back);
@@ -196,10 +221,11 @@ pub fn cube_faces(camera: &Camera) -> Vec<(StandardView, &'static str, [[f32; 2]
                 return None;
             }
             // Two directions across the face, so its corners are n ± u ± v.
-            let u = if n[2].abs() > 0.5 {
-                [1.0, 0.0, 0.0]
-            } else {
+            let side = n[2].abs() <= 0.5;
+            let u = if side {
                 [0.0, 0.0, 1.0]
+            } else {
+                [1.0, 0.0, 0.0]
             };
             let v = [
                 n[1] * u[2] - n[2] * u[1],
@@ -207,27 +233,37 @@ pub fn cube_faces(camera: &Camera) -> Vec<(StandardView, &'static str, [[f32; 2]
                 n[0] * u[1] - n[1] * u[0],
             ];
             let corner = |a: f64, b: f64| {
-                let p = [
+                screen([
                     n[0] + a * u[0] + b * v[0],
                     n[1] + a * u[1] + b * v[1],
                     n[2] + a * u[2] + b * v[2],
-                ];
-                [dot(p, right) as f32, -dot(p, up) as f32]
+                ])
             };
-            Some((
+            // Read from outside, a side face's text runs along u × n with
+            // the vertical up; the top and bottom faces' run along X with Y
+            // (or its opposite, below) up, so each label is upright from the
+            // front view and from above.
+            let (text_right, text_up) = if side {
+                ([-v[0], -v[1], -v[2]], u)
+            } else {
+                (u, v)
+            };
+            Some(CubeFace {
                 view,
                 label,
-                [
+                corners: [
                     corner(-1.0, -1.0),
                     corner(1.0, -1.0),
                     corner(1.0, 1.0),
                     corner(-1.0, 1.0),
                 ],
-                facing as f32,
-            ))
+                facing: facing as f32,
+                right: screen(text_right),
+                up: screen(text_up),
+            })
         })
         .collect();
-    out.sort_by(|a, b| a.3.total_cmp(&b.3));
+    out.sort_by(|a, b| a.facing.total_cmp(&b.facing));
     out
 }
 
@@ -258,8 +294,8 @@ fn cube_face_at(camera: &Camera, cube: Rect, p: Pos2) -> Option<StandardView> {
     cube_faces(camera)
         .iter()
         .rev()
-        .find(|(_, _, corners, _)| inside(local, corners))
-        .map(|(view, ..)| *view)
+        .find(|face| inside(local, &face.corners))
+        .map(|face| face.view)
 }
 
 /// Where the overlays go in the view `rect` this frame (7.2).
@@ -271,9 +307,11 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         pos2(right - CUBE, rect.top() + MARGIN),
         vec2(CUBE, CUBE),
     ));
+    // The axes gadget: bottom left of every 3D view, drawn without a box
+    // (decision 0149).
     b.triad = Some(Rect::from_min_size(
-        pos2(right - CUBE, rect.top() + MARGIN + CUBE + 8.0),
-        vec2(CUBE, TRIAD),
+        pos2(rect.left() + MARGIN, rect.bottom() - MARGIN - TRIAD),
+        vec2(TRIAD, TRIAD),
     ));
     if readout(viewport).is_some() {
         b.readout = Some(Rect::from_min_size(
@@ -312,7 +350,10 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     if step == ViewStep::Simulate && viewport.bands().is_some() {
         let height = 74.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
-            pos2(rect.left() + MARGIN, rect.bottom() - MARGIN - height),
+            pos2(
+                rect.left() + MARGIN,
+                rect.bottom() - MARGIN - TRIAD - 8.0 - height,
+            ),
             vec2(236.0, height),
         ));
     }
@@ -353,6 +394,38 @@ fn frame(painter: &egui::Painter, r: Rect) {
     );
 }
 
+/// Draws `text` centred on `centre` so that it lies on a cube face: its
+/// width runs along `right` and its upright along `up` (screen vectors, y
+/// down, one unit of length for one pixel when the face is square-on), so it
+/// foreshortens with the face and never faces the user (issue 158).
+fn flat_text(painter: &egui::Painter, text: &str, centre: Pos2, right: egui::Vec2, up: egui::Vec2) {
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        egui::FontId::proportional(CUBE_LABEL),
+        roles::OVERLAY_TEXT,
+    );
+    let size = galley.size();
+    let uv = painter.fonts(|f| f.font_image_size());
+    let normalise = vec2(1.0 / uv[0] as f32, 1.0 / uv[1] as f32);
+    let mut mesh = egui::Mesh::default();
+    for row in &galley.rows {
+        let base = mesh.vertices.len() as u32;
+        mesh.indices
+            .extend(row.visuals.mesh.indices.iter().map(|i| i + base));
+        mesh.vertices
+            .extend(row.visuals.mesh.vertices.iter().map(|v| {
+                // Pixels right of and below the text's middle.
+                let local = row.pos.to_vec2() + v.pos.to_vec2() - size / 2.0;
+                egui::epaint::Vertex {
+                    pos: centre + right * local.x - up * local.y,
+                    uv: (v.uv.to_vec2() * normalise).to_pos2(),
+                    color: v.color,
+                }
+            }));
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
 /// Draws the overlays.
 pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     let painter = ui.painter_at(rect);
@@ -361,31 +434,32 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     if let Some(cube) = b.cube {
         frame(&painter, cube);
         let half = cube.width() * 0.25;
-        for (_, label, corners, facing) in cube_faces(&viewport.camera) {
-            let points: Vec<Pos2> = corners
+        for face in cube_faces(&viewport.camera) {
+            let points: Vec<Pos2> = face
+                .corners
                 .iter()
                 .map(|c| cube.center() + vec2(c[0], c[1]) * half)
                 .collect();
-            let shade = (0x2b as f32 + 0x18 as f32 * facing) as u8;
+            let shade = (0x2b as f32 + 0x18 as f32 * face.facing) as u8;
             painter.add(egui::Shape::convex_polygon(
                 points.clone(),
                 Color32::from_rgb(shade, shade + 4, shade + 9),
                 Stroke::new(1.0, Color32::from_rgb(0x7b, 0x84, 0x90)),
             ));
-            if facing > 0.35 {
-                let centre = points.iter().fold(Pos2::ZERO, |a, p| a + p.to_vec2()) / 4.0;
-                painter.text(
+            let centre = points.iter().fold(Pos2::ZERO, |a, p| a + p.to_vec2()) / 4.0;
+            // A face within 15 degrees of edge-on is too thin to read.
+            if face.facing >= LABEL_FACING {
+                flat_text(
+                    &painter,
+                    face.label,
                     centre,
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(8.0),
-                    roles::OVERLAY_TEXT,
+                    vec2(face.right[0], face.right[1]),
+                    vec2(face.up[0], face.up[1]),
                 );
             }
         }
     }
     if let Some(triad) = b.triad {
-        frame(&painter, triad);
         let (right, up, _) = viewport.camera.basis();
         let centre = triad.center();
         for (axis, name, colour) in [
@@ -711,7 +785,7 @@ mod tests {
         let mut camera = Camera::default();
         // Isometric, from +X, -Y and +Z: front, right and top face the eye.
         camera.set_view(StandardView::Isometric);
-        let faces: Vec<StandardView> = cube_faces(&camera).iter().map(|f| f.0).collect();
+        let faces: Vec<StandardView> = cube_faces(&camera).iter().map(|f| f.view).collect();
         assert_eq!(faces.len(), 3);
         for view in [StandardView::Front, StandardView::Right, StandardView::Top] {
             assert!(faces.contains(&view), "{faces:?}");
@@ -734,6 +808,49 @@ mod tests {
             Some(StandardView::Top)
         );
         assert_eq!(cube_face_at(&camera, cube, pos2(1.0, 1.0)), None);
+    }
+
+    #[test]
+    fn req_ui_02_the_cube_labels_lie_flat_on_their_faces_and_read_from_outside() {
+        // Issue 158: a label is drawn with its face, so it is there whenever
+        // the face is, and it is never mirrored. From the front the front
+        // label runs left to right with the upright up; from above so does
+        // the top label.
+        let mut camera = Camera::default();
+        camera.set_view(StandardView::Front);
+        let front = cube_faces(&camera)[0];
+        assert_eq!((front.view, front.label), (StandardView::Front, "FRONT"));
+        let near = |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).hypot(a[1] - b[1]) < 1e-5;
+        assert!(near(front.right, [1.0, 0.0]) && near(front.up, [0.0, -1.0]));
+        camera.set_view(StandardView::Top);
+        let top = cube_faces(&camera)[0];
+        assert!(near(top.right, [1.0, 0.0]) && near(top.up, [0.0, -1.0]));
+        // Every face seen from any direction: a right-handed pair on screen
+        // (y is down there, so the cross product is negative), and the text
+        // direction lies along the face's own edges.
+        for yaw in (0..360).step_by(25) {
+            for pitch in (-80..=80).step_by(20) {
+                camera.yaw = f64::from(yaw);
+                camera.pitch = f64::from(pitch);
+                for face in cube_faces(&camera) {
+                    let cross = face.right[0] * face.up[1] - face.right[1] * face.up[0];
+                    assert!(cross < 0.0, "{:?} mirrored at {yaw}, {pitch}", face.view);
+                    let edge = |a: usize, b: usize| {
+                        [
+                            face.corners[b][0] - face.corners[a][0],
+                            face.corners[b][1] - face.corners[a][1],
+                        ]
+                    };
+                    let parallel =
+                        |p: [f32; 2], q: [f32; 2]| (p[0] * q[1] - p[1] * q[0]).abs() < 1e-4;
+                    assert!(
+                        parallel(face.right, edge(0, 3)) || parallel(face.right, edge(0, 1)),
+                        "{:?}",
+                        face.view
+                    );
+                }
+            }
+        }
     }
 
     #[test]

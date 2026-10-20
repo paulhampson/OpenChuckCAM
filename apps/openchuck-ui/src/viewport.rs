@@ -1919,6 +1919,11 @@ pub(crate) mod tests {
                 "{:?} at {size:?}: {boxes:?}",
                 viewport.step()
             );
+            // The cube is top right and the axes gadget bottom left, on
+            // every step (decision 0149).
+            assert!(boxes[0].right() > rect.center().x && boxes[0].top() < rect.center().y);
+            assert!((boxes[1].left() - rect.left()).abs() < 20.0);
+            assert!((rect.bottom() - boxes[1].bottom()).abs() < 20.0);
             for (i, a) in boxes.iter().enumerate() {
                 assert!(rect.contains_rect(*a), "{a:?} outside {rect:?}");
                 for b in boxes.iter().skip(i + 1) {
