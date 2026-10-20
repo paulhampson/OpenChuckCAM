@@ -106,3 +106,5 @@ Coordinator status report (20 Oct 2026, 20:31 UTC)
 - Deviation from the owner's instruction: BUG-INSP did not receive the hold before it finished. It pushed and opened draft PR 180 at about 20:15, after the owner's "no push yet" message was sent but before it reached the lane. The coordinator has told it to push nothing further, keep PR 180 draft and not ready, and add nothing until the owner says go. The owner decides whether PR 180 may proceed.
 - Not started and held: #175, #176, #177, #178, #179, #181 to #185.
 - Lane proposals: #175 decision first (single place that positions the part); #176 BUG-VC (view cube); #177 BUG-ICON (icon sweep, font coverage); #178 and #179 a second BUG-INSP collecting lane after PR 180; #184 BUG-INSP follow-up (schema rules); #181 and #182 features after the #175 decision; #183 new P2 requirement, propose and wait; #185 feature near SL (schema claim if saved).
+
+Owner decision (20 Oct 2026): draft PR 180 (BUG-INSP, #174) may stay as a draft. The hold on lanes not started, including the proposed second inspector lane for #178, #179 and #184, stays until the owner gives the go-ahead.
