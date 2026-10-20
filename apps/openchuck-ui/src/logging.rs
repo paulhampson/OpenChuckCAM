@@ -356,36 +356,45 @@ mod tests {
 
     #[test]
     fn req_nfr_17_user_folder_per_platform() {
-        let env = |pairs: &'static [(&'static str, &'static str)]| {
+        // An absolute path on every host: "/home/u" is relative on Windows.
+        let root = std::env::temp_dir();
+        let env = |pairs: Vec<(&'static str, PathBuf)>| {
             move |name: &str| {
                 pairs
                     .iter()
                     .find(|(k, _)| *k == name)
-                    .map(|(_, v)| std::ffi::OsString::from(v))
+                    .map(|(_, v)| v.clone().into_os_string())
             }
         };
         assert_eq!(
-            user_folder(Platform::Windows, env(&[("LOCALAPPDATA", "/w/Local")])),
-            Some(PathBuf::from("/w/Local/OpenChuckCAM/logs"))
+            user_folder(Platform::Windows, env(vec![("LOCALAPPDATA", root.clone())])),
+            Some(root.join("OpenChuckCAM").join("logs"))
         );
         assert_eq!(
-            user_folder(Platform::MacOs, env(&[("HOME", "/Users/u")])),
-            Some(PathBuf::from("/Users/u/Library/Logs/OpenChuckCAM"))
+            user_folder(Platform::MacOs, env(vec![("HOME", root.clone())])),
+            Some(root.join("Library").join("Logs").join("OpenChuckCAM"))
         );
         assert_eq!(
-            user_folder(Platform::Unix, env(&[("HOME", "/home/u")])),
-            Some(PathBuf::from("/home/u/.local/state/openchuckcam"))
+            user_folder(Platform::Unix, env(vec![("HOME", root.clone())])),
+            Some(root.join(".local").join("state").join("openchuckcam"))
         );
+        let state = root.join("state");
         assert_eq!(
             user_folder(
                 Platform::Unix,
-                env(&[("HOME", "/home/u"), ("XDG_STATE_HOME", "/s")])
+                env(vec![
+                    ("HOME", root.clone()),
+                    ("XDG_STATE_HOME", state.clone())
+                ])
             ),
-            Some(PathBuf::from("/s/openchuckcam"))
+            Some(state.join("openchuckcam"))
         );
         // Unset or relative variables give nothing.
-        assert_eq!(user_folder(Platform::Windows, env(&[])), None);
-        assert_eq!(user_folder(Platform::Unix, env(&[("HOME", "rel")])), None);
+        assert_eq!(user_folder(Platform::Windows, env(vec![])), None);
+        assert_eq!(
+            user_folder(Platform::Unix, env(vec![("HOME", PathBuf::from("rel"))])),
+            None
+        );
     }
 
     #[test]
