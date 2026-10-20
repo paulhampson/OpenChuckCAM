@@ -4,7 +4,8 @@
 # than about a minute uninstrumented is listed in both profiles below, as the
 # exclusion in `coverage` and the selection in `long`; the two lists must match.
 #
-# - The pull request Tests job runs everything (the default profile).
+# - The pull request Tests job runs everything (the default profile) except one
+#   test, below.
 # - The Coverage trend job uses `--profile coverage`, which leaves the long tests
 #   out: instrumentation slows the hot loops 6 to 11 times and a single test
 #   cannot be split across cores.
@@ -37,6 +38,20 @@
 # the axial passes 73 s and the 1, 2 and N threads test 70 s (alone: 27, 22, 17 and
 # 14 s).
 
+# The first exception to "the pull request Tests job runs every listed test" (OI-506,
+# owner, 20 Oct 2026, option C of the FIT flag; AGENTS.md: "accept it in the nightly run
+# only"): `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
+# took 624.9 s on the macOS runner and 597.6 s on Windows shard 2 in the contended pull
+# request run after decision 0133 (203 s alone), so the default profile leaves it out.
+# It stays in the `long` profile (the nightly run) and in `coverage-full`, which sets
+# `default-filter = 'all()'` so that the nightly Coverage run still counts it. Only this
+# test is excepted; the filter names it exactly, so the helical oracle-parts test of the
+# same prefix still runs in the pull request. `cargo nextest run -p openchuck-path -E
+# 'test(=req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'`
+# does not select it either: run it with `--profile long`.
+[profile.default]
+default-filter = 'not test(=req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts)'
+
 # The STEP kernel tests run only with `--features kernel-tests`, in CI's STEP
 # kernel job (not in the Tests, Coverage or nightly long runs), so their entry
 # below documents the time and selects nothing elsewhere: roughing then rest
@@ -54,6 +69,7 @@
 # at the end. `priority` changes the order only: the set of tests is the default profile's. Each
 # filter names its binary and test exactly, so nothing else is caught.
 [profile.coverage-full]
+default-filter = 'all()'
 [[profile.coverage-full.overrides]]
 filter = 'binary_id(=openchuck-sim::simulation) & test(=req_sim_03_req_sim_05_finest_setting_is_within_two_hundredths_against_a_brute_force_run)'
 priority = 100
