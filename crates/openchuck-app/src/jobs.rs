@@ -373,8 +373,13 @@ impl JobLog {
     pub fn set_summary(&mut self, id: JobId, summary: String) {
         if let Some(entry) = self.finished.iter_mut().find(|e| e.id == id) {
             entry.outcome = Some(JobOutcome::Done(Some(summary)));
-        } else if self.running.iter().any(|e| e.id == id) {
+        } else {
+            // Running, or not read yet: a fast job can start and finish
+            // between two frames. The finish takes the summary.
             self.pending.push((id, summary));
+            if self.pending.len() > FINISHED_JOBS_KEPT {
+                self.pending.remove(0);
+            }
         }
     }
 
@@ -513,6 +518,24 @@ mod tests {
         assert_eq!(
             done.outcome,
             Some(JobOutcome::Done(Some("Generated 2, reused 1".into())))
+        );
+    }
+
+    /// A fast job can start, finish and hand over its result between two
+    /// frames: its owner then gives the summary before the log has read
+    /// either event, and the summary must not be lost.
+    #[test]
+    fn req_ui_09_a_summary_given_before_the_log_reads_the_job_is_kept() {
+        let mut log = JobLog::default();
+        let t0 = Instant::now();
+        log.set_summary(JobId(1), "Generated 1".into());
+        log.update_at(
+            [started(1, "regenerate"), finished(1, None, false)],
+            t0 + Duration::from_secs(1),
+        );
+        assert_eq!(
+            log.finished().next().unwrap().outcome,
+            Some(JobOutcome::Done(Some("Generated 1".into())))
         );
     }
 

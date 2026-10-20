@@ -27,7 +27,7 @@ pub(super) struct Rig {
 }
 
 impl Rig {
-    fn new(shell: Shell, dirs: Vec<PathBuf>) -> Self {
+    pub(super) fn new(shell: Shell, dirs: Vec<PathBuf>) -> Self {
         let mut rig = Self {
             shell,
             ctx: egui::Context::default(),
@@ -143,7 +143,7 @@ fn req_ui_10_the_empty_state_offers_a_project_and_dims_the_other_steps() {
     assert!(rig.shows("Start with a model"));
     assert!(rig.shows("Open project…"));
     assert!(rig.shows("New project…"));
-    for group in ["MODEL", "SETUPS", "SELECTION SETS", "TOOLS", "OPERATIONS"] {
+    for group in ["MODEL", "SETUPS", "SELECTION SETS", "OPERATIONS"] {
         assert!(rig.shows(group), "{group}");
     }
     assert!(rig.shows("None yet"));

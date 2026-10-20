@@ -50,6 +50,9 @@ button{font:inherit;color:inherit;cursor:pointer}
     <div style="width:270px;flex:none;border-right:1px solid var(--ln);display:flex;flex-direction:column">
       <div style="padding:10px 12px;border-bottom:1px solid var(--ln)"><div class="fld"><span class="mu">Search tools</span><svg class="ib mu" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></div></div>
       <div style="flex:1;overflow:hidden">
+        <div class="grp">THIS PROJECT</div>
+        <div class="tr"><span class="nm">Ball Ø3 · 2 flute</span><span class="chip m">T201</span></div>
+        <div class="tr"><span class="nm">Flat Ø6 · 3 flute</span><span class="chip m">T3</span></div>
         <div class="grp">BALL END MILLS</div>
         <div class="tr"><span class="nm">Ball Ø3 · 2 flute</span><span class="chip">in project</span></div>
         <div class="tr"><span class="nm">Ball Ø1.5 · 2 flute</span></div>
@@ -59,18 +62,18 @@ button{font:inherit;color:inherit;cursor:pointer}
         <div class="grp">BULL-NOSE AND TAPERED</div>
         <div class="tr"><span class="nm">Bull-nose Ø6 R1</span></div>
         <div class="tr"><span class="nm">Tapered ball R0.5 · 5°</span></div>
-        <div class="grp">V-BIT, DRILL</div>
+        <div class="grp">V-BIT, CHAMFER AND DRILL</div>
         <div class="tr"><span class="nm">V-bit 60° Ø6</span></div>
         <div class="tr"><span class="nm">Drill Ø4</span></div>
         <div class="grp">CUSTOM PROFILE</div>
         <div class="tr sel"><span class="nm" style="font-weight:500">Form cutter Ø6</span></div>
       </div>
-      <div style="padding:10px 12px;border-top:1px solid var(--ln);display:flex;gap:6px"><button class="btn sm">New tool ▾</button><button class="btn sm">Duplicate</button></div>
+      <div style="padding:10px 12px;border-top:1px solid var(--ln);display:flex;gap:6px"><button class="btn sm">New tool ▾</button><button class="btn sm">Duplicate</button><button class="btn sm">Delete</button></div>
     </div>
 
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
       <div style="padding:12px 14px;border-bottom:1px solid var(--ln)">
-        <div class="h" style="margin-bottom:10px">Tool</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span class="h">Tool</span><span style="flex:1"></span><span style="color:#f2b84b">Changed: not saved yet</span><button class="btn sm">Cancel</button><button class="btn sm pri">Save</button></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px">
           <div class="fr"><span class="mu">Name</span><div class="fld"><span>Form cutter Ø6</span></div></div>
           <div class="fr"><span class="mu">Type</span><div class="fld"><span>Custom profile</span><span class="mu">▾</span></div></div>
@@ -105,7 +108,7 @@ button{font:inherit;color:inherit;cursor:pointer}
           </div>
           <div style="display:flex;align-items:center;gap:6px" class="ok"><svg class="ib" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"/></svg>Valid: starts on the axis, radius and height never decrease, arc within a quarter turn.</div>
           <div class="mu" style="line-height:1.45">Profiles use the same rules as an imported profile file. Undercut tools are not supported.</div>
-          <div style="display:flex;gap:6px"><button class="btn sm">Import profile file…</button><button class="btn sm">Export profile…</button></div>
+          <div style="display:flex;gap:6px"><button class="btn sm">Import profile file…</button><button class="btn sm">Export profile…</button><span style="flex:1"></span><button class="btn sm">Cancel</button><button class="btn sm">Apply</button></div>
         </div>
       </div>
     </div>
@@ -119,7 +122,7 @@ button{font:inherit;color:inherit;cursor:pointer}
         <div class="ct"><span>MDF</span><span class="m">14000</span><span class="m">0.025</span><span class="m">200</span></div>
         <button class="btn sm" style="margin-top:8px">Add material</button>
       </div>
-      <div class="mu" style="line-height:1.45">Stepover and stepdown defaults are set per material in the detail view.</div>
+      <div class="mu" style="line-height:1.45">Operations cutting a stock of this material take these values unless they set their own. Stepover and stepdown are in each material's detail.</div>
       <div class="h" style="margin-top:8px">Machine tool sets</div>
       <div class="fr" style="grid-template-columns:1fr 70px"><span>Makera Z1</span><div class="fld"><b class="m" style="font-weight:400">T3</b></div></div>
       <div class="mu" style="line-height:1.45">The number suggested when this tool is added to a project for that machine. The project keeps its own number.</div>
@@ -127,7 +130,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   </div>
   <div style="height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-top:1px solid var(--ln);background:var(--bar)">
     <div style="display:flex;gap:8px"><button class="btn">Import library…</button><button class="btn">Export library…</button></div>
-    <div style="display:flex;gap:8px"><button class="btn">Close</button><button class="btn pri">Add to project</button></div>
+    <div style="display:flex;gap:8px"><button class="btn">Close</button><button class="btn pri" style="opacity:.45" title="Save the tool first">Add to project</button></div>
   </div>
 </div>
 </x-dc>

@@ -188,9 +188,26 @@ pub struct RunPanel {
     last_seconds: f64,
     show_results: bool,
     adding: Option<AddOperation>,
+    /// The New operation dialog asked for the tool library (decision record
+    /// 0127 item 6).
+    wants_library: bool,
 }
 
 impl RunPanel {
+    /// Gives the operation being made in the New operation dialog the
+    /// project tool `tool`, chosen in the tool library window.
+    pub fn set_adding_tool(&mut self, tool: ToolId) {
+        if let Some(form) = &mut self.adding {
+            form.tool = Some(tool);
+        }
+    }
+
+    /// Whether the New operation dialog asked for the tool library since
+    /// the last call.
+    pub fn take_library_request(&mut self) -> bool {
+        std::mem::take(&mut self.wants_library)
+    }
+
     /// Forgets the results of a project that was closed.
     pub fn clear(&mut self) {
         if let Some(job) = self.job.take() {
@@ -396,6 +413,7 @@ impl RunPanel {
             .collect();
         let mut close = false;
         let mut add = false;
+        let mut wants_library = false;
         egui::Window::new("Add operation")
             .collapsible(false)
             .resizable(false)
@@ -451,6 +469,13 @@ impl RunPanel {
                                 ui.selectable_value(&mut form.tool, Some(*id), name);
                             }
                         });
+                    if ui
+                        .button("From the library…")
+                        .on_hover_text("Choose a tool in the tool library and add it to the project")
+                        .clicked()
+                    {
+                        wants_library = true;
+                    }
                 });
                 let takes = choices
                     .iter()
@@ -497,6 +522,7 @@ impl RunPanel {
         if close {
             self.adding = None;
         }
+        self.wants_library |= wants_library;
         (added, error)
     }
 
