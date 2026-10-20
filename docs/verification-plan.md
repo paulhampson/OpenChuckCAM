@@ -162,6 +162,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | NFR-13 | P1 | T | System | Wrapped C++ libraries build and pass tests on Windows, macOS and Linux |
 | NFR-14 | P1 | A, I | Design | Each dependency has a recorded review against the health criteria, with a written justification for newer crates and those with high AI contribution |
 | NFR-15 | P1 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200%; inspection that no state is shown by colour alone |
+| NFR-17 | P1 | A, D | System | Unit tests of the log folder order and per-platform paths, the rotation, the fall-backs and the panic hook (`req_nfr_17_*`, Linux); on a Windows nightly build, inspection that no console window opens from a double click, that `--bench` output and exit code reach the terminal, and that the log file exists after a run and after a forced panic (open item OI-455) |
 
 ### 4.1 Acceptance limits
 

@@ -164,6 +164,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
+| BUG-LOG | Issue 155 (trial finding F-14): no console window behind the Windows application, a local log file beside the executable, panics logged, the log path for the About window. Built 19 Oct 2026 on `claude/lane-bug-log-console-and-log-file` ([decision 0155](decisions/0155-local-log-file.md) and [decision 0156](decisions/0156-windows-gui-subsystem-and-console-attach.md), both accepted 19 Oct 2026; OI-453 to OI-459; requirement NFR-17; no project format change) | ██ | | | | |
 | XC | CI hygiene: `cargo xtask conflicts` fails on unresolved merge conflict markers in tracked files, wired into the CI fast checks and `all` (built 19 Oct 2026 on `claude/lane-xc-conflict-marker-check`; no requirement covers it directly, supports NFR-06; no decision record; no open items) | ██ | | | | |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -207,6 +208,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X5 | X2 and X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X6 | X2; its Simulate colours after X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| BUG-LOG | Nothing. Touches `apps/openchuck-ui` `main.rs`, `graphics.rs` (the logger) and the new `logging.rs`, the crate's `Cargo.toml` and the docs; stays out of the files of X4, SU, BI, XC and FIT. The About button is OI-454. |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
 | XC | Nothing |
@@ -1014,7 +1016,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
 | 20 | NFR-12 | – |
 | 21 | SET-09, OP-21, UI-25 | – |
-| 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-15 (with slice 8) | – |
+| 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-15 (with slice 8), NFR-17 | – |
 | 23 | TL-12 | – |
 
 **Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19), NFR-02 (0, 8), and UI-10 to UI-16 and NFR-15 (8, 22: slice 22's lanes build slice 8 items 8 to 12, OI-338). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
