@@ -86,3 +86,7 @@ Coordinator decision (19 Oct 2026): WP9 (#157, #158) is folded into lane MV, whi
 Lane BUG-INSP (Sonnet, branch `claude/lane-bug-insp-field-width`, PR titled "Lane BUG-INSP:") was started by the coordinator for #174 (WP10) on 20 Oct 2026 after X4 (PR 154) merged and did not fix it. The owner had asked that no work package start until the owner gives the go-ahead; whether BUG-INSP may continue is an open question for the owner. The owner attached the screenshot to #174.
 
 Owner decision (20 Oct 2026): BUG-INSP continues local work with no push or PR yet; further bug fixes will be added to it before it is pushed. The hold on lanes that have not started stays until the owner gives the go-ahead.
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-20 | Setup inspector | "Offset along X" does not move the part in the diagram. | In the Part position section of the setup inspector, changing the offset along X leaves the part where it was in the Setup diagram. Issue [#175](https://github.com/paulhampson/OpenChuckCAM/issues/175). Planned lane: BUG-INSP (WP10). | Does the value take effect elsewhere (3D view, simulation, toolpaths) or not at all? Other Part position fields affected? Does the diagram update later? |
