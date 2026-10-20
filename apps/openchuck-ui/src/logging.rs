@@ -222,13 +222,14 @@ pub fn temp_folder_name(user: &str) -> String {
 
 /// Whether `meta` describes a folder that belongs to the current user and
 /// that nobody else can change: a real directory (not a symbolic link), owned
-/// by this user, with no group or other write permission (Unix). On Windows
+/// by this user, with no group or other permission at all (Unix: a log made
+/// in it is readable by others otherwise). On Windows
 /// the temp folder is already inside the user's profile, so a real directory
 /// is enough.
 #[cfg(unix)]
 fn is_private_folder(meta: &fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt as _;
-    meta.is_dir() && Some(meta.uid()) == current_uid() && meta.mode() & 0o022 == 0
+    meta.is_dir() && Some(meta.uid()) == current_uid() && meta.mode() & 0o077 == 0
 }
 
 #[cfg(not(unix))]
@@ -553,13 +554,20 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn req_nfr_17_private_folder_refuses_one_others_can_write() {
+    fn req_nfr_17_private_folder_refuses_one_others_can_use() {
         use std::os::unix::fs::PermissionsExt as _;
         let base = scratch("private-open");
-        let open = base.join("openchuckcam-t");
-        fs::create_dir(&open).unwrap();
-        fs::set_permissions(&open, fs::Permissions::from_mode(0o777)).unwrap();
-        assert_eq!(private_folder(&base, "openchuckcam-t"), None);
+        // Writable by others, and readable by them (a log made in it would
+        // be too under the usual umask): both are refused.
+        for mode in [0o777, 0o755, 0o750, 0o705] {
+            let open = base.join(format!("openchuckcam-{mode:o}"));
+            fs::create_dir(&open).unwrap();
+            fs::set_permissions(&open, fs::Permissions::from_mode(mode)).unwrap();
+            assert_eq!(
+                private_folder(&base, &format!("openchuckcam-{mode:o}")),
+                None
+            );
+        }
         let _ = fs::remove_dir_all(&base);
     }
 

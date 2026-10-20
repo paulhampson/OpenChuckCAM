@@ -1,6 +1,6 @@
 # 0157: The user-action log (lane UAL; issue 156; requirement NFR-18; OI-476 to OI-480)
 
-- **Status:** accepted by the project owner (20 Oct 2026), directly in the lane UAL session. The owner agreed the requirement wording, the choices of content and switch, and the place of the switch (item 5; all relayed by the coordinator session).
+- **Status:** accepted by the project owner (20 Oct 2026); the acceptance was relayed to the lane UAL session by the merge manager at the owner's instruction (decision 0049). The owner agreed the requirement wording, the choices of content and switch, and the place of the switch (item 5; all relayed by the coordinator session).
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-476 (closed: NFR-18), OI-477 (what counts as an action), OI-478 (where the switch is, closed), OI-479 (labels), OI-480 (later windows). OI-457 (the seam) is closed by this record.
 
