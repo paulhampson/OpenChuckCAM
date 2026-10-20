@@ -18,6 +18,7 @@ use openchuck_app::project::{Item, Setup};
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
 use openchuck_app::tool_edit;
+use openchuck_app::tool_library;
 use openchuck_app::tools;
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
@@ -31,6 +32,24 @@ use crate::workholding_panel::WorkholdingPanel;
 
 /// The key of the header's name in the form state.
 const NAME: &str = "\u{0}name";
+
+/// The key of the Tool section's tool number in the form state.
+const TOOL_NUMBER: &str = "\u{0}tool number";
+
+/// What the user asked of an operation's Tool section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ToolAct {
+    /// Use another project tool.
+    Use(ToolId),
+    /// Choose a tool in the tool library window.
+    Library,
+    /// Set the project's tool number to the typed text.
+    Number(ToolId, String),
+    /// Replace the project's copy with the library tool (TL-07).
+    Update(ToolId),
+    /// Write the project's copy into the library.
+    SaveToLibrary(ToolId),
+}
 
 /// The settings key of a setup inspector section.
 pub(super) fn section_key(part: SetupPart) -> &'static str {
@@ -430,7 +449,8 @@ impl Shell {
         let mut action = tool_panel::ProfileAction::None;
         match &mut self.profile_draft {
             Some((tool, draft)) if *tool == id => {
-                action = tool_panel::editor(ui, &snapshot.tool, draft);
+                action =
+                    tool_panel::editor(ui, &snapshot.tool, draft, &mut self.profile_segment, false);
             }
             _ => {
                 let label = if matches!(snapshot.tool.shape, tools::ToolShape::Custom { .. }) {
@@ -467,7 +487,197 @@ impl Shell {
                 }
             }
             tool_panel::ProfileAction::Cancel => self.profile_draft = None,
-            tool_panel::ProfileAction::None => {}
+            tool_panel::ProfileAction::None
+            | tool_panel::ProfileAction::ImportFile
+            | tool_panel::ProfileAction::ExportFile => {}
+        }
+    }
+
+    /// An operation's Tool section: its tool, the project's tool number and
+    /// how the project's copy stands against the library (TL-06, TL-07,
+    /// TL-11; decision record 0127). Tools are not in the tree, so this is
+    /// where an operation's tool is seen and changed.
+    fn tool_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        operation: &openchuck_app::project::Operation,
+    ) -> Option<ToolAct> {
+        let app = self.app.as_ref()?;
+        let project = app.project();
+        let library = self.tool_library.library();
+        let shown = tool_library::operation_tool(project, library, operation.id);
+        let others: Vec<(ToolId, String)> = project
+            .tools()
+            .iter()
+            .map(|t| (t.id, format!("T{}  {}", t.controller.number, t.name)))
+            .collect();
+        let open = self
+            .settings
+            .section_open("operation", "tool section", true);
+        let form = &mut self.form;
+        let section = field_row::section(
+            ui,
+            egui::Id::new(("operation section", "tool section")),
+            "Tool",
+            open,
+            false,
+            |_| {},
+            |ui| {
+                let mut act = None;
+                match &shown {
+                    None => {
+                        ui.label(
+                            RichText::new("No tool yet: the operation cannot be generated.")
+                                .color(DARK.warning),
+                        );
+                    }
+                    Some(tool) => {
+                        ui.label(RichText::new(&tool.name).strong());
+                        ui.label(RichText::new(&tool.description).color(DARK.muted));
+                        let row = TextRow {
+                            key: TOOL_NUMBER,
+                            label: "Tool number",
+                            description: "The project's number for this tool, used by every \
+                                          operation that uses it (TL-06). The post writes it \
+                                          as T, with the H and D offsets.",
+                            range: Some("1 or more, not another project tool's number"),
+                            applied: tool.controller.number.to_string(),
+                            enabled: true,
+                            ..TextRow::default()
+                        };
+                        if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
+                            act = Some(ToolAct::Number(tool.id, typed));
+                        }
+                        if let Some((machine, number)) = &tool.tool_set_number {
+                            field_row::note_line(
+                                ui,
+                                &format!("The {machine} tool set gives T{number}."),
+                                DARK.muted,
+                            );
+                        }
+                        let colour = match tool.copy {
+                            tool_library::CopyState::Same => DARK.ok,
+                            tool_library::CopyState::Differs(_) => DARK.warning,
+                            _ => DARK.muted,
+                        };
+                        ui.label(RichText::new(tool.copy.text()).color(colour));
+                        ui.horizontal_wrapped(|ui| {
+                            let differs = matches!(tool.copy, tool_library::CopyState::Differs(_));
+                            if ui
+                                .add_enabled(differs, egui::Button::new("Update from library"))
+                                .on_hover_text(
+                                    "Replace the project's copy with the library's tool, \
+                                     keeping the tool number (one undoable step)",
+                                )
+                                .clicked()
+                            {
+                                act = Some(ToolAct::Update(tool.id));
+                            }
+                            let saveable = matches!(
+                                tool.copy,
+                                tool_library::CopyState::Differs(_)
+                                    | tool_library::CopyState::NotInLibrary
+                            );
+                            if ui
+                                .add_enabled(saveable, egui::Button::new("Save to library"))
+                                .on_hover_text("Write the project's copy into the tool library")
+                                .clicked()
+                            {
+                                act = Some(ToolAct::SaveToLibrary(tool.id));
+                            }
+                        });
+                    }
+                }
+                ui.horizontal(|ui| {
+                    let current = shown.as_ref().map(|t| t.id);
+                    let text = others
+                        .iter()
+                        .find(|(id, _)| Some(*id) == current)
+                        .map_or("Choose…", |(_, n)| n.as_str());
+                    egui::ComboBox::from_id_salt(("operation tool", operation.id))
+                        .selected_text(text)
+                        .show_ui(ui, |ui| {
+                            for (id, name) in &others {
+                                if ui.selectable_label(Some(*id) == current, name).clicked()
+                                    && Some(*id) != current
+                                {
+                                    act = Some(ToolAct::Use(*id));
+                                }
+                            }
+                        });
+                    if ui
+                        .button("From the library…")
+                        .on_hover_text("Choose a tool in the tool library and use it here")
+                        .clicked()
+                    {
+                        act = Some(ToolAct::Library);
+                    }
+                });
+                act
+            },
+        );
+        if section.open != open {
+            self.settings.set_section_open(
+                "operation",
+                "tool section",
+                section.open,
+                &["tool section"],
+            );
+            self.settings_touched();
+        }
+        section.body.flatten()
+    }
+
+    /// Does what the Tool section asked.
+    pub(super) fn tool_act(&mut self, operation: OperationId, act: ToolAct) {
+        if act == ToolAct::Library {
+            let current = self
+                .app
+                .as_ref()
+                .and_then(|a| a.project().operation(operation))
+                .and_then(|o| o.tool);
+            self.open_tool_library(super::Purpose::Operation(operation), current);
+            return;
+        }
+        let library = self.tool_library.library().cloned();
+        let Some(app) = &mut self.app else { return };
+        let project = app.project();
+        let command = match act {
+            ToolAct::Library => return,
+            ToolAct::Use(tool) => tool_library::set_operation_tool(project, operation, tool),
+            ToolAct::Number(tool, typed) => {
+                let typed = typed.trim().trim_start_matches(['T', 't']);
+                let result = match typed.parse::<u32>() {
+                    Ok(n) => tool_library::set_project_tool_number(project, tool, n)
+                        .and_then(|c| app.execute(c))
+                        .map_err(|e| form_panel::refusal(&e.to_string())),
+                    Err(_) => Err("Type a whole tool number. Not applied.".to_owned()),
+                };
+                self.form.result(TOOL_NUMBER, result);
+                return;
+            }
+            ToolAct::Update(tool) => match &library {
+                Some(lib) => match tool_library::update_from_library(project, lib, tool) {
+                    Ok(Some(c)) => Ok(c),
+                    Ok(None) => return,
+                    Err(e) => Err(e),
+                },
+                None => return,
+            },
+            ToolAct::SaveToLibrary(tool) => {
+                if let Some(lib) = self.tool_library.library_mut() {
+                    match tool_library::save_to_library(project, lib, tool) {
+                        Ok(_) => {
+                            self.status = "Saved the project's tool to the library.".to_owned()
+                        }
+                        Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
+                    }
+                }
+                return;
+            }
+        };
+        if let Err(e) = command.and_then(|c| app.execute(c)) {
+            self.dialog = Some(Dialog::Error(e.to_string()));
         }
     }
 
@@ -567,6 +777,11 @@ impl Shell {
             self.settings
                 .set_section_open("operation", "geometry", section.open, &["geometry"]);
             self.settings_touched();
+        }
+
+        // The Tool section (TL-06, TL-07, TL-11; decision record 0127).
+        if let Some(act) = self.tool_section(ui, &operation) {
+            self.tool_act(id, act);
         }
 
         let Some(app) = &mut self.app else { return };

@@ -4,7 +4,9 @@
 //!
 //! Groups in pipeline order: Model, Setups (with the machine profile, stock,
 //! part position, work offset and clearance, and workholding as child rows),
-//! Selection sets, Tools and Operations. Each header has a count and a "+".
+//! Selection sets and Operations. Each header has a count and a "+". Tools
+//! are not in the tree (UI-06; decision record 0127): an operation's tool is
+//! in its inspector, and the tool library window lists and manages tools.
 //! Rows are 28 high: a drag handle and an enable box for operations, the
 //! status mark, an icon or swatch, the name and a chip. A right click (or
 //! the menu key) opens the row's menu.
@@ -27,7 +29,6 @@ pub(super) enum Group {
     Model,
     Setups,
     SelectionSets,
-    Tools,
     Operations,
 }
 
@@ -37,19 +38,18 @@ impl Group {
             Self::Model => "MODEL",
             Self::Setups => "SETUPS",
             Self::SelectionSets => "SELECTION SETS",
-            Self::Tools => "TOOLS",
             Self::Operations => "OPERATIONS",
         }
     }
 
     /// The "+" button's tooltip, or `None` when the group has no "+" yet: a
-    /// second setup is SET-07 (P2), and the tool library window is lane X9's.
+    /// second setup is SET-07 (P2).
     fn add(self) -> Option<&'static str> {
         match self {
             Self::Model => Some("Import a model (Ctrl I)"),
             Self::SelectionSets => Some("New selection set: pick on the part"),
             Self::Operations => Some("New operation (N)"),
-            Self::Setups | Self::Tools => None,
+            Self::Setups => None,
         }
     }
 }
@@ -155,7 +155,6 @@ impl Shell {
                 Group::Model,
                 Group::Setups,
                 Group::SelectionSets,
-                Group::Tools,
                 Group::Operations,
             ] {
                 header(ui, group, 0, false);
@@ -282,32 +281,6 @@ impl Shell {
                     );
                     if response.clicked() {
                         actions.push(TreeAction::SelectSet(s.id));
-                    }
-                    item_menu(&response, item, None, &mut actions);
-                }
-                // Tools.
-                if header(ui, Group::Tools, project.tools().len(), true) {
-                    actions.push(TreeAction::Add(Group::Tools));
-                }
-                if project.tools().is_empty() {
-                    none_yet(ui);
-                }
-                for t in project.tools() {
-                    let item = ItemRef::Tool(t.id);
-                    let response = row(
-                        ui,
-                        Row {
-                            indent: 1,
-                            selected: self.selected == Some(Selection::Tool(t.id)),
-                            status: None,
-                            swatch: None,
-                            name: RichText::new(format!("T{}  {}", t.controller.number, t.name)),
-                            chip: None,
-                        },
-                        |_| {},
-                    );
-                    if response.clicked() {
-                        actions.push(TreeAction::SelectTool(t.id));
                     }
                     item_menu(&response, item, None, &mut actions);
                 }

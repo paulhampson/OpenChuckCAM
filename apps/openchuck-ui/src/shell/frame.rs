@@ -123,7 +123,7 @@ pub(super) fn status_chip(ui: &mut egui::Ui, status: Option<&ItemStatus>) {
 }
 
 /// A small bordered chip.
-pub(super) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
+pub(crate) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
     egui::Frame::new()
         .stroke(Stroke::new(1.0, DARK.line))
         .corner_radius(3.0)
@@ -133,7 +133,7 @@ pub(super) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
 }
 
 /// The filled primary button (specification sections 5 and 14.1).
-pub(super) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
+pub(crate) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
     let button = egui::Button::new(RichText::new(label).color(Color32::WHITE).strong())
         .fill(DARK.primary)
         .stroke(Stroke::new(1.0, DARK.primary_border))
@@ -746,6 +746,17 @@ impl Shell {
                 }
             });
             ui.menu_button("Tools", |ui| {
+                // The tool library opens with or without a project (12.1).
+                if ui.button("Tool library…").clicked() {
+                    let purpose = if open {
+                        super::Purpose::Add
+                    } else {
+                        super::Purpose::Browse
+                    };
+                    self.open_tool_library(purpose, None);
+                    ui.close();
+                }
+                ui.separator();
                 let operations = self.overview.step(Step::Operations).is_available();
                 if ui
                     .add_enabled(open && operations, egui::Button::new("Select on the part…"))
@@ -802,6 +813,13 @@ impl Shell {
                     );
                 }
                 Step::Operations => {
+                    if ui
+                        .button("Tool library…")
+                        .on_hover_text("Open the tool library to add, edit or import tools")
+                        .clicked()
+                    {
+                        self.open_tool_library(super::Purpose::Add, None);
+                    }
                     if ui
                         .button("+ New operation")
                         .on_hover_text("New operation (N)")

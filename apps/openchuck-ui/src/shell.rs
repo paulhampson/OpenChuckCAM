@@ -43,6 +43,7 @@ use crate::playback_panel::PlaybackPanel;
 use crate::results_panel::ResultsPanel;
 use crate::run_panel::RunPanel;
 use crate::selection_panel::SelectionPanel;
+use crate::tool_library_window::{Purpose, ToolLibraryWindow};
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
@@ -53,6 +54,7 @@ mod marks;
 mod tree;
 
 use dock::DockTab;
+pub(crate) use frame::{chip, primary_button};
 pub(crate) use marks::{mark, tick};
 
 /// The starting text and control size. egui's own default reads small on
@@ -136,6 +138,10 @@ pub struct Shell {
     setup_section: Option<SetupPart>,
     /// A custom profile being edited, for this tool (TL-03).
     profile_draft: Option<(ToolId, ToolProfile)>,
+    /// The segment chosen in that profile.
+    profile_segment: Option<usize>,
+    /// The tool library window (specification 12.1).
+    tool_library: ToolLibraryWindow,
     /// A model being imported; the viewport shows its preview meanwhile.
     import: Option<ImportSession>,
     /// The chosen model's panel, with its running check.
@@ -223,6 +229,8 @@ impl Shell {
             selected: None,
             setup_section: None,
             profile_draft: None,
+            profile_segment: None,
+            tool_library: ToolLibraryWindow::default(),
             import: None,
             model_panel: None,
             machine_panel: None,
@@ -551,6 +559,12 @@ impl Shell {
         }
     }
 
+    /// Opens the tool library window (specification 12.1) for `purpose`,
+    /// with `tool` chosen when given.
+    pub(super) fn open_tool_library(&mut self, purpose: Purpose, tool: Option<ToolId>) {
+        self.tool_library.open(purpose, tool);
+    }
+
     /// Opens the new-operation dialog on the Operations step (N, the
     /// Operations "+", the workflow bar).
     fn new_operation(&mut self) {
@@ -860,10 +874,6 @@ impl Shell {
                 self.play.toggle_shown(id);
                 return;
             }
-            TreeAction::SelectTool(id) => {
-                self.select(Selection::Tool(id));
-                return;
-            }
             TreeAction::SelectModel(id) => {
                 self.select(Selection::Model(id));
                 return;
@@ -897,9 +907,7 @@ impl Shell {
                     tree::Group::Model => self.import_model(),
                     tree::Group::SelectionSets => self.start_picking(),
                     tree::Group::Operations => self.new_operation(),
-                    // The tool library window is lane X9's (OI-343);
-                    // tools are added from the command line until then.
-                    tree::Group::Setups | tree::Group::Tools => {}
+                    tree::Group::Setups => {}
                 }
                 return;
             }
@@ -970,6 +978,11 @@ impl Shell {
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
             }
+        }
+        // The tool library window works with or without a project (12.1).
+        let library = self.tool_library.frame(ctx, self.app.as_mut());
+        if let Some(status) = library.status {
+            self.status = status;
         }
         if let Some(id) = added {
             self.select(Selection::Operation(id));
@@ -1079,6 +1092,7 @@ impl Shell {
             || self.export.is_open()
             || self.run.has_window()
             || self.import.is_some()
+            || self.tool_library.is_open()
     }
 
     /// Runs the import dialog (OI-51): polls its check, shows the preview in
@@ -1410,8 +1424,6 @@ enum TreeAction {
     Select(OperationId),
     /// Show or hide this operation's path in the view (Simulate).
     ToggleShown(OperationId),
-    /// Show this tool's dimensions and profile.
-    SelectTool(ToolId),
     /// Show this model's units, placement and checks.
     SelectModel(ModelId),
     /// Show this selection set.
@@ -1663,3 +1675,6 @@ mod frame_tests;
 
 #[cfg(test)]
 mod simulate_tests;
+
+#[cfg(test)]
+mod tool_library_tests;

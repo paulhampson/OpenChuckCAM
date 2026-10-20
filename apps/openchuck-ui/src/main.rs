@@ -39,6 +39,7 @@ mod setup_panes;
 mod shell;
 mod testing;
 mod theme;
+mod tool_library_window;
 mod tool_panel;
 mod toolbar;
 mod viewport;
