@@ -42,6 +42,20 @@ pub const VIEWS: [(StandardView, &str); 3] = [
     (StandardView::Isometric, "Iso"),
 ];
 
+/// Why the standard views are unavailable in the shell's current view, if
+/// they are (decision 0148 item 2): the same rule for the toolbar, the View
+/// menu and the view cube. Every 3D view has them; Setup's two fixed panes
+/// have no camera to turn, and with no model there is nothing to look at.
+pub const fn directions_unavailable(setup_panes: bool, has_model: bool) -> Option<&'static str> {
+    if setup_panes {
+        Some("Setup shows fixed front and end views")
+    } else if !has_model {
+        Some("Import a model first")
+    } else {
+        None
+    }
+}
+
 /// The entries of "Show or hide" (7.1, 7.5), with how each reads and
 /// writes [`Visibility`].
 type Entry = (&'static str, fn(&mut Visibility) -> &mut bool);
@@ -82,7 +96,8 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             let mut projection = viewport.camera.projection;
             segments(ui, &PROJECTIONS, &mut projection);
             viewport.set_projection(projection);
-            if matches!(step, ViewStep::Model | ViewStep::Setup) {
+            // The toolbar belongs to a 3D view, which has a model to look at.
+            if directions_unavailable(false, true).is_none() {
                 ui.separator();
                 for (view, name) in VIEWS {
                     if ui
@@ -174,6 +189,19 @@ fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_02_the_view_directions_apply_to_every_3d_view_and_not_to_the_setup_panes() {
+        assert_eq!(directions_unavailable(false, true), None);
+        assert_eq!(
+            directions_unavailable(true, true),
+            Some("Setup shows fixed front and end views")
+        );
+        assert_eq!(
+            directions_unavailable(false, false),
+            Some("Import a model first")
+        );
+    }
 
     #[test]
     fn req_ui_02_req_ui_03_the_toolbar_offers_the_specified_controls() {

@@ -183,6 +183,16 @@ fn req_ui_10_req_ui_14_post_and_export_opens_once_the_project_has_what_it_needs(
 }
 
 #[test]
+fn req_nfr_15_req_ui_16_the_scale_menu_offers_fixed_steps_within_the_range() {
+    use openchuck_app::settings::SCALE_RANGE;
+    assert_eq!(super::frame::UI_SCALES, [80, 90, 100, 110, 120]);
+    for percent in super::frame::UI_SCALES {
+        let scale = percent as f32 / 100.0;
+        assert!((SCALE_RANGE.0..=SCALE_RANGE.1).contains(&scale));
+    }
+}
+
+#[test]
 fn req_ui_10_req_ui_11_the_steps_marks_and_primary_follow_the_project() {
     let mut rig = Rig::cube("frame-steps", None);
     let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;

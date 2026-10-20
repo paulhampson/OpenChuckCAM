@@ -56,10 +56,6 @@ mod tree;
 use dock::DockTab;
 pub(crate) use marks::{mark, tick};
 
-/// The starting text and control size. egui's own default reads small on
-/// large desktop displays (owner's visual check, 14 Oct 2026; OI-166).
-pub const DEFAULT_ZOOM: f32 = openchuck_app::settings::DEFAULT_SCALE;
-
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
 const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
 const REDO: KeyboardShortcut =
