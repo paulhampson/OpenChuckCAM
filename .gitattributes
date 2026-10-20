@@ -8,7 +8,9 @@ testdata/** -text
 posts/** -text
 *.step -text
 # Append-only registers: a local merge keeps the rows added on both sides instead of stopping
-# on a conflict (decision record 0054). Put new rows in number order and check any row you edited.
+# on a conflict (decision record 0054). It also keeps both versions of a row two branches edited, so
+# `cargo xtask records` checks both files (decision record 0130): edit a row in place, move a closed
+# item's row to the closed table, put new rows in order, and run the check after merging main.
 docs/decisions/README.md merge=union
 docs/open-items.md merge=union
 
