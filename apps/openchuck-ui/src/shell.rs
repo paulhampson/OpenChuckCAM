@@ -57,10 +57,6 @@ use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
 pub(crate) use marks::{mark, tick};
 
-/// The starting text and control size. egui's own default reads small on
-/// large desktop displays (owner's visual check, 14 Oct 2026; OI-166).
-pub const DEFAULT_ZOOM: f32 = openchuck_app::settings::DEFAULT_SCALE;
-
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
 const UNDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
 const REDO: KeyboardShortcut =
@@ -729,7 +725,11 @@ impl Shell {
                 i.consume_shortcut(&LATER),
             )
         });
-        if let Some(Selection::Operation(id)) = self.selected {
+        // The tool library window is a floating window, so these keys would
+        // otherwise act on the selected operation behind it.
+        if let Some(Selection::Operation(id)) = self.selected
+            && !self.tool_library.is_open()
+        {
             let action = if duplicate {
                 Some(TreeAction::Duplicate(id))
             } else if delete {
@@ -813,7 +813,19 @@ impl Shell {
         }
     }
 
+    /// Why Post and export is unavailable, if it is (decision 0148): the
+    /// first thing the project lacks.
+    pub(crate) fn post_blocker(&self) -> Option<&'static str> {
+        if self.app.is_none() {
+            return Some("Open or start a project first");
+        }
+        self.overview.post_blocker()
+    }
+
     fn open_export(&mut self) {
+        if self.post_blocker().is_some() {
+            return;
+        }
         if let Some(app) = &self.app {
             self.export.open(app);
         }

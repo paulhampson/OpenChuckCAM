@@ -233,3 +233,20 @@ fn req_tl_01_the_library_opens_without_a_project() {
     assert!(rig.shell.tool_library.is_open());
     std::fs::remove_dir_all(&folder).ok();
 }
+
+#[test]
+fn req_tl_01_the_keys_leave_the_selected_operation_alone_behind_the_library() {
+    let folder = library_folder("keys-behind");
+    let mut rig = Rig::cube("toollib-keys", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.selected = Some(Selection::Operation(op));
+    rig.shell.open_tool_library(Purpose::Operation(op), None);
+    rig.frame(Vec::new());
+    assert!(rig.shell.tool_library.is_open());
+    let count = |rig: &Rig| rig.shell.app.as_ref().unwrap().project().operations().len();
+    rig.press(Key::Delete, Modifiers::NONE);
+    rig.press(Key::D, Modifiers::COMMAND);
+    assert_eq!(count(&rig), 1);
+    std::fs::remove_dir_all(&folder).ok();
+}
