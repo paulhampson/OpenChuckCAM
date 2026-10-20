@@ -411,6 +411,8 @@ impl Shell {
                     crate::theme::solid_scroll_bar(ui);
                     egui::ScrollArea::vertical()
                         .id_salt("inspector scroll")
+                        // The pane's width is the user's, not the content's.
+                        .auto_shrink([false, false])
                         .show(ui, |ui| self.properties(ui));
                 }
             }

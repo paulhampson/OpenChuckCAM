@@ -291,13 +291,7 @@ impl Shell {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         for (chip, colour) in chips.iter().rev() {
-                            egui::Frame::new()
-                                .stroke(Stroke::new(1.0, DARK.line))
-                                .corner_radius(3.0)
-                                .inner_margin(egui::Margin::symmetric(5, 0))
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new(chip).small().color(*colour))
-                                });
+                            field_row::chip(ui, chip, *colour);
                         }
                     });
                 },
