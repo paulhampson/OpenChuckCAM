@@ -164,6 +164,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets. Built 19 Oct 2026 on `claude/lane-x6-simulate-import` ([decision 0125](decisions/0125-slice-22-simulate-and-import.md), accepted 19 Oct 2026; OI-370 to OI-374; OI-372 and OI-374 closed); boards 01b, 04, 15 and 11 re-rendered | ░░ | ░░ | ░░ | ░░ | ██ |
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| SL | Bug fix (issue 142, trial feedback F-04): Setup pane labels placed so none overlaps another, with leader lines (`claude/lane-sl-setup-callouts`; no decision record, no format change; OI-440 to OI-442) | | | | | ██ |
 | SU | 22 (SET-01 to SET-06 from the interface): the Setups "+" and the workflow bar's "Add setup" create the project's one setup ([decision 0144](decisions/0144-one-setup-from-the-interface.md), accepted 19 Oct 2026; OI-425 and OI-426 closed; built on `claude/lane-su-add-setup`, draft pull request) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
 | BI | Build traceability: the About window and `--version` report the commit, uncommitted changes, build date, Rust version, target and crate versions, with a licence box and a Copy action (GitHub issue #139; built 19 Oct 2026 on `claude/lane-bi-build-info`, [decision 0151](decisions/0151-build-traceability.md) and [0152](decisions/0152-about-window.md), accepted 19 Oct 2026; OI-443 to OI-447; the tool name and version in the G-code is OI-446; library family 0.11.0; no schema number) | | | | | |
@@ -215,6 +216,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | BUG-LOG | Nothing. Touches `apps/openchuck-ui` `main.rs`, `graphics.rs` (the logger) and the new `logging.rs`, the crate's `Cargo.toml` and the docs; stays out of the files of X4, SU, BI, XC and FIT. The About button is OI-454. |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| SL | X5 (the Setup panes) and X3 (merged) |
 | X8 | X2 to X7b and X9 |
 | XC | Nothing |
 | T | Everything, including W and X1 to X9 |
