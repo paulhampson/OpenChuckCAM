@@ -1,0 +1,10 @@
+schema = 13
+id = "0e47f048-e244-4d72-8d04-4897943d64c4"
+order = "X"
+name = "Operation 3"
+setup = "b31eaa65-cc27-4229-af17-fb0245a6aca4"
+strategy = "pencil_finishing"
+tool = "c0de0001-0000-4000-8000-000000000102"
+selections = []
+
+[parameters]

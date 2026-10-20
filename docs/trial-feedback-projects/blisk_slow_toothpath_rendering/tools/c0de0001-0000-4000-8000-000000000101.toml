@@ -1,0 +1,60 @@
+schema = 13
+id = "c0de0001-0000-4000-8000-000000000101"
+order = "V"
+name = "Z1 O-flute metal 3.175x12"
+
+[tool]
+diameter = 3.175
+flute_length = 12.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 1
+material = "carbide"
+
+[tool.shape]
+type = "flat_end"
+
+[controller]
+number = 101
+
+[cutting_data.Aluminum]
+spindle_speed = 12000.0
+feed_per_tooth = 0.04166666667
+plunge_feed = 200.0
+stepover = 2.2225
+stepdown = 0.2
+
+[cutting_data.Brass]
+spindle_speed = 12000.0
+feed_per_tooth = 0.025
+plunge_feed = 100.0
+stepover = 2.2225
+stepdown = 0.1
+
+[cutting_data.Copper]
+spindle_speed = 12000.0
+feed_per_tooth = 0.025
+plunge_feed = 100.0
+stepover = 2.2225
+stepdown = 0.1
+
+[cutting_data.Hardwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 1.0
+
+[cutting_data.Plastic]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 1.0
+
+[cutting_data.Softwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 2.2225
+stepdown = 2.0

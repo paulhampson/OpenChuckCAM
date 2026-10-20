@@ -1,0 +1,16 @@
+schema = 13
+id = "3ab5ba38-391f-45e9-a375-b1cf20da15b0"
+order = "V"
+name = "Roughing"
+setup = "b31eaa65-cc27-4229-af17-fb0245a6aca4"
+strategy = "rotary_roughing"
+tool = "c0de0001-0000-4000-8000-000000000101"
+selections = []
+
+[parameters]
+entry = "plunge"
+feed = 200.0
+plunge_feed = 500.0
+stepdown = 1.0
+stepover = 0.5
+stock_to_leave = 0.5

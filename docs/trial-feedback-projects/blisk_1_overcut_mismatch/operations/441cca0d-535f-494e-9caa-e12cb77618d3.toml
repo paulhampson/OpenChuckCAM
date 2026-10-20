@@ -1,0 +1,14 @@
+schema = 13
+id = "441cca0d-535f-494e-9caa-e12cb77618d3"
+order = "W"
+name = "Helical Finishing"
+setup = "b31eaa65-cc27-4229-af17-fb0245a6aca4"
+strategy = "helical_finishing"
+tool = "c0de0001-0000-4000-8000-000000000101"
+selections = []
+
+[parameters]
+entry = "ramp"
+feed = 500.0
+plunge_feed = 200.0
+stepover = 1.0

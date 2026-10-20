@@ -1,0 +1,50 @@
+schema = 13
+id = "b31eaa65-cc27-4229-af17-fb0245a6aca4"
+order = "V"
+name = "Setup 1"
+part = "58c319b3-5e53-4129-aa29-5a3fa545dd0d"
+material = "Softwood"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "box"
+
+[stock.bounds.min]
+x = -0.0
+y = -21.000066059265418
+z = -20.0
+
+[stock.bounds.max]
+x = 60.0
+y = 21.000066059265418
+z = 20.0
+
+[workholding.start]
+length = 5.0
+diameter = 40.0
+
+[[workholding.tabs]]
+x_start = 6.0
+length = 3.175
+
+[workholding.tabs.shape]
+type = "cylinder"
+diameter = 10.0
+
+[workholding.tabs.layout]
+type = "on_axis"
+
+[[workholding.tabs]]
+x_start = 59.175
+length = 0.825
+
+[workholding.tabs.shape]
+type = "cylinder"
+diameter = 14.5
+
+[workholding.tabs.layout]
+type = "on_axis"

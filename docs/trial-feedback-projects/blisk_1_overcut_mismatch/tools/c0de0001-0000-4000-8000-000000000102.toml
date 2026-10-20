@@ -1,0 +1,60 @@
+schema = 13
+id = "c0de0001-0000-4000-8000-000000000102"
+order = "W"
+name = "Z1 O-flute metal 2x8"
+
+[tool]
+diameter = 2.0
+flute_length = 8.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 1
+material = "carbide"
+
+[tool.shape]
+type = "flat_end"
+
+[controller]
+number = 102
+
+[cutting_data.Aluminum]
+spindle_speed = 12000.0
+feed_per_tooth = 0.04166666667
+plunge_feed = 200.0
+stepover = 1.4
+stepdown = 0.15
+
+[cutting_data.Brass]
+spindle_speed = 12000.0
+feed_per_tooth = 0.025
+plunge_feed = 100.0
+stepover = 1.4
+stepdown = 0.1
+
+[cutting_data.Copper]
+spindle_speed = 12000.0
+feed_per_tooth = 0.025
+plunge_feed = 100.0
+stepover = 1.4
+stepdown = 0.1
+
+[cutting_data.Hardwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 1.4
+stepdown = 0.5
+
+[cutting_data.Plastic]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 1.4
+stepdown = 0.5
+
+[cutting_data.Softwood]
+spindle_speed = 10000.0
+feed_per_tooth = 0.1
+plunge_feed = 300.0
+stepover = 1.4
+stepdown = 1.0

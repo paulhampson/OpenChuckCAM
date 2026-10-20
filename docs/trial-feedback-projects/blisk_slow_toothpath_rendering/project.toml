@@ -1,0 +1,13 @@
+schema = 13
+name = "Blisk 1"
+
+[[models]]
+id = "58c319b3-5e53-4129-aa29-5a3fa545dd0d"
+path = "../blisk.stl"
+hash = "blake3:3b0b96c1299d41af17bc83244e4c356126cea969bea2daaf9f52d0f4ecccf996"
+
+[[models.transform]]
+kind = "translate"
+x = 9.175
+y = 0.0
+z = 0.0
