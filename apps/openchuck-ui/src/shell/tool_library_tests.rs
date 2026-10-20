@@ -15,6 +15,7 @@ use openchuck_app::tools::ToolLibrary;
 use super::frame_tests::Rig;
 use super::*;
 use crate::tool_library_window::{Chosen, Purpose, ToolLibraryWindow};
+use eframe::egui::{self, Event};
 
 fn library_folder(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -30,6 +31,28 @@ fn library_with(folder: &std::path::Path, kind: ToolType, name: &str) -> ToolId 
     let mut library = ToolLibrary::open(folder).unwrap();
     let mut draft = tool_library::new_draft(&library, kind).unwrap();
     tool_library::edit_name(&mut draft, name).unwrap();
+    tool_library::save_draft(&mut library, &draft, &[]).unwrap();
+    draft.id
+}
+
+/// A library in `folder` with a saved flat end mill that has cutting data for
+/// each of `materials`.
+fn library_with_cutting_data(folder: &std::path::Path, materials: &[&str]) -> ToolId {
+    use openchuck_app::setup::Millimetres;
+    use openchuck_app::tools::{CuttingData, FeedRate, SpindleSpeed};
+    let mut library = ToolLibrary::open(folder).unwrap();
+    let mut draft = tool_library::new_draft(&library, ToolType::FlatEnd).unwrap();
+    tool_library::edit_name(&mut draft, "6 mm flat").unwrap();
+    for material in materials {
+        let data = CuttingData {
+            spindle_speed: SpindleSpeed(10000.0),
+            feed_per_tooth: Millimetres(0.02),
+            plunge_feed: FeedRate(150.0),
+            stepover: Millimetres(0.8),
+            stepdown: Millimetres(1.0),
+        };
+        tool_library::edit_cutting_data(&mut draft, material, data, None).unwrap();
+    }
     tool_library::save_draft(&mut library, &draft, &[]).unwrap();
     draft.id
 }
@@ -265,4 +288,122 @@ fn req_tl_01_esc_closes_the_library_window_unless_a_field_has_the_keyboard() {
     rig.frame(Vec::new());
     assert!(!rig.shell.tool_library.is_open());
     std::fs::remove_dir_all(&folder).ok();
+}
+
+fn left_of(rig: &Rig, text: &str) -> f32 {
+    rig.text_rects()
+        .iter()
+        .find(|(t, _)| t == text)
+        .unwrap_or_else(|| panic!("{text:?} is not shown"))
+        .1
+        .left()
+}
+
+/// The tool library's panes keep their size and place whatever the mouse
+/// does (issue 190, F-34: the cutting material pane grew to the left
+/// whenever the mouse moved), at 100% and 120%.
+#[test]
+fn req_ui_16_req_tl_01_the_library_panes_do_not_move_with_the_mouse() {
+    for scale in [1.0, 1.2] {
+        let folder = library_folder("mouse");
+        let id = library_with_cutting_data(&folder, &["oak", "walnut", "aluminium"]);
+        let mut rig = Rig::cube("toollib-mouse", None);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.ctx.set_zoom_factor(scale);
+        rig.size = egui::vec2(1366.0 / scale, 768.0 / scale);
+        rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+        rig.shell
+            .open_tool_library(Purpose::Add, Some(Chosen::Library(id)));
+        // Frames run only while the mouse moves in the application, so a
+        // pane that creeps a little each frame must be caught from the
+        // first frames on, not after it has settled.
+        let headings = ["CUTTING DATA BY MATERIAL", "FLAT END MILLS"];
+        for _ in 0..3 {
+            rig.frame(Vec::new());
+        }
+        let before: Vec<f32> = headings.iter().map(|h| left_of(&rig, h)).collect();
+        for n in 0..30 {
+            rig.frame(Vec::new());
+            let now: Vec<f32> = headings.iter().map(|h| left_of(&rig, h)).collect();
+            assert_eq!(now, before, "frame {n} after opening, scale {scale}");
+        }
+        let over = |rig: &Rig, text: &str| {
+            let r = rig.text_rects().iter().find(|(t, _)| t == text).unwrap().1;
+            (r.center().x, r.center().y)
+        };
+        let spots = [
+            (100.0, 100.0),
+            (500.0, 300.0),
+            over(&rig, "oak"),
+            over(&rig, "walnut"),
+            over(&rig, "6 mm flat"),
+            over(&rig, "Add material"),
+        ];
+        for (x, y) in spots {
+            rig.frame(vec![Event::PointerMoved(egui::pos2(x, y))]);
+            for _ in 0..3 {
+                rig.frame(Vec::new());
+            }
+            let now: Vec<f32> = headings.iter().map(|h| left_of(&rig, h)).collect();
+            assert_eq!(now, before, "pointer at ({x}, {y}), scale {scale}");
+        }
+        std::fs::remove_dir_all(&folder).ok();
+    }
+}
+
+/// The tool list's scroll bar sits at the right edge of its pane, in a strip
+/// of its own, and does not lie over the search box or the rows (issue 191,
+/// F-35: it sat in the middle of the pane).
+#[test]
+fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
+    for scale in [1.0, 1.2] {
+        let folder = library_folder("bar");
+        let mut library = ToolLibrary::open(&folder).unwrap();
+        let mut first = None;
+        for i in 0..40 {
+            let mut draft = tool_library::new_draft(&library, ToolType::FlatEnd).unwrap();
+            tool_library::edit_name(&mut draft, &format!("Tool number {i}")).unwrap();
+            tool_library::save_draft(&mut library, &draft, &[]).unwrap();
+            first.get_or_insert(draft.id);
+        }
+        let mut rig = Rig::cube("toollib-bar", None);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.ctx.set_zoom_factor(scale);
+        rig.size = egui::vec2(1366.0 / scale, 768.0 / scale);
+        rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+        rig.shell
+            .open_tool_library(Purpose::Add, Some(Chosen::Library(first.unwrap())));
+        for _ in 0..30 {
+            rig.frame(Vec::new());
+        }
+        let search = rig
+            .entry_rects()
+            .into_iter()
+            .find(|r| r.left() < 60.0 && r.top() < 100.0)
+            .expect("the search box");
+        let bar = rig
+            .bar_rects()
+            .into_iter()
+            .find(|r| r.left() < search.right() + 20.0)
+            .expect("the list's scroll bar");
+        assert!(
+            search.right() - bar.right() < 8.0 && bar.right() <= search.right() + 1.0,
+            "the bar is not at the pane's edge: {bar:?} against {search:?}, scale {scale}"
+        );
+        for (text, r) in rig.text_rects() {
+            // The rows of the list: narrow texts inside the bar's height.
+            if r.width() < 150.0
+                && r.left() > 30.0
+                && r.left() < bar.left() - 8.0
+                && r.top() >= bar.top()
+                && r.bottom() <= bar.bottom()
+            {
+                assert!(
+                    r.right() <= bar.left(),
+                    "{text:?} lies under the bar: {r:?}, scale {scale}"
+                );
+            }
+        }
+        std::fs::remove_dir_all(&folder).ok();
+    }
 }

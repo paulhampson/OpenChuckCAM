@@ -124,14 +124,14 @@ pub fn tip(response: egui::Response, text: &str) -> egui::Response {
 /// A small outlined chip ("Not applied"): measured first and drawn in one
 /// allocated rectangle, so its place does not depend on the layout it is in
 /// (a frame in a right-to-left row lay outside the pane and widened it).
-pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) {
+pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) -> egui::Response {
     let galley = ui.painter().layout_no_wrap(
         text.to_owned(),
         egui::TextStyle::Small.resolve(ui.style()),
         colour,
     );
     let size = galley.size() + egui::vec2(10.0, 2.0);
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
     ui.painter().rect_stroke(
         rect,
         3.0,
@@ -140,6 +140,7 @@ pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) {
     );
     ui.painter()
         .galley(rect.center() - galley.size() / 2.0, galley, colour);
+    response
 }
 
 /// The label column: the label with its tooltip, and ↺ at its right end.

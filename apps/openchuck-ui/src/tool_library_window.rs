@@ -428,24 +428,28 @@ impl ToolLibraryWindow {
             .resizable(true)
             .show(ui, |ui| {
                 crate::theme::solid_scroll_bar(ui);
-                egui::ScrollArea::vertical().show(ui, |ui| match &tool {
-                    Some(tool) => self.data(ui, tool, project, acts),
-                    None => {
-                        ui.label(RichText::new("Choose a tool.").color(DARK.muted));
-                    }
-                });
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match &tool {
+                        Some(tool) => self.data(ui, tool, project, acts),
+                        None => {
+                            ui.label(RichText::new("Choose a tool.").color(DARK.muted));
+                        }
+                    });
             });
         egui::CentralPanel::default().show(ui, |ui| {
             crate::theme::solid_scroll_bar(ui);
-            egui::ScrollArea::vertical().show(ui, |ui| match &tool {
-                Some(tool) => self.tool_form(ui, tool, acts),
-                None => {
-                    ui.label(
-                        RichText::new("Choose a tool in the list, or make one with New tool.")
-                            .color(DARK.muted),
-                    );
-                }
-            });
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| match &tool {
+                    Some(tool) => self.tool_form(ui, tool, acts),
+                    None => {
+                        ui.label(
+                            RichText::new("Choose a tool in the list, or make one with New tool.")
+                                .color(DARK.muted),
+                        );
+                    }
+                });
         });
         self.dialogs(ui, acts);
     }
@@ -1522,77 +1526,83 @@ fn list(
             });
             ui.add_space(6.0);
         });
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        if let Some(project) = project {
-            let rows = library::project_rows(project, Some(lib), search);
-            group_title(ui, "This project");
-            if rows.is_empty() {
-                ui.label(RichText::new("No tools yet.").color(DARK.muted));
-            }
-            for row in rows {
-                let selected = chosen == Some(Chosen::Project(row.id));
-                let response = ui
-                    .horizontal(|ui| {
-                        let r = ui.selectable_label(selected, &row.name);
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            crate::shell::chip(ui, &format!("T{}", row.number));
-                        });
-                        r
-                    })
-                    .inner;
-                let used = if row.used_by.is_empty() {
-                    "No operation uses it.".to_owned()
-                } else {
-                    format!("Used by {}.", row.used_by.join(", "))
-                };
-                if response
-                    .on_hover_text(format!("{}\n{}\n{used}", row.summary, row.copy.text()))
-                    .clicked()
-                {
-                    acts.push(Act::Choose(Chosen::Project(row.id)));
+    crate::theme::solid_scroll_bar(ui);
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            if let Some(project) = project {
+                let rows = library::project_rows(project, Some(lib), search);
+                group_title(ui, "This project");
+                if rows.is_empty() {
+                    ui.label(RichText::new("No tools yet.").color(DARK.muted));
                 }
-            }
-        }
-        let groups = library::tool_list(lib, project, search);
-        if groups.is_empty() {
-            ui.add_space(6.0);
-            ui.label(RichText::new("No library tools match.").color(DARK.muted));
-        }
-        for (group, rows) in groups {
-            group_title(ui, group.title());
-            for row in rows {
-                let selected = chosen == Some(Chosen::Library(row.id));
-                let response = ui
-                    .horizontal(|ui| {
-                        let r = ui.selectable_label(selected, &row.name);
-                        if row.in_project {
+                for row in rows {
+                    let selected = chosen == Some(Chosen::Project(row.id));
+                    let response = ui
+                        .horizontal(|ui| {
+                            let r = ui.selectable_label(selected, &row.name);
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    crate::shell::chip(ui, "in project");
+                                    crate::shell::chip(ui, &format!("T{}", row.number));
                                 },
                             );
-                        }
-                        r
-                    })
-                    .inner;
-                if response.on_hover_text(&row.summary).clicked() {
-                    acts.push(Act::Choose(Chosen::Library(row.id)));
+                            r
+                        })
+                        .inner;
+                    let used = if row.used_by.is_empty() {
+                        "No operation uses it.".to_owned()
+                    } else {
+                        format!("Used by {}.", row.used_by.join(", "))
+                    };
+                    if response
+                        .on_hover_text(format!("{}\n{}\n{used}", row.summary, row.copy.text()))
+                        .clicked()
+                    {
+                        acts.push(Act::Choose(Chosen::Project(row.id)));
+                    }
                 }
             }
-        }
-        let problems = lib.problems();
-        if !problems.is_empty() {
-            ui.add_space(8.0);
-            ui.label(
-                RichText::new(format!("{} files could not be read:", problems.len()))
-                    .color(DARK.warning),
-            );
-            for p in problems {
-                ui.label(RichText::new(p).small().color(DARK.muted));
+            let groups = library::tool_list(lib, project, search);
+            if groups.is_empty() {
+                ui.add_space(6.0);
+                ui.label(RichText::new("No library tools match.").color(DARK.muted));
             }
-        }
-    });
+            for (group, rows) in groups {
+                group_title(ui, group.title());
+                for row in rows {
+                    let selected = chosen == Some(Chosen::Library(row.id));
+                    let response = ui
+                        .horizontal(|ui| {
+                            let r = ui.selectable_label(selected, &row.name);
+                            if row.in_project {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        crate::shell::chip(ui, "in project");
+                                    },
+                                );
+                            }
+                            r
+                        })
+                        .inner;
+                    if response.on_hover_text(&row.summary).clicked() {
+                        acts.push(Act::Choose(Chosen::Library(row.id)));
+                    }
+                }
+            }
+            let problems = lib.problems();
+            if !problems.is_empty() {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(format!("{} files could not be read:", problems.len()))
+                        .color(DARK.warning),
+                );
+                for p in problems {
+                    ui.label(RichText::new(p).small().color(DARK.muted));
+                }
+            }
+        });
 }
 
 /// The editor of one material's cutting data.

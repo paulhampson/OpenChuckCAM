@@ -122,14 +122,11 @@ pub(super) fn status_chip(ui: &mut egui::Ui, status: Option<&ItemStatus>) {
     }
 }
 
-/// A small bordered chip.
+/// A small bordered chip, measured and drawn in one rectangle so its place
+/// does not depend on the layout it is in (see `field_row::chip`).
 pub(crate) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    egui::Frame::new()
-        .stroke(Stroke::new(1.0, DARK.line))
-        .corner_radius(3.0)
-        .inner_margin(egui::Margin::symmetric(5, 0))
-        .show(ui, |ui| ui.label(RichText::new(text).small()))
-        .response
+    let colour = ui.visuals().text_color();
+    crate::field_row::chip(ui, text, colour)
 }
 
 /// The filled primary button (specification sections 5 and 14.1).

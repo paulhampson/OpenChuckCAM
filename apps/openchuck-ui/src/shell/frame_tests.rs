@@ -21,7 +21,7 @@ use crate::theme::width;
 /// A shell drawn frame by frame at a window size.
 pub(super) struct Rig {
     pub(super) shell: Shell,
-    ctx: egui::Context,
+    pub(super) ctx: egui::Context,
     pub(super) size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
     dirs: Vec<PathBuf>,
@@ -117,6 +117,23 @@ impl Rig {
         fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
             match shape {
                 egui::Shape::Rect(r) if r.fill == crate::theme::DARK.field => out.push(r.rect),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
+    /// The rectangles of every narrow, tall shape painted (a scroll bar's
+    /// handle or track).
+    pub(super) fn bar_rects(&self) -> Vec<egui::Rect> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
+            match shape {
+                egui::Shape::Rect(r) if r.rect.width() < 12.0 && r.rect.height() > 40.0 => {
+                    out.push(r.rect)
+                }
                 egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
                 _ => {}
             }
