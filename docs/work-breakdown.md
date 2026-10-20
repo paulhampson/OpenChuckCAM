@@ -167,7 +167,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | SU | 22 (SET-01 to SET-06 from the interface): the Setups "+" and the workflow bar's "Add setup" create the project's one setup ([decision 0144](decisions/0144-one-setup-from-the-interface.md), accepted 19 Oct 2026; OI-425 and OI-426 closed; built on `claude/lane-su-add-setup`, merged, pull request 149) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun; queued | ░░ | ░░ | ░░ | ░░ | ░░ |
 | IW | Trial feedback: import window fixes (fixed size, stable status row, Check and preview, raise on return; OI-430 to OI-432); draft pull request 161 on `claude/lane-iw-import-window-fixes` | ░░ | ░░ | ░░ | ░░ | ██ |
-| SL | Trial feedback (issue 142): Setup pane labels no longer overlap, with a placement function and leader lines (OI-440 to OI-442); draft pull request 162 on `claude/lane-sl-setup-callouts` | ░░ | ░░ | ░░ | ░░ | ██ |
+| SL | Bug fix (issue 142, trial feedback F-04): Setup pane labels placed so none overlaps another, with leader lines (`claude/lane-sl-setup-callouts`; no decision record, no format change; OI-440 to OI-442; merged, pull request 162) | | | | | ██ |
 | UAL | Trial feedback (issue 156): the user-action log (NFR-18), once-only terminal messages (OI-496), a private temporary log folder (OI-497; OI-476 to OI-480); draft pull request 163 on `claude/lane-ual-user-action-logging` | ░░ | ░░ | ░░ | ░░ | ██ |
 | BUG-SEL | Trial feedback (issues 151, 152, 159): selection usability, decision 0153 on its branch (OI-448 to OI-451); draft pull request 164 on `claude/lane-bug-sel-selection-ux` | ░░ | ░░ | ░░ | ░░ | ██ |
 | MV | Trial feedback: the menu bar and 3D view controls (issues 140 Post and Export enable rule, 141 View menu submenus and UI scale submenu, 143 the same view selector in every 3D viewport, 157 axes gadget bottom left without a box, 158 view-cube labels flat on the faces); on `claude/lane-mv-menus-and-view-controls`; records 0148 and 0149, OI-435 to OI-439 and OI-486 to OI-490; running, waiting on owner decisions | ░░ | ░░ | ░░ | ░░ | ██ |
@@ -224,6 +224,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | BUG-LOG | Nothing. Touches `apps/openchuck-ui` `main.rs`, `graphics.rs` (the logger) and the new `logging.rs`, the crate's `Cargo.toml` and the docs; stays out of the files of X4, SU, BI, XC and FIT. The About button is OI-454. |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| SL | X5 (the Setup panes) and X3 (merged) |
 | X8 | X2 to X7b and X9 |
 | IW, SL, UAL, BUG-SEL, MV | Nothing (trial-feedback fixes); each stays out of the files of the others |
 | DEP | Nothing |
