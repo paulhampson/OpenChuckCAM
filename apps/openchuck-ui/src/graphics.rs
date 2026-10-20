@@ -184,8 +184,8 @@ pub fn watch_for_stall() {
             }
             if stage() != Stage::Drawing {
                 let message = stall_message(stage(), STALL_LIMIT);
-                log::warn!("{message}");
                 eprintln!("{message}");
+                crate::logging::to_file(log::Level::Warn, &message);
             }
         });
 }
@@ -266,7 +266,7 @@ struct Logger {
     filter: Filter,
     started: Instant,
     /// The local log file (issue 155); `None` when no folder can be written.
-    sink: Option<crate::logging::Sink>,
+    sink: Option<std::sync::Arc<crate::logging::Sink>>,
 }
 
 impl log::Log for Logger {

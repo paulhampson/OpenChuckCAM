@@ -344,6 +344,16 @@ impl History {
         Self::step(project, &mut self.redo, &mut self.undo)
     }
 
+    /// The command undo would apply next.
+    pub(crate) fn next_undo(&self) -> Option<&Command> {
+        self.undo.last()
+    }
+
+    /// The command redo would apply next.
+    pub(crate) fn next_redo(&self) -> Option<&Command> {
+        self.redo.last()
+    }
+
     pub(crate) fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }

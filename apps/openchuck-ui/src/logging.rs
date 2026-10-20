@@ -13,15 +13,16 @@
 //! older ones move up, keeping [`KEEP`] old files. Panics are written too,
 //! because without a console nobody would see them.
 //!
-//! [`line`] is the one place a record becomes text, so a later structured
-//! event log (issue 156) can write through [`Sink::write_line`] without
-//! changing the rotation or the folder choice.
+//! [`line`] is the one place a record becomes text. The user's actions
+//! (requirement NFR-18; decision record 0157) are written through it by
+//! [`action`], to the file only, when the user's switch is on.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use openchuck_app::library::Platform;
 
@@ -34,6 +35,55 @@ pub const KEEP: usize = 3;
 const STEM: &str = "openchuckcam";
 
 static PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// The open log file and when logging started, for [`to_file`] and
+/// [`action`], which write outside the `log` facade.
+static SINK: OnceLock<(Arc<Sink>, Instant)> = OnceLock::new();
+
+/// Whether the user's actions are recorded (NFR-18): on until the settings
+/// say otherwise.
+static RECORDING: AtomicBool = AtomicBool::new(true);
+
+/// Held by the tests that change the switch, which is process-wide.
+#[cfg(test)]
+pub(crate) static SWITCH_LOCK: Mutex<()> = Mutex::new(());
+
+/// Turns the recording of the user's actions on or off (NFR-18).
+pub fn set_recording(on: bool) {
+    RECORDING.store(on, Ordering::Relaxed);
+}
+
+/// Whether the user's actions are recorded.
+pub fn recording() -> bool {
+    RECORDING.load(Ordering::Relaxed)
+}
+
+/// The text of one action line: the same layout as every record, level
+/// `INFO`, target `action`.
+pub fn action_line(at: Duration, text: &str) -> String {
+    line(at, log::Level::Info, "action", text)
+}
+
+/// Records one user action in the log file, when the switch is on and a log
+/// file is open. The text names the action and the kind and name of the
+/// item acted on, and parameter names: never values or file contents.
+pub fn action(text: &str) {
+    if !recording() {
+        return;
+    }
+    if let Some((sink, started)) = SINK.get() {
+        sink.write_line(&action_line(started.elapsed(), text));
+    }
+}
+
+/// Writes one record to the log file only, not to standard error. For the
+/// messages `main` prints itself with `eprintln!`, so that a terminal shows
+/// each once (OI-496).
+pub fn to_file(level: log::Level, message: &str) {
+    if let Some((sink, started)) = SINK.get() {
+        sink.write_line(&line(started.elapsed(), level, "openchuck_ui", message));
+    }
+}
 
 /// The log file in use, once [`open`] has found a writable place for it.
 pub fn log_path() -> Option<PathBuf> {
@@ -141,18 +191,105 @@ pub fn user_folder(
 }
 
 /// The folders to try in order: the override, beside the executable, the
-/// per-user folder, the system temp folder.
+/// per-user folder, and last the private folder in the system temp folder
+/// (see [`private_temp_folder`]).
 pub fn candidate_folders(
     over: Option<PathBuf>,
     exe: Option<&Path>,
     user: Option<PathBuf>,
-    temp: PathBuf,
+    temp: Option<PathBuf>,
 ) -> Vec<PathBuf> {
     over.into_iter()
         .chain(exe.and_then(Path::parent).map(Path::to_path_buf))
         .chain(user)
-        .chain(std::iter::once(temp.join("openchuckcam")))
+        .chain(temp)
         .collect()
+}
+
+/// The name of the log folder in the system temp folder: one per user, so
+/// that on a shared machine another user's folder is never reused (OI-497).
+pub fn temp_folder_name(user: &str) -> String {
+    let safe: String = user
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .collect();
+    if safe.is_empty() || safe.chars().all(|c| c == '.') {
+        format!("{STEM}-user")
+    } else {
+        format!("{STEM}-{safe}")
+    }
+}
+
+/// Whether `meta` describes a folder that belongs to the current user and
+/// that nobody else can change: a real directory (not a symbolic link), owned
+/// by this user, with no group or other permission at all (Unix: a log made
+/// in it is readable by others otherwise). On Windows
+/// the temp folder is already inside the user's profile, so a real directory
+/// is enough.
+#[cfg(unix)]
+fn is_private_folder(meta: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    meta.is_dir() && Some(meta.uid()) == current_uid() && meta.mode() & 0o077 == 0
+}
+
+#[cfg(not(unix))]
+fn is_private_folder(meta: &fs::Metadata) -> bool {
+    meta.is_dir()
+}
+
+/// The numeric ID of the current user, read from the owner of `/proc/self`
+/// (Linux) or of the home folder; `None` when neither is known, in which case
+/// the temp folder is not used.
+#[cfg(unix)]
+fn current_uid() -> Option<u32> {
+    use std::os::unix::fs::MetadataExt as _;
+    fs::metadata("/proc/self")
+        .or_else(|_| fs::metadata(std::env::var_os("HOME").unwrap_or_default()))
+        .ok()
+        .map(|m| m.uid())
+}
+
+/// Creates `base/name` for the log, private to the current user (mode 0700 on
+/// Unix), or accepts one that already is. `None` when the name exists and is
+/// not a real directory owned by this user, or is a symbolic link, or cannot
+/// be created: the last-resort folder must not be one another user prepared
+/// (OI-497).
+pub fn private_folder(base: &Path, name: &str) -> Option<PathBuf> {
+    let path = base.join(name);
+    #[cfg(unix)]
+    let builder = {
+        use std::os::unix::fs::DirBuilderExt as _;
+        let mut builder = fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder
+    };
+    #[cfg(not(unix))]
+    let builder = fs::DirBuilder::new();
+    match builder.create(&path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // `symlink_metadata` does not follow a link, so a link is not a
+            // directory here.
+            let meta = fs::symlink_metadata(&path).ok()?;
+            if !is_private_folder(&meta) {
+                return None;
+            }
+        }
+        Err(_) => return None,
+    }
+    Some(path)
+}
+
+/// The last-resort log folder in `temp`, named for `user`.
+pub fn private_temp_folder(temp: &Path, user: &str) -> Option<PathBuf> {
+    private_folder(temp, &temp_folder_name(user))
+}
+
+fn user_name() -> String {
+    ["USER", "USERNAME", "LOGNAME"]
+        .iter()
+        .find_map(|name| std::env::var(name).ok().filter(|v| !v.is_empty()))
+        .unwrap_or_default()
 }
 
 fn default_folders() -> Vec<PathBuf> {
@@ -163,7 +300,7 @@ fn default_folders() -> Vec<PathBuf> {
         over,
         std::env::current_exe().ok().as_deref(),
         user_folder(Platform::current(), |name| std::env::var_os(name)),
-        std::env::temp_dir(),
+        private_temp_folder(&std::env::temp_dir(), &user_name()),
     )
 }
 
@@ -190,11 +327,14 @@ impl Sink {
     }
 }
 
-/// Opens the log file in the default places and remembers its path.
-pub fn open() -> Option<Sink> {
+/// Opens the log file in the default places and remembers its path and the
+/// start time.
+pub fn open() -> Option<Arc<Sink>> {
     let (file, path) = open_in(&default_folders(), MAX_BYTES, KEEP)?;
     let _ = PATH.set(path);
-    Some(Sink::new(file))
+    let sink = Arc::new(Sink::new(file));
+    let _ = SINK.set((Arc::clone(&sink), Instant::now()));
+    Some(sink)
 }
 
 /// One log line: seconds since start, level, target and message.
@@ -220,9 +360,15 @@ pub fn panic_text(
     format!("panic in thread '{thread}'{place}: {message}\n{backtrace}")
 }
 
-/// Makes a panic reach the log (and still standard error, through the hook
-/// that was there). The message is the panic's own text; no file contents.
+/// Makes a panic reach the log file, and still standard error through the
+/// hook that was there (so a terminal shows it once, even with `RUST_LOG=off`).
+/// The message is the panic's own text; no file contents.
 pub fn install_panic_hook() {
+    install_panic_hook_to(|text| to_file(log::Level::Error, text));
+}
+
+/// [`install_panic_hook`], writing the panic text with `write`.
+pub fn install_panic_hook_to(write: impl Fn(&str) + Send + Sync + 'static) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let payload = info.payload();
@@ -238,8 +384,7 @@ pub fn install_panic_hook() {
             thread.name().unwrap_or("unnamed"),
             &std::backtrace::Backtrace::force_capture().to_string(),
         );
-        log::error!("{text}");
-        log::logger().flush();
+        write(&text);
         previous(info);
     }));
 }
@@ -343,14 +488,87 @@ mod tests {
             Some(PathBuf::from("/o")),
             Some(Path::new("/opt/oc/openchuck-ui")),
             Some(PathBuf::from("/home/u/logs")),
-            PathBuf::from("/tmp"),
+            Some(PathBuf::from("/tmp/openchuckcam-u")),
         );
         assert_eq!(
             folders,
-            ["/o", "/opt/oc", "/home/u/logs", "/tmp/openchuckcam"].map(PathBuf::from)
+            ["/o", "/opt/oc", "/home/u/logs", "/tmp/openchuckcam-u"].map(PathBuf::from)
         );
-        let bare = candidate_folders(None, None, None, PathBuf::from("/tmp"));
-        assert_eq!(bare, vec![PathBuf::from("/tmp/openchuckcam")]);
+        let bare = candidate_folders(None, None, None, None);
+        assert!(bare.is_empty());
+    }
+
+    #[test]
+    fn req_nfr_17_temp_folder_is_named_for_the_user() {
+        assert_eq!(temp_folder_name("alice"), "openchuckcam-alice");
+        // Path separators and dots alone cannot make a path out of the name.
+        assert_eq!(temp_folder_name("a/b\\c"), "openchuckcam-abc");
+        assert_eq!(temp_folder_name(".."), "openchuckcam-user");
+        assert_eq!(temp_folder_name(""), "openchuckcam-user");
+    }
+
+    #[test]
+    fn req_nfr_17_private_folder_is_created_and_reused() {
+        let base = scratch("private");
+        let made = private_folder(&base, "openchuckcam-t").unwrap();
+        assert!(made.is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(
+                fs::metadata(&made).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+        // A second run finds its own folder again.
+        assert_eq!(private_folder(&base, "openchuckcam-t"), Some(made));
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn req_nfr_17_private_folder_refuses_a_file_in_its_place() {
+        let base = scratch("private-file");
+        fs::write(base.join("openchuckcam-t"), b"x").unwrap();
+        assert_eq!(private_folder(&base, "openchuckcam-t"), None);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn req_nfr_17_private_folder_cannot_be_created_under_a_file() {
+        let base = scratch("private-blocked");
+        fs::write(base.join("f"), b"x").unwrap();
+        assert_eq!(private_folder(&base.join("f"), "openchuckcam-t"), None);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn req_nfr_17_private_folder_refuses_a_symbolic_link() {
+        let base = scratch("private-link");
+        let elsewhere = base.join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, base.join("openchuckcam-t")).unwrap();
+        assert_eq!(private_folder(&base, "openchuckcam-t"), None);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn req_nfr_17_private_folder_refuses_one_others_can_use() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let base = scratch("private-open");
+        // Writable by others, and readable by them (a log made in it would
+        // be too under the usual umask): both are refused.
+        for mode in [0o777, 0o755, 0o750, 0o705] {
+            let open = base.join(format!("openchuckcam-{mode:o}"));
+            fs::create_dir(&open).unwrap();
+            fs::set_permissions(&open, fs::Permissions::from_mode(mode)).unwrap();
+            assert_eq!(
+                private_folder(&base, &format!("openchuckcam-{mode:o}")),
+                None
+            );
+        }
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -427,25 +645,11 @@ mod tests {
 
     #[test]
     fn req_nfr_17_panic_hook_writes_to_the_file() {
-        // The hook and the logger are process-wide, so this is the one test
-        // that installs them; it logs through a private Logger to a file.
-        struct ToFile(Sink);
-        impl log::Log for ToFile {
-            fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-                true
-            }
-            fn log(&self, record: &log::Record<'_>) {
-                self.0.write_line(&record.args().to_string());
-            }
-            fn flush(&self) {}
-        }
+        // The hook is process-wide, so this is the one test that installs it.
         let dir = scratch("hook");
         let (file, path) = open_in(std::slice::from_ref(&dir), 100, 2).unwrap();
-        if log::set_boxed_logger(Box::new(ToFile(Sink::new(file)))).is_err() {
-            return; // another test in this process owns the logger
-        }
-        log::set_max_level(log::LevelFilter::Error);
-        install_panic_hook();
+        let sink = Sink::new(file);
+        install_panic_hook_to(move |text| sink.write_line(text));
         let outcome = std::panic::catch_unwind(|| panic!("test panic text"));
         let _ = std::panic::take_hook();
         assert!(outcome.is_err());
@@ -453,6 +657,26 @@ mod tests {
         assert!(written.contains("test panic text"), "{written}");
         assert!(written.contains("logging.rs"), "{written}");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn req_nfr_18_action_lines_use_the_log_layout() {
+        let text = action_line(Duration::from_millis(2500), "command: Remove setup 'S'");
+        assert_eq!(text, "[   2.500 INFO  action] command: Remove setup 'S'");
+    }
+
+    #[test]
+    fn req_nfr_18_recording_is_on_by_default_and_can_be_turned_off() {
+        // With no log file open (tests do not call `open`) nothing is written
+        // either way.
+        let _held = SWITCH_LOCK.lock().unwrap();
+        assert!(recording());
+        set_recording(false);
+        assert!(!recording());
+        action("ignored");
+        to_file(log::Level::Warn, "ignored");
+        set_recording(true);
+        assert!(recording());
     }
 
     #[test]

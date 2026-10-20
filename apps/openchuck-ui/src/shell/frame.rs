@@ -601,6 +601,10 @@ impl Shell {
                     ui.close();
                 }
                 ui.separator();
+                if ui.button("Settings…").clicked() {
+                    self.dialog = Some(Dialog::Settings);
+                    ui.close();
+                }
                 if ui.button("Quit").clicked() {
                     self.request(Next::Quit, &ctx);
                 }
@@ -808,6 +812,10 @@ impl Shell {
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard shortcuts…").clicked() {
                     self.dialog = Some(Dialog::Keys);
+                    ui.close();
+                }
+                if ui.button("Settings…").clicked() {
+                    self.dialog = Some(Dialog::Settings);
                     ui.close();
                 }
                 if ui.button("About OpenChuckCAM…").clicked() {

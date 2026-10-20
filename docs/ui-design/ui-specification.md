@@ -722,7 +722,8 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - display units;
   - recent projects;
   - remembered sections;
-  - the export acknowledgements of 11.6.
+  - the export acknowledgements of 11.6;
+  - whether the user's actions are recorded in the log (NFR-18, decision 0157): on by default, one checkbox "Record my actions in the log" in a small Settings dialog (File, Settings…, and the same item in Help; both open the same dialog) with a sentence saying what is recorded (names, never values), that the log stays on the computer, and the log's path.
 - **Where.** The platform configuration folder of decision 0029 item 15: `OpenChuckCAM/` beside `machines/` and `tools/`, under `$XDG_CONFIG_HOME` (else `~/.config`), `%APPDATA%` or `~/Library/Application Support`.
 - **Format.** One `settings.toml`, written with the `toml` crate already in the workspace. Not eframe persistence, which would bring the `directories` crate that decision 0029 declined.
 - **When the file is bad.** A missing or unreadable file gives defaults and a message, never a crash (NFR-07).
