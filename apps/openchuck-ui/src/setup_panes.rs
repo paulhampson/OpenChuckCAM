@@ -258,7 +258,11 @@ impl Labels {
                 priority: Priority::Fixed,
             });
         }
-        let layout = label_layout::place(bounds, &requests);
+        let (layout, note) = place_with_note(bounds, &mut requests, |text| {
+            painter
+                .layout_no_wrap(text.to_owned(), font(), roles::OVERLAY_MUTED)
+                .size()
+        });
         for placed in layout.placed.iter().filter(|p| p.id < self.items.len()) {
             let Some(item) = self.items.get(placed.id) else {
                 continue;
@@ -276,16 +280,59 @@ impl Labels {
                 item.colour,
             );
         }
-        if !layout.hidden.is_empty() {
+        if let Some((text, rect)) = note {
             painter.text(
-                bounds.right_bottom() - vec2(8.0, 8.0),
+                rect.right_bottom(),
                 Align2::RIGHT_BOTTOM,
-                format!("+{} labels hidden; see the inspector", layout.hidden.len()),
+                text,
                 font(),
                 roles::OVERLAY_MUTED,
             );
         }
     }
+}
+
+/// The note at the pane's corner that says how many labels were left out.
+fn hidden_note(count: usize) -> String {
+    format!("+{count} labels hidden; see the inspector")
+}
+
+/// Places `requests` inside `bounds`. When some are hidden, the note about them takes the
+/// bottom right corner as a [`Priority::Fixed`] request that the others keep clear of, so the
+/// note never overprints a label (OI-505); the note adds its own request to `requests` (last).
+/// Returns the layout and the note's text and rectangle, `None` when nothing was hidden.
+fn place_with_note(
+    bounds: Rect,
+    requests: &mut Vec<label_layout::Request>,
+    measure: impl Fn(&str) -> egui::Vec2,
+) -> (label_layout::Layout, Option<(String, Rect)>) {
+    let base = requests.len();
+    let mut layout = label_layout::place(bounds, requests);
+    let mut note = None;
+    // Reserving the note can push another label out and lengthen its count, so go on until
+    // the count stops growing; it cannot exceed the number of requests.
+    while !layout.hidden.is_empty() {
+        let text = hidden_note(layout.hidden.len());
+        let rect = Align2::RIGHT_BOTTOM
+            .anchor_size(bounds.right_bottom() - vec2(8.0, 8.0), measure(&text));
+        requests.truncate(base);
+        requests.push(label_layout::Request {
+            id: base,
+            anchor: rect.center(),
+            preferred: rect,
+            priority: Priority::Fixed,
+        });
+        let next = label_layout::place(bounds, requests);
+        let grew = next.hidden.len() > layout.hidden.len();
+        layout = next;
+        note = Some((text, rect));
+        if !grew {
+            break;
+        }
+    }
+    // A note's own request is never a label of the caller.
+    layout.placed.retain(|p| note.is_none() || p.id != base);
+    (layout, note)
 }
 
 /// A dimension: a line with ticks at both ends, and its text.
@@ -638,7 +685,9 @@ fn end(
             None => None,
         })
         .fold(10.0, f64::max);
-    let body = Rect::from_min_max(rect.min + vec2(0.0, 28.0), rect.max - vec2(0.0, 28.0));
+    // Room at each side for the −Y and +Y labels, so none touches the pane's edge or the
+    // front pane (OI-528).
+    let body = Rect::from_min_max(rect.min + vec2(52.0, 28.0), rect.max - vec2(52.0, 28.0));
     let map = Map::fit(body, (-reach, reach), (-reach, reach));
     let centre = map.at(0.0, 0.0);
     labels.fixed(
@@ -1181,6 +1230,58 @@ mod tests {
             let shown = texts.iter().filter(|(t, _)| t.starts_with("Tab ")).count();
             let note = texts.iter().any(|(t, _)| t.contains("labels hidden"));
             assert_eq!(note, shown < 21, "{window:?} at {scale}: {shown}");
+        }
+    }
+
+    #[test]
+    fn req_ui_25_the_hidden_labels_note_keeps_clear_of_every_label() {
+        // OI-505: the note at the corner is reserved like a chip, so no label is placed
+        // under it, whatever the pane's size.
+        let bounds = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 120.0));
+        let label = |id: usize, x: f32, y: f32, priority| label_layout::Request {
+            id,
+            anchor: pos2(x, y),
+            preferred: Rect::from_min_size(pos2(x, y), vec2(60.0, 16.0)),
+            priority,
+        };
+        // Essential labels that fill the bottom right, and many normal ones that cannot fit.
+        let mut requests = vec![label(0, 240.0, 100.0, Priority::Essential)];
+        for k in 1..60 {
+            requests.push(label(
+                k,
+                20.0 + (k % 5) as f32 * 50.0,
+                20.0,
+                Priority::Normal,
+            ));
+        }
+        let measure = |text: &str| vec2(text.len() as f32 * 6.0, 14.0);
+        let (layout, note) = place_with_note(bounds, &mut requests, measure);
+        assert!(!layout.hidden.is_empty());
+        let (text, rect) = note.expect("a note when labels are hidden");
+        assert_eq!(text, hidden_note(layout.hidden.len()));
+        assert!(bounds.contains_rect(rect), "{rect:?}");
+        for placed in &layout.placed {
+            assert!(!placed.rect.intersects(rect), "{placed:?} under {rect:?}");
+        }
+        // The essential label stays shown (never hidden), though it asked for the corner.
+        assert!(!layout.hidden.contains(&0));
+        // Nothing hidden: no note, and no extra request left behind.
+        let mut few = vec![label(0, 20.0, 20.0, Priority::Normal)];
+        let (layout, note) = place_with_note(bounds, &mut few, measure);
+        assert!(layout.hidden.is_empty() && note.is_none());
+        assert_eq!(few.len(), 1);
+    }
+
+    #[test]
+    fn req_ui_25_the_end_views_side_labels_stay_inside_its_pane() {
+        // OI-528: "−Y" and "front" touched the edge of the pane, against the front view.
+        let size = egui::vec2(900.0, 600.0);
+        let texts = text_rects(&tab_panes(), size, false);
+        let split = size.x - END_PANE_WIDTH;
+        for needle in ["−Y", "front", "+Y"] {
+            let (_, rect) = texts.iter().find(|(t, _)| t == needle).unwrap();
+            assert!(rect.min.x >= split + 4.0, "{needle} at {rect:?}");
+            assert!(rect.max.x <= size.x - 4.0, "{needle} at {rect:?}");
         }
     }
 

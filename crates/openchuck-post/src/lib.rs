@@ -3,10 +3,12 @@
 //!
 //! Architecture section 5.3; requirements GC-02 to GC-10, GC-13, INT-03.
 //!
-//! Slice 6 is under way. So far: the neutral machine program stage
-//! ([`to_machine_program`]) and the per-controller feed rules ([`FeedRule`],
-//! decision 0019 item 5). The template engine, post definitions and the
-//! `PostProcessor` trait follow.
+//! The neutral machine program stage ([`to_machine_program`]), the
+//! per-controller feed rules ([`FeedRule`], decision 0019 item 5), the template
+//! engine, post definitions ([`PostDefinition`]) and the built-in posts
+//! ([`builtin`]), which this crate carries in its `posts/` folder (decision
+//! 0103). Generated G-code is the user's to verify before it runs on a machine
+//! (NFR-12).
 
 #![warn(missing_docs)]
 

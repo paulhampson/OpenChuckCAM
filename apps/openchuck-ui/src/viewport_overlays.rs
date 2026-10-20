@@ -575,7 +575,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             );
         }
     }
-    if viewport.shows_draft() {
+    if viewport.shows_unapplied() {
         let text = "Showing unapplied workholding";
         let galley = painter.layout_no_wrap(text.to_owned(), font.clone(), roles::OVERLAY_TEXT);
         let chip = Rect::from_center_size(

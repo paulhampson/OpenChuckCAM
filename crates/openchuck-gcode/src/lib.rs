@@ -3,9 +3,10 @@
 //!
 //! Architecture section 5.3 and 9; requirements GC-08, SIM-09.
 //!
-//! The in-house reader ([`read`], decision record 0005) and the modal replay
-//! ([`replay`]) are built; the checks and the comparison with the IR follow in
-//! this slice.
+//! The in-house reader ([`read`], decision record 0005), the modal replay
+//! ([`replay`]), the static checks ([`static_check`]), the comparison with the
+//! toolpath IR ([`compare`]) and with a simulator's report
+//! ([`compare_simulator`]).
 
 #![warn(missing_docs)]
 

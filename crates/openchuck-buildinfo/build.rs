@@ -59,7 +59,7 @@ fn rerun_when_the_tree_changes(root: &Path) {
     }
     // LICENSES holds the texts the About window includes; the repository root is not watched, as
     // it holds `target/`.
-    for dir in ["crates", "apps", "benches", "posts", "xtask", "LICENSES"] {
+    for dir in ["crates", "apps", "benches", "xtask", "LICENSES"] {
         println!("cargo:rerun-if-changed={}", root.join(dir).display());
     }
     println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");

@@ -22,7 +22,7 @@ use crate::theme::width;
 pub(super) struct Rig {
     pub(super) shell: Shell,
     ctx: egui::Context,
-    size: egui::Vec2,
+    pub(super) size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
     dirs: Vec<PathBuf>,
 }
@@ -117,6 +117,23 @@ impl Rig {
         fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
             match shape {
                 egui::Shape::Rect(r) if r.fill == crate::theme::DARK.field => out.push(r.rect),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
+    /// Every text painted with the rectangle it covers.
+    pub(super) fn text_rects(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) => out.push((
+                    t.galley.text().to_string(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
                 egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
                 _ => {}
             }
@@ -295,6 +312,20 @@ fn req_ui_16_panels_collapse_with_ctrl_1_2_3_and_on_a_small_window() {
     for region in Region::ALL {
         assert!(!rig.shell.collapsed(region), "{region:?}");
     }
+}
+
+#[test]
+fn req_ui_15_a_dock_splitter_reset_is_kept_for_the_next_start() {
+    // CodeRabbit on pull request 173: the reset wrote the default but never marked the
+    // settings changed, so it was lost on a restart.
+    let mut rig = Rig::cube("frame-dock-reset", None);
+    rig.shell.settings.dock.size = 300.0;
+    rig.frame(Vec::new());
+    rig.shell.settings_changed = None;
+    rig.shell.reset = Some(Region::Dock);
+    rig.frame(Vec::new());
+    assert!((rig.shell.settings.dock.size - 196.0).abs() < 0.01);
+    assert!(rig.shell.settings_changed.is_some());
 }
 
 #[test]
@@ -677,6 +708,10 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
         rig.frame(Vec::new());
         std::thread::sleep(Duration::from_millis(5));
     }
+    // Nothing edited: the defaults offered are drawn, and the chip does not say anything is
+    // unapplied (OI-528).
+    rig.frame(Vec::new());
+    assert!(!rig.shell.viewport.shows_unapplied());
     rig.shell
         .workholding_panel
         .as_mut()
@@ -692,6 +727,7 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
     }];
     rig.frame(Vec::new());
     assert!(rig.shell.viewport.shows_draft());
+    assert!(rig.shell.viewport.shows_unapplied());
     // Still drawn with an operation selected (11.7: the draft is kept).
     let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
     rig.shell.select(Selection::Operation(op));

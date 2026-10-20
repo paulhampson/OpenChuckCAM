@@ -6,7 +6,6 @@
 //! (UI-21) and not built.
 
 use eframe::egui;
-use openchuck_app::scene::SceneView;
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::viewport::{SimulateShow, ViewStep, Viewport, Visibility};
@@ -81,13 +80,6 @@ pub const SIMULATE_SHOW: [(SimulateShow, &str); 3] = [
     (SimulateShow::Both, "Both"),
 ];
 
-/// Whether the scene shows a model of the project. A preview or a check
-/// overlay is a mesh with no model, and gives the view directions nothing to
-/// look at (decision 0148 item 2).
-fn scene_has_model(view: &SceneView) -> bool {
-    view.meshes.iter().any(|m| m.model.is_some())
-}
-
 /// Draws the strip in `strip` and applies what is clicked. What does not
 /// fit is cut off, never pushed over the view or past the window.
 pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
@@ -105,9 +97,9 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             segments(ui, &PROJECTIONS, &mut projection);
             viewport.set_projection(projection);
             // The toolbar belongs to a 3D view, never to the Setup panes; the
-            // buttons follow the View menu, so an import preview alone (a mesh
-            // that belongs to no model) leaves them off.
-            if directions_unavailable(false, scene_has_model(viewport.view())).is_none() {
+            // buttons follow the View menu by the same rule, on whether the
+            // project holds a model (an import preview alone does not count).
+            if directions_unavailable(false, viewport.project_has_models()).is_none() {
                 ui.separator();
                 for (view, name) in VIEWS {
                     if ui
@@ -123,7 +115,13 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             if ui.button("Fit").on_hover_text("Fit all (F)").clicked() {
                 viewport.fit();
             }
-            show_or_hide(ui, viewport);
+            // Simulate's "Show" choices stay in the strip while they fit after the other
+            // controls, else they move into the "Show" menu, so none is cut off (OI-529).
+            let inline_show = step == ViewStep::Simulate
+                && ui.available_width()
+                    >= text_width(ui, "Show ▾") + button_extra(ui) + simulate_show_width(ui);
+            let in_menu = step == ViewStep::Simulate && !inline_show;
+            show_or_hide(ui, viewport, in_menu);
             if step == ViewStep::Model && viewport.has_findings() {
                 let mut show = viewport.visibility();
                 if ui
@@ -134,7 +132,7 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
                     viewport.set_visibility(show);
                 }
             }
-            if step == ViewStep::Simulate {
+            if inline_show {
                 ui.separator();
                 ui.label("Show");
                 segments(ui, &SIMULATE_SHOW_TIPS, &mut viewport.simulate_show);
@@ -162,6 +160,29 @@ const SIMULATE_SHOW_TIPS: [(SimulateShow, &str, &str); 3] = [
     ),
 ];
 
+/// The width of `text` in the body font.
+fn text_width(ui: &egui::Ui, text: &str) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    ui.painter()
+        .layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE)
+        .size()
+        .x
+}
+
+/// What a button adds to its text: its padding on both sides and the gap to the next widget.
+fn button_extra(ui: &egui::Ui) -> f32 {
+    ui.spacing().button_padding.x * 2.0 + ui.spacing().item_spacing.x
+}
+
+/// The room Simulate's "Show" label and choices take in the strip, with their separator.
+fn simulate_show_width(ui: &egui::Ui) -> f32 {
+    let choices: f32 = SIMULATE_SHOW
+        .iter()
+        .map(|(_, name)| text_width(ui, name) + ui.spacing().button_padding.x * 2.0)
+        .sum();
+    ui.spacing().item_spacing.x * 3.0 + 1.0 + text_width(ui, "Show") + choices + 8.0
+}
+
 /// A segmented control: one selectable button for each choice.
 fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, choices: &[(T, &str, &str)], value: &mut T) {
     ui.scope(|ui| {
@@ -174,7 +195,7 @@ fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, choices: &[(T, &str, &str)],
 }
 
 /// The "Show or hide" button and its list (V).
-fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport) {
+fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport, simulate_choices: bool) {
     let button = ui.button("Show ▾").on_hover_text(
         "Show or hide: part, stock, axes, held regions and tabs, selections, toolpaths (V)",
     );
@@ -191,6 +212,11 @@ fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport) {
                 ui.checkbox(field(&mut show), name);
             }
             ui.weak(SHOW_OR_HIDE_NOTE);
+            if simulate_choices {
+                ui.separator();
+                ui.label("Simulate shows");
+                segments(ui, &SIMULATE_SHOW_TIPS, &mut viewport.simulate_show);
+            }
         });
     viewport.show_menu_open = open;
     viewport.set_visibility(show);
@@ -213,35 +239,79 @@ mod tests {
         );
     }
 
+    /// The texts one frame of the strip paints, `width` wide, on the Simulate step.
+    fn strip_texts(width: f32, menu_open: bool) -> Vec<(String, egui::Rect)> {
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_project_has_models(true);
+        viewport.set_step(Some(ViewStep::Simulate));
+        viewport.show_menu_open = menu_open;
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(width, 400.0));
+        let strip = egui::Rect::from_min_size(screen.min, egui::vec2(width, HEIGHT));
+        let mut texts = Vec::new();
+        // The popup is placed in the frame after the button is known.
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| show(ui, &mut viewport, strip));
+            output.textures_delta.clear();
+            texts.clear();
+            for clipped in &output.shapes {
+                if let egui::Shape::Text(t) = &clipped.shape {
+                    texts.push((
+                        t.galley.text().to_owned(),
+                        egui::Rect::from_min_size(t.pos, t.galley.size()),
+                    ));
+                }
+            }
+        }
+        texts
+    }
+
     #[test]
-    fn req_ui_02_an_import_preview_alone_leaves_the_view_directions_off_as_in_the_menu() {
-        use openchuck_app::project::id::ModelId;
-        use openchuck_app::scene::{SceneMesh, SceneRole};
-        let mesh = |model| SceneMesh {
-            role: SceneRole::Part,
-            model,
-            mesh: Default::default(),
-            feature_edges: Vec::new(),
-            brep: None,
-        };
-        // A project with no models, showing only an import preview.
-        let preview = SceneView {
-            meshes: vec![mesh(None)],
-            ..SceneView::default()
-        };
-        assert!(!scene_has_model(&preview));
+    fn req_ui_03_simulates_show_choices_are_never_cut_off_they_move_into_the_show_menu() {
+        // OI-529. Wide: the choices are in the strip, each inside it.
+        let wide = strip_texts(1100.0, false);
+        for name in ["Stock", "Part + path", "Both"] {
+            let (_, rect) = wide
+                .iter()
+                .find(|(t, _)| t == name)
+                .unwrap_or_else(|| panic!("{name} in the wide strip"));
+            assert!(rect.max.x <= 1100.0, "{name} at {rect:?}");
+        }
+        // Narrow (583 pixels, the strip at 1366 by 768 with the inspector open): none is
+        // painted in the strip, and none is cut off.
+        let narrow = strip_texts(583.0, false);
+        assert!(!narrow.iter().any(|(t, _)| t == "Part + path"));
+        assert!(
+            narrow.iter().all(|(_, r)| r.max.x <= 583.0 + 1.0),
+            "{narrow:?}"
+        );
+        // They are in the Show menu instead.
+        let open = strip_texts(583.0, true);
+        assert!(open.iter().any(|(t, _)| t == "Part + path"), "{open:?}");
+        assert!(open.iter().any(|(t, _)| t == "Simulate shows"));
+    }
+
+    #[test]
+    fn req_ui_02_the_toolbar_and_the_menu_share_one_rule_on_the_projects_models() {
+        // OI-514: the rule reads whether the project holds a model, from the one value the
+        // shell sets, so an import preview alone (no model in the project) leaves the
+        // directions off in both, and a project with a model turns them on in both.
+        let mut viewport = Viewport::new(true);
+        assert!(!viewport.project_has_models());
         assert_eq!(
-            directions_unavailable(false, scene_has_model(&preview)),
+            directions_unavailable(false, viewport.project_has_models()),
             Some("Import a model first")
         );
-        // A model of the project is something to look at, preview or not.
-        let shown = SceneView {
-            meshes: vec![mesh(None), mesh(Some(ModelId::new()))],
-            ..SceneView::default()
-        };
-        assert!(scene_has_model(&shown));
-        assert_eq!(directions_unavailable(false, scene_has_model(&shown)), None);
-        assert!(!scene_has_model(&SceneView::default()));
+        viewport.set_project_has_models(true);
+        assert!(viewport.project_has_models());
+        assert_eq!(
+            directions_unavailable(false, viewport.project_has_models()),
+            None
+        );
     }
 
     #[test]

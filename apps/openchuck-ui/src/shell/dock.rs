@@ -172,30 +172,22 @@ impl Shell {
                     } else {
                         egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 2))
                     };
+                    let source_name = m.source.map(|_| m.source_name.as_str());
                     let response = frame
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                marks::severity(ui, m.severity);
-                                ui.add(egui::Label::new(&m.text).wrap());
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if let Some(action) = m.action
-                                            && ui.link(action.label()).clicked()
-                                        {
-                                            act = Some(action);
-                                        }
-                                        if let Some(source) = m.source
-                                            && ui
-                                                .link(&m.source_name)
-                                                .on_hover_text("Select it")
-                                                .clicked()
-                                        {
-                                            show = Some(source);
-                                        }
-                                    },
-                                );
-                            });
+                            let clicked = row_with_links(
+                                ui,
+                                |ui| {
+                                    marks::severity(ui, m.severity);
+                                },
+                                &m.text,
+                                [source_name, m.action.map(|a| a.label())],
+                            );
+                            match clicked {
+                                Some(0) => show = m.source,
+                                Some(_) => act = m.action,
+                                None => {}
+                            }
                         })
                         .response;
                     if highlighted {
@@ -320,24 +312,17 @@ impl Shell {
                     ui.label(RichText::new(text).color(DARK.muted));
                 }
                 for check in rows {
-                    ui.horizontal(|ui| {
+                    let mark = |ui: &mut egui::Ui| {
                         if check.passed {
                             marks::tick(ui);
                         } else {
                             marks::severity(ui, Severity::Warning);
                         }
-                        ui.add(egui::Label::new(&check.text).wrap());
-                        if let Some(action) = check.action {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui.link(action.label()).clicked() {
-                                        act = Some(action);
-                                    }
-                                },
-                            );
-                        }
-                    });
+                    };
+                    let label = check.action.map(|a| a.label());
+                    if row_with_links(ui, mark, &check.text, [label, None]) == Some(0) {
+                        act = check.action;
+                    }
                 }
             });
         if let Some(action) = act {
@@ -359,6 +344,51 @@ impl Shell {
             }
         }
     }
+}
+
+/// One row of a dock list: a mark, a sentence that wraps, and up to two links after it. The
+/// sentence gets the width the links leave, so a link never lies over the wrapped text
+/// (UI-16; OI-525). Returns the index of the link clicked.
+fn row_with_links(
+    ui: &mut egui::Ui,
+    mark: impl FnOnce(&mut egui::Ui),
+    text: &str,
+    links: [Option<&str>; 2],
+) -> Option<usize> {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let spacing = ui.spacing().item_spacing.x;
+    let links_width: f32 = links
+        .iter()
+        .flatten()
+        .map(|l| {
+            ui.painter()
+                .layout_no_wrap((*l).to_owned(), font.clone(), DARK.muted)
+                .size()
+                .x
+                + spacing
+        })
+        .sum();
+    let mut clicked = None;
+    ui.horizontal(|ui| {
+        mark(ui);
+        let width = (ui.available_width() - links_width - spacing).max(60.0);
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, 0.0),
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.set_max_width(width);
+                ui.add(egui::Label::new(text).wrap());
+            },
+        );
+        for (index, link) in links.iter().enumerate() {
+            if let Some(link) = link
+                && ui.link(*link).clicked()
+            {
+                clicked = Some(index);
+            }
+        }
+    });
+    clicked
 }
 
 #[cfg(test)]

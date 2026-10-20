@@ -37,7 +37,9 @@ repository = "https://github.com/paulhampson/OpenChuckCAM"
 authors = ["OpenChuckCAM contributors"]
 
 [workspace.dependencies]
-# Project crates. Path dependencies carry a version so `cargo publish` works unchanged.
+# Project crates. Path dependencies carry a version so `cargo publish` works unchanged, except
+# the test-only `openchuck-testkit` (never published): with no version, cargo leaves the
+# dev-dependency out of a published manifest (decision 0103, OI-302).
 openchuck-types = { path = "crates/openchuck-types", version = "0.11.0" }
 openchuck-path = { path = "crates/openchuck-path", version = "0.11.0" }
 openchuck-post = { path = "crates/openchuck-post", version = "0.11.0" }
@@ -48,7 +50,7 @@ openchuck-sim = { path = "crates/openchuck-sim", version = "0.11.0" }
 openchuck-project = { path = "crates/openchuck-project", version = "0.11.0" }
 openchuck-app = { path = "crates/openchuck-app", version = "0.11.0" }
 openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.11.0" }
-openchuck-testkit = { path = "crates/openchuck-testkit", version = "0.11.0" }
+openchuck-testkit = { path = "crates/openchuck-testkit" }
 openchuck-buildinfo = { path = "crates/openchuck-buildinfo", version = "0.11.0" }
 
 # Third-party crates, exact pins (work breakdown slice 0 item 12).

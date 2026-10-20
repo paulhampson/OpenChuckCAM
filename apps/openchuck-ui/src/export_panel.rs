@@ -494,16 +494,20 @@ impl ExportPanel {
                     acts.push(Act::WriteSheet);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let write = ui.add_enabled(
-                        blocker.is_none(),
+                    // The primary styling shows the action that can be taken now; a
+                    // blocked one is drawn as an ordinary disabled button (OI-349).
+                    let button = if blocker.is_none() {
                         egui::Button::new(
                             RichText::new("Write G-code")
                                 .color(DARK.primary_text)
                                 .strong(),
                         )
                         .fill(DARK.primary)
-                        .stroke(egui::Stroke::new(1.0, DARK.primary_border)),
-                    );
+                        .stroke(egui::Stroke::new(1.0, DARK.primary_border))
+                    } else {
+                        egui::Button::new("Write G-code")
+                    };
+                    let write = ui.add_enabled(blocker.is_none(), button);
                     let write = match blocker {
                         Some(reason) => write.on_disabled_hover_text(reason),
                         None => write,
@@ -569,7 +573,9 @@ impl ExportPanel {
                             ("Feed mode", post.feed_mode.as_str()),
                         ] {
                             ui.label(label);
-                            ui.label(value);
+                            // A long value wraps inside its column instead of running under
+                            // the Files pane (UI-16; OI-532).
+                            ui.add(egui::Label::new(value).wrap());
                             ui.end_row();
                         }
                     });
@@ -948,6 +954,82 @@ mod tests {
         (dir.clone(), Acknowledgements::in_folder(&dir))
     }
 
+    /// Whether one frame of the dialog's body paints a rectangle in the primary fill.
+    fn paints_primary(blocker: Option<&str>) -> bool {
+        let (dir, app, _, _) = cube_project("export-primary");
+        let mut panel = ExportPanel::new(None);
+        let checks = app.export_checks(None, None, None);
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut acts = Vec::new();
+        let mut output = ctx.run_ui(input, |ui| {
+            panel.draw(ui, &app, &checks, blocker, &mut acts);
+        });
+        output.textures_delta.clear();
+        let _ = std::fs::remove_dir_all(dir);
+        output.shapes.iter().any(|clipped| {
+            matches!(&clipped.shape, egui::epaint::Shape::Rect(r) if r.fill == DARK.primary)
+        })
+    }
+
+    #[test]
+    fn req_ui_16_the_posts_long_wrap_line_stays_in_its_column() {
+        // OI-532: "whole turns dropped without motion" ran under the Files pane.
+        let (dir, mut app, _, _) = cube_project("export-wrap");
+        let mut panel = ExportPanel::new(None);
+        panel.open(&app);
+        let checks = app.export_checks(None, None, None);
+        let ctx = egui::Context::default();
+        let mut paint = || {
+            let mut acts = Vec::new();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::pos2(0.0, 0.0),
+                        egui::vec2(800.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| panel.draw(ui, &app, &checks, None, &mut acts),
+            );
+            output.textures_delta.clear();
+            let mut texts = Vec::new();
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    texts.push((t.galley.text().to_owned(), t.pos.x, t.galley.size().x));
+                }
+            }
+            texts
+        };
+        paint();
+        let texts = paint();
+        let files_x = texts
+            .iter()
+            .find(|(t, _, _)| t == "Files to write")
+            .map(|(_, x, _)| *x)
+            .expect("the right column is drawn");
+        let wrap = texts
+            .iter()
+            .find(|(t, _, _)| t.contains("whole turns"))
+            .expect("the Wrap value is drawn");
+        assert!(wrap.1 + wrap.2 <= files_x, "{wrap:?} against {files_x}");
+        app.set_post(None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_nfr_15_write_gcode_has_the_primary_styling_only_when_it_can_be_pressed() {
+        // OI-349: a blocked button is an ordinary disabled button, not a dimmed primary.
+        assert!(paints_primary(None));
+        assert!(!paints_primary(Some("Choose an output folder first.")));
+    }
+
     #[test]
     fn req_gc_15_nothing_can_be_written_before_the_operations_are_generated() {
         let (dir, mut app, _, _) = cube_project("export-none");
@@ -1087,7 +1169,8 @@ mod tests {
         let (settings_dir, ack) = settings("export-summary-settings");
         let copy = settings_dir.join("post-copy");
         std::fs::create_dir_all(&copy).unwrap();
-        let posts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../posts/linuxcnc");
+        let posts = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/openchuck-post/posts/linuxcnc");
         for name in ["post.toml", "main.post"] {
             std::fs::copy(posts.join(name), copy.join(name)).unwrap();
         }

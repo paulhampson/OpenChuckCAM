@@ -250,3 +250,19 @@ fn req_tl_01_the_keys_leave_the_selected_operation_alone_behind_the_library() {
     assert_eq!(count(&rig), 1);
     std::fs::remove_dir_all(&folder).ok();
 }
+
+#[test]
+fn req_tl_01_esc_closes_the_library_window_unless_a_field_has_the_keyboard() {
+    // OI-526: Esc did not close the window.
+    let folder = library_folder("esc-closes");
+    let mut rig = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shell.tool_library.is_open());
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(!rig.shell.tool_library.is_open());
+    std::fs::remove_dir_all(&folder).ok();
+}

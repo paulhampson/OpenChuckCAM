@@ -399,6 +399,13 @@ impl ToolLibraryWindow {
     }
 
     fn draw(&mut self, ui: &mut egui::Ui, project: Option<&Project>, acts: &mut Vec<Act>) {
+        // Esc closes the window (it asks first when a draft would be lost) unless a field
+        // has the keyboard, where Esc belongs to the field (specification section 16).
+        if !ui.ctx().egui_wants_keyboard_input()
+            && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape))
+        {
+            acts.push(Act::Close);
+        }
         egui::Panel::bottom("tool library footer")
             .resizable(false)
             .show(ui, |ui| self.footer(ui, project, acts));

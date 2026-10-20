@@ -137,6 +137,10 @@ pub struct WorkholdingDraft {
     /// Which tab each offered mesh is, with its section for the Setup panes,
     /// indexing `offered`.
     pub offered_solids: Vec<SceneSolid>,
+    /// Whether the draft differs from the stored workholding: only then do the views say they
+    /// show unapplied workholding (OI-528). A draft that only carries the defaults offered or
+    /// the failing parts is the stored one.
+    pub unapplied: bool,
 }
 
 /// How the scene is drawn besides the view model itself.
@@ -491,6 +495,9 @@ pub struct Viewport {
     pub(crate) simulate_show: SimulateShow,
     /// The step set by the shell, or `None` to take it from what is held.
     step: Option<ViewStep>,
+    /// Whether the open project holds a model: the one input of the rule that
+    /// switches the view directions on (`viewport_toolbar::directions_unavailable`).
+    project_has_models: bool,
     /// The workholding draft drawn instead of the stored workholding.
     draft: Option<WorkholdingDraft>,
     /// The held region or tab under the pointer, by index into the shown
@@ -586,6 +593,7 @@ impl Viewport {
             show: Visibility::default(),
             simulate_show: SimulateShow::Both,
             step: None,
+            project_has_models: false,
             draft: None,
             hover_solid: None,
             focused_item: None,
@@ -668,6 +676,18 @@ impl Viewport {
         self.step = step;
     }
 
+    /// Tells the view whether the open project holds a model. The toolbar and the View
+    /// menu read the same value, so they never disagree (OI-514).
+    pub fn set_project_has_models(&mut self, has_models: bool) {
+        self.project_has_models = has_models;
+    }
+
+    /// Whether the open project holds a model.
+    #[must_use]
+    pub fn project_has_models(&self) -> bool {
+        self.project_has_models
+    }
+
     /// The step the view is in: the one the shell set, or else Simulate when
     /// the part is coloured by deviation or the stock is shown, Operations
     /// while picking or when toolpaths are drawn, Model when the scene has
@@ -722,8 +742,14 @@ impl Viewport {
     }
 
     /// Whether a draft is drawn.
+    #[cfg(test)]
     pub(crate) fn shows_draft(&self) -> bool {
         self.draft.is_some()
+    }
+
+    /// Whether the draft drawn has changes the stored workholding does not (the chip's rule).
+    pub(crate) fn shows_unapplied(&self) -> bool {
+        self.draft.as_ref().is_some_and(|d| d.unapplied)
     }
 
     /// The held region or tab solids shown, with the meshes their indices
@@ -1438,6 +1464,7 @@ pub(crate) mod tests {
             failing: vec![WorkholdingItem::Tab(0)],
             offered: vec![view.meshes[1].clone()],
             offered_solids: vec![view.solids[1].clone()],
+            unapplied: false,
         };
         let mut viewport = Viewport::new(true);
         viewport.set_scene(view, true);

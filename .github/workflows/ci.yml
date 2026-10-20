@@ -2,8 +2,8 @@
 #
 # Pull request and main-branch CI (work breakdown slice 0 items 5 and 13;
 # verification plan sections 7 to 9). Jobs are path-filtered: a change to
-# docs/ alone does not rebuild the Rust workspace (posts/ and testdata/ do, because
-# the golden G-code tests read them).
+# docs/ alone does not rebuild the Rust workspace (testdata/ and the built-in posts, which live in
+# crates/openchuck-post/posts/ since decision 0103, do, because the golden G-code tests read them).
 #
 # Draft gate (decision 0052): a draft pull request runs only `changes` and `fast-checks`; the
 # heavy jobs (Build and test, Gate 3, Each library alone, STEP kernel, UI smoke and
@@ -69,7 +69,6 @@ jobs:
               - 'xtask/**'
               - 'benches/**'
               - 'fuzz/**'
-              - 'posts/**'
               - 'testdata/**'
               - 'tools/**'
               - 'Cargo.toml'
@@ -113,7 +112,6 @@ jobs:
               - 'crates/openchuck-gcode/**'
               - 'crates/openchuck-app/**'
               - 'apps/openchuck-cli/**'
-              - 'posts/**'
               - 'testdata/golden/**'
               - 'tools/linuxcnc/**'
               - 'docker/linuxcnc/**'
@@ -126,7 +124,6 @@ jobs:
               - 'fuzz/**'
               - 'crates/openchuck-gcode/**'
               - 'crates/openchuck-post/**'
-              - 'posts/**'
               - 'crates/openchuck-types/**'
               - 'crates/openchuck-project/**'
               - 'crates/openchuck-geom/**'
@@ -398,6 +395,13 @@ jobs:
           for crate in openchuck-types openchuck-path openchuck-post openchuck-gcode; do
             cargo test --locked -p "$crate"
           done
+      # The library family packages and builds from its packages alone, as `cargo publish` would
+      # (OI-302, decision 0138). Once is enough: packaging does not depend on the platform.
+      - name: Publish dry run of the library family
+        if: matrix.os == 'ubuntu-latest'
+        run: >
+          cargo publish --dry-run --locked
+          -p openchuck-types -p openchuck-gcode -p openchuck-path -p openchuck-post
 
   # The checks of about two minutes or less that are not specific to an operating system share
   # one Linux job that runs beside the long jobs, so a code change needs one runner for them
@@ -448,6 +452,10 @@ jobs:
         id: testdata
         if: always() && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.records == 'true')
         run: cargo xtask testdata
+      - name: Library family ready for crates.io (decision 0138)
+        id: publish
+        if: always() && needs.changes.outputs.rust == 'true'
+        run: cargo xtask publish
       - name: Unresolved merge conflict markers
         id: conflicts
         if: always()
@@ -511,6 +519,7 @@ jobs:
           RECORDS_STEP: ${{ steps.records.outcome }}
           TESTDATA: ${{ steps.testdata.outcome }}
           CONFLICTS: ${{ steps.conflicts.outcome }}
+          PUBLISH: ${{ steps.publish.outcome }}
           TRACE: ${{ steps.trace.outcome }}
           DENY: ${{ steps.deny.outcome }}
           AUDIT: ${{ steps.audit.outcome }}
@@ -530,6 +539,7 @@ jobs:
           check "xtask records" "$repo" "$RECORDS_STEP"
           check "xtask testdata" "$repo" "$TESTDATA"
           check "xtask conflicts" true "$CONFLICTS"
+          check "xtask publish" "$RUST" "$PUBLISH"
           check "xtask trace" "$repo" "$TRACE"
           check "cargo deny" "$RUST" "$DENY"
           check "cargo audit" "$RUST" "$AUDIT"
@@ -594,7 +604,7 @@ jobs:
         if: contains(format(' {0} ', matrix.group.targets), ' post_definition ')
         run: |
           mkdir -p fuzz/corpus/post_definition
-          for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+          for d in crates/openchuck-post/posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
       - name: Seed the project file corpus from the fixtures
         if: contains(format(' {0} ', matrix.group.targets), ' project_files ')
         run: |

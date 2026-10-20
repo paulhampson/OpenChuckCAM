@@ -178,6 +178,9 @@ pub struct Shell {
     settings_file: Option<SettingsFile>,
     /// When the settings changed and were not yet written.
     settings_changed: Option<Instant>,
+    /// The dock was drawn at a size other than the one asked for (clamped by a small window
+    /// that has since grown): the next frame asks for the saved size again (OI-359).
+    dock_stale: bool,
     /// A problem reading the settings, shown as a message.
     settings_problem: Option<String>,
     /// The dock's tab, and the message severities shown.
@@ -248,6 +251,7 @@ impl Shell {
             settings: loaded,
             settings_file: settings,
             settings_changed: None,
+            dock_stale: false,
             settings_problem: problem,
             dock_tab: DockTab::Messages,
             message_filter: [true; 3],
@@ -1744,6 +1748,9 @@ mod frame_tests;
 
 #[cfg(test)]
 mod simulate_tests;
+
+#[cfg(test)]
+mod smoke_tests;
 
 #[cfg(test)]
 mod tool_library_tests;
