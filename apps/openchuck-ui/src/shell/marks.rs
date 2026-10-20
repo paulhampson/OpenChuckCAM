@@ -153,17 +153,28 @@ pub fn legend(ui: &mut egui::Ui) {
         })
         .collect();
     let starts = row_starts(&widths, ui.available_width(), 4.0);
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        for (state, wraps) in ItemState::ALL.into_iter().zip(starts) {
-            if wraps {
-                ui.end_row();
-            }
-            mark(ui, state, state.name());
-            ui.label(egui::RichText::new(state.name()).small().color(DARK.muted));
-            ui.add_space(6.0);
+    // Rows of whole entries: a row never wraps inside an entry, and the word
+    // of an entry does not wrap either (issue 212, F-56).
+    let mut rows: Vec<Vec<ItemState>> = Vec::new();
+    for (state, wraps) in ItemState::ALL.into_iter().zip(starts) {
+        match rows.last_mut() {
+            Some(row) if !wraps => row.push(state),
+            _ => rows.push(vec![state]),
         }
-    });
+    }
+    for row in rows {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for state in row {
+                mark(ui, state, state.name());
+                ui.add(
+                    egui::Label::new(egui::RichText::new(state.name()).small().color(DARK.muted))
+                        .extend(),
+                );
+                ui.add_space(6.0);
+            }
+        });
+    }
 }
 
 /// A thin progress bar under a running row (specification section 6).
@@ -239,6 +250,67 @@ mod tests {
                 .find(|(t, _)| t == state.name())
                 .unwrap_or_else(|| panic!("{} is drawn", state.name()));
             assert!(*right <= 240.0, "{} ends at {right}", state.name());
+        }
+    }
+
+    /// Issue 212 (F-56): at every width the tree can have (200 to 400, less
+    /// its margins) each mark is drawn on the same row as its word and just
+    /// before it, never at the end of one row with the word on the next.
+    #[test]
+    fn req_ui_11_each_legend_mark_stays_on_the_row_of_its_word() {
+        fn leaves<'a>(shape: &'a egui::Shape, out: &mut Vec<&'a egui::Shape>) {
+            match shape {
+                egui::Shape::Vec(v) => v.iter().for_each(|s| leaves(s, out)),
+                other => out.push(other),
+            }
+        }
+        for width in (184..=400).step_by(8) {
+            let ctx = egui::Context::default();
+            crate::theme::install_style(&ctx, crate::theme::Theme::Dark);
+            let input = || egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::pos2(0.0, 0.0),
+                    egui::vec2(width as f32, 300.0),
+                )),
+                ..Default::default()
+            };
+            // The fonts are installed for the next frame.
+            ctx.run_ui(input(), legend).textures_delta.clear();
+            let mut output = ctx.run_ui(input(), legend);
+            output.textures_delta.clear();
+            let mut all = Vec::new();
+            for clipped in &output.shapes {
+                leaves(&clipped.shape, &mut all);
+            }
+            for state in ItemState::ALL {
+                let at = all
+                    .iter()
+                    .position(
+                        |s| matches!(s, egui::Shape::Text(t) if t.galley.text() == state.name()),
+                    )
+                    .unwrap_or_else(|| panic!("{} is drawn at {width}", state.name()));
+                let egui::Shape::Text(word) = all[at] else {
+                    unreachable!()
+                };
+                let word = egui::Rect::from_min_size(word.pos, word.galley.size());
+                assert!(
+                    word.height() < 20.0,
+                    "{} wraps inside its own entry at {width}: {word:?}",
+                    state.name()
+                );
+                // The mark is the shape drawn just before its word.
+                let mark = all[at - 1].visual_bounding_rect();
+                assert!(
+                    (mark.center().y - word.center().y).abs() < 6.0,
+                    "{} mark at {mark:?} and word at {word:?}, width {width}",
+                    state.name()
+                );
+                assert!(
+                    mark.right() <= word.left() + 1.0,
+                    "{} mark {mark:?} word {word:?} at {width}",
+                    state.name()
+                );
+            }
         }
     }
 }
