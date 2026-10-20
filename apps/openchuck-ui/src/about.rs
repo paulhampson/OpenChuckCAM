@@ -93,12 +93,18 @@ pub struct Outcome {
 
 /// Draws the window's content. `build` is the build information (what Copy copies) and
 /// `licences` the licence box's text.
-pub fn show(ui: &mut egui::Ui, build: &str, licences: &str) -> Outcome {
+pub fn show(ui: &mut egui::Ui, build: &str, licences: &str, project: Option<&str>) -> Outcome {
     let mut outcome = Outcome::default();
     ui.heading("OpenChuckCAM");
     ui.label("Free software under the GNU Affero General Public License, version 3 or later.");
     ui.label(openchuck_app::VERIFY_GCODE_NOTICE);
     ui.add_space(6.0);
+
+    if let Some(path) = project {
+        ui.strong("Project folder");
+        ui.label(path);
+        ui.add_space(6.0);
+    }
 
     ui.strong("Build");
     ui.label(RichText::new(build.trim_end()).monospace());
@@ -193,7 +199,7 @@ mod tests {
                 ..Default::default()
             };
             let mut output = self.ctx.run_ui(input, |ui| {
-                self.outcome = show(ui, BUILD, licence_text());
+                self.outcome = show(ui, BUILD, licence_text(), None);
             });
             output.textures_delta.clear();
             for command in output.platform_output.commands {

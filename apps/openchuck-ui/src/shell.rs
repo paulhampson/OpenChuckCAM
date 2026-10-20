@@ -124,6 +124,8 @@ enum Dialog {
 /// The shell's state.
 pub struct Shell {
     app: Option<Application>,
+    /// The window title last sent to the system (#218).
+    sent_title: String,
     viewport: Viewport,
     dialog: Option<Dialog>,
     scene_job: Option<(JobHandle<SceneView>, bool)>,
@@ -220,6 +222,7 @@ impl Shell {
         };
         let mut shell = Self {
             app: None,
+            sent_title: String::new(),
             viewport: Viewport::new(viewport_available),
             dialog: None,
             scene_job: None,
@@ -1354,7 +1357,8 @@ impl Shell {
             }
             Dialog::About => {
                 let build = openchuck_buildinfo::current_text();
-                if about::show(ui, build, about::licence_text()).close {
+                let project = self.project_facts().map(|(_, _, path)| path);
+                if about::show(ui, build, about::licence_text(), project.as_deref()).close {
                     close = true;
                 }
             }
@@ -1541,12 +1545,39 @@ impl eframe::App for Shell {
 }
 
 impl Shell {
+    /// The project's name, whether it has unsaved changes and its folder.
+    fn project_facts(&self) -> Option<(String, bool, String)> {
+        self.app.as_ref().map(|a| {
+            (
+                a.project().name().to_owned(),
+                a.is_modified(),
+                a.location().display().to_string(),
+            )
+        })
+    }
+
+    /// The window title for the project now open (#218).
+    fn window_title(&self) -> String {
+        let facts = self.project_facts();
+        crate::window_title::title(facts.as_ref().map(|(n, m, p)| (n.as_str(), *m, p.as_str())))
+    }
+
+    /// Sends the window title to the system when it has changed.
+    fn update_window_title(&mut self, ctx: &egui::Context) {
+        let title = self.window_title();
+        if title != self.sent_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.sent_title = title;
+        }
+    }
+
     /// Draws one frame: the regions, the viewport, the dialogs and the work
     /// that keeps the jobs moving. The whole of the app's `ui`, apart from
     /// the eframe frame it does not use, so a test can run it.
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.guard_close(&ctx);
+        self.update_window_title(&ctx);
         self.poll_scene(&ctx);
         self.overview_frame(&ctx);
         self.bench_frame(&ctx);
