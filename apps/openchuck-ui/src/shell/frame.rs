@@ -590,7 +590,13 @@ impl Shell {
                 }
                 let export = egui::Button::new("Post and export…")
                     .shortcut_text(ctx.format_shortcut(&EXPORT));
-                if ui.add_enabled(open, export).clicked() {
+                let blocker = self.post_blocker();
+                let response = ui.add_enabled(blocker.is_none(), export);
+                let response = match blocker {
+                    Some(reason) => response.on_disabled_hover_text(reason),
+                    None => response,
+                };
+                if response.clicked() {
                     self.open_export();
                     ui.close();
                 }

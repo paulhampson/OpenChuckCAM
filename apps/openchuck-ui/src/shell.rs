@@ -786,7 +786,19 @@ impl Shell {
         }
     }
 
+    /// Why Post and export is unavailable, if it is (decision 0148): the
+    /// first thing the project lacks.
+    pub(crate) fn post_blocker(&self) -> Option<&'static str> {
+        if self.app.is_none() {
+            return Some("Open or start a project first");
+        }
+        self.overview.post_blocker()
+    }
+
     fn open_export(&mut self) {
+        if self.post_blocker().is_some() {
+            return;
+        }
         if let Some(app) = &self.app {
             self.export.open(app);
         }

@@ -154,6 +154,35 @@ fn req_ui_10_the_empty_state_offers_a_project_and_dims_the_other_steps() {
 }
 
 #[test]
+fn req_ui_10_req_ui_14_post_and_export_opens_once_the_project_has_what_it_needs() {
+    // Decision 0148 item 1 (issue 140): not before the project has a model,
+    // a setup, a machine, a tool and an operation, and then without the
+    // operation having been generated.
+    let mut rig = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(!rig.shell.export.is_open());
+    assert_eq!(
+        rig.shell.post_blocker(),
+        Some("Open or start a project first")
+    );
+
+    let mut rig = Rig::cube("frame-post", None);
+    assert!(!rig.shell.overview.step(Step::Export).is_available());
+    assert_eq!(rig.shell.post_blocker(), None);
+    let id = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.tree_action(super::TreeAction::Delete(id));
+    rig.settle();
+    assert_eq!(rig.shell.post_blocker(), Some("Add an operation first"));
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(!rig.shell.export.is_open());
+    rig.shell.undo();
+    rig.settle();
+    assert_eq!(rig.shell.post_blocker(), None);
+    rig.press(Key::E, Modifiers::COMMAND);
+    assert!(rig.shell.export.is_open());
+}
+
+#[test]
 fn req_ui_10_req_ui_11_the_steps_marks_and_primary_follow_the_project() {
     let mut rig = Rig::cube("frame-steps", None);
     let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;

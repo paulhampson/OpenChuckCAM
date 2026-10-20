@@ -395,6 +395,7 @@ pub struct Overview {
     models: usize,
     /// Selection sets in error that an enabled operation uses.
     blocked_sets: Vec<ItemRef>,
+    post_blocker: Option<&'static str>,
 }
 
 impl Overview {
@@ -423,7 +424,16 @@ impl Overview {
             any_enabled: false,
             models: 0,
             blocked_sets: Vec::new(),
+            post_blocker: Some("Open or start a project first"),
         }
+    }
+
+    /// Why "Post and export…" in the File menu is unavailable, if it is: the
+    /// first of a model, a setup, a machine, a tool and an operation that the
+    /// project lacks. Operations need not be generated, because the export
+    /// dialog makes its own files and keeps its own blockers (decision 0148).
+    pub fn post_blocker(&self) -> Option<&'static str> {
+        self.post_blocker
     }
 
     /// The state of `step`.
@@ -1612,6 +1622,15 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         any_enabled,
         models: project.models().len(),
         blocked_sets,
+        post_blocker: [
+            (has_model, "Import a model first"),
+            (!project.setups().is_empty(), "Add a setup first"),
+            (project.machine().is_some(), "Choose a machine first"),
+            (!project.tools().is_empty(), "Add a tool first"),
+            (!project.operations().is_empty(), "Add an operation first"),
+        ]
+        .into_iter()
+        .find_map(|(present, text)| (!present).then_some(text)),
     }
 }
 

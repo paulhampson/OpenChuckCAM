@@ -260,6 +260,87 @@ impl Fixture {
 }
 
 #[test]
+fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
+    // Decision 0148 item 1 (issue 140): the File menu's Post and export is
+    // enabled with a model, a setup, a machine, a tool and an operation, and
+    // otherwise names the first of them that is missing. Operations need not
+    // be generated: the export dialog makes its own files.
+    let (dir, mut app) = empty("post-blocker");
+    let blocker = |app: &Application| app.overview(None, &JobLog::default()).post_blocker();
+    assert_eq!(blocker(&app), Some("Import a model first"));
+    let model = add_model(&dir, &mut app, "cube_ascii.stl");
+    assert_eq!(blocker(&app), Some("Add a setup first"));
+    let setup = SetupId::new();
+    let mut s = Setup::new(setup, "Setup 1");
+    s.part = Some(model);
+    app.execute(Command::Add {
+        item: Item::Setup(s),
+        placement: Placement::End,
+    })
+    .unwrap();
+    assert_eq!(blocker(&app), Some("Choose a machine first"));
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    assert_eq!(blocker(&app), Some("Add a tool first"));
+    let tool = ToolId::new();
+    app.execute(Command::Add {
+        item: Item::Tool(ToolSnapshot {
+            id: tool,
+            order: OrderKey::default(),
+            name: "4 mm ball".into(),
+            tool: Tool {
+                shape: ToolShape::BallEnd,
+                diameter: Millimetres(4.0),
+                flute_length: Millimetres(10.0),
+                overall_length: Millimetres(40.0),
+                shank_diameter: Millimetres(4.0),
+                flute_count: 2,
+                material: None,
+                centre_cutting: None,
+            },
+            controller: ControllerMapping {
+                number: 1,
+                length_offset: None,
+                diameter_offset: None,
+            },
+            cutting_data: BTreeMap::new(),
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    assert_eq!(blocker(&app), Some("Add an operation first"));
+    app.execute(Command::Add {
+        item: Item::Operation(Operation {
+            enabled: true,
+            id: OperationId::new(),
+            order: OrderKey::default(),
+            name: "Ring".into(),
+            setup,
+            strategy: "one_ring".into(),
+            tool: Some(tool),
+            selections: Vec::new(),
+            boundary: None,
+            avoid: Vec::new(),
+            check: Vec::new(),
+            parameters: BTreeMap::new(),
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    // Nothing is generated, and the menu item is still enabled.
+    assert_eq!(blocker(&app), None);
+    assert!(
+        !app.overview(None, &JobLog::default())
+            .step(Step::Export)
+            .is_available()
+    );
+    drop(app);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn req_ui_10_each_step_says_why_it_is_unavailable() {
     // An empty project: only the Model step, and "Import model…".
     let (dir, mut app) = empty("steps");
