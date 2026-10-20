@@ -64,6 +64,9 @@ fn req_nfr_16_req_gc_07_the_generator_version_is_masked_in_golden_comparisons() 
     let path = dir.join("g.nc");
     std::fs::write(&path, "(OpenChuckCAM <version>)\nG0\n").unwrap();
     golden::check(&path, "(OpenChuckCAM 0.11.0)\nG0\n").unwrap();
-    assert!(golden::check(&path, "(OpenChuckCAM 0.11.0)\nG1\n").is_err());
+    // A bless run rewrites the golden file instead of failing on a difference.
+    if std::env::var(golden::BLESS_VAR).is_err() {
+        assert!(golden::check(&path, "(OpenChuckCAM 0.11.0)\nG1\n").is_err());
+    }
     std::fs::remove_dir_all(dir).unwrap();
 }

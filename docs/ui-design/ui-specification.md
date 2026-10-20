@@ -372,7 +372,9 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 **Import dialog** (IMP-01, IMP-03, IMP-04; decision 0029 item 13; board 1b):
 
 - **Opening.** File > Import model, the Model "+", or a dropped file. It opens in its own window.
-- **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15).
+- **Size.** The window has a fixed size (460 by 520 points) that fits 1366 by 768 at 120% scale; it cannot be resized or maximised. The path, its button and the step line are pinned at the top and the footer at the bottom; the blocks between them scroll (UI-16).
+- **The path.** It is typed, with Browse (`rfd`, decision 0029 item 15) and the button "Check and preview". Under it, a line says where the flow is: "Step 1 of 2: check the file. Nothing is added to the project yet.", then "Step 2 of 2: set the units and placement, then add. Nothing is added until you press Add to project." once the check has run. A status row of fixed height shows the spinner while a check runs, so nothing moves when it appears.
+- **Coming back.** When the application returns from the background, the window is brought to the front once (UI-14).
 - **The preview** is the main viewport behind the window, not a pane of it, because a tool window draws no 3D (section 3; decision 0029 item 17). It shows the placed model, with findings highlighted:
   - flipped and degenerate triangles outlined in red;
   - holes ringed in amber;
@@ -384,7 +386,7 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
   2. **Mesh check.** One row for each kind of finding, with its count. A tick when there are none; selecting a row highlights its triangles. One sentence says the check changes nothing.
   3. **The STL statement,** word for word as `STL_TESSELLATION_NOTICE`.
 - **Placement.** An orientation choice that places the model on the rotary axis as it is added (IMP-05), shown in the preview; the Model step's placement steps edit it later.
-- **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary).
+- **Footer.** It says the file is not changed and that its path and hash are stored. Cancel, and "Add to project" (primary), which stays off until the check has run.
 
 **Model step** (board 1):
 
@@ -697,9 +699,9 @@ UI-05; decisions 0032 and 0037; a dock tab.
 NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from Help, "About OpenChuckCAM…".
 
 - **A modal dialog** in the main window, like the other dialogs (section 3).
-- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates.
+- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates; **Log file** (NFR-17, decision 0155), the path of the file this run writes its log to (or "This run is not writing a log file.") and an "Open log folder" button that shows the folder in the file browser, with a failure written under the button.
 - **Footer.** "Copy build information" on the left (secondary; copies the Build block and nothing else; the window stays open), "Close" bottom right (the one primary button, section 5).
-- **Keyboard.** Tab visits the Licences box, Copy and Close in that order; the box scrolls with the arrow keys; Copy's tooltip opens on focus (section 16).
+- **Keyboard.** Tab visits the Licences box, Open log folder, Copy and Close in that order; the box scrolls with the arrow keys; The tooltips of Open log folder and Copy open on focus (section 16).
 - A fact the build could not find reads "unknown".
 
 ## 13. Per-user settings
