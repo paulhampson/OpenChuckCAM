@@ -18,11 +18,13 @@
 //! [`tree`] (the project panel) and [`dock`] (Messages, Selection sets, Jobs,
 //! Setup checks and Playback).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::theme::DARK;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
+use openchuck_app::new_folder;
 use openchuck_app::overview::{
     Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
 };
@@ -101,6 +103,14 @@ enum Dialog {
         create: bool,
         folder: String,
         name: String,
+    },
+    /// The folder a new project would get already exists and holds none of a
+    /// project's files: ask whether to use it or change the name (#219,
+    /// decision record 0165). Nothing in it is changed or deleted.
+    FolderExists {
+        parent: String,
+        name: String,
+        folder: PathBuf,
     },
     /// The folder has no project: offer to create one there (decision record
     /// 0008 item 8).
@@ -1240,7 +1250,11 @@ impl Shell {
                 } else {
                     "Open project"
                 });
-                ui.label("Project folder:");
+                ui.label(if create {
+                    "Parent folder:"
+                } else {
+                    "Project folder:"
+                });
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut folder);
                     if ui.button("Browse…").clicked()
@@ -1249,35 +1263,103 @@ impl Shell {
                         folder = picked;
                     }
                 });
+                // What a new project would get: the cleaned folder name, and
+                // whether it can be made there (#219).
+                let mut found = None;
                 if create {
                     ui.label("Project name:");
                     ui.text_edit_singleline(&mut name);
+                    if !folder.trim().is_empty() {
+                        found = Some(new_folder::inspect(Path::new(folder.trim()), name.trim()));
+                    }
+                    if let Some(found) = &found {
+                        ui.label(format!("Folder to create: {}", found.name));
+                        if let Some(problem) = new_folder_problem(found) {
+                            ui.colored_label(DARK.error, problem);
+                        }
+                    }
                 }
+                let blocked = found
+                    .as_ref()
+                    .is_some_and(|f| new_folder_problem(f).is_some());
                 ui.horizontal(|ui| {
                     let ok = ui
-                        .add_enabled(!folder.trim().is_empty(), egui::Button::new("OK"))
+                        .add_enabled(
+                            !folder.trim().is_empty() && !blocked,
+                            egui::Button::new("OK"),
+                        )
                         .clicked();
                     if ui.button("Cancel").clicked() {
                         close = true;
                     }
                     if ok {
-                        let path = PathBuf::from(folder.trim());
-                        let name = name.trim().to_owned();
                         close = true;
-                        action = Some(if create {
-                            Box::new(move |s: &mut Self| s.create(path, &name))
-                        } else {
-                            Box::new(move |s: &mut Self| s.open(path))
-                        });
+                        match found.take() {
+                            // The folder exists and is usable: ask first.
+                            Some(f) if f.state == new_folder::FolderState::ExistsUsable => {
+                                self.dialog = Some(Dialog::FolderExists {
+                                    parent: folder.trim().to_owned(),
+                                    name: name.trim().to_owned(),
+                                    folder: f.path,
+                                });
+                                close = false;
+                            }
+                            Some(f) => {
+                                let name = name.trim().to_owned();
+                                action = Some(Box::new(move |s: &mut Self| s.create(f.path, &name)));
+                            }
+                            None => {
+                                let path = PathBuf::from(folder.trim());
+                                action = Some(Box::new(move |s: &mut Self| s.open(path)));
+                            }
+                        }
                     }
                 });
                 if !close {
-                    self.dialog = Some(Dialog::Folder {
-                        create,
-                        folder,
-                        name,
-                    });
+                    // `FolderExists` replaced the dialog above when it was asked for.
+                    if !matches!(self.dialog, Some(Dialog::FolderExists { .. })) {
+                        self.dialog = Some(Dialog::Folder {
+                            create,
+                            folder,
+                            name,
+                        });
+                    }
                 }
+            }
+            Dialog::FolderExists {
+                parent,
+                name,
+                folder,
+            } => {
+                ui.heading("Folder already exists");
+                ui.label(format!(
+                    "A folder named \"{}\" already exists in {parent}.",
+                    folder
+                        .file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+                ));
+                ui.label(
+                    "If you use it, the project's files are added to it. Nothing in it is changed or deleted.",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Use the existing folder").clicked() {
+                        close = true;
+                        let project_name = name.clone();
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.create(folder, &project_name);
+                        }));
+                    }
+                    if ui.button("Change the name").clicked() {
+                        close = true;
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.dialog = Some(Dialog::Folder {
+                                create: true,
+                                folder: parent,
+                                name,
+                            });
+                        }));
+                    }
+                });
             }
             Dialog::OfferCreate { folder } => {
                 ui.label(format!(
@@ -1454,6 +1536,27 @@ fn edit_shortcuts(i: &mut egui::InputState) -> (bool, bool, bool) {
 /// Asks the platform's folder dialog for a folder, starting near `current`
 /// (OI-127). `None` when the user cancels or no dialog is available, in
 /// which case the typed path stays.
+/// Why a new project cannot be made in the folder `found` names, in plain
+/// words, or `None` when it can (or the user is first asked, for a folder
+/// that exists and is usable).
+fn new_folder_problem(found: &new_folder::NewFolder) -> Option<String> {
+    use new_folder::FolderState;
+    match &found.state {
+        FolderState::NoParent => Some("The parent folder does not exist.".to_owned()),
+        FolderState::Free | FolderState::ExistsUsable => None,
+        FolderState::ExistsAsFile => Some(format!(
+            "A file named \"{}\" is already there. Choose another name.",
+            found.name
+        )),
+        FolderState::ExistsWithProject(names) => Some(format!(
+            "The folder \"{}\" already holds an OpenChuckCAM project or its files ({}). \
+Nothing is overwritten. Choose another name.",
+            found.name,
+            names.join(", ")
+        )),
+    }
+}
+
 fn pick_folder(current: &str) -> Option<String> {
     let mut dialog = rfd::FileDialog::new().set_title("Project folder");
     if let Some(start) = existing_dir(current) {
@@ -1792,6 +1895,9 @@ mod keys_tests;
 
 #[cfg(test)]
 mod frame_tests;
+
+#[cfg(test)]
+mod new_project_tests;
 
 #[cfg(test)]
 mod simulate_tests;

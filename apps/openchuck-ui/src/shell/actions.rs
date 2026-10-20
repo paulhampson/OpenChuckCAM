@@ -41,6 +41,7 @@ impl Dialog {
             Self::Folder { create: true, .. } => "New project",
             Self::Folder { create: false, .. } => "Open project",
             Self::OfferCreate { .. } => "Create project offer",
+            Self::FolderExists { .. } => "Folder already exists",
             Self::Unsaved(_) => "Unsaved changes",
             Self::Rename { .. } => "Rename",
             Self::Keys => "Keyboard shortcuts",
