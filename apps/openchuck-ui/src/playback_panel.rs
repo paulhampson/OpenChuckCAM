@@ -786,6 +786,10 @@ impl PlaybackPanel {
                     .jump_to_move(timeline, self.jump_move.saturating_sub(1));
             }
         });
+        // The readout keeps its line before there is a pose (issue 215).
+        if self.pose().is_none() {
+            ui.monospace(" ");
+        }
         if let Some(pose) = self.pose() {
             let kind = pose.kind.map_or("-", |k| match k {
                 openchuck_app::playback::MoveKind::Rapid => "rapid",
@@ -840,6 +844,8 @@ impl PlaybackPanel {
                 self.lines_dirty = true;
             }
         });
+        // The note keeps its line while it has nothing to say, so the rows
+        // do not move when it appears (issue 215).
         if let Some((drawn, full, tolerance)) = self.detail {
             if drawn < full {
                 ui.weak(format!(
@@ -848,6 +854,8 @@ impl PlaybackPanel {
             } else {
                 ui.weak(format!("Drawing all {full} points"));
             }
+        } else {
+            ui.weak(" ");
         }
         if let Some(error) = self.stock.error.as_ref().or(self.error.as_ref()) {
             ui.colored_label(PROBLEM, error);

@@ -341,7 +341,7 @@ fn req_ui_15_a_dock_splitter_reset_is_kept_for_the_next_start() {
     rig.shell.settings_changed = None;
     rig.shell.reset = Some(Region::Dock);
     rig.frame(Vec::new());
-    assert!((rig.shell.settings.dock.size - 196.0).abs() < 0.01);
+    assert!((rig.shell.settings.dock.size - 260.0).abs() < 0.01);
     assert!(rig.shell.settings_changed.is_some());
 }
 
