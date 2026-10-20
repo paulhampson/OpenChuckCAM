@@ -13,10 +13,15 @@ authors.workspace = true
 
 [dependencies]
 openchuck-app.workspace = true
+openchuck-buildinfo.workspace = true
 openchuck-viewport.workspace = true
 eframe.workspace = true
 rfd.workspace = true
 log.workspace = true
+
+# The parent console of a Windows release build (decision record 0155).
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
 
 [lints]
 workspace = true

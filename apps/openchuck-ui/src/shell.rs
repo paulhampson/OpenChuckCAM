@@ -33,6 +33,7 @@ use openchuck_app::settings::{SettingsFile, UserSettings};
 use openchuck_app::tools::ToolProfile;
 use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 
+use crate::about;
 use crate::bench;
 use crate::export_panel::ExportPanel;
 use crate::form_panel::FormState;
@@ -584,6 +585,27 @@ impl Shell {
         }
     }
 
+    /// Creates the project's one setup as a single undoable command, selects
+    /// it and opens the Setup step (the Setups "+", the workflow bar;
+    /// decision record 0144). With a setup already there, or no model yet, it
+    /// does nothing.
+    fn add_setup(&mut self) {
+        let Some(app) = &mut self.app else { return };
+        if !openchuck_app::can_add_setup(app.project()) {
+            return;
+        }
+        let result = openchuck_app::new_setup(app.project()).and_then(|c| app.execute(c));
+        if let Err(e) = result {
+            self.dialog = Some(Dialog::Error(format!("The setup was not added: {e}")));
+            return;
+        }
+        let Some(id) = app.project().setups().first().map(|s| s.id) else {
+            return;
+        };
+        self.open_step(Step::Setup);
+        self.choose_setup(id, None);
+    }
+
     /// Starts picking on the part with an empty working selection (the
     /// Selection sets "+", decision record 0037 item 7).
     fn start_picking(&mut self) {
@@ -907,7 +929,7 @@ impl Shell {
                     tree::Group::Model => self.import_model(),
                     tree::Group::SelectionSets => self.start_picking(),
                     tree::Group::Operations => self.new_operation(),
-                    tree::Group::Setups => {}
+                    tree::Group::Setups => self.add_setup(),
                 }
                 return;
             }
@@ -1299,11 +1321,8 @@ impl Shell {
                 }
             }
             Dialog::About => {
-                ui.heading("OpenChuckCAM");
-                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                ui.label("Free software under the GNU Affero General Public License, version 3 or later.");
-                ui.label(openchuck_app::VERIFY_GCODE_NOTICE);
-                if ui.button("Close").clicked() {
+                let build = openchuck_buildinfo::current_text();
+                if about::show(ui, build, about::licence_text()).close {
                     close = true;
                 }
             }

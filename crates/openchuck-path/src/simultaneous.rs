@@ -40,12 +40,15 @@
 //!
 //! **Gouge protection between points (OP-12).** The machine moves in a
 //! straight line in X, Y, Z and A between points. A move is halved until the
-//! tool, at the middle of the move, is within [`CHORD_FACTOR`] times the
-//! tolerance of the surface, measured by dropping the tool along its axis at
-//! that machine pose (positive: the move would cut in; negative: it would
-//! leave material) and taken along the surface normal. A move that still
-//! cuts in by more than the tolerance after [`MAX_DEPTH`] halvings is
-//! refused with a message naming it.
+//! tool is within [`CHORD_FACTOR`] times the tolerance of the surface at the
+//! middle of the move and at the middles of its two halves (the quarter
+//! points; decision record 0133, as decision 0115 did for the shared fitter),
+//! each measured by dropping the tool along its axis at that machine pose
+//! (positive: the move would cut in; negative: it would leave material) and
+//! taken along the surface normal. The quarter points of a move are the
+//! middles of its halves, so their drops are handed down when the move is
+//! split. A move that still cuts in by more than the tolerance at its middle
+//! after [`MAX_DEPTH`] halvings is refused with a message naming it.
 
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::JobContext;
@@ -743,29 +746,33 @@ impl Plan<'_> {
         }
     }
 
-    /// The error of the straight machine move from `a` to `b` at its
-    /// middle: the tool is dropped along its axis at that machine pose, and
-    /// the distance it moves is taken along the surface normal. Positive
-    /// when the move would cut into the surface, negative when it would
-    /// leave material; zero when there is no surface under it.
-    fn deviation(&self, a: &Node, b: &Node, normal: UnitVec3) -> f64 {
+    /// The error of the straight machine move from `a` to `b` at the node
+    /// `at` between them: the tool is dropped along its axis at that machine
+    /// pose, and the distance it moves is taken along the surface normal.
+    /// Positive when the move would cut into the surface, negative when it
+    /// would leave material; zero when there is no surface under it. A is
+    /// linear in the track parameter, so the straight move reaches the same
+    /// fraction of every axis.
+    fn deviation(&self, a: &Node, b: &Node, at: &Node) -> f64 {
         let rotary = &self.input.rotary;
+        let span = b.t - a.t;
+        let frac = if span > 0.0 { (at.t - a.t) / span } else { 0.5 };
         let (pa, pb) = (
             rotary.to_axis(a.contact.tip, a.a),
             rotary.to_axis(b.contact.tip, b.a),
         );
-        let mid = AxisPosition {
-            along: 0.5 * (pa.along + pb.along),
-            across: 0.5 * (pa.across + pb.across),
-            height: 0.5 * (pa.height + pb.height),
+        let lin = AxisPosition {
+            along: pa.along + frac * (pb.along - pa.along),
+            across: pa.across + frac * (pb.across - pa.across),
+            height: pa.height + frac * (pb.height - pa.height),
         };
-        let a_mid = Degrees(0.5 * (a.a.0 + crate::rotary::nearest_turn(b.a, a.a).0));
+        let a_lin = Degrees(a.a.0 + frac * (crate::rotary::nearest_turn(b.a, a.a).0 - a.a.0));
         let line = ToolLine {
-            origin: rotary.to_model(mid, a_mid),
-            axis: rotary.tool_axis(a_mid),
+            origin: rotary.to_model(lin, a_lin),
+            axis: rotary.tool_axis(a_lin),
         };
         match self.input.surface.drop_tool(self.drop_profile, &line) {
-            Some(c) => c.offset * line.axis.get().dot(normal.get()).max(0.0),
+            Some(c) => c.offset * line.axis.get().dot(at.normal.get()).max(0.0),
             None => 0.0,
         }
     }
@@ -789,8 +796,8 @@ impl Plan<'_> {
     }
 
     /// Halves the move `a` to `b` until it is within the chord at its
-    /// middle; pushes the points after `a`, ending with `b`. `None` marks a
-    /// gap where the region forbids cutting.
+    /// middle and at the middles of its halves; pushes the points after `a`,
+    /// ending with `b`. `None` marks a gap where the region forbids cutting.
     fn refine(
         &self,
         track: &Track,
@@ -800,15 +807,53 @@ impl Plan<'_> {
         depth: u32,
         out: &mut Refined,
     ) -> Result<()> {
+        self.refine_from(track, axis, a, b, depth, None, out)
+    }
+
+    /// [`refine`](Self::refine) with the drop at the middle already known
+    /// (`Some(middle)`), as it is for each half of a move that was split: the
+    /// quarter points of the move are the middles of its halves, so each
+    /// drop is made once (decision record 0133).
+    #[allow(clippy::too_many_arguments)]
+    fn refine_from(
+        &self,
+        track: &Track,
+        axis: &AxisPlan,
+        a: &Node,
+        b: &Node,
+        depth: u32,
+        middle: Option<Option<Node>>,
+        out: &mut Refined,
+    ) -> Result<()> {
         let t = 0.5 * (a.t + b.t);
-        match self.node(track, axis, t) {
+        match middle.unwrap_or_else(|| self.node(track, axis, t)) {
             Some(mid) => {
-                let error = self.deviation(a, b, mid.normal);
-                if error.abs() > self.chord {
-                    if depth < MAX_DEPTH {
-                        self.refine(track, axis, a, &mid, depth + 1, out)?;
-                        return self.refine(track, axis, &mid, b, depth + 1, out);
+                let error = self.deviation(a, b, &mid);
+                if depth < MAX_DEPTH {
+                    // The straight move must hold at the quarter points too.
+                    // A quarter with no material under it is no reason to
+                    // split, unless a region constraint forbids cutting
+                    // there: then the half finds the gap as it would at its
+                    // own middle.
+                    let quarter = |n: &Option<Node>| match n {
+                        Some(q) => self.deviation(a, b, q).abs() > self.chord,
+                        None => self.constrained,
+                    };
+                    let first = self.node(track, axis, 0.5 * (a.t + mid.t));
+                    let second = self.node(track, axis, 0.5 * (mid.t + b.t));
+                    if error.abs() > self.chord || quarter(&first) || quarter(&second) {
+                        self.refine_from(track, axis, a, &mid, depth + 1, Some(first), out)?;
+                        return self.refine_from(
+                            track,
+                            axis,
+                            &mid,
+                            b,
+                            depth + 1,
+                            Some(second),
+                            out,
+                        );
                     }
+                } else if error.abs() > self.chord {
                     if error > self.tolerance {
                         return Err(PathError::Strategy(format!(
                             "simultaneous finishing cannot keep the move to X {:.3}, A {:.3} \

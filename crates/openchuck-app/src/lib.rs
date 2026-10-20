@@ -71,7 +71,10 @@ use setup::{PartExtent, SetupReport};
 
 pub use acknowledgement::{Acknowledgements, Lookup as AcknowledgementLookup};
 pub use cache::DEFAULT_CACHE_VERSIONS;
-pub use command::{Command, duplicate_operation};
+pub use command::{
+    Command, NO_MODEL_REASON, ONE_SETUP_REASON, add_setup_blocked, can_add_setup,
+    duplicate_operation, new_setup,
+};
 pub use error::AppError;
 pub use export::{
     Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, ExportChecks,

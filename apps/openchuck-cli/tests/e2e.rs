@@ -393,7 +393,10 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
 /// The text of a program as its golden file keeps it: the operation's id,
 /// new for every project, is replaced by `<id>`.
 fn stable(text: &str) -> String {
-    text.lines()
+    // The software version in the generator comment is masked too (NFR-16), as in the golden
+    // files, so a version bump changes none of them.
+    openchuck_testkit::golden::mask_generator(text)
+        .lines()
         .map(|l| {
             if l.starts_with("(operation ") {
                 "(operation <id>)\n".to_owned()

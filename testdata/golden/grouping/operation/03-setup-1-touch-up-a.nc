@@ -1,4 +1,5 @@
 (golden - Setup 1 - Touch up A)
+(OpenChuckCAM <version>)
 G90 G21 G17
 G54
 (operation Touch up A, tool T1 4 mm ball, about 18 s)

@@ -42,14 +42,15 @@ impl Group {
         }
     }
 
-    /// The "+" button's tooltip, or `None` when the group has no "+" yet: a
-    /// second setup is SET-07 (P2).
+    /// The "+" button's tooltip, or `None` when the group has no "+" yet.
+    /// The Setups "+" creates the project's one setup, once there is a model
+    /// (decision record 0144); a second is SET-07 (P2).
     fn add(self) -> Option<&'static str> {
         match self {
+            Self::Setups => Some("New setup"),
             Self::Model => Some("Import a model (Ctrl I)"),
             Self::SelectionSets => Some("New selection set: pick on the part"),
             Self::Operations => Some("New operation (N)"),
-            Self::Setups => None,
         }
     }
 }
@@ -112,6 +113,17 @@ fn row(ui: &mut egui::Ui, r: Row<'_>, before: impl FnOnce(&mut egui::Ui)) -> egu
 
 /// A group's header: its title, count and "+" (22 pixels).
 fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool {
+    header_with(ui, group, count, enabled, None)
+}
+
+/// A header whose "+" says `disabled_tip` while it is disabled.
+fn header_with(
+    ui: &mut egui::Ui,
+    group: Group,
+    count: usize,
+    enabled: bool,
+    disabled_tip: Option<&str>,
+) -> bool {
     let mut add = false;
     ui.add_space(6.0);
     ui.horizontal(|ui| {
@@ -124,7 +136,10 @@ fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if let Some(tip) = group.add() {
                 let button = egui::Button::new("+").min_size(egui::vec2(22.0, 22.0));
-                if ui.add_enabled(enabled, button).on_hover_text(tip).clicked() {
+                let tip = disabled_tip.filter(|_| !enabled).unwrap_or(tip);
+                let response = ui.add_enabled(enabled, button);
+                let response = response.on_disabled_hover_text(tip).on_hover_text(tip);
+                if response.clicked() {
                     add = true;
                 }
             }
@@ -201,7 +216,14 @@ impl Shell {
                     item_menu(&response, item, None, &mut actions);
                 }
                 // Setups, with their parts as child rows.
-                if header(ui, Group::Setups, project.setups().len(), true) {
+                let blocked = openchuck_app::add_setup_blocked(project);
+                if header_with(
+                    ui,
+                    Group::Setups,
+                    project.setups().len(),
+                    blocked.is_none(),
+                    blocked,
+                ) {
                     actions.push(TreeAction::Add(Group::Setups));
                 }
                 if project.setups().is_empty() {
