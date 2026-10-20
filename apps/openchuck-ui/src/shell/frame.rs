@@ -325,7 +325,7 @@ impl Shell {
                             }
                             return;
                         }
-                        let corner = ui.max_rect().left_top() + egui::vec2(8.0, 8.0);
+                        let corner = crate::selection_panel::tools_corner(ui.max_rect());
                         self.viewport.show(ui);
                         // The selection tools sit over the top left of the view.
                         if self.viewport.is_picking() {

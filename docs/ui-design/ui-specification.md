@@ -196,7 +196,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 
 | Place | Box | Steps |
 | --- | --- | --- |
-| Top left | Selection tools: a filter, "Pick: Both, Faces, Edges" (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
+| Top left, under the toolbar strip | Selection tools: a filter, "Pick" (a muted label) with Both, Faces, Edges as one framed segmented control, then a line naming the active mode and what the pointer is over (decision 0153) (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
 | Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
 | Top right | View cube; clicking a face gives that standard view | All with a 3D view |
 | Top right, under the cube | Axis triad: X red, Y green, Z blue | All with a 3D view |
@@ -234,7 +234,8 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Tool | Grey body, lilac tip | |
 | Working selection | Blue `#3d8bff` at 40% | Fill (OI-163, settled) |
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
-| Hovered or selected edge | Hover yellow `#ffe066`; selected in the working selection's blue `#3d8bff` or the shown set's swatch | Line 2 pixels wide hovered, 3 pixels selected, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
+| Hovered edge | Magenta `#ff4fd8`, a colour of its own so it reads apart from a hovered triangle or face (decision 0153) | Line 2 pixels wide |
+| Selected edge | In the working selection orange `#ff6a00` (a pair with the blue of selected triangles and faces), or the shown set's swatch | Line 3 pixels wide, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
 | Saved set | Its own swatch from a fixed set of eight | Fill when shown |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
@@ -676,7 +677,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
   - a note on what can be selected: triangles and edges on meshes (decision 0066), faces and edges on STEP models;
   - for a working edge selection, and for a chosen edge set of a STEP model, "Tangent edges": "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9);
   - "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*;
-  - "Warn before a click starts a new selection" (on by default), until a project and software preferences screen exists to hold it *(OI-260)*.
+  - "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until a project and software preferences screen exists to hold it *(OI-260)*.
 - **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
   - A set with a problem is red, with its reason ("12 missing") and "Reselect".
   - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
@@ -774,7 +775,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **Units.** Every number carries its unit: "mm", "deg" or "°", "mm/min", "rpm". Dates are written "13 Oct 2026".
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
-- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click of the other kind asks first, in a dialog "Start a new selection?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now.", with "Start a new selection", "Cancel" and "Don't show me this warning again".
+- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click (no Shift or Ctrl) asks first whenever the working selection is not empty, in a dialog titled with what it clears, "Clear 12 faces?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now." (for a pick of the same kind: "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take from it. ..."), with "Clear", "Cancel" and "Don't show me this warning again". Switching the filter to one that cannot hold the selection (Edges on triangles or faces, Faces on edges) asks the same way. The "Clear" button of the selection sets tab and Esc (which ends picking and keeps the working selection) do not ask (decision 0153).
 - **The machine.** Machine values are described by provenance ("confirmed on the machine", "from Makera's profile", "unconfirmed placeholder"), not by blame.
 
 ## 16. Keyboard and accessibility
