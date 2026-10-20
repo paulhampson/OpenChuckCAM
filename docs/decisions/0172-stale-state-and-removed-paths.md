@@ -1,6 +1,6 @@
 # 0172: What makes an operation stale, and a toolpath whose operation is gone (lane BUG-STALE, part 1)
 
-- **Status:** proposed (20 Oct 2026). Only the project owner accepts a record.
+- **Status:** accepted (20 Oct 2026) by the project owner, in the lane's own session.
 - **Date:** 20 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-620 is new. Record 0173 and OI-621 to OI-629 are for part 2 (issues 210 and 224).
 
