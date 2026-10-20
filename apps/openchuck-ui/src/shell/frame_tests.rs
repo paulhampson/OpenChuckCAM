@@ -288,21 +288,21 @@ fn req_ui_15_the_layout_and_scale_survive_a_restart() {
     let mut rig = Rig::cube("frame-settings", Some(file.clone()));
     rig.dirs.push(config.clone());
     rig.press(Key::Num2, Modifiers::COMMAND);
-    rig.ctx.set_zoom_factor(1.0);
+    rig.ctx.set_zoom_factor(0.9);
     rig.frame(Vec::new());
     // Written a moment after the change, or on quitting.
     rig.shell.save_settings();
     let kept = file.load();
     assert!(kept.problem.is_none());
     assert!(kept.settings.inspector.collapsed);
-    assert!((kept.settings.scale - 1.0).abs() < 1e-6);
+    assert!((kept.settings.scale - 0.9).abs() < 1e-6);
     let project = rig.shell.app.as_ref().unwrap().location().to_path_buf();
     let project = std::fs::canonicalize(&project).unwrap_or(project);
     assert_eq!(kept.settings.recent.first(), Some(&project));
     // A restart starts from them.
     let shell = Shell::with_settings(false, None, Some(file));
     assert!(shell.settings.inspector.collapsed);
-    assert!((shell.scale() - 1.0).abs() < 1e-6);
+    assert!((shell.scale() - 0.9).abs() < 1e-6);
     // The scale stays within 80% to 200%.
     rig.ctx.set_zoom_factor(5.0);
     rig.frame(Vec::new());

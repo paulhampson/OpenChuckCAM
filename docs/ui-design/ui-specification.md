@@ -53,7 +53,7 @@ The user is the one in requirements section 2: a machinist, maker or small-shop 
 
 ## 3. Window structure
 
-Sizes are logical pixels at 100% scale. The default scale is 120% (decision 0029, owner's run, observation 1; kept by the owner on 15 Oct 2026, OI-166), with View > Larger, Smaller and Reset, and the chosen scale is remembered (UI-15).
+Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148 item 3, owner's decision of 20 Oct 2026, which reopened and closed OI-166; it was 120% from decision 0029). View > Scale offers 80, 90, 100, 110 and 120%; Ctrl plus and Ctrl minus still reach the rest of the 80% to 200% range, and the chosen scale is remembered (UI-15), so a saved scale outside the list stays as it is and shows no tick.
 
 | Region | Size | Contents |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ Sizes are logical pixels at 100% scale. The default scale is 120% (decision 0029
 
 - **Splitters** are 5 pixels with a grip mark. Double-clicking one resets its panel to the default size.
 - **Collapsing.** The project panel, the inspector and the dock collapse with the chevron in their headers, or Ctrl 1, Ctrl 2 and Ctrl 3. A collapsed side panel leaves a 28-pixel rail with its icon. *(UI-16)*
-- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 120% a 1366 × 768 screen gives about 1138 × 640 logical pixels, so on such a screen the user reduces the scale once with View > Smaller. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size the dock collapses, and the inspector too when the viewport would be narrower than 420 pixels. Neither is kept as the user's choice: the user can open either again, and the rule applies afresh once the window is large again. *(UI-16)*
+- **Smallest window.** At 100% scale, everything stays usable at 1366 × 768 logical pixels (UI-16). At the default 100% a 1366 × 768 screen gives the full 1366 × 768 logical pixels, so no change of scale is needed. At that size: the panels keep their defaults, the viewport shrinks, and overlays keep clear of each other (the "Operations at 1366 × 768" board). Below that size the dock collapses, and the inspector too when the viewport would be narrower than 420 pixels. Neither is kept as the user's choice: the user can open either again, and the rule applies afresh once the window is large again. *(UI-16)*
 - **Remembered layout.** Panel sizes, collapsed panels, open sections, scale and theme are remembered per user on the computer, never in the project (section 13). *(UI-15)*
 - **Dialogs.**
   - Modal dialogs (open, new, unsaved changes, errors) stay inside the main window.
@@ -181,7 +181,7 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | --- | --- | --- |
 | Display: Shaded, Wire, Edges (shaded with feature edges at 30°, decision 0029 item 4) | All | UI-02 |
 | Projection: Persp, Ortho | All | UI-02 |
-| Standard views: Front, Top, Iso (all seven in the View menu and on the view cube) | Model, Setup | UI-02 |
+| Standard views: Front, Top, Iso (all seven in View > View direction and on the view cube). The same rule everywhere (decision 0148 item 2): every 3D view has them; Setup's two fixed panes (11.3) do not, and the menu items are greyed with "Setup shows fixed front and end views" | Every 3D view; not Setup's panes | UI-02 |
 | Fit (F) | All | UI-02 |
 | Show or hide (V): part, stock, rotary axis and work axes, held regions and tabs, selections, toolpaths by operation | All | UI-03, SIM-01 |
 | Section plane (S) | All | *(UI-21)* |
@@ -198,10 +198,9 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 | --- | --- | --- |
 | Top left | Selection tools: a filter, "Pick: Both, Faces, Edges" (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
 | Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
-| Top right | View cube; clicking a face gives that standard view | All with a 3D view |
-| Top right, under the cube | Axis triad: X red, Y green, Z blue | All with a 3D view |
+| Top right | View cube; clicking a face gives that standard view. Its labels lie flat on the faces and turn with them; a face within 15° of edge-on shows none (decision 0149) | All with a 3D view |
 | Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2; its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
-| Bottom left | Colour scale (11.5) | Simulate |
+| Bottom left | Axes gadget: X red, Y green, Z blue, drawn without a box (decision 0149). On Simulate the colour scale (11.5) sits above it, 8 pixels clear | Gadget: all with a 3D view; colour scale: Simulate |
 
 - **Small windows.** When the view is under 480 pixels high, the path legend collapses to a button.
 - **Probe.** A probe tooltip (11.5) may sit anywhere near the pointer, and is drawn above the other boxes.
@@ -859,7 +858,7 @@ Tracked in [open-items.md](../open-items.md):
 - **OI-163 (closed 15 Oct 2026):** selection highlight colours are the ones in section 7.4 (D7).
 - **OI-164 (closed 15 Oct 2026):** the typeface is IBM Plex Sans and Mono, bundled under the OFL (section 14.3).
 - **OI-165 (closed 15 Oct 2026):** the export acknowledgement is keyed by the project folder path (section 13).
-- **OI-166 (closed 15 Oct 2026):** the default scale stays 120%; UI-16 is measured at 100% scale (section 3).
+- **OI-166 (closed 15 Oct 2026, reopened and closed again 20 Oct 2026):** the default scale was kept at 120% on 15 Oct and became 100% on 20 Oct 2026 (decision 0148 item 3, OI-435); UI-16 is measured at 100% scale (section 3).
 - **OI-194 (open):** the deviation display: decision 0040's six bands by triangle against this specification's continuous scale (D12).
 - **OI-340 and OI-341 (closed 18 Oct 2026):** the catch-up edits and the width scale of decision 0114, made here. **OI-342 (open):** the boards re-rendered lane by lane (decision 0114 section E). **OI-345 (open):** UI-13 and section 8 with two provenance states, proposed in decision 0114.
 - **OI-325 (closed 18 Oct 2026):** the differences of the workholding panel and display from sections 7.5 and 11.7 (D13), built by lane 21d. **OI-334 (open):** what lane 21d did not build.

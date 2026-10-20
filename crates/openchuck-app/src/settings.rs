@@ -22,8 +22,8 @@ use crate::error::AppError;
 /// The table of `settings.toml` this module owns.
 const TABLE: &str = "interface";
 
-/// The interface scale at first start (OI-166).
-pub const DEFAULT_SCALE: f32 = 1.2;
+/// The interface scale at first start (OI-166, reopened by decision 0148).
+pub const DEFAULT_SCALE: f32 = 1.0;
 /// The smallest and largest interface scale (specification section 16,
 /// NFR-15).
 pub const SCALE_RANGE: (f32, f32) = (0.8, 2.0);

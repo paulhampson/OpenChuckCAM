@@ -3,8 +3,9 @@
 //! SIM-05, UI-25): at most five dark boxes in fixed places, never
 //! overlapping, dark in both themes. Top left is the selection tools box,
 //! which the selection panel draws; under it the path legend (Operations);
-//! top right the view cube and under it the axis triad; bottom right the
-//! readout (Operations, Simulate); bottom left the colour scale (Simulate).
+//! top right the view cube; bottom left the axes gadget, without a box, and
+//! above it on Simulate the colour scale; bottom right the readout
+//! (Operations, Simulate).
 //! Held regions and tabs join the legend of the step (7.5).
 
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, pos2, vec2};
@@ -21,7 +22,10 @@ const MARGIN: f32 = 12.0;
 const CUBE: f32 = 84.0;
 /// The size of the view cube's labels, in pixels at a face seen square-on.
 const CUBE_LABEL: f32 = 8.0;
-/// The triad's box height.
+/// How squarely a cube face must face the eye for its label to show: the
+/// sine of 15 degrees.
+const LABEL_FACING: f32 = 0.258_819;
+/// The axes gadget's size.
 const TRIAD: f32 = 78.0;
 /// Below this height the path legend collapses to a button (7.2).
 pub const LEGEND_MIN_HEIGHT: f32 = 480.0;
@@ -303,9 +307,11 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         pos2(right - CUBE, rect.top() + MARGIN),
         vec2(CUBE, CUBE),
     ));
+    // The axes gadget: bottom left of every 3D view, drawn without a box
+    // (decision 0149).
     b.triad = Some(Rect::from_min_size(
-        pos2(right - CUBE, rect.top() + MARGIN + CUBE + 8.0),
-        vec2(CUBE, TRIAD),
+        pos2(rect.left() + MARGIN, rect.bottom() - MARGIN - TRIAD),
+        vec2(TRIAD, TRIAD),
     ));
     if readout(viewport).is_some() {
         b.readout = Some(Rect::from_min_size(
@@ -344,7 +350,10 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
     if step == ViewStep::Simulate && viewport.bands().is_some() {
         let height = 74.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
-            pos2(rect.left() + MARGIN, rect.bottom() - MARGIN - height),
+            pos2(
+                rect.left() + MARGIN,
+                rect.bottom() - MARGIN - TRIAD - 8.0 - height,
+            ),
             vec2(236.0, height),
         ));
     }
@@ -438,17 +447,19 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 Stroke::new(1.0, Color32::from_rgb(0x7b, 0x84, 0x90)),
             ));
             let centre = points.iter().fold(Pos2::ZERO, |a, p| a + p.to_vec2()) / 4.0;
-            flat_text(
-                &painter,
-                face.label,
-                centre,
-                vec2(face.right[0], face.right[1]),
-                vec2(face.up[0], face.up[1]),
-            );
+            // A face within 15 degrees of edge-on is too thin to read.
+            if face.facing >= LABEL_FACING {
+                flat_text(
+                    &painter,
+                    face.label,
+                    centre,
+                    vec2(face.right[0], face.right[1]),
+                    vec2(face.up[0], face.up[1]),
+                );
+            }
         }
     }
     if let Some(triad) = b.triad {
-        frame(&painter, triad);
         let (right, up, _) = viewport.camera.basis();
         let centre = triad.center();
         for (axis, name, colour) in [
