@@ -58,6 +58,32 @@ fn licence_box() -> String {
 /// The Copy button's tooltip.
 const COPY_TIP: &str = "Copies the build information above, and nothing else, to the clipboard.";
 
+/// The Open log folder button's tooltip.
+const LOG_TIP: &str = "Shows the folder that holds the log file in the file browser.";
+
+/// "Log file": where this run writes its log (NFR-17, decision 0155) and a button that shows the
+/// folder. A failure to open it is written under the button.
+fn log_section(ui: &mut egui::Ui) {
+    let failure = egui::Id::new("about open log folder failure");
+    ui.strong("Log file");
+    match crate::logging::log_path() {
+        Some(path) => ui.label(RichText::new(path.display().to_string()).monospace()),
+        None => ui.label("This run is not writing a log file."),
+    };
+    let button = ui.button("Open log folder").on_hover_text(LOG_TIP);
+    // The tooltip opens on keyboard focus as well as on hover (specification 16).
+    if button.has_focus() && !button.hovered() {
+        button.show_tooltip_text(LOG_TIP);
+    }
+    if button.clicked() {
+        let result = crate::logging::open_log_folder();
+        ui.data_mut(|d| d.insert_temp(failure, result.err()));
+    }
+    if let Some(Some(message)) = ui.data(|d| d.get_temp::<Option<String>>(failure)) {
+        ui.label(message);
+    }
+}
+
 /// What the window asks of the shell.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Outcome {
@@ -93,6 +119,9 @@ pub fn show(ui: &mut egui::Ui, build: &str, licences: &str) -> Outcome {
                     .desired_rows(10),
             );
         });
+    ui.add_space(6.0);
+
+    log_section(ui);
     ui.add_space(6.0);
 
     // Copy is secondary, on the left; Close is the primary action, bottom right. Tab visits them
@@ -256,6 +285,19 @@ mod tests {
         }
     }
 
+    /// NFR-17: the window names the log file, and Open log folder says so when there is none.
+    #[test]
+    fn req_nfr_17_about_window_offers_the_log_folder() {
+        let mut rig = Rig::new();
+        assert!(rig.shows("Log file"));
+        assert!(rig.shows("This run is not writing a log file."));
+        assert!(!rig.shows("There is no log file in this run."));
+        let at = rig.centre_of("Open log folder");
+        rig.click(at);
+        assert!(rig.shows("There is no log file in this run."));
+        assert!(!rig.outcome.close);
+    }
+
     /// NFR-16: clicking Copy puts exactly the build text on the clipboard, and does not close.
     #[test]
     fn req_nfr_16_copy_puts_exactly_the_build_text_on_the_clipboard() {
@@ -266,12 +308,17 @@ mod tests {
         assert!(!rig.outcome.close);
     }
 
-    /// NFR-16, UI-14: the licence box, Copy and Close are reached in that order with Tab, and
-    /// Enter presses the one that has the keyboard.
+    /// NFR-16, NFR-17, UI-14: the licence box, Open log folder, Copy and Close are reached in
+    /// that order with Tab, and Enter presses the one that has the keyboard.
     #[test]
-    fn req_nfr_16_req_ui_14_keyboard_reaches_the_box_copy_and_close() {
+    fn req_nfr_16_req_ui_14_keyboard_reaches_the_box_log_copy_and_close() {
         let mut rig = Rig::new();
         rig.key(Key::Tab); // the licence box
+        rig.key(Key::Tab); // Open log folder
+        assert!(!rig.shows("There is no log file in this run."));
+        rig.key(Key::Enter);
+        assert!(rig.shows("There is no log file in this run."));
+        assert!(rig.copied.is_empty());
         rig.key(Key::Tab); // Copy
         rig.key(Key::Enter);
         assert_eq!(rig.copied, vec![BUILD.to_owned()]);
@@ -286,6 +333,7 @@ mod tests {
     fn req_nfr_16_copy_tooltip_opens_on_focus() {
         let mut rig = Rig::new();
         assert!(!rig.shows("nothing else"));
+        rig.key(Key::Tab);
         rig.key(Key::Tab);
         rig.key(Key::Tab);
         rig.frame(Vec::new());
