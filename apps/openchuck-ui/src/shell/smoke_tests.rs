@@ -252,28 +252,3 @@ fn req_ui_12_req_ui_16_a_message_link_keeps_clear_of_its_wrapped_sentence() {
         sentence.1
     );
 }
-
-#[test]
-fn explore_playback() {
-    let mut rig = rig("explore-playback");
-    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
-    rig.size = egui::vec2(1920.0, 1080.0);
-    rig.shell.settings.dock.size = 400.0;
-    rig.shell.open_step(Step::Simulate);
-    for _ in 0..5 {
-        rig.frame(Vec::new());
-    }
-    let dump = |rig: &Rig, tag: &str| {
-        for (t, r) in rig.text_rects() {
-            if r.top() > 700.0 && r.top() < 1050.0 && r.left() > 270.0 {
-                eprintln!("{tag} {t:?} {:.0}..{:.0}", r.top(), r.bottom());
-            }
-        }
-    };
-    dump(&rig, "idle");
-    rig.press(Key::Space, Modifiers::NONE);
-    for _ in 0..10 {
-        rig.frame(Vec::new());
-    }
-    dump(&rig, "play");
-}
