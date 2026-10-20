@@ -44,7 +44,10 @@ struct Row {
 
 /// The cells of a Markdown table row, trimmed, without the outer bars.
 fn cells(line: &str) -> Vec<String> {
-    let inner = line.trim().trim_start_matches('|').trim_end_matches('|');
+    // Take off one outer bar at each end only: a row that ends `||` has an empty last cell.
+    let line = line.trim();
+    let inner = line.strip_prefix('|').unwrap_or(line);
+    let inner = inner.strip_suffix('|').unwrap_or(inner);
     inner.split('|').map(|c| c.trim().to_owned()).collect()
 }
 
@@ -182,6 +185,10 @@ pub fn check_decision_index(text: &str, files: &[String]) -> Findings {
         if !files.contains(&target) {
             findings.push(format!(
                 "{DECISION_INDEX}:{line_no}: record {number:04} links to {target}, which does not exist"
+            ));
+        } else if target.get(..4).and_then(|n| n.parse::<u32>().ok()) != Some(number) {
+            findings.push(format!(
+                "{DECISION_INDEX}:{line_no}: record {number:04} links to {target}, whose number is different"
             ));
         }
     }
@@ -374,6 +381,25 @@ mod tests {
         let findings = check_decision_index(&index(&[1, 2, 2]), &files(&[1, 2]));
         assert_eq!(findings.len(), 1);
         assert!(findings[0].contains("record 0002 has a second row (first at line 6)"));
+    }
+
+    #[test]
+    fn a_row_whose_link_has_another_number_is_found() {
+        let text = "| [0002](0003-title.md) | Title | Accepted |\n";
+        let findings = check_decision_index(text, &files(&[2, 3]));
+        assert!(
+            findings.iter().any(
+                |f| f.contains("record 0002 links to 0003-title.md, whose number is different")
+            ),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_row_ending_in_two_bars_keeps_its_empty_last_cell() {
+        assert_eq!(cells("| a | b ||"), ["a", "b", ""]);
+        assert_eq!(cells("|| a | b |"), ["", "a", "b"]);
+        assert_eq!(cells("| a | b |"), ["a", "b"]);
     }
 
     #[test]

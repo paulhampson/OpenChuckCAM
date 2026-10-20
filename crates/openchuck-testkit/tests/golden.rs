@@ -25,10 +25,19 @@ fn req_nfr_08_golden_comparison_reports_the_first_difference() {
     assert!(golden::compare("a\n", "a").is_err());
 }
 
+/// NFR-08: only `OPENCHUCK_BLESS=1` blesses; `0`, an empty value and `true` do not.
+#[test]
+fn req_nfr_08_only_a_bless_value_of_exactly_one_blesses() {
+    assert!(golden::is_bless_value(Some("1")));
+    for other in [None, Some("0"), Some(""), Some("true"), Some("11")] {
+        assert!(!golden::is_bless_value(other), "{other:?}");
+    }
+}
+
 #[test]
 fn req_nfr_08_missing_golden_file_is_an_error() {
     let missing = std::env::temp_dir().join("openchuck-no-such-golden.ngc");
-    if std::env::var(golden::BLESS_VAR).is_err() {
+    if !golden::blessing() {
         assert!(
             golden::check(&missing, "x")
                 .unwrap_err()
@@ -65,7 +74,7 @@ fn req_nfr_16_req_gc_07_the_generator_version_is_masked_in_golden_comparisons() 
     std::fs::write(&path, "(OpenChuckCAM <version>)\nG0\n").unwrap();
     golden::check(&path, "(OpenChuckCAM 0.11.0)\nG0\n").unwrap();
     // A bless run rewrites the golden file instead of failing on a difference.
-    if std::env::var(golden::BLESS_VAR).is_err() {
+    if !golden::blessing() {
         assert!(golden::check(&path, "(OpenChuckCAM 0.11.0)\nG1\n").is_err());
     }
     std::fs::remove_dir_all(dir).unwrap();

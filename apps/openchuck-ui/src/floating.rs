@@ -57,7 +57,7 @@ pub fn floating_fixed<T>(
     size: [f32; 2],
     contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
-    let builder = builder(title, size, false);
+    let builder = placed(ctx, title, size, false);
     run(ctx, key, builder, false, contents)
 }
 
@@ -107,12 +107,56 @@ pub fn raise(ctx: &egui::Context, key: &str) {
     }
 }
 
+/// The room a dialog leaves round it inside the main window, in points.
+const MARGIN: f32 = 24.0;
+
+/// The size a dialog asking for `size` gets in a main window whose inner area is `inner`, and
+/// where its top left goes so that it is centred on the main window's `outer` area. A dialog
+/// never opens larger than the window it belongs to (UI-16), and never below the smallest a
+/// resizable dialog may be; with an unknown window it keeps the size asked for and the system
+/// places it.
+pub fn fitted(
+    size: [f32; 2],
+    inner: Option<egui::Rect>,
+    outer: Option<egui::Rect>,
+) -> ([f32; 2], Option<egui::Pos2>) {
+    let Some(inner) = inner else {
+        return (size, None);
+    };
+    // Never larger than the window, however small it is (UI-16).
+    let fit = [
+        size[0].min((inner.width() - 2.0 * MARGIN).max(1.0)),
+        size[1].min((inner.height() - 2.0 * MARGIN).max(1.0)),
+    ];
+    let centre = outer.unwrap_or(inner).center();
+    (fit, Some(centre - egui::vec2(fit[0], fit[1]) / 2.0))
+}
+
+/// `size` fitted to the main window `ctx` is drawing, and the position that centres it.
+fn fit_to_window(ctx: &egui::Context, size: [f32; 2]) -> ([f32; 2], Option<egui::Pos2>) {
+    let (inner, outer) = ctx.input(|i| {
+        let v = i.viewport();
+        (v.inner_rect, v.outer_rect)
+    });
+    fitted(size, inner, outer)
+}
+
+/// A dialog's viewport, `size` fitted and centred on the window `ctx` draws (UI-16).
+fn placed(ctx: &egui::Context, title: &str, size: [f32; 2], resizable: bool) -> ViewportBuilder {
+    let (size, position) = fit_to_window(ctx, size);
+    let builder = builder(title, size, resizable);
+    match position {
+        Some(p) => builder.with_position(p),
+        None => builder,
+    }
+}
+
 fn builder(title: &str, size: [f32; 2], resizable: bool) -> ViewportBuilder {
     let builder = ViewportBuilder::default()
         .with_title(title)
         .with_inner_size(size);
     if resizable {
-        builder.with_min_inner_size([240.0, 160.0])
+        builder.with_min_inner_size([size[0].min(240.0), size[1].min(160.0)])
     } else {
         builder
             .with_resizable(false)
@@ -130,7 +174,7 @@ fn show<T>(
     scroll: bool,
     contents: impl FnMut(&mut egui::Ui) -> T,
 ) -> (T, WindowEvent) {
-    run(ctx, key, builder(title, size, true), scroll, contents)
+    run(ctx, key, placed(ctx, title, size, true), scroll, contents)
 }
 
 fn run<T>(
@@ -169,6 +213,8 @@ fn run<T>(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::float_cmp, clippy::unwrap_used)]
+
     use super::*;
 
     /// A fixed dialog cannot be resized or maximised and is exactly the
@@ -203,6 +249,32 @@ mod tests {
         let mut unknown = FocusReturn::new();
         assert!(!unknown.update(None, None));
         assert!(!unknown.update(None, None));
+    }
+
+    /// UI-16: a dialog never opens larger than the window it belongs to, and is centred on it.
+    #[test]
+    fn req_ui_16_a_dialog_is_fitted_inside_the_window_and_centred_on_it() {
+        let window = egui::Rect::from_min_size(egui::pos2(100.0, 50.0), egui::vec2(1366.0, 768.0));
+        let (size, position) = fitted([1200.0, 760.0], Some(window), Some(window));
+        assert_eq!(size, [1200.0, 720.0], "the height leaves the margin");
+        let at = position.unwrap();
+        let dialog = egui::Rect::from_min_size(at, egui::vec2(size[0], size[1]));
+        assert!(window.contains_rect(dialog), "{dialog:?} in {window:?}");
+        assert_eq!(dialog.center(), window.center());
+        // A small dialog keeps its size and is centred.
+        let (size, position) = fitted([460.0, 520.0], Some(window), Some(window));
+        assert_eq!(size, [460.0, 520.0]);
+        assert_eq!(
+            egui::Rect::from_min_size(position.unwrap(), egui::vec2(460.0, 520.0)).center(),
+            window.center()
+        );
+        // A tiny window still holds the dialog whole.
+        let tiny = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0));
+        let (size, position) = fitted([1200.0, 760.0], Some(tiny), None);
+        let dialog = egui::Rect::from_min_size(position.unwrap(), egui::vec2(size[0], size[1]));
+        assert!(tiny.contains_rect(dialog), "{dialog:?} in {tiny:?}");
+        // An unknown window leaves the size and the place to the system.
+        assert_eq!(fitted([300.0, 200.0], None, None), ([300.0, 200.0], None));
     }
 
     #[test]

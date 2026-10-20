@@ -339,6 +339,13 @@ impl RunPanel {
         self.show_results || self.adding.is_some()
     }
 
+    /// Whether the add-operation dialog is open.
+    #[cfg(test)]
+    #[must_use]
+    pub fn is_adding(&self) -> bool {
+        self.adding.is_some()
+    }
+
     /// Opens the results window on the latest run.
     pub fn show_results(&mut self) {
         self.show_results = true;
