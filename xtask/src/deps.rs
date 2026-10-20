@@ -51,8 +51,13 @@ pub const ALLOWED_INTERNAL: &[(&str, &[&str])] = &[
         ],
     ),
     ("openchuck-viewport", &["openchuck-types"]),
-    ("openchuck-cli", &["openchuck-app"]),
-    ("openchuck-ui", &["openchuck-app", "openchuck-viewport"]),
+    // The build information: no project crate may use it except the two front ends (decision 0151).
+    ("openchuck-buildinfo", &[]),
+    ("openchuck-cli", &["openchuck-app", "openchuck-buildinfo"]),
+    (
+        "openchuck-ui",
+        &["openchuck-app", "openchuck-viewport", "openchuck-buildinfo"],
+    ),
     ("openchuck-testkit", &["openchuck-types"]),
     (
         "openchuck-benches",
@@ -425,6 +430,21 @@ mod tests {
         let mut g = healthy();
         g.add("openchuck-post", "openchuck-app", Kind::Normal);
         assert_eq!(check_graph(&g, &[]).len(), 1);
+    }
+
+    /// Decision 0151: only the two front ends may use the build information (GC-07, NFR-06).
+    #[test]
+    fn req_nfr_16_only_the_front_ends_use_the_build_information() {
+        let mut g = healthy();
+        g.members.insert("openchuck-buildinfo".to_owned());
+        g.add("openchuck-cli", "openchuck-buildinfo", Kind::Normal);
+        g.add("openchuck-ui", "openchuck-buildinfo", Kind::Normal);
+        assert!(check_graph(&g, &[]).is_empty());
+        for user in ["openchuck-path", "openchuck-app", "openchuck-gcode"] {
+            let mut g = g.clone();
+            g.add(user, "openchuck-buildinfo", Kind::Normal);
+            assert_eq!(check_graph(&g, &[]).len(), 1, "{user}");
+        }
     }
 
     #[test]

@@ -693,6 +693,16 @@ UI-05; decisions 0032 and 0037; a dock tab.
 - **Jumping.** Choosing a row undoes or redoes to it.
 - **Text.** A line at the foot gives the shortcuts and says that a new edit after undoing discards the undone steps.
 
+### 12.4 About window
+
+NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from Help, "About OpenChuckCAM…".
+
+- **A modal dialog** in the main window, like the other dialogs (section 3).
+- **From the top:** the name; one line on the licence (AGPL, version 3 or later); the NFR-12 notice; **Build**, the facts of one build in monospace (version, commit, uncommitted changes, build date, Rust version, target, and the version of each crate); **Licences**, a read-only monospace box of about ten rows that scrolls, holding the AGPL, the IBM Plex notice, the SIL OFL 1.1 text and the OpenCASCADE notice, with a first line pointing to `THIRD-PARTY-NOTICES.html` for the third-party crates.
+- **Footer.** "Copy build information" on the left (secondary; copies the Build block and nothing else; the window stays open), "Close" bottom right (the one primary button, section 5).
+- **Keyboard.** Tab visits the Licences box, Copy and Close in that order; the box scrolls with the arrow keys; Copy's tooltip opens on focus (section 16).
+- A fact the build could not find reads "unknown".
+
 ## 13. Per-user settings
 
 *(UI-15)*
