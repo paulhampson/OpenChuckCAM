@@ -4,7 +4,7 @@ Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2
 
 ## P1 assessment
 
-94 of 148 requirements are P1: IMP 6, UI 17, SET 5, TL 8, OP 17, SIM 7, GC 14, PRJ 6, NFR 14 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 53 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-13).
+97 of 154 requirements are P1: IMP 6, UI 17, SET 5, TL 9, OP 17, SIM 7, GC 14, PRJ 6, NFR 16 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 57 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-14).
 
 Findings, after reconciling with the architecture:
 
