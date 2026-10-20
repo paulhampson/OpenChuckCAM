@@ -1,9 +1,9 @@
 # 0130: Register checks, and how the registers are edited
 
-- **Status:** proposed. Only the project owner accepts it. The number is provisional: it was the next free one on `main` and every remote branch on 19 Oct 2026, and the orchestrator did not assign it.
+- **Status:** accepted by the project owner, 20 Oct 2026, in the lane RH2 session (given there directly, not relayed). The number was the next free one on `main` and every remote branch on 19 Oct 2026, and is checked free again on 20 Oct 2026.
 - **Date:** 19 Oct 2026.
 - **Lane:** RH (register hygiene).
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-231 progresses (the check is built; it closes when this record is accepted). No new open item.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-231 closes with the acceptance of this record. No new open item.
 - **Amends:** [decision 0054](0054-union-merge-for-registers.md) item 2 and its *Limits*.
 
 ## Context
