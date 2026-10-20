@@ -85,7 +85,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-03 | Display the rotary axis, work coordinate system, stock, part, held regions and retaining tabs together in the viewport. | P1 |
 | UI-04 | Select geometry in the viewport: faces and edges on B-rep models; triangle regions on meshes, including select-by-angle and flood fill. | P1 |
 | UI-05 | Save selections as named sets that operations can reference and that update when the selection is edited. | P1 |
-| UI-06 | Project tree listing the model, stock, setups, operations and tools; operations can be reordered, enabled, disabled and duplicated. | P1 |
+| UI-06 | Project tree listing the model, stock, setups and operations; operations can be reordered, enabled, disabled and duplicated. | P1 |
 | UI-07 | Parameter panels with units, validation and sensible defaults. | P1 |
 | UI-08 | Undo and redo for all edits to the project. | P1 |
 | UI-09 | Run toolpath generation and simulation off the UI thread, with progress reporting and cancellation. | P1 |

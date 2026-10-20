@@ -274,3 +274,44 @@ fn req_tl_03_profile_editor_adds_moves_and_deletes_segments() {
     assert_eq!(p.segments.len(), 2);
     assert_eq!(check_profile(&flat, &p), Ok(()));
 }
+
+#[test]
+fn req_tl_03_profile_editor_adds_arcs_moves_segments_and_gives_arc_radii() {
+    use openchuck_app::tool_edit::{arc_radius, insert_arc, insert_segment, move_segment};
+    let flat = tool(ToolShape::FlatEnd);
+    let mut p = ToolProfile::default();
+    insert_segment(&mut p, None);
+    p.segments[0] = ProfileSegment::Line {
+        to: ProfilePoint::new(2.0, 0.0),
+    };
+    // "+ Arc": a convex quarter turn of 1 mm from where it starts.
+    insert_arc(&mut p, Some(0));
+    let ProfileSegment::Arc { to, centre } = p.segments[1] else {
+        panic!("{:?}", p.segments[1]);
+    };
+    assert_eq!(to, ProfilePoint::new(3.0, 1.0));
+    assert!(
+        centre.distance(ProfilePoint::new(2.0, 1.0)) < 1e-12,
+        "{centre:?}"
+    );
+    assert!((arc_radius(&p, 1).unwrap() - 1.0).abs() < 1e-12);
+    assert_eq!(arc_radius(&p, 0), None);
+    assert_eq!(arc_radius(&p, 7), None);
+    insert_segment(&mut p, Some(1));
+    p.segments[2] = ProfileSegment::Line {
+        to: ProfilePoint::new(3.0, 12.0),
+    };
+    assert_eq!(check_profile(&flat, &p), Ok(()));
+    // Move up and down: the segment's own end goes with it.
+    let before = p.clone();
+    assert_eq!(move_segment(&mut p, 2, true), Some(1));
+    assert_eq!(p.segments[1], before.segments[2]);
+    assert!(check_profile(&flat, &p).is_err());
+    assert_eq!(move_segment(&mut p, 1, false), Some(2));
+    assert_eq!(p, before);
+    // Past either end nothing moves.
+    assert_eq!(move_segment(&mut p, 0, true), None);
+    assert_eq!(move_segment(&mut p, 2, false), None);
+    assert_eq!(move_segment(&mut p, 9, true), None);
+    assert_eq!(p, before);
+}

@@ -396,3 +396,41 @@ pub fn set_segment_arc(profile: &mut ToolProfile, index: usize, arc: bool) {
         *segment = ProfileSegment::Arc { to, centre };
     }
 }
+
+/// Inserts a convex quarter-turn arc of 1 mm radius after segment `after`
+/// (`None`: at the start), from where it starts outward and upward ("+ Arc",
+/// specification 12.1). The user then moves its end.
+pub fn insert_arc(profile: &mut ToolProfile, after: Option<usize>) {
+    let index = after.map_or(0, |i| (i + 1).min(profile.segments.len()));
+    let start = segment_start(profile, index);
+    let to = ProfilePoint::new(start.radius.0 + 1.0, start.height.0 + 1.0);
+    let centre = ProfilePoint::new(start.radius.0, start.height.0 + 1.0);
+    profile
+        .segments
+        .insert(index, ProfileSegment::Arc { to, centre });
+}
+
+/// Moves segment `index` one place earlier (`earlier`) or later, keeping
+/// each segment's own end point. Returns its new place, or `None` when it
+/// cannot move (move up and move down, specification 12.1).
+pub fn move_segment(profile: &mut ToolProfile, index: usize, earlier: bool) -> Option<usize> {
+    let to = if earlier {
+        index.checked_sub(1)?
+    } else {
+        index + 1
+    };
+    if index >= profile.segments.len() || to >= profile.segments.len() {
+        return None;
+    }
+    profile.segments.swap(index, to);
+    Some(to)
+}
+
+/// The radius of segment `index` when it is an arc: the distance from its
+/// start to its centre (the segment table's Arc column, specification 12.1).
+pub fn arc_radius(profile: &ToolProfile, index: usize) -> Option<f64> {
+    match profile.segments.get(index)? {
+        ProfileSegment::Arc { centre, .. } => Some(segment_start(profile, index).distance(*centre)),
+        ProfileSegment::Line { .. } => None,
+    }
+}
