@@ -6,6 +6,7 @@
 //! (UI-21) and not built.
 
 use eframe::egui;
+use openchuck_app::scene::SceneView;
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use crate::viewport::{SimulateShow, ViewStep, Viewport, Visibility};
@@ -80,6 +81,13 @@ pub const SIMULATE_SHOW: [(SimulateShow, &str); 3] = [
     (SimulateShow::Both, "Both"),
 ];
 
+/// Whether the scene shows a model of the project. A preview or a check
+/// overlay is a mesh with no model, and gives the view directions nothing to
+/// look at (decision 0148 item 2).
+fn scene_has_model(view: &SceneView) -> bool {
+    view.meshes.iter().any(|m| m.model.is_some())
+}
+
 /// Draws the strip in `strip` and applies what is clicked. What does not
 /// fit is cut off, never pushed over the view or past the window.
 pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
@@ -96,8 +104,10 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             let mut projection = viewport.camera.projection;
             segments(ui, &PROJECTIONS, &mut projection);
             viewport.set_projection(projection);
-            // The toolbar belongs to a 3D view, which has a model to look at.
-            if directions_unavailable(false, true).is_none() {
+            // The toolbar belongs to a 3D view, never to the Setup panes; the
+            // buttons follow the View menu, so an import preview alone (a mesh
+            // that belongs to no model) leaves them off.
+            if directions_unavailable(false, scene_has_model(viewport.view())).is_none() {
                 ui.separator();
                 for (view, name) in VIEWS {
                     if ui
@@ -201,6 +211,37 @@ mod tests {
             directions_unavailable(false, false),
             Some("Import a model first")
         );
+    }
+
+    #[test]
+    fn req_ui_02_an_import_preview_alone_leaves_the_view_directions_off_as_in_the_menu() {
+        use openchuck_app::project::id::ModelId;
+        use openchuck_app::scene::{SceneMesh, SceneRole};
+        let mesh = |model| SceneMesh {
+            role: SceneRole::Part,
+            model,
+            mesh: Default::default(),
+            feature_edges: Vec::new(),
+            brep: None,
+        };
+        // A project with no models, showing only an import preview.
+        let preview = SceneView {
+            meshes: vec![mesh(None)],
+            ..SceneView::default()
+        };
+        assert!(!scene_has_model(&preview));
+        assert_eq!(
+            directions_unavailable(false, scene_has_model(&preview)),
+            Some("Import a model first")
+        );
+        // A model of the project is something to look at, preview or not.
+        let shown = SceneView {
+            meshes: vec![mesh(None), mesh(Some(ModelId::new()))],
+            ..SceneView::default()
+        };
+        assert!(scene_has_model(&shown));
+        assert_eq!(directions_unavailable(false, scene_has_model(&shown)), None);
+        assert!(!scene_has_model(&SceneView::default()));
     }
 
     #[test]

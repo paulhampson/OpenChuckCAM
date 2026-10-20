@@ -994,8 +994,8 @@ impl SelectionPanel {
     /// What the active filter picks, in words, for the box on the view.
     fn mode_text(&self) -> &'static str {
         match self.filter {
-            PickFilter::Both => "Triangles and edges",
-            PickFilter::Faces => "Triangles only",
+            PickFilter::Both => "Surfaces and edges",
+            PickFilter::Faces => "Surfaces only",
             PickFilter::Edges => "Edges only",
         }
     }
@@ -1427,14 +1427,12 @@ impl SelectionPanel {
     /// the kind the working selection holds would leave it stranded, so it
     /// asks before clearing it, unless the project says not to (issue 152).
     fn choose_filter(&mut self, filter: PickFilter) {
-        if filter == self.filter {
+        // The warning window does not disable the box on the view; a later
+        // click must not change the mode the open question is about.
+        if self.reset.is_some() || filter == self.filter {
             return;
         }
-        if self.warn_reset
-            && !self.working.is_empty()
-            && !filter_holds(filter, &self.working)
-            && self.reset.is_none()
-        {
+        if self.warn_reset && !self.working.is_empty() && !filter_holds(filter, &self.working) {
             self.reset = Some(Reset::Filter(filter));
             self.dont_warn = false;
             return;
@@ -2411,6 +2409,35 @@ mod tests {
     }
 
     #[test]
+    fn req_ui_04_a_filter_click_is_ignored_while_the_warning_is_open() {
+        let (dir, mut app, model) = cube_project("filter-while-asking");
+        let mut panel = SelectionPanel {
+            working: tri(&[0, 1, 2]),
+            working_model: Some(model),
+            warn_reset: true,
+            ..SelectionPanel::default()
+        };
+        panel.choose_filter(PickFilter::Edges);
+        assert!(matches!(
+            panel.reset,
+            Some(Reset::Filter(PickFilter::Edges))
+        ));
+        // The box on the view is still live: a second click changes neither
+        // the mode nor the question.
+        panel.choose_filter(PickFilter::Faces);
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        assert!(matches!(
+            panel.reset,
+            Some(Reset::Filter(PickFilter::Edges))
+        ));
+        // Cancel leaves the mode as it was before either click.
+        assert!(panel.answer_reset(&mut app, false).is_none());
+        assert_eq!(panel.pick_filter(), PickFilter::Both);
+        assert_eq!(panel.working.len(), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn req_ui_04_the_selection_tools_sit_below_the_toolbar_strip() {
         // Issue 159: the box never overlaps the strip, at 1366x768 or any size.
         for size in [egui::vec2(1366.0, 768.0), egui::vec2(480.0, 300.0)] {
@@ -2493,9 +2520,9 @@ mod tests {
     #[test]
     fn req_ui_04_the_box_names_the_active_mode() {
         let mut panel = SelectionPanel::default();
-        assert_eq!(panel.mode_text(), "Triangles and edges");
+        assert_eq!(panel.mode_text(), "Surfaces and edges");
         panel.filter = PickFilter::Faces;
-        assert_eq!(panel.mode_text(), "Triangles only");
+        assert_eq!(panel.mode_text(), "Surfaces only");
         panel.filter = PickFilter::Edges;
         assert_eq!(panel.mode_text(), "Edges only");
     }

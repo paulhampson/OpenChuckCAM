@@ -227,6 +227,13 @@ impl Shell {
                 ui.label(format!("Used by {}", u.name));
             }
         }
+        // A set that is selected also turns picking on, so the angles and
+        // options stay in reach here (decision 0153).
+        if let Some(app) = &mut self.app
+            && let Some(error) = self.selection.options(ui, app)
+        {
+            self.dialog = Some(Dialog::Error(error));
+        }
     }
 
     /// The setup inspector: its five sections (specification section 11.3),
