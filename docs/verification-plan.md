@@ -163,6 +163,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | NFR-14 | P1 | A, I | Design | Each dependency has a recorded review against the health criteria, with a written justification for newer crates and those with high AI contribution |
 | NFR-15 | P1 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200%; inspection that no state is shown by colour alone |
 | NFR-16 | P1 | T, I | Unit, integration, system | Unit tests of the build text from a fixed fixture, the dirty-flag logic, the full-hash check and the fallback without Git; a CLI test that `--version` has every field; UI tests that the About window shows the build text and the licence box, that Copy puts exactly the build text on the clipboard, and that Tab reaches the box, Copy and Close; a test that every program carries exactly `(OpenChuckCAM <workspace version>)` after the title and no other build fact; golden files hold the masked version. Inspection: a nightly archive reports its commit and a clean tree |
+| NFR-17 | P1 | A, D | System | Unit tests of the log folder order and per-platform paths, the rotation, the fall-backs and the panic hook (`req_nfr_17_*`, Linux); on a Windows nightly build, inspection that no console window opens from a double click, that `--bench` output and exit code reach the terminal, and that the log file exists after a run and after a forced panic (open item OI-455) |
 
 ### 4.1 Acceptance limits
 
@@ -170,7 +171,7 @@ These are starting values, chosen before there is anything to measure. They are 
 
 | Check | Requirement | Limit |
 | --- | --- | --- |
-| Toolpath deviation | NFR-05, OP-01, OP-02 | 0.01 mm, split as an error budget: about 0.005 mm tessellation (IMP-06) and 0.005 mm path fitting. Path fitting by bisection uses 0.4 times the tolerance as its chord limit (decision 0018 item 12; the measured fit error is 1.01 times the limit), measured along the tool's contact normal (decision 0113) at the middle of a move and at the middles of its halves (decision 0115: the test at the middle alone kept a move that cut 0.2 mm into the blisk's blades) |
+| Toolpath deviation | NFR-05, OP-01, OP-02 | 0.01 mm, split as an error budget: about 0.005 mm tessellation (IMP-06) and 0.005 mm path fitting. Path fitting by bisection uses 0.4 times the tolerance as its chord limit (decision 0018 item 12; the measured fit error is 1.01 times the limit), measured along the tool's contact normal (decision 0113) at the middle of a move and at the middles of its halves (decision 0115: the test at the middle alone kept a move that cut 0.2 mm into the blisk's blades; simultaneous finishing's own fitter tests the same three points, decision 0133) |
 | Kinematic round trip | OP-05, OP-06 | 1e-6 mm and 1e-6 degrees (double-precision arithmetic only) |
 | G-code replay (gate 2) | GC-09, GC-10 | G-code rounding only, because replay compares the G-code with the same toolpath in the IR: 0.0005 mm and 0.001 degrees at three decimals, scaled to the post's decimal setting. These are per axis (half a unit of the last decimal, twice that for A); the tool tip combines three axes, so the check on the tip allows half a unit times root 3 (0.00087 mm at three decimals), confirmed by the owner 13 Oct 2026 (OI-91) |
 | Gouge | OP-12 | Zero overcut beyond the tolerance |

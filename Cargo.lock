@@ -2388,6 +2388,7 @@ dependencies = [
  "openchuck-buildinfo",
  "openchuck-viewport",
  "rfd",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

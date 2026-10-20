@@ -85,7 +85,7 @@ pub struct ImportSession {
     /// The model file; empty until one is chosen.
     pub path: PathBuf,
     /// The path as typed in the window's field.
-    path_text: String,
+    pub(crate) path_text: String,
     /// The mesh check row selected, whose triangles the view highlights.
     pub selected: Option<Finding>,
     /// The unit it is read in; `None` uses the file's own (millimetres when
@@ -207,6 +207,16 @@ impl ImportSession {
                 false
             }
         }
+    }
+
+    /// Whether Add may be pressed: the file is checked and nothing is
+    /// running. Add imports the file that was checked, so the path field
+    /// must still name it (OI-358).
+    pub(crate) fn can_add(&self) -> bool {
+        self.preview.is_some()
+            && self.job.is_none()
+            && self.adding.is_none()
+            && names(&self.path_text, &self.path)
     }
 
     /// Starts reading and checking the model for adding, as a background
@@ -389,7 +399,7 @@ impl ImportSession {
             ui.separator();
             ui.weak("The file is not changed. Its path and hash are stored in the project.");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let can_add = self.preview.is_some() && self.job.is_none() && self.adding.is_none();
+                let can_add = self.can_add();
                 let add =
                     egui::Button::new(RichText::new("Add to project").color(DARK.primary_text))
                         .fill(DARK.primary)
@@ -547,11 +557,33 @@ pub fn readout_lines(i: &openchuck_app::model::ModelInspection) -> Vec<(&'static
     lines
 }
 
+/// Whether the path field's `text` names `path`. The field shows the path's
+/// lossy text, so a file name that is not UTF-8 still matches itself.
+fn names(text: &str, path: &std::path::Path) -> bool {
+    text.trim() == path.to_string_lossy()
+}
+
 #[cfg(test)]
 mod tests {
     use openchuck_app::model::MeshReport;
 
     use super::*;
+
+    /// The path field must name the checked file for Add (OI-358): spaces
+    /// round it do not matter, another file does, and a file name that is
+    /// not UTF-8 matches the lossy text the field shows for it.
+    #[test]
+    fn req_imp_01_the_field_names_the_checked_file() {
+        let path = std::path::Path::new("/models/part.stl");
+        assert!(names(" /models/part.stl ", path));
+        assert!(!names("/models/other.stl", path));
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let odd = std::path::Path::new(std::ffi::OsStr::from_bytes(b"/models/p\xffrt.stl"));
+            assert!(names(&odd.display().to_string(), odd));
+        }
+    }
 
     #[test]
     fn req_imp_04_the_mesh_check_has_one_row_per_kind_with_its_count() {

@@ -20,8 +20,7 @@ use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_app::project::{ContentHash, SelectionTarget};
 use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
-    Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionRole, SelectionSummary,
-    TriangleSet,
+    Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionSummary, TriangleSet,
 };
 use openchuck_viewport::{Colour, Hatch, LineStyle, Scene, Slot};
 
@@ -433,6 +432,12 @@ impl SelectionPanel {
         self.dirty = true;
     }
 
+    /// The saved set shown on the part, if any: a new operation takes it
+    /// (interface specification 11.4).
+    pub fn shown_set(&self) -> Option<SelectionSetId> {
+        self.shown
+    }
+
     /// Draws the avoid and check sets of `operation`, hatched red over the
     /// part (specification 7.4), or none.
     /// They are drawn again when the operation's sets change too, as an edit
@@ -454,12 +459,6 @@ impl SelectionPanel {
             self.shown = set;
             self.dirty = true;
         }
-    }
-
-    /// The set whose details and old selection are shown, if any.
-    #[cfg(test)]
-    pub fn shown_set(&self) -> Option<SelectionSetId> {
-        self.shown
     }
 
     /// The notice under the toolbar, if any.
@@ -1766,88 +1765,13 @@ fn recorded_hash(app: &Application, model: ModelId) -> Option<ContentHash> {
         .map(|m| m.hash)
 }
 
-/// The selections section of an operation's properties (OP-02): for each
-/// role the sets in it, a button to take one out, and a list to add one from.
-/// Returns the text of an error to show in a dialog.
-pub fn operation_roles(
-    ui: &mut egui::Ui,
-    app: &mut Application,
-    operation: OperationId,
-    summaries: &[SelectionSummary],
-) -> Option<String> {
-    let mut error = None;
-    let op = app.project().operation(operation).cloned()?;
-    ui.strong("Selections");
-    if summaries.is_empty() {
-        ui.weak("No selection sets yet. Make some with Select on the part.");
-        return None;
-    }
-    ui.weak("With none in Machine the operation cuts the whole part.");
-    let name_of = |id: SelectionSetId| {
-        summaries
-            .iter()
-            .find(|s| s.id == id)
-            .map_or_else(|| "(missing set)".to_owned(), |s| s.name.clone())
-    };
-    for role in SelectionRole::ALL {
-        let members: Vec<SelectionSetId> = match role {
-            SelectionRole::Machine => op.selections.clone(),
-            SelectionRole::Boundary => op.boundary.into_iter().collect(),
-            SelectionRole::Avoid => op.avoid.clone(),
-            SelectionRole::Check => op.check.clone(),
-            _ => Vec::new(),
-        };
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(role.name()).strong())
-                .on_hover_text(role.description());
-            for id in &members {
-                let problem = summaries
-                    .iter()
-                    .find(|s| s.id == *id)
-                    .and_then(|s| s.problem.clone());
-                let mut text = RichText::new(format!("{} ✕", name_of(*id)));
-                if problem.is_some() {
-                    text = text.color(PROBLEM);
-                }
-                let button = ui.small_button(text);
-                if let Some(problem) = &problem {
-                    button.clone().on_hover_text(format!("⚠ {problem}"));
-                }
-                if button.on_hover_text("Take it out of this role").clicked()
-                    && let Err(e) = app.set_operation_selection(operation, role, *id, false)
-                {
-                    error = Some(e.to_string());
-                }
-            }
-            let free: Vec<&SelectionSummary> = summaries
-                .iter()
-                .filter(|s| !members.contains(&s.id))
-                .collect();
-            if !free.is_empty() {
-                egui::ComboBox::from_id_salt(("role", role.name()))
-                    .selected_text("add…")
-                    .show_ui(ui, |ui| {
-                        for s in free {
-                            if ui.selectable_label(false, &s.name).clicked()
-                                && let Err(e) =
-                                    app.set_operation_selection(operation, role, s.id, true)
-                            {
-                                error = Some(e.to_string());
-                            }
-                        }
-                    });
-            }
-        });
-    }
-    error
-}
-
 #[cfg(test)]
 mod tests {
 
     #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
+    use openchuck_app::SelectionRole;
 
     #[test]
     fn req_ui_05_a_refused_delete_names_the_operations_that_use_the_set() {

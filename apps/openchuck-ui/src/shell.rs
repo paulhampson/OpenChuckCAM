@@ -26,37 +26,35 @@ use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 use openchuck_app::overview::{
     Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
 };
-use openchuck_app::project::Item;
 use openchuck_app::project::ItemId;
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::scene::SceneView;
 use openchuck_app::settings::{SettingsFile, UserSettings};
-use openchuck_app::tool_edit;
-use openchuck_app::tools::{self, ToolProfile};
+use openchuck_app::tools::ToolProfile;
 use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 
 use crate::about;
 use crate::bench;
 use crate::export_panel::ExportPanel;
-use crate::form_panel::{self, FormState};
+use crate::form_panel::FormState;
 use crate::import_panel::{ImportAction, ImportSession};
 use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
 use crate::playback_panel::PlaybackPanel;
 use crate::results_panel::ResultsPanel;
 use crate::run_panel::RunPanel;
-use crate::selection_panel::{self, SelectionPanel};
-use crate::theme::DARK;
-use crate::tool_panel;
+use crate::selection_panel::SelectionPanel;
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
 mod dock;
 mod frame;
+mod inspector;
 mod marks;
 mod tree;
 
 use dock::DockTab;
+pub(crate) use marks::{mark, tick};
 
 /// The starting text and control size. egui's own default reads small on
 /// large desktop displays (owner's visual check, 14 Oct 2026; OI-166).
@@ -147,8 +145,10 @@ pub struct Shell {
     machine_panel: Option<MachinePanel>,
     /// The chosen setup's workholding and tabs (SET-09, OP-21).
     workholding_panel: Option<WorkholdingPanel>,
-    /// Typed text and refused values in the parameter form.
+    /// Typed text and refused values in the inspector's fields.
     form: FormState,
+    /// The setup row whose committed value the pending command applies.
+    pending_field: Option<String>,
     /// Picking triangles and the selection sets (slice 10).
     selection: SelectionPanel,
     /// Adding operations and generating (slice 9 item 7).
@@ -229,6 +229,7 @@ impl Shell {
             machine_panel: None,
             workholding_panel: None,
             form: FormState::default(),
+            pending_field: None,
             selection: SelectionPanel::default(),
             run: RunPanel::default(),
             results: ResultsPanel::default(),
@@ -558,8 +559,37 @@ impl Shell {
             && self.overview.step(Step::Operations).is_available()
         {
             self.step = Step::Operations;
-            self.run.begin_add(app);
+            let from = match self.selected {
+                Some(Selection::Operation(id)) => Some(id),
+                _ => None,
+            };
+            let set = match self.selected {
+                Some(Selection::Set(id)) => Some(id),
+                _ => self.selection.shown_set(),
+            };
+            self.run.begin_add(app, from, set);
         }
+    }
+
+    /// Creates the project's one setup as a single undoable command, selects
+    /// it and opens the Setup step (the Setups "+", the workflow bar;
+    /// decision record 0144). With a setup already there, or no model yet, it
+    /// does nothing.
+    fn add_setup(&mut self) {
+        let Some(app) = &mut self.app else { return };
+        if !openchuck_app::can_add_setup(app.project()) {
+            return;
+        }
+        let result = openchuck_app::new_setup(app.project()).and_then(|c| app.execute(c));
+        if let Err(e) = result {
+            self.dialog = Some(Dialog::Error(format!("The setup was not added: {e}")));
+            return;
+        }
+        let Some(id) = app.project().setups().first().map(|s| s.id) else {
+            return;
+        };
+        self.open_step(Step::Setup);
+        self.choose_setup(id, None);
     }
 
     /// Starts picking on the part with an empty working selection (the
@@ -771,49 +801,9 @@ impl Shell {
         }
     }
 
-    /// Renames `item` as one undoable command.
+    /// Renames `item` as one undoable command (the F2 dialog).
     fn rename(&mut self, item: ItemRef, name: &str) {
-        let Some(app) = &mut self.app else { return };
-        let name = name.trim();
-        if name.is_empty() {
-            self.dialog = Some(Dialog::Error("A name cannot be empty.".to_owned()));
-            return;
-        }
-        let project = app.project();
-        let replaced = match item {
-            ItemRef::Operation(id) => project.operation(id).cloned().map(|mut o| {
-                o.name = name.to_owned();
-                Item::Operation(o)
-            }),
-            ItemRef::Setup(id) => project.setup(id).cloned().map(|mut s| {
-                s.name = name.to_owned();
-                Item::Setup(s)
-            }),
-            ItemRef::Tool(id) => {
-                project
-                    .tools()
-                    .iter()
-                    .find(|t| t.id == id)
-                    .cloned()
-                    .map(|mut t| {
-                        t.name = name.to_owned();
-                        Item::Tool(t)
-                    })
-            }
-            ItemRef::SelectionSet(id) => project
-                .selection_sets()
-                .iter()
-                .find(|s| s.id == id)
-                .cloned()
-                .map(|mut s| {
-                    s.name = name.to_owned();
-                    Item::SelectionSet(s)
-                }),
-            ItemRef::Model(_) | ItemRef::SetupPart(..) => None,
-        };
-        if let Some(item) = replaced
-            && let Err(e) = app.execute(Command::Replace(item))
-        {
+        if let Err(e) = self.rename_checked(item, name) {
             self.dialog = Some(Dialog::Error(format!("The name was not changed: {e}")));
         }
     }
@@ -931,7 +921,8 @@ impl Shell {
                     tree::Group::Operations => self.new_operation(),
                     // The tool library window is lane X9's (OI-343);
                     // tools are added from the command line until then.
-                    tree::Group::Setups | tree::Group::Tools => {}
+                    tree::Group::Setups => self.add_setup(),
+                    tree::Group::Tools => {}
                 }
                 return;
             }
@@ -969,306 +960,6 @@ impl Shell {
         if self.selected != Some(selection) {
             self.selected = Some(selection);
             self.form.clear();
-        }
-    }
-
-    /// The inspector: the chosen item (specification section 8; its header,
-    /// banner and sections are lane X4's).
-    fn properties(&mut self, ui: &mut egui::Ui) {
-        if self.step == Step::Simulate {
-            self.results_inspector(ui);
-            return;
-        }
-        match self.selected {
-            Some(Selection::Operation(id)) => self.operation_properties(ui, id),
-            Some(Selection::Tool(id)) => self.tool_properties(ui, id),
-            Some(Selection::Model(id)) => self.model_properties(ui, id),
-            Some(Selection::Setup(id)) => self.setup_properties(ui, id),
-            Some(Selection::Set(id)) => self.set_properties(ui, id),
-            Some(Selection::Picking) => {
-                ui.heading("Selecting on the part");
-                ui.label(
-                    "Click the part to select. The Selection sets tab of the dock saves and \
-                     edits sets; Esc stops picking.",
-                );
-            }
-            None => {
-                ui.weak("Choose an item in the project panel to see it here.");
-            }
-        }
-    }
-
-    /// The results inspector of the Simulate step (specification 11.5).
-    fn results_inspector(&mut self, ui: &mut egui::Ui) {
-        let run = self.run.last().cloned();
-        let Some(app) = &mut self.app else { return };
-        if self.results.show(ui, app, run.as_ref()) {
-            self.play
-                .set_colour_by(self.results.colour_by, &mut self.viewport);
-        }
-    }
-
-    /// A selection set: its size, its problem and where it is used.
-    fn set_properties(&mut self, ui: &mut egui::Ui, id: SelectionSetId) {
-        let Some(app) = &self.app else { return };
-        let summaries = app.selection_summaries(&[]);
-        let Some(s) = summaries.iter().find(|s| s.id == id) else {
-            self.selected = Some(Selection::Picking);
-            return;
-        };
-        ui.heading(&s.name);
-        frame::status_chip(ui, self.overview.status(ItemRef::SelectionSet(id)));
-        ui.label(format!("{} {}", s.count, s.kind));
-        if let Some(path) = &s.model_path {
-            ui.weak(format!("On {path}"));
-        }
-        if let Some(problem) = &s.problem {
-            ui.colored_label(DARK.error, format!("Cannot be used: {problem}."));
-        }
-        if s.uses.is_empty() {
-            ui.weak("No operation uses it.");
-        } else {
-            for u in &s.uses {
-                ui.label(format!("Used by {}", u.name));
-            }
-        }
-    }
-
-    /// The setup inspector: its five sections (specification section 11.3).
-    /// The Machine and Workholding sections are the existing panels; the
-    /// fields of Stock, Part position and Work offset and clearance are lane
-    /// X4's (decision record 0114 C15), so they show the setup's values.
-    fn setup_properties(&mut self, ui: &mut egui::Ui, id: SetupId) {
-        let Some(app) = &mut self.app else { return };
-        let Some(setup) = app.project().setup(id).cloned() else {
-            self.selected = None;
-            return;
-        };
-        ui.heading(&setup.name);
-        frame::status_chip(ui, self.overview.status(ItemRef::Setup(id)));
-        let focus = self.setup_section.take();
-        let mut command = None;
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for part in SetupPart::ALL {
-                let row = openchuck_app::overview::setup_row(app.project(), &setup, part);
-                let key = section_key(part);
-                let open = self.settings.section_open("setup", key, true);
-                let mut header = egui::CollapsingHeader::new(
-                    egui::RichText::new(section_title(part).to_uppercase())
-                        .small()
-                        .strong()
-                        .color(DARK.heading),
-                )
-                .id_salt(("setup section", key))
-                .default_open(open);
-                if focus == Some(part) {
-                    header = header.open(Some(true));
-                }
-                let response = header.show(ui, |ui| match part {
-                    SetupPart::Machine => {
-                        let panel = self.machine_panel.get_or_insert_with(MachinePanel::default);
-                        let copy = app.project().machine().cloned();
-                        let copy_id = app.project().machine_id().map(str::to_owned);
-                        if let Some(c) = panel.show(ui, copy.as_ref(), copy_id.as_deref()) {
-                            command = Some(c);
-                        }
-                    }
-                    SetupPart::Workholding => {
-                        let panel = self
-                            .workholding_panel
-                            .get_or_insert_with(|| WorkholdingPanel::new(&setup));
-                        if let Some(c) = panel.show(ui, app, &setup) {
-                            command = Some(c);
-                        }
-                    }
-                    _ => {
-                        ui.label(&row.label);
-                        if let Some(chip) = &row.chip {
-                            ui.label(chip);
-                        }
-                    }
-                });
-                if focus == Some(part) {
-                    response
-                        .header_response
-                        .scroll_to_me(Some(egui::Align::TOP));
-                }
-                let now_open = response.body_returned.is_some();
-                if now_open != open && focus != Some(part) {
-                    self.settings
-                        .set_section_open("setup", key, now_open, &SECTION_KEYS);
-                    self.settings_changed.get_or_insert_with(Instant::now);
-                }
-            }
-        });
-        if let Some(command) = command {
-            match app.execute(command) {
-                Ok(()) => self.rebuild_scene(false),
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
-            }
-        }
-    }
-
-    /// A model's units, placement and checks (IMP-03, IMP-04, IMP-05).
-    fn model_properties(&mut self, ui: &mut egui::Ui, id: ModelId) {
-        let Some(app) = &mut self.app else { return };
-        let Some(reference) = app.project().models().iter().find(|m| m.id == id).cloned() else {
-            self.selected = None;
-            return;
-        };
-        frame::status_chip(ui, self.overview.status(ItemRef::Model(id)));
-        let panel = match &mut self.model_panel {
-            Some(p) if p.model() == id => p,
-            _ => self.model_panel.insert(ModelPanel::new(id)),
-        };
-        let command = egui::ScrollArea::vertical()
-            .show(ui, |ui| panel.show(ui, app, &reference))
-            .inner;
-        if let Some(command) = command {
-            match app.execute(command) {
-                Ok(()) => self.rebuild_scene(false),
-                Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
-            }
-        }
-    }
-
-    /// A tool's dimensions and its profile editor (UI-07, TL-03).
-    fn tool_properties(&mut self, ui: &mut egui::Ui, id: ToolId) {
-        let Some(app) = &mut self.app else { return };
-        let Some(snapshot) = app.project().tools().iter().find(|t| t.id == id).cloned() else {
-            self.selected = None;
-            return;
-        };
-        ui.heading(&snapshot.name);
-        ui.weak(tools::describe(&snapshot.tool));
-        ui.separator();
-        let fields = tool_edit::tool_form(&snapshot.tool);
-        let edit = egui::ScrollArea::vertical()
-            .show(ui, |ui| {
-                let edit =
-                    form_panel::show_fields(ui, "tool form", &fields, &[], false, &mut self.form);
-                ui.separator();
-                ui.strong("Profile");
-                let mut action = tool_panel::ProfileAction::None;
-                match &mut self.profile_draft {
-                    Some((tool, draft)) if *tool == id => {
-                        action = tool_panel::editor(ui, &snapshot.tool, draft);
-                    }
-                    _ => {
-                        let label =
-                            if matches!(snapshot.tool.shape, tools::ToolShape::Custom { .. }) {
-                                "Edit the custom profile…"
-                            } else {
-                                "Make a custom profile from this shape…"
-                            };
-                        if ui.button(label).clicked()
-                            && let Some(p) = tool_edit::starting_profile(&snapshot.tool)
-                        {
-                            self.profile_draft = Some((id, p));
-                        }
-                    }
-                }
-                (edit, action)
-            })
-            .inner;
-        let (edit, action) = edit;
-        if let Some(edit) = edit {
-            // A tool dimension cannot be cleared: say so rather than leave the
-            // box looking empty while the tool keeps its value.
-            let result = match &edit.value {
-                Some(value) => app
-                    .set_tool_field(id, &edit.name, value)
-                    .map_err(|e| e.to_string()),
-                None => Err("a tool dimension needs a value".to_owned()),
-            };
-            self.form.result(&edit.name, result);
-        }
-        match action {
-            tool_panel::ProfileAction::Apply => {
-                if let Some((_, draft)) = self.profile_draft.take()
-                    && let Err(e) = app.set_tool_profile(id, draft.clone())
-                {
-                    self.profile_draft = Some((id, draft));
-                    self.dialog = Some(Dialog::Error(e.to_string()));
-                }
-            }
-            tool_panel::ProfileAction::Cancel => self.profile_draft = None,
-            tool_panel::ProfileAction::None => {}
-        }
-    }
-
-    /// An operation's parameter form (UI-07).
-    fn operation_properties(&mut self, ui: &mut egui::Ui, id: OperationId) {
-        let mut delete = false;
-        let Some(app) = &mut self.app else { return };
-        let Some(operation) = app.project().operation(id) else {
-            self.selected = None;
-            return;
-        };
-        let setup_of = operation.setup;
-        ui.horizontal(|ui| {
-            ui.heading(&operation.name);
-            if ui
-                .small_button("Delete operation")
-                .on_hover_text("Remove this operation (it can be undone)")
-                .clicked()
-            {
-                delete = true;
-            }
-        });
-        frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
-        let summaries = app.selection_summaries(&[]);
-        let roles = selection_panel::operation_roles(ui, app, id, &summaries);
-        // Selections that reach a held region or a tab: from the project
-        // checks, also listed in Messages (11.7).
-        let mut edit_workholding = false;
-        let reach: Vec<String> = self
-            .overview
-            .messages
-            .iter()
-            .filter(|m| {
-                m.source == Some(ItemRef::Operation(id))
-                    && matches!(m.action, Some(MessageAction::EditWorkholding(_)))
-            })
-            .map(|m| m.text.clone())
-            .collect();
-        for note in reach {
-            ui.horizontal_wrapped(|ui| {
-                ui.colored_label(DARK.warning, format!("\u{26a0} {note}"));
-                if ui.small_button("Edit workholding").clicked() {
-                    edit_workholding = true;
-                }
-            });
-        }
-        ui.separator();
-        let edit = match app.parameter_form(id) {
-            Ok(form) => {
-                ui.weak(format!("Strategy: {}", app.strategy_label(&form.strategy)));
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .show(ui, |ui| form_panel::show(ui, &form, &mut self.form))
-                    .inner
-            }
-            Err(e) => {
-                ui.label(e.to_string());
-                None
-            }
-        };
-        if let Some(edit) = edit {
-            let result = app
-                .set_parameter(id, &edit.name, edit.value)
-                .map_err(|e| e.user_message());
-            self.form.result(&edit.name, result);
-        }
-        if let Some(error) = roles {
-            self.dialog = Some(Dialog::Error(error));
-        }
-        if delete {
-            self.tree_action(TreeAction::Delete(id));
-        } else if edit_workholding {
-            // An unapplied draft of this setup stays (11.7); the view shows
-            // the setup the panel edits.
-            self.choose_setup(setup_of, Some(SetupPart::Workholding));
         }
     }
 
@@ -1315,6 +1006,11 @@ impl Shell {
     /// highlights (slice 10 item 1).
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
+        // A click on a held region or tab selects its setup and opens the
+        // workholding section at it, its first field focused (7.5).
+        if let Some(item) = input.solid_click {
+            self.select_solid(item);
+        }
         let Some(app) = &self.app else { return };
         if self.selection.frame(app, self.viewport.view(), input) {
             ctx.request_repaint();
@@ -1350,6 +1046,52 @@ impl Shell {
             if let Some(e) = self.selection.reset_dialog(ctx, app) {
                 self.dialog = Some(Dialog::Error(e));
             }
+        }
+    }
+
+    /// Selects the held region or tab `item` of the setup shown: its setup
+    /// in the inspector at the workholding section, its row open with the
+    /// first field focused, and its solid outlined (7.5).
+    fn select_solid(&mut self, item: openchuck_app::scene::WorkholdingItem) {
+        let Some(setup) = self.setup else { return };
+        self.choose_setup(setup, Some(SetupPart::Workholding));
+        if let Some(panel) = &mut self.workholding_panel {
+            panel.open_item(item);
+        }
+        self.viewport.set_selected_solid(Some(item));
+    }
+
+    /// Gives the view what the workholding section shows (7.5, 11.7; OI-334
+    /// k, OI-355): the draft while it has unapplied changes, whatever is
+    /// selected, and, while its setup is selected, the default tabs offered,
+    /// the failing parts and the row with keyboard focus. The selected solid
+    /// stays while its setup is selected, and Esc clears it, on every step,
+    /// the Setup panes included (OI-354).
+    fn workholding_view_frame(&mut self, ctx: &egui::Context) {
+        let shown = self.setup;
+        let setup_selected =
+            matches!(self.selected, Some(Selection::Setup(id)) if Some(id) == shown);
+        let mut focused = None;
+        let draft = match (&self.app, &mut self.workholding_panel) {
+            (Some(app), Some(panel)) if Some(panel.setup()) == shown => {
+                match app.project().setup(panel.setup()) {
+                    Some(setup) if setup_selected || panel.has_unapplied_changes() => {
+                        if setup_selected {
+                            focused = panel.focused();
+                        }
+                        let setup = setup.clone();
+                        panel.viewport_draft(&setup)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        self.viewport.set_workholding_draft(draft);
+        self.viewport.set_focused_solid(focused);
+        let esc = !self.text_had_focus && ctx.input(|i| i.key_pressed(Key::Escape));
+        if self.viewport.selected_solid().is_some() && (!setup_selected || esc) {
+            self.viewport.set_selected_solid(None);
         }
     }
 
@@ -1601,35 +1343,6 @@ impl Shell {
     }
 }
 
-/// The settings key of a setup inspector section.
-fn section_key(part: SetupPart) -> &'static str {
-    match part {
-        SetupPart::Machine => "machine",
-        SetupPart::Stock => "stock",
-        SetupPart::PartPosition => "part position",
-        SetupPart::WorkOffset => "work offset",
-        SetupPart::Workholding => "workholding",
-    }
-}
-
-/// The setup sections open by default: all of them.
-const SECTION_KEYS: [&str; 5] = [
-    "machine",
-    "part position",
-    "stock",
-    "work offset",
-    "workholding",
-];
-
-/// A setup inspector section's title (specification section 11.3).
-fn section_title(part: SetupPart) -> &'static str {
-    match part {
-        SetupPart::Machine => "Machine",
-        SetupPart::Workholding => "Workholding and tabs",
-        other => other.name(),
-    }
-}
-
 /// "Generated 2, reused 1": a run's outcome for the Jobs tab (decision
 /// record 0030 item 6).
 fn run_summary(run: &openchuck_app::Regeneration) -> String {
@@ -1768,6 +1481,7 @@ impl Shell {
         self.bench_frame(&ctx);
         self.shortcuts(&ctx);
         self.layout(ui);
+        self.workholding_view_frame(&ctx);
         self.pick_frame(&ctx);
         self.run_frame(&ctx);
         self.import_frame(&ctx);
@@ -1917,7 +1631,7 @@ mod tests {
         // the add-operation dialog and the playback controls.
         shell.selected = Some(Selection::Operation(op));
         shell.run.show_results();
-        shell.run.begin_add(shell.app.as_ref().unwrap());
+        shell.run.begin_add(shell.app.as_ref().unwrap(), None, None);
         frame(&mut shell, &ctx);
         shell.selected = Some(Selection::Picking);
         shell.open_step(Step::Simulate);

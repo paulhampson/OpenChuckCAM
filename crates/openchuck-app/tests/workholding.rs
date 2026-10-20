@@ -557,6 +557,67 @@ fn req_op_21_default_tabs_follow_the_owners_answers() {
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 
+/// The part-extent job gives the workholding section the placed part's
+/// extent and each zone's default tab for the stored held regions, whatever
+/// tabs are stored, so the "Default" chip still shows after they are added
+/// (interface specification 11.7; decision record 0114, OI-334 c, d and e).
+#[test]
+fn req_ui_25_the_part_extent_job_gives_the_extent_and_each_zones_default() {
+    use openchuck_app::workholding::ZoneDefault;
+    use openchuck_app::workholding_view::{Zone, no_default_line, zone_lines};
+    let b = build_with_mesh("facts", workholding(), 1, BALL, (31, 36), false);
+    let facts = b.app.start_part_extent(b.setup).wait().unwrap();
+    assert!((facts.extent.bounds.min.x - 0.0).abs() < 1e-6);
+    assert!((facts.extent.bounds.max.x - 30.0).abs() < 1e-6);
+    let [head, tail] = facts.defaults.clone().unwrap();
+    // The defaults fit the held regions, as `start_default_tabs` does with no
+    // tabs stored.
+    let mut empty = workholding();
+    empty.tabs.clear();
+    let ZoneDefault::Tab(head) = head else {
+        panic!("{head:?}")
+    };
+    assert_eq!(head.x_start.0, -8.0);
+    let ZoneDefault::Tab(tail) = tail else {
+        panic!("{tail:?}")
+    };
+    assert_eq!(tail.x_start.0, 30.0);
+    assert!((tail.length.0 - 10.0).abs() < 1e-9);
+    let setup = b.app.project().setup(b.setup).unwrap();
+    let stock = setup.stock.as_ref().unwrap();
+    let lines = zone_lines(&setup.workholding, stock, &facts.extent).unwrap();
+    assert_eq!(lines[0], "Head zone X \u{2212}8.000 to 0.000 mm (8.000 mm)");
+    assert_eq!(lines[1], "Tail zone X 30.000 to 40.000 mm (10.000 mm)");
+    // A held region that reaches the part leaves no room at the head.
+    empty.start = Some(HeldRegion {
+        length: Millimetres(12.0),
+        diameter: None,
+    });
+    let lines = zone_lines(&empty, stock, &facts.extent).unwrap();
+    assert_eq!(lines[0], "Head zone: no room for a tab");
+    assert_eq!(
+        no_default_line(Zone::Head, &ZoneDefault::NoRoom, &empty).unwrap(),
+        "No room for a default tab at the head: the held region reaches the part."
+    );
+    assert_eq!(
+        no_default_line(Zone::Tail, &ZoneDefault::Point { x: 8.0 }, &empty).unwrap(),
+        "The part comes to a point at X 8.000 mm, so there is no diameter to base a default \
+         tab on; add the tab by hand."
+    );
+    // A setup with no part has no extent to give.
+    let mut app = b.app;
+    let mut no_part = app.project().setup(b.setup).unwrap().clone();
+    no_part.part = None;
+    app.execute(Command::Replace(Item::Setup(no_part))).unwrap();
+    let error = app
+        .start_part_extent(b.setup)
+        .wait()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("no part"), "{error}");
+    std::fs::remove_dir_all(&b.dir).unwrap();
+}
+
 /// The default tabs (decision 0045 item 3) put a tab's small end on the
 /// part's end face, so the tool meets a wall there. Path assembly merges the
 /// micro-moves path fitting leaves at a wall (decision 0050, closing

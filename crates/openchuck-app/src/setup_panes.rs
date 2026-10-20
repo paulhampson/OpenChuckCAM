@@ -86,6 +86,9 @@ pub struct FrontPane {
     pub held: Vec<FrontSolid>,
     /// The tabs, in sand with a dark border.
     pub tabs: Vec<FrontSolid>,
+    /// The default tabs offered and not added: dashed sand outlines with no
+    /// fill, the first labelled "Default tab, not added" (7.5).
+    pub offered: Vec<FrontSolid>,
     /// The dimensions.
     pub dimensions: Vec<Dimension>,
 }
@@ -125,6 +128,8 @@ pub struct EndPane {
     pub clearance_radius: Option<f64>,
     /// The tabs.
     pub tabs: Vec<EndTab>,
+    /// The default tabs offered and not added, drawn dashed (7.5).
+    pub offered: Vec<EndTab>,
     /// The arc the A+ arrow follows, as (Y, Z) points at the arrow's radius,
     /// ending at the arrow head; empty without a machine.
     pub a_arc: Vec<[f64; 2]>,
@@ -238,13 +243,14 @@ pub fn silhouette(mesh: &TriangleMesh) -> Vec<[f64; 3]> {
 
 /// Both panes for the setup `view` shows, or `None` when the project has
 /// no such setup. `solids` are the held region and tab solids to draw, the
-/// view's or the draft's (7.5), and `failing` those of the draft that fail a
-/// check.
+/// view's or the draft's (7.5), `failing` those of the draft that fail a
+/// check, and `offered` the default tabs offered and not added.
 pub fn setup_panes(
     project: &Project,
     view: &SceneView,
     solids: &[SceneSolid],
     failing: &[WorkholdingItem],
+    offered: &[SceneSolid],
 ) -> Option<SetupPanes> {
     let setup = project.setups().iter().find(|s| Some(s.id) == view.setup)?;
     let machine = project.machine();
@@ -351,12 +357,7 @@ pub fn setup_panes(
     for solid in solids {
         let failed = failing.contains(&solid.item);
         let SolidSection { x, radii, centre } = solid.section;
-        let outline = vec![
-            [x.0, centre.1 - radii.0],
-            [x.1, centre.1 - radii.1],
-            [x.1, centre.1 + radii.1],
-            [x.0, centre.1 + radii.0],
-        ];
+        let outline = section_outline(solid.section);
         match solid.item {
             WorkholdingItem::Start | WorkholdingItem::End => {
                 front.dimensions.push(Dimension {
@@ -391,6 +392,23 @@ pub fn setup_panes(
             }
         }
     }
+    for (k, solid) in offered.iter().enumerate() {
+        let SolidSection { radii, centre, .. } = solid.section;
+        front.offered.push(FrontSolid {
+            item: solid.item,
+            outline: section_outline(solid.section),
+            label: (k == 0).then(|| "Default tab, not added".to_owned()),
+            description: format!("Default tab, not added \u{b7} {}", solid.description),
+            failing: false,
+        });
+        end.offered.push(EndTab {
+            item: solid.item,
+            centre: [centre.0, centre.1],
+            radius: radii.0.max(radii.1),
+            description: solid.description.clone(),
+            failing: false,
+        });
+    }
     // The first tab around the axis has its angle dimensioned from +Y
     // towards +Z (7.5).
     if let Some(t) = end
@@ -423,6 +441,18 @@ pub fn setup_panes(
         legend.push(LegendEntry::Tab);
     }
     Some(SetupPanes { front, end, legend })
+}
+
+/// A solid's outline in the front view as (X, Z) points: a rectangle, or a
+/// trapezoid for a frustum.
+fn section_outline(section: SolidSection) -> Vec<[f64; 2]> {
+    let SolidSection { x, radii, centre } = section;
+    vec![
+        [x.0, centre.1 - radii.0],
+        [x.1, centre.1 - radii.1],
+        [x.1, centre.1 + radii.1],
+        [x.0, centre.1 + radii.0],
+    ]
 }
 
 /// The Z+ travel limit above the rotary axis: the machine's highest Z minus
