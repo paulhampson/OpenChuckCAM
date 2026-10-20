@@ -3,7 +3,7 @@
 - **Status:** accepted by the project owner on 15 Oct 2026, with [decision 0038](../decisions/0038-ui-specification-and-requirements.md). It ranks with the decision records (`docs/README.md`, precedence 5): where it disagrees with an accepted decision record, the record wins until one of them is changed. The known differences from what slice 8 built are listed in section 17, with the agreed resolutions. Sections 7.5 and 11.7 (held regions and retaining tabs) were added on 18 Oct 2026 for [decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md) (work breakdown slice 21d), with the other sections' references to them; what the current build does differently is D13 in section 17. On 18 Oct 2026 the catch-up edits agreed with [decision 0114](../decisions/0114-slice-22-conformance-report.md) were made (OI-340 items 1 to 7, and the hover and selection widths of OI-341; the owner's answers, relayed by the coordinator and confirmed by the owner in the lane X1 session): sections 7.5, 11.2, 11.5, 11.6, 12.2, 15 and 16. On 19 Oct 2026 the four readings of [decision 0117](../decisions/0117-slice-22-shell-frame.md) (lane X2, the shell frame) were written into sections 3, 4, 5 and 9 (OI-350, the owner's answer A, relayed by the coordinator). On 19 Oct 2026 section 11.3 item 3 (Part position) was edited to the owner's answer on OI-366 ([decision 0123](../decisions/0123-slice-22-inspectors.md)): the model's turn about the rotary axis is set by its placement steps.
 - **Date:** 15 Oct 2026; sections 7.5 and 11.7, 18 Oct 2026; the decision 0114 catch-up edits, 18 Oct 2026; the decision 0117 readings, 19 Oct 2026; the decision 0123 edit of 11.3, 19 Oct 2026.
 - **Design source:** the design canvas "OpenChuckCAM UI Design" (a claude.ai artifact, private to the project owner: <https://claude.ai/artifact/1Qi5cpiyAiz3r5DkFnXkbu>). Its boards are named in section 1. The mockups use example data (the "Groove demo" project); the numbers in them are not results.
-- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2). An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
+- **Requirements:** the requirements this design needs were added by decision 0038: UI-10 to UI-16, GC-15, GC-16 and NFR-15 (P1), and UI-17 to UI-24 and SIM-11 to SIM-13 (P2); SIM-14 (P2) was added later for the per-operation deviation. An element that serves a P2 requirement is marked with its ID in italics and is not part of the first release. UI-25 (P1) and the amended UI-03 were added by decision 0104.
 
 ## 1. Purpose and scope
 
@@ -300,11 +300,10 @@ The inspector shows the selected item: a model, setup, selection set, tool or op
 **Status icons in the machine panel** *(UI-13; data from decision 0011 item 8, `provenance`)*:
 
 - **Placement.** Each machine value has a 20-pixel icon at the right end of its label, so the icons line up in one column.
-- **The three icons:**
+- **The two icons:**
   - green tick in a circle: confirmed on the machine;
-  - blue "i" in a circle: taken from the vendor's profile, not checked on the machine;
-  - amber triangle: an unconfirmed placeholder.
-- **Tooltip.** It opens on hover and on keyboard focus, and gives the date or source and, for a placeholder, how to confirm it. For example: "Unconfirmed placeholder. Measure it by touching the tool tip to the chuck centre and reading G53 Z."
+  - amber triangle: not confirmed on the machine.
+- **Tooltip.** It opens on hover and on keyboard focus, and gives where the value came from (the date it was confirmed, the vendor's profile, or a placeholder) and, when it is not confirmed, how to confirm it. For example: "Unconfirmed placeholder. Measure it by touching the tool tip to the chuck centre and reading G53 Z."
 - **The rest of the machine panel** (decision 0029 item 16):
   - the profile chooser;
   - "copy stored in project";
@@ -412,7 +411,7 @@ Board 2 (SET-01, SET-03, SET-05, SET-06; UI-03).
 **Viewport: two panes side by side.**
 
 - **Front view,** orthographic (looking from −Y). It shows:
-  - the chuck, stock and part, and the rotary axis;
+  - the stock and part, and the rotary axis. No chuck is drawn at this stage: the project holds no chuck geometry, and the held region already shows what the chuck grips (decision 0129 item 4; OI-380, deferred until a data change);
   - the work zero, with X and Z arrows and Y marked as into the screen (a circle with a cross);
   - the clearance cylinder and its radius;
   - the safe Z line, the Z+ travel limit, and the dimensions (stock length, stock diameter, axis to safe Z).
@@ -485,16 +484,16 @@ Board 4 (SIM-01 to SIM-07).
 **Results inspector:**
 
 - colour by (Deviation, Remaining, Overcut);
-- worst values after the current operation: largest overcut, largest material left, the share within tolerance;
+- worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - a deviation histogram in the same colours;
-- a table by operation (overcut, left, status);
+- a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
 **Playback dock** (SIM-04):
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation.
-- **Speed:** 1×, 10×, 100×, 1000×, 10 000× or Max, or the whole program in 10 s or 60 s.
+- **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
@@ -680,7 +679,7 @@ UI-05; decisions 0032 and 0037; a dock tab.
   - "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*;
   - "Warn before a click starts a new selection" (on by default), until a project and software preferences screen exists to hold it *(OI-260)*.
 - **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
-  - A set with a problem is red, with its reason ("12 missing") and "Reselect".
+  - A set with a problem is red, with its reason as a sentence in the row (not the example "12 missing") and "Reselect". "Reselect" starts a fresh pick: it clears the working selection, shows the set's old selection on the model as a dashed grey ghost, and says "Pick the new selection, then Replace set."; "Replace set" makes the set current again (decision 0125, "As built"; OI-374).
   - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
   - A set's colour can be chosen from the eight swatches, or left as the default swatch of its place in the list (decision 0046 item 2).
 - **Checking.** Saving or editing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and edit buttons disabled until it ends (decision 0112 item 1).
@@ -777,7 +776,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
 - **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click of the other kind asks first, in a dialog "Start a new selection?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now.", with "Start a new selection", "Cancel" and "Don't show me this warning again".
-- **The machine.** Machine values are described by provenance ("confirmed on the machine", "from Makera's profile", "unconfirmed placeholder"), not by blame.
+- **The machine.** Machine values are described by provenance ("confirmed on the machine", "not confirmed on the machine"), not by blame.
 
 ## 16. Keyboard and accessibility
 
@@ -840,14 +839,14 @@ Slice 8 (decision 0029, proposed) and the unmerged lane M (decision 0037, propos
 | 6 Project panel | UI-06, UI-09 | UI-11 |
 | 7 Viewport | UI-02, UI-03, UI-04, SIM-01, SIM-02, NFR-03 | UI-21 |
 | 7.5 Held regions and tabs | UI-03, UI-25 (decision 0104), NFR-15 | |
-| 8 Inspector | UI-07, UI-08, SET-01 | UI-13, UI-18, UI-19, SIM-13 |
+| 8 Inspector | UI-07, UI-08, SET-01, UI-13 | UI-18, UI-19, SIM-13 |
 | 9 Dock | UI-05, UI-09, PRJ-02, IMP-04, SET-06 | UI-12 |
 | 10 Footer | NFR-12 | UI-18 |
 | 11.1 Empty state | | UI-23 |
 | 11.2 Model | IMP-01 to IMP-06 | |
-| 11.3 Setup | SET-01, SET-03, SET-05, SET-06, UI-03 | UI-13 |
+| 11.3 Setup | SET-01, SET-03, SET-05, SET-06, UI-03, UI-13 | |
 | 11.4 Operations | OP-01, OP-02, OP-16, UI-04 to UI-09 | UI-24 |
-| 11.5 Simulate | SIM-01 to SIM-07 | SIM-11, SIM-12 |
+| 11.5 Simulate | SIM-01 to SIM-07 | SIM-11, SIM-12, SIM-14 |
 | 11.6 Export | GC-02, GC-04, GC-05, GC-06, GC-12, GC-14, NFR-12 | GC-15, GC-16 |
 | 11.7 Workholding and tabs | SET-09, OP-21, UI-25 (decision 0104), UI-07, UI-08, UI-14 | UI-22 |
 | 12 Supporting windows | TL-01 to TL-07, TL-11, UI-05, UI-08 | UI-22 |
