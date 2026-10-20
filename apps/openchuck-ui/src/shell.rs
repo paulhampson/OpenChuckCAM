@@ -1460,10 +1460,17 @@ fn pick_folder(current: &str) -> Option<String> {
 
 /// Asks the platform's file dialog for a model file, starting near `current`
 /// or in the project folder (OI-127).
+/// The name of the model file filter and the extensions it offers (IMP-01,
+/// IMP-02): STL and STEP, in either case.
+pub(crate) const MODEL_FILTER: (&str, &[&str]) = (
+    "3D models (STL, STEP)",
+    &["stl", "STL", "step", "STEP", "stp", "STP"],
+);
+
 pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
     let mut dialog = rfd::FileDialog::new()
         .set_title("Import model")
-        .add_filter("STL model", &["stl", "STL"]);
+        .add_filter(MODEL_FILTER.0, MODEL_FILTER.1);
     let start = existing_dir(current).or_else(|| app.map(|a| a.location().to_path_buf()));
     if let Some(start) = start {
         dialog = dialog.set_directory(start);
@@ -1561,6 +1568,15 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn req_imp_02_the_file_chooser_offers_step_and_stl() {
+        let (name, extensions) = MODEL_FILTER;
+        assert_eq!(name, "3D models (STL, STEP)");
+        for wanted in ["stl", "STL", "step", "STEP", "stp", "STP"] {
+            assert!(extensions.contains(&wanted), "{wanted} is not offered");
+        }
+    }
 
     /// The shortcuts pressed in one frame with `key` and `modifiers` down.
     fn press(key: Key, modifiers: Modifiers) -> (bool, bool, bool) {

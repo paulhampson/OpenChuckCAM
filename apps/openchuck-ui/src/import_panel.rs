@@ -310,7 +310,7 @@ impl ImportSession {
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut self.path_text)
                             .desired_width(ui.available_width() - 240.0)
-                            .hint_text("Path of an STL file"),
+                            .hint_text("Path of a model file (STL or STEP)"),
                     );
                     // The file being added is the one checked: no new path meanwhile.
                     let busy = self.adding.is_some();
