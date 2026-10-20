@@ -73,7 +73,12 @@ enum NumberChoice {
 }
 
 #[derive(Debug, Parser)]
-#[command(name = "openchuck-cli", version, about = "OpenChuckCAM without the UI")]
+#[command(
+    name = "openchuck-cli",
+    version,
+    long_version = openchuck_buildinfo::current_text(),
+    about = "OpenChuckCAM without the UI"
+)]
 struct Cli {
     /// Worker threads (default: one per core).
     #[arg(long, global = true)]

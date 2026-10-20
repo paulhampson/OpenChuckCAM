@@ -13,6 +13,7 @@ authors.workspace = true
 
 [dependencies]
 openchuck-app.workspace = true
+openchuck-buildinfo.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 

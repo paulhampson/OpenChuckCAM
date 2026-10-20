@@ -32,6 +32,10 @@ pub struct PostJob {
     pub operation_names: BTreeMap<String, String>,
     /// A revision identifier for the header, when supplied (VC-06).
     pub revision: Option<String>,
+    /// The tool and its version, written as a comment after the title, such as
+    /// `OpenChuckCAM 0.10.0` (NFR-16). The host passes the software version only, never a
+    /// commit or a date, so one version always gives the same program (GC-07, NFR-06).
+    pub generator: Option<String>,
     /// The setup's work offset register (`G54` to `G59`), which replaces the
     /// post's own `work_offset` when given (SET-05).
     pub work_offset: Option<String>,
@@ -75,6 +79,7 @@ pub fn sanitise_comment(text: &str) -> String {
 struct Context<'a> {
     title: String,
     revision: Option<String>,
+    generator: Option<String>,
     opt: &'a PostOptions,
     steps: &'a [Step],
 }
@@ -189,6 +194,7 @@ impl PostProcessor for TemplatePost {
         let context = Context {
             title: sanitise_comment(&job.title),
             revision: job.revision.as_deref().map(sanitise_comment),
+            generator: job.generator.as_deref().map(sanitise_comment),
             opt: &options,
             steps: &steps,
         };

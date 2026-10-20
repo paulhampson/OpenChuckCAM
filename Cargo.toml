@@ -18,6 +18,7 @@ members = [
     "crates/openchuck-app",
     "crates/openchuck-viewport",
     "crates/openchuck-testkit",
+    "crates/openchuck-buildinfo",
     "apps/openchuck-cli",
     "apps/openchuck-ui",
     "benches",
@@ -28,7 +29,7 @@ exclude = ["fuzz"]
 
 [workspace.package]
 # The four library-family crates share this version before 1.0 (architecture section 12).
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 rust-version = "1.97"
 license = "AGPL-3.0-or-later"
@@ -37,17 +38,18 @@ authors = ["OpenChuckCAM contributors"]
 
 [workspace.dependencies]
 # Project crates. Path dependencies carry a version so `cargo publish` works unchanged.
-openchuck-types = { path = "crates/openchuck-types", version = "0.10.0" }
-openchuck-path = { path = "crates/openchuck-path", version = "0.10.0" }
-openchuck-post = { path = "crates/openchuck-post", version = "0.10.0" }
-openchuck-gcode = { path = "crates/openchuck-gcode", version = "0.10.0" }
-openchuck-geom = { path = "crates/openchuck-geom", version = "0.10.0" }
-openchuck-import = { path = "crates/openchuck-import", version = "0.10.0" }
-openchuck-sim = { path = "crates/openchuck-sim", version = "0.10.0" }
-openchuck-project = { path = "crates/openchuck-project", version = "0.10.0" }
-openchuck-app = { path = "crates/openchuck-app", version = "0.10.0" }
-openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.10.0" }
-openchuck-testkit = { path = "crates/openchuck-testkit", version = "0.10.0" }
+openchuck-types = { path = "crates/openchuck-types", version = "0.11.0" }
+openchuck-path = { path = "crates/openchuck-path", version = "0.11.0" }
+openchuck-post = { path = "crates/openchuck-post", version = "0.11.0" }
+openchuck-gcode = { path = "crates/openchuck-gcode", version = "0.11.0" }
+openchuck-geom = { path = "crates/openchuck-geom", version = "0.11.0" }
+openchuck-import = { path = "crates/openchuck-import", version = "0.11.0" }
+openchuck-sim = { path = "crates/openchuck-sim", version = "0.11.0" }
+openchuck-project = { path = "crates/openchuck-project", version = "0.11.0" }
+openchuck-app = { path = "crates/openchuck-app", version = "0.11.0" }
+openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.11.0" }
+openchuck-testkit = { path = "crates/openchuck-testkit", version = "0.11.0" }
+openchuck-buildinfo = { path = "crates/openchuck-buildinfo", version = "0.11.0" }
 
 # Third-party crates, exact pins (work breakdown slice 0 item 12).
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -78,6 +80,7 @@ wgpu = "=30.0.1"
 # Native open and save dialogs, `openchuck-ui` only (decision record 0029 item 15, OI-127).
 rfd = "=0.17.2"
 log = "=0.4.34"
+windows-sys = { version = "=0.60.2", default-features = false, features = ["Win32_System_Console"] }
 
 # Test, golden-file and benchmark crates (dev-dependencies only).
 proptest = "=1.12.0"

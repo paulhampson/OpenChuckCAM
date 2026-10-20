@@ -754,3 +754,110 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
     assert!(!rig.shows("END VIEW FROM +X"));
     assert!(!rig.shows("Travel limit"));
 }
+
+/// A project with a model and no setup, which is what File, New project and
+/// an import give (decision record 0144).
+fn no_setup_rig(name: &str, with_model: bool) -> Rig {
+    let dir = temp(name);
+    let mut app =
+        openchuck_app::Application::create(&dir, name, openchuck_app::Threads::Exactly(2)).unwrap();
+    if with_model {
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let cube = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/stl/cube_ascii.stl");
+        std::fs::copy(cube, dir.join("models/cube.stl")).unwrap();
+        app.add_model(&dir.join("models/cube.stl"), None).unwrap();
+    }
+    app.save().unwrap();
+    drop(app);
+    let shell = Shell::with_settings(false, Some(dir.clone()), None);
+    let mut rig = Rig::new(shell, vec![dir]);
+    rig.settle();
+    rig
+}
+
+#[test]
+fn req_set_01_req_ui_10_the_setups_plus_creates_the_one_setup_and_opens_the_setup_step() {
+    let mut rig = no_setup_rig("add-setup", true);
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .setups()
+            .is_empty()
+    );
+    assert!(rig.shows("SETUPS"));
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.settle();
+    let project = rig.shell.app.as_ref().unwrap().project();
+    assert_eq!(project.setups().len(), 1);
+    let setup = &project.setups()[0];
+    assert_eq!(setup.name, "Setup 1");
+    assert_eq!(setup.part, Some(project.models()[0].id));
+    assert_eq!(rig.shell.step, Step::Setup);
+    assert_eq!(rig.shell.selected, Some(Selection::Setup(setup.id)));
+    assert!(rig.shows("Setup 1"));
+}
+
+#[test]
+fn req_set_01_a_second_click_does_nothing_and_undo_allows_the_plus_again() {
+    let mut rig = no_setup_rig("add-setup-twice", true);
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.settle();
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.shell.add_setup();
+    rig.settle();
+    let project = rig.shell.app.as_ref().unwrap().project();
+    assert_eq!(project.setups().len(), 1);
+    assert_eq!(
+        openchuck_app::add_setup_blocked(project),
+        Some("More than one setup per project is not supported yet (SET-07)")
+    );
+    // The workflow bar's action is disabled too, with the same words.
+    assert!(rig.shows("Add setup"));
+    // Undo removes the setup, so the "+" is enabled again.
+    let app = rig.shell.app.as_mut().unwrap();
+    assert!(app.undo().unwrap());
+    assert!(openchuck_app::can_add_setup(app.project()));
+    rig.shell.add_setup();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().setups().len(), 1);
+}
+
+#[test]
+fn req_set_01_a_project_that_has_a_setup_shows_the_plus_disabled() {
+    // The cube project opens with its setup.
+    let mut rig = Rig::cube("add-setup-existing", None);
+    assert!(!openchuck_app::can_add_setup(
+        rig.shell.app.as_ref().unwrap().project()
+    ));
+    rig.shell.add_setup();
+    rig.settle();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project().setups().len(), 1);
+    rig.press(Key::Num2, Modifiers::ALT);
+    rig.settle();
+    assert!(rig.shows("Add setup"));
+}
+
+#[test]
+fn req_set_01_the_plus_is_disabled_until_a_model_is_imported() {
+    let mut rig = no_setup_rig("add-setup-no-model", false);
+    assert_eq!(
+        openchuck_app::add_setup_blocked(rig.shell.app.as_ref().unwrap().project()),
+        Some("Import a model first")
+    );
+    rig.shell.tree_action(TreeAction::Add(tree::Group::Setups));
+    rig.shell.add_setup();
+    rig.settle();
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .setups()
+            .is_empty()
+    );
+    assert_eq!(rig.shell.step, Step::Model);
+}
