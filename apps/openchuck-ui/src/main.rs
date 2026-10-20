@@ -28,6 +28,7 @@ mod floating;
 mod form_panel;
 mod graphics;
 mod import_panel;
+mod label_layout;
 mod machine_panel;
 mod model_panel;
 mod playback_panel;

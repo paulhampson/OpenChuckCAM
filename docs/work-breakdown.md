@@ -162,6 +162,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X6 | 22: Simulate results and playback dock, the SIM-07 control, one import window, selection sets. Built 19 Oct 2026 on `claude/lane-x6-simulate-import` ([decision 0125](decisions/0125-slice-22-simulate-and-import.md), accepted 19 Oct 2026; OI-370 to OI-374; OI-372 and OI-374 closed); boards 01b, 04, 15 and 11 re-rendered | ░░ | ░░ | ░░ | ░░ | ██ |
 | X7b | 22: plain wording and tokens applied to existing panels (built 19 Oct 2026 on `claude/lane-x7b-wording-tokens`; no decision record; OI-360) | ░░ | ░░ | ░░ | ░░ | ██ |
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
+| SL | Bug fix (issue 142, trial feedback F-04): Setup pane labels placed so none overlaps another, with leader lines (`claude/lane-sl-setup-callouts`; no decision record, no format change; OI-440 to OI-442) | | | | | ██ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
 | XC | CI hygiene: `cargo xtask conflicts` fails on unresolved merge conflict markers in tracked files, wired into the CI fast checks and `all` (built 19 Oct 2026 on `claude/lane-xc-conflict-marker-check`; no requirement covers it directly, supports NFR-06; no decision record; no open items) | ██ | | | | |
 | T | 20 hardening and first release | | | | | ██ |
@@ -206,6 +207,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X6 | X2; its Simulate colours after X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
+| SL | X5 (the Setup panes) and X3 (merged) |
 | X8 | X2 to X7b and X9 |
 | XC | Nothing |
 | T | Everything, including W and X1 to X9 |
