@@ -271,13 +271,14 @@ fn free_name(library: &ToolLibrary, wanted: &str) -> String {
         .unwrap_or_else(|| wanted.to_owned())
 }
 
-/// New tool (12.1): a library tool of type `kind`, saved to its own file at
-/// once, named "New <type>" (with a number when taken). It starts from the
+/// New tool (12.1): a draft library tool of type `kind`, not yet saved,
+/// named "New <type>" (with a number when taken). It starts from the
 /// nominal sizes of the default standard tool of that type (TL-12), with no
-/// cutting data and no tool material. Returns its ID.
-pub fn new_tool(library: &mut ToolLibrary, kind: ToolType) -> Result<ToolId, AppError> {
+/// cutting data and no tool material. [`save_draft`] writes it (decision
+/// record 0127 item 4: library tools are drafts until Save).
+pub fn new_draft(library: &ToolLibrary, kind: ToolType) -> Result<LibraryTool, AppError> {
     let example = kind.example()?;
-    let tool = LibraryTool {
+    Ok(LibraryTool {
         id: ToolId::new(),
         name: free_name(library, &format!("New {}", kind.label().to_lowercase())),
         tool: Tool {
@@ -285,25 +286,45 @@ pub fn new_tool(library: &mut ToolLibrary, kind: ToolType) -> Result<ToolId, App
             ..example.tool
         },
         cutting_data: openchuck_types::tool::CuttingTable::new(),
-    };
-    let id = tool.id;
-    library.save_tool(tool)?;
-    Ok(id)
+    })
 }
 
-/// Duplicate (12.1): a copy of library tool `id` with a new ID, named
-/// "<name> copy", saved to its own file. Tool set numbers stay with the
-/// original (a number belongs to one tool). Returns the copy's ID.
-pub fn duplicate_tool(library: &mut ToolLibrary, id: ToolId) -> Result<ToolId, AppError> {
+/// Duplicate (12.1): a draft copy of library tool `id` with a new ID, named
+/// "<name> copy", not yet saved. Tool set numbers stay with the original (a
+/// number belongs to one tool), and the copy is not in the project.
+pub fn duplicate_draft(library: &ToolLibrary, id: ToolId) -> Result<LibraryTool, AppError> {
     let original = get(library, id)?;
-    let copy = LibraryTool {
+    Ok(LibraryTool {
         id: ToolId::new(),
         name: free_name(library, &format!("{} copy", original.name)),
         ..original
-    };
-    let new = copy.id;
-    library.save_tool(copy)?;
-    Ok(new)
+    })
+}
+
+/// Whether `draft` holds changes the library does not have: a new tool, or
+/// one that differs from its saved file.
+pub fn is_dirty(library: &ToolLibrary, draft: &LibraryTool) -> bool {
+    library.get(draft.id) != Some(draft)
+}
+
+/// Save (12.1): writes `draft` to its file, and its number in each machine
+/// tool set `numbers` names (`None`: out of that set) (TL-11). Everything is
+/// checked first, so a refused number or an invalid tool writes nothing.
+/// Returns the tool file.
+pub fn save_draft(
+    library: &mut ToolLibrary,
+    draft: &LibraryTool,
+    numbers: &[(String, Option<u32>)],
+) -> Result<PathBuf, AppError> {
+    draft.validate()?;
+    for (machine, number) in numbers {
+        check_tool_set_number(library, machine, draft.id, *number)?;
+    }
+    let path = library.save_tool(draft.clone())?;
+    for (machine, number) in numbers {
+        set_tool_set_number(library, machine, draft.id, *number)?;
+    }
+    Ok(path)
 }
 
 /// What deleting a library tool touches, for the confirmation.
@@ -353,26 +374,34 @@ pub fn delete_tool(library: &mut ToolLibrary, id: ToolId) -> Result<(), AppError
     Ok(())
 }
 
-/// Writes `changed` over library tool `id` after checking it.
-fn save(library: &mut ToolLibrary, changed: LibraryTool) -> Result<(), AppError> {
-    changed.validate()?;
-    library.save_tool(changed)?;
+/// Applies `edit` to a copy of `tool`, checks the whole tool and its
+/// cutting data, and keeps the copy only when it is valid.
+fn edited(
+    tool: &mut LibraryTool,
+    edit: impl FnOnce(&mut LibraryTool) -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    let mut copy = tool.clone();
+    edit(&mut copy)?;
+    copy.validate()?;
+    *tool = copy;
     Ok(())
 }
 
-/// Renames library tool `id`. An empty name is refused.
-pub fn set_name(library: &mut ToolLibrary, id: ToolId, name: &str) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
-    tool.name = name.trim().to_owned();
-    save(library, tool)
+/// Renames `tool`. An empty name is refused.
+pub fn edit_name(tool: &mut LibraryTool, name: &str) -> Result<(), AppError> {
+    edited(tool, |t| {
+        t.name = name.trim().to_owned();
+        Ok(())
+    })
 }
 
 /// Sets the tool's own material ("carbide", "HSS"); empty clears it (TL-04).
-pub fn set_material(library: &mut ToolLibrary, id: ToolId, material: &str) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
+pub fn edit_material(tool: &mut LibraryTool, material: &str) -> Result<(), AppError> {
     let material = material.trim();
-    tool.tool.material = (!material.is_empty()).then(|| material.to_owned());
-    save(library, tool)
+    edited(tool, |t| {
+        t.tool.material = (!material.is_empty()).then(|| material.to_owned());
+        Ok(())
+    })
 }
 
 /// The tool with its type changed to `kind`, keeping its sizes. The new
@@ -399,37 +428,33 @@ pub fn with_type(tool: &Tool, kind: ToolType) -> Result<Tool, AppError> {
     Ok(changed)
 }
 
-/// Changes library tool `id` to type `kind` ([`with_type`]).
-pub fn set_type(library: &mut ToolLibrary, id: ToolId, kind: ToolType) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
-    tool.tool = with_type(&tool.tool, kind)?;
-    save(library, tool)
+/// Changes `tool` to type `kind` ([`with_type`]).
+pub fn edit_type(tool: &mut LibraryTool, kind: ToolType) -> Result<(), AppError> {
+    edited(tool, |t| {
+        t.tool = with_type(&t.tool, kind)?;
+        Ok(())
+    })
 }
 
-/// Sets one size of library tool `id` (the fields of
-/// [`tool_edit::tool_form`]), after checking the whole tool and its cutting
-/// data.
-pub fn set_field(
-    library: &mut ToolLibrary,
-    id: ToolId,
+/// Sets one size of `tool` (the fields of [`tool_edit::tool_form`]).
+pub fn edit_field(
+    tool: &mut LibraryTool,
     name: &str,
     value: &ParameterValue,
 ) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
-    tool.tool = tool_edit::set_tool_field(&tool.tool, name, value)?;
-    save(library, tool)
+    edited(tool, |t| {
+        t.tool = tool_edit::set_tool_field(&t.tool, name, value)?;
+        Ok(())
+    })
 }
 
-/// Gives library tool `id` the custom `profile` (TL-03), with the same checks
-/// as a profile file.
-pub fn set_profile(
-    library: &mut ToolLibrary,
-    id: ToolId,
-    profile: ToolProfile,
-) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
-    tool.tool = tool_edit::set_tool_profile(&tool.tool, profile)?;
-    save(library, tool)
+/// Gives `tool` the custom `profile` (TL-03), with the same checks as a
+/// profile file.
+pub fn edit_profile(tool: &mut LibraryTool, profile: ToolProfile) -> Result<(), AppError> {
+    edited(tool, |t| {
+        t.tool = tool_edit::set_tool_profile(&t.tool, profile)?;
+        Ok(())
+    })
 }
 
 /// One stock material's cutting data, as the right-hand table shows it.
@@ -456,30 +481,35 @@ pub fn cutting_rows(tool: &LibraryTool) -> Vec<CuttingRow> {
         .collect()
 }
 
-/// Sets the cutting data of library tool `id` for stock `material`, adding
-/// the material when it is new (TL-05). Every value must be positive, the
-/// stepover no more than the diameter and the stepdown no more than the
-/// flute length; a refused entry leaves the file unchanged.
-pub fn set_cutting_data(
-    library: &mut ToolLibrary,
-    id: ToolId,
+/// Sets `tool`'s cutting data for stock `material`, adding the material when
+/// it is new, and taking out `replacing` when the material was renamed
+/// (TL-05). Every value must be positive, the stepover no more than the
+/// diameter and the stepdown no more than the flute length.
+pub fn edit_cutting_data(
+    tool: &mut LibraryTool,
     material: &str,
     data: CuttingData,
+    replacing: Option<&str>,
 ) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
-    tool.cutting_data.insert(material.trim().to_owned(), data);
-    save(library, tool)
+    let material = material.trim();
+    if material.is_empty() {
+        return Err(AppError::Engine(openchuck_types::Error::invalid(
+            "cutting_data",
+            "name the stock material",
+        )));
+    }
+    edited(tool, |t| {
+        if let Some(old) = replacing {
+            t.cutting_data.remove(old);
+        }
+        t.cutting_data.insert(material.to_owned(), data);
+        Ok(())
+    })
 }
 
-/// Removes the cutting data of library tool `id` for stock `material`.
-pub fn remove_cutting_data(
-    library: &mut ToolLibrary,
-    id: ToolId,
-    material: &str,
-) -> Result<(), AppError> {
-    let mut tool = get(library, id)?;
+/// Removes `tool`'s cutting data for stock `material`.
+pub fn remove_cutting_data(tool: &mut LibraryTool, material: &str) {
     tool.cutting_data.remove(material);
-    save(library, tool)
 }
 
 /// Library tool `id`'s number in each machine tool set of the library
@@ -489,6 +519,33 @@ pub fn tool_set_numbers(library: &ToolLibrary, id: ToolId) -> Vec<(String, Optio
         .tool_sets()
         .map(|s| (s.machine.clone(), s.mapping_for(id).map(|m| m.number)))
         .collect()
+}
+
+/// Checks that tool `id` can have `number` in `machine`'s tool set: the set
+/// exists, the number is at least 1 and no other tool of the set holds it.
+pub fn check_tool_set_number(
+    library: &ToolLibrary,
+    machine: &str,
+    id: ToolId,
+    number: Option<u32>,
+) -> Result<(), AppError> {
+    let set = library
+        .tool_set(machine)
+        .ok_or_else(|| AppError::Project(not_found_set(machine)))?;
+    let Some(n) = number else { return Ok(()) };
+    if n == 0 {
+        return Err(refuse("tool numbers start at 1"));
+    }
+    if let Some(other) = set.tool_for(n).filter(|t| *t != id) {
+        let name = library
+            .get(other)
+            .map_or_else(|| other.to_string(), |t| t.name.clone());
+        return Err(refuse(&format!(
+            "T{n} is already \"{name}\" in the {} tool set",
+            set.machine
+        )));
+    }
+    Ok(())
 }
 
 /// Gives library tool `id` the number `number` in `machine`'s tool set, or
@@ -501,29 +558,19 @@ pub fn set_tool_set_number(
     number: Option<u32>,
 ) -> Result<(), AppError> {
     get(library, id)?;
+    check_tool_set_number(library, machine, id, number)?;
     let mut set = library
         .tool_set(machine)
         .cloned()
         .ok_or_else(|| AppError::Project(not_found_set(machine)))?;
+    let before = set.clone();
     match number {
         None => set.entries.retain(|e| e.tool != id),
-        Some(n) => {
-            if n == 0 {
-                return Err(refuse("tool numbers start at 1"));
-            }
-            if let Some(other) = set.tool_for(n).filter(|t| *t != id) {
-                let name = library
-                    .get(other)
-                    .map_or_else(|| other.to_string(), |t| t.name.clone());
-                return Err(refuse(&format!(
-                    "T{n} is already \"{name}\" in the {} tool set",
-                    set.machine
-                )));
-            }
-            set.assign(id, ControllerMapping::numbered(n));
-        }
+        Some(n) => set.assign(id, ControllerMapping::numbered(n)),
     }
-    library.save_tool_set(set)?;
+    if set != before {
+        library.save_tool_set(set)?;
+    }
     Ok(())
 }
 
@@ -539,13 +586,6 @@ fn not_found_set(machine: &str) -> ProjectError {
         kind: "tool set",
         id: machine.to_owned(),
     }
-}
-
-/// Imports a custom profile from a profile text file into library tool `id`
-/// (TL-03), with the file's checks; a refused file leaves the tool as it was.
-pub fn import_profile(library: &mut ToolLibrary, id: ToolId, file: &Path) -> Result<(), AppError> {
-    let profile = crate::tools::load_profile(file)?;
-    set_profile(library, id, profile)
 }
 
 /// Writes `profile` to the profile text file `file` (TL-03), after the same
@@ -791,7 +831,7 @@ impl CopyState {
                 let names: Vec<String> = fields.iter().map(|f| field_words(f)).collect();
                 format!("Differs from the library: {}", names.join(", "))
             }
-            Self::NotInLibrary => "Not in the library; the project keeps its copy".into(),
+            Self::NotInLibrary => "Not in the library (kept in the project)".into(),
         }
     }
 }
@@ -809,6 +849,110 @@ pub fn field_words(path: &str) -> String {
         "flute_count" => "flutes".to_owned(),
         _ => path.replace(['_', '.'], " ").replace("shape ", ""),
     }
+}
+
+/// How `snapshot` stands against `library` (TL-07).
+fn copy_state(snapshot: &ToolSnapshot, library: Option<&ToolLibrary>) -> CopyState {
+    match library.map(|l| compare_snapshot(snapshot, l)) {
+        None => CopyState::Unknown,
+        Some(SnapshotStatus::Same) => CopyState::Same,
+        Some(SnapshotStatus::Differs(fields)) => CopyState::Differs(fields),
+        Some(SnapshotStatus::NotInLibrary) => CopyState::NotInLibrary,
+    }
+}
+
+/// One of the project's tools, in the window's "This project" group
+/// (decision record 0127 item 1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectRow {
+    /// The project tool.
+    pub id: ToolId,
+    /// Its name.
+    pub name: String,
+    /// Its project tool number (TL-06).
+    pub number: u32,
+    /// Its type and size, for the tooltip.
+    pub summary: String,
+    /// The operations that use it, by name.
+    pub used_by: Vec<String>,
+    /// How it stands against the library (TL-07).
+    pub copy: CopyState,
+}
+
+/// The project's tools whose name, type or material contains `search`, in
+/// tool number order.
+pub fn project_rows(
+    project: &Project,
+    library: Option<&ToolLibrary>,
+    search: &str,
+) -> Vec<ProjectRow> {
+    let needle = search.trim().to_lowercase();
+    let mut rows: Vec<ProjectRow> = project
+        .tools()
+        .iter()
+        .filter(|t| {
+            let haystack = format!(
+                "{}\n{}\n{}",
+                t.name,
+                ToolType::of(&t.tool.shape).label(),
+                t.tool.material.as_deref().unwrap_or_default()
+            )
+            .to_lowercase();
+            needle.is_empty() || haystack.contains(&needle)
+        })
+        .map(|t| ProjectRow {
+            id: t.id,
+            name: t.name.clone(),
+            number: t.controller.number,
+            summary: summary(&t.tool),
+            used_by: project
+                .operations()
+                .iter()
+                .filter(|o| o.tool == Some(t.id))
+                .map(|o| o.name.clone())
+                .collect(),
+            copy: copy_state(t, library),
+        })
+        .collect();
+    rows.sort_by_key(|r| r.number);
+    rows
+}
+
+/// The project's copy of tool `id` as an editable tool (its geometry, name
+/// and cutting data; the number stays with the project).
+pub fn project_tool_as_edit(project: &Project, id: ToolId) -> Result<LibraryTool, AppError> {
+    Ok(LibraryTool::from_snapshot(project_tool(project, id)?))
+}
+
+/// The command that writes `edited` over the project's copy of the tool with
+/// its ID, keeping the project's tool number and place: one undoable step
+/// per change (decision record 0127 item 1). `None` when nothing changes.
+/// An invalid tool is refused and the project is unchanged.
+pub fn snapshot_command(
+    project: &Project,
+    edited: &LibraryTool,
+) -> Result<Option<Command>, AppError> {
+    edited.validate()?;
+    let snapshot = project_tool(project, edited.id)?;
+    let mut changed = edited.snapshot(snapshot.controller);
+    changed.order = snapshot.order.clone();
+    Ok((changed != *snapshot).then_some(Command::Replace(Item::Tool(changed))))
+}
+
+/// What "Save to library" would overwrite, for its confirmation: the fields
+/// of the library tool that differ, in words; `None` when the library has no
+/// such tool and the copy is added as a new one.
+pub fn save_to_library_changes(
+    project: &Project,
+    library: &ToolLibrary,
+    id: ToolId,
+) -> Result<Option<Vec<String>>, AppError> {
+    let snapshot = project_tool(project, id)?;
+    Ok(match compare_snapshot(snapshot, library) {
+        SnapshotStatus::NotInLibrary => None,
+        SnapshotStatus::Same => Some(Vec::new()),
+        SnapshotStatus::Differs(fields) => Some(fields.iter().map(|f| field_words(f)).collect()),
+    })
 }
 
 /// An operation's tool as its inspector's Tool section shows it.
@@ -838,12 +982,7 @@ pub fn operation_tool(
 ) -> Option<OperationTool> {
     let id = project.operation(operation)?.tool?;
     let snapshot = project_tool(project, id).ok()?;
-    let copy = match library.map(|l| compare_snapshot(snapshot, l)) {
-        None => CopyState::Unknown,
-        Some(SnapshotStatus::Same) => CopyState::Same,
-        Some(SnapshotStatus::Differs(fields)) => CopyState::Differs(fields),
-        Some(SnapshotStatus::NotInLibrary) => CopyState::NotInLibrary,
-    };
+    let copy = copy_state(snapshot, library);
     let tool_set_number = project.machine().and_then(|m| {
         let set = library?.tool_set(&m.name)?;
         let n = set.mapping_for(id)?.number;

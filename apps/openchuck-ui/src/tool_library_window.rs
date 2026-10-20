@@ -2,33 +2,37 @@
 //! The tool library window (specification 12.1; TL-01 to TL-07, TL-11,
 //! TL-12; decision records 0014, 0081 and 0127; board 10).
 //!
-//! Left, the tool list: a search, the tools grouped by type with an "in
-//! project" chip, and New tool, Duplicate and Delete. Centre, the tool form
-//! (name, type, sizes, material) and, for a custom profile, the profile
-//! editor. Right, the cutting data by stock material (TL-05) and the
-//! machine tool sets (TL-11). The footer has Import library and Export
-//! library (TL-01), Close, and "Add to project".
+//! Left, the tool list: a search, the project's own tools ("This project")
+//! and the library's tools grouped by type with an "in project" chip, and
+//! New tool, Duplicate and Delete. Centre, the tool form (name, type, sizes,
+//! material) and, for a custom profile, the profile editor. Right, the
+//! cutting data by stock material (TL-05) and, for a library tool, the
+//! machine tool sets (TL-11), or, for a project tool, its number and how it
+//! stands against the library (TL-06, TL-07). The footer has Import library
+//! and Export library (TL-01), Close and "Add to project".
 //!
-//! Every library edit is written to the tool's file at once by
-//! `openchuck-app`; the default-tool ledger is never touched, so an edited
-//! default stays edited and a deleted one stays deleted (TL-12). Adding to
-//! the project is one undoable command.
+//! A library tool is edited as a draft: nothing is written until Save, and
+//! Cancel or leaving it with "Discard" drops the changes (decision record
+//! 0127 item 4). A project tool is the project's own copy: each change is
+//! one undoable command and the library is untouched (item 1). The
+//! default-tool ledger is never touched, so an edited default stays edited
+//! and a deleted one stays deleted (TL-12).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use eframe::egui::{self, RichText};
-use openchuck_app::Application;
-use openchuck_app::project::ParameterValue;
 use openchuck_app::project::id::{OperationId, ToolId};
+use openchuck_app::project::{ParameterValue, Project};
 use openchuck_app::tool_edit::{self, starting_profile};
 use openchuck_app::tool_library::{
-    self as library, ConflictChoice, CuttingRow, DeleteImpact, ImportPreview, ToolType,
+    self as library, ConflictChoice, CopyState, CuttingRow, DeleteImpact, ImportPreview, ToolType,
 };
 use openchuck_app::tools::{
     CuttingData, FeedRate, LibraryTool, Millimetres, SpindleSpeed, ToolLibrary, ToolProfile,
     ToolShape,
 };
+use openchuck_app::{AppError, Application, Command};
 
 use crate::field_row::{self, Outcome, TextRow};
 use crate::floating::{WindowEvent, floating_unscrolled};
@@ -39,13 +43,25 @@ use crate::tool_panel::{self, ProfileAction};
 /// Why the window was opened, which sets its primary action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
-    /// From the Tools menu: browse and edit; "Add to project" is offered.
+    /// Without a project: browse and edit the library.
     Browse,
     /// To add a tool to the project: "Add to project" is the primary action.
     Add,
-    /// To choose the tool of this operation: "Add to project" also gives
-    /// the operation the tool.
+    /// To choose a tool for the operation being made in the New operation
+    /// dialog: the tool added is handed back to the dialog.
+    NewOperation,
+    /// To choose the tool of this operation: "Add to project" also gives the
+    /// operation the tool, in the same undoable step.
     Operation(OperationId),
+}
+
+/// Which tool the form shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chosen {
+    /// A tool of the library, edited as a draft.
+    Library(ToolId),
+    /// The project's own copy of a tool, edited by commands.
+    Project(ToolId),
 }
 
 /// Tool materials offered in the Material list; any other value a file holds
@@ -60,6 +76,14 @@ const CUTTING: [(&str, &str, &str); 5] = [
     ("Stepover", "mm", "above 0, at most the diameter"),
     ("Stepdown", "mm", "above 0, at most the flute length"),
 ];
+
+/// A library tool being edited: nothing is written until Save.
+#[derive(Debug, Clone, PartialEq)]
+struct Draft {
+    tool: LibraryTool,
+    /// Its number in each machine tool set (TL-11).
+    numbers: Vec<(String, Option<u32>)>,
+}
 
 /// A cutting data entry being typed: the material and the five values.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -88,14 +112,14 @@ impl CuttingDraft {
         }
     }
 
-    /// The typed values, or the first that is not a number.
+    /// The typed values, or which one is not a number.
     fn data(&self) -> Result<CuttingData, String> {
         let mut numbers = [0.0; 5];
         for ((n, text), (label, ..)) in numbers.iter_mut().zip(&self.values).zip(CUTTING) {
             *n = text
                 .trim()
                 .parse::<f64>()
-                .map_err(|_| format!("{label}: type a number."))?;
+                .map_err(|_| format!("{label}: type a number. Not applied."))?;
         }
         let [rpm, fpt, plunge, over, down] = numbers;
         Ok(CuttingData {
@@ -109,15 +133,18 @@ impl CuttingDraft {
 }
 
 /// Something the user asked for, done after drawing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Act {
     Close,
-    Choose(ToolId),
+    Choose(Chosen),
     New(ToolType),
     Duplicate,
     AskDelete,
     Delete,
-    CancelDelete,
+    Save,
+    CancelEdits,
+    Discard,
+    KeepEditing,
     Name(String),
     Type(ToolType),
     Material(String),
@@ -127,11 +154,28 @@ enum Act {
     SaveCutting,
     RemoveCutting(String),
     SetNumber(String, String),
+    ProjectNumber(String),
+    UpdateFromLibrary,
+    AskSaveToLibrary,
+    SaveToLibrary,
+    RemoveFromProject,
     ImportLibrary,
     ApplyImport,
     CancelImport,
     ExportLibrary,
     AddToProject,
+    CancelDialog,
+}
+
+impl Act {
+    /// Whether the act leaves the tool being edited, so a draft with changes
+    /// asks first.
+    fn leaves(&self) -> bool {
+        matches!(
+            self,
+            Self::Close | Self::Choose(_) | Self::New(_) | Self::Duplicate | Self::ImportLibrary
+        )
+    }
 }
 
 /// What the window reports to the shell.
@@ -139,6 +183,20 @@ enum Act {
 pub struct WindowOutcome {
     /// A line for the status bar.
     pub status: Option<String>,
+    /// A tool added to the project for the New operation dialog.
+    pub for_new_operation: Option<ToolId>,
+}
+
+/// A confirmation in front of the window.
+#[derive(Debug, Clone, PartialEq)]
+enum Confirm {
+    /// Delete this library tool.
+    Delete(ToolId, DeleteImpact),
+    /// Write the project's copy over the library tool: the fields that
+    /// change, or `None` for a tool new to the library.
+    SaveToLibrary(ToolId, Option<Vec<String>>),
+    /// Leave a draft with changes, then do this.
+    Discard(Box<Act>),
 }
 
 /// The window's state.
@@ -152,12 +210,14 @@ pub struct ToolLibraryWindow {
     /// Why the library could not be read.
     unreadable: Option<String>,
     search: String,
-    chosen: Option<ToolId>,
+    chosen: Option<Chosen>,
+    /// The library tool being edited (with `Chosen::Library`).
+    draft: Option<Draft>,
     fields: FormState,
-    draft: Option<(ToolId, ToolProfile)>,
+    profile: Option<ToolProfile>,
     segment: Option<usize>,
     cutting: Option<CuttingDraft>,
-    delete: Option<(ToolId, DeleteImpact)>,
+    confirm: Option<Confirm>,
     import: Option<(ImportPreview, BTreeMap<ToolId, ConflictChoice>)>,
     /// The last thing done, or why it was not.
     message: Option<(String, bool)>,
@@ -181,11 +241,12 @@ impl ToolLibraryWindow {
             unreadable: None,
             search: String::new(),
             chosen: None,
-            fields: FormState::default(),
             draft: None,
+            fields: FormState::default(),
+            profile: None,
             segment: None,
             cutting: None,
-            delete: None,
+            confirm: None,
             import: None,
             message: None,
         }
@@ -197,13 +258,17 @@ impl ToolLibraryWindow {
     }
 
     /// Opens the window for `purpose`, reading the library again from its
-    /// folder, with `tool` chosen when given.
-    pub fn open(&mut self, purpose: Purpose, tool: Option<ToolId>) {
-        self.open = true;
+    /// folder, with `chosen` shown when given. A draft with changes is kept.
+    pub fn open(&mut self, purpose: Purpose, chosen: Option<Chosen>) {
         self.purpose = purpose;
-        self.reload();
-        if tool.is_some() {
-            self.choose(tool);
+        if !self.open || !self.is_dirty() {
+            self.reload();
+        }
+        self.open = true;
+        if let Some(chosen) = chosen
+            && !self.is_dirty()
+        {
+            self.choose(chosen);
         }
     }
 
@@ -214,13 +279,6 @@ impl ToolLibraryWindow {
             self.reload();
         }
         self.library.as_ref()
-    }
-
-    /// The library for a change made outside the window (Save to library),
-    /// read once when first asked.
-    pub fn library_mut(&mut self) -> Option<&mut ToolLibrary> {
-        self.library();
-        self.library.as_mut()
     }
 
     /// Reads the library from its folder again.
@@ -247,26 +305,54 @@ impl ToolLibraryWindow {
                 );
             }
         }
-        if self
-            .chosen
-            .is_some_and(|id| self.library.as_ref().is_none_or(|l| l.get(id).is_none()))
-        {
-            self.chosen = None;
+        if let Some(Chosen::Library(id)) = self.chosen {
+            match self.library.as_ref().and_then(|l| l.get(id)) {
+                Some(_) => self.choose(Chosen::Library(id)),
+                None => self.forget(),
+            }
         }
     }
 
-    fn choose(&mut self, tool: Option<ToolId>) {
-        if self.chosen != tool {
-            self.chosen = tool;
-            self.fields.clear();
-            self.draft = None;
-            self.segment = None;
-            self.cutting = None;
-        }
+    /// Whether the library draft has changes that are not saved.
+    fn is_dirty(&self) -> bool {
+        let (Some(draft), Some(lib)) = (&self.draft, &self.library) else {
+            return false;
+        };
+        library::is_dirty(lib, &draft.tool)
+            || draft.numbers != library::tool_set_numbers(lib, draft.tool.id)
     }
 
-    fn chosen_tool(&self) -> Option<&LibraryTool> {
-        self.library.as_ref()?.get(self.chosen?)
+    fn forget(&mut self) {
+        self.chosen = None;
+        self.draft = None;
+        self.clear_editing();
+    }
+
+    fn clear_editing(&mut self) {
+        self.fields.clear();
+        self.profile = None;
+        self.segment = None;
+        self.cutting = None;
+    }
+
+    fn choose(&mut self, chosen: Chosen) {
+        self.clear_editing();
+        self.chosen = Some(chosen);
+        self.draft = match (chosen, &self.library) {
+            (Chosen::Library(id), Some(lib)) => lib.get(id).map(|t| Draft {
+                tool: t.clone(),
+                numbers: library::tool_set_numbers(lib, id),
+            }),
+            _ => None,
+        };
+    }
+
+    /// The tool the form shows: the draft, or the project's copy.
+    fn shown(&self, project: Option<&Project>) -> Option<LibraryTool> {
+        match self.chosen? {
+            Chosen::Library(_) => self.draft.as_ref().map(|d| d.tool.clone()),
+            Chosen::Project(id) => library::project_tool_as_edit(project?, id).ok(),
+        }
     }
 
     /// Draws the window when it is open and does what the user asked.
@@ -279,10 +365,19 @@ impl ToolLibraryWindow {
         if !self.open {
             return outcome;
         }
+        // A project tool that was removed (an undo, say) is no longer shown.
+        if let Some(Chosen::Project(id)) = self.chosen
+            && app
+                .as_deref()
+                .is_none_or(|a| !a.project().tools().iter().any(|t| t.id == id))
+        {
+            self.forget();
+        }
         let mut acts = Vec::new();
         let project = app.as_deref().map(Application::project);
         let title = match self.purpose {
             Purpose::Operation(_) => "Tool library: choose the operation's tool",
+            Purpose::NewOperation => "Tool library: choose the new operation's tool",
             _ => "Tool library",
         };
         let (_, event) = floating_unscrolled(ctx, "tool library", title, [1200.0, 760.0], |ui| {
@@ -292,24 +387,22 @@ impl ToolLibraryWindow {
             acts.push(Act::Close);
         }
         for act in acts {
-            if let Some(status) = self.act(act, app.as_deref_mut()) {
-                outcome.status = Some(status);
+            let (status, added) = self.act(act, app.as_deref_mut());
+            if status.is_some() {
+                outcome.status = status;
+            }
+            if added.is_some() {
+                outcome.for_new_operation = added;
             }
         }
         outcome
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn draw(
-        &mut self,
-        ui: &mut egui::Ui,
-        project: Option<&openchuck_app::project::Project>,
-        acts: &mut Vec<Act>,
-    ) {
+    fn draw(&mut self, ui: &mut egui::Ui, project: Option<&Project>, acts: &mut Vec<Act>) {
         egui::Panel::bottom("tool library footer")
             .resizable(false)
             .show(ui, |ui| self.footer(ui, project, acts));
-        let Some(library) = &self.library else {
+        let Some(lib) = &self.library else {
             ui.label(
                 RichText::new(self.unreadable.as_deref().unwrap_or("No tool library."))
                     .color(DARK.error),
@@ -320,15 +413,15 @@ impl ToolLibraryWindow {
             .default_size(270.0)
             .resizable(true)
             .show(ui, |ui| {
-                list(ui, library, project, &mut self.search, self.chosen, acts)
+                list(ui, lib, project, &mut self.search, self.chosen, acts)
             });
-        let tool = self.chosen_tool().cloned();
+        let tool = self.shown(project);
         egui::Panel::right("tool library data")
             .default_size(300.0)
             .resizable(true)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| match &tool {
-                    Some(tool) => self.data(ui, tool, acts),
+                    Some(tool) => self.data(ui, tool, project, acts),
                     None => {
                         ui.label(RichText::new("Choose a tool.").color(DARK.muted));
                     }
@@ -350,18 +443,13 @@ impl ToolLibraryWindow {
 
     /// The footer: Import library and Export library on the left; Close and
     /// "Add to project" on the right (12.1).
-    fn footer(
-        &self,
-        ui: &mut egui::Ui,
-        project: Option<&openchuck_app::project::Project>,
-        acts: &mut Vec<Act>,
-    ) {
+    fn footer(&self, ui: &mut egui::Ui, project: Option<&Project>, acts: &mut Vec<Act>) {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             let readable = self.library.is_some();
             if ui
                 .add_enabled(readable, egui::Button::new("Import library…"))
-                .on_hover_text("Copy tools from another library folder or a tool file")
+                .on_hover_text("Copy tools from another library folder")
                 .clicked()
             {
                 acts.push(Act::ImportLibrary);
@@ -377,29 +465,14 @@ impl ToolLibraryWindow {
             }
             if let Some((text, error)) = &self.message {
                 let colour = if *error { DARK.error } else { DARK.muted };
-                ui.label(RichText::new(text).color(colour));
+                ui.add(egui::Label::new(RichText::new(text).color(colour)).truncate());
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let in_project = project.is_some_and(|p| {
-                    self.chosen
-                        .is_some_and(|id| p.tools().iter().any(|t| t.id == id))
-                });
-                let (label, enabled, reason) = match (project, self.chosen, self.purpose) {
-                    (None, ..) => ("Add to project", false, "Open a project first"),
-                    (_, None, _) => ("Add to project", false, "Choose a tool first"),
-                    (_, _, Purpose::Operation(_)) if in_project => {
-                        ("Use for the operation", true, "")
-                    }
-                    _ if in_project => {
-                        ("Add to project", false, "The project has this tool already")
-                    }
-                    _ => ("Add to project", true, ""),
-                };
-                let primary = self.purpose != Purpose::Browse;
-                let button = if primary {
-                    crate::shell::primary_button(ui, label, enabled)
-                } else {
+                let (label, enabled, reason) = self.add_state(project);
+                let button = if self.purpose == Purpose::Browse {
                     ui.add_enabled(enabled, egui::Button::new(label))
+                } else {
+                    crate::shell::primary_button(ui, label, enabled)
                 };
                 if button.on_disabled_hover_text(reason).clicked() {
                     acts.push(Act::AddToProject);
@@ -412,10 +485,66 @@ impl ToolLibraryWindow {
         ui.add_space(8.0);
     }
 
+    /// The label of the primary action, whether it can be used, and why not.
+    fn add_state(&self, project: Option<&Project>) -> (&'static str, bool, &'static str) {
+        let for_operation = matches!(self.purpose, Purpose::Operation(_) | Purpose::NewOperation);
+        let Some(project) = project else {
+            return ("Add to project", false, "Open a project first");
+        };
+        match self.chosen {
+            None => ("Add to project", false, "Choose a tool first"),
+            Some(Chosen::Project(_)) if for_operation => ("Use for the operation", true, ""),
+            Some(Chosen::Project(_)) => ("Add to project", false, "It is in the project"),
+            Some(Chosen::Library(_)) if self.is_dirty() => {
+                ("Add to project", false, "Save the tool first")
+            }
+            Some(Chosen::Library(id)) => {
+                let have = project.tools().iter().any(|t| t.id == id);
+                match (have, for_operation) {
+                    (true, true) => ("Use for the operation", true, ""),
+                    (true, false) => (
+                        "Add to project",
+                        false,
+                        "The project has this tool already: it is in This project",
+                    ),
+                    (false, _) => ("Add to project", true, ""),
+                }
+            }
+        }
+    }
+
     /// The tool form: name, type, sizes and material, then the profile
     /// editor for a custom profile (12.1, centre).
     fn tool_form(&mut self, ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>) {
-        heading(ui, "Tool");
+        ui.horizontal(|ui| {
+            heading(ui, "Tool");
+            match self.chosen {
+                Some(Chosen::Project(_)) => {
+                    ui.label(
+                        RichText::new("The project's copy: each change can be undone")
+                            .color(DARK.muted),
+                    );
+                }
+                Some(Chosen::Library(id)) => {
+                    let dirty = self.is_dirty();
+                    let new = self.library.as_ref().is_some_and(|l| l.get(id).is_none());
+                    if crate::shell::primary_button(ui, "Save", dirty).clicked() {
+                        acts.push(Act::Save);
+                    }
+                    if ui.add_enabled(dirty, egui::Button::new("Cancel")).clicked() {
+                        acts.push(Act::CancelEdits);
+                    }
+                    let note = match (new, dirty) {
+                        (true, _) => "New: not saved yet",
+                        (false, true) => "Changed: not saved yet",
+                        (false, false) => "Saved in the library",
+                    };
+                    let colour = if dirty { DARK.warning } else { DARK.muted };
+                    ui.label(RichText::new(note).color(colour));
+                }
+                None => {}
+            }
+        });
         let name = TextRow {
             key: "name",
             label: "Name",
@@ -465,20 +594,19 @@ impl ToolLibraryWindow {
         }
         materials.insert(0, "Not given".to_owned());
         let labels: Vec<&str> = materials.iter().map(String::as_str).collect();
-        let current = Some(
-            tool.tool
-                .material
-                .as_ref()
-                .and_then(|m| materials.iter().position(|x| x == m))
-                .unwrap_or(0),
-        );
+        let current = tool
+            .tool
+            .material
+            .as_ref()
+            .and_then(|m| materials.iter().position(|x| x == m))
+            .unwrap_or(0);
         if let Some(i) = field_row::choice_row(
             ui,
             "tool material",
             "Material",
             "What the tool is made of (TL-04). Not the stock material.",
             &labels,
-            current,
+            Some(current),
             true,
         ) {
             let material = if i == 0 {
@@ -490,21 +618,21 @@ impl ToolLibraryWindow {
         }
         ui.add_space(8.0);
         ui.separator();
-        match (&mut self.draft, &tool.tool.shape) {
-            (Some((id, draft)), _) if *id == tool.id => {
+        match (&mut self.profile, &tool.tool.shape) {
+            (Some(draft), _) => {
                 heading(ui, "Profile");
                 let action = tool_panel::editor(ui, &tool.tool, draft, &mut self.segment, true);
                 if action != ProfileAction::None {
                     acts.push(Act::Profile(action));
                 }
             }
-            (_, ToolShape::Custom { .. }) => {
+            (None, ToolShape::Custom { .. }) => {
                 heading(ui, "Profile");
                 if ui.button("Edit the profile…").clicked() {
                     acts.push(Act::EditProfile);
                 }
             }
-            _ => {
+            (None, _) => {
                 ui.label(
                     RichText::new(
                         "A standard type: its shape follows its sizes. Choose \"Custom profile\" \
@@ -516,9 +644,16 @@ impl ToolLibraryWindow {
         }
     }
 
-    /// The right column: cutting data by stock material (TL-05) and the
-    /// machine tool sets (TL-11).
-    fn data(&mut self, ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>) {
+    /// The right column: cutting data by stock material (TL-05), then the
+    /// machine tool sets (TL-11) of a library tool or the project's number
+    /// and copy state of a project tool (TL-06, TL-07).
+    fn data(
+        &mut self,
+        ui: &mut egui::Ui,
+        tool: &LibraryTool,
+        project: Option<&Project>,
+        acts: &mut Vec<Act>,
+    ) {
         heading(ui, "Cutting data by material");
         let rows = library::cutting_rows(tool);
         egui::Grid::new("cutting data")
@@ -572,17 +707,24 @@ impl ToolLibraryWindow {
             .color(DARK.muted),
         );
         ui.add_space(10.0);
+        match self.chosen {
+            Some(Chosen::Project(id)) => self.project_data(ui, id, project, acts),
+            _ => self.tool_sets(ui, acts),
+        }
+    }
+
+    /// A library tool's number in each machine tool set (TL-11).
+    fn tool_sets(&mut self, ui: &mut egui::Ui, acts: &mut Vec<Act>) {
         heading(ui, "Machine tool sets");
-        let Some(library) = &self.library else { return };
-        let sets = library::tool_set_numbers(library, tool.id);
-        if sets.is_empty() {
+        let Some(draft) = &self.draft else { return };
+        if draft.numbers.is_empty() {
             ui.label(RichText::new("This library has no machine tool sets.").color(DARK.muted));
         }
-        for (machine, number) in sets {
+        for (machine, number) in &draft.numbers {
             let key = format!("set:{machine}");
             let row = TextRow {
                 key: &key,
-                label: &machine,
+                label: machine,
                 description: "The number this tool gets when it is added to a project for this \
                               machine. Empty: not in the set.",
                 range: Some("1 or more, not another tool's number in this set"),
@@ -604,34 +746,153 @@ impl ToolLibraryWindow {
         );
     }
 
-    /// The delete confirmation and the import review.
+    /// A project tool's number, its state against the library, and the
+    /// operations that use it (TL-06, TL-07; decision record 0127 items 1,
+    /// 3 and 6).
+    fn project_data(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: ToolId,
+        project: Option<&Project>,
+        acts: &mut Vec<Act>,
+    ) {
+        heading(ui, "In this project");
+        let Some(row) = project.and_then(|p| {
+            library::project_rows(p, self.library.as_ref(), "")
+                .into_iter()
+                .find(|r| r.id == id)
+        }) else {
+            return;
+        };
+        let number = TextRow {
+            key: "project number",
+            label: "Tool number",
+            description: "The project's number for this tool (TL-06), used by every operation \
+                          that uses it.",
+            range: Some("1 or more, not another project tool's number"),
+            applied: row.number.to_string(),
+            enabled: true,
+            ..TextRow::default()
+        };
+        if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &number) {
+            acts.push(Act::ProjectNumber(typed));
+        }
+        ui.label(RichText::new(row.copy.text()).color(copy_colour(&row.copy)));
+        ui.horizontal_wrapped(|ui| {
+            let differs = matches!(row.copy, CopyState::Differs(_));
+            if ui
+                .add_enabled(differs, egui::Button::new("Update from library"))
+                .on_hover_text(
+                    "Replace the project's copy with the library's tool, keeping the tool \
+                     number (one undoable step)",
+                )
+                .clicked()
+            {
+                acts.push(Act::UpdateFromLibrary);
+            }
+            let saveable = matches!(row.copy, CopyState::Differs(_) | CopyState::NotInLibrary);
+            if ui
+                .add_enabled(saveable, egui::Button::new("Save to library"))
+                .on_hover_text("Write the project's copy into the tool library")
+                .clicked()
+            {
+                acts.push(Act::AskSaveToLibrary);
+            }
+        });
+        if row.used_by.is_empty() {
+            ui.label(RichText::new("No operation uses it.").color(DARK.muted));
+        } else {
+            ui.label(
+                RichText::new(format!("Used by {}.", row.used_by.join(", "))).color(DARK.muted),
+            );
+        }
+        let unused = row.used_by.is_empty();
+        if ui
+            .add_enabled(unused, egui::Button::new("Remove from project"))
+            .on_disabled_hover_text("Give the operations that use it another tool first")
+            .clicked()
+        {
+            acts.push(Act::RemoveFromProject);
+        }
+    }
+
+    /// The confirmations and the import review.
     fn dialogs(&mut self, ui: &mut egui::Ui, acts: &mut Vec<Act>) {
-        if let Some((_, impact)) = &self.delete {
-            egui::Modal::new(egui::Id::new("delete library tool")).show(ui.ctx(), |ui| {
-                ui.heading(format!("Delete \"{}\" from the library?", impact.name));
-                ui.label("Its file is deleted. This cannot be undone.");
-                if impact.in_project {
-                    ui.label("This project keeps its own copy of the tool, and its operations still use it.");
-                }
-                for (machine, number) in &impact.tool_sets {
-                    ui.label(format!("It is T{number} in the {machine} tool set: it is taken out of the set."));
-                }
-                ui.label(
-                    RichText::new("A default tool that is deleted is not installed again.")
-                        .color(DARK.muted),
-                );
-                ui.horizontal(|ui| {
-                    if ui.button("Delete").clicked() {
-                        acts.push(Act::Delete);
+        match &self.confirm {
+            Some(Confirm::Delete(_, impact)) => {
+                modal(ui, "delete library tool", |ui| {
+                    ui.heading(format!("Delete \"{}\" from the library?", impact.name));
+                    ui.label("Its file is deleted. This cannot be undone.");
+                    if impact.in_project {
+                        ui.label(
+                            "This project keeps its own copy of the tool, and its operations \
+                             still use it; they then show \"Not in the library\".",
+                        );
                     }
-                    if ui.button("Cancel").clicked() {
-                        acts.push(Act::CancelDelete);
+                    for (machine, number) in &impact.tool_sets {
+                        ui.label(format!(
+                            "It is T{number} in the {machine} tool set: it is taken out of the set."
+                        ));
                     }
+                    ui.label(
+                        RichText::new("A default tool that is deleted is not installed again.")
+                            .color(DARK.muted),
+                    );
+                    buttons(
+                        ui,
+                        acts,
+                        ("Delete", Act::Delete),
+                        ("Cancel", Act::CancelDialog),
+                    );
                 });
-            });
+            }
+            Some(Confirm::SaveToLibrary(_, fields)) => {
+                modal(ui, "save to library", |ui| {
+                    ui.heading("Save the project's tool to the library?");
+                    match fields {
+                        None => {
+                            ui.label("The library has no such tool: it is added as a new one.");
+                        }
+                        Some(fields) => {
+                            ui.label(format!(
+                                "The library's tool changes: {}. Other projects that use it \
+                                 keep their own copies.",
+                                fields.join(", ")
+                            ));
+                        }
+                    }
+                    ui.label(
+                        RichText::new("The project's tool number stays with the project.")
+                            .color(DARK.muted),
+                    );
+                    buttons(
+                        ui,
+                        acts,
+                        ("Save to library", Act::SaveToLibrary),
+                        ("Cancel", Act::CancelDialog),
+                    );
+                });
+            }
+            Some(Confirm::Discard(_)) => {
+                let name = self
+                    .draft
+                    .as_ref()
+                    .map_or_else(String::new, |d| d.tool.name.clone());
+                modal(ui, "discard changes", |ui| {
+                    ui.heading(format!("Discard the changes to \"{name}\"?"));
+                    ui.label("They are not saved in the library.");
+                    buttons(
+                        ui,
+                        acts,
+                        ("Discard", Act::Discard),
+                        ("Keep editing", Act::KeepEditing),
+                    );
+                });
+            }
+            None => {}
         }
         if let Some((preview, choices)) = &mut self.import {
-            egui::Modal::new(egui::Id::new("import library")).show(ui.ctx(), |ui| {
+            modal(ui, "import library", |ui| {
                 ui.heading("Import tools");
                 ui.label(format!(
                     "From {}: {} new, {} the same as yours, {} that differ from yours.",
@@ -641,7 +902,20 @@ impl ToolLibraryWindow {
                     preview.conflicts.len()
                 ));
                 if !preview.conflicts.is_empty() {
-                    ui.label("For each tool that differs, choose what to keep:");
+                    ui.horizontal(|ui| {
+                        ui.label("For every tool that differs:");
+                        for (label, choice) in [
+                            ("Keep mine", ConflictChoice::KeepMine),
+                            ("Replace", ConflictChoice::Replace),
+                            ("Keep both", ConflictChoice::KeepBoth),
+                        ] {
+                            if ui.small_button(label).clicked() {
+                                for (_, c) in &preview.conflicts {
+                                    choices.insert(c.id, choice);
+                                }
+                            }
+                        }
+                    });
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
                         .show(ui, |ui| {
@@ -661,206 +935,337 @@ impl ToolLibraryWindow {
                                     .or_insert(ConflictChoice::KeepMine);
                                 ui.horizontal(|ui| {
                                     ui.radio_value(choice, ConflictChoice::KeepMine, "Keep mine");
-                                    ui.radio_value(
-                                        choice,
-                                        ConflictChoice::Replace,
-                                        "Replace with the import",
-                                    );
+                                    ui.radio_value(choice, ConflictChoice::Replace, "Replace");
                                     ui.radio_value(choice, ConflictChoice::KeepBoth, "Keep both");
                                 });
                             }
                         });
                 }
-                ui.horizontal(|ui| {
-                    if ui.button("Import").clicked() {
-                        acts.push(Act::ApplyImport);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        acts.push(Act::CancelImport);
-                    }
-                });
+                buttons(
+                    ui,
+                    acts,
+                    ("Import", Act::ApplyImport),
+                    ("Cancel", Act::CancelImport),
+                );
             });
         }
     }
 
-    /// "Add to project" for the chosen tool, as the footer's button does.
-    #[cfg(test)]
-    pub fn add_chosen(&mut self, app: Option<&mut Application>) -> Option<String> {
-        self.act(Act::AddToProject, app)
+    /// Does `act`; returns a status line for the shell and a tool added for
+    /// the New operation dialog.
+    fn act(&mut self, act: Act, app: Option<&mut Application>) -> (Option<String>, Option<ToolId>) {
+        if act.leaves() && self.is_dirty() {
+            self.confirm = Some(Confirm::Discard(Box::new(act)));
+            return (None, None);
+        }
+        let mut added = None;
+        let result = self.run(act, app, &mut added);
+        let status = match result {
+            Ok(Some(text)) => {
+                self.message = Some((text.clone(), false));
+                Some(text)
+            }
+            Ok(None) => None,
+            Err(e) => {
+                self.message = Some((e, true));
+                None
+            }
+        };
+        (status, added)
     }
 
-    /// Does `act`; returns a status line for the shell, when there is one.
     #[allow(clippy::too_many_lines)]
-    fn act(&mut self, act: Act, app: Option<&mut Application>) -> Option<String> {
-        let chosen = self.chosen;
-        let mut status = None;
-        let Some(library) = &mut self.library else {
-            if matches!(act, Act::Close) {
-                self.open = false;
-            }
-            return None;
-        };
-        let result: Result<Option<String>, String> = match act {
+    fn run(
+        &mut self,
+        act: Act,
+        app: Option<&mut Application>,
+        added: &mut Option<ToolId>,
+    ) -> Result<Option<String>, String> {
+        let text = |e: AppError| e.to_string();
+        match act {
             Act::Close => {
                 self.open = false;
-                self.delete = None;
+                self.confirm = None;
                 self.import = None;
+                self.draft = None;
+                if matches!(self.chosen, Some(Chosen::Library(_))) {
+                    self.chosen = None;
+                }
                 Ok(None)
             }
-            Act::Choose(id) => {
-                self.choose(Some(id));
+            Act::Choose(chosen) => {
+                self.choose(chosen);
                 Ok(None)
             }
-            Act::New(kind) => library::new_tool(library, kind)
-                .map(|id| {
-                    self.search.clear();
-                    self.choose(Some(id));
-                    Some(format!(
-                        "Made a new {} in the library.",
-                        kind.label().to_lowercase()
-                    ))
-                })
-                .map_err(|e| e.to_string()),
-            Act::Duplicate => match chosen {
-                Some(id) => library::duplicate_tool(library, id)
-                    .map(|copy| {
-                        self.choose(Some(copy));
-                        Some("Duplicated the tool in the library.".to_owned())
-                    })
-                    .map_err(|e| e.to_string()),
-                None => Ok(None),
-            },
-            Act::AskDelete => {
-                let project = app.as_deref().map(Application::project);
-                match chosen.map(|id| (id, library::delete_impact(library, project, id))) {
-                    Some((id, Ok(impact))) => {
-                        self.delete = Some((id, impact));
-                        Ok(None)
+            Act::New(kind) => {
+                let lib = self.library.as_ref().ok_or("No tool library.")?;
+                let tool = library::new_draft(lib, kind).map_err(text)?;
+                let numbers = library::tool_set_numbers(lib, tool.id);
+                self.clear_editing();
+                self.search.clear();
+                self.chosen = Some(Chosen::Library(tool.id));
+                self.draft = Some(Draft { tool, numbers });
+                Ok(Some(format!(
+                    "New {}: set it up, then Save.",
+                    kind.label().to_lowercase()
+                )))
+            }
+            Act::Duplicate => {
+                let lib = self.library.as_ref().ok_or("No tool library.")?;
+                let tool = match (self.chosen, app.as_deref()) {
+                    (Some(Chosen::Library(id)), _) => {
+                        library::duplicate_draft(lib, id).map_err(text)?
                     }
-                    Some((_, Err(e))) => Err(e.to_string()),
-                    None => Ok(None),
-                }
+                    (Some(Chosen::Project(id)), Some(app)) => {
+                        // A project tool duplicates into the library too.
+                        let mut copy =
+                            library::project_tool_as_edit(app.project(), id).map_err(text)?;
+                        copy.id = ToolId::new();
+                        copy.name = format!("{} copy", copy.name);
+                        copy
+                    }
+                    _ => return Ok(None),
+                };
+                let numbers = library::tool_set_numbers(lib, tool.id);
+                self.clear_editing();
+                self.chosen = Some(Chosen::Library(tool.id));
+                self.draft = Some(Draft { tool, numbers });
+                Ok(Some(
+                    "Duplicated as a new library tool: Save to keep it.".into(),
+                ))
             }
-            Act::Delete => match self.delete.take() {
-                Some((id, impact)) => library::delete_tool(library, id)
-                    .map(|()| {
-                        self.chosen = None;
-                        Some(format!("Deleted \"{}\" from the library.", impact.name))
-                    })
-                    .map_err(|e| e.to_string()),
-                None => Ok(None),
-            },
-            Act::CancelDelete => {
-                self.delete = None;
+            Act::AskDelete => {
+                let Some(Chosen::Library(id)) = self.chosen else {
+                    return Ok(None);
+                };
+                let lib = self.library.as_ref().ok_or("No tool library.")?;
+                if lib.get(id).is_none() {
+                    // A new tool not saved yet: deleting is dropping it.
+                    self.forget();
+                    return Ok(Some("The new tool was not saved.".into()));
+                }
+                let project = app.as_deref().map(Application::project);
+                let impact = library::delete_impact(lib, project, id).map_err(text)?;
+                self.confirm = Some(Confirm::Delete(id, impact));
                 Ok(None)
             }
-            Act::Name(typed) => match chosen {
-                Some(id) => {
-                    let r = library::set_name(library, id, &typed)
-                        .map_err(|e| form_panel::refusal(&e.to_string()));
-                    self.fields.result("name", r);
-                    Ok(None)
+            Act::Delete => {
+                let Some(Confirm::Delete(id, impact)) = self.confirm.take() else {
+                    return Ok(None);
+                };
+                let lib = self.library.as_mut().ok_or("No tool library.")?;
+                library::delete_tool(lib, id).map_err(text)?;
+                self.forget();
+                Ok(Some(format!(
+                    "Deleted \"{}\" from the library.",
+                    impact.name
+                )))
+            }
+            Act::Save => {
+                let (Some(lib), Some(draft)) = (&mut self.library, &self.draft) else {
+                    return Ok(None);
+                };
+                library::save_draft(lib, &draft.tool, &draft.numbers).map_err(text)?;
+                let name = draft.tool.name.clone();
+                self.fields.clear();
+                Ok(Some(format!("Saved \"{name}\" in the library.")))
+            }
+            Act::CancelEdits => {
+                match self.chosen {
+                    Some(Chosen::Library(id))
+                        if self.library.as_ref().is_some_and(|l| l.get(id).is_some()) =>
+                    {
+                        self.choose(Chosen::Library(id));
+                    }
+                    _ => self.forget(),
                 }
-                None => Ok(None),
-            },
-            Act::Type(kind) => match chosen {
-                Some(id) => {
-                    let r = library::set_type(library, id, kind)
-                        .map_err(|e| form_panel::refusal(&e.to_string()));
-                    self.fields.result("type", r);
-                    self.draft = None;
-                    Ok(None)
-                }
-                None => Ok(None),
-            },
-            Act::Material(material) => match chosen {
-                Some(id) => library::set_material(library, id, &material)
-                    .map(|()| None)
-                    .map_err(|e| e.to_string()),
-                None => Ok(None),
-            },
+                Ok(None)
+            }
+            Act::Discard => {
+                let Some(Confirm::Discard(next)) = self.confirm.take() else {
+                    return Ok(None);
+                };
+                self.draft = None;
+                self.chosen = None;
+                self.clear_editing();
+                self.run(*next, app, added)
+            }
+            Act::KeepEditing | Act::CancelDialog => {
+                self.confirm = None;
+                Ok(None)
+            }
+            Act::Name(typed) => {
+                let r = self.edit(app, |t| library::edit_name(t, &typed));
+                self.fields.result("name", r);
+                Ok(None)
+            }
+            Act::Type(kind) => {
+                let r = self.edit(app, |t| library::edit_type(t, kind));
+                self.fields.result("type", r);
+                self.profile = None;
+                Ok(None)
+            }
+            Act::Material(material) => {
+                self.edit(app, |t| library::edit_material(t, &material))?;
+                Ok(None)
+            }
             Act::Field(name, value) => {
-                if let Some(id) = chosen {
-                    let r = match &value {
-                        Some(v) => library::set_field(library, id, &name, v)
-                            .map_err(|e| form_panel::refusal(&e.to_string())),
-                        None => Err("A tool size needs a value. Not applied.".to_owned()),
-                    };
-                    self.fields.result(&name, r);
-                }
+                let r = match &value {
+                    Some(v) => self.edit(app, |t| library::edit_field(t, &name, v)),
+                    None => Err("A tool size needs a value. Not applied.".to_owned()),
+                };
+                self.fields.result(&name, r);
                 Ok(None)
             }
             Act::EditProfile => {
-                if let Some(tool) = chosen.and_then(|id| library.get(id))
-                    && let Some(p) = starting_profile(&tool.tool)
-                {
-                    self.draft = Some((tool.id, p));
+                let project = app.as_deref().map(Application::project);
+                if let Some(tool) = self.shown(project) {
+                    self.profile = starting_profile(&tool.tool);
                     self.segment = None;
                 }
                 Ok(None)
             }
-            Act::Profile(action) => self.profile_action(action),
-            Act::SaveCutting => self.save_cutting(),
-            Act::RemoveCutting(material) => match chosen {
-                Some(id) => library::remove_cutting_data(library, id, &material)
-                    .map(|()| {
-                        self.cutting = None;
-                        Some(format!("Removed the cutting data for {material}."))
+            Act::Profile(action) => self.profile_action(action, app),
+            Act::SaveCutting => {
+                let Some(draft) = self.cutting.clone() else {
+                    return Ok(None);
+                };
+                let saved = draft.data().and_then(|data| {
+                    self.edit(app, |t| {
+                        library::edit_cutting_data(
+                            t,
+                            &draft.material,
+                            data,
+                            draft.editing.as_deref(),
+                        )
                     })
-                    .map_err(|e| e.to_string()),
-                None => Ok(None),
-            },
-            Act::SetNumber(machine, typed) => {
-                if let Some(id) = chosen {
-                    let key = format!("set:{machine}");
-                    let typed = typed.trim().trim_start_matches(['T', 't']);
-                    let number = if typed.is_empty() {
-                        Ok(None)
-                    } else {
-                        typed.parse::<u32>().map(Some).map_err(|_| {
-                            "Type a whole tool number, or leave it empty. Not applied.".to_owned()
-                        })
-                    };
-                    let r = number.and_then(|n| {
-                        library::set_tool_set_number(library, &machine, id, n)
-                            .map_err(|e| form_panel::refusal(&e.to_string()))
-                    });
-                    self.fields.result(&key, r);
+                });
+                match saved {
+                    Ok(()) => self.cutting = None,
+                    Err(e) => {
+                        if let Some(c) = &mut self.cutting {
+                            c.problem = Some(e);
+                        }
+                    }
                 }
                 Ok(None)
+            }
+            Act::RemoveCutting(material) => {
+                self.edit(app, |t| {
+                    library::remove_cutting_data(t, &material);
+                    Ok(())
+                })?;
+                self.cutting = None;
+                Ok(None)
+            }
+            Act::SetNumber(machine, typed) => {
+                let key = format!("set:{machine}");
+                let r = parse_number(&typed, true).and_then(|n| {
+                    let (Some(lib), Some(draft)) = (&self.library, &mut self.draft) else {
+                        return Ok(());
+                    };
+                    library::check_tool_set_number(lib, &machine, draft.tool.id, n)
+                        .map_err(|e| form_panel::refusal(&e.to_string()))?;
+                    if let Some(entry) = draft.numbers.iter_mut().find(|(m, _)| *m == machine) {
+                        entry.1 = n;
+                    }
+                    Ok(())
+                });
+                self.fields.result(&key, r);
+                Ok(None)
+            }
+            Act::ProjectNumber(typed) => {
+                let (Some(Chosen::Project(id)), Some(app)) = (self.chosen, app) else {
+                    return Ok(None);
+                };
+                let r = parse_number(&typed, false).and_then(|n| {
+                    library::set_project_tool_number(app.project(), id, n.unwrap_or(0))
+                        .and_then(|c| app.execute(c))
+                        .map_err(|e| form_panel::refusal(&e.to_string()))
+                });
+                self.fields.result("project number", r);
+                Ok(None)
+            }
+            Act::UpdateFromLibrary => {
+                let (Some(Chosen::Project(id)), Some(app), Some(lib)) =
+                    (self.chosen, app, &self.library)
+                else {
+                    return Ok(None);
+                };
+                match library::update_from_library(app.project(), lib, id).map_err(text)? {
+                    Some(c) => {
+                        app.execute(c).map_err(text)?;
+                        self.clear_editing();
+                        Ok(Some("Updated the project's tool from the library.".into()))
+                    }
+                    None => Ok(None),
+                }
+            }
+            Act::AskSaveToLibrary => {
+                let (Some(Chosen::Project(id)), Some(app), Some(lib)) =
+                    (self.chosen, app.as_deref(), &self.library)
+                else {
+                    return Ok(None);
+                };
+                let fields =
+                    library::save_to_library_changes(app.project(), lib, id).map_err(text)?;
+                self.confirm = Some(Confirm::SaveToLibrary(id, fields));
+                Ok(None)
+            }
+            Act::SaveToLibrary => {
+                let Some(Confirm::SaveToLibrary(id, _)) = self.confirm.take() else {
+                    return Ok(None);
+                };
+                let (Some(app), Some(lib)) = (app.as_deref(), &mut self.library) else {
+                    return Ok(None);
+                };
+                library::save_to_library(app.project(), lib, id).map_err(text)?;
+                Ok(Some("Saved the project's tool to the library.".into()))
+            }
+            Act::RemoveFromProject => {
+                let (Some(Chosen::Project(id)), Some(app)) = (self.chosen, app) else {
+                    return Ok(None);
+                };
+                let command = library::remove_from_project(app.project(), id).map_err(text)?;
+                app.execute(command).map_err(text)?;
+                self.forget();
+                Ok(Some(
+                    "Removed the tool from the project. Undo with Ctrl Z.".into(),
+                ))
             }
             Act::ImportLibrary => {
                 let picked = rfd::FileDialog::new()
                     .set_title("Import tools from a library folder")
                     .pick_folder();
-                match picked {
-                    Some(folder) => library::preview_import(library, &folder)
-                        .map(|preview| {
-                            self.import = Some((preview, BTreeMap::new()));
-                            None
-                        })
-                        .map_err(|e| e.to_string()),
-                    None => Ok(None),
-                }
+                let (Some(folder), Some(lib)) = (picked, &self.library) else {
+                    return Ok(None);
+                };
+                let preview = library::preview_import(lib, &folder).map_err(text)?;
+                self.import = Some((preview, BTreeMap::new()));
+                Ok(None)
             }
-            Act::ApplyImport => match self.import.take() {
-                Some((preview, choices)) => library::apply_import(library, &preview, |id| {
+            Act::ApplyImport => {
+                let (Some((preview, choices)), Some(lib)) = (self.import.take(), &mut self.library)
+                else {
+                    return Ok(None);
+                };
+                let o = library::apply_import(lib, &preview, |id| {
                     choices
                         .get(&id)
                         .copied()
                         .unwrap_or(ConflictChoice::KeepMine)
                 })
-                .map(|o| {
-                    Some(format!(
-                        "Imported: {} added, {} replaced, {} kept.",
-                        o.added.len(),
-                        o.replaced.len(),
-                        o.kept.len()
-                    ))
-                })
-                .map_err(|e| e.to_string()),
-                None => Ok(None),
-            },
+                .map_err(text)?;
+                if let Some(Chosen::Library(id)) = self.chosen {
+                    self.choose(Chosen::Library(id));
+                }
+                Ok(Some(format!(
+                    "Imported: {} added, {} replaced, {} kept.",
+                    o.added.len(),
+                    o.replaced.len(),
+                    o.kept.len()
+                )))
+            }
             Act::CancelImport => {
                 self.import = None;
                 Ok(None)
@@ -869,164 +1274,165 @@ impl ToolLibraryWindow {
                 let picked = rfd::FileDialog::new()
                     .set_title("Export the tool library into a folder")
                     .pick_folder();
-                match picked {
-                    Some(folder) => library::export_tools(library, &[], &folder)
-                        .map(|files| {
-                            Some(format!(
-                                "Exported {} tools to {}.",
-                                files.len(),
-                                folder.display()
-                            ))
-                        })
-                        .map_err(|e| e.to_string()),
-                    None => Ok(None),
+                let (Some(folder), Some(lib)) = (picked, &self.library) else {
+                    return Ok(None);
+                };
+                let files = library::export_tools(lib, &[], &folder).map_err(text)?;
+                Ok(Some(format!(
+                    "Exported {} tools to {}.",
+                    files.len(),
+                    folder.display()
+                )))
+            }
+            Act::AddToProject => {
+                let (Some(app), Some(chosen)) = (app, self.chosen) else {
+                    return Ok(None);
+                };
+                let id = match chosen {
+                    Chosen::Library(id) | Chosen::Project(id) => id,
+                };
+                let lib = self.library.as_ref().ok_or("No tool library.")?;
+                let status = add_to_project(app, lib, id, self.purpose)?;
+                if self.purpose == Purpose::NewOperation {
+                    *added = Some(id);
                 }
+                if self.purpose != Purpose::Add && self.purpose != Purpose::Browse {
+                    self.open = false;
+                } else {
+                    self.choose(Chosen::Project(id));
+                }
+                Ok(status)
             }
-            Act::AddToProject => match (app, chosen) {
-                (Some(app), Some(id)) => add_to_project(app, library, id, self.purpose),
-                _ => Ok(None),
-            },
-        };
-        match result {
-            Ok(Some(text)) => {
-                status = Some(text.clone());
-                self.message = Some((text, false));
-            }
-            Ok(None) => {}
-            Err(e) => self.message = Some((e, true)),
         }
-        status
     }
 
-    fn profile_action(&mut self, action: ProfileAction) -> Result<Option<String>, String> {
-        let Some(library) = &mut self.library else {
-            return Ok(None);
-        };
+    /// Applies `edit` to the tool shown: to the library draft, or to the
+    /// project's copy as one undoable command (decision record 0127 item 1).
+    /// An error is the refusal, as a sentence ending "Not applied.".
+    fn edit(
+        &mut self,
+        app: Option<&mut Application>,
+        edit: impl FnOnce(&mut LibraryTool) -> Result<(), AppError>,
+    ) -> Result<(), String> {
+        let refusal = |e: AppError| form_panel::refusal(&e.to_string());
+        match self.chosen {
+            Some(Chosen::Library(_)) => match &mut self.draft {
+                Some(draft) => edit(&mut draft.tool).map_err(refusal),
+                None => Ok(()),
+            },
+            Some(Chosen::Project(id)) => {
+                let Some(app) = app else { return Ok(()) };
+                let mut tool = library::project_tool_as_edit(app.project(), id).map_err(refusal)?;
+                edit(&mut tool).map_err(refusal)?;
+                match library::snapshot_command(app.project(), &tool).map_err(refusal)? {
+                    Some(c) => app.execute(c).map_err(refusal),
+                    None => Ok(()),
+                }
+            }
+            None => Ok(()),
+        }
+    }
+
+    fn profile_action(
+        &mut self,
+        action: ProfileAction,
+        app: Option<&mut Application>,
+    ) -> Result<Option<String>, String> {
         match action {
             ProfileAction::None => Ok(None),
             ProfileAction::Cancel => {
-                self.draft = None;
+                self.profile = None;
                 self.segment = None;
                 Ok(None)
             }
-            ProfileAction::Apply => match self.draft.clone() {
-                Some((id, profile)) => library::set_profile(library, id, profile)
-                    .map(|()| {
-                        self.draft = None;
-                        Some("Saved the profile to the library.".to_owned())
-                    })
-                    .map_err(|e| e.to_string()),
-                None => Ok(None),
-            },
+            ProfileAction::Apply => {
+                let Some(profile) = self.profile.clone() else {
+                    return Ok(None);
+                };
+                self.edit(app, |t| library::edit_profile(t, profile))?;
+                self.profile = None;
+                self.segment = None;
+                Ok(None)
+            }
             ProfileAction::ImportFile => {
                 let picked = rfd::FileDialog::new()
                     .set_title("Import a profile file")
-                    .add_filter("Profile file", &["toml", "txt"])
+                    .add_filter("Profile file", &["toml"])
                     .pick_file();
-                match (picked, &mut self.draft) {
-                    (Some(file), Some((_, draft))) => openchuck_app::tools::load_profile(&file)
-                        .map(|p| {
-                            *draft = p;
-                            self.segment = None;
-                            Some(format!(
-                                "Read the profile from {}. Apply to keep it.",
-                                file.display()
-                            ))
-                        })
-                        .map_err(|e| e.to_string()),
-                    _ => Ok(None),
-                }
+                let (Some(file), Some(profile)) = (picked, &mut self.profile) else {
+                    return Ok(None);
+                };
+                *profile = openchuck_app::tools::load_profile(&file).map_err(|e| e.to_string())?;
+                self.segment = None;
+                Ok(Some(format!(
+                    "Read the profile from {}. Apply to use it.",
+                    file.display()
+                )))
             }
             ProfileAction::ExportFile => {
                 let picked = rfd::FileDialog::new()
                     .set_title("Export the profile")
                     .add_filter("Profile file", &["toml"])
                     .save_file();
-                let tool = self
-                    .chosen
-                    .and_then(|id| library.get(id))
-                    .map(|t| t.tool.clone());
-                match (picked, tool, &self.draft) {
-                    (Some(file), Some(tool), Some((_, draft))) => {
-                        library::export_profile(&tool, draft, &file)
-                            .map(|()| Some(format!("Wrote the profile to {}.", file.display())))
-                            .map_err(|e| e.to_string())
-                    }
-                    _ => Ok(None),
-                }
-            }
-        }
-    }
-
-    fn save_cutting(&mut self) -> Result<Option<String>, String> {
-        let (Some(library), Some(id), Some(draft)) =
-            (&mut self.library, self.chosen, &mut self.cutting)
-        else {
-            return Ok(None);
-        };
-        let material = draft.material.trim().to_owned();
-        if material.is_empty() {
-            draft.problem = Some("Name the stock material first.".to_owned());
-            return Ok(None);
-        }
-        let saved = draft.data().and_then(|data| {
-            if let Some(old) = draft.editing.as_deref().filter(|old| *old != material) {
-                // Renamed: the old entry goes once the new one is accepted.
-                library::set_cutting_data(library, id, &material, data)
-                    .and_then(|()| library::remove_cutting_data(library, id, old))
-                    .map_err(|e| e.to_string())
-            } else {
-                library::set_cutting_data(library, id, &material, data).map_err(|e| e.to_string())
-            }
-        });
-        match saved {
-            Ok(()) => {
-                self.cutting = None;
-                Ok(Some(format!("Saved the cutting data for {material}.")))
-            }
-            Err(e) => {
-                draft.problem = Some(form_panel::refusal(&e));
-                Ok(None)
+                let project = app.as_deref().map(Application::project);
+                let (Some(file), Some(tool), Some(profile)) =
+                    (picked, self.shown(project), &self.profile)
+                else {
+                    return Ok(None);
+                };
+                library::export_profile(&tool.tool, profile, &file).map_err(|e| e.to_string())?;
+                Ok(Some(format!("Wrote the profile to {}.", file.display())))
             }
         }
     }
 }
 
+/// A typed tool number: a whole number, with an optional T before it; empty
+/// is `None` when `empty` allows it.
+fn parse_number(typed: &str, empty: bool) -> Result<Option<u32>, String> {
+    let typed = typed.trim().trim_start_matches(['T', 't']);
+    if typed.is_empty() && empty {
+        return Ok(None);
+    }
+    typed
+        .parse::<u32>()
+        .map(Some)
+        .map_err(|_| "Type a whole tool number. Not applied.".to_owned())
+}
+
 /// Adds library tool `id` to the project as one undoable command, and for an
-/// operation's choice gives the operation the tool (TL-07, TL-11).
+/// operation's choice gives the operation the tool in the same step (TL-07,
+/// TL-11; decision record 0127 item 6).
 fn add_to_project(
     app: &mut Application,
-    library: &ToolLibrary,
+    lib: &ToolLibrary,
     id: ToolId,
     purpose: Purpose,
 ) -> Result<Option<String>, String> {
     let have = app.project().tools().iter().any(|t| t.id == id);
     let mut commands = Vec::new();
     let mut text = String::new();
+    let mut preview = app.project().clone();
     if !have {
         let (command, controller, source) =
-            library::add_to_project(app.project(), library, id).map_err(|e| e.to_string())?;
+            library::add_to_project(app.project(), lib, id).map_err(|e| e.to_string())?;
+        if let Command::Add { item, placement } = &command {
+            preview
+                .insert(item.clone(), *placement)
+                .map_err(|e| e.to_string())?;
+        }
         commands.push(command);
         let how = match source {
             openchuck_app::tools::NumberSource::ToolSet => "from the machine's tool set".to_owned(),
             openchuck_app::tools::NumberSource::ToolSetTaken { wanted } => format!(
-                "the next free number; the machine's tool set gives T{wanted}, which another tool here uses"
+                "the next free number; the machine's tool set gives T{wanted}, which another \
+                 tool here uses"
             ),
             openchuck_app::tools::NumberSource::NextFree => "the next free number".to_owned(),
         };
         text = format!("Added to the project as T{} ({how}).", controller.number);
     }
     if let Purpose::Operation(operation) = purpose {
-        // The tool must be in the project before the operation can name it,
-        // so the commands run as one batch.
-        let mut preview = app.project().clone();
-        for c in &commands {
-            if let openchuck_app::Command::Add { item, placement } = c {
-                preview
-                    .insert(item.clone(), *placement)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
         commands
             .push(library::set_operation_tool(&preview, operation, id).map_err(|e| e.to_string())?);
         text = format!("{text} The operation now uses it.")
@@ -1036,20 +1442,29 @@ fn add_to_project(
     let command = match commands.len() {
         0 => return Ok(None),
         1 => commands.remove(0),
-        _ => openchuck_app::Command::Batch(commands),
+        _ => Command::Batch(commands),
     };
     app.execute(command).map_err(|e| e.to_string())?;
     Ok(Some(text))
 }
 
-/// The tool list (12.1, left): search, groups, and New tool, Duplicate and
-/// Delete under it.
+/// The colour a copy state is written in.
+pub fn copy_colour(copy: &CopyState) -> egui::Color32 {
+    match copy {
+        CopyState::Same => DARK.ok,
+        CopyState::Differs(_) => DARK.warning,
+        CopyState::NotInLibrary | CopyState::Unknown => DARK.muted,
+    }
+}
+
+/// The tool list (12.1, left): search, This project, the library's groups,
+/// and New tool, Duplicate and Delete under it.
 fn list(
     ui: &mut egui::Ui,
-    library: &ToolLibrary,
-    project: Option<&openchuck_app::project::Project>,
+    lib: &ToolLibrary,
+    project: Option<&Project>,
     search: &mut String,
-    chosen: Option<ToolId>,
+    chosen: Option<Chosen>,
     acts: &mut Vec<Act>,
 ) {
     ui.add_space(6.0);
@@ -1073,13 +1488,18 @@ fn list(
                 });
                 if ui
                     .add_enabled(chosen.is_some(), egui::Button::new("Duplicate"))
+                    .on_hover_text("Copy the tool as a new library tool")
                     .clicked()
                 {
                     acts.push(Act::Duplicate);
                 }
+                let library_tool = matches!(chosen, Some(Chosen::Library(_)));
                 if ui
-                    .add_enabled(chosen.is_some(), egui::Button::new("Delete"))
+                    .add_enabled(library_tool, egui::Button::new("Delete"))
                     .on_hover_text("Delete the tool from the library; a project keeps its copy")
+                    .on_disabled_hover_text(
+                        "Choose a library tool; a project tool is removed from the project",
+                    )
                     .clicked()
                 {
                     acts.push(Act::AskDelete);
@@ -1088,22 +1508,48 @@ fn list(
             ui.add_space(6.0);
         });
     egui::ScrollArea::vertical().show(ui, |ui| {
-        let groups = library::tool_list(library, project, search);
-        if groups.is_empty() {
-            ui.label(RichText::new("No tools match.").color(DARK.muted));
-        }
-        for (group, rows) in groups {
-            ui.add_space(6.0);
-            ui.label(
-                RichText::new(group.title().to_uppercase())
-                    .small()
-                    .strong()
-                    .color(DARK.muted),
-            );
+        if let Some(project) = project {
+            let rows = library::project_rows(project, Some(lib), search);
+            group_title(ui, "This project");
+            if rows.is_empty() {
+                ui.label(RichText::new("No tools yet.").color(DARK.muted));
+            }
             for row in rows {
+                let selected = chosen == Some(Chosen::Project(row.id));
                 let response = ui
                     .horizontal(|ui| {
-                        let r = ui.selectable_label(chosen == Some(row.id), &row.name);
+                        let r = ui.selectable_label(selected, &row.name);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            crate::shell::chip(ui, &format!("T{}", row.number));
+                        });
+                        r
+                    })
+                    .inner;
+                let used = if row.used_by.is_empty() {
+                    "No operation uses it.".to_owned()
+                } else {
+                    format!("Used by {}.", row.used_by.join(", "))
+                };
+                if response
+                    .on_hover_text(format!("{}\n{}\n{used}", row.summary, row.copy.text()))
+                    .clicked()
+                {
+                    acts.push(Act::Choose(Chosen::Project(row.id)));
+                }
+            }
+        }
+        let groups = library::tool_list(lib, project, search);
+        if groups.is_empty() {
+            ui.add_space(6.0);
+            ui.label(RichText::new("No library tools match.").color(DARK.muted));
+        }
+        for (group, rows) in groups {
+            group_title(ui, group.title());
+            for row in rows {
+                let selected = chosen == Some(Chosen::Library(row.id));
+                let response = ui
+                    .horizontal(|ui| {
+                        let r = ui.selectable_label(selected, &row.name);
                         if row.in_project {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -1114,14 +1560,13 @@ fn list(
                         }
                         r
                     })
-                    .inner
-                    .on_hover_text(&row.summary);
-                if response.clicked() {
-                    acts.push(Act::Choose(row.id));
+                    .inner;
+                if response.on_hover_text(&row.summary).clicked() {
+                    acts.push(Act::Choose(Chosen::Library(row.id)));
                 }
             }
         }
-        let problems = library.problems();
+        let problems = lib.problems();
         if !problems.is_empty() {
             ui.add_space(8.0);
             ui.label(
@@ -1161,7 +1606,7 @@ fn cutting_editor(ui: &mut egui::Ui, draft: &mut CuttingDraft, acts: &mut Vec<Ac
             ui.label(RichText::new(problem).color(DARK.error));
         }
         ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
+            if ui.button("Apply").clicked() {
                 acts.push(Act::SaveCutting);
             }
             if let Some(material) = &draft.editing
@@ -1171,6 +1616,34 @@ fn cutting_editor(ui: &mut egui::Ui, draft: &mut CuttingDraft, acts: &mut Vec<Ac
             }
         });
     });
+}
+
+/// A modal in front of the window, drawn with `contents`.
+fn modal(ui: &egui::Ui, id: &str, contents: impl FnOnce(&mut egui::Ui)) {
+    egui::Modal::new(egui::Id::new(("tool library", id))).show(ui.ctx(), contents);
+}
+
+/// A modal's two buttons.
+fn buttons(ui: &mut egui::Ui, acts: &mut Vec<Act>, yes: (&str, Act), no: (&str, Act)) {
+    ui.horizontal(|ui| {
+        if ui.button(yes.0).clicked() {
+            acts.push(yes.1);
+        }
+        if ui.button(no.0).clicked() {
+            acts.push(no.1);
+        }
+    });
+}
+
+/// A list group's heading.
+fn group_title(ui: &mut egui::Ui, title: &str) {
+    ui.add_space(6.0);
+    ui.label(
+        RichText::new(title.to_uppercase())
+            .small()
+            .strong()
+            .color(DARK.muted),
+    );
 }
 
 /// A section heading (14.3).
@@ -1183,4 +1656,71 @@ fn heading(ui: &mut egui::Ui, text: &str) {
             .color(DARK.heading),
     );
     ui.add_space(2.0);
+}
+
+impl ToolLibraryWindow {
+    /// Opens the window on the project's tool `id` with the "Save to
+    /// library" confirmation showing (the operation inspector's button).
+    pub fn ask_save_to_library(&mut self, app: Option<&mut Application>, id: ToolId) {
+        self.open(Purpose::Add, Some(Chosen::Project(id)));
+        if self.chosen == Some(Chosen::Project(id)) {
+            self.act(Act::AskSaveToLibrary, app);
+        }
+    }
+}
+
+#[cfg(test)]
+impl ToolLibraryWindow {
+    /// Does what the footer's primary button does, for the tool chosen.
+    pub fn add_chosen(
+        &mut self,
+        app: Option<&mut Application>,
+    ) -> (Option<String>, Option<ToolId>) {
+        self.act(Act::AddToProject, app)
+    }
+
+    /// The tool chosen.
+    pub fn chosen(&self) -> Option<Chosen> {
+        self.chosen
+    }
+
+    /// Makes a new library draft of `kind`.
+    pub fn new_tool(&mut self, kind: ToolType) {
+        self.act(Act::New(kind), None);
+    }
+
+    /// Renames the tool shown, as the Name field does.
+    pub fn rename(&mut self, app: Option<&mut Application>, name: &str) {
+        self.act(Act::Name(name.to_owned()), app);
+    }
+
+    /// Chooses another tool, as a click in the list does.
+    pub fn click(&mut self, chosen: Chosen) {
+        self.act(Act::Choose(chosen), None);
+    }
+
+    /// Whether the discard prompt is showing.
+    pub fn asks_to_discard(&self) -> bool {
+        matches!(self.confirm, Some(Confirm::Discard(_)))
+    }
+
+    /// Answers the discard prompt.
+    pub fn answer_discard(&mut self, discard: bool) {
+        let act = if discard {
+            Act::Discard
+        } else {
+            Act::KeepEditing
+        };
+        self.act(act, None);
+    }
+
+    /// Saves the draft.
+    pub fn save(&mut self) {
+        self.act(Act::Save, None);
+    }
+
+    /// The library as read.
+    pub fn read(&self) -> Option<&ToolLibrary> {
+        self.library.as_ref()
+    }
 }

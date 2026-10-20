@@ -27,10 +27,9 @@ use openchuck_app::overview::{
     Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
 };
 use openchuck_app::project::ItemId;
-use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
+use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId};
 use openchuck_app::scene::SceneView;
 use openchuck_app::settings::{SettingsFile, UserSettings};
-use openchuck_app::tools::ToolProfile;
 use openchuck_app::{AppError, Application, Command, JobHandle, JobLog, Threads};
 
 use crate::about;
@@ -44,7 +43,7 @@ use crate::playback_panel::PlaybackPanel;
 use crate::results_panel::ResultsPanel;
 use crate::run_panel::RunPanel;
 use crate::selection_panel::SelectionPanel;
-use crate::tool_library_window::{Purpose, ToolLibraryWindow};
+use crate::tool_library_window::{Chosen, Purpose, ToolLibraryWindow};
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
@@ -137,10 +136,6 @@ pub struct Shell {
     selected: Option<Selection>,
     /// The section of the setup inspector a setup's child row chose.
     setup_section: Option<SetupPart>,
-    /// A custom profile being edited, for this tool (TL-03).
-    profile_draft: Option<(ToolId, ToolProfile)>,
-    /// The segment chosen in that profile.
-    profile_segment: Option<usize>,
     /// The tool library window (specification 12.1).
     tool_library: ToolLibraryWindow,
     /// A model being imported; the viewport shows its preview meanwhile.
@@ -229,8 +224,6 @@ impl Shell {
             bench: None,
             selected: None,
             setup_section: None,
-            profile_draft: None,
-            profile_segment: None,
             tool_library: ToolLibraryWindow::default(),
             import: None,
             model_panel: None,
@@ -343,7 +336,6 @@ impl Shell {
         self.setup = app.project().setups().first().map(|s| s.id);
         self.selected = None;
         self.setup_section = None;
-        self.profile_draft = None;
         // A workholding draft, and its "not applied" note, belong to the
         // project that was open; they must not carry over (lane 21d, #119).
         self.workholding_panel = None;
@@ -562,7 +554,7 @@ impl Shell {
 
     /// Opens the tool library window (specification 12.1) for `purpose`,
     /// with `tool` chosen when given.
-    pub(super) fn open_tool_library(&mut self, purpose: Purpose, tool: Option<ToolId>) {
+    pub(super) fn open_tool_library(&mut self, purpose: Purpose, tool: Option<Chosen>) {
         self.tool_library.open(purpose, tool);
     }
 
@@ -784,7 +776,6 @@ impl Shell {
             Selection::Operation(id) => Some(ItemRef::Operation(id)),
             Selection::Setup(id) => Some(ItemRef::Setup(id)),
             Selection::Set(id) => Some(ItemRef::SelectionSet(id)),
-            Selection::Tool(id) => Some(ItemRef::Tool(id)),
             Selection::Model(id) => Some(ItemRef::Model(id)),
             Selection::Picking => None,
         }
@@ -858,7 +849,9 @@ impl Shell {
                 self.selection.show_set(Some(id));
                 self.select(Selection::Set(id));
             }
-            ItemRef::Tool(id) => self.select(Selection::Tool(id)),
+            // Tools are not in the tree: a tool opens in the tool library
+            // window (decision record 0127).
+            ItemRef::Tool(id) => self.open_tool_library(Purpose::Add, Some(Chosen::Project(id))),
             ItemRef::Operation(id) => self.select(Selection::Operation(id)),
         }
         self.settings.inspector.collapsed = false;
@@ -1005,6 +998,12 @@ impl Shell {
         let library = self.tool_library.frame(ctx, self.app.as_mut());
         if let Some(status) = library.status {
             self.status = status;
+        }
+        if let Some(tool) = library.for_new_operation {
+            self.run.set_adding_tool(tool);
+        }
+        if self.run.take_library_request() {
+            self.open_tool_library(Purpose::NewOperation, None);
         }
         if let Some(id) = added {
             self.select(Selection::Operation(id));
@@ -1463,7 +1462,6 @@ enum TreeAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Selection {
     Operation(OperationId),
-    Tool(ToolId),
     Model(ModelId),
     /// A setup, its machine and its workholding and tabs.
     Setup(SetupId),

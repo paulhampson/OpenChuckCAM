@@ -17,9 +17,7 @@ use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, 
 use openchuck_app::project::{Item, Setup};
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
-use openchuck_app::tool_edit;
 use openchuck_app::tool_library;
-use openchuck_app::tools;
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
 use crate::field_row::{self, Outcome, TextRow};
@@ -27,7 +25,6 @@ use crate::form_panel;
 use crate::machine_panel::MachinePanel;
 use crate::model_panel::ModelPanel;
 use crate::theme::DARK;
-use crate::tool_panel;
 use crate::workholding_panel::WorkholdingPanel;
 
 /// The key of the header's name in the form state.
@@ -47,8 +44,11 @@ pub(super) enum ToolAct {
     Number(ToolId, String),
     /// Replace the project's copy with the library tool (TL-07).
     Update(ToolId),
-    /// Write the project's copy into the library.
+    /// Write the project's copy into the library, after the window's
+    /// confirmation naming the fields.
     SaveToLibrary(ToolId),
+    /// Edit the project's copy in the tool library window.
+    Edit(ToolId),
 }
 
 /// The settings key of a setup inspector section.
@@ -151,7 +151,6 @@ impl Shell {
         }
         match self.selected {
             Some(Selection::Operation(id)) => self.operation_properties(ui, id),
-            Some(Selection::Tool(id)) => self.tool_properties(ui, id),
             Some(Selection::Model(id)) => self.model_properties(ui, id),
             Some(Selection::Setup(id)) => self.setup_properties(ui, id),
             Some(Selection::Set(id)) => self.set_properties(ui, id),
@@ -432,67 +431,6 @@ impl Shell {
         }
     }
 
-    /// A tool's dimensions and its profile editor (UI-07, TL-03).
-    fn tool_properties(&mut self, ui: &mut egui::Ui, id: ToolId) {
-        let Some(app) = &self.app else { return };
-        let Some(snapshot) = app.project().tools().iter().find(|t| t.id == id).cloned() else {
-            self.selected = None;
-            return;
-        };
-        self.header(ui, ItemRef::Tool(id), &snapshot.name, true);
-        ui.label(RichText::new(tools::describe(&snapshot.tool)).color(DARK.muted));
-        ui.separator();
-        let fields = tool_edit::tool_form(&snapshot.tool);
-        let edit = form_panel::show_fields(ui, &fields, &[], false, &mut self.form);
-        ui.separator();
-        ui.strong("Profile");
-        let mut action = tool_panel::ProfileAction::None;
-        match &mut self.profile_draft {
-            Some((tool, draft)) if *tool == id => {
-                action =
-                    tool_panel::editor(ui, &snapshot.tool, draft, &mut self.profile_segment, false);
-            }
-            _ => {
-                let label = if matches!(snapshot.tool.shape, tools::ToolShape::Custom { .. }) {
-                    "Edit the custom profile…"
-                } else {
-                    "Make a custom profile from this shape…"
-                };
-                if ui.button(label).clicked()
-                    && let Some(p) = tool_edit::starting_profile(&snapshot.tool)
-                {
-                    self.profile_draft = Some((id, p));
-                }
-            }
-        }
-        let Some(app) = &mut self.app else { return };
-        if let Some(edit) = edit {
-            // A tool dimension cannot be cleared: say so rather than leave the
-            // box looking empty while the tool keeps its value.
-            let result = match &edit.value {
-                Some(value) => app
-                    .set_tool_field(id, &edit.name, value)
-                    .map_err(|e| form_panel::refusal(&e.to_string())),
-                None => Err("A tool dimension needs a value. Not applied.".to_owned()),
-            };
-            self.form.result(&edit.name, result);
-        }
-        match action {
-            tool_panel::ProfileAction::Apply => {
-                if let Some((_, draft)) = self.profile_draft.take()
-                    && let Err(e) = app.set_tool_profile(id, draft.clone())
-                {
-                    self.profile_draft = Some((id, draft));
-                    self.dialog = Some(Dialog::Error(e.to_string()));
-                }
-            }
-            tool_panel::ProfileAction::Cancel => self.profile_draft = None,
-            tool_panel::ProfileAction::None
-            | tool_panel::ProfileAction::ImportFile
-            | tool_panel::ProfileAction::ExportFile => {}
-        }
-    }
-
     /// An operation's Tool section: its tool, the project's tool number and
     /// how the project's copy stands against the library (TL-06, TL-07,
     /// TL-11; decision record 0127). Tools are not in the tree, so this is
@@ -579,7 +517,16 @@ impl Shell {
                                     | tool_library::CopyState::NotInLibrary
                             );
                             if ui
-                                .add_enabled(saveable, egui::Button::new("Save to library"))
+                                .button("Edit tool…")
+                                .on_hover_text(
+                                    "Edit the project's copy of the tool in the tool library window",
+                                )
+                                .clicked()
+                            {
+                                act = Some(ToolAct::Edit(tool.id));
+                            }
+                            if ui
+                                .add_enabled(saveable, egui::Button::new("Save to library…"))
                                 .on_hover_text("Write the project's copy into the tool library")
                                 .clicked()
                             {
@@ -636,7 +583,10 @@ impl Shell {
                 .as_ref()
                 .and_then(|a| a.project().operation(operation))
                 .and_then(|o| o.tool);
-            self.open_tool_library(super::Purpose::Operation(operation), current);
+            self.open_tool_library(
+                super::Purpose::Operation(operation),
+                current.map(super::Chosen::Project),
+            );
             return;
         }
         let library = self.tool_library.library().cloned();
@@ -665,14 +615,12 @@ impl Shell {
                 None => return,
             },
             ToolAct::SaveToLibrary(tool) => {
-                if let Some(lib) = self.tool_library.library_mut() {
-                    match tool_library::save_to_library(project, lib, tool) {
-                        Ok(_) => {
-                            self.status = "Saved the project's tool to the library.".to_owned()
-                        }
-                        Err(e) => self.dialog = Some(Dialog::Error(e.to_string())),
-                    }
-                }
+                self.tool_library.ask_save_to_library(Some(app), tool);
+                return;
+            }
+            ToolAct::Edit(tool) => {
+                self.tool_library
+                    .open(super::Purpose::Add, Some(super::Chosen::Project(tool)));
                 return;
             }
         };
