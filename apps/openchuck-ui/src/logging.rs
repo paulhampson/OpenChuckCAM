@@ -255,12 +255,15 @@ fn current_uid() -> Option<u32> {
 /// (OI-497).
 pub fn private_folder(base: &Path, name: &str) -> Option<PathBuf> {
     let path = base.join(name);
-    let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
-    {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt as _;
+        let mut builder = fs::DirBuilder::new();
         builder.mode(0o700);
-    }
+        builder
+    };
+    #[cfg(not(unix))]
+    let builder = fs::DirBuilder::new();
     match builder.create(&path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
