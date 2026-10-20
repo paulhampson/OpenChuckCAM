@@ -1,6 +1,6 @@
 # 0127: Slice 22 tool library window, and tools out of the project tree (lane X9)
 
-- **Status:** proposed. Lane X9, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) C19 and section E, accepted; [decision 0105](0105-slice-22-conformance-pass.md), accepted), with the owner's trial feedback F-10 (issue 148). The owner decided items 1 and 4 to 9 (OI-375 to OI-379, OI-491 and OI-492) on 20 Oct 2026, relayed by the coordinator (decision 0049); the owner agreed the UI-06 wording of item 1 when answering issue 148, also relayed.
+- **Status:** accepted by the project owner on 20 Oct 2026, given directly in the lane X9 session, as built at local head c8873d4 (pull request 169). Lane X9, slice 22 ([decision 0114](0114-slice-22-conformance-report.md) C19 and section E, accepted; [decision 0105](0105-slice-22-conformance-pass.md), accepted), with the owner's trial feedback F-10 (issue 148). The owner decided items 1 and 4 to 9 (OI-375 to OI-379, OI-491 and OI-492) on 20 Oct 2026, relayed by the coordinator (decision 0049); the owner agreed the UI-06 wording of item 1 when answering issue 148, also relayed.
 - **Date:** 20 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-375 to OI-379 and OI-491 to OI-494 are new. OI-375 to OI-379, OI-491 and OI-492 are closed by the owner's answers; OI-493 and OI-494 are open. OI-342 stays open with this lane's board (image 10) re-rendered.
 
