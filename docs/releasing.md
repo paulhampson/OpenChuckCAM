@@ -14,8 +14,8 @@ Publishing cannot be undone. A published version can be yanked (new projects sto
 
 1. Sign in to [crates.io](https://crates.io) with the GitHub account that owns the crates (`paulhampson`).
 2. **Account Settings, API Tokens, New Token.** Name it for this repository (for example `OpenChuckCAM release workflow`), give it an expiry, tick the scope **publish-update** only, and restrict it to the crate pattern `openchuck-*`. Copy the token: crates.io shows it once.
-3. In the GitHub repository: **Settings, Secrets and variables, Actions, New repository secret**, named `CARGO_REGISTRY_TOKEN`, holding the token. (It can be an environment secret of `crates-io` instead, so only that job can read it.)
-4. Optional but recommended: **Settings, Environments, `crates-io`** (the first run creates it if it does not exist), add yourself as a **required reviewer**. The publish job then waits for your approval before it runs.
+3. In the GitHub repository: **Settings, Environments, `crates-io`, Environment secrets, Add secret**, named `CARGO_REGISTRY_TOKEN`, holding the token, so only the publish job can read it. (A repository secret of the same name also works.)
+4. **Settings, Environments, `crates-io`** (create it, or the first run creates it), add yourself as a **required reviewer**. The publish job then waits for your approval before it runs (the owner's decision, 20 Oct 2026).
 
 Renew the token before it expires and replace the secret. Revoke it on crates.io if it may have leaked.
 
