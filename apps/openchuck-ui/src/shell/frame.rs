@@ -773,6 +773,10 @@ impl Shell {
                     self.dialog = Some(Dialog::Keys);
                     ui.close();
                 }
+                if ui.button("Settings…").clicked() {
+                    self.dialog = Some(Dialog::Settings);
+                    ui.close();
+                }
                 if ui.button("About OpenChuckCAM…").clicked() {
                     self.dialog = Some(Dialog::About);
                     ui.close();
@@ -797,6 +801,18 @@ impl Shell {
                     }
                 }
                 Step::Setup => {
+                    if let Some(app) = &self.app {
+                        let blocked = openchuck_app::add_setup_blocked(app.project());
+                        let tip = blocked.unwrap_or("New setup");
+                        if ui
+                            .add_enabled(blocked.is_none(), egui::Button::new("+ Add setup"))
+                            .on_disabled_hover_text(tip)
+                            .on_hover_text(tip)
+                            .clicked()
+                        {
+                            self.add_setup();
+                        }
+                    }
                     ui.add(
                         egui::Label::new(
                             RichText::new("Changing a setup marks its operations stale.")

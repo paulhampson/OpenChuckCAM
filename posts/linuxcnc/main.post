@@ -6,6 +6,9 @@
 {% macro line(text) %}{% if opt.line_numbers.enabled %}N{{ st.n }} {% set st.n = st.n + opt.line_numbers.step %}{% endif %}{{ text }}{% endmacro %}
 {% if opt.comments %}
 {{ line("(" ~ title ~ ")") }}
+{% if generator is not none %}
+{{ line("(" ~ generator ~ ")") }}
+{% endif %}
 {% if revision is not none %}
 {{ line("(revision " ~ revision ~ ")") }}
 {% endif %}

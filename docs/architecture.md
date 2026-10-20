@@ -47,6 +47,7 @@ The requirements that shape the structure most:
 | `openchuck-cli` | Headless front end over `openchuck-app`: regenerate G-code, validate, report. Also the harness for end-to-end tests. | GC-11, NFR-08 | `openchuck-app` |
 | `openchuck-viewport` | wgpu renderer: scene, camera, shading and wireframe, polyline toolpaths, tool and stock display. Draws data; contains no CAM logic. | UI-02, UI-03, SIM-01, SIM-02, NFR-03 | `openchuck-types` |
 | `openchuck-ui` | egui application: panels, project tree, parameter forms, playback controls. Talks only to `openchuck-app` and `openchuck-viewport`. | UI-01 to UI-09, SIM-04 | `openchuck-app`, `openchuck-viewport` |
+| `openchuck-buildinfo` | Which build is running: commit, uncommitted changes, build date, Rust version, target and workspace crate versions, gathered by a build script with `git` and `rustc` (offline). Used only by `openchuck-cli` and `openchuck-ui`. No third-party dependencies. | NFR-16 | none |
 | `openchuck-testkit` | **Test-only, never published.** The independent kinematic oracle (section 9), the determinism harness, golden-file comparison and procedurally generated analytic test parts. Used only as a dev-dependency; the xtask dependency check fails if any crate takes it as a normal dependency. | NFR-06, NFR-08, OP-05, OP-06, GC-09 | `openchuck-types` |
 | `openchuck-benches` | **Not published.** The package behind `benches/`: cross-crate benchmarks (section 12). | NFR-03, NFR-04 | Library crates, as dev-dependencies only |
 
@@ -343,7 +344,7 @@ This follows the requirement priorities and the survey's advice to spike each la
 
 | Path | Contents |
 | --- | --- |
-| `crates/` | All library crates: `openchuck-types`, `-path`, `-post`, `-gcode`, `-geom`, `-import`, `-sim`, `-project`, `-vcs`, `-app`, `-viewport`, and the test-only `openchuck-testkit`. |
+| `crates/` | All library crates: `openchuck-types`, `-path`, `-post`, `-gcode`, `-geom`, `-import`, `-sim`, `-project`, `-vcs`, `-app`, `-viewport`, `-buildinfo`, and the test-only `openchuck-testkit`. |
 | `apps/` | The binaries `openchuck-ui` (egui front end) and `openchuck-cli`. Wiring only, no CAM logic. |
 | `bindings/` | Later: `openchuck-path-py` and `openchuck-path-capi`. Not in the first release. |
 | `crates/openchuck-post/posts/` | Built-in post definitions as data files, inside the `openchuck-post` crate so the crate packages them (decision 0103): the Makera Z1 post and the LinuxCNC verification post, each with golden tests. |

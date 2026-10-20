@@ -46,6 +46,12 @@ pub enum AppError {
     /// No setup has this ID or name.
     #[error("the project has no setup '{0}' (give its ID or its name)")]
     UnknownSetup(String),
+    /// The project has its one setup; more are SET-07 (P2).
+    #[error("more than one setup per project is not supported yet (SET-07)")]
+    OneSetupOnly,
+    /// A setup needs a part, so it cannot be added before a model is imported.
+    #[error("import a model first: a setup needs a part")]
+    NoModelForSetup,
     /// No operation has this ID.
     #[error("the project has no operation '{0}'")]
     UnknownOperation(String),

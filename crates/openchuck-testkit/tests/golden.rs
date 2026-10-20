@@ -36,3 +36,34 @@ fn req_nfr_08_missing_golden_file_is_an_error() {
         );
     }
 }
+
+/// NFR-16 and GC-07: a golden file stores the generator comment with the version masked, so a
+/// version bump never changes a golden file; only the version is masked.
+#[test]
+fn req_nfr_16_req_gc_07_the_generator_version_is_masked_in_golden_comparisons() {
+    use openchuck_testkit::golden::mask_generator;
+    assert_eq!(
+        mask_generator("(Small part)\n(OpenChuckCAM 0.10.0)\nG90\n"),
+        "(Small part)\n(OpenChuckCAM <version>)\nG90\n"
+    );
+    // With a line number in front, as a post with numbering writes it.
+    assert_eq!(
+        mask_generator("N20 (OpenChuckCAM 12.3.45)\n"),
+        "N20 (OpenChuckCAM <version>)\n"
+    );
+    // Other text, including a lookalike inside a longer comment, is left as it is.
+    for text in [
+        "(Not OpenChuckCAM 1.0.0)\n",
+        "(OpenChuckCAM 1.0.0 extra)\n",
+        "G1 X1\n",
+    ] {
+        assert_eq!(mask_generator(text), text);
+    }
+    let dir = std::env::temp_dir().join(format!("openchuck-mask-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("g.nc");
+    std::fs::write(&path, "(OpenChuckCAM <version>)\nG0\n").unwrap();
+    golden::check(&path, "(OpenChuckCAM 0.11.0)\nG0\n").unwrap();
+    assert!(golden::check(&path, "(OpenChuckCAM 0.11.0)\nG1\n").is_err());
+    std::fs::remove_dir_all(dir).unwrap();
+}

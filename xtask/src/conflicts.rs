@@ -50,7 +50,9 @@ pub fn scan_text(path: &str, text: &str) -> Findings {
         let line = raw.trim_end_matches('\r');
         let number = index + 1;
         if markdown {
-            let trimmed = line.trim_start();
+            // Four or more leading spaces make an indented code block, not a fence (CommonMark).
+            let indent = line.len() - line.trim_start_matches(' ').len();
+            let trimmed = if indent <= 3 { line.trim_start() } else { "" };
             let run = ['`', '~'].into_iter().find_map(|c| {
                 let length = trimmed.chars().take_while(|&x| x == c).count();
                 (length >= 3).then_some((c, length))
@@ -231,6 +233,14 @@ mod tests {
         // A longer closing run with trailing spaces closes it.
         let long = format!("```\nx\n`````  \n{}\n", start());
         assert_eq!(scan_text("docs/a.md", &long).len(), 1);
+    }
+
+    #[test]
+    fn req_nfr_06_an_indented_code_line_does_not_open_a_fence() {
+        let text = format!("    ```\n{}\n", start());
+        assert_eq!(scan_text("docs/a.md", &text).len(), 1);
+        let allowed = format!("   ```\n{}\n```\n", start());
+        assert!(scan_text("docs/a.md", &allowed).is_empty());
     }
 
     #[test]
