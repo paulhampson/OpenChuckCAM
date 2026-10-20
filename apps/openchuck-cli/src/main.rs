@@ -1751,10 +1751,10 @@ fn print_setup(app: &Application, report: &SetupReport) {
             c.radius.0, c.safe_z.0
         ),
         (None, Some(m)) => println!(
-            "clearance:  the machine's: safe cylinder radius {} mm, safe Z {} mm above the axis",
+            "clearance:  Machine setting: safe cylinder radius {} mm, safe Z {} mm above the axis",
             m.clearance.radius.0, m.clearance.safe_z.0
         ),
-        (None, None) => println!("clearance:  the machine's (no machine chosen)"),
+        (None, None) => println!("clearance:  Machine setting (no machine chosen)"),
     }
     if let Some(e) = report.part {
         println!(
