@@ -24,7 +24,7 @@ The documents in [docs/](docs/README.md) are the source of truth: [requirements]
 | --- | --- |
 | `crates/openchuck-types` | Shared plain data: units, meshes, B-rep faces, stock, tools, machine profile, the neutral toolpath IR, kinematics. |
 | `crates/openchuck-path` | The reusable 4-axis pathing library: strategies, A-axis management, linking, entry moves, gouge protection, feed intent. |
-| `crates/openchuck-post` | Post-processing from the IR to controller G-code, with user-editable template posts. |
+| `crates/openchuck-post` | Post-processing from the IR to controller G-code, with user-editable template posts. The built-in post definitions (the Makera Z1 and the LinuxCNC verification post) are in its `posts/` folder (decision 0103). |
 | `crates/openchuck-gcode` | A reader and replay for the G-code the posts emit, used for checks and round trips. |
 | `crates/openchuck-geom` | Mesh checks, transforms and selection algorithms. |
 | `crates/openchuck-import` | Model readers: STL, and STEP through the OpenCASCADE worker (optional `kernel` feature). |
@@ -34,7 +34,6 @@ The documents in [docs/](docs/README.md) are the source of truth: [requirements]
 | `crates/openchuck-viewport` | The wgpu viewport. Only this crate and `openchuck-ui` use egui or wgpu. |
 | `crates/openchuck-testkit` | Test-only: analytic parts, the independent kinematic oracle and gouge checker. |
 | `apps/` | `openchuck-cli` and `openchuck-ui` (wiring only). |
-| `posts/` | Built-in post definitions: the Makera Z1 and the LinuxCNC verification post. |
 | `testdata/` | Verification corpus, golden G-code and its size policy. |
 | `fuzz/` | Fuzz targets (separate workspace, nightly toolchain). |
 | `benches/` | Cross-crate benchmarks, including the 1M-triangle viewport model. |

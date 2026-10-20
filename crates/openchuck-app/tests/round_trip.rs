@@ -89,8 +89,10 @@ fn req_gc_01_req_gc_09_z1_post_round_trips_under_the_makera_rule() {
 #[test]
 fn req_op_13_the_naive_contact_feed_is_caught_by_the_time_check() {
     // SP-3 measured the raw contact feed 37 % too fast on rotary moves.
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
-    let template = std::fs::read_to_string(repo("posts/linuxcnc/main.post")).unwrap();
+    let manifest =
+        std::fs::read_to_string(repo("crates/openchuck-post/posts/linuxcnc/post.toml")).unwrap();
+    let template =
+        std::fs::read_to_string(repo("crates/openchuck-post/posts/linuxcnc/main.post")).unwrap();
     let naive = manifest.replace("feed_rule = \"linuxcnc\"", "feed_rule = \"contact\"");
     let post = TemplatePost::new(PostDefinition::from_parts("naive", &naive, &template).unwrap());
     let text = post.post(&small_part(), &job()).unwrap().text;
@@ -275,8 +277,10 @@ fn req_op_13_req_gc_10_a_small_feed_is_written_to_keep_its_moves_time_within_gat
     gate_2_of(&text, Dialect::MakeraZ1, TimingRule::Makera).unwrap();
     // One decimal, as the posts wrote F before: `F4.2` (or `F4.1`) is 1.2 %
     // off the move's time.
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
-    let template = std::fs::read_to_string(repo("posts/linuxcnc/main.post")).unwrap();
+    let manifest =
+        std::fs::read_to_string(repo("crates/openchuck-post/posts/linuxcnc/post.toml")).unwrap();
+    let template =
+        std::fs::read_to_string(repo("crates/openchuck-post/posts/linuxcnc/main.post")).unwrap();
     let one_decimal = template.replace("|feed(opt.decimals.f)", "|fixed(opt.decimals.f)");
     assert_ne!(one_decimal, template);
     let post = TemplatePost::new(

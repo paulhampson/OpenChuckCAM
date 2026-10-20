@@ -56,7 +56,7 @@ fn req_nfr_16_both_posts_name_the_tool_and_version_after_the_title() {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         for file in ["post.toml", "main.post"] {
-            std::fs::copy(repo(&format!("posts/{id}")).join(file), dir.join(file)).unwrap();
+            std::fs::copy(posts_path(id).join(file), dir.join(file)).unwrap();
         }
         let manifest = std::fs::read_to_string(dir.join("post.toml")).unwrap();
         std::fs::write(
@@ -119,8 +119,8 @@ fn req_gc_09_z1_output_follows_the_sp_12_conventions() {
 #[test]
 fn req_gc_09_req_gc_10_the_two_posts_share_one_template() {
     // One template serves both posts by options alone (decision 0019 item 9).
-    let a = std::fs::read(repo("posts/linuxcnc/main.post")).unwrap();
-    let b = std::fs::read(repo("posts/makera-z1/main.post")).unwrap();
+    let a = std::fs::read(posts_path("linuxcnc/main.post")).unwrap();
+    let b = std::fs::read(posts_path("makera-z1/main.post")).unwrap();
     assert_eq!(a, b);
 }
 
@@ -140,7 +140,7 @@ fn req_gc_02_built_in_posts_load_by_id_and_unknown_ids_are_none() {
 
 #[test]
 fn req_gc_03_loading_from_a_folder_equals_the_embedded_post() {
-    let loaded = PostDefinition::load_dir(&repo("posts/linuxcnc")).unwrap();
+    let loaded = PostDefinition::load_dir(&posts_path("linuxcnc")).unwrap();
     assert_eq!(&loaded, builtin_post("linuxcnc").definition());
 }
 
@@ -150,7 +150,7 @@ fn copy_post(name: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     for file in ["post.toml", "main.post"] {
-        std::fs::copy(repo("posts/linuxcnc").join(file), dir.join(file)).unwrap();
+        std::fs::copy(posts_path("linuxcnc").join(file), dir.join(file)).unwrap();
     }
     dir
 }
@@ -183,7 +183,7 @@ fn req_gc_03_editing_a_post_changes_the_output_without_recompiling() {
 
 #[test]
 fn req_gc_03_an_unknown_variable_is_an_error_naming_the_line() {
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
     let template = "first line\nsecond {{ opt.no_such_option }}\n";
     let post = PostDefinition::from_parts("test", &manifest, template).unwrap();
     let e = TemplatePost::new(post)
@@ -196,7 +196,7 @@ fn req_gc_03_an_unknown_variable_is_an_error_naming_the_line() {
 
 #[test]
 fn req_gc_03_req_nfr_07_a_syntax_error_is_found_when_the_post_is_loaded() {
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
     let e = PostDefinition::from_parts("test", &manifest, "ok\n{% if %}\n")
         .unwrap_err()
         .to_string();
@@ -205,8 +205,8 @@ fn req_gc_03_req_nfr_07_a_syntax_error_is_found_when_the_post_is_loaded() {
 
 #[test]
 fn req_gc_04_req_nfr_07_bad_options_are_refused_naming_the_option() {
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
-    let template = std::fs::read_to_string(repo("posts/linuxcnc/main.post")).unwrap();
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(posts_path("linuxcnc/main.post")).unwrap();
     let cases = [
         ("a_letter = \"A\"", "a_letter = \"Q\"", "a_letter"),
         ("pos = 3", "pos = 12", "decimals.pos"),
@@ -247,8 +247,8 @@ fn req_gc_04_req_nfr_07_bad_options_are_refused_naming_the_option() {
 
 #[test]
 fn req_gc_04_g93_and_line_numbers_and_direction_and_coolant_options() {
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
-    let template = std::fs::read_to_string(repo("posts/linuxcnc/main.post")).unwrap();
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(posts_path("linuxcnc/main.post")).unwrap();
     let edited = manifest
         .replace("feed_rule = \"linuxcnc\"", "feed_rule = \"inverse_time\"")
         .replace("feed_mode = \"g94\"", "feed_mode = \"g93\"")
@@ -294,8 +294,8 @@ fn req_gc_07_posting_twice_and_on_four_threads_gives_the_same_bytes() {
 
 #[test]
 fn req_gc_03_crlf_in_a_definition_gives_the_same_output() {
-    let manifest = std::fs::read_to_string(repo("posts/linuxcnc/post.toml")).unwrap();
-    let template = std::fs::read_to_string(repo("posts/linuxcnc/main.post")).unwrap();
+    let manifest = std::fs::read_to_string(posts_path("linuxcnc/post.toml")).unwrap();
+    let template = std::fs::read_to_string(posts_path("linuxcnc/main.post")).unwrap();
     let crlf = |s: &str| s.replace('\n', "\r\n");
     let post = TemplatePost::new(
         PostDefinition::from_parts("t", &crlf(&manifest), &crlf(&template)).unwrap(),

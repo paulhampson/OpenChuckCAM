@@ -71,7 +71,7 @@ jobs:
         if: matrix.target == 'post_definition'
         run: |
           mkdir -p fuzz/corpus/post_definition
-          for d in posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
+          for d in crates/openchuck-post/posts/*/; do { cat "$d/post.toml"; printf '\n---\n'; cat "$d/main.post"; } > "fuzz/corpus/post_definition/$(basename "$d")"; done
       - name: Seed the project file corpus from the fixtures
         if: matrix.target == 'project_files'
         run: |

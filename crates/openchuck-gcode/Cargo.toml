@@ -3,7 +3,11 @@
 name = "openchuck-gcode"
 description = "G-code reader and interpreter: parses G-code with A words back into motion for replay and checks."
 readme = "README.md"
-categories = ["science"]
+keywords = ["cnc", "g-code", "gcode", "parser", "linuxcnc"]
+categories = ["science", "parser-implementations"]
+# What the published crate holds (OI-302, decision 0138): the library and the files it reads.
+# The tests stay out: they read the repository's testdata/ and the unpublished openchuck-testkit.
+include = ["/src/**", "/README.md", "/CHANGELOG.md"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

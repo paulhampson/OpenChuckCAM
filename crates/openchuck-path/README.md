@@ -2,7 +2,7 @@
 
 Reusable 4-axis pathing library: strategies, tool-axis control, A-axis management, linking, gouge protection and feed intent.
 
-Part of [OpenChuckCAM](../../README.md). Architecture section 5.2; requirements OP-01 to OP-17, INT-01 to INT-04.
+Part of [OpenChuckCAM](https://github.com/paulhampson/OpenChuckCAM). Architecture section 5.2; requirements OP-01 to OP-17, INT-01 to INT-04.
 
 **Status:** the pathing core and its first strategy (work breakdown slice 5; decision record 0018, proposed). It has:
 
