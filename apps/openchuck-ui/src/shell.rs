@@ -46,6 +46,7 @@ use crate::selection_panel::SelectionPanel;
 use crate::viewport::Viewport;
 use crate::workholding_panel::WorkholdingPanel;
 
+mod actions;
 mod dock;
 mod frame;
 mod inspector;
@@ -114,6 +115,9 @@ enum Dialog {
     Keys,
     /// About the program (Help).
     About,
+    /// The settings the program keeps for the user on this computer: what is
+    /// recorded in the log (NFR-18).
+    Settings,
     /// A command the user gave failed outright; the message says what
     /// (specification section 9: the only pop-up errors).
     Error(String),
@@ -187,6 +191,8 @@ pub struct Shell {
     auto_collapsed: frame::AutoCollapse,
     /// A panel whose splitter was double-clicked: its size resets.
     reset: Option<frame::Region>,
+    /// What the user-action log last saw (NFR-18).
+    recorder: actions::Recorder,
 }
 
 impl Shell {
@@ -250,7 +256,9 @@ impl Shell {
             highlight: None,
             auto_collapsed: frame::AutoCollapse::default(),
             reset: None,
+            recorder: actions::Recorder::default(),
         };
+        crate::logging::set_recording(shell.settings.record_actions);
         if let Some(folder) = folder {
             shell.open(folder);
         }
@@ -418,6 +426,7 @@ impl Shell {
                 | openchuck_app::Event::JobFinished { job, .. } => self.jobs.get(*job).is_some(),
                 _ => true,
             });
+            self.recorder.record_jobs(&events);
             self.jobs.update(events);
             self.overview_dirty |= listed;
         }
@@ -490,6 +499,14 @@ impl Shell {
                 false
             }
         }
+    }
+
+    /// Turns the recording of the user's actions in the log on or off, and
+    /// keeps the choice in the settings (NFR-18).
+    fn set_record_actions(&mut self, on: bool) {
+        self.settings.record_actions = on;
+        crate::logging::set_recording(on);
+        self.settings_touched();
     }
 
     fn undo(&mut self) {
@@ -1293,6 +1310,28 @@ impl Shell {
                     close = true;
                 }
             }
+            Dialog::Settings => {
+                ui.heading("Settings");
+                let mut record = crate::logging::recording();
+                if ui
+                    .checkbox(&mut record, "Record my actions in the log")
+                    .changed()
+                {
+                    action = Some(Box::new(move |s: &mut Self| s.set_record_actions(record)));
+                }
+                ui.label(
+                    "Adds the menu commands, buttons, dialogs and edits you use to the log, \
+                     with the names of the items and parameters but not their values, \
+                     so a bug report can show the steps taken. The log stays on this computer.",
+                );
+                match crate::logging::log_path() {
+                    Some(path) => ui.label(format!("The log is {}", path.display())),
+                    None => ui.label("There is no log file in this run."),
+                };
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            }
             Dialog::Error(message) => {
                 ui.label(message);
                 if ui.button("OK").clicked() {
@@ -1468,6 +1507,7 @@ impl Shell {
         self.dialogs(&ctx);
         self.settings_frame(&ctx);
         self.text_had_focus = ctx.egui_wants_keyboard_input();
+        self.record_actions_frame(&ctx);
     }
 }
 

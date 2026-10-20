@@ -163,6 +163,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | NFR-14 | P1 | A, I | Design | Each dependency has a recorded review against the health criteria, with a written justification for newer crates and those with high AI contribution |
 | NFR-15 | P1 | A, D | System | Contrast analysis of the theme tokens and colour roles; scale demo at 80% and 200%; inspection that no state is shown by colour alone |
 | NFR-17 | P1 | A, D | System | Unit tests of the log folder order and per-platform paths, the rotation, the fall-backs and the panic hook (`req_nfr_17_*`, Linux); on a Windows nightly build, inspection that no console window opens from a double click, that `--bench` output and exit code reach the terminal, and that the log file exists after a run and after a forced panic (open item OI-455) |
+| NFR-18 | P2 | A, D | System | Unit tests (`req_nfr_18_*`): a command, undo and redo leave a line that names the item kind and name and the parameter name and no value; a clicked button is logged by its label and a typed text, drag value or choice is not; dialogs and windows opening and closing, and the listed jobs, are logged once; the switch is on by default, turned off in Settings it stops every line and the choice is kept in `settings.toml`. Inspection that a log from a session of ordinary use shows the steps taken and holds no parameter value or file contents (decision 0157). P2: no mandatory CI test (AGENTS.md) |
 
 ### 4.1 Acceptance limits
 

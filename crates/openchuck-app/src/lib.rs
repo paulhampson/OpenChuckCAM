@@ -26,6 +26,7 @@
 #![warn(missing_docs)]
 
 mod acknowledgement;
+mod action_log;
 mod cache;
 mod command;
 mod error;
@@ -189,6 +190,8 @@ pub struct Application {
     revision: u64,
     /// What generation has made, for the item states (decision record 0117).
     record: std::sync::Arc<overview::GenerationRecord>,
+    /// The lines for the user-action log not yet drained (NFR-18).
+    actions: Vec<String>,
 }
 
 impl Application {
@@ -235,6 +238,7 @@ impl Application {
             events_rx,
             revision: 0,
             record: std::sync::Arc::default(),
+            actions: Vec::new(),
         })
     }
 
@@ -685,23 +689,56 @@ impl Application {
     /// Applies a command and records it for undo. On error the project is
     /// unchanged and nothing is recorded.
     pub fn execute(&mut self, command: Command) -> Result<(), AppError> {
+        let text = action_log::describe(&command, &self.document.project);
         self.history.execute(&mut self.document.project, command)?;
         self.revision += 1;
+        self.note_action(format!("command: {text}"));
         Ok(())
     }
 
     /// Undoes the latest command. Returns false when there is nothing to undo.
     pub fn undo(&mut self) -> Result<bool, AppError> {
+        let text = self
+            .history
+            .next_undo()
+            .map(|c| action_log::describe(c, &self.document.project));
         let undone = self.history.undo(&mut self.document.project)?;
         self.revision += u64::from(undone);
+        if let (true, Some(text)) = (undone, text) {
+            self.note_action(format!("undo: {text}"));
+        }
         Ok(undone)
     }
 
     /// Redoes the latest undone command. Returns false when there is nothing to redo.
     pub fn redo(&mut self) -> Result<bool, AppError> {
+        let text = self
+            .history
+            .next_redo()
+            .map(|c| action_log::describe(c, &self.document.project));
         let redone = self.history.redo(&mut self.document.project)?;
         self.revision += u64::from(redone);
+        if let (true, Some(text)) = (redone, text) {
+            self.note_action(format!("redo: {text}"));
+        }
         Ok(redone)
+    }
+
+    /// Keeps a line for the user-action log (NFR-18), the oldest dropped
+    /// past a bound.
+    fn note_action(&mut self, line: String) {
+        if self.actions.len() >= action_log::KEPT {
+            self.actions.remove(0);
+        }
+        self.actions.push(line);
+    }
+
+    /// The lines for the user-action log since the last call, oldest first:
+    /// one per command, undo and redo, naming the action and the kind and
+    /// name of the item, and parameter names, never values (NFR-18). The
+    /// front end writes them only when the user's switch is on.
+    pub fn drain_actions(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.actions)
     }
 
     /// The parameter form of an operation (UI-07).

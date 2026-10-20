@@ -118,6 +118,11 @@ pub struct UserSettings {
     /// The inspector sections that are open, by kind of item ("setup",
     /// "operation").
     pub open_sections: BTreeMap<String, Vec<String>>,
+    /// Whether the user's actions are recorded in the diagnostic log
+    /// (NFR-18). On unless the user turns it off. A settings file written
+    /// before this field existed reads as on: the field is additive and the
+    /// file has no version number.
+    pub record_actions: bool,
 }
 
 impl Default for UserSettings {
@@ -132,6 +137,7 @@ impl Default for UserSettings {
             dock: PanelLayout::new(region::DOCK.0),
             recent: Vec::new(),
             open_sections: BTreeMap::new(),
+            record_actions: true,
         }
     }
 }

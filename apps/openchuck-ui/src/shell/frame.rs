@@ -595,6 +595,10 @@ impl Shell {
                     ui.close();
                 }
                 ui.separator();
+                if ui.button("Settings…").clicked() {
+                    self.dialog = Some(Dialog::Settings);
+                    ui.close();
+                }
                 if ui.button("Quit").clicked() {
                     self.request(Next::Quit, &ctx);
                 }

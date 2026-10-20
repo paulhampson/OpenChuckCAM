@@ -133,3 +133,23 @@ fn walk(dir: &PathBuf) -> Vec<PathBuf> {
     }
     out
 }
+
+#[test]
+fn req_nfr_18_recording_actions_is_on_by_default_and_the_choice_is_kept() {
+    let config = folder("record-actions");
+    let file = SettingsFile::in_folder(&config);
+    assert!(UserSettings::default().record_actions);
+    assert!(file.load().settings.record_actions);
+    let off = UserSettings {
+        record_actions: false,
+        ..UserSettings::default()
+    };
+    file.save(&off).unwrap();
+    assert!(!file.load().settings.record_actions);
+    // A file written before the field existed reads as on.
+    std::fs::write(file.file(), "[interface]\nscale = 1.0\n").unwrap();
+    let loaded = file.load();
+    assert!(loaded.problem.is_none());
+    assert!(loaded.settings.record_actions);
+    let _ = std::fs::remove_dir_all(config);
+}

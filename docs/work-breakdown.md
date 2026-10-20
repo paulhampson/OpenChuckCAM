@@ -165,6 +165,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X9 | 22: tool library window (12.1) | ░░ | ░░ | ░░ | ░░ | ░░ |
 | X8 | 22 step 3: smoke test, 1366 × 768 screenshots, display checks, frame benchmark rerun | ░░ | ░░ | ░░ | ░░ | ░░ |
 | BUG-LOG | Issue 155 (trial finding F-14): no console window behind the Windows application, a local log file beside the executable, panics logged, the log path for the About window. Built 19 Oct 2026 on `claude/lane-bug-log-console-and-log-file` ([decision 0155](decisions/0155-local-log-file.md) and [decision 0156](decisions/0156-windows-gui-subsystem-and-console-attach.md), both accepted 19 Oct 2026; OI-453 to OI-459; requirement NFR-17; no project format change) | ██ | | | | |
+| UAL | Issue 156 (trial finding F-15): the user-action log, built on the BUG-LOG log. Built 20 Oct 2026 on `claude/lane-ual-user-action-logging` ([decision 0157](decisions/0157-user-action-log.md) and [decision 0158](decisions/0158-log-hardening.md), both proposed; OI-476 to OI-480, OI-496 and OI-497; requirement NFR-18, P2; no project format change) | ██ | | | | |
 | XC | CI hygiene: `cargo xtask conflicts` fails on unresolved merge conflict markers in tracked files, wired into the CI fast checks and `all` (built 19 Oct 2026 on `claude/lane-xc-conflict-marker-check`; no requirement covers it directly, supports NFR-06; no decision record; no open items) | ██ | | | | |
 | T | 20 hardening and first release | | | | | ██ |
 
@@ -209,6 +210,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | X6 | X2; its Simulate colours after X3. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X7b | X2 and X7a. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | BUG-LOG | Nothing. Touches `apps/openchuck-ui` `main.rs`, `graphics.rs` (the logger) and the new `logging.rs`, the crate's `Cargo.toml` and the docs; stays out of the files of X4, SU, BI, XC and FIT. The About button is OI-454. |
+| UAL | BUG-LOG merged. Touches `crates/openchuck-app` (`Application::execute`, `undo`, `redo`, new `drain_actions`; new `action_log.rs`; the `record_actions` settings field), `apps/openchuck-ui` (`logging.rs`, `main.rs`, `graphics.rs`, new `shell/actions.rs`, and small edits in `shell.rs`: `Dialog::Settings`, `draw`, `overview_frame`, `dialogs`; `shell/frame.rs`: one File menu item). |
 | X9 | X2 and X4. Its step 1: the lane agent re-renders the boards [decision 0114](decisions/0114-slice-22-conformance-report.md) section E names for it and commits them (OI-342) |
 | X8 | X2 to X7b and X9 |
 | XC | Nothing |

@@ -295,6 +295,7 @@ Technology choices (crates, geometry kernel, rendering stack) are made in the ar
 | NFR-14 | Choose dependencies for long-term health: well featured, actively maintained, thoroughly documented, tested with CI, and used by several mature open-source projects. Newer crates, and crates with a high proportion of AI-generated contribution, count as a risk that must be justified. | P1 |
 | NFR-15 | The interface is legible and accessible: text at least 12 pixels at 100% scale, scaling from 80% to 200%, contrast of 4.5:1 for text and 3:1 for meaningful graphics, no state shown by colour alone, and colour maps that differ in lightness. | P1 |
 | NFR-17 | The desktop application opens no console window when started from the desktop or a shortcut. It writes a local diagnostic log (start-up, graphics adapter, warnings, errors and panics) to a folder the user can write to, size-limited by rotation, and never sends it anywhere. Output the user asked for on the command line (--bench, --help) still reaches the terminal it was started from. | P1 |
+| NFR-18 | The application records the user's actions (menu commands, buttons, dialogs opened and closed, edits and undo, and the jobs started) as short entries in the diagnostic log, so a bug report can show the steps taken. An entry names the action and the kind and name of the item acted on; it contains no file contents. The log stays on the computer (NFR-09). | P2 |
 
 ## 6. Suggested additional features for decision
 

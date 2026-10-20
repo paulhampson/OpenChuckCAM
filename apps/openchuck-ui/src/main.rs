@@ -62,7 +62,7 @@ fn main() -> ExitCode {
         Some(Ok(options)) => run_bench(options),
         Some(Err(message)) => {
             eprintln!("error: {message}");
-            log::error!("{message}");
+            logging::to_file(log::Level::Error, &message);
             ExitCode::FAILURE
         }
         None => run_app(std::env::args_os().nth(1).map(std::path::PathBuf::from)),
@@ -90,7 +90,10 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
     // configuration folder (`None`) is a supported absence and stays silent.
     if let Some(Err(e)) = openchuck_app::library::install_default_tools_in_default_folder() {
         eprintln!("warning: could not install the default tools: {e}");
-        log::warn!("could not install the default tools: {e}");
+        logging::to_file(
+            log::Level::Warn,
+            &format!("could not install the default tools: {e}"),
+        );
         let _ = rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Warning)
             .set_title("OpenChuckCAM")
@@ -129,7 +132,7 @@ fn run_app(folder: Option<std::path::PathBuf>) -> ExitCode {
         Err(error) => {
             let message = graphics::failure_message(&error.to_string());
             eprintln!("error: {message}");
-            log::error!("{message}");
+            logging::to_file(log::Level::Error, &message);
             // Started from the desktop, standard error may not be seen.
             let _ = rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Error)
@@ -147,6 +150,7 @@ fn run_bench(options: bench::Options) -> ExitCode {
         Ok(app) => app,
         Err(message) => {
             eprintln!("error: {message}");
+            logging::to_file(log::Level::Error, &message);
             return ExitCode::FAILURE;
         }
     };
@@ -173,7 +177,9 @@ fn run_bench(options: bench::Options) -> ExitCode {
     );
     let _ = std::fs::remove_dir_all(bench::folder());
     if let Err(error) = result {
-        eprintln!("error: {}", graphics::failure_message(&error.to_string()));
+        let message = graphics::failure_message(&error.to_string());
+        eprintln!("error: {message}");
+        logging::to_file(log::Level::Error, &message);
         return ExitCode::FAILURE;
     }
     match outcome.get() {
@@ -181,6 +187,7 @@ fn run_bench(options: bench::Options) -> ExitCode {
         Some(false) => ExitCode::from(2),
         None => {
             eprintln!("error: the benchmark did not finish");
+            logging::to_file(log::Level::Error, "the benchmark did not finish");
             ExitCode::FAILURE
         }
     }

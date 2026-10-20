@@ -725,3 +725,33 @@ fn req_ui_03_the_setup_step_shows_the_front_and_end_panes_with_their_legend() {
     assert!(!rig.shows("END VIEW FROM +X"));
     assert!(!rig.shows("Travel limit"));
 }
+
+#[test]
+fn req_nfr_18_the_settings_dialog_switches_the_recording_and_keeps_the_choice() {
+    let _held = crate::logging::SWITCH_LOCK.lock().unwrap();
+    let config = temp("frame-record-actions");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = Rig::cube("frame-record-actions", Some(file.clone()));
+    rig.dirs.push(config);
+    assert!(crate::logging::recording());
+    assert!(rig.shell.settings.record_actions);
+    // The File menu's item opens the dialog; a frame with it open names it.
+    rig.shell.dialog = Some(Dialog::Settings);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.recorder_windows(), ["Settings"]);
+    // The checkbox's action turns it off, in the settings and the log.
+    rig.shell.set_record_actions(false);
+    assert!(!crate::logging::recording());
+    rig.shell.save_settings();
+    assert!(!file.load().settings.record_actions);
+    // A restart starts with it off.
+    let shell = Shell::with_settings(false, None, Some(file.clone()));
+    assert!(!crate::logging::recording());
+    assert!(!shell.settings.record_actions);
+    // The file is not changed by turning it back on in memory only.
+    rig.shell.set_record_actions(true);
+    assert!(crate::logging::recording());
+    rig.shell.dialog = None;
+    rig.frame(Vec::new());
+    assert!(rig.shell.recorder_windows().is_empty());
+}
