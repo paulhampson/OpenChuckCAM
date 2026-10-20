@@ -97,7 +97,6 @@ pub fn log_folder() -> Option<PathBuf> {
 
 /// Shows the log folder in the system file browser. The About window calls
 /// this from its button.
-#[allow(dead_code)] // Called by the About window's button (lane BI) once it lands.
 pub fn open_log_folder() -> Result<(), String> {
     let folder = log_folder().ok_or_else(|| "There is no log file in this run.".to_owned())?;
     let program = if cfg!(windows) {

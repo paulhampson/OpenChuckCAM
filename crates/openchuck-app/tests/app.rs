@@ -143,6 +143,14 @@ fn req_nfr_18_commands_undo_and_redo_leave_lines_without_values() {
     assert!(lines.iter().all(|l| !l.contains("private")));
     assert!(app.drain_actions().is_empty());
     // A command that fails is not an action.
+    assert!(
+        app.execute(Command::SetOperationEnabled {
+            operation: openchuck_project::id::OperationId::new(),
+            enabled: false,
+        })
+        .is_err()
+    );
+    assert!(app.drain_actions().is_empty());
     let _ = std::fs::remove_dir_all(dir);
 }
 

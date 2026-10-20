@@ -24,10 +24,10 @@ fn req_ui_15_settings_round_trip_in_the_configuration_folder() {
     let loaded = file.load();
     assert_eq!(loaded.settings, UserSettings::default());
     assert!(loaded.problem.is_none());
-    assert_eq!(loaded.settings.scale, 1.2);
+    assert_eq!(loaded.settings.scale, 1.0);
 
     let mut settings = UserSettings {
-        scale: 1.0,
+        scale: 0.9,
         ..UserSettings::default()
     };
     settings.project_panel.size = 300.0;

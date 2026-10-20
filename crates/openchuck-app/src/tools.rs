@@ -28,7 +28,7 @@ pub use openchuck_types::tool::{
     ControllerMapping, CuttingData, CuttingTable, ProfilePoint, ProfileSegment, RevolvedProfile,
     Tool, ToolProfile, ToolShape,
 };
-pub use openchuck_types::units::{FeedRate, SpindleSpeed};
+pub use openchuck_types::units::{FeedRate, Millimetres, SpindleSpeed};
 
 /// What checking one tool snapshot found.
 #[derive(Debug, Clone, PartialEq)]

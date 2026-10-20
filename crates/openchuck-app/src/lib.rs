@@ -54,6 +54,7 @@ mod setup_sheet;
 pub mod simulation;
 pub mod stockplay;
 pub mod tool_edit;
+pub mod tool_library;
 pub mod tools;
 pub mod workholding;
 pub mod workholding_view;

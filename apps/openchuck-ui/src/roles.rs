@@ -65,8 +65,15 @@ pub const TOOL_BODY: Colour = hex(0x9aa6b5);
 pub const TOOL_TIP: Colour = hex(0xe8b6ff);
 /// The working selection, blue `#3d8bff` (its fill is at 40%).
 pub const SELECTED: Colour = hex(0x3d8bff);
-/// The hover yellow `#ffe066`.
+/// The hover yellow `#ffe066`: the triangle or face under the pointer.
 pub const HOVER: Colour = hex(0xffe066);
+/// The edge under the pointer, magenta `#ff4fd8`: a colour of its own, so an
+/// edge reads apart from a triangle or face (issue 151; specification 7.4).
+pub const EDGE_HOVER: Colour = hex(0xff4fd8);
+/// An edge in the working selection, orange `#ff6a00`: orange against the
+/// blue of selected triangles and faces is a pair the common colour
+/// blindnesses keep apart (issue 151; specification 7.4).
+pub const EDGE_SELECTED: Colour = hex(0xff6a00);
 /// Avoid and check surfaces, the travel limit and mesh findings: red
 /// `#ff7b72`.
 pub const AVOID: Colour = hex(0xff7b72);
@@ -184,6 +191,31 @@ mod tests {
         // The accent and error outlines are the dark theme's tokens.
         assert_eq!(to_color32(ACCENT), theme::DARK.accent);
         assert_eq!(to_color32(ERROR), theme::DARK.error);
+    }
+
+    #[test]
+    fn req_ui_04_req_nfr_15_edges_and_triangles_have_colours_of_their_own() {
+        // Issue 151: hover and selected differ between a triangle and an edge.
+        let light = |c: Colour| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        let marks = [HOVER, SELECTED, EDGE_HOVER, EDGE_SELECTED];
+        for (i, a) in marks.iter().enumerate() {
+            for b in &marks[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+        // Each edge colour stands out from the part, and the two hovers differ
+        // in lightness as well as hue (yellow is the lighter).
+        let ratio = |a: Colour, b: Colour| {
+            let (hi, lo) = (light(a).max(light(b)), light(a).min(light(b)));
+            (hi + 0.05) / (lo + 0.05)
+        };
+        assert!(
+            ratio(EDGE_HOVER, PART) >= 1.4,
+            "{}",
+            ratio(EDGE_HOVER, PART)
+        );
+        assert!(ratio(EDGE_SELECTED, PART) >= 1.4);
+        assert!(ratio(EDGE_HOVER, HOVER) >= 1.4);
     }
 
     #[test]

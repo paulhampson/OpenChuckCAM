@@ -321,6 +321,30 @@ fn req_ui_14_esc_leaves_picking_from_a_saved_set_too() {
 }
 
 #[test]
+fn req_ui_05_a_selected_set_keeps_the_selection_options_in_the_inspector() {
+    // A selected set also turns picking on, so By angle and Same direction
+    // work there and their angles must be reachable (decision 0153).
+    let mut rig = Rig::picking("set-options");
+    let model = rig.model();
+    let id = rig
+        .shell
+        .app
+        .as_mut()
+        .unwrap()
+        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
+        .unwrap();
+    rig.shell.selected = Some(Selection::Set(id));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(
+        rig.text_centre("Keep tangent edges by default").is_some(),
+        "the options are painted for a selected set"
+    );
+    rig.cleanup();
+}
+
+#[test]
 fn req_ui_04_the_selection_tools_box_chooses_the_click_mode_by_a_click() {
     let mut rig = Rig::picking("tools-click");
     // Each button shows its key and sets the mode it names.

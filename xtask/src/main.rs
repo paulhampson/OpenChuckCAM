@@ -6,7 +6,8 @@
 //! - `deps`: dependency rules from architecture sections 4 and 12 (NFR-01, NFR-09, INT-01).
 //! - `licences`: SPDX headers on source files and the licence field of every crate (NFR-10).
 //! - `records`: every third-party dependency is pinned, declared once in the
-//!   workspace and recorded in `docs/dependencies.md` (NFR-14).
+//!   workspace and recorded in `docs/dependencies.md` (NFR-14); the open-items register and
+//!   the decision index have no duplicate, misplaced or out-of-order rows (decision 0130).
 //! - `trace`: the traceability report from requirement-ID test names (NFR-08).
 //! - `testdata`: the test-data size policy.
 //! - `conflicts`: no unresolved merge conflict markers in tracked files.
@@ -27,6 +28,7 @@ mod deps;
 mod golden;
 mod licences;
 mod records;
+mod registers;
 mod release_gate;
 mod replay;
 mod testdata;

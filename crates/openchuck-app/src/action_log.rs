@@ -16,6 +16,12 @@ use crate::command::Command;
 /// How many undrained lines are kept; the oldest are dropped beyond this.
 pub(crate) const KEPT: usize = 256;
 
+/// The last component of a model's path: the log names the file, never the
+/// folders above it (NFR-18; an import can reach outside the project).
+fn model_file_name(path: &str) -> String {
+    path.rsplit(['/', '\\']).next().unwrap_or(path).to_owned()
+}
+
 /// The name of the item `id` as the user sees it: the name of a setup, tool,
 /// selection set or operation, the file name of a model. `None` when the
 /// project has no such item.
@@ -25,7 +31,7 @@ pub(crate) fn item_name(project: &Project, id: ItemId) -> Option<String> {
             .models()
             .iter()
             .find(|x| x.id == m)
-            .map(|x| x.path.as_str().to_owned()),
+            .map(|x| model_file_name(x.path.as_str())),
         ItemId::Setup(s) => project.setup(s).map(|x| x.name.clone()),
         ItemId::Tool(t) => project
             .tools()
@@ -53,7 +59,7 @@ fn item(project: &Project, id: ItemId) -> String {
 fn new_item(item: &Item) -> String {
     let id = item.id();
     let name = match item {
-        Item::Model(m) => m.path.as_str().to_owned(),
+        Item::Model(m) => model_file_name(m.path.as_str()),
         Item::Setup(s) => s.name.clone(),
         Item::Tool(t) => t.name.clone(),
         Item::SelectionSet(s) => s.name.clone(),
@@ -112,6 +118,13 @@ mod tests {
     use openchuck_project::{ParameterValue, Placement, Setup};
 
     use super::*;
+
+    #[test]
+    fn req_nfr_18_a_model_is_named_by_its_file_only() {
+        assert_eq!(model_file_name("part.step"), "part.step");
+        assert_eq!(model_file_name("models/sub/part.step"), "part.step");
+        assert_eq!(model_file_name("../private\\dir/part.stl"), "part.stl");
+    }
 
     fn project_with_setup(name: &str) -> (Project, SetupId) {
         let mut project = Project::new("Demo");

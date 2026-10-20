@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Dependency records (NFR-14, work breakdown slice 0 items 3 and 12).
+//! Dependency records (NFR-14, work breakdown slice 0 items 3 and 12), and the register checks
+//! of `registers.rs`.
 //!
 //! - Every third-party version is declared once, in `[workspace.dependencies]`
 //!   of the root manifest, as an exact `=` pin.
@@ -165,6 +166,7 @@ pub fn check(root: &Path) -> Result<Findings> {
             }
         }
     }
+    findings.extend(crate::registers::check(root)?);
     Ok(findings)
 }
 

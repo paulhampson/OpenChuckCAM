@@ -85,14 +85,14 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-03 | Display the rotary axis, work coordinate system, stock, part, held regions and retaining tabs together in the viewport. | P1 |
 | UI-04 | Select geometry in the viewport: faces and edges on B-rep models; triangle regions on meshes, including select-by-angle and flood fill. | P1 |
 | UI-05 | Save selections as named sets that operations can reference and that update when the selection is edited. | P1 |
-| UI-06 | Project tree listing the model, stock, setups, operations and tools; operations can be reordered, enabled, disabled and duplicated. | P1 |
+| UI-06 | Project tree listing the model, stock, setups and operations; operations can be reordered, enabled, disabled and duplicated. | P1 |
 | UI-07 | Parameter panels with units, validation and sensible defaults. | P1 |
 | UI-08 | Undo and redo for all edits to the project. | P1 |
 | UI-09 | Run toolpath generation and simulation off the UI thread, with progress reporting and cancellation. | P1 |
 | UI-10 | Organise the work as ordered steps (model, setup, operations, simulate, post and export) that the user can move between at any time. A step whose inputs do not exist yet is unavailable and says why. | P1 |
 | UI-11 | Show the state of each model, setup, selection set and operation (up to date, stale, running, error, warning, off) in the project tree, by shape as well as colour, with a legend that stays visible. An item in error says why and how to fix it. | P1 |
 | UI-12 | Collect errors, warnings and information from import, setup checks, file checks, generation and jobs in one messages panel, by severity, each naming its source and offering the action that fixes it. | P1 |
-| UI-13 | Show, for each machine profile value, whether it is confirmed on the machine, taken from a vendor profile, or an unconfirmed placeholder, with how to confirm it. | P1 |
+| UI-13 | Show, for each machine profile value, whether it is confirmed on the machine or not, with where the value came from and how to confirm it. | P1 |
 | UI-14 | Every command is available from the menus and the keyboard, every control can be used with the keyboard, and anything shown on hover is also shown on keyboard focus. | P1 |
 | UI-15 | Keep per-user settings on the computer (window layout, scale, theme, display units, recent projects, export acknowledgements), never in the project. | P1 |
 | UI-16 | The window is usable at 1366 by 768 logical pixels at 100% scale, and its panels can be resized and collapsed. | P1 |
@@ -183,6 +183,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | SIM-11 | Read the deviation at any point of the simulated stock by pointing at it, with the operation and move that left it, and go to the worst overcut and the most material left. | P2 |
 | SIM-12 | Show the posted G-code beside playback, following the current move. | P2 |
 | SIM-13 | Summarise each generated operation: moves, cut length, A travel, A unwinds and programmed time. | P2 |
+| SIM-14 | Show, for each operation, the largest overcut and the most material left after it, and the worst values after the current operation during playback. | P2 |
 
 ### 3.7 G-code generation and post-processing
 

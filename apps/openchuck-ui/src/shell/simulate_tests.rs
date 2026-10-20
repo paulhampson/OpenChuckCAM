@@ -185,7 +185,6 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
         "Flipped triangles",
         "Degenerate triangles",
         "Non-manifold edges",
-        "The check reports problems and changes nothing.",
         "The file is not changed. Its path and hash are stored in the project.",
         "Add to project",
         "Rotary axis",
@@ -194,6 +193,27 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
     ] {
         assert!(rig.shows(text), "{text} is on screen");
     }
+    // The window has a fixed size, so the body scrolls (UI-16): the rest of
+    // the check is reached by scrolling over it.
+    let holes_y = rig
+        .texts()
+        .iter()
+        .find(|(t, _)| t == "Holes")
+        .map(|(_, y)| *y)
+        .expect("the Holes row is painted");
+    rig.frame(vec![Event::PointerMoved(egui::pos2(200.0, holes_y))]);
+    for _ in 0..40 {
+        if rig.shows("The check reports problems and changes nothing.") {
+            break;
+        }
+        rig.frame(vec![Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            phase: egui::TouchPhase::Move,
+            delta: egui::vec2(0.0, -60.0),
+            modifiers: Modifiers::NONE,
+        }]);
+    }
+    assert!(rig.shows("The check reports problems and changes nothing."));
     // Add imports the file that was checked, so it waits while the field
     // names another (OI-358).
     let session = rig.shell.import.as_mut().unwrap();
