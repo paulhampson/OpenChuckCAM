@@ -137,6 +137,10 @@ pub struct WorkholdingDraft {
     /// Which tab each offered mesh is, with its section for the Setup panes,
     /// indexing `offered`.
     pub offered_solids: Vec<SceneSolid>,
+    /// Whether the draft differs from the stored workholding: only then do the views say they
+    /// show unapplied workholding (OI-528). A draft that only carries the defaults offered or
+    /// the failing parts is the stored one.
+    pub unapplied: bool,
 }
 
 /// How the scene is drawn besides the view model itself.
@@ -738,8 +742,14 @@ impl Viewport {
     }
 
     /// Whether a draft is drawn.
+    #[cfg(test)]
     pub(crate) fn shows_draft(&self) -> bool {
         self.draft.is_some()
+    }
+
+    /// Whether the draft drawn has changes the stored workholding does not (the chip's rule).
+    pub(crate) fn shows_unapplied(&self) -> bool {
+        self.draft.as_ref().is_some_and(|d| d.unapplied)
     }
 
     /// The held region or tab solids shown, with the meshes their indices
@@ -1454,6 +1464,7 @@ pub(crate) mod tests {
             failing: vec![WorkholdingItem::Tab(0)],
             offered: vec![view.meshes[1].clone()],
             offered_solids: vec![view.solids[1].clone()],
+            unapplied: false,
         };
         let mut viewport = Viewport::new(true);
         viewport.set_scene(view, true);

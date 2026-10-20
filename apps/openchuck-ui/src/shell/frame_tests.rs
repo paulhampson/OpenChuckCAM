@@ -110,6 +110,23 @@ impl Rig {
         out
     }
 
+    /// Every text painted with the rectangle it covers.
+    pub(super) fn text_rects(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) => out.push((
+                    t.galley.text().to_string(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
     pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {
@@ -661,6 +678,10 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
         rig.frame(Vec::new());
         std::thread::sleep(Duration::from_millis(5));
     }
+    // Nothing edited: the defaults offered are drawn, and the chip does not say anything is
+    // unapplied (OI-528).
+    rig.frame(Vec::new());
+    assert!(!rig.shell.viewport.shows_unapplied());
     rig.shell
         .workholding_panel
         .as_mut()
@@ -676,6 +697,7 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
     }];
     rig.frame(Vec::new());
     assert!(rig.shell.viewport.shows_draft());
+    assert!(rig.shell.viewport.shows_unapplied());
     // Still drawn with an operation selected (11.7: the draft is kept).
     let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
     rig.shell.select(Selection::Operation(op));

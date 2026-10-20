@@ -171,6 +171,12 @@ fn mm(v: f64) -> String {
     field_row::number(v, Some(3))
 }
 
+/// A computed length shown to the 3 places of 14.3. A stored value uses [`mm`], which adds places
+/// so it is never misread; a default tab's size is only a proposal.
+fn mm_fixed(v: f64) -> String {
+    format!("{v:.3}")
+}
+
 /// The tab or held region a draft field belongs to.
 fn field_item(field: Field) -> HeldItem {
     match field {
@@ -341,6 +347,7 @@ impl WorkholdingPanel {
             failing: view.failing,
             offered,
             offered_solids,
+            unapplied: view.draft.is_some(),
         });
         self.view_cache = Some((key, draft.clone()));
         draft
@@ -944,10 +951,10 @@ impl WorkholdingPanel {
                                 ui.label(format!(
                                     "Default tab, not added \u{b7} {} \u{b7} Frustum \u{b7} X {} to {} \u{b7} \u{d8} {} to \u{d8} {} mm",
                                     zone.name(),
-                                    mm(tab.x_start.0),
-                                    mm(tab.x_start.0 + tab.length.0),
-                                    mm(d0),
-                                    mm(d1),
+                                    mm_fixed(tab.x_start.0),
+                                    mm_fixed(tab.x_start.0 + tab.length.0),
+                                    mm_fixed(d0),
+                                    mm_fixed(d1),
                                 ));
                             });
                         }
@@ -1646,6 +1653,9 @@ mod tests {
             text.contains("No room for a default tab at the tail: the stock ends at the part."),
             "{text}"
         );
+        // The default tab's size is shown to 3 places (14.3), not as raw floats (OI-527).
+        assert!(text.contains("\u{d8} 14.142 to \u{d8} 7.071 mm"), "{text}");
+        assert!(!text.contains("14.1421"), "{text}");
         assert!(!text.contains("Not applied"), "{text}");
         assert_eq!(panel.draft_view(&setup).offered.len(), 1);
         assert!(panel.part_extent().is_some());

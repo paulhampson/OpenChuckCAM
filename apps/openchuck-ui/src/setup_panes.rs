@@ -685,7 +685,9 @@ fn end(
             None => None,
         })
         .fold(10.0, f64::max);
-    let body = Rect::from_min_max(rect.min + vec2(0.0, 28.0), rect.max - vec2(0.0, 28.0));
+    // Room at each side for the −Y and +Y labels, so none touches the pane's edge or the
+    // front pane (OI-528).
+    let body = Rect::from_min_max(rect.min + vec2(52.0, 28.0), rect.max - vec2(52.0, 28.0));
     let map = Map::fit(body, (-reach, reach), (-reach, reach));
     let centre = map.at(0.0, 0.0);
     labels.fixed(
@@ -1268,6 +1270,19 @@ mod tests {
         let (layout, note) = place_with_note(bounds, &mut few, measure);
         assert!(layout.hidden.is_empty() && note.is_none());
         assert_eq!(few.len(), 1);
+    }
+
+    #[test]
+    fn req_ui_25_the_end_views_side_labels_stay_inside_its_pane() {
+        // OI-528: "−Y" and "front" touched the edge of the pane, against the front view.
+        let size = egui::vec2(900.0, 600.0);
+        let texts = text_rects(&tab_panes(), size, false);
+        let split = size.x - END_PANE_WIDTH;
+        for needle in ["−Y", "front", "+Y"] {
+            let (_, rect) = texts.iter().find(|(t, _)| t == needle).unwrap();
+            assert!(rect.min.x >= split + 4.0, "{needle} at {rect:?}");
+            assert!(rect.max.x <= size.x - 4.0, "{needle} at {rect:?}");
+        }
     }
 
     #[test]

@@ -323,7 +323,7 @@ impl Shell {
                                 ui,
                                 panes,
                                 marks,
-                                self.viewport.shows_draft(),
+                                self.viewport.shows_unapplied(),
                             );
                             if let Some(item) = seen.clicked {
                                 self.viewport.click_solid(item);

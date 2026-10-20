@@ -229,3 +229,26 @@ fn req_ui_16_the_default_dock_shows_the_playback_controls_and_a_clamp_is_not_rem
     draw(&mut rig);
     assert_eq!(rig.shell.settings.dock.size, 600.0);
 }
+
+/// OI-525: a message's source link never lies over its wrapped sentence.
+#[test]
+fn req_ui_12_req_ui_16_a_message_link_keeps_clear_of_its_wrapped_sentence() {
+    let mut rig = rig("smoke-message-links");
+    rig.shell.dock_tab = DockTab::Messages;
+    draw(&mut rig);
+    let rects = rig.text_rects();
+    let sentence = rects
+        .iter()
+        .find(|(t, _)| t.starts_with("STL holds triangles only"))
+        .expect("the STL message is shown");
+    let link = rects
+        .iter()
+        .find(|(t, _)| t == "models/cube.stl")
+        .expect("its source link is shown");
+    assert!(
+        !sentence.1.intersects(link.1),
+        "{:?} over {:?}",
+        link.1,
+        sentence.1
+    );
+}
