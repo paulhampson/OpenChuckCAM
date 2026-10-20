@@ -1,6 +1,6 @@
 # 0131: Slice 22 verification: smoke test, display checks, screenshots and the frame benchmark (lane X8)
 
-- **Status:** proposed (20 Oct 2026). Lane X8, slice 22 step 3 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). Only the project owner accepts it. Item 5 settles a rule the coordinator asked this lane to settle (OI-514); the owner may change it.
+- **Status:** accepted (20 Oct 2026) by the project owner, in the lane X8 session. Lane X8, slice 22 step 3 ([decision 0114](0114-slice-22-conformance-report.md) section E, accepted). Item 5 settles the rule the coordinator asked this lane to settle (OI-514); the owner accepted it with the record. The owner's answers on the display findings ("fix the identified issues"; "fix OI-523, OI-530 and OI-532") were relayed by the coordinator.
 - **What it changes:** no requirement, no architecture text and no project format. Item 5 amends the "no model" wording of [decision 0148](0148-menus-and-view-directions.md) item 2.
 - **Date:** 20 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md). OI-515 to OI-522 are new and closed in this change. OI-525 to OI-532 are new and closed (OI-531 is the release workflow item) in this change (the owner asked for them to be fixed in the lane). OI-523 is new and open. OI-514 (closed) is edited. OI-360, OI-442 and OI-493 are updated and stay open.
