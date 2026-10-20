@@ -1123,19 +1123,7 @@ impl SelectionPanel {
             ui.label(format!("Click: {}, {what}.", name.to_lowercase()));
             ui.weak("Choose in the box on the view, or press Q, W, E or R.");
         });
-        ui.add(
-            egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
-                .text("select by angle within")
-                .suffix("°"),
-        )
-        .on_hover_text("The edge angle for smooth patch: the most a surface may turn at an edge.");
-        if self.choice == Choice::Direction {
-            ui.add(
-                egui::Slider::new(&mut self.direction_angle, 1.0..=90.0)
-                    .text("same direction within")
-                    .suffix("°"),
-            );
-        }
+        ui.weak("The angles and options are in the inspector on the right while picking.");
         ui.weak("Click selects. Shift adds. Ctrl removes. Drag to orbit. Esc leaves.");
         match self.hover {
             Some(Hover::Surface(ScenePick {
@@ -1207,16 +1195,6 @@ impl SelectionPanel {
                 self.dirty = true;
             }
         });
-        if matches!(self.working, SelectionTarget::Edges(_))
-            && let Some(choice) = tangent_choice(
-                ui,
-                "new set tangent edges",
-                self.new_tangent,
-                app.project().keep_tangent_edges(),
-            )
-        {
-            self.new_tangent = choice;
-        }
         ui.horizontal_wrapped(|ui| {
             for (label, tip, kind) in [
                 (
@@ -1317,7 +1295,44 @@ impl SelectionPanel {
                 error = Some(e);
             }
         }
+        ui.weak("Editing a set marks every operation that uses it stale.");
+        error
+    }
+
+    /// The selection options, drawn as the "Selection" section of the
+    /// inspector while picking (specification section 8; decision 0153 item
+    /// 5): the angles for selecting by angle and for Same direction, the
+    /// tangent edges choice of a working edge selection, the project's
+    /// default for tangent edges and the warning before a click starts a new
+    /// selection. Returns the text of an error to show in a dialog.
+    pub fn options(&mut self, ui: &mut egui::Ui, app: &mut Application) -> Option<String> {
+        let mut error = None;
         ui.separator();
+        ui.strong("Selection");
+        ui.add(
+            egui::Slider::new(&mut self.smooth_angle, 1.0..=90.0)
+                .text("select by angle within")
+                .suffix("°"),
+        )
+        .on_hover_text("The edge angle for smooth patch: the most a surface may turn at an edge.");
+        ui.add(
+            egui::Slider::new(&mut self.direction_angle, 1.0..=90.0)
+                .text("same direction within")
+                .suffix("°"),
+        )
+        .on_hover_text(
+            "Same direction: the most a triangle or face may differ from the clicked one.",
+        );
+        if matches!(self.working, SelectionTarget::Edges(_))
+            && let Some(choice) = tangent_choice(
+                ui,
+                "new set tangent edges",
+                self.new_tangent,
+                app.project().keep_tangent_edges(),
+            )
+        {
+            self.new_tangent = choice;
+        }
         let mut keep = app.project().keep_tangent_edges();
         if ui
             .checkbox(&mut keep, "Keep tangent edges by default")
@@ -1334,15 +1349,14 @@ impl SelectionPanel {
         if ui
             .checkbox(&mut warn, "Warn before a click starts a new selection")
             .on_hover_text(
-                "Ask before a click that picks the other kind (an edge on a selection of faces, \
-                 say) clears the selection. Saved with the project.",
+                "Ask before a click without Shift or Ctrl, or a switch of the Pick filter, \
+                 clears the selection. Saved with the project.",
             )
             .changed()
             && let Err(e) = app.execute(openchuck_app::Command::SetWarnOnSelectionReset(warn))
         {
             error = Some(e.to_string());
         }
-        ui.weak("Editing a set marks every operation that uses it stale.");
         error
     }
 
@@ -2405,6 +2419,75 @@ mod tests {
             assert!(corner.y >= view.top() + crate::viewport_toolbar::HEIGHT);
             assert!(corner.x > view.left());
         }
+    }
+
+    /// The text painted by one frame of `add`.
+    fn painted(add: impl FnOnce(&mut egui::Ui)) -> String {
+        let ctx = egui::Context::default();
+        let mut add = Some(add);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            if let Some(add) = add.take() {
+                add(ui);
+            }
+        });
+        output.textures_delta.clear();
+        let mut text = String::new();
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                text.push_str(t.galley.text());
+                text.push('\n');
+            }
+        }
+        text
+    }
+
+    #[test]
+    fn req_ui_05_the_selection_options_are_in_the_inspector_and_not_the_dock_tab() {
+        // Decision 0153 item 5 (issue 153): the owner chose option B.
+        let (dir, mut app, _) = cube_project("options-inspector");
+        let mut panel = SelectionPanel::default();
+        let view = SceneView::default();
+        let inspector = painted(|ui| {
+            assert!(panel.options(ui, &mut app).is_none());
+        });
+        for label in [
+            "Selection",
+            "select by angle within",
+            "same direction within",
+            "Keep tangent edges by default",
+            "Warn before a click starts a new selection",
+        ] {
+            assert!(inspector.contains(label), "{label}: {inspector}");
+        }
+        let dock = painted(|ui| {
+            let summaries = app.selection_summaries(&[]);
+            assert!(panel.show(ui, &mut app, &summaries, &view).is_none());
+        });
+        assert!(dock.contains("New set from selection"), "{dock}");
+        for label in [
+            "select by angle within",
+            "same direction within",
+            "Keep tangent edges by default",
+            "Warn before a click starts a new selection",
+        ] {
+            assert!(!dock.contains(label), "{label}: {dock}");
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_the_warning_option_is_saved_with_the_project_from_the_inspector() {
+        let (dir, mut app, _) = cube_project("options-warn");
+        assert!(app.project().warn_on_selection_reset());
+        app.execute(openchuck_app::Command::SetWarnOnSelectionReset(false))
+            .unwrap();
+        let mut panel = SelectionPanel::default();
+        let text = painted(|ui| {
+            assert!(panel.options(ui, &mut app).is_none());
+        });
+        assert!(text.contains("Warn before"), "{text}");
+        assert!(!app.project().warn_on_selection_reset());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

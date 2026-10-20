@@ -142,6 +142,11 @@ impl Shell {
                     "Click the part to select. The Selection sets tab of the dock saves and \
                      edits sets; Esc stops picking.",
                 );
+                if let Some(app) = &mut self.app
+                    && let Some(error) = self.selection.options(ui, app)
+                {
+                    self.dialog = Some(Dialog::Error(error));
+                }
             }
             None => {
                 ui.weak("Choose an item in the project panel to see it here.");

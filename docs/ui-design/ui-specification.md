@@ -273,6 +273,8 @@ UI-03 and UI-25 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-
 
 The inspector shows the selected item: a model, setup, selection set, tool or operation, or the simulation results on Simulate.
 
+**While picking** (Operations, 11.4) the inspector shows a "Selection" section with the options of picking: "select by angle within" (default 30°, decision 0037 item 4), "same direction within" (default 10°), "Tangent edges" for a working edge selection, "Keep tangent edges by default" and "Warn before a click starts a new selection" (decision 0153, owner's decision on issue 153). The Selection sets tab of the dock keeps the table of sets and the buttons that act on them (12.2).
+
 **Order** (principle 3):
 
 1. **Header.** The name in an editable field, and a status chip in the words of the status mark.
@@ -673,11 +675,9 @@ UI-05; decisions 0032 and 0037; a dock tab.
 
 - **Toolbar.**
   - "New set from selection", "Add selection to set", "Remove from set", "Replace set" (the chosen set takes the working selection) and "Clear" (empties the working selection);
-  - the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example), and the angle for Same direction (default 10°);
   - a note on what can be selected: triangles and edges on meshes (decision 0066), faces and edges on STEP models;
-  - for a working edge selection, and for a chosen edge set of a STEP model, "Tangent edges": "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9);
-  - "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*;
-  - "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until a project and software preferences screen exists to hold it *(OI-260)*.
+  - the tangent edges choice of a chosen edge set of a STEP model, "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9).
+- **Options in the inspector, not here** (decision 0153 item 5, owner's decision on issue 153). While picking, the inspector's "Selection" section (section 8) holds: the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example) and the angle for Same direction (default 10°); "Tangent edges" for a working edge selection; "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*; and "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until such a screen exists *(OI-260)*.
 - **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
   - A set with a problem is red, with its reason ("12 missing") and "Reselect".
   - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
