@@ -1,6 +1,6 @@
 # 0138: The library family is ready to publish, and the release workflow can publish it to crates.io when the owner asks (lane TP)
 
-- **Status:** proposed, with the owner's decisions on its five questions relayed by the coordinator session on 20 Oct 2026 (decision 0049): the name reservation, the first version, the metadata, the credential and the architecture wording, each option A (items 6 and 7). Lane TP, on `claude/lane-tp-publish-readiness`. Only the project owner accepts this record, directly in the lane TP session.
+- **Status:** accepted by the project owner on 20 Oct 2026, given directly in the lane TP session. Before that the owner's decisions on its five questions came relayed by the coordinator session (decision 0049): the name reservation, the first version, the metadata, the credential and the architecture wording, each option A (items 6 and 7). Lane TP, on `claude/lane-tp-publish-readiness`.
 - **Date:** 20 Oct 2026.
 - **Work breakdown:** slice 20 items 8 and 9 (lane TP: publish readiness).
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-302 closes; OI-303 has progressed; OI-410 (closed, decided by the owner) and OI-411 are new.
@@ -13,7 +13,7 @@ The release workflow's `library` job runs `cargo publish --dry-run` on the four 
 
 Requirements touched: INT-01 (the engine as a standalone library), INT-03 (post-processing on its own), INT-07 (a versioned API with a changelog), INT-08 (documentation; the README is the crate's page), INT-09 and NFR-10 (AGPL, the SPDX licence on each crate), NFR-12 (the G-code notice), NFR-14 (no new dependency). Architecture section 12 ("Release tooling", "Names and tags").
 
-## Decision (proposed; items 6 and 7 decided by the owner, relayed)
+## Decision (accepted)
 
 1. **The built-in posts move into the crate,** as decision 0103 says: `git mv posts crates/openchuck-post/posts`, so their history is kept. `include_str!` reads `../posts/...`. Every reference follows: the `.gitattributes` line, the CI and end-to-end path filters (the `crates/**` and `crates/openchuck-post/**` filters now cover them, so the `posts/**` lines go), the fuzz corpus step in CI and the nightly workflow, the `openchuck-post` tests (a `posts_path` helper beside the crate), the `openchuck-app` tests and the `openchuck-ui` export panel test, the build script's watch list (`crates/` already covers the posts), the fuzz target's comment, the READMEs, `docs/fuzzing.md` and the verification plan's path-filter sentence. The test that keeps the two posts' shared template identical (`req_gc_09_req_gc_10_the_two_posts_share_one_template`) is kept. The Docker LinuxCNC image and the replay tools read only `testdata/golden/`, so they need no change. No user-facing behaviour changes.
 2. **The testkit dev-dependency is stripped from published manifests,** in the way cargo documents: the workspace entry `openchuck-testkit` is a path with no version, so cargo leaves the dev-dependency out when it packages a crate. Every other project entry keeps its version. The packaged `openchuck-path` and `openchuck-post` manifests were checked to hold no `openchuck-testkit`.
