@@ -1,9 +1,9 @@
 # 0162: Simulation results: a histogram that reaches the worst values, the overcut count, and a value probe (lane BUG-RESULTS; issues 217 and 208)
 
-- **Status:** proposed (lane BUG-RESULTS, 20 Oct 2026). The owner decides. It proposes the UI specification 11.5 edits under "Specification entries" below; the specification is not edited until the owner agrees.
+- **Status:** accepted by the project owner (20 Oct 2026), directly in the lane BUG-RESULTS session. Item 4 (the probe now, ahead of the rest of SIM-11) is option A, which the coordinator relayed first. The UI specification 11.5 edits under "Specification entries" are made in the same change.
 - **Date:** 20 Oct 2026.
 - **Requirements:** SIM-05 (P1), SIM-11 (P2, in part), NFR-12, NFR-05, UI-11.
-- **Open items:** OI-560 to OI-565 (new).
+- **Open items:** OI-560 to OI-566 (new); OI-561 closed by this change.
 
 ## Context
 
@@ -16,7 +16,7 @@ Issue 217 (trial feedback F-61, NFR-12): the Simulate results showed a largest o
 3. Two smaller mismatches. The equal bins (0.06 mm wide at the 0.1 mm default cell) straddled +tolerance and the band thresholds, so the grey bars did not match the "Within ±0.100 mm" share or the part's colours. "Largest overcut" was also shown in the overcut colour when the deepest cut was within the tolerance, which the bands and the share count as on the surface.
 4. Scope: the histogram and the worst values are per setup, after its last operation; they are not for the selected operation. Per-operation overcut and material left (SIM-14, P2) are not built (OI-371).
 
-Whether the 1.020 mm on the owner's blisk is real tool motion or a measurement effect is not verified (OI-561). Issue 202, on the same project, reports toolpaths inside the held region, and the comparison includes the held region's exposed surface, so the overcut may be there (OI-562).
+**The 1.020 mm is real.** The owner's project was later committed to `claude/upbeat-davinci-jk46yd` (52b87b5) and run with `openchuck-cli simulate` (77 s; OI-561, closed). The deepest overcut is 1.0195 mm, at 19378 samples beyond the 0.1 mm cell, on the blade tips at radius 20 mm between X 20.4 and 22.5 mm. Run without its later operations, the project gives no overcut after Roughing and 0.049 mm after Helical Finishing. So the overcut is tool motion of Operation 3, pencil finishing with the 2 mm flat end mill, about the tool's radius deep. That is a toolpath defect for another lane (OI-566). This record only makes it visible. The comparison also includes the exposed surfaces of held regions and tabs, which the part's colours do not show (OI-562); that is not the cause here.
 
 Issue 208 (F-52) asks to read the value at a point on the part in the deviation, remaining or overcut view. This is part of SIM-11 (P2), whose specification entry (11.5, "The probe") gives the signed deviation, the position (X and A), and the operation and move that left it. The owner answered on issue 208: the tooltip shows the value only, with no position; a click keeps the value on screen; a click off the model hides it. The coordinator assigned issue 208 to this lane. Whether to build it now, ahead of the rest of SIM-11, was put to the owner through the coordinator (OI-560).
 
@@ -39,7 +39,7 @@ Issue 208 (F-52) asks to read the value at a point on the part in the deviation,
 - **A probe read back from the GPU (an ID buffer).** Rejected for slow graphics (issue 200, Intel UHD 620): it adds a pass and a read back. The CPU pick already runs for the readout.
 - **The probe showing the exact value at the point** (a new measurement under the pointer). Rejected: it needs the stock, which is not held on the user-interface side. It could also disagree with the colour the user sees.
 
-## Specification entries (proposed, not edited)
+## Specification entries (made in 11.5 on acceptance)
 
 UI specification 11.5, Results inspector, replace "a deviation histogram in the same colours;" with:
 
@@ -64,7 +64,8 @@ UI specification 11.5, Viewport, replace the probe bullet with:
 ## Open items
 
 - OI-560: whether to keep the probe ahead of the rest of SIM-11 (owner, through the coordinator), and the rest of SIM-11 itself.
-- OI-561: the 1.020 mm on the owner's blisk is not checked on the project.
+- OI-561 (closed): the 1.020 mm on the owner's blisk, checked with the CLI; it is pencil finishing's tool motion.
+- OI-566: pencil finishing cuts about the tool's radius into the blisk's blade tips.
 - OI-562: an overcut on a held region's or tab's exposed surface counts in the worst values and the histogram but is not coloured on the part, and the probe cannot read it.
 - OI-563: keyboard and screen-reader access to the probe.
 - OI-564: the UI specification 11.5 edits above.

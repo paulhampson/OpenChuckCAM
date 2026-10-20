@@ -482,14 +482,16 @@ Board 4 (SIM-01 to SIM-07).
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
-- **The probe** *(SIM-11)*. Hovering the stock shows a tooltip: the deviation with its sign and unit ("Overcut −0.004 mm"), the position (X and A), and the operation and move that left it.
+- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the part coloured by deviation, resting the pointer on the part (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. The value is the one the triangle is coloured by. Picking is on the CPU from the data already held, only when the pointer rests. The operation and move that left the point are added with the rest of SIM-11.
 
 **Results inspector:**
 
 - colour by (Deviation, Remaining, Overcut);
 - worst values after the current operation: largest overcut, largest material left, the share within tolerance *(SIM-14)*;
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
-- a deviation histogram in the same colours;
+- "Overcut samples": the samples cut deeper than the tolerance and the separate places, so the largest overcut reads as one point or many (decision 0162);
+- a deviation histogram in the same colours, one labelled row per bin: the range in millimetres, a bar, and the count and share. The bins are the surface band ±tolerance and the colour thresholds (0.25, 0.5, 1.0 mm, mirrored for the overcut); the first row starts at the largest overcut and the last ends at the most material left, so the worst values are always on it. An end at the search limit is marked ≤ or ≥ (decision 0162);
+- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md));
 - a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 

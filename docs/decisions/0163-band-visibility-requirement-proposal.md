@@ -1,9 +1,9 @@
 # 0163: Proposed requirement SIM-15: choose which deviation bands the result views show (lane BUG-RESULTS; issue 216)
 
-- **Status:** proposed (lane BUG-RESULTS, 20 Oct 2026). A requirement proposal for the owner, sent through the coordinator. `docs/requirements.md` and `docs/verification-plan.md` are not edited, and nothing is built until the owner agrees the wording.
+- **Status:** accepted by the project owner (20 Oct 2026), directly in the lane BUG-RESULTS session, with the recommended option C (both the histogram's bins and a set range; per session; the wording below). SIM-15 is added to `docs/requirements.md` and its row to `docs/verification-plan.md`, with a specification 11.5 entry, in the same change. Not built: a later lane builds it.
 - **Date:** 20 Oct 2026.
 - **Requirements:** proposes SIM-15 (P2); relates to SIM-05, SIM-11, SIM-14, NFR-12.
-- **Open items:** OI-565 (new).
+- **Open items:** OI-565 (new; closed by the acceptance).
 
 ## Context
 
@@ -42,4 +42,4 @@ Options A, B and C above. Fixed steps (for example every 0.1 mm) were also consi
 
 ## Consequences
 
-When the owner agrees, a lane adds SIM-15 to `docs/requirements.md` and the row to `docs/verification-plan.md`, with a specification 11.5 entry, and builds it in `openchuck-ui` (the band filter that `ColourBy` already applies in `playback_panel.rs`). Until then, OI-565 stays open.
+On acceptance this lane added SIM-15 to `docs/requirements.md` and the row to `docs/verification-plan.md`, with a specification 11.5 entry, and a later lane builds it in `openchuck-ui` (the band filter that `ColourBy` already applies in `playback_panel.rs`). The build is OI-567.
