@@ -97,16 +97,46 @@ impl Default for Visibility {
     }
 }
 
-/// What Simulate shows (7.1: "Show: Stock, Part + path, Both").
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SimulateShow {
-    /// Only the simulated stock.
-    Stock,
-    /// The part and the toolpaths, without the stock.
-    PartAndPath,
-    /// Everything.
-    #[default]
-    Both,
+/// What Simulate shows: its three tick boxes, in any combination with at
+/// least one ticked (issue 204; decision record 0168).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SimulateShow {
+    /// "Model": the part's model.
+    pub model: bool,
+    /// "Cut part": the stock as the simulation cut it, at the play head, and
+    /// the part coloured by deviation while that is on.
+    pub cut_part: bool,
+    /// "Toolpath".
+    pub toolpath: bool,
+}
+
+impl Default for SimulateShow {
+    /// "Cut part" only (the owner's choice on issue 204).
+    fn default() -> Self {
+        Self {
+            model: false,
+            cut_part: true,
+            toolpath: false,
+        }
+    }
+}
+
+impl SimulateShow {
+    /// How many boxes are ticked.
+    pub fn ticked(self) -> usize {
+        usize::from(self.model) + usize::from(self.cut_part) + usize::from(self.toolpath)
+    }
+
+    /// The choices with at least one ticked: none gives "Cut part", so the
+    /// view is never empty.
+    #[must_use]
+    pub fn never_empty(self) -> Self {
+        if self.ticked() == 0 {
+            Self::default()
+        } else {
+            self
+        }
+    }
 }
 
 /// The workflow step the view is in, which chooses the toolbar's controls
@@ -610,7 +640,7 @@ impl Viewport {
             filter: PickFilter::Both,
             input: PickInput::default(),
             show: Visibility::default(),
-            simulate_show: SimulateShow::Both,
+            simulate_show: SimulateShow::default(),
             step: None,
             project_has_models: false,
             draft: None,
@@ -633,7 +663,10 @@ impl Viewport {
         let options = SceneOptions {
             bands: self.bands.as_ref().map(|(m, b)| (*m, b)),
             outlines_only: self.picking || self.bands.is_some(),
-            show: self.show,
+            show: Visibility {
+                part: self.part_shown(),
+                ..self.show
+            },
             draft: self.draft.as_ref(),
         };
         self.scene = Arc::new(to_scene_with(&self.view, &options));
@@ -697,7 +730,41 @@ impl Viewport {
     /// Sets the step the view is in (7.1, 7.2), or `None` to take it from
     /// what the view holds.
     pub fn set_step(&mut self, step: Option<ViewStep>) {
-        self.step = step;
+        if self.step != step {
+            let part = self.part_shown();
+            self.step = step;
+            if self.part_shown() != part {
+                self.rebuild();
+            }
+        }
+    }
+
+    /// Sets Simulate's tick boxes (issue 204); none ticked gives "Cut part".
+    pub fn set_simulate_show(&mut self, show: SimulateShow) {
+        let show = show.never_empty();
+        if self.simulate_show != show {
+            let part = self.part_shown();
+            self.simulate_show = show;
+            if self.part_shown() != part {
+                self.rebuild();
+            }
+        }
+    }
+
+    /// Simulate's tick boxes.
+    pub fn simulate_show(&self) -> SimulateShow {
+        self.simulate_show
+    }
+
+    /// Whether the part is drawn: "Show or hide" says so and, on Simulate,
+    /// "Model" is ticked, or "Cut part" while the part is coloured by
+    /// deviation (what the cut left is shown on the part's surface).
+    pub(crate) fn part_shown(&self) -> bool {
+        let simulate = self.simulate_show;
+        self.show.part
+            && (self.step() != ViewStep::Simulate
+                || simulate.model
+                || (simulate.cut_part && self.bands.is_some()))
     }
 
     /// Tells the view whether the open project holds a model. The toolbar and the View
@@ -1087,7 +1154,7 @@ impl Viewport {
             return;
         };
         // A hidden part is still picked, but is not there to read.
-        if !self.show.part {
+        if !self.part_shown() {
             self.probe_hover = None;
             self.rest = None;
             return;
@@ -1128,7 +1195,7 @@ impl Viewport {
         let Some((triangle, at)) = self.probe_pinned else {
             return;
         };
-        if !self.show.part {
+        if !self.part_shown() {
             return;
         }
         let Some(text) = self.probe_text(triangle) else {
@@ -1174,12 +1241,16 @@ impl Viewport {
         let simulate = if self.step() == ViewStep::Simulate {
             self.simulate_show
         } else {
-            SimulateShow::Both
+            SimulateShow {
+                model: true,
+                cut_part: true,
+                toolpath: true,
+            }
         };
         match layer {
             Layer::Overlay => self.show.selections,
-            Layer::Paths => self.show.toolpaths && simulate != SimulateShow::Stock,
-            Layer::Stock => self.show.stock && simulate != SimulateShow::PartAndPath,
+            Layer::Paths | Layer::Trace => self.show.toolpaths && simulate.toolpath,
+            Layer::Stock => self.show.stock && simulate.cut_part,
             _ => true,
         }
     }
@@ -2142,15 +2213,30 @@ pub(crate) mod tests {
         assert!(!viewport.layer_shown(Layer::Overlay));
         viewport.set_visibility(Visibility::default());
         viewport.set_step(Some(ViewStep::Simulate));
-        viewport.simulate_show = SimulateShow::Stock;
+        // Simulate's default is "Cut part" only (issue 204): the stock, not
+        // the path or its trace, nor the model.
+        assert_eq!(viewport.simulate_show(), SimulateShow::default());
         assert!(!viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
-        viewport.simulate_show = SimulateShow::PartAndPath;
+        assert!(!viewport.layer_shown(Layer::Trace) && !viewport.part_shown());
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: false,
+            toolpath: true,
+        });
         assert!(viewport.layer_shown(Layer::Paths) && !viewport.layer_shown(Layer::Stock));
+        assert!(viewport.layer_shown(Layer::Trace) && viewport.part_shown());
+        // None ticked is never kept: the view would be empty.
+        viewport.set_simulate_show(SimulateShow {
+            model: false,
+            cut_part: false,
+            toolpath: false,
+        });
+        assert_eq!(viewport.simulate_show(), SimulateShow::default());
         // The choice is Simulate's: on Operations, where it is not offered,
-        // the toolpaths and stock show (OI-355 wiring, #126 review).
-        viewport.simulate_show = SimulateShow::Stock;
+        // the toolpaths, stock and part show (OI-355 wiring, #126 review).
         viewport.set_step(Some(ViewStep::Operations));
         assert!(viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));
+        assert!(viewport.part_shown());
         viewport.set_step(None);
         // F fits and V opens the list, from the keyboard.
         let ctx = egui::Context::default();

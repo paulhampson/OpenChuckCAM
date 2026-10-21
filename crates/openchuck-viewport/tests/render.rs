@@ -850,6 +850,45 @@ fn req_ui_25_the_focus_layer_draws_over_the_scene() {
     assert!(blue_pixels(&pixels) > 100, "{}", blue_pixels(&pixels));
     // The fill is the scene's own, not drawn again by the focus layer.
     assert!(pixels.iter().filter(|p| p[0] > 60 && p[1] < 30).count() > 500);
-    assert_eq!(Layer::ALL.len(), 6);
-    assert_eq!(Layer::Focus.index(), 5);
+    assert_eq!(Layer::ALL.len(), 7);
+    assert_eq!(Layer::Focus.index(), 6);
+    assert_eq!(Layer::Trace.index() + 1, Layer::Paths.index());
+}
+
+#[test]
+fn req_sim_01_the_window_path_draws_over_its_faint_trace() {
+    // Issue 205 (decision record 0169): the trace of the whole path is its
+    // own layer, drawn before the toolpaths, so the path in the playback
+    // window, where they overlap, is drawn over it.
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let line = [Point3::new(-200.0, 0.0, 0.0), Point3::new(200.0, 0.0, 0.0)];
+    let mut fit = Scene::default();
+    fit.add_mesh(&block([-20.0; 3], [20.0; 3]), &[], RED, BLACK);
+    let empty = Scene::default();
+    let grey = [0.5, 0.5, 0.5, 1.0];
+    let mut trace = Scene::default();
+    trace.add_styled_polyline(&line, grey, false, 3.0, LineStyle::Solid);
+    let mut path = Scene::default();
+    path.add_styled_polyline(&line, BLUE, false, 3.0, LineStyle::Solid);
+    let f = front(&fit, 1.0);
+    let greys = |pixels: &[[u8; 4]]| {
+        pixels
+            .iter()
+            .filter(|p| p[0].abs_diff(p[2]) < 8 && p[0] > 90 && p[0] < 170)
+            .count()
+    };
+    let alone = render_layers(&device, &queue, &empty, None, &[(Layer::Trace, &trace)], &f);
+    assert!(greys(&alone) > 50, "{}", greys(&alone));
+    let both = render_layers(
+        &device,
+        &queue,
+        &empty,
+        None,
+        &[(Layer::Trace, &trace), (Layer::Paths, &path)],
+        &f,
+    );
+    assert!(blue_pixels(&both) > 50, "{}", blue_pixels(&both));
+    assert!(greys(&both) < greys(&alone) / 4, "{}", greys(&both));
 }

@@ -106,6 +106,10 @@ pub const EXPORT_NOTICE: &str = "Verify this G-code before you run it. It was pr
 pub const EXPORT_ACKNOWLEDGE_LABEL: &str =
     "I will verify this G-code before running it on a machine";
 
+/// The warning at export while the project skips the stock simulation
+/// (NFR-12; issue 214, decision record 0168).
+pub const EXPORT_STOCK_SKIPPED: &str = "Stock simulation is skipped for this project, so the cut has not been simulated. Untick \"Skip stock simulation\" in Simulate to check it.";
+
 /// The sentence that states the rule, shown under the checks.
 pub const EXPORT_RULE: &str = "G-code is written only when every enabled operation is up to date and the files pass their checks. Operations that were not simulated, and machine values not confirmed on the machine, give warnings. Disabled operations are not written.";
 
@@ -129,21 +133,44 @@ impl ExportChecks {
 /// before it, since the run was made. This is the same key the pipeline cache
 /// uses (architecture section 6), so a change that would regenerate an
 /// operation marks it here. Model file contents are not compared.
+/// The cache keys of `project`'s enabled operations, in machining order.
+fn keys(project: &Project) -> Result<Vec<(OperationId, crate::cache::Key)>, AppError> {
+    let files = ModelFiles::default();
+    let mut previous = None;
+    let mut out = Vec::new();
+    for operation in project.operations().iter().filter(|o| o.enabled) {
+        let key = operation_key(project, operation, previous, &files)?;
+        out.push((operation.id, key));
+        previous = Some(key);
+    }
+    Ok(out)
+}
+
+/// Whether every operation `run` holds is still in `project`, enabled, and
+/// up to date: nothing it, or an operation before it, reads has changed
+/// since the run was made (the key the pipeline cache and the tree use).
+/// The operations the run did not make do not count, so a run up to an
+/// operation (decision record 0117) can be current. A run that is not
+/// current is not shown again by the playback panel (OI-697).
+pub fn run_is_current(project: &Project, run: &Regeneration) -> bool {
+    let (Ok(then), Ok(now)) = (keys(&run.project), keys(project)) else {
+        return false;
+    };
+    !run.groups.is_empty()
+        && run.groups.iter().all(|g| {
+            let key = |list: &[(OperationId, crate::cache::Key)]| {
+                list.iter()
+                    .find(|(id, _)| *id == g.operation)
+                    .map(|(_, k)| *k)
+            };
+            key(&now).is_some() && key(&now) == key(&then)
+        })
+}
+
 fn stale_operations(
     project: &Project,
     run: &Regeneration,
 ) -> Result<BTreeSet<OperationId>, AppError> {
-    fn keys(project: &Project) -> Result<Vec<(OperationId, crate::cache::Key)>, AppError> {
-        let files = ModelFiles::default();
-        let mut previous = None;
-        let mut out = Vec::new();
-        for operation in project.operations().iter().filter(|o| o.enabled) {
-            let key = operation_key(project, operation, previous, &files)?;
-            out.push((operation.id, key));
-            previous = Some(key);
-        }
-        Ok(out)
-    }
     let then = keys(&run.project)?;
     let now = keys(project)?;
     // An operation the run did not make (a run up to an earlier operation,
@@ -271,7 +298,13 @@ pub fn export_checks(
                         .map(|o| o.operation.as_str())
                         .collect()
                 });
-            for operation in &enabled {
+            if project.skip_stock_simulation() {
+                // One line naming the cause, not one per operation telling
+                // the user to run what they chose to skip (decision record
+                // 0168, OI-602).
+                push(CheckLevel::Warning, EXPORT_STOCK_SKIPPED.to_owned());
+            }
+            for operation in enabled.iter().filter(|_| !project.skip_stock_simulation()) {
                 // The simulation names an operation as it was called when the
                 // run was made; a rename since then is not a missing run
                 // (issue 209).

@@ -4,6 +4,7 @@ All notable changes to `openchuck-viewport` are recorded here.
 
 ## Unreleased
 
+- Lane BUG-SIM (decision 0169): `Layer::Trace`, a faint trace of the toolpath drawn before `Layer::Paths`, for the playback window. Breaking: `Layer` gains a variant and `Layer::ALL` has seven layers (`index` of `Paths`, `Tool`, `Overlay` and `Focus` moves up by one). Not in the library family, so `cargo-semver-checks` does not check it.
 - Slice 22, lane X3 (decision 0119): `LineStyle` (solid, dashed, dash-dot, dotted, measured on screen at the target) on `LineItem`; a screen-space `Hatch` (one direction or crossed, 6 pixels apart) and an `Outline` (silhouette, creases and boundary as a wide line) on `MeshItem`, with `outline_only`; `Layer::Focus` for the hovered or selected held region or tab; `Frame::pixels_per_point` and `Frame::pixels_per_mm`. Breaking: `LineItem` and `MeshItem` gain fields.
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
 - Version 0.9.0 with the library family (decision 0076).

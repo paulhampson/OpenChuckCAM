@@ -113,7 +113,7 @@ fn row(ui: &mut egui::Ui, r: Row<'_>, before: impl FnOnce(&mut egui::Ui)) -> egu
 
 /// A group's header: its title, count and "+" (22 pixels).
 fn header(ui: &mut egui::Ui, group: Group, count: usize, enabled: bool) -> bool {
-    header_with(ui, group, count, enabled, None)
+    header_with(ui, group, count, enabled, None, |_| {})
 }
 
 /// A header whose "+" says `disabled_tip` while it is disabled.
@@ -123,6 +123,7 @@ fn header_with(
     count: usize,
     enabled: bool,
     disabled_tip: Option<&str>,
+    extra: impl FnOnce(&mut egui::Ui),
 ) -> bool {
     let mut add = false;
     ui.add_space(6.0);
@@ -143,10 +144,106 @@ fn header_with(
                     add = true;
                 }
             }
+            extra(ui);
             ui.label(RichText::new(count.to_string()).color(DARK.muted));
         });
     });
     add
+}
+
+/// The line under the operations (11.5, for every step as decision record
+/// 0169 proposes).
+pub(super) const HIDING_NOTE: &str = "Hiding a toolpath changes the view only. The toolpaths, the simulation and the G-code do not change.";
+
+/// The tooltip of an operation's eye button (issue 213).
+pub(super) const EYE_TIP: &str =
+    "Show or hide this operation's toolpath in the view. Nothing it makes changes";
+
+/// The visibility eye of an operation's toolpath (issue 213; decision
+/// record 0169): an open eye while the path is shown, the same eye struck
+/// through while it is hidden, so the state reads without colour (UI-11).
+/// It is a button the keyboard reaches (Tab, then Space or Enter), and says
+/// its state to a screen reader.
+pub(super) fn eye(ui: &mut egui::Ui, shown: bool) -> egui::Response {
+    let response = eye_shape(ui, shown, "Show toolpath");
+    response
+        .on_hover_text(EYE_TIP)
+        .on_hover_text(if shown { "Shown" } else { "Hidden" })
+}
+
+/// The eye drawn as a button named `name`: open for `shown`, struck through
+/// otherwise.
+fn eye_shape(ui: &mut egui::Ui, shown: bool, name: &str) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(20.0, 18.0), egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), shown, name)
+    });
+    let visuals = ui.style().interact(&response);
+    let painter = ui.painter_at(rect.expand(1.0));
+    let stroke = Stroke::new(1.4, visuals.fg_stroke.color);
+    let c = rect.center();
+    // The eye's outline: two arcs meeting at its corners.
+    let outline: Vec<egui::Pos2> = (0..=16)
+        .map(|i| {
+            let t = std::f32::consts::PI * i as f32 / 16.0;
+            egui::pos2(c.x - 7.0 * t.cos(), c.y - 4.5 * t.sin())
+        })
+        .chain((0..=16).map(|i| {
+            let t = std::f32::consts::PI * i as f32 / 16.0;
+            egui::pos2(c.x + 7.0 * t.cos(), c.y + 4.5 * t.sin())
+        }))
+        .collect();
+    painter.add(egui::Shape::closed_line(outline, stroke));
+    if shown {
+        painter.circle_filled(c, 2.4, stroke.color);
+    } else {
+        painter.circle_stroke(c, 2.4, stroke);
+        painter.line_segment(
+            [c + egui::vec2(-7.5, 6.0), c + egui::vec2(7.5, -6.0)],
+            Stroke::new(1.8, stroke.color),
+        );
+    }
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect,
+            2.0,
+            Stroke::new(1.0, DARK.accent),
+            egui::StrokeKind::Inside,
+        );
+    }
+    response
+}
+
+/// "Show all" and "Hide all" for the operations' toolpaths, as an open and a
+/// struck-through eye in the group's header (issue 213). Returns the choice
+/// clicked.
+fn all_eyes(ui: &mut egui::Ui, hidden: usize, count: usize) -> Option<bool> {
+    let mut chosen = None;
+    // Right to left: "Hide all" is drawn first, so "Show all" is on its left.
+    for (shown, name, enabled, done) in [
+        (
+            false,
+            "Hide all toolpaths",
+            hidden < count,
+            "Every toolpath is hidden",
+        ),
+        (
+            true,
+            "Show all toolpaths",
+            hidden > 0,
+            "Every toolpath is shown",
+        ),
+    ] {
+        let response = ui
+            .add_enabled_ui(enabled, |ui| eye_shape(ui, shown, name))
+            .inner
+            .on_hover_text(format!("{name} in the view"))
+            .on_disabled_hover_text(done);
+        if response.clicked() {
+            chosen = Some(shown);
+        }
+    }
+    chosen
 }
 
 /// A "None yet" row for an empty group (specification section 11.1).
@@ -223,6 +320,7 @@ impl Shell {
                     project.setups().len(),
                     blocked.is_none(),
                     blocked,
+                    |_| {},
                 ) {
                     actions.push(TreeAction::Add(Group::Setups));
                 }
@@ -308,20 +406,29 @@ impl Shell {
                 }
                 // Operations, in machining order.
                 let count = project.operations().len();
-                if header(ui, Group::Operations, count, true) {
+                // Show all and Hide all, for the whole group (issue 213).
+                let ids: Vec<_> = project.operations().iter().map(|o| o.id).collect();
+                let hidden = ids.iter().filter(|id| !project.path_shown(**id)).count();
+                let mut all = None;
+                if header_with(ui, Group::Operations, count, true, None, |ui| {
+                    if count > 0 {
+                        all = all_eyes(ui, hidden, count);
+                    }
+                }) {
                     actions.push(TreeAction::Add(Group::Operations));
+                }
+                if let Some(shown) = all {
+                    actions.push(TreeAction::Command(Box::new(Command::SetPathsShown {
+                        operations: ids.clone(),
+                        shown,
+                    })));
                 }
                 if count == 0 {
                     none_yet(ui);
                 }
-                let simulating = self.step == Step::Simulate;
                 for (index, o) in project.operations().iter().enumerate() {
                     let item = ItemRef::Operation(o.id);
-                    let eye = if simulating {
-                        self.play.is_shown(o.id)
-                    } else {
-                        None
-                    };
+                    let shown = project.path_shown(o.id);
                     let mut name = RichText::new(format!("{} {}", index + 1, o.name));
                     if !o.enabled {
                         // D5: struck through and muted.
@@ -359,18 +466,13 @@ impl Shell {
                                 .checkbox(&mut enabled, "")
                                 .on_hover_text("Include in generation, simulation and G-code")
                                 .changed();
-                            if let Some(shown) = eye {
-                                let text = if shown { "👁" } else { "–" };
-                                if ui
-                                    .small_button(text)
-                                    .on_hover_text(
-                                        "Show or hide this operation in the view only; \
-                                         the results do not change",
-                                    )
-                                    .clicked()
-                                {
-                                    actions.push(TreeAction::ToggleShown(id));
-                                }
+                            if eye(ui, shown).clicked() {
+                                actions.push(TreeAction::Command(Box::new(
+                                    Command::SetPathsShown {
+                                        operations: vec![id],
+                                        shown: !shown,
+                                    },
+                                )));
                             }
                         },
                     );
@@ -408,16 +510,11 @@ impl Shell {
                         &mut actions,
                     );
                 }
-                if simulating {
+                // The line under the tree on Simulate (11.5); elsewhere the
+                // eye's tooltip says the same.
+                if count > 0 && self.step == Step::Simulate {
                     ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(
-                            "Hiding an operation changes the view only. \
-                             The simulation results do not change.",
-                        )
-                        .small()
-                        .color(DARK.muted),
-                    );
+                    ui.label(RichText::new(HIDING_NOTE).small().color(DARK.muted));
                 }
             });
         for action in actions {
@@ -494,4 +591,75 @@ fn item_menu(
             ui.close();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One frame of `draw` in a bare context, with `events`.
+    fn frame(ctx: &egui::Context, events: Vec<egui::Event>, draw: impl Fn(&mut egui::Ui)) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(200.0, 100.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| draw(ui));
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn req_ui_11_req_ui_15_the_eye_is_a_button_the_mouse_and_the_keyboard_press() {
+        // Issue 213: a click and Space on the focused eye both press it; the
+        // two states are drawn differently (a stroke more when hidden), so
+        // they read without colour.
+        let ctx = egui::Context::default();
+        let rect = std::cell::Cell::new(egui::Rect::NOTHING);
+        let clicks = std::cell::Cell::new(0);
+        let draw = |ui: &mut egui::Ui| {
+            let r = eye(ui, true);
+            rect.set(r.rect);
+            if r.clicked() {
+                clicks.set(clicks.get() + 1);
+            }
+        };
+        frame(&ctx, Vec::new(), draw);
+        let at = rect.get().center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&ctx, vec![egui::Event::PointerMoved(at)], draw);
+        frame(&ctx, vec![button(true)], draw);
+        frame(&ctx, vec![button(false)], draw);
+        assert_eq!(clicks.get(), 1);
+        // The keyboard: Tab to it, then Space.
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&ctx, vec![key(egui::Key::Tab)], draw);
+        frame(&ctx, vec![key(egui::Key::Space)], draw);
+        frame(&ctx, Vec::new(), draw);
+        assert_eq!(clicks.get(), 2, "Space presses the focused eye");
+        // Shown and hidden are different shapes.
+        let shapes = |shown| {
+            let ctx = egui::Context::default();
+            let input = egui::RawInput::default();
+            let mut output = ctx.run_ui(input, |ui| {
+                eye(ui, shown);
+            });
+            output.textures_delta.clear();
+            output.shapes.len()
+        };
+        assert!(shapes(false) > shapes(true));
+    }
 }

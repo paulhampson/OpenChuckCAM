@@ -393,6 +393,11 @@ pub struct SetupCheck {
     pub action: Option<MessageAction>,
 }
 
+/// What the Simulate step says while the project skips the stock simulation
+/// (issue 214; decision record 0168).
+pub const STOCK_SIMULATION_SKIPPED: &str =
+    "Stock simulation is skipped for this project, so the cut has not been simulated";
+
 /// What the footer's primary button does (specification section 5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryKind {
@@ -454,6 +459,8 @@ pub struct Overview {
     /// while they are being worked out again.
     pub checks_current: bool,
     simulated_all: bool,
+    /// The project skips the stock simulation (decision record 0168).
+    skip_stock: bool,
     first_unsimulated_unmade: Option<usize>,
     any_enabled: bool,
     models: usize,
@@ -487,6 +494,7 @@ impl Overview {
             machine_warnings: Vec::new(),
             checks_current: true,
             simulated_all: false,
+            skip_stock: false,
             first_unsimulated_unmade: None,
             any_enabled: false,
             models: 0,
@@ -647,6 +655,11 @@ impl Overview {
                 blocked(action(PrimaryKind::GenerateStale(self.stale.len())))
             }
             Step::Operations => blocked(continue_to(Step::Simulate)),
+            // Skipping the stock simulation: Simulate asks only for the
+            // toolpaths (decision record 0168).
+            Step::Simulate if self.skip_stock && !self.stale.is_empty() => {
+                blocked(action(PrimaryKind::GenerateStale(self.stale.len())))
+            }
             Step::Simulate if self.any_enabled && !self.simulated_all => {
                 blocked(match self.first_unsimulated_unmade {
                     Some(n) => action(PrimaryKind::GenerateAndSimulate(n)),
@@ -1262,6 +1275,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let ops = project.operations();
     let mut stale = Vec::new();
     let mut first_unsimulated_unmade = None;
+    let skip_stock = project.skip_stock_simulation();
     let mut simulated_all = true;
     let mut any_enabled = false;
     let mut any_generated = false;
@@ -1284,8 +1298,10 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         let made = record.generated.get(&o.id);
         any_generated |= made.is_some();
         let up_to_date = matches!((key, made), (Some(k), Some(m)) if k.chained == m.key.chained);
-        let simulated =
-            matches!((key, record.simulated.get(&o.id)), (Some(k), Some(s)) if k.chained == *s);
+        // A project that skips the stock simulation asks only for its
+        // toolpaths at Simulate (issue 214, decision record 0168).
+        let simulated = matches!((key, record.simulated.get(&o.id)), (Some(k), Some(s)) if k.chained == *s)
+            || (skip_stock && up_to_date);
         simulated_all &= simulated;
         exported_all &=
             matches!((key, record.exported.get(&o.id)), (Some(k), Some(s)) if k.chained == *s);
@@ -1860,6 +1876,13 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     };
     let simulate_health = if any_enabled && !simulated_all {
         (StepHealth::Attention, Some("Not simulated yet".to_owned()))
+    } else if any_enabled && skip_stock {
+        // Skipping is the user's choice, but the cut is then not checked
+        // before posting, so the step says so (NFR-12).
+        (
+            StepHealth::Attention,
+            Some(STOCK_SIMULATION_SKIPPED.to_owned()),
+        )
     } else {
         good.clone()
     };
@@ -1905,6 +1928,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         machine_warnings,
         checks_current: checks.is_some_and(|c| c.revision == app.revision),
         simulated_all: any_enabled && simulated_all,
+        skip_stock,
         first_unsimulated_unmade,
         any_enabled,
         models: project.models().len(),

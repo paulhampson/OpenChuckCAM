@@ -1508,3 +1508,115 @@ fn req_prj_04_req_nfr_07_the_selection_reset_warning_setting_needs_schema_12() {
         "{err}"
     );
 }
+
+#[test]
+fn req_sim_01_req_prj_06_hidden_toolpaths_are_saved_with_the_project() {
+    // Issue 213 (decision record 0169): every path shown by default, and
+    // nothing written.
+    let plain = sample();
+    let ops: Vec<OperationId> = plain.operations().iter().map(|o| o.id).collect();
+    assert!(ops.len() >= 2);
+    assert!(ops.iter().all(|id| plain.path_shown(*id)));
+    for (path, text) in file::render(&plain).unwrap() {
+        assert!(!text.contains("hidden_paths"), "{path}");
+    }
+    // Hidden: written in machining order however it was reached, and read
+    // back; only the operations whose state changed are returned.
+    let mut p = sample();
+    assert_eq!(
+        p.set_paths_shown(&[ops[1], ops[0]], false),
+        [ops[1], ops[0]]
+    );
+    assert!(p.set_paths_shown(&[ops[0]], false).is_empty());
+    let dir = temp_dir("hidden-paths");
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(
+        text.contains(&format!(
+            "hidden_paths = [\n    \"{}\",\n    \"{}\",\n]",
+            ops[0], ops[1]
+        )),
+        "{text}"
+    );
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    assert!(!loaded.path_shown(ops[0]) && !loaded.path_shown(ops[1]));
+    // Shown again: back to the plain file.
+    assert_eq!(p.set_paths_shown(&ops, true), [ops[0], ops[1]]);
+    assert_eq!(file::render(&p).unwrap(), file::render(&plain).unwrap());
+    // A removed operation's choice is kept for an undo but never written.
+    let mut p = sample();
+    p.set_paths_shown(&[ops[0]], false);
+    p.remove(ItemId::Operation(ops[0])).unwrap();
+    assert!(!p.path_shown(ops[0]));
+    let text = file::render(&p).unwrap().remove("project.toml").unwrap();
+    assert!(!text.contains("hidden_paths"), "{text}");
+}
+
+#[test]
+fn req_sim_03_req_prj_06_skipping_the_stock_simulation_is_saved_with_the_project() {
+    // Issue 214 (decision record 0168): off by default, and not written.
+    let plain = sample();
+    assert!(!plain.skip_stock_simulation());
+    for (path, text) in file::render(&plain).unwrap() {
+        assert!(!text.contains("skip_stock_simulation"), "{path}");
+    }
+    let mut p = sample();
+    assert!(!p.set_skip_stock_simulation(true));
+    let dir = temp_dir("skip-stock");
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(text.contains("\nskip_stock_simulation = true\n"), "{text}");
+    let loaded = file::load(&dir).unwrap();
+    assert_eq!(loaded, p);
+    assert!(loaded.skip_stock_simulation());
+}
+
+#[test]
+fn req_gc_07_view_state_and_the_skip_do_not_make_a_different_output() {
+    // The export dialog's files stay valid when only these change.
+    let plain = sample();
+    let mut p = sample();
+    p.set_skip_stock_simulation(true);
+    p.set_paths_shown(&[plain.operations()[0].id], false);
+    assert_ne!(p, plain);
+    assert!(p.same_output(&plain) && plain.same_output(&p));
+    let mut renamed = sample();
+    renamed.set_name("Another");
+    assert!(!renamed.same_output(&plain));
+    let mut edited = sample();
+    set_parameter(&mut edited, 101, 0.9);
+    assert!(!edited.same_output(&plain));
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_the_schema_15_fields_need_schema_15() {
+    let mut p = sample();
+    p.set_skip_stock_simulation(true);
+    p.set_paths_shown(&[p.operations()[0].id], false);
+    let dir = temp_dir("schema-15");
+    file::save(&p, &dir).unwrap();
+    let old = copy_tree_with(&read_tree(&dir), "schema-15-as-14", |path, text| {
+        if path == "project.toml" {
+            text.replacen(&current(), "schema = 14\n", 1)
+        } else {
+            text.to_owned()
+        }
+    });
+    let err = file::load(&old).unwrap_err().to_string();
+    assert!(
+        err.contains("skip_stock_simulation") && err.contains("schema 15"),
+        "{err}"
+    );
+    // An older project without them loads with every path shown and the
+    // stock simulated.
+    let q = sample();
+    let d = temp_dir("schema-13-plain");
+    file::save(&q, &d).unwrap();
+    let old = copy_tree_with(&read_tree(&d), "schema-13-plain-copy", |_, text| {
+        text.replacen(&current(), "schema = 13\n", 1)
+    });
+    let loaded = file::load(&old).unwrap();
+    assert_eq!(loaded, q);
+    assert!(!loaded.skip_stock_simulation());
+}

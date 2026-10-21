@@ -47,11 +47,22 @@ enum NumberChoice {
 }
 
 /// What a G-code run was made from; a new key means the files are made again.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 struct Key {
     post: PostSelection,
     grouping: OutputGrouping,
     project: Project,
+}
+
+/// Two keys are the same when they give the same files: what only the view
+/// uses (the hidden toolpaths) and the stock simulation choice do not count
+/// (decision records 0168 and 0169; GC-07).
+impl PartialEq for Key {
+    fn eq(&self, other: &Self) -> bool {
+        self.post == other.post
+            && self.grouping == other.grouping
+            && self.project.same_output(&other.project)
+    }
 }
 
 /// The files made for a key.
@@ -215,7 +226,7 @@ impl ExportPanel {
 
     fn files_current(&self, app: &Application) -> Option<&Files> {
         let files = self.files.as_ref()?;
-        (files.key.project == *app.project()
+        (files.key.project.same_output(app.project())
             && Some(&files.key.post) == self.selection().as_ref()
             && files.key.grouping == self.grouping)
             .then_some(files)
