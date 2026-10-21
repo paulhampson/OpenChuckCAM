@@ -415,6 +415,16 @@ fn angle_between(from: Degrees, to: Degrees, f: f64) -> Degrees {
     Degrees(from.0 + (to.0 - from.0) * f)
 }
 
+/// How many intervals to split a move into so that no point of the tool
+/// moves more than `step` between samples: the tip travels `travel` and a
+/// point `radius` from the rotary axis sweeps `sweep` degrees of arc. At
+/// least 4, at most 10 000.
+fn intervals(travel: f64, sweep: f64, radius: f64, step: f64) -> usize {
+    ((travel + sweep.abs().to_radians() * radius) / step)
+        .ceil()
+        .clamp(4.0, 1.0e4) as usize
+}
+
 impl Placement<'_> {
     /// The machine's position `f` of the way along the straight move from
     /// `from` to `to` (linear in its axes, as it is cut): the tool line there,
@@ -440,7 +450,19 @@ impl Placement<'_> {
     /// `step` along it, the tip is no lower than a drop of the tool there
     /// allows.
     fn clear_between(&self, from: &CutPoint, to: &CutPoint, step: f64, tolerance: f64) -> bool {
-        let n = (from.tip.distance(to.tip) / step).ceil().clamp(4.0, 1.0e4) as usize;
+        let rotary = &self.input.rotary;
+        // The point of the cutting part furthest from the rotary axis, at
+        // either end: it sweeps the longest arc as the machine turns.
+        let end = self.grown.end();
+        let radius = [(from.tip, from.a), (to.tip, to.a)]
+            .into_iter()
+            .map(|(tip, a)| {
+                let p = rotary.to_axis(tip, a);
+                (p.across.abs() + end.radius.0).hypot(p.height.abs() + end.height.0)
+            })
+            .fold(0.0, f64::max);
+        let sweep = crate::rotary::nearest_turn(to.a, from.a).0 - from.a.0;
+        let n = intervals(from.tip.distance(to.tip), sweep, radius, step);
         (1..n).all(|i| {
             let (line, _, height) = self.between(from, to, i as f64 / n as f64);
             self.input
@@ -748,5 +770,20 @@ mod tests {
         // Within the range the move is the straight mix of the two.
         let quarter = angle_between(Degrees(10.0), Degrees(50.0), 0.25);
         assert!((quarter.0 - 20.0).abs() < 1e-9, "{quarter:?}");
+    }
+
+    #[test]
+    fn req_op_09_req_nfr_12_a_turn_is_sampled_by_the_arc_the_tool_sweeps() {
+        // The tip barely moves but the machine turns 30 degrees: a point 20
+        // mm from the axis sweeps about 10.5 mm, so a 0.5 mm step needs 21
+        // intervals or more, not the 4 the tip's travel alone gives.
+        let n = intervals(0.01, 30.0, 20.0, 0.5);
+        assert!(n >= 21, "{n}");
+        assert!(0.01 + 30f64.to_radians() * 20.0 <= 0.5 * n as f64);
+        // The turn's direction does not matter, and with no turn the tip's
+        // travel alone sets the count.
+        assert_eq!(intervals(0.01, -30.0, 20.0, 0.5), n);
+        assert_eq!(intervals(3.0, 0.0, 20.0, 0.5), 6);
+        assert_eq!(intervals(0.01, 0.0, 20.0, 0.5), 4);
     }
 }

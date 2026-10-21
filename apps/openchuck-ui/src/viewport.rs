@@ -1086,6 +1086,12 @@ impl Viewport {
             self.rest = None;
             return;
         };
+        // A hidden part is still picked, but is not there to read.
+        if !self.show.part {
+            self.probe_hover = None;
+            self.rest = None;
+            return;
+        }
         let on_part = surface.filter(|h| h.model == Some(*model));
         if response.clicked_by(PointerButton::Primary) {
             self.probe_pinned = on_part.map(|h| (h.triangle, [h.point.x, h.point.y, h.point.z]));
@@ -1122,6 +1128,9 @@ impl Viewport {
         let Some((triangle, at)) = self.probe_pinned else {
             return;
         };
+        if !self.show.part {
+            return;
+        }
         let Some(text) = self.probe_text(triangle) else {
             return;
         };
@@ -1991,6 +2000,38 @@ pub(crate) mod tests {
         frame_at(&mut viewport, &ctx, middle, false, 1.2);
         assert_eq!(viewport.probe_hover, None);
         frame_at(&mut viewport, &ctx, middle, false, 1.3 + PROBE_PAUSE);
+        assert!(viewport.probe_hover.is_some());
+    }
+
+    #[test]
+    fn req_sim_11_the_probe_reads_nothing_on_a_hidden_part() {
+        let view = cube_scene("probe hidden");
+        let model = view.meshes[0].model.unwrap();
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_view(StandardView::Top);
+        let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((-1.02, false))).collect();
+        viewport.set_bands(Some((
+            model,
+            openchuck_app::pathview::deviation_bands(&values, 0.1),
+        )));
+        let middle = pos2(200.0, 200.0);
+        frame_at(&mut viewport, &ctx, pos2(190.0, 200.0), false, 0.0);
+        frame_at(&mut viewport, &ctx, middle, false, 0.1);
+        frame_at(&mut viewport, &ctx, middle, false, 0.2 + PROBE_PAUSE);
+        assert!(viewport.probe_hover.is_some());
+        // Hidden, the part gives no value under the pointer, though it is
+        // still where the pointer is.
+        viewport.show.part = false;
+        frame_at(&mut viewport, &ctx, middle, false, 1.0);
+        frame_at(&mut viewport, &ctx, middle, false, 1.1 + PROBE_PAUSE);
+        assert_eq!(viewport.probe_hover, None);
+        // Shown again, the value waits for a new pause.
+        viewport.show.part = true;
+        frame_at(&mut viewport, &ctx, middle, false, 2.0);
+        assert_eq!(viewport.probe_hover, None);
+        frame_at(&mut viewport, &ctx, middle, false, 2.1 + PROBE_PAUSE);
         assert!(viewport.probe_hover.is_some());
     }
 

@@ -482,7 +482,7 @@ Board 4 (SIM-01 to SIM-07).
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
 - **The tool** at the current move, with the part turned by A (SIM-02). Its label gives the tool and A.
-- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the part coloured by deviation, resting the pointer on the part (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. The value is the one the triangle is coloured by. Picking is on the CPU from the data already held, only when the pointer rests. The operation and move that left the point are added with the rest of SIM-11.
+- **The probe** *(SIM-11, in part; [decision 0162](../decisions/0162-simulation-results-histogram-and-probe.md))*. With the part coloured by deviation, resting the pointer on the part (0.3 s) shows a tooltip with the value for the view chosen ("Overcut 1.020 mm", "Material left 0.350 mm", "No overcut"), in millimetres at three decimals, without the position. A click keeps the value on screen at the point; a click off the part hides it. With the part hidden, nothing is read and a kept value is not drawn. The value is the one the triangle is coloured by. Picking is on the CPU from the data already held, only when the pointer rests. The operation and move that left the point are added with the rest of SIM-11.
 
 **Results inspector:**
 
