@@ -1088,7 +1088,13 @@ impl PlaybackPanel {
         if response.dragged()
             && let (Some(drag), Some(pos)) = (self.window_drag, response.interact_pointer_pos())
         {
-            let next = dragged_window(self.playback.window(), drag, at(pos), moves);
+            // The band's right edge is the boundary after the last move,
+            // so the move under it is the one before.
+            let point = match drag {
+                WindowDrag::Last => at(pos).saturating_sub(1),
+                _ => at(pos),
+            };
+            let next = dragged_window(self.playback.window(), drag, point, moves);
             self.playback.set_window(timeline, next);
             self.window_numbers();
         }
@@ -2034,10 +2040,9 @@ mod tests {
         // A new window, from 40% to 60% of the moves.
         drag(&mut panel, x(0.4), x(0.6));
         let w = panel.window().expect("a window is set");
-        assert!(
-            w.first.abs_diff(at(0.4)) <= 2 && w.last.abs_diff(at(0.6)) <= 2,
-            "{w:?}"
-        );
+        // The start is the boundary pressed; the end the move before the
+        // boundary released, so the band ends where the pointer is.
+        assert_eq!((w.first, w.last), (at(0.4), at(0.6) - 1), "{w:?}");
         assert_eq!(
             (panel.window_from, panel.window_to),
             (w.first + 1, w.last + 1)
@@ -2046,10 +2051,21 @@ mod tests {
         let start = x(w.first as f32 / moves as f32);
         drag(&mut panel, start, x(0.2));
         let resized = panel.window().unwrap();
-        assert!(
-            resized.first.abs_diff(at(0.2)) <= 2 && resized.last == w.last,
+        assert_eq!(
+            (resized.first, resized.last),
+            (at(0.2), w.last),
             "{resized:?}"
         );
+        // Its end dragged right resizes it, and the band ends at the pointer.
+        let end = x((resized.last + 1) as f32 / moves as f32);
+        drag(&mut panel, end, x(0.7));
+        let longer = panel.window().unwrap();
+        assert_eq!(
+            (longer.first, longer.last),
+            (at(0.2), at(0.7) - 1),
+            "{longer:?}"
+        );
+        let resized = longer;
         // The band dragged right keeps its length.
         let middle = x((resized.first + resized.last) as f32 / 2.0 / moves as f32);
         drag(&mut panel, middle, middle + width * 0.1);
