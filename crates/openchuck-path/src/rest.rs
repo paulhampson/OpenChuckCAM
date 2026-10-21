@@ -299,6 +299,10 @@ impl Strategy for RestMachining {
         "Rest machining"
     }
 
+    fn description(&self) -> &str {
+        "Cuts only the material an earlier, larger tool could not reach, such as inside corners, using a smaller tool. It needs earlier operations in the same setup, so it knows what is left."
+    }
+
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(vec![
             min_remaining_spec(),

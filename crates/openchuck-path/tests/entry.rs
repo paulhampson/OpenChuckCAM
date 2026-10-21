@@ -39,6 +39,10 @@ impl Strategy for Line {
         "Line (test)"
     }
 
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+
     fn schema(&self) -> ParameterSchema {
         let num = |name: &str| ParameterSpec {
             name: name.to_owned(),
@@ -257,6 +261,24 @@ fn req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle() {
         })
         .collect();
     assert!(max_gouge(&outline, &part, &poses, 0.1).depth <= 0.001);
+}
+
+/// A pass that is a single cut point (the part's tip just reaches this
+/// layer) has no horizontal move to ramp or lead along: it is entered by a
+/// plunge, as the owner's blisk roughing at 3 degrees needs (issue 199;
+/// decision 0204), and the lead-out has nothing to follow either.
+#[test]
+fn req_op_11_nr_07_a_single_point_pass_is_entered_by_plunge_for_ramp_and_lead() {
+    let (_, fixture) = cylinder();
+    let plain = path(&fixture, &values(10.0, 10.0, &[])).unwrap();
+    for style in ["ramp", "lead"] {
+        let v = values(10.0, 10.0, &[entry(style), number(names::RAMP_ANGLE, 3.0)]);
+        let group = path(&fixture, &v).unwrap_or_else(|e| panic!("{style}: {e}"));
+        assert_eq!(group, plain, "{style}");
+        assert_eq!(of_kind(&group, MoveKind::Plunge).len(), 1, "{style}");
+        assert!(of_kind(&group, MoveKind::LeadIn).is_empty(), "{style}");
+        assert!(of_kind(&group, MoveKind::LeadOut).is_empty(), "{style}");
+    }
 }
 
 #[test]

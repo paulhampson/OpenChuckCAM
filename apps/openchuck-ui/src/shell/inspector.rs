@@ -688,6 +688,7 @@ impl Shell {
         };
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
+        let strategy_text = app.strategy_description(&operation.strategy);
         let set_options = app.strategy_takes_set_options(&operation.strategy);
         let mut delete = false;
         ui.horizontal(|ui| {
@@ -706,7 +707,17 @@ impl Shell {
         });
         field_row::name_problem(ui, &self.form, NAME);
         frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
-        ui.label(RichText::new(strategy).color(DARK.muted));
+        // The strategy under its own heading, apart from the operation's name
+        // the user can change: its plain name and the one-line description
+        // the New operation list shows. Shown only; it cannot be changed here
+        // (issue 242; decision record 0204).
+        ui.add_space(4.0);
+        ui.label(RichText::new("Strategy").small().color(DARK.muted));
+        ui.label(RichText::new(strategy).strong());
+        if !strategy_text.is_empty() {
+            ui.label(RichText::new(strategy_text).color(DARK.muted));
+        }
+        ui.add_space(4.0);
 
         // What is missing, as soon as the operation exists (issue 224): a
         // count and a jump to the first one, in the same words as under the

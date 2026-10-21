@@ -1,0 +1,43 @@
+# 0204: One strategy list with descriptions in New operation, the strategy under its own heading in the inspector, and a ramp on a one-point pass (lane OPCREATE; issues 195, 242, 199, 197; OI-696)
+
+- **Status:** proposed. Items 1 and 2 follow the owner's decisions as relayed in the lane OPCREATE brief (the New operation list is one list with a description under each entry and no skip tick; the inspector shows the strategy, show only, no drop-down). Items 3 to 5 are the lane's own calls, for the owner to confirm. Accepted only when the owner says so in the lane session or by the orchestrator relaying it (decision 0049).
+- **What it amends:** the interface specification, section 6 and 11.4 (the New operation menu and the operation inspector header). The specification is not edited here; the entries to add are under "Specification entries proposed". OP-16 is unchanged.
+- **Date:** 21 Oct 2026.
+- **Open items:** OI-790 to OI-793 are new; OI-696 closes.
+
+## Context
+
+Trial findings F-39 (issue 195), F-75 (issue 242), F-43 (issue 199) and F-41 (issue 197), and the latent OI-696 from decision 0173.
+
+## Decision
+
+1. **New operation is one list of strategies, each with a plain description under its name (issue 195).** Not a two-step dialog and no skip tick. The list runs roughing first, finishing next, and the specialist strategies last, under the headings Roughing, Finishing and Specialist. Within a group the order is the order the registry registers them: rotary roughing; helical, axial, indexed and simultaneous 4-axis finishing, rest machining, pencil clean-up; edge and curve following, swarf, radial drilling. A strategy that needs a STEP part on a mesh part stays in the list, disabled, with its reason (decision 0174); one that ignores selections says so, as before.
+2. **The description lives in the strategy's registration.** `Strategy::description` is a required method, so a new strategy must supply one (OP-16), and `Strategy::group` (default Finishing) places it. A library test checks that every built-in strategy has a description and that the order is roughing, finishing, specialist. `Application::strategy_choices` returns the list in this order with each entry's description and group, and `Application::strategy_description` gives one by name. The texts are English only; translation is not planned (the issue asked), and the texts are plain strings in the registration, so a later translation has one place to change. Pictures or diagrams are not built; they remain a later choice (OI-791).
+3. **The operation inspector shows the strategy under its own heading (issue 242)**: a small "Strategy" label, the strategy's plain name, and the same description as the list, directly under the operation's name and status, apart from the name the user can change. Show only: there is no drop-down and no command to change a strategy. Nothing stored or generated changes (GC-07, NFR-06): the text is read from the registration.
+4. **A pass that is a single cut point is entered by a plunge when the entry style is ramp or lead (issue 199).** The owner's blisk roughing at a 3 degree ramp failed with "pass 1: the ramp needs a direction to follow, and the pass has no horizontal move". Reproduced from `docs/trial-feedback-projects/blisk_bad_roughing/` with the entry changed to ramp at 3 degrees (tool Z1 O-flute metal 3.175 x 12): pass 1 is one cut point at X 7.0875, 28.02 mm from the axis, where the first layer just touches the blade tip; the plunge entry worked because it needs no direction. The pass is not wrong (a layer can touch the part at one place), so the fix is in the entry, not in the pass planning: a ramp or a lead-in needs a line to follow, a one-point pass has none, so it is entered by a plunge to that point, a lead-out on it is left out, and the message is gone. A helix entry already needed no direction. Output for every pass with a horizontal move, and every plunge entry, is unchanged byte for byte. The change is in `assemble/entry.rs` only (two early returns), tested in `entry.rs` (`req_op_11_nr_07_a_single_point_pass_is_entered_by_plunge_for_ramp_and_lead`). Lane CUTOPTS follows on the same roughing code; this does not touch pass planning.
+5. **With that fixed, the same project at a 3 degree ramp is refused later, at pass 1563, with a message the user can act on**: "the ramp starts 37.506 mm back from the first cut point, where the stock is 0.078 mm higher than the 27.049 mm the rapid stops at; use a steeper angle, another entry style or a larger approach distance". A 3 degree ramp that descends 1.96 mm needs 37.5 mm of run, and the box stock's corner is higher there. This is a true limit of the entry and is left as it is; whether the rapid before a ramp should stop higher than the approach distance, to let a long shallow ramp start, is OI-790 for the owner.
+6. **Issue 197 (material preset per operation) is not built in this lane.** The owner's answers on the issue are kept in OI-792: the preset defaults to the setup's stock material and can be chosen per operation; a warning triangle shows when the chosen material is not the setup's; a tool with no cutting data for the material shows a clear message and applies none; editing a value drops the preset. It needs a per-operation material in the project file (a schema claim) and changes how an operation looks up its tool's cutting data, which lane BUG-SPINDLE (unmerged, `claude/lane-bug-spindle`, decisions 0196 and 0197, schema 16) is changing now: it makes the stock material match ignoring case, adds the operation's `spindle_speed`, and adds a list of known materials. Building on both at once would conflict in `operation.rs`, `model.rs` and the project format. #197 is built after that lane merges, on its material list, and takes the next free schema number then.
+7. **OI-696 is closed**: `missing_parameters` now lists a required whole-number parameter (an Integer with no default) like a number with none, so the inspector, the step bar and the Post and export blocker name it. No registered strategy has one; the test (`nfr_07_ui_07_a_required_integer_is_listed_as_missing`) uses a schema built for it.
+8. **Library family 0.15.0.** `Strategy` gains a required method, a breaking change for hosts that implement it; decision 0048: workspace minor bump, changelog entries in each crate. Project schema: unchanged (no format change; no number taken).
+
+## Specification entries proposed
+
+For the owner to agree; the specification is not edited by this record.
+
+- **Section 6 (Operations step), "New operation":** a dialog with the operation name, then one scrolling list of strategies under the headings Roughing, Finishing and Specialist, each entry a name with a one-line description under it; then the setup, the tool and the library button, as now. Disabled strategies show why; strategies that ignore selections say so.
+- **Section 11.4 (operation inspector), header:** after the operation's name and status chip, a Strategy block: the label "Strategy", the strategy's plain name, and its description. Not editable.
+
+## Alternatives considered
+
+- **A two-step dialog with a skip tick** (the issue's proposal): rejected by the owner; one list is shorter.
+- **A drop-down in the inspector to change the strategy:** rejected by the owner; the parameters differ between strategies, so a change would discard values. Show only.
+- **Dropping a one-point pass** instead of entering it by plunge: it would change plunge-entry output that works, and the layer does cut that spot; kept.
+- **Ramping along an arbitrary line for a one-point pass** (as the helix does): the line is invented, and it can gouge or hit the stock; a plunge to the point is what the plunge entry already does.
+
+## Verification
+
+- `crates/openchuck-path/tests/strategy_menu.rs`: every strategy has a plain description; the menu order.
+- `crates/openchuck-app/tests/operation.rs`: `req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself`; the list of disabled strategies is in menu order.
+- `apps/openchuck-ui/src/shell/frame_tests.rs`: the New operation list shows the groups and the first description; the inspector shows the strategy apart from a renamed operation.
+- `crates/openchuck-path/tests/entry.rs`: the one-point pass; `crates/openchuck-app/src/requirements.rs`: the required integer.
+- Wording of the ten descriptions is for the owner to review for accuracy and tone (NFR-12: none says the output is safe to run) (OI-793).

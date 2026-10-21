@@ -1482,3 +1482,52 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
         "dragged to the narrowest"
     );
 }
+
+/// The operation inspector names the strategy under its own heading with the
+/// same plain description the New operation list shows, apart from the
+/// operation's own name; a rename leaves the strategy as it was (issue 242;
+/// decision record 0204; OP-16, UI-07, GC-07).
+#[test]
+fn req_op_16_req_ui_07_the_inspector_shows_the_strategy_apart_from_the_name() {
+    let mut rig = Rig::cube("inspector-strategy", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    op.name = "Operation 3".to_owned();
+    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
+        op.clone(),
+    )))
+    .unwrap();
+    let label = app.strategy_label(&op.strategy);
+    let text = app.strategy_description(&op.strategy);
+    assert!(!text.is_empty());
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Operation 3"));
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows(&label), "{label}");
+    assert!(rig.shows(&text[..40]), "{text}");
+}
+
+/// New operation is one list of strategies, roughing first and the specialist
+/// strategies last, each with its description under it (issue 195; decision
+/// record 0204; OP-16, UI-06).
+#[test]
+fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descriptions() {
+    let mut rig = Rig::cube("new-operation-list", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_ref().unwrap();
+    let choices = app.strategy_choices();
+    rig.shell.run.begin_add(app, None, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows("Roughing"));
+    assert!(rig.shows("Finishing"));
+    assert!(rig.shows("Rotary roughing"));
+    // The list scrolls, so only the first entries are drawn; the first
+    // entry's description is under its name.
+    assert!(rig.shows(&choices[0].description[..40]));
+}

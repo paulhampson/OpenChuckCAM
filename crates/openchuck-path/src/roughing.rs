@@ -57,7 +57,7 @@ use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, RotaryMapping};
-use crate::strategy::{CutPoint, Pass, PassStock, Strategy, StrategyInput};
+use crate::strategy::{CutPoint, Pass, PassStock, Strategy, StrategyGroup, StrategyInput};
 
 /// The registry name of [`RotaryRoughing`].
 pub const NAME: &str = "rotary_roughing";
@@ -200,6 +200,14 @@ impl Strategy for RotaryRoughing {
 
     fn label(&self) -> &str {
         "Rotary roughing"
+    }
+
+    fn description(&self) -> &str {
+        "Removes most of the material from the stock in layers, working from the outside in as the part turns, and leaves a thin layer on the part for a finishing operation to cut. Use it first. It is not meant to give a finished surface."
+    }
+
+    fn group(&self) -> StrategyGroup {
+        StrategyGroup::Roughing
     }
 
     fn schema(&self) -> ParameterSchema {

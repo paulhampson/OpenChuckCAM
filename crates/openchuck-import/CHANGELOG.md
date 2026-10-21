@@ -4,6 +4,7 @@ All notable changes to `openchuck-import` are recorded here.
 
 ## Unreleased
 
+- Version 0.15.0 with the library family (decision 0204); no change to this crate's items.
 - Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
 - Version 0.12.0 with the library family (`StrategyInput` in `openchuck-path` gains `keep_out`, a breaking change; decision 0161).
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).

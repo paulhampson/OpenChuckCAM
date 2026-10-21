@@ -554,6 +554,9 @@ impl openchuck_path::Strategy for Careless {
     fn label(&self) -> &str {
         "Careless"
     }
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> openchuck_path::ParameterSchema {
         openchuck_path::ParameterSchema::with_common(Vec::new())
     }

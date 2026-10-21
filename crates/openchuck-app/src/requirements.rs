@@ -94,8 +94,11 @@ pub(crate) fn missing_parameters(
         .parameters
         .iter()
         .filter(|spec| {
-            matches!(spec.kind, ParameterKind::Number { default: None, .. })
-                && !operation.parameters.contains_key(&spec.name)
+            matches!(
+                spec.kind,
+                ParameterKind::Number { default: None, .. }
+                    | ParameterKind::Integer { default: None, .. }
+            ) && !operation.parameters.contains_key(&spec.name)
                 && !(given && FROM_CUTTING_DATA.contains(&spec.name.as_str()))
                 && crate::operation::default_override(project, operation, &spec.name).is_none()
         })
@@ -188,4 +191,51 @@ pub(crate) fn operation_requirements(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use crate::test_project::TestProject;
+    use openchuck_path::params::ParameterSpec;
+    use openchuck_project::ParameterValue;
+
+    fn integer(name: &str, default: Option<i64>) -> ParameterSpec {
+        ParameterSpec {
+            name: name.to_owned(),
+            label: name.to_owned(),
+            description: String::new(),
+            kind: ParameterKind::Integer {
+                min: 1,
+                max: 9,
+                default,
+            },
+        }
+    }
+
+    /// An integer parameter with no default is required like a number with
+    /// none: it is listed until the operation gives it (OI-696; NFR-07,
+    /// UI-07). One with a default, or that the operation sets, is not.
+    #[test]
+    fn nfr_07_ui_07_a_required_integer_is_listed_as_missing() {
+        let mut t = TestProject::new("req-integer");
+        let id = t.add_operation("Op", "rotary_roughing");
+        let schema = ParameterSchema {
+            parameters: vec![integer("passes", None), integer("spare", Some(2))],
+        };
+        let project = t.app.project();
+        let mut op = project.operation(id).unwrap().clone();
+        let names = |op: &Operation| -> Vec<String> {
+            missing_parameters(project, op, &schema)
+                .into_iter()
+                .map(|(n, _)| n)
+                .collect()
+        };
+        assert_eq!(names(&op), ["passes"]);
+        op.parameters
+            .insert("passes".into(), ParameterValue::Integer(3));
+        assert!(names(&op).is_empty());
+    }
 }

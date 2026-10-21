@@ -43,6 +43,10 @@ impl Strategy for OneRing {
     fn label(&self) -> &str {
         "One ring"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -807,6 +811,10 @@ impl Strategy for Rewriter {
     fn label(&self) -> &str {
         "Rewriter"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -1255,7 +1263,7 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
         .filter(|c| c.unavailable.is_some())
         .map(|c| c.name.as_str())
         .collect();
-    assert_eq!(unavailable, ["radial_drilling", "swarf"]);
+    assert_eq!(unavailable, ["swarf", "radial_drilling"]);
     for c in &choices {
         if let Some(why) = &c.unavailable {
             assert!(
@@ -1308,5 +1316,26 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
         "{}",
         status.cause
     );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself() {
+    // Decision 0204 (issue #195): one list, roughing first, finishing next,
+    // the specialist strategies last, each with its description; the same
+    // text is what the operation panel shows (issue #242).
+    let (dir, app, _op) = project("strategy-list");
+    let choices = app.strategy_choices();
+    let groups: Vec<_> = choices.iter().map(|c| c.group).collect();
+    let mut sorted = groups.clone();
+    sorted.sort();
+    assert_eq!(groups, sorted);
+    assert_eq!(choices[0].name, "rotary_roughing");
+    assert_eq!(choices.last().unwrap().name, "radial_drilling");
+    for c in &choices {
+        assert!(!c.description.is_empty(), "{}", c.name);
+        assert_eq!(app.strategy_description(&c.name), c.description);
+    }
+    assert_eq!(app.strategy_description("no_such_strategy"), "");
     std::fs::remove_dir_all(&dir).unwrap();
 }

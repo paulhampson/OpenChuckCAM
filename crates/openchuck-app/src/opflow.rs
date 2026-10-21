@@ -15,6 +15,8 @@ use std::collections::BTreeMap;
 use openchuck_project::id::{OperationId, SetupId, ToolId};
 use openchuck_project::{Item, ItemId, Operation, OrderKey, Placement, RestrictionOptions};
 
+use openchuck_path::StrategyGroup;
+
 use crate::{AppError, Application, Command};
 
 /// A strategy a user can choose for an operation (OP-16).
@@ -24,6 +26,11 @@ pub struct StrategyChoice {
     pub name: String,
     /// The name shown to the user.
     pub label: String,
+    /// What the strategy does, in plain words (OP-16; decision record 0204).
+    /// The same text is shown in the list and in the operation's panel.
+    pub description: String,
+    /// Where it sits in the list: roughing, finishing or specialist.
+    pub group: StrategyGroup,
     /// Whether the strategy can cut in a selection (decision record 0032
     /// item 6); one that cannot is listed with "ignores selections" and takes
     /// none (interface specification 11.4).
@@ -36,8 +43,9 @@ pub struct StrategyChoice {
 }
 
 impl Application {
-    /// The strategies in the registry, in name order, for an "add operation"
-    /// list, with none marked unavailable.
+    /// The strategies in the registry, in the order the "add operation" list
+    /// shows them (roughing, then finishing, then the specialist strategies;
+    /// decision record 0204), with none marked unavailable.
     pub fn strategy_choices(&self) -> Vec<StrategyChoice> {
         self.strategy_choices_for(None)
     }
@@ -49,10 +57,12 @@ impl Application {
     pub fn strategy_choices_for(&self, setup: Option<SetupId>) -> Vec<StrategyChoice> {
         let project = &self.document.project;
         self.strategies
-            .iter()
+            .in_menu_order()
             .map(|s| StrategyChoice {
                 name: s.name().to_owned(),
                 label: s.label().to_owned(),
+                description: s.description().to_owned(),
+                group: s.group(),
                 takes_selections: s.honours_region(),
                 unavailable: setup
                     .and_then(|id| crate::operation::unavailable_on_setup(project, s, id)),
@@ -67,6 +77,17 @@ impl Application {
             .iter()
             .find(|s| s.name() == name)
             .map_or_else(|| name.to_owned(), |s| s.label().to_owned())
+    }
+
+    /// The plain-language description of strategy `name` (the one-line text
+    /// under its name in the New operation list and in the operation's panel;
+    /// issues 195 and 242), or an empty string when no such strategy is
+    /// registered.
+    pub fn strategy_description(&self, name: &str) -> String {
+        self.strategies
+            .iter()
+            .find(|s| s.name() == name)
+            .map_or_else(String::new, |s| s.description().to_owned())
     }
 
     /// Whether strategy `name` takes options on its boundary, avoid and check
