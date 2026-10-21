@@ -1724,5 +1724,5 @@ fn req_set_05_the_overview_gives_the_model_extent_for_the_position_row() {
     let checks = Arc::new(f.app.start_checks(Some(checks)).wait().unwrap());
     let o = f.app.overview(Some(&checks), &JobLog::default());
     let placed = o.model_extent(f.model).unwrap().in_setup(&setup.frame);
-    assert_eq!(placed.bounds.min.x, inspected.bounds.min.x + 4.0);
+    assert!((placed.bounds.min.x - inspected.bounds.min.x - 4.0).abs() < 1e-12);
 }

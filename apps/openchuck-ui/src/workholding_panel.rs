@@ -948,7 +948,10 @@ impl WorkholdingPanel {
                     Ok(_) => response.on_hover_text(format!(
                         "Adds a tab that fills the gap at the {} of the part, from the part to \
                          the held region (or the end of the stock), and follows the part, the \
-                         stock and the held regions when they change",
+                         stock and the held regions when they change. It is a cylinder a quarter \
+                         of the stock's diameter across: where the part narrows to a small end, \
+                         check it is not wider than the part there, and change its diameter if \
+                         it is",
                         end.name()
                     )),
                 };
