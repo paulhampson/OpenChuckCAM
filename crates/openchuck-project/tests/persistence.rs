@@ -1587,6 +1587,15 @@ fn req_prj_04_req_op_02_restriction_set_options_round_trip_and_older_files_take_
         assert!(text.contains(needle), "{needle} in {text}");
     }
     assert_eq!(file::load(&dir).unwrap(), p);
+    // A schema 14 file holding them opens through the later steps as the
+    // same project, and saves again at the current schema with them intact.
+    let at_14 = copy_tree_with(&read_tree(&dir), "restrict-set-14", |_, text| {
+        text.replacen(&current(), "schema = 14\n", 1)
+    });
+    let opened = file::load(&at_14).unwrap();
+    assert_eq!(opened, p);
+    let again = temp_dir_saved(&opened, "restrict-set-14-saved");
+    assert_eq!(read_tree(&again), read_tree(&dir));
     // An entry equal to the defaults is not written, and reads back as none.
     let mut q = p.clone();
     let mut o = q.operation(op_id(101)).unwrap().clone();

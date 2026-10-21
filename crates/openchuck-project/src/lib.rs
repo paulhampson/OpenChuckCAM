@@ -33,6 +33,7 @@
 //!         boundary: None,
 //!         avoid: Vec::new(),
 //!         check: Vec::new(),
+//!         restriction_options: Default::default(),
 //!         parameters: Default::default(),
 //!     }),
 //!     Placement::End,
