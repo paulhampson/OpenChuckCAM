@@ -1,6 +1,6 @@
 # 0207: The setup sheet traceability block is built (lane TB; slice 19 item 6)
 
-- **Status:** proposed. Only the project owner accepts this record, in the lane TB session (decision 0049); until then it is guidance.
+- **Status:** accepted (21 Oct 2026, by the project owner directly in the lane TB session: "I accept decision 0207"). The owner's choice of UTC for OI-810 was relayed by the coordinator the same day.
 - **What it builds:** [decision 0110](0110-setup-sheet-traceability.md) (accepted 17 Oct 2026), which this record does not change. [Decision 0189](0189-setup-sheet-written-with-the-g-code.md) (Write G-code writes the sheet from the same run) and [decision 0028](0028-slice-19-output-options-and-setup-sheet.md) item 4 are unchanged.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-538 (closed by this change), OI-691 (closed by this change), OI-810 (closed: the owner chose UTC, relayed by the coordinator, 21 Oct 2026).
