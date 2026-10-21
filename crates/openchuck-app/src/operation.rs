@@ -346,10 +346,13 @@ pub(crate) fn generate_with_part(
         .as_ref()
         .ok_or_else(|| missing(operation, "its setup has no stock"))?;
 
+    // The part as this setup places it: the offset moves it against the
+    // stock, workholding and work zero (SET-05; decision record 0201).
     let placed = match placed {
         Some(placed) => placed,
         None => crate::model::placed_part(root, model, context)?,
-    };
+    }
+    .in_setup(&setup.frame)?;
     if edges.keep_tangent && placed.brep.is_none() {
         return Err(missing(
             operation,

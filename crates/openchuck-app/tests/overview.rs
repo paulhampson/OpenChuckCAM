@@ -906,6 +906,7 @@ fn req_ui_11_req_ui_12_workholding_findings_and_reach_are_messages() {
         diameter: None,
     });
     setup.workholding.tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(4.0),
         length: Millimetres(2.0),
         shape: TabShape::Cylinder {
@@ -1066,6 +1067,7 @@ fn req_ui_11_setup_rows_say_what_each_part_holds() {
         assert_eq!(row(&f, SetupPart::Stock).label, label);
     }
     let tab = |x: f64| Tab {
+        auto: None,
         x_start: Millimetres(x),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1221,9 +1223,17 @@ fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
-    // Part offset far along the axis: the stock runs past the X travel.
+    // The stock far along the axis: it runs past the X travel. (The part
+    // offset moves only the part, decision record 0201.)
     let mut setup = f.app.project().setup(f.setup).unwrap().clone();
-    setup.frame.part_offset = Millimetres(195.0);
+    match setup.stock.as_mut().unwrap() {
+        Stock::Cylinder { x_start, .. } => x_start.0 += 195.0,
+        Stock::Box { bounds } => {
+            bounds.min.x += 195.0;
+            bounds.max.x += 195.0;
+        }
+        other => panic!("{other:?}"),
+    }
     f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
     let o = f.app.overview(Some(&checks), &JobLog::default());

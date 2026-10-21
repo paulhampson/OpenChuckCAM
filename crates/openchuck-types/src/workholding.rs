@@ -95,6 +95,52 @@ pub enum TabLayout {
     },
 }
 
+/// The end of the part a tab is made for: the head is the lower X end, the
+/// tail the higher (decision record 0202).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TabEnd {
+    /// The lower X end of the part.
+    Head,
+    /// The higher X end of the part.
+    Tail,
+}
+
+impl TabEnd {
+    /// "head" or "tail".
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Head => "head",
+            Self::Tail => "tail",
+        }
+    }
+}
+
+/// The shortest zone that has room for a tab, in millimetres; a zone this
+/// short or shorter means the held region (or the end of the stock) reaches
+/// the part.
+pub const MIN_TAB_ROOM: f64 = 1e-6;
+
+/// The span a tab placed automatically at `end` takes (decision record
+/// 0202): the whole zone at that end of the part ([`tab_zones`]), from the
+/// held region's inner edge (or the end of the stock) to the part at the
+/// head, and from the part to the other held region (or the end of the
+/// stock) at the tail, so the tab joins the part to stock that is kept.
+/// `None` when the stock's extent is not known or the zone has no room.
+pub fn auto_tab_span(
+    workholding: &Workholding,
+    stock: &Stock,
+    part: &PartExtent,
+    end: TabEnd,
+) -> Option<Interval> {
+    let (head, tail) = tab_zones(workholding, stock, part)?;
+    let (lo, hi) = match end {
+        TabEnd::Head => head,
+        TabEnd::Tail => tail,
+    };
+    (hi - lo > MIN_TAB_ROOM).then_some((lo, hi))
+}
+
 /// One retaining tab (OP-21): a cylinder or frustum, `length` long from
 /// `x_start` along +X.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -108,6 +154,12 @@ pub struct Tab {
     pub shape: TabShape,
     /// On the axis or around it.
     pub layout: TabLayout,
+    /// When set, the tab's position and length are worked out again from the
+    /// part, the stock and the held regions at that end whenever they change
+    /// ([`Workholding::resolved`]; decision record 0202). Its shape and
+    /// layout stay as given. A hand edit of the position or length clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto: Option<TabEnd>,
 }
 
 /// The workholding and tabs of one setup. The default holds nothing and has
@@ -130,6 +182,54 @@ impl Workholding {
     /// True when there is no held region and no tab.
     pub fn is_empty(&self) -> bool {
         self.start.is_none() && self.end.is_none() && self.tabs.is_empty()
+    }
+
+    /// The workholding with each automatic tab's position and length worked
+    /// out from the part, the stock and the held regions ([`auto_tab_span`];
+    /// decision record 0202). The same inputs always give the same tabs
+    /// (GC-07). A tab with no room at its end keeps its stored values
+    /// ([`Workholding::auto_tabs_without_room`] lists it); with no stock or
+    /// part known every tab keeps them.
+    pub fn resolved(&self, stock: Option<&Stock>, part: Option<&PartExtent>) -> Self {
+        let mut out = self.clone();
+        let (Some(stock), Some(part)) = (stock, part) else {
+            return out;
+        };
+        for tab in &mut out.tabs {
+            if let Some(end) = tab.auto
+                && let Some((lo, hi)) = auto_tab_span(self, stock, part, end)
+            {
+                tab.x_start = Millimetres(lo);
+                tab.length = Millimetres(hi - lo);
+            }
+        }
+        out
+    }
+
+    /// The automatic tabs that find no room at their end of the part, by
+    /// their place in the list (from 0), with that end. Empty when the stock
+    /// or the part is not known.
+    pub fn auto_tabs_without_room(
+        &self,
+        stock: Option<&Stock>,
+        part: Option<&PartExtent>,
+    ) -> Vec<(usize, TabEnd)> {
+        let (Some(stock), Some(part)) = (stock, part) else {
+            return Vec::new();
+        };
+        if stock.bounds(Some(part)).is_none() {
+            return Vec::new();
+        }
+        self.tabs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| {
+                let end = t.auto?;
+                auto_tab_span(self, stock, part, end)
+                    .is_none()
+                    .then_some((i, end))
+            })
+            .collect()
     }
 
     /// The X interval each held region covers, given the stock's X extent.
@@ -219,7 +319,11 @@ pub fn validate_workholding(
     for (i, tab) in workholding.tabs.iter().enumerate() {
         let f = format!("{field}.workholding.tabs[{i}]");
         let (lo, hi) = (tab.x_start.0, tab.x_start.0 + tab.length.0);
-        if lo < stock_x.0 || hi > stock_x.1 {
+        // An automatic tab's position is worked out from the part where it
+        // is used (decision record 0202), so its stored position, which a
+        // change of stock may leave behind, is not held against it here.
+        let placed_by_hand = tab.auto.is_none();
+        if placed_by_hand && (lo < stock_x.0 || hi > stock_x.1) {
             return Err(Error::invalid(
                 format!("{f}.x_start"),
                 format!(
@@ -230,6 +334,7 @@ pub fn validate_workholding(
         }
         for (name, interval) in [("start", start), ("end", end)] {
             if let Some((a, b)) = interval
+                && placed_by_hand
                 && lo < b
                 && hi > a
             {
@@ -258,7 +363,7 @@ pub fn validate_workholding(
         }
         // Tabs on the axis may not share axial space; tabs around the axis
         // may, because they sit at different angles or radii.
-        if tab.layout == TabLayout::OnAxis {
+        if tab.layout == TabLayout::OnAxis && placed_by_hand {
             if let Some((_, _, other)) = occupied.iter().find(|(a, b, _)| lo < *b && hi > *a) {
                 return Err(Error::invalid(
                     format!("{f}.x_start"),
@@ -353,14 +458,21 @@ pub fn check_tab_zones(
     let Some((head, tail)) = tab_zones(workholding, stock, part) else {
         return Vec::new();
     };
+    // Automatic tabs are where the part, the stock and the held regions put
+    // them; one with no room says so instead (decision record 0202).
+    let no_room = workholding.auto_tabs_without_room(Some(stock), Some(part));
+    let resolved = workholding.resolved(Some(stock), Some(part));
     // A small allowance for rounding in the part's extent.
     const EPS: f64 = 1e-9;
     let inside = |lo: f64, hi: f64, z: Interval| lo >= z.0 - EPS && hi <= z.1 + EPS;
-    workholding
+    resolved
         .tabs
         .iter()
         .enumerate()
         .filter_map(|(i, t)| {
+            if let Some(&(_, end)) = no_room.iter().find(|(k, _)| *k == i) {
+                return Some(SetupWarningKind::AutoTabNoRoom { tab: i + 1, end });
+            }
             let (lo, hi) = (t.x_start.0, t.x_start.0 + t.length.0);
             (!inside(lo, hi, head) && !inside(lo, hi, tail)).then_some(
                 SetupWarningKind::TabOutsideEndZones {
@@ -380,6 +492,7 @@ mod tests {
 
     fn tab(x_start: f64, length: f64) -> Tab {
         Tab {
+            auto: None,
             x_start: Millimetres(x_start),
             length: Millimetres(length),
             shape: TabShape::Cylinder {
@@ -448,5 +561,136 @@ mod tests {
         );
         // Nothing is checked without the part.
         assert!(check_tab_zones(&w(vec![tab(40.0, 5.0)]), Some(&stock), None).is_empty());
+    }
+
+    /// Stock X 0 to 100, 40 across; 15 mm held at the start.
+    fn auto_setup() -> (Stock, Workholding) {
+        (
+            Stock::Cylinder {
+                diameter: Millimetres(40.0),
+                length: Millimetres(100.0),
+                x_start: Millimetres(0.0),
+            },
+            Workholding {
+                start: Some(HeldRegion {
+                    length: Millimetres(15.0),
+                    diameter: None,
+                }),
+                end: None,
+                tabs: vec![
+                    Tab {
+                        auto: Some(TabEnd::Head),
+                        ..tab(0.0, 1.0)
+                    },
+                    Tab {
+                        auto: Some(TabEnd::Tail),
+                        ..tab(0.0, 1.0)
+                    },
+                    tab(90.0, 5.0),
+                ],
+            },
+        )
+    }
+
+    fn part_at(lo: f64, hi: f64) -> PartExtent {
+        PartExtent {
+            bounds: Aabb {
+                min: Point3::new(lo, -10.0, -10.0),
+                max: Point3::new(hi, 10.0, 10.0),
+            },
+            radius: Millimetres(10.0),
+        }
+    }
+
+    /// An automatic tab fills the zone at its end of the part, from the held
+    /// region (or the end of the stock) to the part, and follows the part
+    /// when it moves; a manual tab stays (decision record 0202).
+    #[test]
+    fn req_op_21_an_automatic_tab_fills_its_zone_and_follows_the_part() {
+        let (stock, w) = auto_setup();
+        let span = |t: &Tab| (t.x_start.0, t.x_start.0 + t.length.0);
+        let at = |lo, hi| w.resolved(Some(&stock), Some(&part_at(lo, hi)));
+        let r = at(30.0, 80.0);
+        assert_eq!(span(&r.tabs[0]), (15.0, 30.0));
+        assert_eq!(span(&r.tabs[1]), (80.0, 100.0));
+        assert_eq!(span(&r.tabs[2]), (90.0, 95.0));
+        assert_eq!(r.tabs[0].auto, Some(TabEnd::Head));
+        assert_eq!(r.tabs[0].shape, w.tabs[0].shape);
+        let moved = at(40.0, 85.0);
+        assert_eq!(span(&moved.tabs[0]), (15.0, 40.0));
+        assert_eq!(span(&moved.tabs[1]), (85.0, 100.0));
+        // The same inputs give the same tabs, bit for bit (GC-07).
+        assert_eq!(at(40.0, 85.0), moved);
+        // Without the stock or the part nothing moves.
+        assert_eq!(w.resolved(None, Some(&part_at(30.0, 80.0))), w);
+        assert_eq!(w.resolved(Some(&stock), None), w);
+        assert!(w.auto_tabs_without_room(None, None).is_empty());
+        // Resolved, the automatic tabs are in their zones: no warning, but
+        // the manual tab across the tail zone still is checked.
+        assert_eq!(
+            check_tab_zones(&w, Some(&stock), Some(&part_at(30.0, 80.0))),
+            Vec::new()
+        );
+        let found = check_tab_zones(&w, Some(&stock), Some(&part_at(30.0, 92.0)));
+        assert!(matches!(
+            found[..],
+            [SetupWarningKind::TabOutsideEndZones { tab: 3, .. }]
+        ));
+    }
+
+    /// An automatic tab with no room at its end keeps its position and
+    /// warns; it is not removed (decision record 0202).
+    #[test]
+    fn req_op_21_an_automatic_tab_with_no_room_keeps_its_position_and_warns() {
+        let (stock, mut w) = auto_setup();
+        w.tabs.truncate(2);
+        // The part starts inside the held region: no room at the head.
+        let part = part_at(10.0, 80.0);
+        assert_eq!(auto_tab_span(&w, &stock, &part, TabEnd::Head), None);
+        assert_eq!(
+            w.auto_tabs_without_room(Some(&stock), Some(&part)),
+            vec![(0, TabEnd::Head)]
+        );
+        let r = w.resolved(Some(&stock), Some(&part));
+        assert_eq!(r.tabs[0], w.tabs[0]);
+        let found = check_tab_zones(&w, Some(&stock), Some(&part));
+        assert_eq!(
+            found,
+            vec![SetupWarningKind::AutoTabNoRoom {
+                tab: 1,
+                end: TabEnd::Head
+            }]
+        );
+        let text = crate::setup::SetupWarning {
+            kind: found[0].clone(),
+            unconfirmed: Vec::new(),
+        }
+        .to_string();
+        assert!(text.contains("no room there"), "{text}");
+        assert!(text.contains("keeps its last position"), "{text}");
+        assert_eq!(TabEnd::Tail.name(), "tail");
+    }
+
+    /// A stored automatic tab may lie anywhere: a change of stock leaves its
+    /// stored position behind, and it is placed where it is used. A manual
+    /// tab is still checked (decision record 0202).
+    #[test]
+    fn req_set_09_an_automatic_tab_is_not_held_to_its_stored_position() {
+        let (stock, mut w) = auto_setup();
+        w.tabs.truncate(2);
+        // Stored across the held region and outside the stock.
+        w.tabs[0].x_start = Millimetres(5.0);
+        w.tabs[0].length = Millimetres(20.0);
+        w.tabs[1].x_start = Millimetres(95.0);
+        w.tabs[1].length = Millimetres(30.0);
+        assert!(validate_workholding(&w, Some(&stock), "setup").is_ok());
+        w.tabs[0].auto = None;
+        assert!(validate_workholding(&w, Some(&stock), "setup").is_err());
+        // The format: `auto` is written only when set.
+        let text = serde_json::to_string(&w).unwrap();
+        assert_eq!(text.matches("\"auto\"").count(), 1, "{text}");
+        assert!(text.contains("\"auto\":\"tail\""), "{text}");
+        let back: Workholding = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, w);
     }
 }

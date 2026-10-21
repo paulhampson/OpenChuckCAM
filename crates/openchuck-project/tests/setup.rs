@@ -358,3 +358,101 @@ fn req_prj_04_req_set_01_a_z1_copy_without_an_id_migrates_by_its_name() {
         RotaryInFeed::Separate
     );
 }
+
+/// Before schema 17 a setup's part offset placed the part, the stock, the
+/// tabs and the work zero together, so it changed no toolpath; from 17 it
+/// moves only the part. An older setup with an offset has its stock, tabs and
+/// work zero moved by it, so it machines exactly as before; a setup without
+/// one is unchanged (PRJ-04; decision record 0201).
+#[test]
+fn req_prj_04_req_set_05_an_older_part_offset_moves_the_stock_tabs_and_work_zero_with_it() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-15-offset");
+    let project = file::load(&fixture).unwrap();
+    let by_name = |name: &str| project.setups().iter().find(|s| s.name == name).unwrap();
+
+    let cylinder = by_name("Cylinder");
+    assert_eq!(cylinder.frame.part_offset, Millimetres(20.0));
+    assert_eq!(
+        cylinder.frame.work_offset,
+        WorkOffset {
+            register: WorkOffsetRegister::G55,
+            x: Millimetres(18.0),
+        }
+    );
+    assert_eq!(
+        cylinder.stock,
+        Some(Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(34.0),
+            x_start: Millimetres(18.0),
+        })
+    );
+    // The held region is measured from the end of the stock, so it moves with
+    // it unchanged; the tab moves by the offset and stays a manual tab.
+    let held = cylinder.workholding.start.unwrap();
+    assert_eq!(held.length, Millimetres(4.0));
+    let tab = cylinder.workholding.tabs[0];
+    assert_eq!(
+        (tab.x_start, tab.length),
+        (Millimetres(23.0), Millimetres(2.0))
+    );
+    assert_eq!(tab.auto, None);
+
+    // Whole numbers and a missing work offset (model X 0) are read too.
+    let boxed = by_name("Box");
+    assert_eq!(boxed.frame.work_offset.x, Millimetres(5.0));
+    assert_eq!(
+        boxed.frame.work_offset.register,
+        WorkOffsetRegister::default()
+    );
+    let Some(Stock::Box { bounds }) = boxed.stock else {
+        panic!("box stock expected");
+    };
+    assert_eq!((bounds.min.x, bounds.max.x), (2.0, 45.0));
+    assert_eq!((bounds.min.y, bounds.max.z), (-10.0, 10.0));
+
+    let still = by_name("Still");
+    assert_eq!(still.frame, SetupFrame::default());
+    assert_eq!(
+        still.stock,
+        Some(Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(34.0),
+            x_start: Millimetres(-2.0),
+        })
+    );
+
+    // Saved again, the folder is schema 17 and loads to the same project.
+    let dir = temp_dir("schema-15-offset");
+    file::save(&project, &dir).unwrap();
+    let again = file::load(&dir).unwrap();
+    assert_eq!(again.setups(), project.setups());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A tab's `auto` is new in schema 17 (decision record 0202): an older
+/// file that holds one was not written by a version that knew it, so it is
+/// refused with what to do (NFR-07).
+#[test]
+fn req_prj_04_req_nfr_07_an_older_tab_with_auto_is_refused() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-15-offset");
+    let dir = temp_dir("schema-16-auto");
+    std::fs::create_dir_all(dir.join("setups")).unwrap();
+    std::fs::write(dir.join("project.toml"), "schema = 16\nname = \"auto\"\n").unwrap();
+    let setup =
+        std::fs::read_to_string(fixture.join("setups/00000000-0000-0000-0000-00000000000a.toml"))
+            .unwrap()
+            .replace("schema = 15", "schema = 16")
+            .replace("x_start = 3.0\n", "x_start = 3.0\nauto = \"head\"\n");
+    std::fs::write(
+        dir.join("setups/00000000-0000-0000-0000-00000000000a.toml"),
+        setup,
+    )
+    .unwrap();
+    let error = file::load(&dir).unwrap_err().to_string();
+    assert!(
+        error.contains("`auto`, a field schema 17 introduced"),
+        "{error}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

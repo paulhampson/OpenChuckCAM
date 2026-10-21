@@ -387,10 +387,13 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
             .into_iter()
             .find(|r| r.contains_rect(hint))
             .expect("the search box");
+        // The right-most bar near the list: the project tree behind the
+        // window may have a bar of its own further left.
         let bar = rig
             .bar_rects()
             .into_iter()
-            .find(|r| r.left() < search.right() + 20.0)
+            .filter(|r| r.left() < search.right() + 20.0)
+            .max_by(|a, b| a.right().total_cmp(&b.right()))
             .expect("the list's scroll bar");
         assert!(
             search.right() - bar.right() < 8.0 && bar.right() <= search.right() + 1.0,

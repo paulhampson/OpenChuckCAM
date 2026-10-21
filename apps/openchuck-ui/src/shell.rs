@@ -151,6 +151,9 @@ pub struct Shell {
     selected: Option<Selection>,
     /// The section of the setup inspector a setup's child row chose.
     setup_section: Option<SetupPart>,
+    /// The model's child row chosen in the tree, for its highlight
+    /// (issue #181).
+    model_section: Option<&'static str>,
     /// The missing value the "Show first" jump is taking the user to, until
     /// the inspector has scrolled to it.
     requirement_jump: Option<openchuck_app::requirements::RequirementField>,
@@ -249,6 +252,7 @@ impl Shell {
             bench: None,
             selected: None,
             setup_section: None,
+            model_section: None,
             requirement_jump: None,
             tool_library: ToolLibraryWindow::default(),
             import: None,
@@ -1015,8 +1019,20 @@ impl Shell {
                 self.select(Selection::Operation(id));
                 return;
             }
-            TreeAction::SelectModel(id) => {
+            TreeAction::SelectModel(id, section) => {
                 self.select(Selection::Model(id));
+                self.model_section = section;
+                if let Some(key) = section {
+                    self.model_panel
+                        .get_or_insert_with(|| ModelPanel::new(id))
+                        .open_section(key);
+                    if let Some(panel) = &mut self.model_panel
+                        && panel.model() != id
+                    {
+                        *panel = ModelPanel::new(id);
+                        panel.open_section(key);
+                    }
+                }
                 return;
             }
             TreeAction::SelectSet(id) => {
@@ -1718,8 +1734,9 @@ enum TreeAction {
     Delete(OperationId),
     /// Show this operation's parameters.
     Select(OperationId),
-    /// Show this model's units, placement and checks.
-    SelectModel(ModelId),
+    /// Show this model's units, placement and checks, at a section (the
+    /// model panel's section key; issue #181).
+    SelectModel(ModelId, Option<&'static str>),
     /// Show this selection set.
     SelectSet(SelectionSetId),
     /// Show this setup, at a section.

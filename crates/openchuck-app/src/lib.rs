@@ -649,7 +649,9 @@ impl Application {
                         parts.push((id, extent));
                     }
                     match parts.iter().find(|(m, _)| *m == id).map(|(_, e)| e) {
-                        Some(Ok(extent)) => *extent,
+                        // Where this setup's offset puts the part (decision
+                        // record 0201).
+                        Some(Ok(extent)) => extent.map(|e| e.in_setup(&s.frame)),
                         Some(Err(e)) => {
                             notes.push(format!(
                                 "the part cannot be read, so it is not checked: {e}"

@@ -468,6 +468,9 @@ pub struct Overview {
     first_unsimulated_unmade: Option<usize>,
     any_enabled: bool,
     models: usize,
+    /// Each model's extent as its placement steps put it, from the checks
+    /// (the Setup inspector's read-only position, decision record 0201).
+    model_extents: BTreeMap<ModelId, PartExtent>,
     /// Selection sets in error that an enabled operation uses.
     blocked_sets: Vec<ItemRef>,
     post_blocker: Option<&'static str>,
@@ -502,9 +505,17 @@ impl Overview {
             first_unsimulated_unmade: None,
             any_enabled: false,
             models: 0,
+            model_extents: BTreeMap::new(),
             blocked_sets: Vec::new(),
             post_blocker: Some("Open or start a project first"),
         }
+    }
+
+    /// The extent of `model` as its placement steps put it, from the checks
+    /// last worked out; `None` until they have read it. A setup's part is
+    /// this moved by the setup's offset ([`PartExtent::in_setup`]).
+    pub fn model_extent(&self, model: ModelId) -> Option<PartExtent> {
+        self.model_extents.get(&model).copied()
     }
 
     /// Why "Post and export…" in the File menu is unavailable, if it is: the
@@ -983,7 +994,9 @@ pub(crate) fn run_checks(
             .part
             .and_then(|id| checks.models.get(&id))
             .and_then(|m| m.findings.as_ref().ok())
-            .and_then(|f| f.extent);
+            .and_then(|f| f.extent)
+            // Where this setup's offset puts the part (decision record 0201).
+            .map(|e| e.in_setup(&s.frame));
         let mut notes = Vec::new();
         let warnings = match project.machine() {
             Some(profile) => {
@@ -2061,6 +2074,20 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         first_unsimulated_unmade,
         any_enabled,
         models: project.models().len(),
+        model_extents: checks
+            .map(|c| {
+                c.models
+                    .iter()
+                    .filter_map(|(id, m)| {
+                        m.findings
+                            .as_ref()
+                            .ok()
+                            .and_then(|f| f.extent)
+                            .map(|e| (*id, e))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         blocked_sets,
         post_blocker,
     }

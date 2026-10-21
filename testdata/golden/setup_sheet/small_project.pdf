@@ -18,7 +18,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
 endobj
 7 0 obj
-<< /Length 3344 >>
+<< /Length 3362 >>
 stream
 BT /F2 14 Tf 40 793.50 Td (Setup sheet: sheet) Tj ET
 BT /F2 11 Tf 40 771.50 Td (Job) Tj ET
@@ -33,13 +33,13 @@ BT /F1 8.5 Tf 40 672.50 Td (Part            models/cube.stl) Tj ET
 BT /F1 8.5 Tf 40 661.50 Td (Stock           cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
 BT /F1 8.5 Tf 40 650.50 Td (Stock material  oak) Tj ET
 BT /F1 8.5 Tf 40 639.50 Td (Work offset     G54, work zero at model X 0 mm on the rotary axis) Tj ET
-BT /F1 8.5 Tf 40 628.50 Td (Part offset     0 mm along the rotary axis from the machine's reference point) Tj ET
+BT /F1 8.5 Tf 40 628.50 Td (Part offset     part moved 0 mm along the rotary axis from where its placement puts it) Tj ET
 BT /F2 11 Tf 40 606.50 Td (Setup: Flip / side 2) Tj ET
 BT /F1 8.5 Tf 40 595.50 Td (Part            models/cube.stl) Tj ET
 BT /F1 8.5 Tf 40 584.50 Td (Stock           cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
 BT /F1 8.5 Tf 40 573.50 Td (Stock material  oak) Tj ET
 BT /F1 8.5 Tf 40 562.50 Td (Work offset     G54, work zero at model X 0 mm on the rotary axis) Tj ET
-BT /F1 8.5 Tf 40 551.50 Td (Part offset     0 mm along the rotary axis from the machine's reference point) Tj ET
+BT /F1 8.5 Tf 40 551.50 Td (Part offset     part moved 0 mm along the rotary axis from where its placement puts it) Tj ET
 BT /F2 11 Tf 40 529.50 Td (Tools) Tj ET
 BT /F2 8.5 Tf 40 518.50 Td (Tool  Name       Type      Dia mm  Flutes  Flute mm  Overall mm  Shank mm  Used in) Tj ET
 BT /F1 8.5 Tf 40 507.50 Td (-------------------------------------------------------------------------------------------------) Tj ET
@@ -73,5 +73,5 @@ xref
 trailer
 << /Size 8 /Root 1 0 R /Info 5 0 R >>
 startxref
-3915
+3933
 %%EOF

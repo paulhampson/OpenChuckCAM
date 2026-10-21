@@ -173,10 +173,11 @@ fn req_set_01_oracle_agrees_with_a_y_rotary_axis() {
 #[test]
 fn req_set_05_setup_frames_agree_with_oracle_and_each_other() {
     // Frame conversion across part, work and machine (work breakdown slice 3
-    // item 7): the machine frame puts the model origin `part_offset` along
-    // the axis from the rotary reference point; the work frame puts the work
-    // zero on the axis at model X = work_offset.x; and machine = work + the
-    // work offset register.
+    // item 7): the machine frame puts the model origin at the rotary
+    // reference point, whatever the part offset, which moves only the part
+    // (decision record 0201); the work frame puts the work zero on the axis
+    // at model X = work_offset.x; and machine = work + the work offset
+    // register.
     let profile = MachineProfile::example_x_rotary();
     let setup = SetupFrame {
         part_offset: Millimetres(23.5),
@@ -185,10 +186,10 @@ fn req_set_05_setup_frames_agree_with_oracle_and_each_other() {
             x: Millimetres(-4.25),
         },
     };
-    let machine = RotaryFrame::machine(&profile, &setup);
+    let machine = RotaryFrame::of_profile(&profile);
     let work = RotaryFrame::work(&profile, &setup);
     let machine_oracle = OracleMachine {
-        origin_x: profile.rotary_origin.x + 23.5,
+        origin_x: profile.rotary_origin.x,
         origin_y: profile.rotary_origin.y,
         origin_z: profile.rotary_origin.z,
         sense: 1.0,
@@ -214,8 +215,17 @@ fn req_set_05_setup_frames_agree_with_oracle_and_each_other() {
     // The work zero is on the rotary axis: Y0 Z0 in work coordinates (OI-40).
     let zero = machine_xyz(&work, Point3::new(-4.25, 0.0, 0.0), Degrees(123.0));
     assert!(zero.distance(Point3::ORIGIN) < LIMIT_MM);
-    // A wrong part offset is caught.
+    // A wrong origin is caught.
     let mut wrong = machine_oracle;
     wrong.origin_x += 0.5;
     assert!(worst_frame_error(&machine, &wrong) > 0.1);
+    // A part point, moved by the part offset, reaches the machine 23.5 mm
+    // further along the axis than with no offset, at every A.
+    for &a in ANGLES {
+        for tip in tips() {
+            let moved = machine_xyz(&machine, setup.place_part(tip), Degrees(a));
+            let still = machine_xyz(&machine, SetupFrame::default().place_part(tip), Degrees(a));
+            assert!(moved.distance(Point3::new(still.x + 23.5, still.y, still.z)) < LIMIT_MM);
+        }
+    }
 }

@@ -77,6 +77,10 @@ pub fn labelled_solids(
     if workholding.is_empty() {
         return Ok(Vec::new());
     }
+    // Automatic tabs where the part, the stock and the held regions put them
+    // (decision record 0202).
+    let resolved = workholding.resolved(stock, Some(part));
+    let workholding = &resolved;
     let stock = stock.ok_or_else(|| refuse("the setup has held regions or tabs but no stock"))?;
     let bounds = stock.bounds(Some(part)).ok_or_else(|| {
         refuse("the stock's extent is not known, so held regions and tabs cannot be placed")
@@ -338,7 +342,7 @@ pub(crate) fn findings_of(
         .and_then(|id| project.models().iter().find(|m| m.id == id))
     {
         Some(model) => {
-            let mesh = crate::model::placed_mesh(root, model, context)?;
+            let mesh = crate::model::setup_mesh(root, model, setup, context)?;
             openchuck_geom::part_extent(&mesh)
         }
         None => return Ok(Vec::new()),
@@ -393,7 +397,7 @@ pub(crate) fn reach_warnings_of(
     else {
         return Ok(Vec::new());
     };
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let mesh = crate::model::setup_mesh(root, model, setup, context)?;
     let part = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     let solids = labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)?;
@@ -547,6 +551,7 @@ pub fn zone_defaults(
             (small, large)
         };
         ZoneDefault::Tab(Tab {
+            auto: None,
             x_start: Millimetres(lo),
             length: Millimetres(hi - lo),
             shape: TabShape::Frustum {
@@ -633,7 +638,7 @@ pub(crate) fn part_facts_of(
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
         .ok_or_else(|| refuse("the setup has no part"))?;
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let mesh = crate::model::setup_mesh(root, model, setup, context)?;
     let extent = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     let defaults = setup
@@ -661,7 +666,7 @@ pub(crate) fn default_tabs_of(
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
         .ok_or_else(|| refuse("the setup has no part"))?;
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let mesh = crate::model::setup_mesh(root, model, setup, context)?;
     let part = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     default_tabs(&setup.workholding, stock, &mesh, &part)
@@ -811,6 +816,7 @@ mod tests {
             end: None,
             tabs: vec![
                 Tab {
+                    auto: None,
                     x_start: Millimetres(80.0),
                     length: Millimetres(6.0),
                     shape: TabShape::Cylinder {
@@ -819,6 +825,7 @@ mod tests {
                     layout: TabLayout::OnAxis,
                 },
                 Tab {
+                    auto: None,
                     x_start: Millimetres(90.0),
                     length: Millimetres(5.0),
                     shape: TabShape::Frustum {
@@ -902,6 +909,7 @@ mod tests {
     fn req_op_21_a_tab_narrower_than_the_tool_is_refused() {
         let w = Workholding {
             tabs: vec![Tab {
+                auto: None,
                 x_start: Millimetres(80.0),
                 length: Millimetres(10.0),
                 shape: TabShape::Frustum {
@@ -925,6 +933,7 @@ mod tests {
     fn req_op_21_a_tab_across_the_part_is_refused() {
         let w = Workholding {
             tabs: vec![Tab {
+                auto: None,
                 x_start: Millimetres(40.0),
                 length: Millimetres(5.0),
                 shape: TabShape::Cylinder {

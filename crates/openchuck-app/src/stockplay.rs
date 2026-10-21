@@ -258,7 +258,12 @@ impl Application {
                     .and_then(|s| s.part)
                     .and_then(|id| run.project.models().iter().find(|m| m.id == id))
                     .ok_or_else(|| AppError::Playback("the setup has no part".to_owned()))?;
-                let mesh = crate::model::placed_mesh(&document.location, model, context)?;
+                let mesh = match run.project.setup(setup) {
+                    Some(setup) => {
+                        crate::model::setup_mesh(&document.location, model, setup, context)?
+                    }
+                    None => crate::model::placed_mesh(&document.location, model, context)?,
+                };
                 let model_triangles = mesh.triangles.len();
                 // The deviation was measured against the part with the held
                 // regions and tabs; the colours are of the part's triangles,

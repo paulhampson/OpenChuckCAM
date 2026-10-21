@@ -9,7 +9,7 @@
 //! screen right is +Y and screen up is +Z. The interface draws them and
 //! works out nothing of its own (specification section 1).
 
-use openchuck_project::{Project, Setup};
+use openchuck_project::Project;
 use openchuck_types::geometry::Point3;
 use openchuck_types::kinematics::{RotaryFrame, facing_at, model_up};
 use openchuck_types::machine::MachineProfile;
@@ -286,7 +286,7 @@ pub fn setup_panes(
         axis: (x0 - margin - LEAD, x1 + margin),
         work_zero,
         safe_z: clearance.map(|c| c.safe_z.0),
-        travel_z: machine.map(|m| travel_limit(m, setup)),
+        travel_z: machine.map(travel_limit),
         ..FrontPane::default()
     };
     let mut end = EndPane {
@@ -457,8 +457,8 @@ fn section_outline(section: SolidSection) -> Vec<[f64; 2]> {
 
 /// The Z+ travel limit above the rotary axis: the machine's highest Z minus
 /// the axis's Z (11.3).
-fn travel_limit(profile: &MachineProfile, setup: &Setup) -> f64 {
-    let axis: Point3 = RotaryFrame::machine(profile, &setup.frame).on_axis(Millimetres(0.0));
+fn travel_limit(profile: &MachineProfile) -> f64 {
+    let axis: Point3 = RotaryFrame::of_profile(profile).on_axis(Millimetres(0.0));
     profile.travel.max.z - axis.z
 }
 

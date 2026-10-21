@@ -563,16 +563,25 @@ fn req_set_01_req_set_03_req_set_05_req_set_06_cli_sets_machine_and_setup() {
         "--material",
         "oak",
         "--part-offset",
-        "20",
+        "1",
         "--work-offset",
         "g55",
         "--work-x",
         "-2",
     ]));
     assert_eq!(out.code, Some(0), "{}", out.stderr);
+    // The work zero stays where it is in the setup when the part moves, so
+    // the register is the rotary reference point plus the work X alone
+    // (decision record 0201).
     assert!(
         out.stdout
-            .contains("set G55 to machine X -162.400 Y -108.800 Z -55.000"),
+            .contains("set G55 to machine X -182.400 Y -108.800 Z -55.000"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("position:   part moved 1 mm along the rotary axis"),
         "{}",
         out.stdout
     );

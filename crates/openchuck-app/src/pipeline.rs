@@ -324,7 +324,7 @@ pub(crate) fn regenerate(
             let mesh = match (part, setup) {
                 (Some(model), Some(setup)) => Some(crate::workholding::setup_deviation_target(
                     setup,
-                    crate::model::placed_mesh(location, model, context)?,
+                    crate::model::setup_mesh(location, model, setup, context)?,
                 )?),
                 _ => None,
             };
