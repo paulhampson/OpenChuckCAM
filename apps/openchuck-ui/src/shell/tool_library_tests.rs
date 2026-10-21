@@ -376,10 +376,16 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
         for _ in 0..30 {
             rig.frame(Vec::new());
         }
+        let hint = rig
+            .text_rects()
+            .iter()
+            .find(|(t, _)| t == "Search tools")
+            .expect("the search hint")
+            .1;
         let search = rig
             .entry_rects()
             .into_iter()
-            .find(|r| r.left() < 60.0 && r.top() < 100.0)
+            .find(|r| r.contains_rect(hint))
             .expect("the search box");
         let bar = rig
             .bar_rects()
@@ -391,9 +397,9 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
             "the bar is not at the pane's edge: {bar:?} against {search:?}, scale {scale}"
         );
         for (text, r) in rig.text_rects() {
-            // The rows of the list: narrow texts inside the bar's height.
-            if r.width() < 150.0
-                && r.left() > 30.0
+            // The rows of the list: a tool's name and its number chip.
+            if (text.starts_with("Tool number") || text == "T1")
+                && r.left() > search.left()
                 && r.left() < bar.left() - 8.0
                 && r.top() >= bar.top()
                 && r.bottom() <= bar.bottom()

@@ -1188,8 +1188,11 @@ fn req_ui_16_req_ui_07_entry_boxes_fill_the_pane_and_the_scroll_bar_never_covers
         for scale in [1.0, 1.2] {
             for pane in [280.0, 388.0, 520.0] {
                 let (entries, left, right, bar) = setup_entries(window, scale, pane);
-                let texts: Vec<_> = entries.iter().filter(|r| r.width() > 60.0).collect();
-                if entries.is_empty() {
+                let texts: Vec<_> = entries
+                    .iter()
+                    .filter(|r| r.width() > 60.0 && r.height() < 30.0)
+                    .collect();
+                if texts.is_empty() {
                     // The inspector collapsed to its rail (UI-16).
                     assert!(window.0 / scale < 1200.0, "{window:?} x{scale} {pane}");
                     continue;
