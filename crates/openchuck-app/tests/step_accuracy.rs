@@ -95,7 +95,11 @@ fn ball(diameter: f64) -> Outline {
 /// angles of its corners, and its chord lies `r (1 - cos(span / 2))` inside.
 fn widest_sagitta(model: &BrepModel, radius: f64) -> f64 {
     let mut worst: f64 = 0.0;
-    for face in &model.faces {
+    for face in model
+        .faces
+        .iter()
+        .filter(|f| f.surface == openchuck_types::brep::SurfaceKind::Cylinder)
+    {
         let mesh = &face.tessellation;
         for t in &mesh.triangles {
             let angles: Vec<f64> = t
@@ -107,7 +111,7 @@ fn widest_sagitta(model: &BrepModel, radius: f64) -> f64 {
                 .collect();
             let radial = t.iter().all(|&i| {
                 let p = mesh.vertices[i as usize];
-                (p.y.hypot(p.z) - radius).abs() < 1e-6
+                (p.y.hypot(p.z) - radius).abs() < 1e-4
             });
             if !radial {
                 continue;
@@ -144,9 +148,15 @@ fn req_imp_06_the_tessellation_error_is_measured_on_the_triangles_not_taken_from
             side.max
         );
         assert!(side.p99 <= side.max && side.samples > side.triangles);
-        // Corners lie on the face: the planes' error is the evaluator's.
+        // The closed form, from the face's data alone, reads the same.
+        let closed = side.closed_form.unwrap();
+        assert!((closed - side.max).abs() < 1e-9, "{closed}");
+        // The caps' triangles lie in their planes: the planes' error is the
+        // evaluator's. Measured against the trimmed face, a point by the rim
+        // may lie outside the trim polyline, so that reading is no smaller.
         let planes = report.iter().find(|r| r.kind == "plane").unwrap();
         assert!(planes.max < 1e-9, "{}", planes.max);
+        assert!(planes.trimmed >= planes.max);
         // The facet normals of a cylinder turn by half a triangle's span.
         assert!(side.normal_degrees > 0.0 && side.normal_degrees < 10.0);
         println!(

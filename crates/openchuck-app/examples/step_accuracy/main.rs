@@ -157,7 +157,7 @@ fn main() -> Result<(), Error> {
     let mut fine = None;
     if wants("m1") {
         println!("\n## M1: tessellation against the exact faces");
-        println!("part | deflection mm | kind | faces | triangles | samples | max mm | p99 mm | normal deg | import s");
+        println!("part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | import s");
         for part in [
             "cylinder", "cone", "sphere", "torus", "bspline_face", "filleted_box", "revolved_spline",
         ] {
@@ -337,7 +337,7 @@ fn main() -> Result<(), Error> {
             let started = Instant::now();
             let result = again.regenerate()?;
             let took = started.elapsed();
-            let clean = result.reports.iter().all(openchuck_app::posting::GcodeReport::is_clean);
+            let clean = result.reports.iter().all(|r| r.is_clean());
             let gcode = result.gcode.clone();
             let same = reference.as_ref().is_none_or(|r| *r == gcode);
             println!(
@@ -440,13 +440,16 @@ fn print_m1(part: &str, d: f64, model: &BrepModel, took: Duration) -> f64 {
     let mut worst: f64 = 0.0;
     for k in &report {
         println!(
-            "{part} | {d} | {} | {} | {} | {} | {:.5} | {:.5} | {:.2} | {:.2}",
+            "{part} | {d} | {} | {} | {} | {} | {} | {:.5} | {:.5} | {:.5} | {} | {:.2} | {:.2}",
             k.kind,
             k.faces,
             k.triangles,
+            k.measured,
             k.samples,
             k.max,
             k.p99,
+            k.trimmed,
+            k.closed_form.map_or("-".to_owned(), |c| format!("{c:.5}")),
             k.normal_degrees,
             took.as_secs_f64()
         );
@@ -922,7 +925,8 @@ impl Job<'_> {
                 Threads::Exactly(n) => n,
             })
             .build()?;
-        pool.install(|| self.run_here(form))
+        pool.install(|| self.run_here(form).map_err(|e| e.to_string()))
+            .map_err(Into::into)
     }
 
     fn run_here(&self, form: &Form) -> Result<Run, Error> {
