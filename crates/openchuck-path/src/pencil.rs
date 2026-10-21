@@ -17,8 +17,22 @@
 //! vertical lines across the crease, and rests at the position where it is
 //! lowest and nearest the crease: in a V that is the one place it touches both
 //! sides, and against a wall rising from a floor it is the place where it
-//! just touches the wall. The tool is only ever placed by a drop, so the pass
-//! cannot gouge the part.
+//! just touches the wall. The tool is only ever placed by a drop, so no
+//! placement gouges the part.
+//!
+//! **Moves between placements.** A drop does not make the straight move from
+//! one placement to the next safe. Where the corner narrows below the tool,
+//! the drop rests it on whatever it meets above, such as the tips of a
+//! blisk's blades. The move between a rest in the root and a rest on the
+//! tips then cuts through the blade (issue 217: about the tool's radius
+//! deep). So each move is checked at points along it, as the machine moves
+//! (linear in X, across, height and A), against a drop there. Where the tool
+//! would be lower than the drop allows by more than the tolerance, a point
+//! dropped half way is put in and each half checked the same way, so the
+//! tool rides over what is between on the part's surface. Only if that does
+//! not clear the move in [`MAX_HALVINGS`] halvings does the pass end there.
+//! The next pass then starts, and a retract and a link above the stock join
+//! the two (a link costs more to cut and to simulate than a few points).
 //!
 //! **Only where material is left.** Unless `min_remaining` is 0, a stretch of
 //! the crease is cut only where the remaining-material map of
@@ -51,6 +65,10 @@ pub mod pencil_parameter {
     /// The furthest apart, along the crease, that points are.
     pub const MAX_STEP: &str = "max_step";
 }
+
+/// How many times a move that would cut into the part is halved before the
+/// pass is ended there instead.
+const MAX_HALVINGS: u32 = 8;
 
 /// Most points one run may make (NFR-07).
 const MAX_POINTS: f64 = 2.0e6;
@@ -371,9 +389,13 @@ impl Placement<'_> {
                 }
             }
         }
-        let line = self.line(&site, good);
-        let drop = self.input.surface.drop_tool(self.grown, &line)?;
-        let axis = rotary.tool_axis(a);
+        self.placed_on(&self.line(&site, good), a)
+    }
+
+    /// The tool dropped along `line` at angle `a`, with the stock to leave.
+    fn placed_on(&self, line: &ToolLine, a: Degrees) -> Option<CutPoint> {
+        let drop = self.input.surface.drop_tool(self.grown, line)?;
+        let axis = self.input.rotary.tool_axis(a);
         let tip = drop.tip + axis.get() * self.leave;
         let contact = if self.leave > 0.0 {
             cutter::cutter_contact(self.input.tool, tip, axis, drop.contact)
@@ -381,6 +403,99 @@ impl Placement<'_> {
             drop.contact
         };
         Some(CutPoint { tip, a, contact })
+    }
+}
+
+/// The angle `f` of the way from `from` to `to` as the machine turns: to
+/// the equivalent of `to` nearest `from`, the rule assembly unwraps by, so a
+/// move across the end of `a_facing`'s range is checked on the short arc it
+/// is cut along.
+fn angle_between(from: Degrees, to: Degrees, f: f64) -> Degrees {
+    let to = crate::rotary::nearest_turn(to, from);
+    Degrees(from.0 + (to.0 - from.0) * f)
+}
+
+/// How many intervals to split a move into so that no point of the tool
+/// moves more than `step` between samples: the tip travels `travel` and a
+/// point `radius` from the rotary axis sweeps `sweep` degrees of arc. At
+/// least 4, at most 10 000.
+fn intervals(travel: f64, sweep: f64, radius: f64, step: f64) -> usize {
+    ((travel + sweep.abs().to_radians() * radius) / step)
+        .ceil()
+        .clamp(4.0, 1.0e4) as usize
+}
+
+impl Placement<'_> {
+    /// The machine's position `f` of the way along the straight move from
+    /// `from` to `to` (linear in its axes, as it is cut): the tool line there,
+    /// its angle and the tip's height on the line.
+    fn between(&self, from: &CutPoint, to: &CutPoint, f: f64) -> (ToolLine, Degrees, f64) {
+        let rotary = &self.input.rotary;
+        let (p, q) = (
+            rotary.to_axis(from.tip, from.a),
+            rotary.to_axis(to.tip, to.a),
+        );
+        let mix = |u: f64, v: f64| u + (v - u) * f;
+        let a = angle_between(from.a, to.a, f);
+        let line = rotary.tool_line(
+            Millimetres(mix(p.along, q.along)),
+            a,
+            Millimetres(mix(p.across, q.across)),
+        );
+        (line, a, mix(p.height, q.height))
+    }
+
+    /// Whether the straight move from `from` to `to` keeps the tool within
+    /// `tolerance` of the part everywhere: at points no further apart than
+    /// `step` along it, the tip is no lower than a drop of the tool there
+    /// allows.
+    fn clear_between(&self, from: &CutPoint, to: &CutPoint, step: f64, tolerance: f64) -> bool {
+        let rotary = &self.input.rotary;
+        // The point of the cutting part furthest from the rotary axis, at
+        // either end: it sweeps the longest arc as the machine turns.
+        let end = self.grown.end();
+        let radius = [(from.tip, from.a), (to.tip, to.a)]
+            .into_iter()
+            .map(|(tip, a)| {
+                let p = rotary.to_axis(tip, a);
+                (p.across.abs() + end.radius.0).hypot(p.height.abs() + end.height.0)
+            })
+            .fold(0.0, f64::max);
+        let sweep = crate::rotary::nearest_turn(to.a, from.a).0 - from.a.0;
+        let n = intervals(from.tip.distance(to.tip), sweep, radius, step);
+        (1..n).all(|i| {
+            let (line, _, height) = self.between(from, to, i as f64 / n as f64);
+            self.input
+                .surface
+                .drop_tool(self.grown, &line)
+                .is_none_or(|c| height >= c.offset + self.leave - tolerance)
+        })
+    }
+
+    /// The points to put between `from` and `to` so that every move clears
+    /// the part (see [`Self::clear_between`]): none when the straight move
+    /// does, else a point dropped half way and the points each half needs, at
+    /// most `depth` halvings deep. `None` when that is not enough.
+    fn bridge(
+        &self,
+        from: &CutPoint,
+        to: &CutPoint,
+        step: f64,
+        tolerance: f64,
+        depth: u32,
+    ) -> Option<Vec<CutPoint>> {
+        if self.clear_between(from, to, step, tolerance) {
+            return Some(Vec::new());
+        }
+        if depth == 0 {
+            return None;
+        }
+        let (line, a, _) = self.between(from, to, 0.5);
+        let mid = self.placed_on(&line, a)?;
+        let mut points = self.bridge(from, &mid, step, tolerance, depth - 1)?;
+        points.push(mid);
+        points.extend(self.bridge(&mid, to, step, tolerance, depth - 1)?);
+        Some(points)
     }
 }
 
@@ -465,6 +580,7 @@ impl Strategy for PencilFinishing {
             )));
         }
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
+        let tolerance = parameters.number(names::TOLERANCE)?;
         let min_remaining = parameters.number(parameter::MIN_REMAINING)?;
         let angle = parameters.number(pencil_parameter::CREASE_ANGLE)?;
         let max_step = parameters.number(pencil_parameter::MAX_STEP)?;
@@ -535,10 +651,21 @@ impl Strategy for PencilFinishing {
             let mut run: Vec<CutPoint> = Vec::new();
             let mut runs: Vec<Vec<CutPoint>> = Vec::new();
             let (mut from_start, mut to_end) = (false, false);
+            // The moves are checked at points a quarter of the tool's radius
+            // apart, or closer when the step along the crease is shorter.
+            let check_step = (0.25 * radius).min(max_step).max(1e-3);
             for (i, point) in placed.into_iter().enumerate() {
                 let wanted = point.filter(|p| map.as_ref().is_none_or(|m| m.near(p.contact)));
                 match wanted {
                     Some(p) => {
+                        // A move that would cut into the part rides over it,
+                        // or else ends the pass.
+                        if let Some(last) = run.last().copied() {
+                            match placement.bridge(&last, &p, check_step, tolerance, MAX_HALVINGS) {
+                                Some(points) => run.extend(points),
+                                None => runs.push(std::mem::take(&mut run)),
+                            }
+                        }
                         from_start |= i == 0;
                         to_end |= i == last_index;
                         run.push(p);
@@ -626,4 +753,37 @@ fn order(mut passes: Vec<Pass>) -> Vec<Pass> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_op_09_req_nfr_12_a_move_is_checked_on_the_arc_the_machine_turns() {
+        // Across the end of the range: 179 to -179 degrees is a 2 degree turn
+        // through 180, not 358 through 0.
+        let half = angle_between(Degrees(179.0), Degrees(-179.0), 0.5);
+        assert!((half.0 - 180.0).abs() < 1e-9, "{half:?}");
+        let half = angle_between(Degrees(-179.0), Degrees(179.0), 0.5);
+        assert!((half.0 + 180.0).abs() < 1e-9, "{half:?}");
+        // Within the range the move is the straight mix of the two.
+        let quarter = angle_between(Degrees(10.0), Degrees(50.0), 0.25);
+        assert!((quarter.0 - 20.0).abs() < 1e-9, "{quarter:?}");
+    }
+
+    #[test]
+    fn req_op_09_req_nfr_12_a_turn_is_sampled_by_the_arc_the_tool_sweeps() {
+        // The tip barely moves but the machine turns 30 degrees: a point 20
+        // mm from the axis sweeps about 10.5 mm, so a 0.5 mm step needs 21
+        // intervals or more, not the 4 the tip's travel alone gives.
+        let n = intervals(0.01, 30.0, 20.0, 0.5);
+        assert!(n >= 21, "{n}");
+        assert!(0.01 + 30f64.to_radians() * 20.0 <= 0.5 * n as f64);
+        // The turn's direction does not matter, and with no turn the tip's
+        // travel alone sets the count.
+        assert_eq!(intervals(0.01, -30.0, 20.0, 0.5), n);
+        assert_eq!(intervals(3.0, 0.0, 20.0, 0.5), 6);
+        assert_eq!(intervals(0.01, 0.0, 20.0, 0.5), 4);
+    }
 }

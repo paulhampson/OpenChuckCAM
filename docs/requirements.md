@@ -184,6 +184,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | SIM-12 | Show the posted G-code beside playback, following the current move. | P2 |
 | SIM-13 | Summarise each generated operation: moves, cut length, A travel, A unwinds and programmed time. | P2 |
 | SIM-14 | Show, for each operation, the largest overcut and the most material left after it, and the worst values after the current operation during playback. | P2 |
+| SIM-15 | Choose which deviation bands the result views show, as the histogram's bins and as a range the user sets, so the part shows only the overcut or the material left of interest; the colour scale, the legend and the histogram follow the choice, and the worst values and counts stay those of the whole part. | P2 |
 
 ### 3.7 G-code generation and post-processing
 

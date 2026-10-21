@@ -338,6 +338,93 @@ fn req_op_09_pencil_follows_the_crease_within_tolerance_without_gouging() {
     assert!(after < 0.6 && after < before - 0.4, "{before} -> {after}");
 }
 
+/// A toothed wheel along X: a hub of `root` radius with `teeth` teeth out to
+/// `tip`, whose angular width grows from `narrow` degrees at X = 0 to `wide`
+/// at X = `length`, so the gap between teeth narrows along the crease at
+/// each tooth's root (a blisk's blades, issue 217).
+fn toothed(teeth: usize, root: f64, tip: f64, narrow: f64, wide: f64, length: f64) -> TriangleMesh {
+    use openchuck_types::geometry::Point3;
+    let period = 360.0 / teeth as f64;
+    let ring = |x: f64, width: f64| -> Vec<Point3> {
+        let mut out = Vec::new();
+        for k in 0..teeth {
+            let t0 = k as f64 * period;
+            for (r, t) in [
+                (root, t0),
+                (tip, t0 + 1.0),
+                (tip, t0 + 1.0 + width),
+                (root, t0 + 2.0 + width),
+            ] {
+                let a = t.to_radians();
+                out.push(Point3::new(x, r * a.cos(), r * a.sin()));
+            }
+        }
+        out
+    };
+    let (r0, r1) = (ring(0.0, narrow), ring(length, wide));
+    let m = r0.len() as u32;
+    let mut mesh = TriangleMesh::default();
+    mesh.vertices.extend(r0);
+    mesh.vertices.extend(r1);
+    mesh.vertices.push(Point3::new(0.0, 0.0, 0.0));
+    mesh.vertices.push(Point3::new(length, 0.0, 0.0));
+    let (c0, c1) = (2 * m, 2 * m + 1);
+    for i in 0..m {
+        let j = (i + 1) % m;
+        let (a0, b0, a1, b1) = (i, j, i + m, j + m);
+        mesh.triangles.push([a0, b0, b1]);
+        mesh.triangles.push([a0, b1, a1]);
+        mesh.triangles.push([c0, b0, a0]);
+        mesh.triangles.push([c1, a1, b1]);
+    }
+    mesh
+}
+
+/// Issue 217 (NFR-12): on the owner's blisk, pencil clean-up with a 2 mm
+/// flat end cut about 1 mm into the blade tips. Where the gap between the
+/// teeth is wider than the tool, it rests in the root; where it is narrower,
+/// the drop rests it on the tips. Each placement is a drop, so neither
+/// gouges, but the straight move from one to the next went through the
+/// tooth. The simulated stock must show no overcut.
+#[test]
+fn req_op_09_req_nfr_12_pencil_never_cuts_through_a_tooth_between_two_rests() {
+    let target = toothed(8, 10.0, 15.0, 14.0, 37.0, 8.0);
+    target.validate().unwrap();
+    let rig = Rig {
+        surface: MeshSurface::new(&target).unwrap(),
+        target,
+        ..Rig::new()
+    };
+    let stock = DexelStock::from_stock(
+        &Stock::Cylinder {
+            diameter: Millimetres(30.0),
+            length: Millimetres(8.0),
+            x_start: Millimetres(0.0),
+        },
+        None,
+        CELL,
+    )
+    .unwrap();
+    let flat = tool(ToolShape::FlatEnd, 2.0).profile().unwrap();
+    let v = values(&[
+        (pencil_parameter::MAX_STEP, 0.5),
+        (parameter::MIN_REMAINING, 0.0),
+    ]);
+    let path = rig
+        .generate(&PencilFinishing, &flat, &stock, &v)
+        .expect("the roots of the teeth are creases");
+    let (after, faults) = rig.simulate(stock, &flat, &path);
+    assert_eq!(faults, 0, "a rapid move cuts");
+    let d = compare(&after, &rig.target, &DeviationOptions::for_cell(CELL)).unwrap();
+    let deepest = d.worst_overcut.map_or(0.0, |p| -p.value);
+    assert_eq!(
+        d.overcut_count,
+        0,
+        "the pencil pass cuts {deepest:.3} mm into the part at {:?}",
+        d.overcut_places.first().map(|p| p.point)
+    );
+}
+
 #[test]
 fn req_op_09_pencil_with_no_inside_corner_says_so() {
     let target = revolve(&[(0.0, 8.0), (30.0, 8.0)], 90);
