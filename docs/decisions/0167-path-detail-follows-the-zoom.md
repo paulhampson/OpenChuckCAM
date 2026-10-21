@@ -1,6 +1,6 @@
 # 0167: The toolpath's level of detail follows the zoom (lane BUG-PERF; issue 200; OI-177)
 
-- **Status:** proposed (lane BUG-PERF, 20 Oct 2026). The owner chose to build it in this lane (option B of the lane's question, relayed by the coordinator session on 20 Oct 2026); the record itself awaits the owner's acceptance. It amends [decision 0040](0040-slice-9-display-and-playback.md) item 9 (one level for the whole path, chosen by the budget) and follows [decision 0166](0166-long-toolpath-drawing.md).
+- **Status:** accepted by the project owner (21 Oct 2026), on the owner's instruction given in the lane BUG-PERF session (decision [0049](0049-relayed-acceptance-of-records.md)). Proposed in lane BUG-PERF on 20 Oct 2026; the owner chose to build it in this lane (option B of the lane's question, relayed by the coordinator session on 20 Oct 2026). It amends [decision 0040](0040-slice-9-display-and-playback.md) item 9 (one level for the whole path, chosen by the budget) and follows [decision 0166](0166-long-toolpath-drawing.md).
 - **Date:** 20 Oct 2026.
 - **Open items:** closes OI-177. OI-590 (the owner's re-measurement) covers this change too.
 

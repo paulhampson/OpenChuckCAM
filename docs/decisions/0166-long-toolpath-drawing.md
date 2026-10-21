@@ -1,6 +1,6 @@
 # 0166: Drawing long toolpaths: one draw per look, hidden layers kept, a path benchmark (lane BUG-PERF; issue 200)
 
-- **Status:** proposed (lane BUG-PERF, 20 Oct 2026). Awaits the owner's acceptance. It adds to [decision 0040](0040-slice-9-display-and-playback.md) item 9 (the 1,000,000-point display budget) and does not change it.
+- **Status:** accepted by the project owner (21 Oct 2026), on the owner's instruction given in the lane BUG-PERF session (decision [0049](0049-relayed-acceptance-of-records.md)). Proposed in lane BUG-PERF on 20 Oct 2026. It adds to [decision 0040](0040-slice-9-display-and-playback.md) item 9 (the 1,000,000-point display budget) and does not change it.
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-590 (the owner re-measures on the laptop and a reference machine) and OI-591 (the upload of a new path still runs on the interface thread), both opened here. OI-176 stays open. OI-177 (a level of detail that follows the zoom) was put to the owner; the owner chose to build it in this lane, in [decision 0167](0167-path-detail-follows-the-zoom.md).
 
