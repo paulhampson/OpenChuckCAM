@@ -15,6 +15,7 @@ use openchuck_app::Command;
 use openchuck_app::overview::{ItemRef, ItemState, MessageAction, SetupPart, Severity, Step};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{Item, Setup};
+use openchuck_app::requirements::RequirementField;
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
 use openchuck_app::tool_library;
@@ -245,7 +246,37 @@ impl Shell {
             return;
         };
         self.header(ui, ItemRef::Setup(id), &setup.name, true);
-        let focus = self.setup_section.take();
+        // What the setup still needs (issues 210 and 224): a count with a jump
+        // to the first one, and the words under the section that holds it.
+        let needs = self
+            .app
+            .as_ref()
+            .map(|a| a.setup_requirements(id))
+            .unwrap_or_default();
+        let section_of = |field: &RequirementField| match field {
+            RequirementField::Machine => SetupPart::Machine,
+            RequirementField::Part => SetupPart::PartPosition,
+            _ => SetupPart::Stock,
+        };
+        let mut jump_to = None;
+        if let Some(first) = needs.first() {
+            ui.horizontal(|ui| {
+                marks::mark(ui, ItemState::Warning, "Required values are missing");
+                let text = match needs.len() {
+                    1 => "1 value is missing".to_owned(),
+                    n => format!("{n} values are missing"),
+                };
+                ui.label(RichText::new(text).color(DARK.warning));
+                if ui
+                    .small_button("Show first")
+                    .on_hover_text(format!("Go to: {}", first.label))
+                    .clicked()
+                {
+                    jump_to = Some(section_of(&first.field));
+                }
+            });
+        }
+        let focus = self.setup_section.take().or(jump_to);
         let mut edited: Option<(Setup, Option<String>)> = None;
         let mut command = None;
         for part in SetupPart::ALL {
@@ -291,66 +322,70 @@ impl Shell {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         for (chip, colour) in chips.iter().rev() {
-                            egui::Frame::new()
-                                .stroke(Stroke::new(1.0, DARK.line))
-                                .corner_radius(3.0)
-                                .inner_margin(egui::Margin::symmetric(5, 0))
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new(chip).small().color(*colour))
-                                });
+                            field_row::chip(ui, chip, *colour);
                         }
                     });
                 },
-                |ui| match part {
-                    SetupPart::Machine => {
-                        let panel = self.machine_panel.get_or_insert_with(MachinePanel::default);
-                        let copy_id = app.project().machine_id().map(str::to_owned);
-                        if let Some(c) = panel.show(ui, copy.as_ref(), copy_id.as_deref()) {
-                            command = Some(c);
-                        }
+                |ui| {
+                    if let Some(need) = needs.iter().find(|r| section_of(&r.field) == part) {
+                        field_row::warning_line(ui, &need.text);
                     }
-                    SetupPart::Stock => {
-                        let part_extent = self
-                            .workholding_panel
-                            .as_ref()
-                            .and_then(|p| p.part_extent());
-                        if let Some(e) =
-                            stock_section(ui, &mut self.form, &setup, copy.as_ref(), part_extent)
-                        {
-                            edited = Some(e);
+                    match part {
+                        SetupPart::Machine => {
+                            let panel =
+                                self.machine_panel.get_or_insert_with(MachinePanel::default);
+                            let copy_id = app.project().machine_id().map(str::to_owned);
+                            if let Some(c) = panel.show(ui, copy.as_ref(), copy_id.as_deref()) {
+                                command = Some(c);
+                            }
                         }
-                    }
-                    SetupPart::PartPosition => {
-                        if let Some(e) = rows(
-                            ui,
-                            &mut self.form,
-                            &setup,
-                            copy.as_ref(),
-                            &setup_form::part_position_rows(&setup),
-                        ) {
-                            edited = Some(e);
+                        SetupPart::Stock => {
+                            let part_extent = self
+                                .workholding_panel
+                                .as_ref()
+                                .and_then(|p| p.part_extent());
+                            if let Some(e) = stock_section(
+                                ui,
+                                &mut self.form,
+                                &setup,
+                                copy.as_ref(),
+                                part_extent,
+                            ) {
+                                edited = Some(e);
+                            }
                         }
-                        field_row::read_only_row(
-                            ui,
-                            "Rotate about X",
-                            "The model's placement steps turn it about the rotary axis.",
-                            "Set by the model's placement steps",
-                        );
-                    }
-                    SetupPart::WorkOffset => {
-                        if let Some(e) =
-                            clearance_section(ui, &mut self.form, &setup, copy.as_ref())
-                        {
-                            edited = Some(e);
+                        SetupPart::PartPosition => {
+                            if let Some(e) = rows(
+                                ui,
+                                &mut self.form,
+                                &setup,
+                                copy.as_ref(),
+                                &setup_form::part_position_rows(&setup),
+                            ) {
+                                edited = Some(e);
+                            }
+                            field_row::read_only_row(
+                                ui,
+                                "Rotate about X",
+                                "The model's placement steps turn it about the rotary axis.",
+                                "Set by the model's placement steps",
+                            );
                         }
-                    }
-                    SetupPart::Workholding => {
-                        let context = workholding_context(&self.overview, app.project(), id);
-                        let panel = self
-                            .workholding_panel
-                            .get_or_insert_with(|| WorkholdingPanel::new(&setup));
-                        if let Some(c) = panel.show(ui, app, &setup, &context) {
-                            command = Some(c);
+                        SetupPart::WorkOffset => {
+                            if let Some(e) =
+                                clearance_section(ui, &mut self.form, &setup, copy.as_ref())
+                            {
+                                edited = Some(e);
+                            }
+                        }
+                        SetupPart::Workholding => {
+                            let context = workholding_context(&self.overview, app.project(), id);
+                            let panel = self
+                                .workholding_panel
+                                .get_or_insert_with(|| WorkholdingPanel::new(&setup));
+                            if let Some(c) = panel.show(ui, app, &setup, &context) {
+                                command = Some(c);
+                            }
                         }
                     }
                 },
@@ -452,6 +487,8 @@ impl Shell {
         ui: &mut egui::Ui,
         operation: &openchuck_app::project::Operation,
     ) -> Option<ToolAct> {
+        let jump_to_tool =
+            self.requirement_jump == Some(openchuck_app::requirements::RequirementField::Tool);
         let app = self.app.as_ref()?;
         let project = app.project();
         let library = self.tool_library.library();
@@ -476,10 +513,10 @@ impl Shell {
                 let mut act = None;
                 match &shown {
                     None => {
-                        ui.label(
-                            RichText::new("No tool yet: the operation cannot be generated.")
-                                .color(DARK.warning),
-                        );
+                        if jump_to_tool {
+                            ui.scroll_to_cursor(Some(egui::Align::Center));
+                        }
+                        field_row::warning_line(ui, "Choose a tool");
                     }
                     Some(tool) => {
                         ui.label(RichText::new(&tool.name).strong());
@@ -670,6 +707,33 @@ impl Shell {
         frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
         ui.label(RichText::new(strategy).color(DARK.muted));
 
+        // What is missing, as soon as the operation exists (issue 224): a
+        // count and a jump to the first one, in the same words as under the
+        // fields and in the step bar.
+        let needs: Vec<openchuck_app::requirements::Requirement> = self
+            .overview
+            .missing_for(ItemRef::Operation(id))
+            .into_iter()
+            .cloned()
+            .collect();
+        if let Some(first) = needs.first() {
+            ui.horizontal(|ui| {
+                marks::mark(ui, ItemState::Warning, "Required values are missing");
+                let text = match needs.len() {
+                    1 => "1 value is missing".to_owned(),
+                    n => format!("{n} values are missing"),
+                };
+                ui.label(RichText::new(text).color(DARK.warning));
+                if ui
+                    .small_button("Show first")
+                    .on_hover_text(format!("Go to: {}", first.label))
+                    .clicked()
+                {
+                    self.requirement_jump = Some(first.field.clone());
+                }
+            });
+        }
+
         // The error banner (board 3b).
         let mut banner_action = None;
         if let Some(status) = self
@@ -757,8 +821,17 @@ impl Shell {
         };
         let edit = match app.parameter_form(id) {
             Ok(form) => {
-                let outcome =
-                    form_panel::show(ui, &form, &mut self.form, &mut self.settings, &marks);
+                let need_refs: Vec<&openchuck_app::requirements::Requirement> =
+                    needs.iter().collect();
+                let outcome = form_panel::show(
+                    ui,
+                    &form,
+                    &mut self.form,
+                    &mut self.settings,
+                    &need_refs,
+                    self.requirement_jump.as_ref(),
+                    &marks,
+                );
                 if outcome.settings_changed {
                     self.settings_changed = Some(std::time::Instant::now());
                 }
@@ -769,6 +842,8 @@ impl Shell {
                 None
             }
         };
+        // The jump has been drawn this frame.
+        self.requirement_jump = None;
         if let Some(edit) = edit {
             let result = app
                 .set_parameter(id, &edit.name, edit.value)
@@ -927,9 +1002,9 @@ fn geometry(
                 let problem = summary.and_then(|s| s.problem.clone());
                 let text = match (&problem, summary) {
                     (Some(_), Some(s)) => {
-                        format!("{name} \u{b7} {} {} not found \u{2715}", s.count, s.kind)
+                        format!("{name} \u{b7} {} {} not found \u{d7}", s.count, s.kind)
                     }
-                    _ => format!("{name} \u{2715}"),
+                    _ => format!("{name} \u{d7}"),
                 };
                 let mut button =
                     egui::Button::new(RichText::new(text).color(if problem.is_some() {
@@ -1030,6 +1105,7 @@ fn rows(
                 enabled: true,
                 focus: false,
                 warned: None,
+                needs: None,
                 scroll_to: false,
             },
         );

@@ -15,7 +15,7 @@ use openchuck_app::settings::{SCALE_RANGE, region};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
 use super::{Dialog, EXPORT, IMPORT, NEW, Next, OPEN, REDO, SAVE, Selection, Shell, UNDO, marks};
-use crate::theme::DARK;
+use crate::theme::{DARK, RADIUS};
 use crate::toolbar;
 use crate::viewport::ViewStep;
 use crate::viewport_toolbar::directions_unavailable;
@@ -122,14 +122,11 @@ pub(super) fn status_chip(ui: &mut egui::Ui, status: Option<&ItemStatus>) {
     }
 }
 
-/// A small bordered chip.
+/// A small bordered chip, measured and drawn in one rectangle so its place
+/// does not depend on the layout it is in (see `field_row::chip`).
 pub(crate) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    egui::Frame::new()
-        .stroke(Stroke::new(1.0, DARK.line))
-        .corner_radius(3.0)
-        .inner_margin(egui::Margin::symmetric(5, 0))
-        .show(ui, |ui| ui.label(RichText::new(text).small()))
-        .response
+    let colour = ui.visuals().text_color();
+    crate::field_row::chip(ui, text, colour)
 }
 
 /// The filled primary button (specification sections 5 and 14.1).
@@ -408,8 +405,11 @@ impl Shell {
             match region {
                 Region::Project => self.tree(ui),
                 _ => {
+                    crate::theme::solid_scroll_bar(ui);
                     egui::ScrollArea::vertical()
                         .id_salt("inspector scroll")
+                        // The pane's width is the user's, not the content's.
+                        .auto_shrink([false, false])
                         .show(ui, |ui| self.properties(ui));
                 }
             }
@@ -485,7 +485,7 @@ impl Shell {
                 .show(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         if ui
-                            .small_button("︿")
+                            .small_button("\u{23f6}")
                             .on_hover_text("Open the dock (Ctrl 3)")
                             .clicked()
                         {
@@ -859,7 +859,22 @@ impl Shell {
     /// start something new on the right (specification sections 3 and 4).
     /// The right side is laid out first, so the steps never run under it.
     fn workflow_bar(&mut self, ui: &mut egui::Ui) {
+        // The bar's colour follows the whole job's health (issue 210): a line
+        // along its foot, and the badge at its right end, which also has the
+        // shape (UI-11).
+        let health = self.overview.health();
+        let foot = ui.max_rect();
+        if self.app.is_some() {
+            ui.painter().hline(
+                foot.x_range(),
+                foot.bottom() - 1.0,
+                Stroke::new(2.0, marks::colour_of(health.mark())),
+            );
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if self.app.is_some() && self.health_badge(ui) {
+                self.go_to_first_problem();
+            }
             match self.step {
                 Step::Model if self.app.is_some() => {
                     if ui
@@ -931,6 +946,64 @@ impl Shell {
                     });
             });
         });
+    }
+
+    /// The overall status at the right end of the step bar: the shape and
+    /// the words of the job's health. Its tooltip names what needs attention
+    /// in each step; clicking it goes to the first problem. Returns true when
+    /// clicked.
+    fn health_badge(&self, ui: &mut egui::Ui) -> bool {
+        let health = self.overview.health();
+        let label = health.name();
+        let galley = ui.painter().layout_no_wrap(
+            label.to_owned(),
+            egui::FontId::proportional(13.0),
+            DARK.text,
+        );
+        let size = egui::vec2(galley.size().x + 34.0, WORKFLOW_BAR - 12.0);
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+        let colour = marks::colour_of(health.mark());
+        let painter = ui.painter();
+        painter.rect(
+            rect,
+            RADIUS,
+            DARK.field,
+            Stroke::new(if response.has_focus() { 2.0 } else { 1.5 }, colour),
+            egui::StrokeKind::Inside,
+        );
+        marks::paint(
+            painter,
+            egui::pos2(rect.left() + 14.0, rect.center().y),
+            health.mark(),
+            marks::SIZE,
+        );
+        painter.galley(
+            egui::pos2(rect.left() + 26.0, rect.center().y - galley.size().y / 2.0),
+            galley,
+            DARK.text,
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                true,
+                format!("Overall status: {label}"),
+            )
+        });
+        let lines = self.overview.health_lines();
+        let first = self.overview.first_problem().is_some();
+        let response = response.on_hover_ui(|ui| {
+            ui.strong(format!("Overall status: {label}"));
+            for (step, health, reason) in &lines {
+                ui.horizontal(|ui| {
+                    marks::mark(ui, health.mark(), health.name());
+                    ui.label(format!("{}: {reason}", step.name()));
+                });
+            }
+            if first {
+                ui.label(RichText::new("Click to go to the first problem").color(DARK.muted));
+            }
+        });
+        response.clicked()
     }
 
     /// The footer: the job or "Ready", the step's note and the short G-code
@@ -1108,7 +1181,7 @@ fn step_tab(
     let galley =
         ui.painter()
             .layout_no_wrap(step.name().to_owned(), font.clone(), Color32::PLACEHOLDER);
-    let size = egui::vec2(galley.size().x + 52.0, WORKFLOW_BAR - 4.0);
+    let size = egui::vec2(galley.size().x + 68.0, WORKFLOW_BAR - 4.0);
     let sense = if available {
         egui::Sense::click()
     } else {
@@ -1153,15 +1226,37 @@ fn step_tab(
             Stroke::new(2.0, DARK.accent),
         );
     }
+    // The step's own health, by shape as well as colour (issue 210; UI-11).
+    // A step out of reach shows none: its reason is the tooltip.
+    if available {
+        marks::paint(
+            painter,
+            egui::pos2(rect.right() - 10.0, rect.center().y),
+            state.health.mark(),
+            marks::SIZE,
+        );
+    }
     let name = step.name();
+    let health = state.health.name();
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, available, active, name)
+        egui::WidgetInfo::selected(
+            egui::WidgetType::Button,
+            available,
+            active,
+            format!("{name}, {health}"),
+        )
     });
-    let tip = match &state.unavailable {
+    let mut tip = match &state.unavailable {
         Some(reason) => format!("{name}: {reason}"),
         None if state.complete => format!("{name} (Alt {}): complete", step.number()),
         None => format!("{name} (Alt {})", step.number()),
     };
+    if available {
+        tip.push_str(&format!("\n{health}"));
+        if let Some(reason) = &state.reason {
+            tip.push_str(&format!(": {reason}"));
+        }
+    }
     response.on_hover_text(tip)
 }
 
