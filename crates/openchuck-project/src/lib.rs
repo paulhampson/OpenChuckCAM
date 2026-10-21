@@ -33,6 +33,7 @@
 //!         boundary: None,
 //!         avoid: Vec::new(),
 //!         check: Vec::new(),
+//!         restriction_options: Default::default(),
 //!         parameters: Default::default(),
 //!     }),
 //!     Placement::End,
@@ -61,8 +62,9 @@ pub mod tools;
 pub use error::ProjectError;
 pub use hash::ContentHash;
 pub use model::{
-    Descriptor, Item, ItemId, ListKind, MeshEdge, ModelCheck, ModelRef, OldKeys, OldPlace,
-    Operation, ParameterValue, Placement, Project, RelativePath, SelectionSet, SelectionTarget,
-    Setup, ToolSnapshot, is_set_colour,
+    BoundaryOptions, Descriptor, Item, ItemId, ListKind, MeshEdge, ModelCheck, ModelRef, OldKeys,
+    OldPlace, OnBreak, Operation, ParameterValue, Placement, Project, RelativePath,
+    RestrictionOptions, SelectionSet, SelectionTarget, SetOptions, Setup, ToolSnapshot,
+    is_set_colour,
 };
 pub use order::OrderKey;

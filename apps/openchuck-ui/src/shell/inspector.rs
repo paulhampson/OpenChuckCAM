@@ -14,7 +14,7 @@ use eframe::egui::{self, RichText, Stroke};
 use openchuck_app::Command;
 use openchuck_app::overview::{ItemRef, ItemState, MessageAction, SetupPart, Severity, Step};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
-use openchuck_app::project::{Item, Setup};
+use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
 use openchuck_app::requirements::RequirementField;
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
@@ -688,6 +688,7 @@ impl Shell {
         };
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
+        let set_options = app.strategy_takes_set_options(&operation.strategy);
         let mut delete = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -791,7 +792,7 @@ impl Shell {
             open,
             false,
             |_| {},
-            |ui| geometry(ui, &operation, &summaries, &reach),
+            |ui| geometry(ui, &operation, &summaries, &reach, set_options),
         );
         if let Some((edit, action)) = section.body {
             role_edit = edit;
@@ -850,9 +851,17 @@ impl Shell {
                 .map_err(|e| form_panel::refusal(&e.user_message()));
             self.form.result(&edit.name, result);
         }
-        if let Some((role, set, add)) = role_edit
-            && let Err(e) = app.set_operation_selection(id, role, set, add)
-        {
+        let result = match role_edit {
+            Some(GeometryEdit::Role(role, set, add)) => {
+                app.set_operation_selection(id, role, set, add)
+            }
+            Some(GeometryEdit::Boundary(options)) => app.set_boundary_options(id, options),
+            Some(GeometryEdit::OnBreak(role, set, on_break)) => {
+                app.set_on_break(id, role, set, on_break)
+            }
+            None => Ok(()),
+        };
+        if let Err(e) = result {
             self.dialog = Some(Dialog::Error(e.to_string()));
         }
         match banner_action {
@@ -953,21 +962,141 @@ fn members(
     }
 }
 
-/// A role change the Geometry section asks for: the role, the set, and
-/// whether to add it.
-type RoleEdit = (SelectionRole, SelectionSetId, bool);
+/// A change the Geometry section asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GeometryEdit {
+    /// Put a set in a role (`true`) or take it out.
+    Role(SelectionRole, SelectionSetId, bool),
+    /// New options for the boundary set (decision record 0176).
+    Boundary(BoundaryOptions),
+    /// What happens where the tool would break an avoid or check set.
+    OnBreak(SelectionRole, SelectionSetId, OnBreak),
+}
+
+/// The choices of an avoid or check set's option, as the Geometry section
+/// names them (decision record 0176 item 3).
+const ON_BREAK: [(OnBreak, &str, &str); 3] = [
+    (
+        OnBreak::CutShort,
+        "Cut short",
+        "Where the tool would break this set, the pass stops short of it and starts again \
+         after it.",
+    ),
+    (
+        OnBreak::Warn,
+        "Warn only",
+        "The path is kept where the tool would break this set, with a warning saying how far \
+         along the face it does.",
+    ),
+    (
+        OnBreak::Ignore,
+        "Ignore",
+        "The set limits nothing: the tool is not kept clear of it. The operation warns that it \
+         limits nothing.",
+    ),
+];
+
+/// The options of the sets in `role` (decision record 0176 item 3), under
+/// its row: the boundary's two limits, or each avoid or check set's choice.
+/// A set whose options leave it limiting nothing says so.
+fn set_options(
+    ui: &mut egui::Ui,
+    operation: &openchuck_app::project::Operation,
+    role: SelectionRole,
+    sets: &[SelectionSetId],
+    summaries: &[SelectionSummary],
+) -> Option<GeometryEdit> {
+    let mut edit = None;
+    let indent = crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x;
+    let options = &operation.restriction_options;
+    let name = |id: &SelectionSetId| {
+        summaries
+            .iter()
+            .find(|s| s.id == *id)
+            .map_or_else(|| "(missing set)".to_owned(), |s| s.name.clone())
+    };
+    match role {
+        SelectionRole::Boundary => {
+            let id = sets.first()?;
+            let mut boundary = options.boundary;
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(indent);
+                let pass = ui
+                    .checkbox(&mut boundary.limits_pass, "Limits the pass")
+                    .on_hover_text(
+                        "Cut only the rulings that lie inside the boundary, whole, so the pass \
+                         stops, or splits with a retract, where the rulings leave it.",
+                    );
+                let tip = ui
+                    .checkbox(&mut boundary.limits_tip, "Limits the tip")
+                    .on_hover_text(
+                        "Raise the tool tip along each ruling so the bottom of the flank stops \
+                         where the ruling enters the boundary. The far end of a ruling cannot \
+                         be limited.",
+                    );
+                if pass.changed() || tip.changed() {
+                    edit = Some(GeometryEdit::Boundary(boundary));
+                }
+            });
+            if options.boundary.limits_nothing() {
+                limits_nothing(ui, indent, &name(id));
+            }
+        }
+        SelectionRole::Avoid | SelectionRole::Check => {
+            for id in sets {
+                let current = if role == SelectionRole::Avoid {
+                    options.avoid(*id)
+                } else {
+                    options.check(*id)
+                }
+                .on_break;
+                let set = name(id);
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_space(indent);
+                    ui.label(RichText::new(&set).color(DARK.muted));
+                    for (choice, label, tip) in ON_BREAK {
+                        if ui
+                            .selectable_label(current == choice, label)
+                            .on_hover_text(tip)
+                            .clicked()
+                            && current != choice
+                        {
+                            edit = Some(GeometryEdit::OnBreak(role, *id, choice));
+                        }
+                    }
+                });
+                if current == OnBreak::Ignore {
+                    limits_nothing(ui, indent, &set);
+                }
+            }
+        }
+        _ => {}
+    }
+    edit
+}
+
+/// The warning under a set whose options leave it limiting nothing.
+fn limits_nothing(ui: &mut egui::Ui, indent: f32, set: &str) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add_space(indent);
+        marks::mark(ui, ItemState::Warning, "Warning");
+        ui.label(RichText::new(format!("The set '{set}' limits nothing.")).color(DARK.warning));
+    });
+}
 
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
-/// Under the role that holds a set reaching a held region or a tab, the
-/// warning of 11.7 with "Show in view" and "Edit workholding".
+/// With `with_options`, each set's options under its role (decision record
+/// 0176 item 3). Under the role that holds a set reaching a held region or a
+/// tab, the warning of 11.7 with "Show in view" and "Edit workholding".
 fn geometry(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
     reach: &[String],
-) -> (Option<RoleEdit>, Option<ReachAction>) {
+    with_options: bool,
+) -> (Option<GeometryEdit>, Option<ReachAction>) {
     let mut edit = None;
     let mut action = None;
     if summaries.is_empty() {
@@ -1027,7 +1156,7 @@ fn geometry(
                     },
                 );
                 if field_row::tip(response, &tip).clicked() {
-                    edit = Some((role, *id, false));
+                    edit = Some(GeometryEdit::Role(role, *id, false));
                 }
             }
             let free: Vec<&SelectionSummary> =
@@ -1038,12 +1167,17 @@ fn geometry(
                     .show_ui(ui, |ui| {
                         for s in free {
                             if ui.selectable_label(false, &s.name).clicked() {
-                                edit = Some((role, s.id, true));
+                                edit = Some(GeometryEdit::Role(role, s.id, true));
                             }
                         }
                     });
             }
         });
+        // The sets' options, for a strategy that takes them (decision
+        // record 0176).
+        if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
+            edit = Some(e);
+        }
         // The selection warning under the role that holds the set (11.7).
         for id in &sets {
             let Some(s) = summaries.iter().find(|s| s.id == *id) else {

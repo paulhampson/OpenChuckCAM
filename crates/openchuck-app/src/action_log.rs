@@ -81,6 +81,12 @@ pub(crate) fn describe(command: &Command, project: &Project) -> String {
         Command::SetSimulation(_) => "SetSimulation".to_owned(),
         Command::SetKeepTangentEdges(_) => "SetKeepTangentEdges".to_owned(),
         Command::SetWarnOnSelectionReset(_) => "SetWarnOnSelectionReset".to_owned(),
+        Command::SetSkipStockSimulation(_) => "SetSkipStockSimulation".to_owned(),
+        Command::SetPathsShown { operations, shown } => format!(
+            "SetPathsShown {} operations={}",
+            if *shown { "show" } else { "hide" },
+            operations.len()
+        ),
         Command::Add { item, .. } => format!("Add {}", new_item(item)),
         Command::Remove(id) => format!("Remove {}", self::item(project, *id)),
         Command::Replace(new) => format!("Replace {}", self::item(project, new.id())),

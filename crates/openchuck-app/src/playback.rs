@@ -407,13 +407,73 @@ pub(crate) fn between(
     (tip, axis, a, [xyz.x, xyz.y, xyz.z, a])
 }
 
+/// The rotary angle as a readout shows it: wrapped into 0 up to 360
+/// degrees (issue 207; decision record 0168). Display only: the toolpath and
+/// the G-code keep the continuous angle, which the machine needs to turn the
+/// right way without an unwanted unwind (GC-07, NFR-12).
+pub fn wrapped_degrees(a: f64) -> f64 {
+    // `+ 0.0` turns a negative zero into zero.
+    a.rem_euclid(360.0) + 0.0
+}
+
+/// The text of the rotary angle `a` in a readout, to `places` decimals,
+/// wrapped into 0 to 360 degrees: exactly 360 (or a value that rounds to it)
+/// reads 0, a negative angle wraps, and no value reads "-0.000". A value
+/// that is not a number reads "-" (NFR-07).
+pub fn wrapped_a_text(a: f64, places: usize) -> String {
+    if !a.is_finite() {
+        return "-".to_owned();
+    }
+    let text = format!("{:.places$}", wrapped_degrees(a));
+    if text.parse::<f64>().is_ok_and(|v| v >= 360.0) {
+        format!("{:.places$}", 0.0)
+    } else {
+        text
+    }
+}
+
+/// The text of the continuous rotary angle `a`, as the G-code gives it, to
+/// `places` decimals, with no "-0.000" (issue 207).
+pub fn continuous_a_text(a: f64, places: usize) -> String {
+    if !a.is_finite() {
+        return "-".to_owned();
+    }
+    let text = format!("{a:.places$}");
+    if text.parse::<f64>().is_ok_and(|v| v == 0.0) {
+        format!("{:.places$}", 0.0)
+    } else {
+        text
+    }
+}
+
+/// A part of the program the playback is limited to, by moves counted from
+/// 0 across all groups: `first` to `last`, both included (issue 205;
+/// decision record 0169). It limits what is drawn and where the play head
+/// may go, never the toolpath, the simulation or the G-code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoveWindow {
+    /// The first move in the window.
+    pub first: usize,
+    /// The last move in the window.
+    pub last: usize,
+}
+
+impl MoveWindow {
+    /// The moves in the window as a range.
+    pub fn moves(&self) -> std::ops::Range<usize> {
+        self.first..self.last.saturating_add(1)
+    }
+}
+
 /// The playback controls (SIM-04). They hold a [`Cursor`] and move it; the
 /// front end calls [`advance`](Self::advance) with the seconds that passed.
+/// With a [`MoveWindow`] set, the cursor stays inside it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Playback {
     cursor: Cursor,
     playing: bool,
     speed: f64,
+    window: Option<MoveWindow>,
 }
 
 impl Default for Playback {
@@ -422,6 +482,7 @@ impl Default for Playback {
             cursor: Cursor::default(),
             playing: false,
             speed: 1.0,
+            window: None,
         }
     }
 }
@@ -464,10 +525,62 @@ impl Playback {
         }
     }
 
-    /// Starts playing; at the end it starts again from the beginning.
+    /// The window playback is limited to, if one is set.
+    pub fn window(&self) -> Option<MoveWindow> {
+        self.window
+    }
+
+    /// Limits playback to `window`, or lifts the limit with `None` (issue
+    /// 205). The window is brought inside the program, its ends put in order,
+    /// and a window of the whole program is no window. The cursor is moved
+    /// inside it.
+    pub fn set_window(&mut self, timeline: &Timeline, window: Option<MoveWindow>) {
+        let moves = timeline.move_count();
+        self.window = window.filter(|_| moves > 0).and_then(|w| {
+            let (first, last) = (w.first.min(w.last), w.first.max(w.last));
+            let last = last.min(moves - 1);
+            let first = first.min(last);
+            (first > 0 || last + 1 < moves).then_some(MoveWindow { first, last })
+        });
+        self.cursor = self.clamped(timeline, self.cursor);
+    }
+
+    /// The fewest and most moves done the cursor may have: the window's
+    /// start and the end of its last move, else the whole program.
+    fn bounds(&self, timeline: &Timeline) -> (usize, usize) {
+        match self.window {
+            Some(w) => (w.first, (w.last + 1).min(timeline.move_count())),
+            None => (0, timeline.move_count()),
+        }
+    }
+
+    /// `cursor` moved inside the bounds.
+    fn clamped(&self, timeline: &Timeline, cursor: Cursor) -> Cursor {
+        let (low, high) = self.bounds(timeline);
+        if cursor.done < low {
+            Cursor {
+                done: low,
+                fraction: 0.0,
+            }
+        } else if cursor.done >= high {
+            Cursor {
+                done: high,
+                fraction: 0.0,
+            }
+        } else {
+            cursor
+        }
+    }
+
+    /// Starts playing; at the end (of the window, with one) it starts again
+    /// from the beginning.
     pub fn play(&mut self, timeline: &Timeline) {
-        if self.cursor.done >= timeline.move_count() {
-            self.cursor = Cursor::default();
+        let (low, high) = self.bounds(timeline);
+        if self.cursor.done >= high || self.cursor.done < low {
+            self.cursor = Cursor {
+                done: low,
+                fraction: 0.0,
+            };
         }
         self.playing = true;
     }
@@ -484,10 +597,10 @@ impl Playback {
             return false;
         }
         let t = timeline.time_at(self.cursor) + seconds * self.speed;
-        let next = timeline.cursor_at_time(t);
+        let next = self.clamped(timeline, timeline.cursor_at_time(t));
         let moved = next != self.cursor;
         self.cursor = next;
-        if self.cursor.done >= timeline.move_count() {
+        if self.cursor.done >= self.bounds(timeline).1 {
             self.playing = false;
         }
         moved
@@ -505,10 +618,13 @@ impl Playback {
         } else {
             done.saturating_add(moves.unsigned_abs())
         };
-        self.cursor = Cursor {
-            done: target.min(timeline.move_count()),
-            fraction: 0.0,
-        };
+        self.cursor = self.clamped(
+            timeline,
+            Cursor {
+                done: target.min(timeline.move_count()),
+                fraction: 0.0,
+            },
+        );
     }
 
     /// Jumps to just after move `flat` (counted across all groups), where
@@ -516,19 +632,25 @@ impl Playback {
     /// (SIM-04). Playback pauses.
     pub fn jump_to_move(&mut self, timeline: &Timeline, flat: usize) {
         self.playing = false;
-        self.cursor = Cursor {
-            done: flat.saturating_add(1).min(timeline.move_count()),
-            fraction: 0.0,
-        };
+        self.cursor = self.clamped(
+            timeline,
+            Cursor {
+                done: flat.saturating_add(1).min(timeline.move_count()),
+                fraction: 0.0,
+            },
+        );
     }
 
     /// Jumps to the start of an operation's moves (SIM-04). Playback pauses.
     pub fn jump_to_group(&mut self, timeline: &Timeline, group: usize) {
         self.playing = false;
-        self.cursor = Cursor {
-            done: timeline.first_move(group).unwrap_or(0),
-            fraction: 0.0,
-        };
+        self.cursor = self.clamped(
+            timeline,
+            Cursor {
+                done: timeline.first_move(group).unwrap_or(0),
+                fraction: 0.0,
+            },
+        );
     }
 
     /// Jumps to a point in the program's time, `fraction` of the way from the
@@ -540,7 +662,7 @@ impl Playback {
         } else {
             0.0
         };
-        self.cursor = timeline.cursor_at_time(f * timeline.total_time());
+        self.cursor = self.clamped(timeline, timeline.cursor_at_time(f * timeline.total_time()));
     }
 }
 

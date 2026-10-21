@@ -148,6 +148,7 @@ fn project(name: &str, ops: usize, threads: usize) -> (PathBuf, Application) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }));
     }

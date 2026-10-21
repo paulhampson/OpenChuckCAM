@@ -65,6 +65,7 @@ fn operation(id: u128, setup: SetupId) -> Operation {
         boundary: None,
         avoid: Vec::new(),
         check: Vec::new(),
+        restriction_options: Default::default(),
         parameters: BTreeMap::from([("stepover".into(), ParameterValue::Number(0.5))]),
     }
 }

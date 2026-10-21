@@ -230,6 +230,7 @@ impl Fixture {
                     boundary: None,
                     avoid: Vec::new(),
                     check: Vec::new(),
+                    restriction_options: Default::default(),
                     parameters: BTreeMap::new(),
                 }),
                 placement: Placement::End,
@@ -339,6 +340,7 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
         placement: Placement::End,
@@ -1646,4 +1648,46 @@ fn req_ui_11_machine_values_not_confirmed_stay_in_the_footer_and_not_the_bar() {
     });
     f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     assert_eq!(health(&f.overview(), Step::Setup), StepHealth::Attention);
+}
+
+#[test]
+fn req_ui_10_req_nfr_12_a_project_that_skips_the_stock_simulation_asks_only_for_toolpaths() {
+    // Issue 214 (decision record 0168): Simulate asks for the toolpaths,
+    // then continues; its health says the cut was not simulated.
+    let mut f = fixture("skip-stock", "cube_ascii.stl");
+    f.add_operation("Ring", "one_ring");
+    f.app
+        .execute(Command::SetSkipStockSimulation(true))
+        .unwrap();
+    let o = f.overview();
+    assert_eq!(
+        o.primary(Step::Simulate).kind,
+        PrimaryKind::GenerateStale(1)
+    );
+    f.app.start_generate().wait().unwrap();
+    let o = f.overview();
+    assert!(o.step(Step::Simulate).complete);
+    assert_eq!(
+        o.primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
+    let simulate = o.step(Step::Simulate);
+    assert_eq!(simulate.health, StepHealth::Attention);
+    assert_eq!(
+        simulate.reason.as_deref(),
+        Some(openchuck_app::overview::STOCK_SIMULATION_SKIPPED)
+    );
+    // Not skipping: generating simulates, and the step is good.
+    f.app
+        .execute(Command::SetSkipStockSimulation(false))
+        .unwrap();
+    assert_eq!(
+        f.overview().primary(Step::Simulate).kind,
+        PrimaryKind::RunSimulation
+    );
+    let run = f.app.start_generate().wait().unwrap();
+    assert!(run.simulation.is_some());
+    let o = f.overview();
+    assert!(o.step(Step::Simulate).complete);
+    assert_eq!(o.step(Step::Simulate).health, StepHealth::Good);
 }

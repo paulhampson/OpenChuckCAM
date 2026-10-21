@@ -73,12 +73,24 @@ pub const SHOW_OR_HIDE: [Entry; 6] = [
 /// The line under "Show or hide" (7.5).
 pub const SHOW_OR_HIDE_NOTE: &str = "Hiding changes only the view, never what is machined.";
 
-/// Simulate's "Show" choices (7.1).
-pub const SIMULATE_SHOW: [(SimulateShow, &str); 3] = [
-    (SimulateShow::Stock, "Stock"),
-    (SimulateShow::PartAndPath, "Part + path"),
-    (SimulateShow::Both, "Both"),
+/// A Simulate tick box's field.
+type Tick = fn(&mut SimulateShow) -> &mut bool;
+
+/// Simulate's "Show" tick boxes (7.1, as decision record 0168 proposes):
+/// each name, its tooltip and the field it sets.
+pub const SIMULATE_SHOW: [(&str, &str, Tick); 3] = [
+    ("Model", "The part's model", |s| &mut s.model),
+    (
+        "Cut part",
+        "The stock as the simulation cut it, at the play head; with the colours by \
+         deviation on, the part coloured by what was left or overcut",
+        |s| &mut s.cut_part,
+    ),
+    ("Toolpath", "The toolpaths", |s| &mut s.toolpath),
 ];
+
+/// Why the one ticked box cannot be unticked (issue 204).
+pub const LAST_TICK: &str = "At least one must stay ticked, so the view is never empty";
 
 /// Draws the strip in `strip` and applies what is clicked. What does not
 /// fit is cut off, never pushed over the view or past the window.
@@ -135,30 +147,11 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             if inline_show {
                 ui.separator();
                 ui.label("Show");
-                segments(ui, &SIMULATE_SHOW_TIPS, &mut viewport.simulate_show);
+                simulate_ticks(ui, viewport);
             }
         },
     );
 }
-
-/// Simulate's "Show" choices with their tooltips.
-const SIMULATE_SHOW_TIPS: [(SimulateShow, &str, &str); 3] = [
-    (
-        SIMULATE_SHOW[0].0,
-        SIMULATE_SHOW[0].1,
-        "Only the simulated stock",
-    ),
-    (
-        SIMULATE_SHOW[1].0,
-        SIMULATE_SHOW[1].1,
-        "The part and the toolpaths, without the stock",
-    ),
-    (
-        SIMULATE_SHOW[2].0,
-        SIMULATE_SHOW[2].1,
-        "The stock, the part and the toolpaths",
-    ),
-];
 
 /// The width of `text` in the body font.
 fn text_width(ui: &egui::Ui, text: &str) -> f32 {
@@ -178,9 +171,29 @@ fn button_extra(ui: &egui::Ui) -> f32 {
 fn simulate_show_width(ui: &egui::Ui) -> f32 {
     let choices: f32 = SIMULATE_SHOW
         .iter()
-        .map(|(_, name)| text_width(ui, name) + ui.spacing().button_padding.x * 2.0)
+        .map(|(name, ..)| {
+            text_width(ui, name)
+                + ui.spacing().icon_width
+                + ui.spacing().icon_spacing
+                + ui.spacing().item_spacing.x
+        })
         .sum();
     ui.spacing().item_spacing.x * 3.0 + 1.0 + text_width(ui, "Show") + choices + 8.0
+}
+
+/// Simulate's tick boxes, in any combination: the last ticked one is
+/// disabled with the reason, so the view is never empty (issue 204).
+fn simulate_ticks(ui: &mut egui::Ui, viewport: &mut Viewport) {
+    let mut show = viewport.simulate_show();
+    let last = show.ticked() <= 1;
+    for (name, tip, field) in SIMULATE_SHOW {
+        let ticked = *field(&mut show);
+        let locked = ticked && last;
+        ui.add_enabled(!locked, egui::Checkbox::new(field(&mut show), name))
+            .on_hover_text(tip)
+            .on_disabled_hover_text(format!("{tip}. {LAST_TICK}"));
+    }
+    viewport.set_simulate_show(show);
 }
 
 /// A segmented control: one selectable button for each choice.
@@ -215,7 +228,7 @@ fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport, simulate_choices: bo
             if simulate_choices {
                 ui.separator();
                 ui.label("Simulate shows");
-                segments(ui, &SIMULATE_SHOW_TIPS, &mut viewport.simulate_show);
+                simulate_ticks(ui, viewport);
             }
         });
     viewport.show_menu_open = open;
@@ -274,7 +287,7 @@ mod tests {
     fn req_ui_03_simulates_show_choices_are_never_cut_off_they_move_into_the_show_menu() {
         // OI-529. Wide: the choices are in the strip, each inside it.
         let wide = strip_texts(1100.0, false);
-        for name in ["Stock", "Part + path", "Both"] {
+        for name in ["Model", "Cut part", "Toolpath"] {
             let (_, rect) = wide
                 .iter()
                 .find(|(t, _)| t == name)
@@ -284,15 +297,106 @@ mod tests {
         // Narrow (583 pixels, the strip at 1366 by 768 with the inspector open): none is
         // painted in the strip, and none is cut off.
         let narrow = strip_texts(583.0, false);
-        assert!(!narrow.iter().any(|(t, _)| t == "Part + path"));
+        assert!(!narrow.iter().any(|(t, _)| t == "Cut part"));
         assert!(
             narrow.iter().all(|(_, r)| r.max.x <= 583.0 + 1.0),
             "{narrow:?}"
         );
         // They are in the Show menu instead.
         let open = strip_texts(583.0, true);
-        assert!(open.iter().any(|(t, _)| t == "Part + path"), "{open:?}");
+        assert!(open.iter().any(|(t, _)| t == "Cut part"), "{open:?}");
         assert!(open.iter().any(|(t, _)| t == "Simulate shows"));
+    }
+
+    /// Draws the wide strip on Simulate with `events`, and returns where
+    /// each text was painted.
+    fn strip_frame(
+        ctx: &egui::Context,
+        viewport: &mut Viewport,
+        events: Vec<egui::Event>,
+    ) -> Vec<(String, egui::Rect)> {
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1100.0, 400.0));
+        let strip = egui::Rect::from_min_size(screen.min, egui::vec2(1100.0, HEIGHT));
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| show(ui, viewport, strip));
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some((
+                    t.galley.text().to_owned(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Clicks the tick box labelled `name` in the strip.
+    fn click_box(ctx: &egui::Context, viewport: &mut Viewport, name: &str) {
+        let texts = strip_frame(ctx, viewport, Vec::new());
+        let at = texts
+            .iter()
+            .find(|(t, _)| t == name)
+            .unwrap_or_else(|| panic!("{name} is drawn"))
+            .1
+            .center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        strip_frame(ctx, viewport, vec![egui::Event::PointerMoved(at)]);
+        strip_frame(ctx, viewport, vec![button(true)]);
+        strip_frame(ctx, viewport, vec![button(false)]);
+    }
+
+    #[test]
+    fn req_sim_03_simulates_tick_boxes_combine_and_the_last_one_stays_ticked() {
+        // Issue 204 (decision record 0168): "Cut part" only at first; any
+        // combination; the one ticked box is disabled, so the view is never
+        // empty.
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_project_has_models(true);
+        viewport.set_step(Some(ViewStep::Simulate));
+        assert_eq!(viewport.simulate_show(), SimulateShow::default());
+        click_box(&ctx, &mut viewport, "Cut part");
+        assert!(
+            viewport.simulate_show().cut_part,
+            "the last box stays ticked"
+        );
+        click_box(&ctx, &mut viewport, "Toolpath");
+        click_box(&ctx, &mut viewport, "Model");
+        assert_eq!(
+            viewport.simulate_show(),
+            SimulateShow {
+                model: true,
+                cut_part: true,
+                toolpath: true
+            }
+        );
+        click_box(&ctx, &mut viewport, "Cut part");
+        click_box(&ctx, &mut viewport, "Model");
+        assert_eq!(
+            viewport.simulate_show(),
+            SimulateShow {
+                model: false,
+                cut_part: false,
+                toolpath: true
+            }
+        );
+        click_box(&ctx, &mut viewport, "Toolpath");
+        assert!(
+            viewport.simulate_show().toolpath,
+            "the last box stays ticked"
+        );
     }
 
     #[test]
@@ -341,7 +445,13 @@ mod tests {
                 .count(),
             1
         );
-        let names: Vec<&str> = SIMULATE_SHOW.iter().map(|(_, n)| *n).collect();
-        assert_eq!(names, ["Stock", "Part + path", "Both"]);
+        let names: Vec<&str> = SIMULATE_SHOW.iter().map(|(n, ..)| *n).collect();
+        assert_eq!(names, ["Model", "Cut part", "Toolpath"]);
+        // Each box sets its own field.
+        for (name, _, field) in SIMULATE_SHOW {
+            let mut s = SimulateShow::default();
+            *field(&mut s) = !*field(&mut s);
+            assert_ne!(s, SimulateShow::default(), "{name}");
+        }
     }
 }

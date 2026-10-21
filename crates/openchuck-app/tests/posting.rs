@@ -108,6 +108,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -223,6 +224,7 @@ fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (T
         boundary: None,
         avoid: Vec::new(),
         check: Vec::new(),
+        restriction_options: Default::default(),
         parameters: BTreeMap::new(),
     };
     app.execute(Command::Add {

@@ -115,6 +115,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -1163,4 +1164,334 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
         .unwrap();
     assert_eq!(first, second, "the stock shown changed with the project");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_sim_02_the_a_readout_wraps_into_0_to_360_and_the_path_keeps_its_turns() {
+    use openchuck_app::playback::{continuous_a_text, wrapped_a_text, wrapped_degrees};
+    // Issue 207 (decision record 0168): the edge cases.
+    assert_eq!(wrapped_a_text(0.0, 3), "0.000");
+    assert_eq!(wrapped_a_text(-0.0, 3), "0.000");
+    assert_eq!(wrapped_a_text(360.0, 3), "0.000");
+    assert_eq!(wrapped_a_text(720.0, 2), "0.00");
+    assert_eq!(wrapped_a_text(725.5, 3), "5.500");
+    assert_eq!(wrapped_a_text(-90.0, 3), "270.000");
+    assert_eq!(wrapped_a_text(-360.0, 3), "0.000");
+    assert_eq!(wrapped_a_text(-1e-12, 3), "0.000");
+    assert_eq!(wrapped_a_text(359.9996, 3), "0.000");
+    assert_eq!(wrapped_a_text(359.9994, 3), "359.999");
+    assert_eq!(wrapped_a_text(f64::NAN, 3), "-");
+    assert_eq!(wrapped_a_text(f64::INFINITY, 2), "-");
+    assert_eq!(continuous_a_text(-0.0001, 3), "0.000");
+    assert_eq!(continuous_a_text(-725.5, 3), "-725.500");
+    assert_eq!(continuous_a_text(f64::NAN, 3), "-");
+    assert!(wrapped_degrees(-0.0).is_sign_positive());
+    // The helical path turns A past 360: the readout wraps the value, while
+    // the toolpath and the G-code keep the continuous angle (GC-07, NFR-12).
+    let (dir, app, _) = project("a-wrap");
+    let run = app.regenerate().unwrap();
+    let gcode: Vec<(String, String)> = run.gcode.clone();
+    let t = timeline(&app, run);
+    let a = (0..t.move_count())
+        .filter_map(|m| t.work_after(m))
+        .map(|w| w[3])
+        .fold(0.0_f64, |a, b| if b.abs() > a.abs() { b } else { a });
+    assert!(a.abs() > 360.0, "{a}");
+    assert_ne!(wrapped_a_text(a, 3), continuous_a_text(a, 3));
+    assert!(wrapped_degrees(a) < 360.0);
+    let a_words: Vec<f64> = gcode
+        .iter()
+        .flat_map(|(_, text)| text.lines())
+        .filter(|l| !l.starts_with('('))
+        .flat_map(|l| l.split_whitespace())
+        .filter_map(|w| w.strip_prefix('A')?.parse::<f64>().ok())
+        .collect();
+    assert!(
+        a_words.iter().any(|a| a.abs() > 360.0),
+        "the G-code keeps the continuous A"
+    );
+    // Asking for the display changes nothing: the same project gives the
+    // same G-code.
+    assert_eq!(app.regenerate().unwrap().gcode, gcode);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_sim_04_the_playback_window_keeps_the_play_head_inside_it() {
+    use openchuck_app::playback::MoveWindow;
+    // Issue 205 (decision record 0169).
+    let (dir, app, _) = project("window");
+    let t = timeline(&app, app.regenerate().unwrap());
+    let moves = t.move_count();
+    assert!(moves > 40);
+    let mut p = Playback::new();
+    assert_eq!(p.window(), None);
+    let w = MoveWindow {
+        first: moves / 4,
+        last: moves / 2,
+    };
+    // Setting it moves the cursor inside.
+    p.set_window(&t, Some(w));
+    assert_eq!(p.window(), Some(w));
+    assert_eq!(p.cursor().done, w.first);
+    // Playing runs to the window's end and stops there.
+    p.set_speed(Playback::speed_to_finish_in(&t, 1.0));
+    p.play(&t);
+    p.advance(&t, 0.01);
+    assert!(w.moves().contains(&p.cursor().done));
+    p.advance(&t, 10.0);
+    assert_eq!(p.cursor().done, w.last + 1);
+    assert!(!p.is_playing());
+    // Playing again starts at the window's start, not the program's.
+    p.play(&t);
+    assert_eq!(p.cursor().done, w.first);
+    // Steps, jumps and seeks stay inside.
+    p.step(&t, -5);
+    assert_eq!(p.cursor().done, w.first);
+    p.jump_to_move(&t, moves - 1);
+    assert_eq!(p.cursor().done, w.last + 1);
+    p.jump_to_group(&t, 0);
+    assert_eq!(p.cursor().done, w.first);
+    p.seek(&t, 1.0);
+    assert_eq!(p.cursor().done, w.last + 1);
+    p.jump_to_move(&t, w.first + 2);
+    assert_eq!(p.cursor().done, w.first + 3);
+    // Ends out of order are put in order, and past the end brought inside.
+    p.set_window(
+        &t,
+        Some(MoveWindow {
+            first: moves + 10,
+            last: moves / 2,
+        }),
+    );
+    assert_eq!(
+        p.window(),
+        Some(MoveWindow {
+            first: moves / 2,
+            last: moves - 1
+        })
+    );
+    // The whole program is no window, and lifting it frees the cursor.
+    p.set_window(
+        &t,
+        Some(MoveWindow {
+            first: 0,
+            last: moves - 1,
+        }),
+    );
+    assert_eq!(p.window(), None);
+    p.seek(&t, 0.0);
+    assert_eq!(p.cursor().done, 0);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_sim_01_the_window_draws_only_its_moves_and_the_trace_is_coarse() {
+    // Issue 205 (decision record 0169): the window's part at full detail
+    // when it fits, cut at the moves' ends; the faint trace of the whole
+    // path at the trace level, with far fewer points.
+    use openchuck_app::pathview::TRACE_LEVEL;
+    let (dir, app, _) = project("window-lines");
+    let run = Arc::new(app.regenerate().unwrap());
+    let t = Timeline::new(app.project(), Arc::clone(&run)).unwrap();
+    let display = ToolpathDisplay::build(&t);
+    let all = |_: usize| true;
+    let moves = t.move_count();
+    let window = moves / 3..2 * moves / 3;
+    let lines = display.window_lines(&all, window.clone(), usize::MAX, 0);
+    assert_eq!(lines.level, 0);
+    assert_eq!(lines.points, lines.full_points);
+    let whole = display.lines(&all, usize::MAX);
+    assert!(lines.points < whole.points);
+    // It starts where the window's first move starts and ends where its last
+    // move ends, in the part's frame.
+    let before = t.sample(Cursor {
+        done: window.start,
+        fraction: 0.0,
+    });
+    let after = t.sample(Cursor {
+        done: window.end,
+        fraction: 0.0,
+    });
+    let first = lines.lines.first().unwrap().points.first().unwrap();
+    let last = lines.lines.last().unwrap().points.last().unwrap();
+    assert!(first.distance(before.unwrap().tip) < 1e-9);
+    assert!(last.distance(after.unwrap().tip) < 1e-9);
+    // The whole program as a window is the whole path.
+    let full = display.window_lines(&all, 0..moves, usize::MAX, 0);
+    assert_eq!(full.points, whole.points);
+    // A hidden group draws nothing; an empty window draws nothing.
+    assert!(
+        display
+            .window_lines(&|_| false, window.clone(), usize::MAX, 0)
+            .lines
+            .is_empty()
+    );
+    assert!(
+        display
+            .window_lines(&all, 5..5, usize::MAX, 0)
+            .lines
+            .is_empty()
+    );
+    // Over the budget it is simplified, within the level's tolerance.
+    let tight = display.window_lines(&all, window, 50, 0);
+    assert!(tight.level > 0 && tight.points < lines.points);
+    // The trace: the trace level at least, fewer points than the path.
+    let trace = display.trace_lines(&all, usize::MAX);
+    assert!(trace.level >= TRACE_LEVEL);
+    assert!(
+        trace.points < whole.points,
+        "{} {}",
+        trace.points,
+        whole.points
+    );
+    assert_eq!(trace.full_points, whole.full_points);
+    assert!(display.trace_lines(&|_| false, usize::MAX).lines.is_empty());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_sim_03_generating_simulates_the_stock_unless_the_project_skips_it() {
+    // Issue 214 (decision record 0168): by default the stock simulation is
+    // made with the toolpaths; the project's tick box turns it off, as one
+    // undoable step.
+    let (dir, mut app, op) = project("generate-simulates");
+    assert!(app.simulates());
+    let simulated = app.start_generate().wait().unwrap();
+    assert!(simulated.simulation.is_some());
+    let until = app.start_generate_until(op).wait().unwrap();
+    assert!(until.simulation.is_some());
+    app.execute(Command::SetSkipStockSimulation(true)).unwrap();
+    assert!(!app.simulates());
+    let skipped = app.start_generate().wait().unwrap();
+    assert!(skipped.simulation.is_none());
+    assert!(
+        app.start_generate_until(op)
+            .wait()
+            .unwrap()
+            .simulation
+            .is_none()
+    );
+    // The toolpath and the G-code are the same either way (GC-07, NFR-06).
+    assert_eq!(skipped.gcode, simulated.gcode);
+    assert_eq!(skipped.toolpath, simulated.toolpath);
+    app.undo().unwrap();
+    assert!(app.simulates());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_hiding_a_path_changes_no_toolpath_or_g_code() {
+    // Issue 213 (decision record 0169): visibility is saved with the project
+    // but is no input to anything made from it.
+    let (dir, mut app, op) = project("hide-path");
+    let before = app.regenerate().unwrap();
+    app.execute(Command::SetPathsShown {
+        operations: vec![op],
+        shown: false,
+    })
+    .unwrap();
+    assert!(!app.project().path_shown(op));
+    // The run made before is still current: nothing it reads changed.
+    assert!(openchuck_app::run_is_current(app.project(), &before));
+    let after = app.regenerate().unwrap();
+    assert_eq!(after.gcode, before.gcode);
+    assert_eq!(after.toolpath, before.toolpath);
+    assert_eq!(after.reused, vec![op], "the cached result is used");
+    // Saved with the project, and one undoable step.
+    app.save().unwrap();
+    let text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(text.contains("hidden_paths"), "{text}");
+    app.undo().unwrap();
+    assert!(app.project().path_shown(op));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_nfr_12_a_run_older_than_its_operations_is_not_current() {
+    // OI-697: a run is shown again only while every operation in it is
+    // there, on and up to date.
+    let (dir, mut app, op) = project("run-current");
+    let run = app.regenerate().unwrap();
+    assert!(openchuck_app::run_is_current(app.project(), &run));
+    // A rename is a label, not an input (issue 209).
+    let mut renamed = app.project().operation(op).unwrap().clone();
+    renamed.name = "Finish again".into();
+    app.execute(Command::Replace(Item::Operation(renamed)))
+        .unwrap();
+    assert!(openchuck_app::run_is_current(app.project(), &run));
+    // An edit makes it stale; turning off makes it not current.
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: "stepover".into(),
+        value: Some(openchuck_app::project::ParameterValue::Number(0.5)),
+    })
+    .unwrap();
+    assert!(!openchuck_app::run_is_current(app.project(), &run));
+    app.undo().unwrap();
+    assert!(openchuck_app::run_is_current(app.project(), &run));
+    app.execute(Command::SetOperationEnabled {
+        operation: op,
+        enabled: false,
+    })
+    .unwrap();
+    assert!(!openchuck_app::run_is_current(app.project(), &run));
+    assert!(!openchuck_app::run_is_current(
+        app.project(),
+        &Regeneration::default()
+    ));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_nfr_12_req_gc_15_skipping_the_stock_simulation_is_one_warning_at_export() {
+    // Decision record 0168 (OI-602): one line naming the cause, never a
+    // block.
+    let (dir, mut app, _) = project("skip-export");
+    let run = app.regenerate().unwrap();
+    let checks = app.export_checks(Some(&run), None, None);
+    assert!(
+        checks
+            .checks
+            .iter()
+            .any(|c| c.text.contains("has not been simulated"))
+    );
+    app.execute(Command::SetSkipStockSimulation(true)).unwrap();
+    let checks = app.export_checks(Some(&run), None, None);
+    let warnings: Vec<_> = checks
+        .checks
+        .iter()
+        .filter(|c| c.level == openchuck_app::CheckLevel::Warning)
+        .map(|c| c.text.as_str())
+        .filter(|t| t.contains("simulat"))
+        .collect();
+    assert_eq!(warnings, [openchuck_app::EXPORT_STOCK_SKIPPED]);
+    assert!(checks.can_write() || checks.first_blocker().is_some());
+    assert!(
+        !checks
+            .checks
+            .iter()
+            .any(|c| c.level == openchuck_app::CheckLevel::Blocking && c.text.contains("simulat"))
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_sim_03_a_new_project_takes_the_users_default_for_the_skip() {
+    let dir = std::env::temp_dir().join(format!("openchuck-play-new-skip-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let app = Application::create_with(
+        &dir,
+        "new",
+        Threads::Exactly(1),
+        openchuck_app::NewProject {
+            skip_stock_simulation: true,
+        },
+    )
+    .unwrap();
+    assert!(app.project().skip_stock_simulation());
+    assert!(!app.is_modified());
+    let reopened = Application::open(&dir, Threads::Exactly(1)).unwrap();
+    assert!(reopened.project().skip_stock_simulation());
+    let _ = std::fs::remove_dir_all(&dir);
 }

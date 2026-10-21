@@ -18,6 +18,16 @@ use openchuck_project::id::OperationId;
 use crate::AppError;
 use crate::simulation::{SetupState, SimulationReport};
 
+/// The progress stage of making the toolpaths, one step per operation.
+pub const STAGE_GENERATE: &str = "regenerate";
+
+/// The progress stage of the stock simulation's comparison with the part,
+/// one step per setup, after the toolpaths (issue 214; decision record
+/// 0168). The material removal itself runs with each operation, inside
+/// [`STAGE_GENERATE`]. One percentage across the stages is lane BUG-PROG's
+/// (issue 201).
+pub const STAGE_SIMULATE: &str = "simulate the stock";
+
 /// The setup, stock and machine an operation's simulation needs.
 pub(crate) fn setup_parts<'a>(
     project: &'a Project,
@@ -148,7 +158,7 @@ pub(crate) fn regenerate(
         }
     }
     let total = operations.len() as u64;
-    context.report("regenerate", 0, Some(total));
+    context.report(STAGE_GENERATE, 0, Some(total));
     let settings = project.simulation();
     let mut regeneration = Regeneration {
         project: Arc::new(project.clone()),
@@ -291,7 +301,7 @@ pub(crate) fn regenerate(
             part_bounds: path.part_bounds,
             warnings: path.warnings.clone(),
         });
-        context.report("regenerate", i as u64 + 1, Some(total));
+        context.report(STAGE_GENERATE, i as u64 + 1, Some(total));
     }
     record.working_on(None);
     if simulate {
@@ -299,7 +309,9 @@ pub(crate) fn regenerate(
             settings,
             setups: Vec::new(),
         };
-        for state in setups {
+        let count = setups.len() as u64;
+        for (done, state) in (0_u64..).zip(setups) {
+            context.report(STAGE_SIMULATE, done, Some(count));
             context.check_cancelled()?;
             let mut state = Arc::unwrap_or_clone(state);
             state.rename(project);
@@ -320,6 +332,7 @@ pub(crate) fn regenerate(
                 .setups
                 .push(state.finish(mesh.as_ref(), settings, context)?);
         }
+        context.report(STAGE_SIMULATE, count, Some(count));
         regeneration.simulation = Some(report);
     }
     // Every operation was keyed and made from the part files as they were at

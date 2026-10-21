@@ -153,3 +153,53 @@ fn req_nfr_18_recording_actions_is_on_by_default_and_the_choice_is_kept() {
     assert!(loaded.settings.record_actions);
     let _ = std::fs::remove_dir_all(config);
 }
+
+#[test]
+fn req_sim_02_turn_part_with_a_is_on_by_default_and_the_choice_is_kept() {
+    // Issue 203: on for new and existing projects alike (the choice is the
+    // user's, never in a project), and an untick is remembered.
+    let config = folder("turn-with-a");
+    let file = SettingsFile::in_folder(&config);
+    assert!(UserSettings::default().simulate.turn_part_with_a);
+    assert!(file.load().settings.simulate.turn_part_with_a);
+    // A settings file written before the choice existed reads as on.
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(file.file(), "[interface]\nscale = 1.0\n").unwrap();
+    assert!(file.load().settings.simulate.turn_part_with_a);
+    let mut settings = file.load().settings;
+    settings.simulate.turn_part_with_a = false;
+    file.save(&settings).unwrap();
+    assert!(!file.load().settings.simulate.turn_part_with_a);
+    let _ = std::fs::remove_dir_all(config);
+}
+
+#[test]
+fn req_sim_03_req_ui_15_the_simulate_view_choices_are_kept_and_never_empty() {
+    // Issue 204: "Cut part" only by default; issue 205: the path outside the
+    // window is faint unless hidden; issue 214: new projects simulate.
+    let config = folder("simulate-view");
+    let file = SettingsFile::in_folder(&config);
+    let d = UserSettings::default().simulate;
+    assert!(d.show_cut_part && !d.show_model && !d.show_toolpath);
+    assert!(!d.hide_outside_window && !d.skip_stock_simulation);
+    let mut settings = UserSettings::default();
+    settings.simulate.show_model = true;
+    settings.simulate.show_cut_part = false;
+    settings.simulate.show_toolpath = true;
+    settings.simulate.hide_outside_window = true;
+    settings.simulate.skip_stock_simulation = true;
+    file.save(&settings).unwrap();
+    assert_eq!(file.load().settings.simulate, settings.simulate);
+    // A file with every view box off gives "Cut part": the view is never
+    // empty.
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        file.file(),
+        "[interface.simulate]\nshow_model = false\nshow_cut_part = false\nshow_toolpath = false\n",
+    )
+    .unwrap();
+    let loaded = file.load();
+    assert!(loaded.problem.is_none());
+    assert!(loaded.settings.simulate.show_cut_part);
+    let _ = std::fs::remove_dir_all(config);
+}

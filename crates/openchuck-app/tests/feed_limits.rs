@@ -269,6 +269,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: parameters
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), ParameterValue::Number(*v)))

@@ -126,6 +126,7 @@ impl TestProject {
                     boundary: None,
                     avoid: Vec::new(),
                     check: Vec::new(),
+                    restriction_options: Default::default(),
                     parameters: BTreeMap::new(),
                 }),
                 placement: Placement::End,
