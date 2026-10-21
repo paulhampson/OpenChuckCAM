@@ -1,6 +1,6 @@
 # 0209: STEP (B-rep) geometry for every strategy that can use it: what applies per strategy, the order, how the gain is measured, and the build lanes (lane STEPALL, proposal; issue #257)
 
-- **Status:** proposed (21 Oct 2026, lane STEPALL, proposal phase: no product code). Only the project owner accepts this record (decision 0049). It proposes a new requirement (OP-23) and verification plan wording; neither document is edited here (item 9). The owner's answers on issue #257 (21 Oct 2026) say every strategy that can use the exact geometry gets it, and the lane proposes the order. The two ordering questions (which strategies first; face selection or exact-surface accuracy first) are put to the owner through the coordinator, one at a time, with the recommendations of items 5 and 6. Their answers are recorded here when they come back.
+- **Status:** proposed (21 Oct 2026, lane STEPALL, proposal phase: no product code). Only the project owner accepts this record (decision 0049). It proposes a new requirement (OP-23) and verification plan wording; neither document is edited here (item 9). The owner's answers on issue #257 (21 Oct 2026) say every strategy that can use the exact geometry gets it, and the lane proposes the order. **Owner decision on the order (21 Oct 2026, relayed by the coordinator):** option A of item 5. Face sets for every strategy come first, with a measuring lane beside it; then the exact surface for finishing, where measured to help; then pencil; then the engraving depth. That also answers the second question (face selection before exact-surface accuracy, item 6), which was not asked separately. With that answer the owner asked for the wording fixes and the warning before Generate of item 10. The record as a whole is still proposed.
 - **Date:** 21 Oct 2026.
 - **Requirements:** IMP-02, IMP-06, OP-02 to OP-13, OP-16, INT-02, NFR-04 to NFR-07, NFR-12, GC-07; proposes OP-23.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-830 to OI-836 are new. It starts from OI-233 and proposes how it is closed (item 3). It depends on OI-81, OI-76, OI-65, OI-77, OI-229 and OI-234 without closing any of them. OI-634 and OI-637 are lane SWARF3's and are not touched.
@@ -150,7 +150,7 @@ STEPALL-F makes R1 to R3 go away for the five strategies that take regions. Fixi
    4. **A strategy that keeps the tessellation says so.** On a STEP part, the operation's notes name the surface the tool was dropped on: the exact faces, or the tessellation at its deflection with the reason (item 2). The import notice says the same, rather than "toolpaths are computed on the exact surfaces", until X is built for every drop (OI-830; NFR-12: nothing may suggest the program needs no checking).
    5. **Performance.** An exact drop is slower than a triangle drop. Decision 0017 measured exact ray and projection on analytic faces as faster than the kernel, and its B-spline projection at 122 µs a call. A ball drop on the tessellation is about 45 µs a pose at 150,000 triangles (OI-146). The proposed starting limit for 4.1 is an exact-surface job within 2 times the time of the same job on the import's tessellation (the median of 5 runs, all threads, same machine). Over that, the result and the cost are put to the owner before the exact drop becomes the default for that strategy (OI-835). Parallel work goes through `crate::parallel` in order, so the speed-up from 1 thread to all is reported for each form (NFR-04).
 
-5. **The order to build (owner question 1; recommendation).** Every strategy that can use the exact geometry gets it (the owner's answer on #257). The proposed order:
+5. **The order to build (owner question 1; the owner chose this order, option A, on 21 Oct 2026).** Every strategy that can use the exact geometry gets it (the owner's answer on #257). The proposed order:
    1. **STEPALL-M (measure) and STEPALL-F (face sets) together.** They are independent, and neither changes a path on an existing project. F lifts the refusal on roughing, helical, axial, indexed and simultaneous at once, and M gives the numbers every later step is judged by.
    2. **STEPALL-X (exact drop, ball first) on helical, axial and indexed** (one change, `wrap_fit`, which also serves rest machining), **then simultaneous.** These are the zero-stock finishing cuts, where the tessellation is the whole budget. Roughing follows only if M2 shows a gain.
    3. **STEPALL-P (pencil on concave B-rep edges)**, which needs the OI-234 (b) corpus part. It can run beside X: it touches `pencil.rs` and `brep_edges.rs`, not the drop.
@@ -159,7 +159,7 @@ STEPALL-F makes R1 to R3 go away for the five strategies that take regions. Fixi
 
    Swarf and radial drilling need nothing. Rest machining gets X through `wrap_fit`.
 
-6. **Face selection or exact-surface accuracy first (owner question 2; recommendation: face selection first).**
+6. **Face selection or exact-surface accuracy first (owner question 2; answered by the choice of option A on 21 Oct 2026: face selection first).**
    - **Face selection first.**
      - **What it fixes.** Today a face set on five strategies is an error, so a user cannot finish only the blades of a STEP blisk at all. The exact surface, in contrast, moves a finishing cut by at most the deflection (0.01 mm; the deepest gouge decision 0056 measured was 0.0120 mm).
      - **Cost.** F is medium-sized and host-only, with no library API change and no schema. X is large, and needs M's numbers to know where it pays.
@@ -186,6 +186,30 @@ STEPALL-F makes R1 to R3 go away for the five strategies that take regions. Fixi
    - **Section 4.1, two rows:** "Tessellation error on STEP faces | IMP-06, OP-23 | 0.005 mm, measured on the tessellation (vertices, edge midpoints and a grid of each triangle) against the exact face, never taken from the kernel's setting" and "Exact-surface generation time | OP-23, NFR-04 | within 2 times the same job on the import's tessellation, median of 5 runs, all threads; over that, the owner decides before it becomes the default (OI-835)".
    - **IMP-06's row** gains "and, for toolpaths, the deviation that M1 measures at the setting in use".
 
+10. **Wording, and the warning before Generate (the owner's request with decision 1, 21 Oct 2026; OI-836).**
+   1. **One check, two places.** The check that refuses a selection set on a STEP part is moved out of generation (`brep_selection`) into a function both callers use:
+      - the operation inspector's Geometry section shows its answer under the role that holds the set, as soon as the set is added;
+      - generation keeps it as the fallback (NFR-07).
+
+      Since both read the same function, they never disagree. Before anything is generated, the operation is in the error state, with the message in Messages and a Show link, as decision 0174 item 5 does for a strategy on an STL part.
+   2. **In the Geometry section.** Under the set, an amber Warning line with the triangle outline, as 11.7 of the interface specification does for a set that reaches a tab: "*Strategy label* can't use the set '*set*' here: *reason*." The *reason* and the fix are worded per case (below). Generate stays enabled for the other operations. This one is skipped with its error, as an operation in error is today.
+   3. **Wording rules.**
+      - Strategies are named by their label (Helical finishing), never by their internal name (`helical_finishing`).
+      - No requirement IDs or decision numbers in what the user reads (decision 0114, plain wording).
+      - Each message says what the user can do.
+      - A refusal that is the same on an STL part does not say "STEP".
+   4. **The messages after STEPALL-F** (R1 to R3 are gone for the five strategies that take regions). Each still starts "operation '*name*' cannot be generated: " when it reaches generation:
+
+      | Case | Text |
+      | --- | --- |
+      | A face set as the Machine selection on rest machining, pencil clean-up or edge following (they take no region on any part) | *Strategy label* works on the whole part and cannot be limited to chosen faces. Take the set '*set*' out of the operation. |
+      | A boundary, avoid or check set on rest machining, pencil clean-up, edge following or radial drilling | *Strategy label* does not use a boundary, avoid or check set. Take the set '*set*' out of the operation. |
+      | An edge set on any strategy but edge following (R4) | Only edge following follows chosen edges. Take the edge set '*set*' out of the operation, or use edge following. |
+      | A triangle set kept after the part became a STEP file (R5) | The set '*set*' selects triangles, but this setup's part is now a STEP file, which is selected by its faces and edges. Select the faces again on the STEP part. |
+
+   5. **Which lane.** **STEPALL-F**, not OPCREATE or CUTOPTS. The check, the messages and the face-set mapping are the same function in `operation.rs`, and F removes R1 to R3 for five strategies. A separate earlier fix would reword messages F then deletes, and putting it in OPCREATE or CUTOPTS would bring a second lane into the same function. If the owner wants the wording sooner, a small lane STEPALL-W (size S) can reword R1 to R5 and add the warning before F, and F merges after it.
+   6. **Interface specification.** The Geometry line of the operation inspector (`ui-specification.md`, the Geometry item of the operation inspector) gains: "A set the strategy cannot use on this part shows an amber Warning line under its role, with the reason and what to do, before anything is generated." It is edited when this record is accepted, by the lane that builds it.
+
 ## Build lanes
 
 Sizes: **S** is part of one lane session, **M** is one lane session and one pull request, **L** is more than one session or needs its measurement first. Each lane takes its decision, `OI-` and schema numbers from the coordinator, as the work breakdown's *Parallel work* says. "Touches" is the first guess at the files, which the lane confirms before it starts.
@@ -193,7 +217,7 @@ Sizes: **S** is part of one lane session, **M** is one lane session and one pull
 | Lane | Scope | Size | Needs | Touches | Stays out of |
 | --- | --- | --- | --- | --- | --- |
 | STEPALL-M | Item 4.1: measurement program, M1 to M4 on the blisk and the corpus, numbers into this record; `blisk.step` into `testdata/step/` (OI-832) | M | Nothing (needs the owner's agreement to copy `blisk.step`) | `crates/openchuck-app/examples/` (a new `step_accuracy.rs`, `kernel`), `crates/openchuck-testkit` (the checker's sampling of exact faces, if it needs a finer grid), `testdata/step/`, docs | Every strategy file; changes no output |
-| STEPALL-F | Item 3: face sets as region, boundary, avoid and check sets and a stock to leave per face set for roughing, helical, axial, indexed and simultaneous (closes OI-233); notes naming the drop surface and the import notice (item 4.4, OI-830); the refusals that remain (edge sets on other strategies, options on other strategies) shown in the Geometry section before generation and worded with the strategy's label (OI-836); OP-23 and its verification row (item 9) | M | Nothing on `main` (decision 0176 merged); merges after CUTOPTS and OPCREATE if they touch `operation.rs` | `crates/openchuck-app` (`operation.rs`: `brep_selection`, the region build, the stock-to-leave check; tests), `crates/openchuck-import` (`step_tessellation_notice` wording), `docs/requirements.md` and `docs/verification-plan.md` on acceptance | `openchuck-path` strategy files (roughing is CUTOPTS's and OPCREATE's); swarf's options (OI-637, SWARF3); mesh sets on STEP (OI-634, SWARF3) |
+| STEPALL-F | Item 3: face sets as region, boundary, avoid and check sets and a stock to leave per face set for roughing, helical, axial, indexed and simultaneous (closes OI-233); notes naming the drop surface and the import notice (item 4.4, OI-830); the refusals that remain (edge sets on other strategies, options on other strategies) shown in the Geometry section before generation and worded with the strategy's label (item 10, OI-836); OP-23 and its verification row (item 9) | M | Nothing on `main` (decision 0176 merged); merges after CUTOPTS and OPCREATE if they touch `operation.rs` | `crates/openchuck-app` (`operation.rs`: `brep_selection`, the region build, the stock-to-leave check; tests), `crates/openchuck-import` (`step_tessellation_notice` wording), `docs/requirements.md` and `docs/verification-plan.md` on acceptance | `openchuck-path` strategy files (roughing is CUTOPTS's and OPCREATE's); swarf's options (OI-637, SWARF3); mesh sets on STEP (OI-634, SWARF3) |
 | STEPALL-X | Item 4.2: exact ball drop, then the other profiles; the region test on exact faces (OI-833); helical, axial, indexed, rest, then simultaneous; roughing only if M shows a gain; golden files of STEP jobs re-blessed; 4.1's time limit checked (OI-835); closes OI-81 and, with M1, OI-76 | L | STEPALL-M and STEPALL-F merged | `crates/openchuck-path` (`brep.rs` `drop_tool`, `cutter.rs` if the profile test is shared, `region.rs` if the test takes the drop's accuracy), `crates/openchuck-app` (`operation.rs` region surfaces), kernel tests (`tests/step_strategies.rs`) | Strategy parameters and creation (CUTOPTS, OPCREATE); `wrap_fit` and `simultaneous` fitters, except through the surface |
 | STEPALL-P | Pencil clean-up on concave B-rep edges (item 2), with the corpus part of OI-234 (b) | M | STEPALL-F merged (its notes); OI-234 (b) part, which this lane may write | `crates/openchuck-path` (`pencil.rs`: the crease source; `brep_edges.rs`: concave classification), `testdata/step/generate`, tests | `brep.rs` (X) |
 | STEPALL-E | Edge following on the exact edge curve (OI-229) | S | Nothing | `crates/openchuck-path` (`brep_edges.rs`, `edge_following.rs`) | `pencil.rs` (P), `brep.rs` (X) |
@@ -220,7 +244,7 @@ None yet. Lane STEPALL-M fills this section (item 4.1) before STEPALL-X starts. 
   - the decision index;
   - `docs/open-items.md`: OI-830 to OI-836 added, and OI-233's row noting this record as its proposal;
   - `docs/work-breakdown.md`: lane STEPALL in *Parallel work*, proposal only, with its sub-lanes queued.
-- **Documents on acceptance:** OP-23 and the verification rows of item 9, added by STEPALL-F with its tests; the import notice's wording.
+- **Documents on acceptance:** OP-23 and the verification rows of item 9, added by STEPALL-F with its tests; the import notice's wording; the interface specification's Geometry line (item 10.6).
 - **Code:** none in this change. The lanes above name theirs.
 - **Library API:** STEPALL-F changes none. STEPALL-X may add to `BrepSurface` (a per-face deflection bound), and if it changes a public item it bumps the workspace minor version with a changelog entry (decision 0048).
 - **Open items:**
