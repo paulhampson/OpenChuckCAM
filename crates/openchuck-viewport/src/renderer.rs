@@ -13,7 +13,7 @@ use crate::camera::{
     Camera, IDENTITY, Mat4, Projection, multiply, rigid_inverse, to_f32, transform,
 };
 use crate::scene::{
-    Colour, DisplayMode, Hatch, Scene, Slot, line_vertices, outline_edges, wireframe_indices,
+    Colour, DisplayMode, Hatch, Scene, Slot, batch_lines, outline_edges, wireframe_indices,
 };
 
 /// Bytes of one draw's uniforms: a 4 by 4 matrix, then six vectors of four:
@@ -122,6 +122,21 @@ impl Layer {
     }
 }
 
+/// What one layer holds on the GPU, for the benchmark and the tests of the
+/// cost of a frame (NFR-03; issue #200).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LayerStats {
+    /// Draw calls for its lines: one per look ([`crate::LineItem`]s that
+    /// differ only in their points share one).
+    pub line_draws: usize,
+    /// Meshes uploaded.
+    pub meshes: usize,
+    /// GPU buffers: vertices, indices and uniforms.
+    pub buffers: usize,
+    /// Bytes in those buffers.
+    pub bytes: u64,
+}
+
 /// One draw call's uniforms.
 #[derive(Debug)]
 struct Uniform {
@@ -202,6 +217,10 @@ pub struct Renderer {
     outline: wgpu::RenderPipeline,
     layers: [GpuLayer; 6],
     mode: DisplayMode,
+    /// Uniform buffers written by the last [`Renderer::prepare`].
+    uniform_writes: usize,
+    /// Whether each layer is drawn, by [`Layer::index`].
+    shown: [bool; 6],
 }
 
 #[derive(Debug, Default)]
@@ -426,6 +445,8 @@ impl Renderer {
             layout,
             layers: Default::default(),
             mode: DisplayMode::default(),
+            uniform_writes: 0,
+            shown: [true; 6],
         }
     }
 
@@ -490,34 +511,46 @@ impl Renderer {
                 }),
             })
             .collect();
-        let lines = scene
-            .lines
-            .iter()
-            .filter(|l| l.segments.len() >= 2)
-            .map(|l| {
-                let floats: Vec<f32> = line_vertices(&l.segments).into_iter().flatten().collect();
+        // Lines that look alike are one buffer and one draw (issue #200).
+        let lines = batch_lines(&scene.lines)
+            .into_iter()
+            .map(|b| {
+                let floats: Vec<f32> = b.vertices.iter().flatten().copied().collect();
                 GpuLines {
-                    slot: l.slot,
+                    slot: b.look.slot,
                     vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("lines"),
                         contents: &f32_bytes(&floats),
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
-                    // An odd last point has no partner and is left out.
-                    count: u32::try_from(l.segments.len() & !1).unwrap_or(!1),
-                    on_top: l.on_top,
+                    count: u32::try_from(b.vertices.len() & !1).unwrap_or(!1),
+                    on_top: b.look.on_top,
                     uniform: self.uniform(
                         device,
                         Look {
-                            width: l.width,
-                            pattern: l.style.pattern(),
-                            ..Look::colour(l.colour)
+                            width: b.look.width,
+                            pattern: b.look.style.pattern(),
+                            ..Look::colour(b.look.colour)
                         },
                     ),
                 }
             })
             .collect();
         GpuLayer { meshes, lines }
+    }
+
+    /// Shows or hides a layer. A hidden layer keeps what it uploaded and is
+    /// left out of the frame, so showing it again uploads nothing (NFR-04:
+    /// a path of a million points took 96 ms to upload; issue #200).
+    pub fn set_layer_shown(&mut self, layer: Layer, shown: bool) {
+        if let Some(s) = self.shown.get_mut(layer.index()) {
+            *s = shown;
+        }
+    }
+
+    /// Whether a layer is drawn.
+    pub fn is_layer_shown(&self, layer: Layer) -> bool {
+        self.shown.get(layer.index()).copied().unwrap_or(false)
     }
 
     /// Writes the frame's camera and slot transforms to the GPU, and builds
@@ -547,11 +580,13 @@ impl Renderer {
             })
             .collect();
         let per_mm = frame.pixels_per_mm();
+        let writes = std::cell::Cell::new(0usize);
         #[allow(clippy::cast_possible_truncation)]
         let write = |u: &Uniform, slot: Slot| {
             let Some((matrix, eye)) = per_slot.get(slot.index()) else {
                 return;
             };
+            writes.set(writes.get() + 1);
             let (hatch, kind) = match u.hatch {
                 Some(h) => (h.colour, if h.cross { 2.0 } else { 1.0 }),
                 None => ([0.0; 4], 0.0),
@@ -572,7 +607,7 @@ impl Renderer {
             floats.extend([per_mm, kind, 0.0, 0.0]);
             queue.write_buffer(&u.buffer, 0, &f32_bytes(&floats));
         };
-        for layer in &mut self.layers {
+        for (layer, _) in self.layers.iter_mut().zip(self.shown).filter(|(_, s)| *s) {
             for mesh in &mut layer.meshes {
                 write(&mesh.fill, mesh.slot);
                 write(&mesh.edges, mesh.slot);
@@ -588,6 +623,47 @@ impl Renderer {
                 write(&lines.uniform, lines.slot);
             }
         }
+        self.uniform_writes = writes.get();
+    }
+
+    /// Uniform buffers written by the last [`Renderer::prepare`]: one per
+    /// mesh fill, mesh edges, outline and line draw.
+    pub fn uniform_writes(&self) -> usize {
+        self.uniform_writes
+    }
+
+    /// What `layer` holds on the GPU.
+    pub fn layer_stats(&self, layer: Layer) -> LayerStats {
+        let layer = self.layer(layer);
+        let mut stats = LayerStats {
+            line_draws: layer.lines.len(),
+            meshes: layer.meshes.len(),
+            ..LayerStats::default()
+        };
+        let mut add = |buffer: &wgpu::Buffer| {
+            stats.buffers += 1;
+            stats.bytes += buffer.size();
+        };
+        for mesh in &layer.meshes {
+            add(&mesh.vertices);
+            for (buffer, _) in [&mesh.triangles, &mesh.feature_edges, &mesh.wireframe]
+                .into_iter()
+                .flatten()
+            {
+                add(buffer);
+            }
+            add(&mesh.fill.buffer);
+            add(&mesh.edges.buffer);
+            if let Some((buffer, _, uniform)) = &mesh.outline {
+                add(buffer);
+                add(&uniform.buffer);
+            }
+        }
+        for lines in &layer.lines {
+            add(&lines.vertices);
+            add(&lines.uniform.buffer);
+        }
+        stats
     }
 
     /// Draws the scene into `pass`, which must have the colour and depth
@@ -597,7 +673,7 @@ impl Renderer {
         // Opaque meshes of every layer but the highlights.
         for layer in Layer::ALL.iter().filter(|l| !highlights(l)) {
             for mesh in self
-                .layer(*layer)
+                .drawn(*layer)
                 .meshes
                 .iter()
                 .filter(|m| !m.translucent && !m.outline_only)
@@ -608,7 +684,7 @@ impl Renderer {
         // Translucent meshes over them, without hiding what is behind.
         for layer in Layer::ALL {
             for mesh in self
-                .layer(layer)
+                .drawn(layer)
                 .meshes
                 .iter()
                 .filter(|m| m.translucent && !m.outline_only)
@@ -629,7 +705,7 @@ impl Renderer {
         // Highlights over the surfaces they cover.
         for layer in Layer::ALL.iter().filter(|l| highlights(l)) {
             for mesh in self
-                .layer(*layer)
+                .drawn(*layer)
                 .meshes
                 .iter()
                 .filter(|m| !m.translucent && !m.outline_only)
@@ -649,7 +725,7 @@ impl Renderer {
         }
         // Outlines, tested against depth like the lines.
         for layer in Layer::ALL {
-            for mesh in &self.layer(layer).meshes {
+            for mesh in &self.drawn(layer).meshes {
                 if let Some((buffer, count, uniform)) = &mesh.outline {
                     pass.set_pipeline(&self.outline);
                     pass.set_bind_group(0, &uniform.bind_group, &[]);
@@ -662,7 +738,7 @@ impl Renderer {
         for on_top in [false, true] {
             for layer in Layer::ALL {
                 for lines in self
-                    .layer(layer)
+                    .drawn(layer)
                     .lines
                     .iter()
                     .filter(|l| l.on_top == on_top)
@@ -693,6 +769,19 @@ impl Renderer {
             lines: Vec::new(),
         };
         self.layers.get(layer.index()).unwrap_or(&EMPTY)
+    }
+
+    /// The layer as the frame draws it: empty while it is hidden.
+    fn drawn(&self, layer: Layer) -> &GpuLayer {
+        static EMPTY: GpuLayer = GpuLayer {
+            meshes: Vec::new(),
+            lines: Vec::new(),
+        };
+        if self.is_layer_shown(layer) {
+            self.layer(layer)
+        } else {
+            &EMPTY
+        }
     }
 
     fn paint_mesh(&self, pass: &mut wgpu::RenderPass<'_>, mesh: &GpuMesh) {
