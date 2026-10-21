@@ -1629,6 +1629,28 @@ fn req_op_02_req_op_07_the_two_boundary_limits_compose_and_both_off_is_a_warning
     // Beyond X = 30 no part of a ruling is inside, so those rulings are not
     // cut either: the tip cannot be raised into the boundary there.
     assert!(path.poses().all(|p| p.contact.x <= 30.0 + 1e-3));
+    let note = path.note(TOL, LIMIT);
+    assert!(
+        note.contains("no part of its rulings lies inside the boundary"),
+        "{note}"
+    );
+    // With the tip at the top of the wall (Tip end reversed), limit B
+    // lowers the tip from the top to where the rulings enter the boundary.
+    let below = Window {
+        x_min: 0.0,
+        x_max: 60.0,
+        arc: Some((wall_angle(5.0), wall_angle(16.0) - wall_angle(5.0))),
+    };
+    let reversed = Settings {
+        reverse_tip_end: true,
+        ..f.settings()
+    };
+    let path = limited(&f, &boundary(below), &reversed).unwrap();
+    for p in path.poses() {
+        assert!((p.ruling_length - (16.0 - Z0)).abs() < 1e-3, "{p:?}");
+        assert!((p.contact.z - 0.5 * (16.0 + Z0)).abs() < 1e-3, "{p:?}");
+    }
+    assert!((path.limits.tip_raised - (Z1 - 16.0)).abs() < 1e-3);
     // Both off: the boundary limits nothing, the path is the one without a
     // boundary, and a warning points at the setting.
     let off = [
