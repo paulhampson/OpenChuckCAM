@@ -1339,3 +1339,42 @@ fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself(
     assert_eq!(app.strategy_description("no_such_strategy"), "");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
+    // Decision 0205, option B (the owner's choice, issue 223): rotary
+    // roughing added with a tool starts with 10 percent of the tool's
+    // diameter, stored on the operation like any value the user set. The
+    // 4 mm tool gives 0.4 mm; other strategies, and an operation with no
+    // tool yet, start with nothing set.
+    let (dir, mut app, op) = project("roughing-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let leave = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get("stock_to_leave")
+            .cloned()
+    };
+    let rough = app
+        .add_operation("Rough", "rotary_roughing", setup, tool)
+        .unwrap();
+    assert_eq!(
+        leave(&app, rough),
+        Some(openchuck_app::project::ParameterValue::Number(0.4))
+    );
+    let finish = app
+        .add_operation("Finish", "helical_finishing", setup, tool)
+        .unwrap();
+    assert_eq!(leave(&app, finish), None);
+    let no_tool = app
+        .add_operation("Rough 2", "rotary_roughing", setup, None)
+        .unwrap();
+    assert_eq!(leave(&app, no_tool), None);
+    // One undoable step: undoing removes the operation, value and all.
+    app.undo().unwrap();
+    assert!(app.project().operation(no_tool).is_none());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

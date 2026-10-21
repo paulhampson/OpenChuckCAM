@@ -197,6 +197,21 @@ impl Application {
                 )));
             }
         }
+        // Rotary roughing starts with a stock to leave for the finishing that
+        // follows, a tenth of the tool's diameter, written into the operation
+        // so the inspector shows it as set (decision record 0205).
+        let mut parameters = BTreeMap::new();
+        if strategy == openchuck_path::roughing::NAME
+            && let Some(snapshot) =
+                tool.and_then(|id| self.document.project.tools().iter().find(|t| t.id == id))
+        {
+            parameters.insert(
+                openchuck_path::params::names::STOCK_TO_LEAVE.to_owned(),
+                openchuck_project::ParameterValue::Number(default_roughing_stock_to_leave(
+                    snapshot.tool.diameter.0,
+                )),
+            );
+        }
         let id = OperationId::new();
         self.execute(Command::Add {
             item: Item::Operation(Operation {
@@ -211,7 +226,7 @@ impl Application {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: RestrictionOptions::default(),
-                parameters: BTreeMap::new(),
+                parameters,
                 enabled: true,
             }),
             placement: Placement::End,
@@ -225,5 +240,29 @@ impl Application {
             return Err(AppError::UnknownOperation(id.to_string()));
         }
         self.execute(Command::Remove(ItemId::Operation(id)))
+    }
+}
+
+/// The stock to leave a new rotary roughing operation starts with: 10 percent
+/// of the tool's diameter, rounded to 0.05 mm, at least 0.1 mm and at most
+/// 1 mm (decision record 0205, option B; issue 223; OP-11).
+pub(crate) fn default_roughing_stock_to_leave(diameter: f64) -> f64 {
+    let twentieths = (diameter * 0.1 / 0.05).round();
+    (twentieths / 20.0).clamp(0.1, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_roughing_stock_to_leave as leave;
+
+    /// OP-11, decision 0205: a tenth of the diameter on a 0.05 mm step, kept
+    /// between 0.1 and 1 mm.
+    #[test]
+    fn req_op_11_the_default_roughing_stock_to_leave_follows_the_tool_diameter() {
+        assert_eq!(leave(3.175), 0.3);
+        assert_eq!(leave(4.0), 0.4);
+        assert_eq!(leave(6.0), 0.6);
+        assert_eq!(leave(0.5), 0.1);
+        assert_eq!(leave(25.0), 1.0);
     }
 }

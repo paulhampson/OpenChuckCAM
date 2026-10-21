@@ -1,6 +1,6 @@
 # 0205: A default stock to leave for roughing: the options (lane OPCREATE; issue 223, F-67)
 
-- **Status:** proposed. A choice for the owner; nothing is built. The lane recommends option B below.
+- **Status:** proposed. The owner chose option B (relayed by the coordinator session, 21 Oct 2026) and the lane built it; the record is accepted only when the owner says so directly in the lane session (decision 0049).
 - **What it amends:** nothing until chosen. If chosen it adds an entry to OP-11 (stock to leave) that the owner agrees; `docs/requirements.md` is not edited here.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-794 is new.
@@ -22,4 +22,9 @@ Finishing operations keep 0: they are meant to cut to the surface. Whether a fin
 
 ## Decision
 
-None yet; the owner chooses A, B, C or D. If B or A is chosen, the lane builds it in `openchuck-app` `add_operation` (writes the value into the new operation, one undoable step), shows it in the inspector with the usual provenance ("Set for this operation"), and tests that an existing project's G-code is byte for byte the same.
+1. **Option B, the owner's choice.** A new rotary roughing operation added with a tool starts with a stock to leave of 10 percent of the tool's diameter, rounded to 0.05 mm, at least 0.1 mm and at most 1.0 mm (0.3 mm for a 3.175 mm tool, 0.4 mm for 4 mm, 0.6 mm for 6 mm). Rotary roughing only; no other strategy changes.
+2. **Where.** `Application::add_operation_on` writes the value into the new operation's parameters in the same undoable step, so the inspector shows it as a value set on the operation and the user can change or reset it. Operations already in a project are not touched, and an operation saved without the value still means 0, so existing projects' G-code is byte for byte unchanged. No project format change, no schema number.
+3. **No tool yet.** An operation added with no tool gets no value (the diameter is not known); the stock to leave stays at the schema default of 0 until the user sets it. A tool chosen afterwards does not write it. This is a gap the owner may want closed (OI-794).
+4. **No finishing warning for now** (the owner's answer to the issue's second question).
+
+Tests: `req_op_11_the_default_roughing_stock_to_leave_follows_the_tool_diameter` (opflow.rs) and `req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave` (`crates/openchuck-app/tests/operation.rs`).
