@@ -217,6 +217,41 @@ impl PlaybackPanel {
         };
     }
 
+    /// Drops the run when it holds the path of an operation the project no
+    /// longer has or has turned off, so that path leaves the view, the
+    /// playback and the comparison with the model at once (issue 196, NFR-12).
+    /// A run made before an ordinary edit stays, marked stale by the tree.
+    pub fn forget_removed(&mut self, app: &Application) {
+        let gone = self.run.as_ref().is_some_and(|run| {
+            run.groups.iter().any(|g| {
+                !app.project()
+                    .operation(g.operation)
+                    .is_some_and(|o| o.enabled)
+            })
+        });
+        if gone {
+            self.clear();
+        }
+    }
+
+    /// Shows `run` again when the panel dropped it (see
+    /// [`PlaybackPanel::forget_removed`]) and every operation in it is back
+    /// and on, as after undoing a turn-off or a deletion (OI-692). Does
+    /// nothing while the panel has a run, or when `run` still holds an
+    /// operation that is gone.
+    pub fn restore(&mut self, app: &Application, run: &Arc<Regeneration>) {
+        let back = run.groups.iter().all(|g| {
+            app.project()
+                .operation(g.operation)
+                .is_some_and(|o| o.enabled)
+        });
+        if self.run.is_none() && back && !run.groups.is_empty() {
+            let open = self.open;
+            self.set_run(app, Arc::clone(run));
+            self.open = open;
+        }
+    }
+
     /// Whether the panel has a run to show.
     pub fn has_run(&self) -> bool {
         self.run.is_some()
@@ -423,6 +458,7 @@ impl PlaybackPanel {
         };
         let mut shown = bands.clone();
         shown.bands.retain(|(band, _)| self.colour_by.shows(*band));
+        viewport.colour_by = self.colour_by;
         viewport.set_bands(Some((model, shown)));
     }
 
@@ -990,6 +1026,44 @@ mod tests {
         let (drawn, full, tolerance) = panel.detail.unwrap();
         assert_eq!(drawn, full, "a small job is drawn in full");
         assert!(tolerance.abs() < 1e-12);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_nfr_12_req_ui_06_removing_or_disabling_an_operation_clears_its_path_from_the_view() {
+        // Issue 196: a toolpath whose operation is gone is not drawn, played
+        // or compared with the model.
+        let (mut app, mut panel, mut viewport, dir) = prepared("panel-gone");
+        let op = app.project().operations()[0].id;
+        assert!(!viewport.layer(Layer::Paths).unwrap().lines.is_empty());
+
+        // Nothing changed: the run stays.
+        panel.forget_removed(&app);
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.has_run());
+        assert!(!viewport.layer(Layer::Paths).unwrap().lines.is_empty());
+
+        // Turned off: the path goes from the view at once.
+        app.execute(openchuck_app::Command::SetOperationEnabled {
+            operation: op,
+            enabled: false,
+        })
+        .unwrap();
+        panel.forget_removed(&app);
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(!panel.has_run());
+        assert!(viewport.layer(Layer::Paths).unwrap().lines.is_empty());
+        assert!(viewport.layer(Layer::Tool).unwrap().meshes.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+
+        // Removed, rather than turned off.
+        let (mut app, mut panel, mut viewport, dir) = prepared("panel-gone-2");
+        let op = app.project().operations()[0].id;
+        app.delete_operation(op).unwrap();
+        panel.forget_removed(&app);
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(!panel.has_run());
+        assert!(viewport.layer(Layer::Paths).unwrap().lines.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

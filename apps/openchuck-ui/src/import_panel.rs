@@ -18,7 +18,7 @@ use openchuck_app::model::{
 };
 use openchuck_app::{AppError, Application, JobHandle};
 
-use crate::floating::{FocusReturn, WindowEvent, floating_fixed, raise, viewport_id};
+use crate::floating::{WindowEvent, floating_fixed};
 use crate::roles;
 use crate::theme::DARK;
 
@@ -141,8 +141,6 @@ pub struct ImportSession {
     pub fresh: bool,
     /// The model being read and checked for adding, off the UI thread.
     adding: Option<JobHandle<PreparedModel>>,
-    /// Notices the application returning from the background.
-    focus: FocusReturn,
 }
 
 impl std::fmt::Debug for ImportSession {
@@ -168,7 +166,6 @@ impl ImportSession {
             error: None,
             fresh: false,
             adding: None,
-            focus: FocusReturn::new(),
         };
         session.check(app);
         session
@@ -188,7 +185,6 @@ impl ImportSession {
             error: None,
             fresh: false,
             adding: None,
-            focus: FocusReturn::new(),
         }
     }
 
@@ -292,15 +288,7 @@ impl ImportSession {
         let mut changed = false;
         let mut submit = false;
         let checked = self.preview.is_some();
-        // Whether the application came back from the background with the
-        // dialog possibly behind the main window (OI-430).
-        let main_focused = ctx.input_for(egui::ViewportId::ROOT, |i| i.viewport().focused);
-        let dialog_focused = ctx.input_for(viewport_id(WINDOW_KEY), |i| i.viewport().focused);
-        if self.focus.update(main_focused, dialog_focused) {
-            raise(ctx, WINDOW_KEY);
-        }
-        // Its own window, so it can be moved off the main one (OI-130), of a
-        // fixed size: the header and the footer stay in view and the body
+        // A window inside the main one (decision 0164), of a fixed size: the header and the footer stay in view and the body
         // scrolls (UI-16, OI-431).
         let ((), event) = floating_fixed(ctx, WINDOW_KEY, "Import model", WINDOW_SIZE, |ui| {
             egui::Panel::top("import header").show(ui, |ui| {
@@ -310,7 +298,7 @@ impl ImportSession {
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut self.path_text)
                             .desired_width(ui.available_width() - 240.0)
-                            .hint_text("Path of an STL file"),
+                            .hint_text("Path of a model file (STL or STEP)"),
                     );
                     // The file being added is the one checked: no new path meanwhile.
                     let busy = self.adding.is_some();
@@ -522,7 +510,7 @@ impl ImportSession {
                 .inner_margin(egui::Margin::symmetric(10, 6))
         };
         egui::Area::new(egui::Id::new("import legend"))
-            .order(egui::Order::Foreground)
+            .order(egui::Order::Middle)
             .fixed_pos(area.left_bottom() + egui::vec2(12.0, -12.0))
             .pivot(egui::Align2::LEFT_BOTTOM)
             .show(ctx, |ui| {
@@ -536,7 +524,7 @@ impl ImportSession {
             });
         let lines = readout_lines(i);
         egui::Area::new(egui::Id::new("import readout"))
-            .order(egui::Order::Foreground)
+            .order(egui::Order::Middle)
             .fixed_pos(area.right_bottom() + egui::vec2(-12.0 - 460.0, -12.0))
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .show(ctx, |ui| {

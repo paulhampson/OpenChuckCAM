@@ -161,6 +161,7 @@ impl Entry {
             return Ok(());
         }
         Err(self.refuse(
+            input,
             pass,
             name,
             &format!("an arc of radius {r:.3} mm"),
@@ -238,6 +239,7 @@ impl Entry {
             );
         }
         Err(self.refuse(
+            input,
             pass,
             name,
             &format!("an arc of radius {r:.3} mm"),
@@ -273,6 +275,7 @@ impl Entry {
         let positions = lerp_positions(start, goal, run / (0.25 * input.tool.cutting_radius()));
         if let Some(g) = self.gouge(b, input, head.a, &positions) {
             return Err(self.refuse(
+                input,
                 pass,
                 name,
                 &format!(
@@ -357,6 +360,7 @@ impl Entry {
         let positions: Vec<AxisPosition> = (1..count).map(at).collect();
         if let Some(g) = self.gouge(b, input, head.a, &positions) {
             return Err(self.refuse(
+                input,
                 pass,
                 name,
                 &format!(
@@ -401,7 +405,7 @@ impl Entry {
         input: &StrategyInput<'_>,
         a: Degrees,
         positions: &[AxisPosition],
-    ) -> Option<(f64, usize)> {
+    ) -> Option<Gouge> {
         let grown = self.grown.as_ref()?;
         let rotary = b.rotary;
         let axis = rotary.tool_axis(a);
@@ -415,28 +419,77 @@ impl Entry {
             };
             surface.drop_tool(grown, &line).map(|c| c.offset + leave)
         });
-        let mut worst: Option<(f64, usize)> = None;
+        let mut worst: Option<Gouge> = None;
         for (i, depth) in depths.into_iter().enumerate() {
             if let Some(d) = depth
                 && d > self.tolerance
-                && worst.is_none_or(|(w, _)| d > w)
+                && worst.is_none_or(|w| d > w.depth)
             {
-                worst = Some((d, i));
+                worst = Some(Gouge {
+                    depth: d,
+                    position: i,
+                    x: positions
+                        .get(i)
+                        .map_or(f64::NAN, |p| rotary.to_model(*p, a).x),
+                });
             }
         }
         worst
     }
 
-    fn refuse(&self, pass: usize, name: &str, size: &str, found: (f64, usize)) -> PathError {
+    /// The refusal of an entry or exit that would cut into the finished
+    /// surface. Where that is a held region (the tool is then over its
+    /// keep-out), the message names it, as the user may not see why a ramp
+    /// beside the part fails (SET-09; decision records 0114, 0161).
+    fn refuse(
+        &self,
+        input: &StrategyInput<'_>,
+        pass: usize,
+        name: &str,
+        size: &str,
+        found: Gouge,
+    ) -> PathError {
+        let mid = crate::strategy::part_middle(input);
+        if let Some(end) = crate::strategy::held_end(input.keep_out, mid, found.x, found.x) {
+            let held = crate::strategy::held_names(&std::collections::BTreeSet::from([end]));
+            return PathError::Strategy(format!(
+                "pass {}: the {name} needs {size}, and it would run over {held} at X \
+                 {:.3} mm, where the workholding grips the stock; use a plunge entry, or a size \
+                 or angle that keeps it clear of the held region",
+                pass + 1,
+                found.x
+            ));
+        }
         PathError::Strategy(format!(
             "pass {}: the {name} needs {size}, and the tool would cut {:.3} mm into the finished \
              surface at position {} of its path (the tolerance is {:.3} mm); try another entry \
              style, a smaller size or a steeper angle",
             pass + 1,
-            found.0,
-            found.1 + 1,
+            found.depth,
+            found.position + 1,
             self.tolerance
         ))
+    }
+}
+
+/// The deepest point an entry or exit would cut into the finished surface.
+#[derive(Debug, Clone, Copy)]
+struct Gouge {
+    /// How far into the surface, in millimetres.
+    depth: f64,
+    /// Its index among the positions checked.
+    position: usize,
+    /// The model X of the tool's tip there (NaN when not known).
+    x: f64,
+}
+
+impl Default for Gouge {
+    fn default() -> Self {
+        Self {
+            depth: 0.0,
+            position: 0,
+            x: f64::NAN,
+        }
     }
 }
 

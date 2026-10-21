@@ -467,6 +467,26 @@ mod tests {
     }
 
     #[test]
+    fn req_nfr_15_req_ui_11_the_bar_state_colours_have_contrast_on_the_bar() {
+        // Issue 210: the overall status and each step's mark sit on the bar.
+        // The marks are shapes, which need 3:1 (UI-11); on the dark theme,
+        // which the bar is drawn in, they reach 4.5:1 as text would.
+        for theme in THEMES {
+            let t = Tokens::of(theme);
+            for (name, fg) in [("ok", t.ok), ("warning", t.warning), ("error", t.error)] {
+                let c = contrast(fg, t.bar);
+                assert!(c >= 3.0, "{theme:?} {name} on the bar is {c:.2}:1");
+                let c = contrast(fg, t.field);
+                assert!(c >= 3.0, "{theme:?} {name} on the badge is {c:.2}:1");
+                if theme == Theme::Dark {
+                    let c = contrast(fg, t.bar);
+                    assert!(c >= 4.5, "dark {name} on the bar is {c:.2}:1");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn req_nfr_15_graphics_tokens_reach_3_to_1() {
         for theme in THEMES {
             let t = Tokens::of(theme);

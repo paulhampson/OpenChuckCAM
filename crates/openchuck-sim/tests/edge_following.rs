@@ -73,6 +73,7 @@ fn engrave(
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        keep_out: &[],
     };
     let mut values: BTreeMap<String, ParameterValue> = [
         (names::STEPOVER, 0.4),

@@ -4,6 +4,7 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
+- Version 0.12.0 with the library family (`StrategyInput` in `openchuck-path` gains `keep_out`, a breaking change; decision 0161).
 - Ready to publish to crates.io (decision 0138): an `include` list (the library sources and the files they read; the tests stay out of the package), keywords and categories, and a README that links the repository. No API change. The built-in posts are now in this crate's `posts/` folder (decision 0103), so the published crate carries them; their content and the posts' output are unchanged.
 - Version 0.11.0 with the library family (`PostJob` in `openchuck-post` gains `generator`, a breaking change; decision 0151).
 - **Breaking (0.11.0):** `PostJob` gains `generator`, the tool and its version (such as `OpenChuckCAM 0.11.0`) that both shipped posts write as a comment after the title, inside the `comments` option (NFR-16). A host passes the software version only, never a commit or a date, so one version always gives the same program (GC-07); a host that does not want the line passes `None`. Golden files hold `(OpenChuckCAM <version>)`, and `openchuck_testkit::golden::check` masks the version before it compares.

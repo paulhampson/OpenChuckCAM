@@ -593,6 +593,7 @@ fn req_op_21_helical_finishing_on_the_composite_never_gouges_the_held_region_or_
         },
         max_feeds: machine.max_feeds,
         tags: &tag,
+        keep_out: &[],
     };
     let values: BTreeMap<String, ParameterValue> = [
         (names::STEPOVER, 2.0),
@@ -707,4 +708,136 @@ fn req_op_21_a_small_tool_through_a_large_solid_finds_the_top_among_several_narr
             );
         }
     }
+}
+
+/// The held region of box stock: the stock's own box section over the
+/// gripped length (decision record 0160).
+fn held_box() -> Solid {
+    Solid::cuboid(openchuck_types::geometry::Aabb {
+        min: Point3::new(-12.0, -12.0, -9.0),
+        max: Point3::new(-8.0, 12.0, 9.0),
+    })
+    .unwrap()
+}
+
+#[test]
+fn req_set_09_a_box_solid_has_its_volume_area_bounds_and_outward_mesh() {
+    let b = held_box();
+    assert_eq!(b.volume(), 4.0 * 24.0 * 18.0);
+    assert_eq!(
+        b.surface_area(),
+        2.0 * (4.0 * 24.0 + 24.0 * 18.0 + 18.0 * 4.0)
+    );
+    let bounds = b.bounds();
+    assert_eq!(bounds.min, Point3::new(-12.0, -12.0, -9.0));
+    assert_eq!(bounds.max, Point3::new(-8.0, 12.0, 9.0));
+    assert_eq!(b.as_cuboid(), Some(bounds));
+    assert_eq!(solids()[0].as_cuboid(), None);
+    // Read as a solid along X through the corners of its section.
+    assert_eq!((b.base().x, b.top().x, b.length()), (-12.0, -8.0, 4.0));
+    assert_eq!(b.base_radius(), 12.0f64.hypot(9.0));
+    assert!(b.contains(Point3::new(-10.0, 11.9, -8.9)));
+    assert!(b.contains(Point3::new(-8.0, 12.0, 9.0)));
+    assert!(!b.contains(Point3::new(-10.0, 12.1, 0.0)));
+    assert!(!b.contains(Point3::new(-7.9, 0.0, 0.0)));
+    let mesh = b.mesh(96);
+    assert_eq!((mesh.vertices.len(), mesh.triangles.len()), (8, 12));
+    assert!((mesh_volume(&mesh) - b.volume()).abs() < 1e-9);
+}
+
+#[test]
+fn req_set_09_an_impossible_box_is_refused_with_a_message() {
+    let flat = Solid::cuboid(openchuck_types::geometry::Aabb {
+        min: Point3::new(0.0, 0.0, 0.0),
+        max: Point3::new(4.0, 0.0, 2.0),
+    });
+    let message = flat.unwrap_err().to_string();
+    assert!(message.contains("width along Y"), "{message}");
+    let endless = Solid::cuboid(openchuck_types::geometry::Aabb {
+        min: Point3::new(0.0, 0.0, 0.0),
+        max: Point3::new(f64::INFINITY, 1.0, 1.0),
+    });
+    assert!(endless.is_err());
+}
+
+#[test]
+fn req_set_09_a_box_answers_as_its_own_mesh_does() {
+    let b = held_box();
+    let mesh = MeshSurface::new(&b.mesh(0)).unwrap();
+    // Exact cases: down onto the top face, along X onto the end face, from
+    // inside out through a side, and closest points outside, inside and past
+    // an edge.
+    let down = b
+        .cast_ray(Point3::new(-10.0, 0.0, 20.0), dir(0.0, 0.0, -1.0), 100.0)
+        .unwrap();
+    assert_eq!((down.distance, down.normal.get().z), (11.0, 1.0));
+    let along = b
+        .cast_ray(Point3::new(-30.0, 1.0, 1.0), dir(1.0, 0.0, 0.0), 100.0)
+        .unwrap();
+    assert_eq!((along.distance, along.normal.get().x), (18.0, -1.0));
+    let out = b
+        .cast_ray(Point3::new(-10.0, 0.0, 0.0), dir(0.0, 1.0, 0.0), 100.0)
+        .unwrap();
+    assert_eq!((out.distance, out.normal.get().y), (12.0, 1.0));
+    assert!(
+        b.cast_ray(Point3::new(-10.0, 0.0, 20.0), dir(0.0, 0.0, -1.0), 5.0)
+            .is_none()
+    );
+    assert!(
+        b.cast_ray(Point3::new(-10.0, 30.0, 20.0), dir(0.0, 0.0, -1.0), 100.0)
+            .is_none()
+    );
+    let inside = b.project(Point3::new(-11.0, 0.0, 0.0)).unwrap();
+    assert_eq!(inside.point, Point3::new(-12.0, 0.0, 0.0));
+    assert_eq!(inside.normal.get().x, -1.0);
+    let past = b.project(Point3::new(-5.0, 15.0, 0.0)).unwrap();
+    assert_eq!(past.point, Point3::new(-8.0, 12.0, 0.0));
+    assert!((past.normal.get().x - 0.5f64.sqrt()).abs() < 1e-12);
+    // At random, the box agrees with the mesh of its own twelve triangles.
+    let tools = [
+        profile(ToolShape::BallEnd, 6.0),
+        profile(ToolShape::FlatEnd, 5.0),
+    ];
+    let mut rng = Lcg(41);
+    let bb = b.bounds();
+    let (mut drops, mut rays) = (0, 0);
+    for k in 0..300 {
+        let o = Point3::new(
+            rng.between(bb.min.x - 10.0, bb.max.x + 10.0),
+            rng.between(bb.min.y - 10.0, bb.max.y + 10.0),
+            rng.between(bb.min.z - 10.0, bb.max.z + 10.0),
+        );
+        let p = b.project(o).unwrap();
+        let q = mesh.project(o).unwrap();
+        assert!(
+            (p.point.distance(o) - q.point.distance(o)).abs() < 1e-9,
+            "{o:?}"
+        );
+        let target = Point3::new(
+            rng.between(bb.min.x, bb.max.x),
+            rng.between(bb.min.y, bb.max.y),
+            rng.between(bb.min.z, bb.max.z),
+        );
+        if let Ok(d) = UnitVec3::new(target - o)
+            && let (Some(g), Some(w)) = (b.cast_ray(o, d, 1e6), mesh.cast_ray(o, d, 1e6))
+        {
+            assert!((g.distance - w.distance).abs() < 1e-9, "{o:?} {d:?}");
+            rays += 1;
+        }
+        let a = rng.between(0.0, std::f64::consts::TAU);
+        let line = ToolLine {
+            origin: o,
+            axis: dir(0.0, a.sin(), a.cos()),
+        };
+        let tool = &tools[k % 2];
+        match (b.drop_tool(tool, &line), mesh.drop_tool(tool, &line)) {
+            (Some(g), Some(w)) => {
+                assert!((g.offset - w.offset).abs() < 1e-9, "{line:?}");
+                drops += 1;
+            }
+            (None, None) => {}
+            (g, w) => panic!("box {g:?} against mesh {w:?} for {line:?}"),
+        }
+    }
+    assert!(drops > 50 && rays > 50, "{drops} drops, {rays} rays");
 }

@@ -24,8 +24,9 @@ use openchuck_app::workholding::{
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, FieldProblem, NO_TABS_WARNING, Zone, check_draft,
-    default_chips, default_tabs_state, display_items, held_span, narrowest_line, new_held_region,
-    new_tab, no_default_line, part_facing, set_layout, set_shape, tab_zone, zone_lines,
+    default_chips, default_tabs_state, display_items, held_span, holding_hint, narrowest_line,
+    new_held_region, new_tab, no_default_line, part_facing, set_layout, set_shape, tab_zone,
+    zone_lines,
 };
 use openchuck_app::{Application, Command, JobHandle};
 
@@ -631,10 +632,9 @@ impl WorkholdingPanel {
                 );
             });
         }
-        let hint = match setup.stock.as_ref().and_then(|s| s.radius(None)) {
-            Some(r) => format!("Stock diameter ({} mm)", mm(2.0 * r.0)),
-            None => "Stock diameter".to_owned(),
-        };
+        // Without a diameter the held region is the stock's own diameter or
+        // outline (decision 0160).
+        let hint = holding_hint(setup.stock.as_ref());
         if let Some(v) = self.number_row(
             ui,
             &format!("diameter {key}"),

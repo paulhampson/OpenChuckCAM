@@ -971,6 +971,186 @@ fn req_set_01_the_plus_is_disabled_until_a_model_is_imported() {
     assert_eq!(rig.shell.step, Step::Model);
 }
 
+/// Makes `rig`'s first operation lack its tool and lets the shell see it.
+fn without_tool(rig: &mut Rig) -> openchuck_app::project::id::OperationId {
+    use openchuck_app::project::Item;
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    op.tool = None;
+    let id = op.id;
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    rig.settle();
+    id
+}
+
+#[test]
+fn req_ui_11_the_step_bar_says_the_overall_status_in_words_and_shape() {
+    // Issue 210: the bar follows the whole job (green, yellow, red) and says
+    // so in words, not by colour alone; each step has its own mark.
+    let mut rig = Rig::cube("bar-status", None);
+    // A fresh cube project has an operation never generated: stale.
+    assert_eq!(
+        rig.shell.overview.health(),
+        openchuck_app::overview::StepHealth::Attention
+    );
+    assert!(rig.shows("Needs attention"));
+    let op = without_tool(&mut rig);
+    assert_eq!(
+        rig.shell.overview.health(),
+        openchuck_app::overview::StepHealth::Error
+    );
+    assert!(rig.shows("Error to fix"));
+    // The badge and the step names do not run into each other, at the
+    // smallest window the specification names (UI-16) and at 120 % scale.
+    for (size, ppp) in [
+        (egui::vec2(1366.0, 768.0), 1.0),
+        (egui::vec2(1366.0, 768.0), 1.2),
+    ] {
+        rig.size = size;
+        rig.ctx.set_pixels_per_point(ppp);
+        rig.frame(Vec::new());
+        rig.frame(Vec::new());
+        let rects = rig.text_rects();
+        let badge = rects
+            .iter()
+            .find(|(t, _)| t == "Error to fix")
+            .map(|(_, r)| *r)
+            .expect("the badge is drawn");
+        for (text, rect) in &rects {
+            if [
+                "Model",
+                "Setup",
+                "Operations",
+                "Simulate",
+                "Post and export",
+            ]
+            .contains(&text.as_str())
+                && (rect.center().y - badge.center().y).abs() < 6.0
+            {
+                assert!(
+                    !rect.intersects(badge),
+                    "{text} overlaps the badge at {ppp}"
+                );
+            }
+        }
+    }
+    // Clicking it goes to the first problem: the operation, at the tool.
+    rig.shell.go_to_first_problem();
+    assert_eq!(rig.shell.selected, Some(Selection::Operation(op)));
+    assert_eq!(
+        rig.shell.requirement_jump,
+        Some(openchuck_app::requirements::RequirementField::Tool)
+    );
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("1 value is missing"));
+    assert!(rig.shows("Choose a tool"));
+    assert!(
+        rig.shell.requirement_jump.is_none(),
+        "the jump is used once"
+    );
+}
+
+#[test]
+fn req_ui_11_a_setup_without_stock_says_so_under_its_section_and_in_the_bar() {
+    use openchuck_app::project::Item;
+    let mut rig = Rig::cube("bar-setup", None);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut setup = app.project().setups()[0].clone();
+    let id = setup.id;
+    setup.stock = None;
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    rig.settle();
+    assert_eq!(
+        rig.shell.overview.step(Step::Setup).health,
+        openchuck_app::overview::StepHealth::Error
+    );
+    rig.shell.go_to_first_problem();
+    assert_eq!(rig.shell.step, Step::Setup);
+    assert_eq!(rig.shell.selected, Some(Selection::Setup(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("1 value is missing"));
+    assert!(rig.shows("Set the stock"));
+}
+
+#[test]
+fn req_nfr_12_req_ui_06_undoing_a_turn_off_brings_the_path_back() {
+    // OI-692: a run dropped because its operation was turned off is shown
+    // again when the operation is back (undo or redo), as the export check
+    // allows it again.
+    let mut rig = Rig::cube("undo-path", None);
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.primary();
+    rig.settle();
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let drawn = |rig: &Rig| {
+        rig.shell
+            .viewport
+            .layer(openchuck_viewport::Layer::Paths)
+            .is_some_and(|p| !p.lines.is_empty())
+    };
+    while !(rig.shell.play.has_run() && drawn(&rig)) {
+        assert!(Instant::now() < deadline, "timed out waiting for the path");
+        rig.settle();
+    }
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .execute(Command::SetOperationEnabled {
+            operation: op,
+            enabled: false,
+        })
+        .unwrap();
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(!rig.shell.play.has_run());
+    assert!(!drawn(&rig), "the path of a turned-off operation is gone");
+
+    rig.shell.undo();
+    while !(rig.shell.play.has_run() && drawn(&rig)) {
+        assert!(Instant::now() < deadline, "timed out waiting for the path");
+        rig.settle();
+    }
+    // Redo turns it off again, and the path goes again.
+    rig.shell.redo();
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(!rig.shell.play.has_run());
+    assert!(!drawn(&rig));
+}
+
+/// The window title names the application, the project and its folder, and
+/// is sent to the system once it is known (#218).
+#[test]
+fn req_ui_01_the_window_title_follows_the_open_project() {
+    let mut blank = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    blank.frame(Vec::new());
+    assert_eq!(blank.shell.sent_title, "OpenChuckCAM");
+
+    let mut rig = Rig::cube("window-title", None);
+    rig.frame(Vec::new());
+    let folder = rig
+        .shell
+        .app
+        .as_ref()
+        .unwrap()
+        .location()
+        .display()
+        .to_string();
+    let title = rig.shell.sent_title.clone();
+    assert!(title.starts_with("OpenChuckCAM - "), "{title}");
+    assert!(
+        !title.contains("* - "),
+        "saved project has no mark: {title}"
+    );
+    assert!(
+        title.ends_with(&crate::window_title::shorten_middle(&folder, 70)),
+        "{title}"
+    );
+}
+
 /// Draws the Setup inspector at `window` physical pixels, UI `scale` and an
 /// inspector `pane` width (points) and returns the entry boxes in it with the
 /// pane's left and right edges.

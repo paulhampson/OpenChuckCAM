@@ -613,13 +613,23 @@ pub fn save(project: &Project, root: &Path) -> Result<(), ProjectError> {
 }
 
 /// Creates a new project folder at `root` holding an empty project.
-/// Fails if `root` already holds a project.
+/// Fails if `root` already holds a project or any file or folder a project
+/// owns.
 pub fn create(root: &Path, name: &str) -> Result<Project, ProjectError> {
     let project_file = root.join(PROJECT_FILE);
     if project_file.exists() {
         return Err(ProjectError::BadFile {
             path: project_file,
             reason: "a project already exists here".to_owned(),
+        });
+    }
+    // Saving removes a machine file and item files the project does not own,
+    // so a folder that holds any of them is not written over (NFR-07).
+    let owned = crate::new_folder::owned_names_in(root);
+    if !owned.is_empty() {
+        return Err(ProjectError::BadFile {
+            path: root.to_path_buf(),
+            reason: format!("the folder already holds {}", owned.join(", ")),
         });
     }
     let project = Project::new(name);

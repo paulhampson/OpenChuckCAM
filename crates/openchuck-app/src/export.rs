@@ -149,13 +149,23 @@ fn stale_operations(
     // An operation the run did not make (a run up to an earlier operation,
     // decision record 0117) is stale too: it is not in the toolpath.
     let made = |id: &OperationId| run.groups.iter().any(|g| g.operation == *id);
-    Ok(now
+    let mut stale: BTreeSet<OperationId> = now
         .iter()
         .filter(|(id, key)| {
             !made(id) || then.iter().find(|(i, _)| i == id).map(|(_, k)| k) != Some(key)
         })
         .map(|(id, _)| *id)
-        .collect())
+        .collect();
+    // The run holds the path of an operation that is gone or turned off since
+    // (issue 196): that path would be written to the G-code and played back
+    // as if it were current (NFR-12).
+    stale.extend(
+        run.groups
+            .iter()
+            .map(|g| g.operation)
+            .filter(|id| !now.iter().any(|(n, _)| n == id)),
+    );
+    Ok(stale)
 }
 
 /// Works out the checks before writing G-code (GC-15).
@@ -211,6 +221,27 @@ pub fn export_checks(
                             );
                         }
                     }
+                    // Made in the run, but removed or turned off since.
+                    for id in &stale {
+                        if enabled.iter().any(|o| o.id == *id) {
+                            continue;
+                        }
+                        let name = run
+                            .project
+                            .operation(*id)
+                            .map_or("an operation", |o| o.name.as_str());
+                        let why = if project.operation(*id).is_some() {
+                            "turned off"
+                        } else {
+                            "removed"
+                        };
+                        push(
+                            CheckLevel::Blocking,
+                            format!(
+                                "Operation '{name}' is out of date: it was {why} after the toolpath was generated, but the toolpath still holds it. Generate again."
+                            ),
+                        );
+                    }
                 }
                 Err(e) => push(
                     CheckLevel::Blocking,
@@ -241,7 +272,14 @@ pub fn export_checks(
                         .collect()
                 });
             for operation in &enabled {
-                if !simulated.contains(operation.name.as_str()) {
+                // The simulation names an operation as it was called when the
+                // run was made; a rename since then is not a missing run
+                // (issue 209).
+                let simulated_as = run
+                    .project
+                    .operation(operation.id)
+                    .map_or(operation.name.as_str(), |o| o.name.as_str());
+                if !simulated.contains(simulated_as) {
                     push(
                         CheckLevel::Warning,
                         format!(

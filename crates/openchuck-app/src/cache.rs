@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use openchuck_project::id::{ModelId, OperationId};
-use openchuck_project::{ContentHash, ModelRef, Operation, Project};
+use openchuck_project::{ContentHash, ModelRef, Operation, OrderKey, Project};
 
 use crate::AppError;
 use crate::operation::OperationPath;
@@ -248,8 +248,24 @@ pub(crate) fn operation_key(
         "previous",
         &previous.map(|k| k.as_bytes().to_vec()),
     )?;
-    feed(&mut bytes, "operation", operation)?;
-    feed(&mut bytes, "setup", &project.setup(operation.setup))?;
+    // What the operation is called, where it sits in the list and whether it is
+    // on are not inputs to its path: the name is only a label (the post reads
+    // it when writing, and the path's tags carry the ID), the position reaches
+    // the key through `previous`, and a disabled operation has no key. Leaving
+    // them out keeps a rename from making the operation stale (issue 209).
+    let mut operation_inputs = operation.clone();
+    operation_inputs.name.clear();
+    operation_inputs.order = OrderKey::default();
+    operation_inputs.enabled = true;
+    feed(&mut bytes, "operation", &operation_inputs)?;
+    // The same for the setup's name and position.
+    let setup = project.setup(operation.setup).map(|setup| {
+        let mut setup = setup.clone();
+        setup.name.clear();
+        setup.order = OrderKey::default();
+        setup
+    });
+    feed(&mut bytes, "setup", &setup)?;
     feed(&mut bytes, "machine", &project.machine())?;
     feed(&mut bytes, "simulation", &project.simulation())?;
     let tool = operation
@@ -257,8 +273,12 @@ pub(crate) fn operation_key(
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
     // The controller mapping (tool number and offsets) is read when posting, not
     // when the path is made, so renumbering tools (GC-14) leaves results valid.
+    // The name and the position in the list are labels, as an operation's are
+    // (OI-693): the post reads the name when writing.
     let tool = tool.map(|t| {
         let mut t = t.clone();
+        t.name.clear();
+        t.order = OrderKey::default();
         t.controller = openchuck_types::tool::ControllerMapping {
             number: 0,
             length_offset: None,
