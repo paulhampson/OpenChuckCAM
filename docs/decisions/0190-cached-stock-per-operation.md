@@ -28,8 +28,8 @@ The lane reproduced it with the owner's `blisk_1_overcut_mismatch` project (roug
 
 ## Consequences
 
-- With the fix, a run with nothing changed on the blisk project takes the time to post and check. A change to the finishing takes only the finishing's generation, plus its simulation when one is asked for.
-- A Simulate run with nothing changed still compares the final stock with the part again (about 3 s on the blisk project); caching the comparison is OI-627.
+- Measured on the owner's blisk project (release build, 4 threads), before and after: a run with nothing changed went from 10.6 s to 0.06 s; after a change to the finishing, from 13.9 s to 4.2 s (the finishing's own generation); with Simulate, from 14.0 s to 1.2 s and from 17.0 s to 6.6 s. A first run is unchanged (32 to 39 s).
+- A Simulate run with nothing changed still compares the final stock with the part again (about 1 s of the 1.2 s on the blisk project); caching the comparison is OI-627.
 - Changelog: `openchuck-app` (`Regeneration::simulated`) and `openchuck-sim` (`DexelStock::shrink_to_fit`) gain public items. Neither is in the library family that `cargo-semver-checks` checks, and nothing is removed, so the workspace version is not bumped (decision 0048).
 
 ## Tests
