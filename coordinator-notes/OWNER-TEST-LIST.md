@@ -48,6 +48,10 @@ Updated 21 Oct 2026. Nightly run 13 was triggered on main at eced9a1 (https://gi
 | OI-535 | Before/after look of the inspector label/scroll bar fix (the lane had no screenshots) |
 | OI-571, 572, 573 | Remaining inspector items from the nightly check |
 
+## C2. Known issues in the second nightly (#238), fix pending
+
+- OI-605 (playback window): dragging out a NEW playback window leftwards takes one move too many at each end (moves 19 to 40 where the band reads 20 to 39); dragging either end past the other end collapses the window on the next pointer move. The number fields ("Window: moves [from] to [to]") are fine. Fix ready (BUG-SIM follow-up PR, after #238 merges).
+
 ## D. Open draft PRs
 
 | PR | Waiting on |
