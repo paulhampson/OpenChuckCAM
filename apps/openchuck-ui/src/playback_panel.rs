@@ -1158,6 +1158,9 @@ impl PlaybackPanel {
     pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
         let mut skip = None;
         let Some(data) = self.data.clone() else {
+            // The transport row keeps its place while there is nothing to
+            // play, so the tab does not move when a run lands (issue 215).
+            let skip = waiting_row(ui, app);
             if self.data_job.is_some() {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -1168,7 +1171,7 @@ impl PlaybackPanel {
             } else {
                 ui.label("Generate toolpaths to see and play them.");
             }
-            return skip_box(ui, app);
+            return skip;
         };
         let timeline = &data.timeline;
         let total = timeline.total_time();
@@ -1361,6 +1364,24 @@ impl PlaybackPanel {
             });
         }
     }
+}
+
+/// The transport row with nothing to play: the buttons in their places but
+/// disabled, then the "Skip stock simulation" tick box, where the row with a
+/// run has them (issues 215 and 259). Returns the tick box's new choice when
+/// it was clicked.
+pub fn waiting_row(ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+    ui.horizontal(|ui| {
+        ui.add_enabled_ui(false, |ui| {
+            for button in ["⏮", "\u{23f4}", "\u{23f5}", "\u{23f5}|", "⏭"] {
+                ui.button(button)
+                    .on_disabled_hover_text("There is nothing to play yet");
+            }
+        });
+        ui.separator();
+        skip_box(ui, app)
+    })
+    .inner
 }
 
 /// The project's "Skip stock simulation" tick box (issue 214; decision

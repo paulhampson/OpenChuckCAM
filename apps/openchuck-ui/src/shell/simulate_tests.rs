@@ -82,7 +82,7 @@ fn req_sim_05_req_sim_07_the_results_inspector_shows_the_numbers_and_the_resolut
     assert!(rig.shell.results.error.is_some());
     assert!((app.project().simulation().cell.0 - 0.05).abs() < 1e-12);
     rig.frame(Vec::new());
-    assert!(rig.shows("The project has changed since this simulation"));
+    assert!(rig.shows("The simulation settings have changed since this simulation."));
     assert!(rig.shows("times the time"));
 }
 
@@ -414,4 +414,214 @@ fn req_sim_01_req_ui_11_the_tree_hides_paths_in_every_step_and_all_at_once() {
     rig.shell.open_step(Step::Simulate);
     rig.frame(Vec::new());
     assert!(rig.shows("Hiding a toolpath changes the view only."));
+}
+
+/// The dock's drawn height and the height asked for: equal while the dock's
+/// contents fill it, whatever the tab holds (issues 259 and 215).
+fn dock_heights(rig: &Rig) -> (f32, f32) {
+    let drawn = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
+        .expect("the dock was drawn")
+        .outer_rect
+        .height();
+    (drawn, rig.shell.settings.dock.size)
+}
+
+/// How many times `needle` is painted.
+fn count(rig: &Rig, needle: &str) -> usize {
+    rig.texts().iter().filter(|(t, _)| t == needle).count()
+}
+
+/// Draws until the run started is done and its playback is ready.
+fn until_simulated_again(rig: &mut Rig) {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.run.is_running() || !rig.shell.play.has_run() || rig.shell.play.pose().is_none()
+    {
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(Instant::now() < deadline, "timed out");
+    }
+    rig.settle();
+}
+
+#[test]
+fn req_nfr_12_req_ui_11_req_sim_04_a_changed_parameter_marks_the_simulation_out_of_date() {
+    // Issues 259 and 260: after a parameter change in Simulate the old result
+    // stays to compare, but the view, the dock and the results each say it
+    // is out of date, why, and offer to simulate again from Simulate. The
+    // playback controls stay, and the dock is drawn whole.
+    let mut rig = simulated("sim-stale-parameter");
+    assert!(!rig.shows(super::out_of_date::TITLE));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_parameter(
+            op,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(0.6)),
+        )
+        .unwrap();
+    rig.settle();
+    // The view, the Playback tab and the results inspector.
+    assert_eq!(
+        count(&rig, super::out_of_date::TITLE),
+        3,
+        "{:?}",
+        rig.texts()
+    );
+    assert!(rig.shows(
+        "Operation 'Finish' has changed since this simulation. Simulate again to see the effect."
+    ));
+    assert!(rig.shows("Results of the out-of-date simulation:"));
+    let label = rig.shell.overview.primary(Step::Simulate).label;
+    assert_eq!(label, "Generate and simulate op 1");
+    // Three banner buttons and the footer's primary.
+    assert_eq!(count(&rig, &label), 4);
+    assert!(rig.shell.play.has_run());
+    for text in ["Go to move", "Speed", "Whole program"] {
+        assert!(rig.shows(text), "{text}");
+    }
+    let (drawn, asked) = dock_heights(&rig);
+    assert!((drawn - asked).abs() < 0.5, "{drawn} of {asked}");
+
+    // Simulating again from the dock's banner brings the result up to date.
+    rig.shell.dock_tab = DockTab::Playback;
+    rig.settle();
+    let at = rig
+        .text_rects()
+        .into_iter()
+        .filter(|(t, _)| *t == label)
+        .map(|(_, r)| r)
+        .max_by(|a, b| a.top().total_cmp(&b.top()))
+        .unwrap();
+    rig.click(at.center());
+    assert!(rig.shell.run.is_running(), "the banner's button runs it");
+    until_simulated_again(&mut rig);
+    assert!(!rig.shows(super::out_of_date::TITLE));
+    assert!(!rig.shows("Results of the out-of-date simulation:"));
+    assert!(rig.shows("Go to move"));
+}
+
+#[test]
+fn req_nfr_12_req_ui_11_turning_off_an_operation_in_simulate_offers_to_simulate_again() {
+    // Issue 260: turning off an operation drops its playback (decision 0172
+    // item 3), and the dock offers to simulate again in its place instead of
+    // going empty; the results stay, dimmed and marked.
+    let mut rig = Rig::cube("sim-stale-off", None);
+    let first = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.tree_action(super::TreeAction::Duplicate(first));
+    rig.settle();
+    let second = rig.shell.app.as_ref().unwrap().project().operations()[1].id;
+    let name = rig.shell.app.as_ref().unwrap().project().operations()[1]
+        .name
+        .clone();
+    rig.shell.generate(true);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.run.last().is_none_or(|r| r.simulation.is_none()) {
+        rig.settle();
+        assert!(Instant::now() < deadline, "timed out");
+    }
+    rig.shell.open_step(Step::Simulate);
+    until_simulated_again(&mut rig);
+    assert!(!rig.shows(super::out_of_date::TITLE));
+
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .execute(openchuck_app::Command::SetOperationEnabled {
+            operation: second,
+            enabled: false,
+        })
+        .unwrap();
+    rig.settle();
+    assert!(!rig.shell.play.has_run(), "decision 0172 item 3");
+    assert_eq!(
+        count(&rig, super::out_of_date::TITLE),
+        3,
+        "{:?}",
+        rig.texts()
+    );
+    assert!(rig.shows(&format!(
+        "Operation '{name}' was turned off. Simulate again to see the effect."
+    )));
+    assert!(!rig.shows("Run the simulation to play the cut."));
+    assert!(rig.shows("Results of the out-of-date simulation:"));
+    assert_eq!(
+        rig.shell.overview.primary(Step::Simulate).kind,
+        PrimaryKind::RunSimulation
+    );
+    let (drawn, asked) = dock_heights(&rig);
+    assert!((drawn - asked).abs() < 0.5, "{drawn} of {asked}");
+
+    rig.shell.primary();
+    until_simulated_again(&mut rig);
+    assert!(!rig.shows(super::out_of_date::TITLE));
+    let made: Vec<_> = rig
+        .shell
+        .run
+        .last()
+        .unwrap()
+        .groups
+        .iter()
+        .map(|g| g.operation)
+        .collect();
+    assert_eq!(made, [first]);
+}
+
+#[test]
+fn req_nfr_12_turning_off_the_only_operation_says_so_without_a_button() {
+    let mut rig = simulated("sim-stale-only");
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .execute(openchuck_app::Command::SetOperationEnabled {
+            operation: op,
+            enabled: false,
+        })
+        .unwrap();
+    rig.settle();
+    assert!(
+        rig.shows("Operation 'Finish' was turned off. Turn on an operation to simulate again.")
+    );
+    assert!(!rig.shows("Run simulation"));
+}
+
+#[test]
+fn req_ui_16_req_sim_04_the_playback_tab_keeps_its_place_while_the_simulation_runs() {
+    // Issue 215 (OI-571): the owner sees the playback box move down when the
+    // simulation runs. While a run is going and its playback is prepared the
+    // tab holds less, and the dock must keep its size and place throughout.
+    let mut rig = simulated("sim-runs-in-place");
+    rig.shell.dock_tab = DockTab::Playback;
+    rig.settle();
+    let top = |rig: &Rig| {
+        rig.text_rects()
+            .into_iter()
+            .find(|(t, _)| t == "Skip stock simulation")
+            .map(|(_, r)| r.top())
+    };
+    let before = top(&rig).unwrap();
+    rig.shell.generate(true);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut frames = 0;
+    while rig.shell.run.is_running() || rig.shell.play.pose().is_none() || frames < 5 {
+        rig.frame(Vec::new());
+        frames += 1;
+        let (drawn, asked) = dock_heights(&rig);
+        assert!(
+            (drawn - asked).abs() < 0.5,
+            "frame {frames}: {drawn} of {asked}"
+        );
+        if let Some(at) = top(&rig) {
+            assert!(at <= before + 0.5, "frame {frames}: {at} below {before}");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+        assert!(Instant::now() < deadline, "timed out");
+    }
+    rig.settle();
+    assert_eq!(top(&rig), Some(before));
 }

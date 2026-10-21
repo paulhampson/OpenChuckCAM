@@ -176,8 +176,17 @@ impl Shell {
     /// The results inspector of the Simulate step (specification 11.5).
     fn results_inspector(&mut self, ui: &mut egui::Ui) {
         let run = self.run.last().cloned();
+        // An out-of-date result says so first, with the way to simulate
+        // again, and its numbers are dimmed (issue 260).
+        if self.out_of_date_banner(ui) {
+            self.primary();
+        }
+        let stale = self
+            .out_of_date
+            .reason()
+            .map(|_| super::out_of_date::STALE_OPACITY);
         let Some(app) = &mut self.app else { return };
-        if self.results.show(ui, app, run.as_ref()) {
+        if self.results.show(ui, app, run.as_ref(), stale) {
             self.play
                 .set_colour_by(self.results.colour_by, &mut self.viewport);
         }

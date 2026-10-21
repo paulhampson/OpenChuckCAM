@@ -54,6 +54,7 @@ mod dock;
 mod frame;
 mod inspector;
 pub(crate) mod marks;
+mod out_of_date;
 mod tree;
 
 use dock::DockTab;
@@ -212,6 +213,8 @@ pub struct Shell {
     reset: Option<frame::Region>,
     /// What the user-action log last saw (NFR-18).
     recorder: actions::Recorder,
+    /// Whether the latest run still matches the project (issue 260).
+    out_of_date: out_of_date::OutOfDate,
 }
 
 impl Shell {
@@ -280,6 +283,7 @@ impl Shell {
             auto_collapsed: frame::AutoCollapse::default(),
             reset: None,
             recorder: actions::Recorder::default(),
+            out_of_date: out_of_date::OutOfDate::default(),
         };
         crate::logging::set_recording(shell.settings.record_actions);
         shell.apply_simulate_settings();
@@ -1790,6 +1794,9 @@ impl Shell {
         self.update_window_title(&ctx);
         self.poll_scene(&ctx);
         self.overview_frame(&ctx);
+        // Before anything is drawn, so a result is never drawn as current
+        // in the frame after the change that made it out of date.
+        self.follow_out_of_date();
         self.bench_frame(&ctx);
         self.shortcuts(&ctx);
         self.layout(ui);
