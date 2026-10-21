@@ -205,3 +205,9 @@ F-78 answers (21 Oct 2026): the tab investigation is about the simulation deviat
 F-78 tab investigation answer (21 Oct 2026): the 3 mm or more is only at the tab. Owner hypothesis: the tab left in place is counted as a deviation from the part surface and should be excluded because the user set it on purpose. Expected: tab and held region are part of the target (decisions 0042, 0045, 0104; OP-21, SET-09), not deviation, and are not in the histogram or largest-value figures (#217); a real overcut beside the tab must still show (NFR-12). Recorded on #248. Held; not sent to the coordinator.
 
 F-78 answers (21 Oct 2026): the settings and whether the generation finishes correctly are not known by the owner (the lane reads them from the project and runs it); the flicker happens in the middle of the generation. F-77 answers recorded (see the table). Both held; not sent to the coordinator.
+
+Held for the owner's grouping request (not sent to the coordinator): #242 (F-75), #246 (F-77), #248 (F-78), #249 (F-79).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-79 | Operation inspector, G-code | No spindle speed to set when there is no material; blocks G-code generation. | A spindle speed field on the operation whether or not a preset is chosen (TL-05, #197: editing drops the preset); a missing value shown as required (#224) and explained at Post and Export (#140); limits and units; no silent default (NFR-12). Schema claim if a new stored field. Issue [#249](https://github.com/paulhampson/OpenChuckCAM/issues/249). Build 0.13.0, `eced9a1a85b5`. | The message seen when generation is blocked; on the operation, the tool or the setup; a machine default? |
