@@ -1,0 +1,47 @@
+# 0192: A Simulate result that no longer matches the project says so, and offers to simulate again (lane BUG-SIMSTALE; issues 259, 260, 215)
+
+- **Status:** proposed (21 Oct 2026). Item 3 waits on the owner's choice (OI-730); the lane built option A, its recommendation.
+- **What it amends:** the interface specification, sections 9 (the Playback tab) and 11.5 (the results inspector), edited in the same change. [Decision 0172](0172-stale-state-and-removed-paths.md) item 3 is kept unchanged under option A (option B would amend it). No requirement or architecture change.
+- **Date:** 21 Oct 2026.
+- **Open items:** OI-730 (the owner's choice for item 3) and OI-731 (the owner's check of the next nightly build) are new. OI-571 is closed: issue 215 reproduced in the rig and is fixed (item 6).
+
+## Context
+
+Trial findings F-88 (issue 259), F-89 (issue 260) and F-59 (issue 215, the remainder in OI-571). Requirements: NFR-12 (the user verifies the G-code; what is on screen must not mislead), UI-06 (a disabled operation is left out), UI-10 (the primary action), UI-11 (state by shape as well as colour), UI-16 (the window is usable), SIM-04 (playback) and SIM-05 (the comparison and its worst values). Records read: 0168 and 0169 (Simulate controls, playback window), 0172 and 0173 (the stale state, a removed path, the step bar), 0187 (the dock height), 0190 (the stock cache).
+
+The owner's answers on the issues: a parameter change or a turn-off in Simulate leaves "the old simulation on screen, unchanged" with the dock empty and no way to simulate again from Simulate; the controls come back after simulating again. The owner asks for the result to be kept to compare, but marked out of date in plain words on the result itself (the view, the colours, the histogram, the worst values and the playback), and for the run action in the dock in place of the missing controls.
+
+What the code did on `main` (reproduced in the rig with the cube project):
+
+- A parameter change kept the run on screen. The results inspector added one muted line ("The project has changed since this simulation. Simulate again."), which compared the whole project, so a rename or a hidden toolpath raised it too. Nothing offered the action, and the numbers looked current.
+- A turn-off dropped the playback run (0172 item 3), so the Playback tab showed only the tick box and "Run the simulation to play the cut.", while the results inspector still showed the old numbers. Turning off the last operation changed no other key, so the Simulate primary action said "Continue to post and export" although the export check blocked writing.
+- The dock's panel frame was drawn only as tall as its contents. With little in the tab, the rest of the dock was left undrawn (the window's clear colour, the black area of issue 259) and the panel's stored size changed between frames (the flicker).
+- While a new run's playback was prepared, the tab replaced its transport row with a "Preparing…" line, so "Skip stock simulation" dropped one row and the controls disappeared (issue 215: "the playback box moves down when the simulation runs").
+
+## Decision
+
+1. **One test.** A run is out of date when the export check's stale set for it is not empty: an operation it holds was removed or turned off, an operation's chained key changed (a parameter, its tool, setup, selections, the simulation settings, an operation before it), or an enabled operation is not in it. `openchuck_app::simulation_out_of_date` gives the reason in a plain sentence, in that order of precedence ("Operation 'Roughing' was turned off.", "Operation 'Finish' has changed since this simulation.", "The simulation settings have changed since this simulation.", "Operation 'Third' is not in this simulation.", with "1 more operation is out of date too." when there are more). A rename or a hidden toolpath is not a change (decision 0172 item 1). Simulate, the dock, the results inspector and the export check therefore agree.
+2. **Where it is shown.** While the latest run is out of date, one banner says so in three places: over the top of the 3D view on Simulate (on the result), at the top of the Playback tab, and at the top of the results inspector. The banner has the stale mark (the amber diamond, so not by colour alone), the title "Simulation out of date", the reason, and the Simulate step's primary action as its button ("Generate and simulate op 1", "Run simulation", or "Generate stale (n)" when the stock simulation is skipped), so the user simulates again from where they are. With no operation enabled it says "Turn on an operation to simulate again." and has no button. The old numbers (worst values, histogram, by operation) stay, dimmed to 55% opacity under "Results of the out-of-date simulation:", and the playback controls the tab still has are dimmed the same way. The result is never drawn as current, and never written: the export check already blocks a stale run.
+3. **An operation turned off or removed (OI-730).** Option A (built): decision 0172 item 3 stands. The playback run leaves the 3D view at once, because it holds a path that will not be written. The old numbers stay in the results inspector, marked as in item 2, and the dock shows the banner in place of the controls. Option B would keep the old run drawn and playable, marked as in item 2, until the user simulates again (amending 0172 item 3). Option C would also hide the playback controls after a parameter change.
+4. **The primary action follows the run.** The overview counts Simulate as complete only while the latest successful run holds exactly the enabled operations (the generation record keeps that run's operations). A run that holds an operation turned off or removed since makes Simulate's health "Out of date: an operation in the simulation was turned off or removed", and its primary action "Run simulation".
+5. **The dock is drawn whole.** The dock's contents take the whole panel, whatever the tab holds, so no part of it is left undrawn and its size does not change from frame to frame (issue 259).
+6. **The transport row keeps its place.** With nothing to play (no run yet, a run dropped, or a new run's playback still being prepared), the Playback tab draws the transport buttons disabled in their places and "Skip stock simulation" after them, where the row with a run has them; the preparing line goes under it (issue 215).
+
+## Alternatives considered
+
+- Compare the whole project (the old line): rejected, a rename or a hidden toolpath would mark the result out of date, and it disagreed with the export check.
+- Clear the results when the run goes out of date: rejected, the owner wants them kept to compare.
+- A message only in the status bar or the Messages tab: rejected, the owner asks for it on the result itself and in the dock.
+- Regenerate automatically on every change in Simulate: rejected for the reason of 0172 (wasteful, and not what UI-11 asks).
+
+## Consequences
+
+- `crates/openchuck-app`: `export.rs` (`simulation_out_of_date`), `overview.rs` (`RecordState::last_run`, the Simulate step's completeness and health, `SIMULATION_HOLDS_GONE`). An application crate: no library API change, so no version bump.
+- `apps/openchuck-ui`: `shell/out_of_date.rs` (new: the cached test, the banner, the view banner), `shell/dock.rs` (the Playback tab, the dock fill), `shell/inspector.rs` and `results_panel.rs` (the banner and the dimmed numbers), `playback_panel.rs` (`waiting_row`).
+- Deterministic output is untouched (GC-07, NFR-06): display and state only.
+- Interface specification sections 9 and 11.5 edited.
+
+## Tests
+
+- `req_nfr_12_req_ui_11_a_simulation_out_of_date_says_why` and `req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again` (`crates/openchuck-app/tests/overview.rs`).
+- `req_nfr_12_req_ui_11_req_sim_04_a_changed_parameter_marks_the_simulation_out_of_date`, `req_nfr_12_req_ui_11_turning_off_an_operation_in_simulate_offers_to_simulate_again`, `req_nfr_12_turning_off_the_only_operation_says_so_without_a_button` and `req_ui_16_req_sim_04_the_playback_tab_keeps_its_place_while_the_simulation_runs` (`apps/openchuck-ui/src/shell/simulate_tests.rs`). The last two fail without items 5 and 6 (the dock drawn 141 of 260 px; the tick box 21 px lower while a run lands).

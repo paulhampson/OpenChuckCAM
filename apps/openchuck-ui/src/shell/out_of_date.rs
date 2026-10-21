@@ -125,7 +125,7 @@ impl Shell {
             return;
         }
         let again = egui::Area::new(egui::Id::new("out of date banner"))
-            .order(egui::Order::Foreground)
+            .order(egui::Order::Middle)
             .pivot(egui::Align2::CENTER_TOP)
             .fixed_pos(rect.center_top() + egui::vec2(0.0, 12.0))
             .show(ctx, |ui| {

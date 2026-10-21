@@ -320,7 +320,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 9. Dock
 
-**Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5).
+**Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
 
 **Messages** *(UI-12)*:
 
@@ -500,9 +500,11 @@ Board 4 (SIM-01 to SIM-07).
 - a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
+**A result out of date** *(NFR-12, UI-11; [decision 0192](../decisions/0192-simulate-result-out-of-date.md))*. While the latest run no longer matches the project (the export check's test: an operation in it changed, was turned off or removed, or an enabled operation is not in it), one banner says so over the top of the view, at the top of the Playback tab and at the top of the results inspector: the stale mark, "Simulation out of date", the reason in plain words ("Operation 'Roughing' was turned off.") and the Simulate primary action (section 5) as its button. The old numbers stay to compare, dimmed under "Results of the out-of-date simulation:", and so do the playback controls the tab still has. A run that holds an operation turned off or removed leaves the view (decision 0172 item 3), and the Playback tab shows the banner in place of the controls.
+
 **Playback dock** (SIM-04):
 
-- **Transport:** previous operation, step back, play or pause (Space), step forward, next operation.
+- **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.

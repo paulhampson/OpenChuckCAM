@@ -884,9 +884,10 @@ impl Shell {
         }
         match reach_action {
             Some(ReachAction::Show(set, item)) => {
-                // Selects the tab or held region (7.5) and shows the set.
-                self.selection.show_set(Some(set));
+                // Selects the tab or held region (7.5) and shows the set,
+                // after the selection changes, so it stays shown for it.
                 self.choose_setup(operation.setup, Some(SetupPart::Workholding));
+                self.selection.show_set(Some(set));
                 if let Some(item) = item {
                     if let Some(panel) = &mut self.workholding_panel {
                         panel.open_item(item);
