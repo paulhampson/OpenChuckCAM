@@ -5,7 +5,8 @@
 //! The toolpath is split into runs of consecutive groups from the same setup,
 //! because the work frame is the setup's; each run is one program file. Tool
 //! numbers are the project's (the tool snapshots' controller numbers) and
-//! spindle speeds come from the cutting data for the setup's stock material.
+//! spindle speeds are the operation's own or, without one, come from the
+//! cutting data for the setup's stock material (decision 0196).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -514,8 +515,27 @@ pub(crate) fn post_toolpath(
                 ))
             })?;
         let mut tools = BTreeMap::new();
+        let mut operation_spindle = BTreeMap::new();
         for group in &groups {
             let tag = &group.tags.tool;
+            let operation = project
+                .operations()
+                .iter()
+                .find(|o| o.id.to_string() == group.tags.operation)
+                .ok_or_else(|| {
+                    AppError::Post(format!(
+                        "operation '{}' of the toolpath is not in the project",
+                        group.tags.operation
+                    ))
+                })?;
+            let (speed, _) = crate::requirements::spindle_speed(project, operation)
+                .ok_or_else(|| {
+                    AppError::Post(format!(
+                        "cannot post the G-code: {}",
+                        crate::requirements::missing_spindle_message(project, operation)
+                    ))
+                })?;
+            operation_spindle.insert(group.tags.operation.clone(), speed.0);
             if tools.contains_key(tag) {
                 continue;
             }
@@ -528,18 +548,6 @@ pub(crate) fn post_toolpath(
                         "tool '{tag}' of the toolpath is not in the project"
                     ))
                 })?;
-            let material = setup.material.as_deref().ok_or_else(|| {
-                AppError::Post(format!(
-                    "setup '{}' has no stock material, so tool '{}' has no spindle speed",
-                    setup.name, snapshot.name
-                ))
-            })?;
-            let data = snapshot.cutting_data.get(material).ok_or_else(|| {
-                AppError::Post(format!(
-                    "tool '{}' has no cutting data for the material '{material}', so no spindle speed (names must match exactly)",
-                    snapshot.name
-                ))
-            })?;
             let number = snapshot.controller.number;
             if number < 1 || number > machine.max_tool_number {
                 return Err(AppError::Post(format!(
@@ -552,7 +560,7 @@ pub(crate) fn post_toolpath(
                 ToolSetting {
                     number: snapshot.controller.number,
                     name: snapshot.name.clone(),
-                    spindle_rpm: data.spindle_speed.0,
+                    spindle_rpm: speed.0,
                 },
             );
         }
@@ -560,6 +568,7 @@ pub(crate) fn post_toolpath(
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
             operation_names: operation_names.clone(),
+            operation_spindle,
             title: match &label {
                 Some((title, _)) => format!("{} - {} - {title}", project.name(), setup.name),
                 None => format!("{} - {}", project.name(), setup.name),

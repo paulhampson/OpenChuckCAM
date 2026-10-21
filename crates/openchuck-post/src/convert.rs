@@ -44,6 +44,10 @@ pub struct ConvertOptions<F> {
     /// comments that name each operation (GC-06). A tag with no name is
     /// written as it is.
     pub operation_names: BTreeMap<String, String>,
+    /// Spindle speeds by the IR's operation tag, in revolutions per minute.
+    /// An operation with an entry runs at it; any other runs at its tool's
+    /// [`ToolSetting::spindle_rpm`] (decision 0196).
+    pub operation_spindle: BTreeMap<String, f64>,
 }
 
 /// `value` rounded to `decimals` places as the post writes it (ties to even
@@ -109,9 +113,13 @@ pub fn to_machine_program<F: AsRotaryFrame>(
                 operation: group.tags.operation.clone(),
                 tool: group.tags.tool.clone(),
             })?;
-        if !(tool.spindle_rpm.is_finite() && tool.spindle_rpm > 0.0) {
+        let (rpm, source) = match options.operation_spindle.get(&group.tags.operation) {
+            Some(rpm) => (*rpm, format!("operation_spindle[{}]", group.tags.operation)),
+            None => (tool.spindle_rpm, format!("tools[{}].spindle_rpm", group.tags.tool)),
+        };
+        if !(rpm.is_finite() && rpm > 0.0) {
             return Err(PostError::Setting {
-                name: format!("tools[{}].spindle_rpm", group.tags.tool),
+                name: source,
                 reason: "must be a number greater than 0".into(),
             });
         }
@@ -133,9 +141,7 @@ pub fn to_machine_program<F: AsRotaryFrame>(
             });
             current_tool = Some(tool.number);
         }
-        program.steps.push(Step::SpindleOn {
-            rpm: tool.spindle_rpm,
-        });
+        program.steps.push(Step::SpindleOn { rpm });
 
         let mut here = target_of(group.start.tip, group.start.a);
         program.steps.push(Step::Rapid { target: here });

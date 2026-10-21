@@ -392,7 +392,13 @@ pub struct CuttingData {
 impl CuttingData {
     /// The cutting feed: spindle speed times flute count times feed per tooth.
     pub fn cutting_feed(&self, tool: &Tool) -> FeedRate {
-        FeedRate(self.spindle_speed.0 * f64::from(tool.flute_count) * self.feed_per_tooth.0)
+        self.cutting_feed_at(tool, self.spindle_speed)
+    }
+
+    /// The cutting feed at `spindle`, which may differ from the entry's own
+    /// speed when an operation sets its own: the chip load stays the entry's.
+    pub fn cutting_feed_at(&self, tool: &Tool, spindle: SpindleSpeed) -> FeedRate {
+        FeedRate(spindle.0 * f64::from(tool.flute_count) * self.feed_per_tooth.0)
     }
 
     /// Fails if a value is not finite and positive, the stepover exceeds the
