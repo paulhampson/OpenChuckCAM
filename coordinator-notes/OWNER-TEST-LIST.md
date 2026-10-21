@@ -35,6 +35,19 @@ Updated 21 Oct 2026. Nightly run 13 was triggered on main at eced9a1 (https://gi
 | #206, #226 | STEP-only strategies are disabled with the reason on an STL project; swarf overcut above tolerance is a warning (tolerance field highlighted); Write G-code also writes the setup sheet (HTML + PDF) | #235 |
 | #200 | Toolpath rendering speed on your UHD 620 laptop (OI-590): `cargo run --release -p openchuck-viewport --example path_frames` and orbit/playback in the nightly | #232 (Refs only: you close it) |
 
+## B3. Second nightly (run 14, main f213d19): additionally in this build
+
+https://github.com/paulhampson/OpenChuckCAM/actions/runs/39640543774 (in progress when written)
+
+| Issue | What to check | PR |
+| --- | --- | --- |
+| #203 | "Turn part with A" on by default (existing projects too), remembered | #238 |
+| #204 | Simulate Show ticks Model / Cut part / Toolpath; default Cut part only; the last tick cannot be unticked; ticks remembered; the deviation colours count as Cut part | #238 |
+| #205 | Playback window: draggable and resizable, numeric start/end, limits playback, outside the window faint or hidden (remembered tick), window resets. KNOWN BUG OI-605: dragging out a NEW window leftwards takes one move too many at each end, and dragging one end past the other collapses the window; the number fields are fine; fix queued | #238 |
+| #207 | A readout 0..360 with a tooltip of the continuous value | #238 |
+| #213 | Eye toggle per operation in all views, show-all/hide-all, saved with the project (schema 15) | #238 |
+| #214 | Stock simulation on by default; skip is per project; skipping needs an acknowledgement before writing | #238 |
+
 ## C. Windows-only checks that keep an issue open
 
 | Item | What to do |
