@@ -537,18 +537,19 @@ fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
 fn req_gc_12_req_nfr_12_the_sheet_records_the_tolerance_each_operation_is_generated_with() {
     // Decision 0175 (issue #226): a path may be made with a known overcut
     // above its tolerance, so the sheet records the tolerance each operation
-    // uses: its own value, or its strategy's default (0.01 mm, unchanged).
+    // uses: its own value, as set and not rounded, or its strategy's default
+    // (0.01 mm, unchanged).
     let (dir, mut app) = sheet_project();
     let first = app.project().operations()[0].id;
     app.execute(Command::SetParameter {
         operation: first,
         name: "tolerance".into(),
-        value: Some(ParameterValue::Number(0.0131)),
+        value: Some(ParameterValue::Number(0.010049)),
     })
     .unwrap();
     let sheet = app.setup_sheet(None);
     let operations = cell_rows(&sheet, "Operations");
-    assert_eq!(operations[0][6], "0.0131 mm");
+    assert_eq!(operations[0][6], "0.010049 mm");
     assert!(
         operations[1..].iter().all(|r| r[6] == "0.01 mm"),
         "{operations:?}"
