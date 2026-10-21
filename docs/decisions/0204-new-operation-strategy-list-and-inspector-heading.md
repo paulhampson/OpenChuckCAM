@@ -1,6 +1,6 @@
 # 0204: One strategy list with descriptions in New operation, the strategy under its own heading in the inspector, and a ramp on a one-point pass (lane OPCREATE; issues 195, 242, 199, 197; OI-696)
 
-- **Status:** proposed. Items 1 and 2 follow the owner's decisions as relayed in the lane OPCREATE brief (the New operation list is one list with a description under each entry and no skip tick; the inspector shows the strategy, show only, no drop-down). Items 3 to 5 are the lane's own calls, for the owner to confirm. Accepted only when the owner says so in the lane session or by the orchestrator relaying it (decision 0049).
+- **Status:** accepted by the project owner (21 Oct 2026, directly in the lane OPCREATE session). Items 1 and 2 follow the owner's decisions as relayed in the lane brief; items 3 to 5 were the lane's own calls and are accepted with it, item 5 as the owner's option A. The ten strategy descriptions are still to be reviewed for wording (OI-793).
 - **What it amends:** the interface specification, section 6 and 11.4 (the New operation menu and the operation inspector header). The specification is not edited here; the entries to add are under "Specification entries proposed". OP-16 is unchanged.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-790 to OI-793 are new; OI-696 closes.

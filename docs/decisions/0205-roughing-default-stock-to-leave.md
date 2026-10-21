@@ -1,6 +1,6 @@
 # 0205: A default stock to leave for roughing: the options (lane OPCREATE; issue 223, F-67)
 
-- **Status:** proposed. The owner chose option B (relayed by the coordinator session, 21 Oct 2026) and the lane built it; the record is accepted only when the owner says so directly in the lane session (decision 0049).
+- **Status:** accepted by the project owner (21 Oct 2026, directly in the lane OPCREATE session), option B, which the owner had chosen earlier (relayed by the coordinator session) and the lane built.
 - **What it amends:** nothing until chosen. If chosen it adds an entry to OP-11 (stock to leave) that the owner agrees; `docs/requirements.md` is not edited here.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-794 is new.
