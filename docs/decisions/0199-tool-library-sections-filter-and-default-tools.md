@@ -1,6 +1,6 @@
 # 0199: The tool library list has machine sections, foldable groups and a size filter; default tools are read-only until copied (lane TOOLLIB; issues 192, 193, 194; OI-536)
 
-- **Status:** proposed. Not accepted: only the project owner accepts a record (AGENTS.md). The owner's answers on issues 192, 193 and 194 (21 Oct 2026, comments on the issues) settle items 1, 4, 5 and 7; the rest are the lane's choices, for the owner to accept or change.
+- **Status:** accepted by the project owner on 21 Oct 2026, directly in the lane TOOLLIB session ("I accept decision 0199"). The owner's answers on issues 192, 193 and 194 (21 Oct 2026, comments on the issues) settle items 1, 4, 5 and 7; the rest are the lane's choices, accepted with the record.
 - **What it amends:** [specification 12.1](../ui-design/ui-specification.md) (the tool list and the default tool's view) and section 13 (per-user settings); both are edited in this change. It adds to [decision 0127](0127-slice-22-tool-library-window.md) (the window) and does not change it otherwise. No requirement changes: TL-02, TL-03, TL-04, TL-11 and TL-12 are met as written.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-770 to OI-773 are new; OI-536 is raised and closed by this change (item 8).
