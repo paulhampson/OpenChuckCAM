@@ -189,3 +189,5 @@ Held for the owner's grouping request (not sent to the coordinator): #242 (F-75)
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-77 | Roughing | Option to run roughing along X or along Y. | A direction option in the operation inspector with plain labels; the current direction stays the default (GC-07); OP-03, lane E, decisions 0026, 0058, 0076; held region, tabs and travel limits stay respected (NFR-12). Issue [#246](https://github.com/paulhampson/OpenChuckCAM/issues/246). | Current direction; meaning of "along Y" for a part turning about X; indexed only or continuous too? |
+
+Coordinator report (21 Oct 2026, 16:18 UTC): the owner told the coordinator directly that #239 (BUG-REGEN), #241 (BUG-BI) and #243 (BUG-INSP2) may continue; all three resumed. #242 and everything after #243 stay unstarted until the owner approves a grouping. The coordinator did not say whether the three were merged into one lane as the owner asked via this session; to confirm with the owner.
