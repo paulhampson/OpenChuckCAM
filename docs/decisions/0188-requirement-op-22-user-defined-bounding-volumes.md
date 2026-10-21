@@ -1,6 +1,6 @@
 # 0188: Requirement OP-22, selection sets from a user-defined bounding volume (lane REQ-VOL; issue 236)
 
-- **Status:** proposed. The owner's instruction was given directly to the coordinator (21 Oct 2026) and relayed to this lane: "Do not implement that new feature, only create a future P2 requirement for it." The owner has not confirmed this record in the lane's own session (decision 0049), so it stays proposed; the requirement text is added on that relayed instruction.
+- **Status:** accepted by the project owner (21 Oct 2026), directly in the lane REQ-VOL session ("accep 0188"). The requirement text was first added on the owner's instruction relayed by the coordinator ("Do not implement that new feature, only create a future P2 requirement for it"). Not scheduled and not built.
 - **Date:** 21 Oct 2026.
 - **Requirements:** adds OP-22 (P2); relates to OP-02, SET-09, GC-07, NFR-05, NFR-06, NFR-07, NFR-12.
 - **Open items:** OI-700, OI-701, OI-702 (new).
@@ -30,4 +30,4 @@ Relationships, as notes and not scope: the selection model (decisions 0032 and 0
 
 - `docs/requirements.md` gains OP-22 and a note under it; `docs/verification-plan.md` gains its row; `docs/open-items.md` gains OI-700 to OI-702; the decision index gains this record; `docs/work-breakdown.md` lists OP-22 as a future requirement.
 - `cargo xtask trace` fails only a P1 requirement with no slice or test, so OP-22 (P2) does not fail it.
-- On acceptance the Status line changes; nothing else follows until a lane is scheduled.
+- Nothing else follows until a lane is scheduled (OI-700 first).
