@@ -28,7 +28,7 @@ use openchuck_app::setup::{HeldRegion, Millimetres, Stock, Workholding, builtin}
 use openchuck_app::simulation::SimulationSettings;
 use openchuck_app::{Application, Command, Threads};
 use openchuck_testkit::parts::{Cone, RadialPart};
-use openchuck_types::geometry::{Aabb, Point3};
+use openchuck_types::geometry::{Aabb, Point3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
@@ -278,8 +278,8 @@ fn rough() -> (&'static str, Vec<(&'static str, ParameterValue)>) {
     )
 }
 
-/// What a run did to the held regions: the deepest any cutting pose of the
-/// ball sank into them, and how many sample points inside them lost their
+/// What a run did to the held regions: the deepest any pose of the ball (at
+/// feed or rapid) sank into them, and how many sample points inside them lost their
 /// material in the simulation (of how many checked).
 #[derive(Debug)]
 struct Outcome {
@@ -296,24 +296,27 @@ fn run(b: &Built, region: Region) -> Outcome {
     let mut deepest = f64::NEG_INFINITY;
     let mut deepest_at = None;
     for group in &run.toolpath.groups {
-        let mut previous: Option<Point3> = None;
+        let mut previous: Option<(Point3, Vec3)> = None;
         for s in &group.segments {
-            let end = s.end.tip;
+            let (end, a) = (s.end.tip, s.end.axis.get());
+            // The ball's centre is one radius up the tool axis from the tip;
+            // both ends of every move are measured, rapids and retracts
+            // included, each with its own axis, and the middle of each move at
+            // feed. A rapid may turn A far, so its straight midpoint in model
+            // space is not on its path, and only its ends are.
+            let (start, a0) = previous.unwrap_or((end, a));
+            let mut poses = vec![(start, a0), (end, a)];
             if s.kind.is_fed() {
-                // The ball's centre is one radius up the tool axis from the
-                // tip; both ends and the middle of each move are measured.
-                let a = s.end.axis.get();
-                let start = previous.unwrap_or(end);
-                let mid = start + (end - start) * 0.5;
-                for tip in [start, end, mid] {
-                    let d = sink(region, tip + a * r, r);
-                    if d > deepest {
-                        deepest = d;
-                        deepest_at = Some(tip);
-                    }
+                poses.push((start + (end - start) * 0.5, a));
+            }
+            for (tip, axis) in poses {
+                let d = sink(region, tip + axis * r, r);
+                if d > deepest {
+                    deepest = d;
+                    deepest_at = Some(tip);
                 }
             }
-            previous = Some(end);
+            previous = Some((end, a));
         }
     }
     let report = run.simulation.unwrap();
