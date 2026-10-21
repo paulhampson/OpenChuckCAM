@@ -225,7 +225,7 @@ pub struct Renderer {
     /// Uniform buffers written by the last [`Renderer::prepare`].
     uniform_writes: usize,
     /// Whether each layer is drawn, by [`Layer::index`].
-    shown: [bool; 6],
+    shown: [bool; Layer::ALL.len()],
 }
 
 #[derive(Debug, Default)]
@@ -451,7 +451,7 @@ impl Renderer {
             layers: Default::default(),
             mode: DisplayMode::default(),
             uniform_writes: 0,
-            shown: [true; 6],
+            shown: [true; Layer::ALL.len()],
         }
     }
 
