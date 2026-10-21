@@ -4,7 +4,8 @@
 //!
 //! The left column chooses the post, the file grouping and the output folder,
 //! settles the tool numbers and lists the checks before writing. The right
-//! column lists the files to write with a preview. The amber safety notice is
+//! column lists the files to write with a preview; the setup sheet is
+//! written with the G-code, from the same run (decision 0189). The amber safety notice is
 //! always shown, and the tick box under it is asked once per project on each
 //! computer (the user's settings file, never the project). "Write G-code" is
 //! disabled until the checks pass and the box is ticked, and says which is
@@ -22,7 +23,6 @@ use openchuck_app::{
     AcknowledgementLookup, Acknowledgements, Application, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL,
     EXPORT_NOTICE, EXPORT_RULE, ExportChecks, JobHandle, OutputGrouping, PlannedFile,
     PostSelection, PostSummary, Regeneration, builtin_post_summaries, post_summary,
-    write_gcode_files,
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
@@ -68,7 +68,6 @@ enum Act {
     ChooseFolder,
     ApplyNumbers(ToolNumbering),
     Write,
-    WriteSheet,
 }
 
 /// What the dialog hands back to the shell.
@@ -417,37 +416,23 @@ impl ExportPanel {
                         outcome = self.write(app, files);
                     }
                 }
-                Act::WriteSheet => {
-                    let folder = PathBuf::from(self.folder.trim());
-                    let toolpath = run.map(|r| &r.toolpath);
-                    match app.write_setup_sheet(&folder, toolpath) {
-                        Ok(written) => {
-                            outcome.status = Some(format!(
-                                "Wrote the setup sheet to {}.",
-                                written.first().and_then(|p| p.parent()).map_or_else(
-                                    || folder.display().to_string(),
-                                    |p| p.display().to_string()
-                                )
-                            ));
-                        }
-                        Err(e) => outcome.error = Some(e.to_string()),
-                    }
-                }
             }
         }
         outcome
     }
 
-    /// Writes the files into the output folder, and keeps the
-    /// acknowledgement on this computer after the first export of a project.
+    /// Writes the G-code and the setup sheet into the output folder, and
+    /// keeps the acknowledgement on this computer after the first export of a
+    /// project.
     fn write(&mut self, app: &Application, files: &Regeneration) -> Outcome {
         let mut outcome = Outcome::default();
         let folder = PathBuf::from(self.folder.trim());
-        match write_gcode_files(&folder, &files.gcode) {
-            Ok(written) => {
-                // The Post and export step is complete until something
-                // changes (UI-10).
-                app.record_export(files);
+        // The sheet is written from the same run as the G-code (decision
+        // 0189), and the export recorded: the Post and export step is
+        // complete until something changes (UI-10).
+        match app.write_output(&folder, files) {
+            Ok(_) => {
+                let count = files.gcode.len();
                 if !self.ack_lookup.acknowledged
                     && let Some(ack) = &self.ack
                 {
@@ -459,9 +444,8 @@ impl ExportPanel {
                     self.refresh_acknowledgement(app);
                 }
                 outcome.status = Some(format!(
-                    "Wrote {} G-code file{} to {}.",
-                    written.len(),
-                    if written.len() == 1 { "" } else { "s" },
+                    "Wrote {count} G-code file{} and the setup sheet (HTML and PDF) to {}.",
+                    if count == 1 { "" } else { "s" },
                     folder.display()
                 ));
             }
@@ -481,18 +465,6 @@ impl ExportPanel {
         egui::Panel::bottom("export footer").show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                let sheet_ready = !self.folder.trim().is_empty() && self.job.is_none();
-                if ui
-                    .add_enabled(
-                        sheet_ready,
-                        egui::Button::new("Export setup sheet (HTML / PDF)"),
-                    )
-                    .on_disabled_hover_text("Choose an output folder first.")
-                    .on_hover_text("Writes the setup sheet as an HTML page and a PDF.")
-                    .clicked()
-                {
-                    acts.push(Act::WriteSheet);
-                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // The primary styling shows the action that can be taken now; a
                     // blocked one is drawn as an ordinary disabled button (OI-349).
@@ -530,7 +502,7 @@ impl ExportPanel {
                 let [left, right] = columns else { return };
                 self.left(left, app, checks, acts);
                 let current = self.files_current(app).is_some();
-                self.right(right, current);
+                self.right(right, app, current);
             });
             ui.add_space(8.0);
             self.notice(ui);
@@ -759,7 +731,7 @@ impl ExportPanel {
     /// The files column. `current` says the files were made from the project and
     /// choices as they stand; old files are not listed or previewed, since
     /// they are not what "Write G-code" would write.
-    fn right(&mut self, ui: &mut egui::Ui, current: bool) {
+    fn right(&mut self, ui: &mut egui::Ui, app: &Application, current: bool) {
         ui.heading("Files to write");
         if self.job.is_some() {
             ui.horizontal(|ui| {
@@ -805,6 +777,10 @@ impl ExportPanel {
                     ui.end_row();
                 }
             });
+        let [html, pdf] = app.setup_sheet_file_names();
+        ui.label(format!(
+            "The setup sheet is written with the G-code, from the same run: {html} and {pdf}."
+        ));
         ui.weak("Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.");
         ui.add_space(4.0);
         let shown_index = chosen.unwrap_or(self.preview);
@@ -1085,9 +1061,13 @@ mod tests {
             outcome
                 .status
                 .unwrap()
-                .starts_with("Wrote 1 G-code file to")
+                .starts_with("Wrote 1 G-code file and the setup sheet (HTML and PDF) to")
         );
         assert!(out.join(&posted.gcode[0].0).exists());
+        // The setup sheet is written with the G-code (decision 0189).
+        for name in app.setup_sheet_file_names() {
+            assert!(out.join(&name).exists(), "{name}");
+        }
         assert!(
             panel.ack_lookup.acknowledged,
             "acknowledged after the first export"

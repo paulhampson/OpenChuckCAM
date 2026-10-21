@@ -173,6 +173,15 @@ fn generated(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> openchuck_p
     run(|ctx| generate(&Swarf, &fixture.input(), &values(extra), ctx)).unwrap()
 }
 
+/// The one warning of `path`, which must be swarf's overcut warning: it
+/// points at the operation's tolerance (decision 0175).
+fn overcut_warning(path: &openchuck_path::GeneratedPath) -> String {
+    assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
+    let warning = &path.warnings[0];
+    assert_eq!(warning.parameter.as_deref(), Some(names::TOLERANCE));
+    warning.message.clone()
+}
+
 fn refused(fixture: &Fixture, extra: &[(&str, ParameterValue)]) -> String {
     run(|ctx| generate(&Swarf, &fixture.input(), &values(extra), ctx))
         .expect_err("the operation is refused")
@@ -547,7 +556,7 @@ fn req_op_07_a_radial_cylinder_boss_is_cut_with_the_flank_at_constant_a_within_t
     assert!(path.max_tilt < 1e-9, "{}", path.max_tilt);
     assert!(path.twist < 1e-9);
     assert!(path.gouge <= TOL && path.left <= TOL, "{path:?}");
-    assert!(path.refusal(TOL, LIMIT).is_none());
+    assert!(path.refusal(LIMIT).is_none());
     let poses: Vec<_> = path.poses().collect();
     assert!(poses.len() > 50, "{} poses", poses.len());
     for p in &poses {
@@ -652,11 +661,12 @@ fn req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refuse
             .is_some_and(|a| (a - half).abs() < 0.01),
         "{path:?}"
     );
+    // The overcut alone would be a warning (decision 0175, issue #226), but
+    // the tilted flank also leaves more than the limit on the other side of
+    // the ruling, which is still refused, naming the tilt and the taper that
+    // would remove it; the warning names them too.
     let message = refused(&f, &[]);
-    assert!(
-        message.contains("would cut into the surface by"),
-        "{message}"
-    );
+    assert!(message.contains("would leave"), "{message}");
     assert!(
         message.contains("four-axis tilt reaches 6.00 degrees"),
         "{message}"
@@ -664,6 +674,12 @@ fn req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refuse
     assert!(
         message.contains("flank half angle of 6.00 degrees would remove it"),
         "{message}"
+    );
+    let warning = path.overcut_warning(TOL).unwrap();
+    assert!(
+        warning.contains("cuts into the finished surface by")
+            && warning.contains("flank half angle of 6.00 degrees would remove it"),
+        "{warning}"
     );
 }
 
@@ -678,7 +694,7 @@ fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_
     assert!(path.twist > 0.3 && path.twist < 1.0, "{}", path.twist);
     assert!(path.max_tilt < 1e-9, "the rulings are perpendicular to X");
     assert!(path.gouge <= TOL, "{path:?}");
-    assert!(path.refusal(TOL, LIMIT).is_none());
+    assert!(path.refusal(LIMIT).is_none());
     // A turns with the rulings: continuous, through the face's 200 degrees.
     let a: Vec<f64> = path.poses().map(|p| p.a.0).collect();
     assert!(a.windows(2).all(|w| (w[1] - w[0]).abs() < 10.0), "{a:?}");
@@ -711,16 +727,19 @@ fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_
         "{:?}",
         generated.notes
     );
+    assert!(generated.warnings.is_empty(), "{:?}", generated.warnings);
     // Pitch 3: the twist is over ten degrees and the flank gouges either
-    // side of the ruling. The gate refuses and names the twist.
+    // side of the ruling. The path is made with a warning that names the
+    // twist (decision 0175, issue #226).
     let faces = ExactFaces::helicoid(3.0, 200.0);
     let f = Fixture::with_surface(Box::new(faces), flat());
     let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
     assert!(path.twist > 5.0, "{}", path.twist);
     assert!(path.gouge > TOL, "{path:?}");
-    let message = refused(&f, &[]);
+    let made = self::generated(&f, &[]);
+    let message = overcut_warning(&made);
     assert!(
-        message.contains("would cut into the surface by"),
+        message.contains("cuts into the finished surface by"),
         "{message}"
     );
     assert!(message.contains("ruled but not developable"), "{message}");
@@ -834,12 +853,12 @@ fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within
     };
     // Within the tolerance: nothing said.
     let silent = with(0.5 * TOL);
-    assert!(silent.refusal(TOL, LIMIT).is_none());
+    assert!(silent.refusal(LIMIT).is_none());
     assert!(!silent.note(TOL, LIMIT).contains("leaves up to"));
     // Between the tolerance and the limit: a note, with the amount, the
     // place and the limit.
     let noted = with(0.05);
-    assert!(noted.refusal(TOL, LIMIT).is_none());
+    assert!(noted.refusal(LIMIT).is_none());
     let note = noted.note(TOL, LIMIT);
     assert!(
         note.contains("leaves up to 0.0500 mm beyond the stock to leave at (1.000, 2.000, 3.000)"),
@@ -852,7 +871,7 @@ fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within
     // Beyond the limit: refused, naming the amount, the place, the limit
     // and what to change.
     let refused = with(0.2);
-    let why = refused.refusal(TOL, LIMIT).unwrap();
+    let why = refused.refusal(LIMIT).unwrap();
     assert!(
         why.contains("would leave 0.2000 mm beyond the stock to leave at (1.000, 2.000, 3.000)"),
         "{why}"
@@ -865,18 +884,22 @@ fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within
         why.contains("tighter tolerance") && why.contains("larger max_material_left"),
         "{why}"
     );
-    // A gouge is refused first, and a tilted face names the taper.
+    // A gouge is a warning, not a refusal (decision 0175), so a face that
+    // also leaves too much is refused for what it leaves, and warned of the
+    // gouge; a tilted face names the taper.
     let both = swarf::FacePath {
         gouge: 0.05,
         ..with(0.2)
     };
-    assert!(both.refusal(TOL, LIMIT).unwrap().contains("would cut into"));
+    assert!(both.refusal(LIMIT).unwrap().contains("would leave"));
+    assert!(both.overcut_warning(TOL).is_some());
+    assert!(with(0.2).overcut_warning(TOL).is_none());
     let tilted = swarf::FacePath {
         max_tilt: 6.0,
         suggested_taper: Some(6.0),
         ..with(0.2)
     };
-    let why = tilted.refusal(TOL, LIMIT).unwrap();
+    let why = tilted.refusal(LIMIT).unwrap();
     assert!(
         why.contains("flank half angle of 6.00 degrees would remove it"),
         "{why}"
@@ -936,7 +959,7 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
         ..measured
     };
     for settings in [finishing, with_stock] {
-        let why = path.refusal(TOL, settings.material_left_limit()).unwrap();
+        let why = path.refusal(settings.material_left_limit()).unwrap();
         assert!(why.contains("would leave 0.3000 mm"), "{why}");
         assert!(
             why.contains("more than the max_material_left of 0.1 mm"),
@@ -944,12 +967,8 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
         );
     }
     let noted = swarf::FacePath { left: 0.05, ..path };
-    assert!(
-        noted
-            .refusal(TOL, with_stock.material_left_limit())
-            .is_none()
-    );
-    assert!(noted.refusal(TOL, set.material_left_limit()).is_some());
+    assert!(noted.refusal(with_stock.material_left_limit()).is_none());
+    assert!(noted.refusal(set.material_left_limit()).is_some());
     // End to end, a pass with stock to leave is silent at the default, and
     // inside a pocket (where the chord leaves material) a set limit below
     // the chord refuses it, the set value winning over the default.
@@ -1262,4 +1281,72 @@ fn req_op_07_a_selection_of_several_faces_is_cut_face_by_face_in_order() {
         "{:?}",
         on_wall[0]
     );
+}
+
+#[test]
+fn req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_how_to_accept_it() {
+    // Decision 0175 (issue #226): a face the tool cuts into by more than the
+    // tolerance is still cut, and the path carries one warning that names the
+    // face, the depth and the place, says in plain words what the tolerance
+    // is and where to raise it, and names the other choices. The path is the
+    // one the gate measured: the same moves whether or not it warns.
+    let faces = ExactFaces::helicoid(3.0, 200.0);
+    let f = Fixture::with_surface(Box::new(faces), flat());
+    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let made = generated(&f, &[]);
+    let message = overcut_warning(&made);
+    let depth = format!("{:.4} mm", path.gouge);
+    let place = format!(
+        "({:.3}, {:.3}, {:.3})",
+        path.gouge_at.x, path.gouge_at.y, path.gouge_at.z
+    );
+    for words in [
+        "Swarf on face 0 cuts into the finished surface by",
+        depth.as_str(),
+        place.as_str(),
+        "more than this operation's tolerance of 0.01 mm",
+        "Tolerance",
+        "operation inspector",
+        "smaller tool radius",
+        "another strategy",
+        "check the program",
+    ] {
+        assert!(message.contains(words), "{words:?} in {message}");
+    }
+    // The warning is also a note, so a host that shows only notes says it.
+    assert!(
+        made.notes.iter().any(|n| n.message == message),
+        "{:?}",
+        made.notes
+    );
+    // The default tolerance is not loosened (decision 0175 item 4).
+    let schema = Swarf.schema();
+    let spec = schema.get(names::TOLERANCE).unwrap();
+    assert!(
+        matches!(spec.kind, openchuck_path::ParameterKind::Number { default: Some(d), .. } if d == TOL),
+        "{spec:?}"
+    );
+    // Raising the tolerance past the depth accepts it: no warning.
+    let raised = path.gouge * 1.5;
+    let made = generated(&f, &[(names::TOLERANCE, num(raised))]);
+    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+}
+
+#[test]
+fn req_op_16_req_op_07_strategies_say_in_their_registration_whether_they_need_a_step_part() {
+    // Decision 0174 (issue #206): the host disables a strategy on a mesh
+    // part from its registration, not from a fixed list. Swarf and radial
+    // drilling read exact faces; the others work on a mesh.
+    let registry = Registry::builtin();
+    let needs: Vec<&str> = registry
+        .iter()
+        .filter(|s| s.needs_brep_part().is_some())
+        .map(|s| s.name())
+        .collect();
+    assert_eq!(needs, ["radial_drilling", "swarf"]);
+    for s in registry.iter() {
+        if let Some(why) = s.needs_brep_part() {
+            assert!(why.contains("STEP"), "{}: {why}", s.name());
+        }
+    }
 }

@@ -451,6 +451,10 @@ impl Strategy for RestMachining {
             min_remaining,
             passes.len()
         )];
-        Ok(StrategyOutput { passes, notes })
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings: Vec::new(),
+        })
     }
 }

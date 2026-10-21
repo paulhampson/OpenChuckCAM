@@ -988,18 +988,50 @@ impl Application {
         folder: &Path,
         toolpath: Option<&openchuck_types::ir::Toolpath>,
     ) -> Result<Vec<PathBuf>, AppError> {
-        let sheet = self.setup_sheet(toolpath);
+        export::write_bytes(folder, &self.setup_sheet_files(toolpath))
+    }
+
+    /// The setup sheet's two file names, HTML then PDF, named after the
+    /// project (GC-12).
+    pub fn setup_sheet_file_names(&self) -> [String; 2] {
         let stem = format!(
             "{}-setup-sheet",
             posting::slug(self.document.project.name(), "project")
         );
-        export::write_bytes(
-            folder,
-            &[
-                (format!("{stem}.html"), sheet.to_html().into_bytes()),
-                (format!("{stem}.pdf"), sheet.to_pdf()),
-            ],
-        )
+        [format!("{stem}.html"), format!("{stem}.pdf")]
+    }
+
+    fn setup_sheet_files(
+        &self,
+        toolpath: Option<&openchuck_types::ir::Toolpath>,
+    ) -> Vec<(String, Vec<u8>)> {
+        let sheet = self.setup_sheet(toolpath);
+        let [html, pdf] = self.setup_sheet_file_names();
+        vec![(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())]
+    }
+
+    /// Writes `run`'s G-code files and, with them, the setup sheet made from
+    /// the same run, into `folder`, and records the export (GC-05, GC-12;
+    /// decision 0189). Returns the paths, the G-code first. A run made before
+    /// the project last changed writes nothing ([`AppError::OutOfDate`]), so
+    /// the sheet always describes the program beside it.
+    pub fn write_output(
+        &self,
+        folder: &Path,
+        run: &Regeneration,
+    ) -> Result<Vec<PathBuf>, AppError> {
+        if *run.project != self.document.project {
+            return Err(AppError::OutOfDate);
+        }
+        let mut files: Vec<(String, Vec<u8>)> = run
+            .gcode
+            .iter()
+            .map(|(name, text)| (name.clone(), text.as_bytes().to_vec()))
+            .collect();
+        files.extend(self.setup_sheet_files(Some(&run.toolpath)));
+        let written = export::write_bytes(folder, &files)?;
+        self.record_export(run);
+        Ok(written)
     }
 
     /// The checks before writing G-code (GC-15). `run` is the latest
@@ -1022,7 +1054,7 @@ impl Application {
     /// The project's setup sheet (GC-12). Pass a regeneration's toolpath to
     /// include each operation's programmed time.
     pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
-        SetupSheet::new(&self.document.project, toolpath)
+        SetupSheet::new(&self.document.project, &self.strategies, toolpath)
     }
 
     /// The strategies operations can use (OP-16).

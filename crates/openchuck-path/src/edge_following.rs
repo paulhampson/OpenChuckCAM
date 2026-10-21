@@ -922,7 +922,11 @@ pub fn follow_chains(
             plan.offsets.last().copied().unwrap_or(0.0)
         ));
     }
-    Ok(StrategyOutput { passes, notes })
+    Ok(StrategyOutput {
+        passes,
+        notes,
+        warnings: Vec::new(),
+    })
 }
 
 fn trim(x: f64) -> String {

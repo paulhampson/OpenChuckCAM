@@ -110,12 +110,19 @@ pub struct TextRow<'a> {
     pub enabled: bool,
     /// Ask for keyboard focus this frame (a new tab's Start X, 11.7).
     pub focus: bool,
+    /// The operation's path was made with a warning that points at this
+    /// setting, in a plain sentence: an amber border and, under the field,
+    /// the warning shape and the sentence, so the mark does not rest on
+    /// colour alone (decision record 0175; the marks of decision record
+    /// 0173). Shown whatever the field holds, unlike a refusal.
+    pub warned: Option<&'a str>,
     /// A required value that is missing, in a few plain words ("Enter feed"):
     /// an amber border and, under the field, the same warning shape the tree
     /// uses and these words, so the mark does not rest on colour alone
     /// (UI-11; issue 224). Calmer than `problem`, which is for a refusal.
     pub needs: Option<&'a str>,
-    /// Scroll this row into view this frame (the "Show first" jump).
+    /// Scroll this row into view this frame (the "Show setting" and "Show
+    /// first" jumps).
     pub scroll_to: bool,
 }
 
@@ -215,6 +222,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     let error = state.error(row.key).map(str::to_owned);
     let marked = error.is_some() || row.problem.is_some();
     let needed = row.needs.is_some() && !marked && row.applied.trim().is_empty();
+    let warned = row.warned.is_some() && !marked;
     if row.scroll_to {
         ui.scroll_to_cursor(Some(egui::Align::Center));
     }
@@ -274,7 +282,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
             DARK.error
         } else if response.has_focus() {
             DARK.accent
-        } else if needed {
+        } else if needed || warned {
             DARK.warning
         } else {
             DARK.line
@@ -286,7 +294,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                 RADIUS,
                 DARK.field,
                 Stroke::new(
-                    if response.has_focus() || needed {
+                    if response.has_focus() || needed || warned {
                         2.0
                     } else {
                         1.0
@@ -323,17 +331,21 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     if let Some(reason) = error.as_deref().or(row.problem) {
         reason_line(ui, reason, DARK.error);
     } else if let (true, Some(text)) = (needed, row.needs) {
-        needs_line(ui, text);
+        warning_line(ui, text);
+    } else if let Some(text) = row.warned {
+        warning_line(ui, text);
     }
     outcome
 }
 
-/// What is missing, under a field or a section: the warning shape and a few
-/// plain words, indented past the label column (issue 224; UI-11).
-pub fn needs_line(ui: &mut egui::Ui, text: &str) {
-    ui.horizontal(|ui| {
+/// A warning under a field or a section: the warning shape the tree uses and
+/// a plain sentence, indented past the label column. It says what is missing
+/// (issue 224; UI-11) or why a setting is marked by its path's warning
+/// (decision record 0175).
+pub fn warning_line(ui: &mut egui::Ui, text: &str) {
+    ui.horizontal_wrapped(|ui| {
         ui.add_space(width::LABEL_COLUMN + ui.spacing().item_spacing.x);
-        crate::shell::marks::mark(ui, openchuck_app::overview::ItemState::Warning, text);
+        crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, text);
         ui.label(RichText::new(text).color(DARK.warning));
     });
 }

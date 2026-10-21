@@ -28,18 +28,34 @@ pub struct StrategyChoice {
     /// item 6); one that cannot is listed with "ignores selections" and takes
     /// none (interface specification 11.4).
     pub takes_selections: bool,
+    /// Why the strategy cannot be used in the setup the list was made for,
+    /// in plain words: it needs a STEP part and the setup's part is a mesh
+    /// (decision record 0174). The list shows it disabled with this reason,
+    /// not hidden. `None` when it can be used.
+    pub unavailable: Option<String>,
 }
 
 impl Application {
     /// The strategies in the registry, in name order, for an "add operation"
-    /// list.
+    /// list, with none marked unavailable.
     pub fn strategy_choices(&self) -> Vec<StrategyChoice> {
+        self.strategy_choices_for(None)
+    }
+
+    /// As [`strategy_choices`](Self::strategy_choices), for an operation in
+    /// `setup`: a strategy that needs a STEP part, by its registration, is
+    /// marked unavailable with the reason when the setup's part is a mesh
+    /// (decision record 0174).
+    pub fn strategy_choices_for(&self, setup: Option<SetupId>) -> Vec<StrategyChoice> {
+        let project = &self.document.project;
         self.strategies
             .iter()
             .map(|s| StrategyChoice {
                 name: s.name().to_owned(),
                 label: s.label().to_owned(),
                 takes_selections: s.honours_region(),
+                unavailable: setup
+                    .and_then(|id| crate::operation::unavailable_on_setup(project, s, id)),
             })
             .collect()
     }
@@ -105,6 +121,15 @@ impl Application {
         }
         if self.document.project.setup(setup).is_none() {
             return Err(fail("its setup is not in the project".to_owned()));
+        }
+        // A strategy that needs a STEP part is not added to a setup whose
+        // part is a mesh (decision record 0174), so no generation is wasted.
+        if let Some(why) =
+            self.strategies.get(strategy).ok().and_then(|s| {
+                crate::operation::unavailable_on_setup(&self.document.project, s, setup)
+            })
+        {
+            return Err(fail(why.replacen("Needs", "it needs", 1)));
         }
         if let Some(tool) = tool
             && !self.document.project.tools().iter().any(|t| t.id == tool)

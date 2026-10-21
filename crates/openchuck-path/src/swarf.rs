@@ -47,10 +47,12 @@
 //! 5. **The gate** (decision 0021 item 3; OP-12). After placement the face
 //!    is sampled across and along its rulings and each sample is measured
 //!    against the union of the tool at every pose and at points of the
-//!    machine's motion between poses. A face the tool would cut into by
-//!    more than the tolerance (beyond the stock to leave) is refused with a
-//!    message naming the depth, the twist and the tilt, and the tool taper
-//!    that would remove the tilt where one exists. Material left beyond the
+//!    machine's motion between poses. A face the tool cuts into by more
+//!    than the tolerance (beyond the stock to leave) is still cut, with a
+//!    warning naming the depth and the place, the twist and the tilt, the
+//!    tool taper that would remove the tilt where one exists, and the
+//!    tolerance to raise to accept it (decision record 0175, amending
+//!    decision record 0061 item 4). Material left beyond the
 //!    allowance is silent within the tolerance, a note up to
 //!    `max_material_left`, and beyond that a refusal naming the amount,
 //!    where, and what to change (decision record 0061 item 7). The limit
@@ -67,6 +69,7 @@ use openchuck_types::job::JobContext;
 use openchuck_types::tool::profile::{ProfilePiece, RevolvedProfile};
 use openchuck_types::units::Degrees;
 
+use crate::assemble::PathWarning;
 use crate::error::{PathError, Result};
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
@@ -648,9 +651,9 @@ impl FacePath {
     fn describe_twist(&self) -> String {
         if self.twist > 0.01 {
             format!(
-                " The normal twists {:.2} degrees along the rulings, so the face is ruled but not \
-                 developable and a straight flank cannot follow it; a smaller tool radius \
-                 deviates less.",
+                " The face is ruled but not developable: it is made of straight lines, but its \
+                 surface turns {:.2} degrees along each of them, so the straight side of the tool \
+                 cannot lie flat on it everywhere; a smaller tool radius deviates less.",
                 self.twist
             )
         } else {
@@ -658,24 +661,40 @@ impl FacePath {
         }
     }
 
-    /// Why the face is refused after placement (decision record 0021 items 3
-    /// and 4; decision record 0061 item 4): the tool would cut into the
-    /// surface, beyond the stock to leave, by more than `tolerance` (OP-12),
-    /// or leave more than `max_material_left` beyond it.
-    pub fn refusal(&self, tolerance: f64, max_material_left: f64) -> Option<String> {
-        if self.gouge > tolerance {
-            return Some(format!(
-                "swarf on face {} would cut into the surface by {:.4} mm at ({:.3}, {:.3}, \
-                 {:.3}), more than the tolerance of {tolerance} mm.{}{}",
-                self.number,
-                self.gouge,
-                self.gouge_at.x,
-                self.gouge_at.y,
-                self.gouge_at.z,
-                self.describe_twist(),
-                self.describe_tilt()
-            ));
+    /// The warning for a face the tool cuts into, beyond the stock to leave,
+    /// by more than `tolerance` (OP-12; decision record 0175, amending
+    /// decision record 0061 item 4): the path is still made, and the
+    /// warning names the depth and the place, why, and what the user can
+    /// change. `None` within the tolerance.
+    pub fn overcut_warning(&self, tolerance: f64) -> Option<String> {
+        if self.gouge <= tolerance {
+            return None;
         }
+        Some(format!(
+            "Swarf on face {} cuts into the finished surface by {:.4} mm at ({:.3}, {:.3}, \
+             {:.3}), more than this operation's tolerance of {tolerance} mm.{}{} To accept this \
+             cut, raise the Tolerance of this operation to at least {:.4} mm (in the operation \
+             inspector's parameters, where the field is marked); to cut less into the face, use \
+             a tool with a smaller tool radius or the taper named here, or machine this face \
+             with another strategy. The program is made with this cut in it: check the program \
+             and the simulation before running it.",
+            self.number,
+            self.gouge,
+            self.gouge_at.x,
+            self.gouge_at.y,
+            self.gouge_at.z,
+            self.describe_twist(),
+            self.describe_tilt(),
+            self.gouge,
+        ))
+    }
+
+    /// Why the face is refused after placement (decision record 0061 item
+    /// 7): the flank would leave more than `max_material_left` beyond the
+    /// stock to leave. A cut into the surface deeper than the tolerance is
+    /// not refused but warned of ([`overcut_warning`](Self::overcut_warning);
+    /// decision record 0175).
+    pub fn refusal(&self, max_material_left: f64) -> Option<String> {
         if self.left > max_material_left {
             let change = if self.max_tilt > NO_TILT || self.twist > 0.01 {
                 String::new()
@@ -1326,6 +1345,10 @@ impl Strategy for Swarf {
         "Swarf (flank) machining"
     }
 
+    fn needs_brep_part(&self) -> Option<&str> {
+        Some("it reads the rulings of the exact faces of a STEP model, and a mesh has none")
+    }
+
     fn schema(&self) -> ParameterSchema {
         use parameter::*;
         let mut schema = ParameterSchema::with_common(vec![
@@ -1375,7 +1398,8 @@ impl Strategy for Swarf {
                 names::TOLERANCE => {
                     spec.description = "The toolpath tolerance: a face is ruled when its \
                                         iso-lines are straight within it, the poses keep the \
-                                        flank within it, and a cut deeper than it is refused."
+                                        flank within it, and a cut into the face deeper than \
+                                        it is warned of: raise it to accept such a cut."
                         .to_owned();
                 }
                 _ => {}
@@ -1432,13 +1456,20 @@ fn swarf(
     };
     let mut passes = Vec::new();
     let mut notes = Vec::new();
+    let mut warnings = Vec::new();
     let total = faces.len() as u64;
     for (i, face) in faces.into_iter().enumerate() {
         context.report("swarf", i as u64, Some(total));
         let path = face_path(face, input.tool, input.rotary, &settings, context)?;
         let limit = settings.material_left_limit();
-        if let Some(why) = path.refusal(settings.tolerance, limit) {
+        if let Some(why) = path.refusal(limit) {
             return Err(PathError::Strategy(why));
+        }
+        if let Some(message) = path.overcut_warning(settings.tolerance) {
+            warnings.push(PathWarning {
+                message,
+                parameter: Some(names::TOLERANCE.to_owned()),
+            });
         }
         notes.push(path.note(settings.tolerance, limit));
         for run in &path.runs {
@@ -1457,5 +1488,9 @@ fn swarf(
         }
     }
     context.report("swarf", total, Some(total));
-    Ok(StrategyOutput { passes, notes })
+    Ok(StrategyOutput {
+        passes,
+        notes,
+        warnings,
+    })
 }

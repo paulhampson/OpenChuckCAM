@@ -271,6 +271,22 @@ pub fn export_checks(
                         .map(|o| o.operation.as_str())
                         .collect()
                 });
+            // A path made with a warning (a swarf overcut above the
+            // tolerance) is written with it, so the warning is said here,
+            // where the program is written (NFR-12; decision record 0175).
+            for operation in &enabled {
+                for group in run.groups.iter().filter(|g| g.operation == operation.id) {
+                    for warning in &group.warnings {
+                        push(
+                            CheckLevel::Warning,
+                            format!(
+                                "Operation '{}' was made with a warning: {}",
+                                operation.name, warning.message
+                            ),
+                        );
+                    }
+                }
+            }
             for operation in &enabled {
                 // The simulation names an operation as it was called when the
                 // run was made; a rename since then is not a missing run
