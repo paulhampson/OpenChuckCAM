@@ -146,6 +146,7 @@ impl Fixture {
             },
             max_feeds: machine.max_feeds,
             tags: &tag,
+            keep_out: &[],
         };
         let mut values: BTreeMap<String, ParameterValue> = [
             (names::STEPOVER, 2.0),

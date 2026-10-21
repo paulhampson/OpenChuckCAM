@@ -2,8 +2,10 @@
 //! Analytic solids for workholding and retaining tabs (requirements SET-09
 //! and OP-21; work breakdown slice 21b; decision record 0035 item 2).
 //!
-//! A [`Solid`] is a capped cylinder or frustum on any axis: the held region
-//! of a setup (a cylinder about the rotary axis) and each tab. It answers the
+//! A [`Solid`] is a capped cylinder or frustum on any axis, or a box with
+//! faces parallel to the model's planes: the held region of a setup (a
+//! cylinder about the rotary axis on round stock, the stock's own box section
+//! on box stock; decision record 0160) and each tab. It answers the
 //! queries of [`SurfaceSource`](crate::SurfaceSource) in closed form, so a
 //! [`CompositeSurface`](crate::CompositeSurface) can join it to the model's
 //! surface:
@@ -25,6 +27,10 @@
 //!   custom profile is sampled more finely and is accurate to the sampling
 //!   (the mesh drop-cutter splits at every profile piece instead).
 //!
+//! A box answers the same queries exactly: the closest point by clamping to
+//! it, the ray by the slab method, and the tool drop by the mesh
+//! drop-cutter's vertex, edge and facet tests on its twelve triangles.
+//!
 //! Everything is double precision, millimetres and the model frame, and
 //! nothing depends on threads or randomness, so results are identical at any
 //! thread count (NFR-06). Bad input is an error, never a panic (NFR-07).
@@ -39,12 +45,16 @@ use crate::cutter::{Contact, ToolLine};
 use crate::error::{PathError, Result};
 use crate::surface::{RayHit, SurfacePoint};
 
-/// A capped cylinder or frustum: the solid between two parallel discs.
+/// A capped cylinder or frustum (the solid between two parallel discs), or a
+/// box with faces parallel to the model's planes.
 ///
 /// The base disc is centred on `base`, the top disc lies `length` along
 /// `axis`; the radius changes linearly between them (equal radii give a
 /// cylinder). All dimensions are positive: a point or a flat disc is not a
-/// solid (OP-21 validation).
+/// solid (OP-21 validation). A box ([`Solid::cuboid`]) reads as a solid along
+/// X: its base is the centre of its low-X face, its length its X extent, and
+/// both radii the radius of the circle about its X centre line through the
+/// corners of its section.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Solid {
     base: Point3,
@@ -54,6 +64,8 @@ pub struct Solid {
     length: f64,
     base_radius: f64,
     top_radius: f64,
+    /// The box, for a solid made by [`Solid::cuboid`].
+    cuboid: Option<Aabb>,
 }
 
 fn positive(name: &str, value: f64) -> Result<()> {
@@ -112,7 +124,42 @@ impl Solid {
             length,
             base_radius,
             top_radius,
+            cuboid: None,
         })
+    }
+
+    /// A box with faces parallel to the model's planes, from `bounds.min` to
+    /// `bounds.max`: the held region of box stock (SET-09; decision record
+    /// 0160). Every side must be finite and above zero.
+    pub fn cuboid(bounds: Aabb) -> Result<Self> {
+        if !bounds.min.is_finite() || !bounds.max.is_finite() {
+            return Err(PathError::Surface(
+                "the box's corners must be finite".to_owned(),
+            ));
+        }
+        let size = bounds.max - bounds.min;
+        positive("box's length along X", size.x)?;
+        positive("box's width along Y", size.y)?;
+        positive("box's height along Z", size.z)?;
+        let (cy, cz) = (
+            (bounds.min.y + bounds.max.y) / 2.0,
+            (bounds.min.z + bounds.max.z) / 2.0,
+        );
+        let corner = (size.y / 2.0).hypot(size.z / 2.0);
+        let mut solid = Self::cylinder(
+            Point3::new(bounds.min.x, cy, cz),
+            UnitVec3::X,
+            size.x,
+            corner,
+        )?;
+        solid.cuboid = Some(bounds);
+        Ok(solid)
+    }
+
+    /// The box, for a solid made by [`Solid::cuboid`]; `None` for a cylinder
+    /// or frustum.
+    pub fn as_cuboid(&self) -> Option<Aabb> {
+        self.cuboid
     }
 
     /// The centre of the base disc.
@@ -147,12 +194,20 @@ impl Solid {
 
     /// The exact volume, `pi/3 L (R0^2 + R0 R1 + R1^2)`.
     pub fn volume(&self) -> f64 {
+        if let Some(b) = self.cuboid {
+            let d = b.max - b.min;
+            return d.x * d.y * d.z;
+        }
         let (r0, r1) = (self.base_radius, self.top_radius);
         PI / 3.0 * self.length * (r0 * r0 + r0 * r1 + r1 * r1)
     }
 
     /// The exact area of the two discs and the side.
     pub fn surface_area(&self) -> f64 {
+        if let Some(b) = self.cuboid {
+            let d = b.max - b.min;
+            return 2.0 * (d.x * d.y + d.y * d.z + d.z * d.x);
+        }
         let (r0, r1) = (self.base_radius, self.top_radius);
         let slant = self.length.hypot(r1 - r0);
         PI * (r0 * r0 + r1 * r1 + (r0 + r1) * slant)
@@ -160,12 +215,20 @@ impl Solid {
 
     /// True when `point` lies inside the solid or on its surface.
     pub fn contains(&self, point: Point3) -> bool {
+        if let Some(b) = self.cuboid {
+            return (b.min.x..=b.max.x).contains(&point.x)
+                && (b.min.y..=b.max.y).contains(&point.y)
+                && (b.min.z..=b.max.z).contains(&point.z);
+        }
         let (s, w) = self.split(point);
         (0.0..=self.length).contains(&s) && w.length() <= self.radius_at(s)
     }
 
     /// A box that holds the whole solid.
     pub fn bounds(&self) -> Aabb {
+        if let Some(b) = self.cuboid {
+            return b;
+        }
         let a = self.axis.get();
         let top = self.top();
         // A disc of radius R about a unit axis spans R sqrt(1 - a_i^2) along
@@ -194,6 +257,9 @@ impl Solid {
     /// The solid as triangles with `segments` around, counter-clockwise seen
     /// from outside. Used for display and fallback; the queries do not use it.
     pub fn mesh(&self, segments: u32) -> TriangleMesh {
+        if let Some(b) = self.cuboid {
+            return box_mesh(b);
+        }
         let n = segments.max(3);
         let top = self.top();
         let mut vertices = vec![self.base, top];
@@ -225,6 +291,9 @@ impl Solid {
     pub fn project(&self, point: Point3) -> Option<SurfacePoint> {
         if !point.is_finite() {
             return None;
+        }
+        if let Some(b) = self.cuboid {
+            return Some(box_project(b, point));
         }
         let (s, w) = self.split(point);
         let rho = w.length();
@@ -270,6 +339,9 @@ impl Solid {
     ) -> Option<RayHit> {
         if !origin.is_finite() {
             return None;
+        }
+        if let Some(b) = self.cuboid {
+            return box_ray(b, origin, direction, max_distance);
         }
         let a = self.axis.get();
         let d = direction.get();
@@ -340,6 +412,18 @@ impl Solid {
     /// side and returns where it first touches the solid; `None` when the
     /// tool would not touch it anywhere on the line.
     pub fn drop_tool(&self, profile: &RevolvedProfile, line: &ToolLine) -> Option<Contact> {
+        if let Some(b) = self.cuboid {
+            let mesh = box_mesh(b);
+            let triangles: Vec<[Point3; 3]> = mesh
+                .triangles
+                .iter()
+                .filter_map(|t| {
+                    let p = |i: u32| mesh.vertices.get(usize::try_from(i).ok()?).copied();
+                    Some([p(t[0])?, p(t[1])?, p(t[2])?])
+                })
+                .collect();
+            return crate::cutter::drop_on_triangles(&triangles, profile, line);
+        }
         let tool = ToolFrame {
             origin: line.origin,
             axis: line.axis.get(),
@@ -407,6 +491,125 @@ impl Solid {
     fn direction(&self, theta: f64) -> Vec3 {
         self.e1 * theta.cos() + self.e2 * theta.sin()
     }
+}
+
+/// The eight corners of `b`, indexed by bit 0 = high X, bit 1 = high Y and
+/// bit 2 = high Z, as twelve triangles counter-clockwise seen from outside.
+fn box_mesh(b: Aabb) -> TriangleMesh {
+    let vertices = (0..8u32)
+        .map(|i| {
+            Point3::new(
+                if i & 1 == 0 { b.min.x } else { b.max.x },
+                if i & 2 == 0 { b.min.y } else { b.max.y },
+                if i & 4 == 0 { b.min.z } else { b.max.z },
+            )
+        })
+        .collect();
+    // Each face as a quad, counter-clockwise seen from outside.
+    let quads: [[u32; 4]; 6] = [
+        [0, 4, 6, 2], // -X
+        [1, 3, 7, 5], // +X
+        [0, 1, 5, 4], // -Y
+        [2, 6, 7, 3], // +Y
+        [0, 2, 3, 1], // -Z
+        [4, 5, 7, 6], // +Z
+    ];
+    let triangles = quads
+        .iter()
+        .flat_map(|[a, b, c, d]| [[*a, *b, *c], [*a, *c, *d]])
+        .collect();
+    TriangleMesh {
+        vertices,
+        triangles,
+    }
+}
+
+/// The closest point of the box's surface to `p`, with the outward normal:
+/// for a point outside, the point clamped to the box (the normal from it to
+/// `p`); for a point inside or on it, the nearest face (ties to the first in
+/// the order -X, +X, -Y, +Y, -Z, +Z).
+fn box_project(b: Aabb, p: Point3) -> SurfacePoint {
+    let q = Point3::new(
+        p.x.clamp(b.min.x, b.max.x),
+        p.y.clamp(b.min.y, b.max.y),
+        p.z.clamp(b.min.z, b.max.z),
+    );
+    if let Ok(normal) = UnitVec3::new(p - q) {
+        return SurfacePoint {
+            point: q,
+            normal,
+            position: None,
+        };
+    }
+    let faces = [
+        (p.x - b.min.x, Vec3::new(-1.0, 0.0, 0.0)),
+        (b.max.x - p.x, Vec3::new(1.0, 0.0, 0.0)),
+        (p.y - b.min.y, Vec3::new(0.0, -1.0, 0.0)),
+        (b.max.y - p.y, Vec3::new(0.0, 1.0, 0.0)),
+        (p.z - b.min.z, Vec3::new(0.0, 0.0, -1.0)),
+        (b.max.z - p.z, Vec3::new(0.0, 0.0, 1.0)),
+    ];
+    let (mut depth, mut n) = faces[0];
+    for (d, normal) in faces.into_iter().skip(1) {
+        if d < depth {
+            depth = d;
+            n = normal;
+        }
+    }
+    SurfacePoint {
+        point: p + n * depth,
+        normal: UnitVec3::new(n).unwrap_or(UnitVec3::X),
+        position: None,
+    }
+}
+
+/// The first point of the box's surface on the ray (the slab method), no
+/// further than `max_distance`; from inside, where the ray leaves.
+fn box_ray(b: Aabb, origin: Point3, direction: UnitVec3, max_distance: f64) -> Option<RayHit> {
+    let d = direction.get();
+    let axes = [
+        (origin.x, d.x, b.min.x, b.max.x, Vec3::new(1.0, 0.0, 0.0)),
+        (origin.y, d.y, b.min.y, b.max.y, Vec3::new(0.0, 1.0, 0.0)),
+        (origin.z, d.z, b.min.z, b.max.z, Vec3::new(0.0, 0.0, 1.0)),
+    ];
+    // The entry and exit parameters with the normal of the face crossed.
+    let mut enter = (f64::NEG_INFINITY, Vec3::new(0.0, 0.0, 0.0));
+    let mut leave = (f64::INFINITY, Vec3::new(0.0, 0.0, 0.0));
+    for (o, v, lo, hi, e) in axes {
+        if v.abs() < 1e-300 {
+            if o < lo || o > hi {
+                return None;
+            }
+            continue;
+        }
+        let (t0, t1) = ((lo - o) / v, (hi - o) / v);
+        // Entering through the low face when moving up, the high one when
+        // moving down; leaving through the other.
+        let (near, far, n_near, n_far) = if v > 0.0 {
+            (t0, t1, e * -1.0, e)
+        } else {
+            (t1, t0, e, e * -1.0)
+        };
+        if near > enter.0 {
+            enter = (near, n_near);
+        }
+        if far < leave.0 {
+            leave = (far, n_far);
+        }
+    }
+    if enter.0 > leave.0 {
+        return None;
+    }
+    let (t, normal) = if enter.0 >= 0.0 { enter } else { leave };
+    if !(0.0..=max_distance.min(f64::MAX)).contains(&t) {
+        return None;
+    }
+    Some(RayHit {
+        distance: t,
+        point: origin + d * t,
+        normal: UnitVec3::new(normal).unwrap_or(UnitVec3::X),
+        position: None,
+    })
 }
 
 /// The nearest piece of the section's boundary so far: the squared distance,

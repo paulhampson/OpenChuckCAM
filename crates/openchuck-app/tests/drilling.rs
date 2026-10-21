@@ -112,6 +112,7 @@ fn make(extra: &[(&str, f64)]) -> Job {
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        keep_out: &[],
     };
     let cancel = CancelToken::new();
     let ctx = JobContext::new(&cancel, &NoProgress);

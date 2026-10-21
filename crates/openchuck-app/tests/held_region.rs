@@ -95,8 +95,29 @@ impl Shape {
         }
     }
 
-    /// The distance from `p` to the stock's section (zero inside), in the
-    /// plane across the axis.
+    /// The held region on this stock with `diameter` (the owner's rule,
+    /// decision 0160): a cylinder of the holding diameter where one is given,
+    /// else the stock's own section.
+    fn held(self, diameter: Option<f64>) -> Region {
+        match (diameter, self) {
+            (Some(d), _) => Region::Round(d / 2.0),
+            (None, Self::Box) => Region::Box,
+            (None, Self::Round) => Region::Round(HALF),
+        }
+    }
+}
+
+/// The section of a held region across the axis.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Region {
+    /// The box stock's square section, `2 * HALF` across.
+    Box,
+    /// A circle of this radius about the axis.
+    Round(f64),
+}
+
+impl Region {
+    /// The distance from `(y, z)` to the section (zero inside).
     fn section_distance(self, y: f64, z: f64) -> f64 {
         match self {
             Self::Box => {
@@ -104,7 +125,7 @@ impl Shape {
                 let dz = (z.abs() - HALF).max(0.0);
                 dy.hypot(dz)
             }
-            Self::Round => (y.hypot(z) - HALF).max(0.0),
+            Self::Round(r) => (y.hypot(z) - r).max(0.0),
         }
     }
 
@@ -112,7 +133,7 @@ impl Shape {
     fn inside_section(self, y: f64, z: f64, inset: f64) -> bool {
         match self {
             Self::Box => y.abs() <= HALF - inset && z.abs() <= HALF - inset,
-            Self::Round => y.hypot(z) <= HALF - inset,
+            Self::Round(r) => y.hypot(z) <= r - inset,
         }
     }
 }
@@ -125,12 +146,12 @@ fn held_intervals() -> [(f64, f64); 2] {
 /// How deep a ball of radius `r` centred at `c` is inside the held region:
 /// the ball's radius less its centre's distance to the region (positive when
 /// it sinks in).
-fn sink(shape: Shape, c: Point3, r: f64) -> f64 {
+fn sink(region: Region, c: Point3, r: f64) -> f64 {
     held_intervals()
         .iter()
         .map(|&(lo, hi)| {
             let dx = (lo - c.x).max(c.x - hi).max(0.0);
-            let across = shape.section_distance(c.y, c.z);
+            let across = region.section_distance(c.y, c.z);
             r - dx.hypot(across)
         })
         .fold(f64::NEG_INFINITY, f64::max)
@@ -269,7 +290,7 @@ struct Outcome {
     first_lost: Option<Point3>,
 }
 
-fn run(b: &Built, shape: Shape) -> Outcome {
+fn run(b: &Built, region: Region) -> Outcome {
     let run = b.app.simulate().unwrap();
     let r = BALL / 2.0;
     let mut deepest = f64::NEG_INFINITY;
@@ -285,7 +306,7 @@ fn run(b: &Built, shape: Shape) -> Outcome {
                 let start = previous.unwrap_or(end);
                 let mid = start + (end - start) * 0.5;
                 for tip in [start, end, mid] {
-                    let d = sink(shape, tip + a * r, r);
+                    let d = sink(region, tip + a * r, r);
                     if d > deepest {
                         deepest = d;
                         deepest_at = Some(tip);
@@ -296,6 +317,15 @@ fn run(b: &Built, shape: Shape) -> Outcome {
         }
     }
     let report = run.simulation.unwrap();
+    // Links and retracts keep clear too: no rapid move removes material.
+    for op in &report.setups[0].operations {
+        assert!(
+            op.rapid_cuts.is_empty(),
+            "{}: {:?}",
+            op.operation,
+            op.rapid_cuts
+        );
+    }
     let stock = &report.setups[0].stock;
     let (mut lost, mut checked, mut first_lost) = (0, 0, None);
     let inset = 3.0 * CELL;
@@ -305,7 +335,7 @@ fn run(b: &Built, shape: Shape) -> Outcome {
             for iy in -24..=24 {
                 for iz in -24..=24 {
                     let (y, z) = (f64::from(iy) * 0.5, f64::from(iz) * 0.5);
-                    if !shape.inside_section(y, z, inset) {
+                    if !region.inside_section(y, z, inset) {
                         continue;
                     }
                     let p = Point3::new(x, y, z);
@@ -329,7 +359,6 @@ fn run(b: &Built, shape: Shape) -> Outcome {
 }
 
 fn assert_kept(name: &str, o: &Outcome) {
-    println!("{name}: {o:?}");
     assert!(o.checked > 1000, "{name}: {} points checked", o.checked);
     assert!(
         o.deepest <= TOLERANCE,
@@ -348,8 +377,14 @@ fn assert_kept(name: &str, o: &Outcome) {
 /// holding diameter equal to the stock's width.
 #[test]
 fn req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end() {
+    // By the owner's rule the held region is the cylinder of the holding
+    // diameter; the box's corners outside it are not part of it (decision
+    // 0160), but no tool reaches over the gripped length either (0161).
     let b = build("rough-box-dia", Shape::Box, Some(2.0 * HALF), &[rough()]);
-    assert_kept("box stock, holding diameter", &run(&b, Shape::Box));
+    assert_kept(
+        "box stock, holding diameter",
+        &run(&b, Shape::Box.held(Some(2.0 * HALF))),
+    );
 }
 
 /// Box stock with no holding diameter is held at its own outline (#188):
@@ -357,7 +392,10 @@ fn req_set_09_req_nfr_12_roughing_never_enters_the_held_region_at_either_end() {
 #[test]
 fn req_set_09_box_stock_is_held_at_its_own_outline_over_the_gripped_length() {
     let b = build("rough-box", Shape::Box, None, &[rough()]);
-    assert_kept("box stock, no holding diameter", &run(&b, Shape::Box));
+    assert_kept(
+        "box stock, no holding diameter",
+        &run(&b, Shape::Box.held(None)),
+    );
 }
 
 /// How far the tool's body reaches into the gripped length along the axis:
@@ -399,7 +437,7 @@ fn keeps_clear(strategy: &str, parameters: Vec<(&str, ParameterValue)>) {
             overlap <= TOLERANCE,
             "{name}: a cutting move reaches {overlap:.3} mm over the gripped length at {at:?}"
         );
-        assert_kept(&name, &run(&b, shape));
+        assert_kept(&name, &run(&b, shape.held(None)));
     }
 }
 
@@ -444,7 +482,8 @@ fn req_set_09_req_nfr_12_edge_following_keeps_clear_of_the_held_region() {
 
 /// What is drawn is what is used (#187): the held region in the scene is the
 /// stock's own section over the gripped length, for box stock and for round
-/// stock, and a holding diameter on round stock narrows it.
+/// stock, or the cylinder of the holding diameter where one is given, on any
+/// stock (the owner's rule, decision 0160).
 #[test]
 fn req_set_09_the_held_region_drawn_is_the_stocks_section() {
     use openchuck_app::scene::SceneRole;
@@ -452,8 +491,14 @@ fn req_set_09_the_held_region_drawn_is_the_stocks_section() {
         (Shape::Box, None, HALF),
         (Shape::Round, None, HALF),
         (Shape::Round, Some(16.0), 8.0),
+        (Shape::Box, Some(16.0), 8.0),
     ] {
-        let b = build(&format!("scene-{shape:?}"), shape, diameter, &[]);
+        let b = build(
+            &format!("scene-{shape:?}-{diameter:?}"),
+            shape,
+            diameter,
+            &[],
+        );
         let scene = b.app.start_scene(Some(b.setup)).wait().unwrap();
         let held: Vec<_> = scene
             .meshes
@@ -478,10 +523,46 @@ fn req_set_09_the_held_region_drawn_is_the_stocks_section() {
                 near(max(|p| p.z), half) && near(min(|p| p.z), -half),
                 "{shape:?}"
             );
-            if shape == Shape::Box {
+            if shape == Shape::Box && diameter.is_none() {
                 // The box's corners, not a circle inside it.
                 assert!(v.iter().any(|p| near(p.y, HALF) && near(p.z, HALF)));
             }
         }
     }
+}
+
+/// Beside a held region, roughing clears the stock all round, as it does
+/// beyond the part's ends: a helix cut short at the keep-out turns once there
+/// first, so no wedge of full-height stock is left for a later operation to
+/// meet at full depth (SET-09, OP-03, NFR-12; decision record 0161).
+#[test]
+fn req_set_09_req_op_03_roughing_clears_the_stock_beside_the_held_region_all_round() {
+    let b = build("rough-wedge", Shape::Round, None, &[rough()]);
+    let run = b.app.simulate().unwrap();
+    let report = run.simulation.unwrap();
+    let stock = &report.setups[0].stock;
+    // The keep-out of the start's held region ends at X -8 + 1.5 + 0.5; the
+    // tool's footprint reaches 1.5 back from there, to X -7.5. Up to the
+    // cone (X 0) there is no part, so roughing goes down to its last layer;
+    // at 11 mm from the axis every point between must be gone.
+    let mut left = Vec::new();
+    let mut checked = 0;
+    for ix in 0..=10 {
+        let x = -7.2 + 0.5 * f64::from(ix);
+        for k in 0..72 {
+            let angle = std::f64::consts::TAU * f64::from(k) / 72.0;
+            let p = Point3::new(x, 11.0 * angle.cos(), 11.0 * angle.sin());
+            checked += 1;
+            if stock.contains_point(p) {
+                left.push(p);
+            }
+        }
+    }
+    assert_eq!(checked, 11 * 72);
+    assert!(
+        left.is_empty(),
+        "{} of {checked} points beside the held region still hold stock, first {:?}",
+        left.len(),
+        left.first()
+    );
 }

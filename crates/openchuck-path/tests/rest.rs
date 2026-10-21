@@ -266,6 +266,7 @@ fn req_op_09_a_closed_crease_clean_at_its_start_is_not_joined_across_the_gap() {
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        keep_out: &[],
     };
     let values: BTreeMap<String, ParameterValue> =
         [("feed", 400.0), ("plunge_feed", 200.0), ("stepover", 1.0)]

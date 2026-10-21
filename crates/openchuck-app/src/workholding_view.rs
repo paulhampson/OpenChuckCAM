@@ -131,6 +131,9 @@ pub fn check_draft(draft: &Workholding, stock: Option<&Stock>) -> Option<FieldPr
                 format!("Longer than the stock ({:.3} mm).", hi - lo),
             );
         }
+        // A holding diameter makes the held region a cylinder on any stock;
+        // without one it is the stock's own outline, so none is needed
+        // (decision 0160).
         if let (Some(across), Some(d)) = (across, r.diameter)
             && d.0 > across + 1e-9
         {
@@ -138,17 +141,6 @@ pub fn check_draft(draft: &Workholding, stock: Option<&Stock>) -> Option<FieldPr
             return problem(
                 Field::HoldingDiameter(end),
                 format!("Wider than the stock{side} ({across:.3} mm)."),
-            );
-        }
-        if r.diameter.is_none() && stock.is_some() && !cylinder && stock_x.is_some() {
-            let what = if matches!(stock, Some(Stock::Box { .. })) {
-                "box stock"
-            } else {
-                "this stock"
-            };
-            return problem(
-                Field::HoldingDiameter(end),
-                format!("Needed: {what} has no diameter to hold at."),
             );
         }
     }
@@ -283,6 +275,19 @@ fn check_tab(i: usize, tab: &Tab) -> Option<FieldProblem> {
         }
     }
     None
+}
+
+/// The hint of the holding diameter field when none is set: what the held
+/// region is then, the stock's own diameter on round stock, else its outline
+/// (SET-09; decision 0160).
+pub fn holding_hint(stock: Option<&Stock>) -> String {
+    match stock {
+        Some(Stock::Cylinder { diameter, .. }) => {
+            format!("Stock diameter ({:.3} mm)", diameter.0)
+        }
+        Some(_) => "Stock outline".to_owned(),
+        None => "Stock diameter".to_owned(),
+    }
 }
 
 /// The X span a held region covers on `stock`, as the read-only "Held span"
@@ -703,6 +708,17 @@ fn ring(base: Point3, radius: f64, segments: u32) -> Vec<Point3> {
         .collect()
 }
 
+/// The outline of the box section of `b` at `x`, closed.
+fn square(x: f64, b: openchuck_types::geometry::Aabb) -> Vec<Point3> {
+    vec![
+        Point3::new(x, b.min.y, b.min.z),
+        Point3::new(x, b.max.y, b.min.z),
+        Point3::new(x, b.max.y, b.max.z),
+        Point3::new(x, b.min.y, b.max.z),
+        Point3::new(x, b.min.y, b.min.z),
+    ]
+}
+
 /// The meshes, end circles and solids [`display_items`] gives.
 pub type DisplayItems = (Vec<SceneMesh>, Vec<ScenePolyline>, Vec<SceneSolid>);
 
@@ -729,13 +745,36 @@ pub fn display_items(
             SceneRole::HeldRegion
         };
         let (base, top) = (solid.base(), solid.top());
+        let (base_line, top_line, section) = match solid.as_cuboid() {
+            // A held region on stock that is not round: the stock's box
+            // section at each end (decision 0160). The Setup panes' front
+            // view shows its height along Z.
+            Some(b) => (
+                square(base.x, b),
+                square(top.x, b),
+                SolidSection {
+                    x: (b.min.x, b.max.x),
+                    radii: ((b.max.z - b.min.z) / 2.0, (b.max.z - b.min.z) / 2.0),
+                    centre: ((b.min.y + b.max.y) / 2.0, (b.min.z + b.max.z) / 2.0),
+                },
+            ),
+            None => (
+                ring(base, solid.base_radius(), SEGMENTS),
+                ring(top, solid.top_radius(), SEGMENTS),
+                SolidSection {
+                    x: (base.x, top.x),
+                    radii: (solid.base_radius(), solid.top_radius()),
+                    centre: (base.y, base.z),
+                },
+            ),
+        };
         lines.push(ScenePolyline {
             role,
-            points: ring(base, solid.base_radius(), SEGMENTS),
+            points: base_line,
         });
         lines.push(ScenePolyline {
             role,
-            points: ring(top, solid.top_radius(), SEGMENTS),
+            points: top_line,
         });
         let nth = match previous {
             Some((last, k)) if last == item => k + 1,
@@ -746,11 +785,7 @@ pub fn display_items(
             mesh: meshes.len(),
             item,
             description: describe(workholding, item, &solid, nth),
-            section: SolidSection {
-                x: (base.x, top.x),
-                radii: (solid.base_radius(), solid.top_radius()),
-                centre: (base.y, base.z),
-            },
+            section,
         });
         meshes.push(SceneMesh {
             role,
@@ -794,6 +829,14 @@ fn describe(
                 WorkholdingItem::Start => ("start", workholding.start.as_ref()),
                 _ => ("end", workholding.end.as_ref()),
             };
+            if let Some(b) = solid.as_cuboid() {
+                return format!(
+                    "Held region at the {end} · {:.3} mm · stock outline {:.3} × {:.3} mm",
+                    hi - lo,
+                    b.max.y - b.min.y,
+                    b.max.z - b.min.z
+                );
+            }
             let source = match region.and_then(|r| r.diameter) {
                 Some(_) => "",
                 None => " (stock)",

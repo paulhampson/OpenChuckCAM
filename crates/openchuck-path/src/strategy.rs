@@ -110,6 +110,15 @@ pub struct StrategyInput<'a> {
     pub max_feeds: MaxFeeds,
     /// Tags for the toolpath group.
     pub tags: &'a PathTags,
+    /// Model X intervals, as (low, high), that the tool's tip never enters
+    /// while it cuts: each held region of the setup widened on both sides by
+    /// the tool's largest radius, so no part of the tool reaches over the
+    /// gripped length (SET-09; decision record 0161). The tool is always
+    /// across the rotary axis, so its body spans its tip's X plus and minus
+    /// that radius. Passes are cut short where they would enter one, and a
+    /// path whose entry, exit or link at feed still would is refused. Empty
+    /// for a setup with no held region.
+    pub keep_out: &'a [(f64, f64)],
 }
 
 impl std::fmt::Debug for StrategyInput<'_> {
@@ -120,6 +129,7 @@ impl std::fmt::Debug for StrategyInput<'_> {
             .field("rotary", &self.rotary)
             .field("clearance", &self.clearance)
             .field("tags", self.tags)
+            .field("keep_out", &self.keep_out)
             .finish_non_exhaustive()
     }
 }
@@ -310,7 +320,7 @@ fn generate_with(
         )));
     }
     context.check_cancelled()?;
-    let (passes, notes) = if zones.is_empty() {
+    let (passes, notes): (Vec<Pass>, Vec<String>) = if zones.is_empty() {
         let output = strategy.passes_with_notes(input, region, &parameters, context)?;
         (output.passes, output.notes)
     } else {
@@ -322,7 +332,9 @@ fn generate_with(
         (passes, Vec::new())
     };
     context.check_cancelled()?;
+    let (passes, notes) = keep_clear(passes, notes, input.keep_out)?;
     let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
+    check_clear(&path, input.keep_out)?;
     if !notes.is_empty() {
         let mut notes: Vec<PathNote> = notes
             .into_iter()
@@ -335,6 +347,126 @@ fn generate_with(
         path.notes = notes;
     }
     Ok(path)
+}
+
+/// How far a position may lie inside a keep-out interval and still count as
+/// clear: rounding in the strategies' positions, far below the written
+/// resolution (millimetres).
+const KEEP_OUT_SLACK: f64 = 1e-6;
+
+/// True when a move whose tip spans `lo..=hi` along X reaches into one of
+/// `keep_out`.
+fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
+    keep_out
+        .iter()
+        .any(|&(a, b)| hi > a + KEEP_OUT_SLACK && lo < b - KEEP_OUT_SLACK)
+}
+
+/// The passes with every stretch that reaches into `keep_out` left out
+/// (SET-09; decision record 0161): a pass is cut into the runs of points
+/// that, with the moves between them, stay clear, and a run of one point
+/// from a longer pass is dropped. A pass with rapid points (a drilled hole)
+/// is kept whole or dropped whole. A note says what was left out; if nothing
+/// is left of passes that cut, the operation is refused.
+fn keep_clear(
+    passes: Vec<Pass>,
+    mut notes: Vec<String>,
+    keep_out: &[(f64, f64)],
+) -> Result<(Vec<Pass>, Vec<String>)> {
+    if keep_out.is_empty() || passes.is_empty() {
+        return Ok((passes, notes));
+    }
+    let clear = |p: &CutPoint| !reaches_in(keep_out, p.tip.x, p.tip.x);
+    let move_clear = |a: &CutPoint, b: &CutPoint| {
+        !reaches_in(keep_out, a.tip.x.min(b.tip.x), a.tip.x.max(b.tip.x))
+    };
+    let (mut kept, mut cut_short, mut holes) = (Vec::new(), false, 0usize);
+    for pass in passes {
+        if !pass.rapids.is_empty() {
+            let whole = pass.points.iter().all(clear)
+                && pass.points.windows(2).all(|w| match w {
+                    [a, b] => move_clear(a, b),
+                    _ => true,
+                });
+            if whole {
+                kept.push(pass);
+            } else {
+                holes += 1;
+            }
+            continue;
+        }
+        let single = pass.points.len() == 1;
+        let mut run: Vec<CutPoint> = Vec::new();
+        let mut runs: Vec<Vec<CutPoint>> = Vec::new();
+        for point in &pass.points {
+            let joins = run.last().is_some_and(|last| move_clear(last, point));
+            if !joins && !run.is_empty() {
+                runs.push(std::mem::take(&mut run));
+            }
+            if clear(point) {
+                run.push(*point);
+            }
+        }
+        runs.push(run);
+        let pieces: Vec<Vec<CutPoint>> = runs
+            .into_iter()
+            .filter(|r| r.len() >= 2 || (single && r.len() == 1))
+            .collect();
+        let left: usize = pieces.iter().map(Vec::len).sum();
+        if left < pass.points.len() || pieces.len() > 1 {
+            cut_short = true;
+        }
+        for points in pieces {
+            kept.push(Pass {
+                points,
+                stock: pass.stock.clone(),
+                rapids: Vec::new(),
+            });
+        }
+    }
+    if kept.is_empty() {
+        return Err(PathError::Strategy(
+            "every cut of this operation would reach over a held region, where the workholding \
+             grips the stock, so nothing is left to cut"
+                .to_owned(),
+        ));
+    }
+    if cut_short {
+        notes.push(
+            "Nothing within one tool radius of a held region is cut: no part of the tool \
+             reaches over the gripped length of the stock."
+                .to_owned(),
+        );
+    }
+    if holes > 0 {
+        notes.push(format!(
+            "{holes} {} not drilled: the tool would reach over a held region.",
+            if holes == 1 { "hole is" } else { "holes are" }
+        ));
+    }
+    Ok((kept, notes))
+}
+
+/// Refuses an assembled path with a move at feed that reaches into
+/// `keep_out` (an entry, an exit or a link the passes alone did not show),
+/// so such a path is never written (SET-09, NFR-12; decision record 0161).
+fn check_clear(path: &GeneratedPath, keep_out: &[(f64, f64)]) -> Result<()> {
+    if keep_out.is_empty() {
+        return Ok(());
+    }
+    let mut from = path.group.start.tip;
+    for segment in &path.group.segments {
+        let to = segment.end.tip;
+        if segment.kind.is_fed() && reaches_in(keep_out, from.x.min(to.x), from.x.max(to.x)) {
+            return Err(PathError::Strategy(format!(
+                "a move at X {:.3} mm would reach over a held region, where the workholding \
+                 grips the stock; change the entry or the link settings",
+                to.x
+            )));
+        }
+        from = to;
+    }
+    Ok(())
 }
 
 /// The strategies a host offers, by name.
@@ -396,5 +528,161 @@ impl Registry {
     /// Every registered strategy, in name order.
     pub fn iter(&self) -> impl Iterator<Item = &dyn Strategy> {
         self.strategies.values().map(|s| s.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use openchuck_types::geometry::UnitVec3;
+    use openchuck_types::ir::{MoveKind, PathTags, Segment, ToolPose, ToolpathGroup};
+    use openchuck_types::units::Seconds;
+
+    use super::*;
+
+    fn point(x: f64) -> CutPoint {
+        CutPoint {
+            tip: Point3::new(x, 0.0, 12.0),
+            a: Degrees(0.0),
+            contact: Point3::new(x, 0.0, 10.0),
+        }
+    }
+
+    fn pass(xs: &[f64]) -> Pass {
+        Pass {
+            points: xs.iter().map(|&x| point(x)).collect(),
+            stock: None,
+            rapids: Vec::new(),
+        }
+    }
+
+    fn xs(p: &Pass) -> Vec<f64> {
+        p.points.iter().map(|c| c.tip.x).collect()
+    }
+
+    /// A held region at X -12 to -8 seen by a tool of radius 1.5.
+    const KEEP_OUT: [(f64, f64); 1] = [(-13.5, -6.5)];
+
+    #[test]
+    fn req_set_09_a_pass_is_cut_short_where_it_would_reach_over_a_held_region() {
+        // Into the keep-out and out again: two runs, the point inside and
+        // the one-point run beside it dropped.
+        let (passes, notes) = keep_clear(
+            vec![
+                pass(&[-20.0, -16.0, -14.0, -10.0, -6.5, -4.0, 0.0]),
+                pass(&[0.0, 10.0]),
+                pass(&[-11.0, -7.0, -2.0]),
+            ],
+            vec!["first".to_owned()],
+            &KEEP_OUT,
+        )
+        .unwrap();
+        let runs: Vec<Vec<f64>> = passes.iter().map(xs).collect();
+        assert_eq!(
+            runs,
+            vec![
+                vec![-20.0, -16.0, -14.0],
+                vec![-6.5, -4.0, 0.0],
+                vec![0.0, 10.0]
+            ]
+        );
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0], "first");
+        assert!(notes[1].contains("held region"), "{}", notes[1]);
+        // A move that jumps over the whole keep-out is not kept either.
+        let (passes, _) =
+            keep_clear(vec![pass(&[-20.0, -16.0, 0.0, 4.0])], Vec::new(), &KEEP_OUT).unwrap();
+        assert_eq!(
+            passes.iter().map(xs).collect::<Vec<_>>(),
+            vec![vec![-20.0, -16.0], vec![0.0, 4.0]]
+        );
+    }
+
+    #[test]
+    fn req_set_09_nothing_changes_without_a_held_region_or_when_clear() {
+        let given = vec![pass(&[-20.0, -16.0]), pass(&[0.0, 10.0])];
+        let (same, notes) = keep_clear(given.clone(), Vec::new(), &[]).unwrap();
+        assert_eq!(same, given);
+        assert!(notes.is_empty());
+        let (same, notes) = keep_clear(vec![pass(&[0.0, 10.0])], Vec::new(), &KEEP_OUT).unwrap();
+        assert_eq!(same, vec![pass(&[0.0, 10.0])]);
+        assert!(notes.is_empty());
+        // A pass of one point that is clear stays.
+        let (same, _) = keep_clear(vec![pass(&[2.0])], Vec::new(), &KEEP_OUT).unwrap();
+        assert_eq!(same, vec![pass(&[2.0])]);
+    }
+
+    #[test]
+    fn req_set_09_req_op_10_a_drilled_hole_over_a_held_region_is_dropped_whole() {
+        let mut hole = pass(&[-10.0, -10.0, -10.0]);
+        hole.rapids = vec![2];
+        let mut clear = pass(&[5.0, 5.0, 5.0]);
+        clear.rapids = vec![2];
+        let (passes, notes) = keep_clear(vec![hole, clear.clone()], Vec::new(), &KEEP_OUT).unwrap();
+        assert_eq!(passes, vec![clear]);
+        assert_eq!(
+            notes,
+            vec!["1 hole is not drilled: the tool would reach over a held region."]
+        );
+    }
+
+    #[test]
+    fn req_set_09_req_nfr_07_an_operation_wholly_over_a_held_region_is_refused() {
+        let error = keep_clear(vec![pass(&[-12.0, -9.0])], Vec::new(), &KEEP_OUT).unwrap_err();
+        assert!(
+            error.to_string().contains("nothing is left to cut"),
+            "{error}"
+        );
+    }
+
+    fn pose(x: f64) -> ToolPose {
+        ToolPose {
+            tip: Point3::new(x, 0.0, 12.0),
+            axis: UnitVec3::Z,
+            a: Degrees(0.0),
+        }
+    }
+
+    fn path(moves: &[(MoveKind, f64)]) -> GeneratedPath {
+        GeneratedPath {
+            group: ToolpathGroup {
+                tags: PathTags {
+                    operation: "op".into(),
+                    setup: "setup".into(),
+                    tool: "tool".into(),
+                },
+                start: pose(0.0),
+                segments: moves
+                    .iter()
+                    .map(|&(kind, x)| Segment {
+                        kind,
+                        end: pose(x),
+                        contact_feed: None,
+                        duration: Seconds(0.0),
+                        contact_length: openchuck_types::units::Millimetres(0.0),
+                    })
+                    .collect(),
+            },
+            notes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn req_set_09_req_nfr_12_an_assembled_move_at_feed_that_reaches_in_refuses_the_path() {
+        // A rapid over the held region (at the clearance height) is allowed.
+        let fine = path(&[
+            (MoveKind::Cutting, -2.0),
+            (MoveKind::Rapid, -20.0),
+            (MoveKind::Cutting, -16.0),
+        ]);
+        check_clear(&fine, &KEEP_OUT).unwrap();
+        // An entry that runs into it is not.
+        let entry = path(&[(MoveKind::LeadIn, -7.0), (MoveKind::Cutting, -2.0)]);
+        let error = check_clear(&entry, &KEEP_OUT).unwrap_err();
+        assert!(error.to_string().contains("X -7.000"), "{error}");
+        // A link at feed that crosses it is not either.
+        let link = path(&[(MoveKind::Linking, -20.0)]);
+        assert!(check_clear(&link, &KEEP_OUT).is_err());
+        check_clear(&link, &[]).unwrap();
     }
 }
