@@ -241,3 +241,9 @@ Owner approval and decisions (21 Oct 2026, told directly to the coordinator; sum
 - Settled: #175 = option C. The Model translation is the import placement shared by all setups; the Setup offset is the per-setup position relative to the rotary centreline and work coordinate system (SET-05), wired through the diagram, simulation, toolpaths and G-code; the combined position is shown read-only; tooltips and text make the difference clear. Lanes may make work-in-progress safety pushes of their lane branch (no PR).
 - Being decided now with the owner, one at a time (through the coordinator): spindle speed design (#249), the Simulate stale-result rule (#260), the colour palette (#256, #258), the #195 text approach, the #246 stepover meaning, #201 Jobs tab versus status bar, #183 error reporting.
 - Treat as approved into lanes (answers can be relayed to the coordinator): #175, #181, #182, #184, #185, #186, #192, #193, #194, #195, #197, #199, #201, #211, #223, #225, #242, #246, #248, #249, #250, #251, #252, #254, #255, #256, #257, #258, #259, #260, #261, with #183 and #216 as requirement proposals.
+
+Held for the owner's grouping request (not sent to the coordinator): #262 (F-91).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-91 | Simulate dock | The playback timeline bar clashes with the vertical scrollbar; the dock content does not fit and the playback controls look cut off. | Reserve the scrollbar's width; the playback controls fit without scrolling at the default dock height at 1920x1080 and 120% scale, or stay in a fixed strip above the check boxes; one layout test for the whole dock. Same dock and family as F-59, F-88, F-89, F-49; suggested for BUG-SIMSTALE. Issue [#262](https://github.com/paulhampson/OpenChuckCAM/issues/262). Build 0.14.0, `452724e713a9`. | Dock height and window size where seen. |
