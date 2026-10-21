@@ -115,7 +115,10 @@ pub fn to_machine_program<F: AsRotaryFrame>(
             })?;
         let (rpm, source) = match options.operation_spindle.get(&group.tags.operation) {
             Some(rpm) => (*rpm, format!("operation_spindle[{}]", group.tags.operation)),
-            None => (tool.spindle_rpm, format!("tools[{}].spindle_rpm", group.tags.tool)),
+            None => (
+                tool.spindle_rpm,
+                format!("tools[{}].spindle_rpm", group.tags.tool),
+            ),
         };
         if !(rpm.is_finite() && rpm > 0.0) {
             return Err(PostError::Setting {

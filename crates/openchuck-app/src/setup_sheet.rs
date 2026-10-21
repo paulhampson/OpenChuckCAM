@@ -466,10 +466,8 @@ fn operation_row(
         || "none".to_string(),
         |t| format!("T{} {}", t.controller.number, t.name),
     );
-    let rpm = crate::requirements::spindle_speed(project, operation).map_or_else(
-        || "-".to_string(),
-        |(speed, _)| plain(speed.0, 0),
-    );
+    let rpm = crate::requirements::spindle_speed(project, operation)
+        .map_or_else(|| "-".to_string(), |(speed, _)| plain(speed.0, 0));
     let time = if with_times {
         times
             .get(&operation.id.to_string())

@@ -998,6 +998,68 @@ pub fn operation_tool(
     })
 }
 
+/// An operation's spindle speed as its inspector's Tool section shows it
+/// (decision record 0196).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationSpindle {
+    /// The speed the user gave the operation, in rpm.
+    pub set: Option<f64>,
+    /// The speed the tool's cutting data gives for the setup's material, in
+    /// rpm, with the material's name as the tool holds it. Applies while
+    /// `set` is empty.
+    pub from_tool: Option<(f64, String)>,
+    /// What to do about it when neither gives a speed, in plain words.
+    pub missing: Option<String>,
+}
+
+/// Operation `operation`'s spindle speed, where it comes from, or what is
+/// missing. `None` when the project has no such operation.
+pub fn operation_spindle(project: &Project, operation: OperationId) -> Option<OperationSpindle> {
+    let op = project.operation(operation)?;
+    let from_tool =
+        crate::requirements::cutting_data(project, op).and_then(|(material, snapshot, data)| {
+            openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)
+                .map(|(name, _)| (data.spindle_speed.0, name.to_owned()))
+        });
+    let missing = (op.spindle_speed.is_none() && from_tool.is_none())
+        .then(|| crate::requirements::missing_spindle_message(project, op));
+    Some(OperationSpindle {
+        set: op.spindle_speed.map(|s| s.0),
+        from_tool,
+        missing,
+    })
+}
+
+/// The command that gives operation `operation` the spindle speed in the
+/// typed `text` (revolutions per minute), or takes its own speed away when
+/// `text` is `None`, so the tool's cutting data applies again. Text that is
+/// not a number above 0 is refused in plain words (NFR-07).
+pub fn set_operation_spindle(
+    project: &Project,
+    operation: OperationId,
+    text: Option<&str>,
+) -> Result<Command, AppError> {
+    let speed = match text {
+        None => None,
+        Some(text) => {
+            let number = text.trim().trim_end_matches("rpm").trim();
+            let value: f64 = number
+                .parse()
+                .map_err(|_| refuse("type the spindle speed as a number in rpm"))?;
+            if !(value.is_finite() && value > 0.0) {
+                return Err(refuse("the spindle speed must be a number above 0 rpm"));
+            }
+            Some(openchuck_types::units::SpindleSpeed(value))
+        }
+    };
+    let mut changed = project
+        .operation(operation)
+        .cloned()
+        .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+    changed.spindle_speed = speed;
+    Ok(Command::Replace(Item::Operation(changed)))
+}
+
 /// The command that gives operation `operation` the project tool `tool`.
 pub fn set_operation_tool(
     project: &Project,

@@ -528,8 +528,8 @@ pub(crate) fn post_toolpath(
                         group.tags.operation
                     ))
                 })?;
-            let (speed, _) = crate::requirements::spindle_speed(project, operation)
-                .ok_or_else(|| {
+            let (speed, _) =
+                crate::requirements::spindle_speed(project, operation).ok_or_else(|| {
                     AppError::Post(format!(
                         "cannot post the G-code: {}",
                         crate::requirements::missing_spindle_message(project, operation)

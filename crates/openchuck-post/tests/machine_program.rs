@@ -229,7 +229,11 @@ fn req_gc_07_converting_twice_gives_the_same_program() {
 
 #[test]
 fn req_gc_14_an_operation_spindle_speed_overrides_the_tools() {
-    let toolpath = path(vec![seg(MoveKind::Cutting, pose(15.0, 0.0, 12.0, 0.0), 2.0)]);
+    let toolpath = path(vec![seg(
+        MoveKind::Cutting,
+        pose(15.0, 0.0, 12.0, 0.0),
+        2.0,
+    )]);
     let mut o = options(FeedRule::Linuxcnc);
     o.operation_spindle.insert("op1".into(), 7500.0);
     let program = to_machine_program(&toolpath, &o).unwrap();

@@ -413,3 +413,79 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
         std::fs::remove_dir_all(&folder).ok();
     }
 }
+
+/// The cutting data boxes show the largest value in full, with the box's
+/// padding, at 100% and 120% and at every width the pane can have (issue 250,
+/// F-80); a box is never narrower than its minimum.
+#[test]
+fn req_ui_16_req_tl_05_the_spindle_speed_box_shows_a_five_digit_speed_in_full() {
+    use crate::tool_library_window::cutting_box_width;
+    for scale in [1.0_f32, 1.2] {
+        let rig = Rig::cube("toollib-box", None);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.ctx.set_zoom_factor(scale);
+        let mut needed = 0.0_f32;
+        let mut output = rig.ctx.run_ui(egui::RawInput::default(), |ui| {
+            let font = egui::TextStyle::Monospace.resolve(ui.style());
+            // The widest speed the library accepts in practice, and a long
+            // feed, with the box's padding each side.
+            needed = ui
+                .painter()
+                .layout_no_wrap("99999.99".to_owned(), font, egui::Color32::WHITE)
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x;
+        });
+        output.textures_delta.clear();
+        for available in [0.0, 50.0, 120.0, 300.0, 700.0] {
+            let width = cutting_box_width(available);
+            assert!(
+                width >= needed,
+                "available {available}, scale {scale}: box {width} < {needed}"
+            );
+        }
+        assert!(
+            cutting_box_width(2000.0) > cutting_box_width(300.0),
+            "it uses the room"
+        );
+    }
+}
+
+/// Every entry of the tool library has a tooltip in plain words that gives
+/// its unit and does not say a value is safe to run (issue 250, F-80;
+/// decision 0114; NFR-12).
+#[test]
+fn req_tl_04_req_tl_05_every_tool_library_entry_has_a_plain_tooltip() {
+    for (label, unit, help) in crate::tool_library_window::cutting_help() {
+        assert!(help.len() > 40, "{label}: {help}");
+        assert!(!help.to_lowercase().contains("safe to run"), "{label}");
+        assert!(!unit.is_empty(), "{label}");
+    }
+    let spindle = crate::tool_library_window::cutting_help()[0];
+    assert!(
+        spindle.2.contains("rpm") && spindle.2.contains("S value"),
+        "{}",
+        spindle.2
+    );
+    let tool = openchuck_app::tools::Tool {
+        shape: openchuck_app::tools::ToolShape::BullNose {
+            corner_radius: openchuck_app::tools::Millimetres(1.0),
+        },
+        diameter: openchuck_app::tools::Millimetres(6.0),
+        flute_length: openchuck_app::tools::Millimetres(12.0),
+        overall_length: openchuck_app::tools::Millimetres(50.0),
+        shank_diameter: openchuck_app::tools::Millimetres(6.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    };
+    for field in openchuck_app::tool_edit::tool_form(&tool) {
+        assert!(
+            field.description.len() > 25,
+            "{}: {}",
+            field.label,
+            field.description
+        );
+        assert!(!field.description.to_lowercase().contains("safe to run"));
+    }
+}

@@ -118,7 +118,10 @@ pub(crate) fn missing_spindle_message(project: &Project, operation: &Operation) 
         ),
         (None, _) => "Choose a tool, then enter a spindle speed for this operation".to_owned(),
     };
-    format!("The operation \"{}\" has no spindle speed. {fix}.", operation.name)
+    format!(
+        "The operation \"{}\" has no spindle speed. {fix}.",
+        operation.name
+    )
 }
 
 /// The names of the parameters the cutting data can give.

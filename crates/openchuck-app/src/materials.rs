@@ -30,7 +30,12 @@ pub fn known_materials(project: Option<&Project>, library: Option<&ToolLibrary>)
         for tool in project.tools() {
             names.extend(tool.cutting_data.keys().map(String::as_str));
         }
-        names.extend(project.setups().iter().filter_map(|s| s.material.as_deref()));
+        names.extend(
+            project
+                .setups()
+                .iter()
+                .filter_map(|s| s.material.as_deref()),
+        );
     }
     let mut by_key: BTreeMap<String, &str> = BTreeMap::new();
     for name in names {

@@ -488,11 +488,7 @@ fn without_cutting_data(
     setup.material = Some(material.into());
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let mut op = app.project().operations()[0].clone();
-    for (name, value) in [
-        ("feed", 240.0),
-        ("plunge_feed", 150.0),
-        ("stepover", 0.8),
-    ] {
+    for (name, value) in [("feed", 240.0), ("plunge_feed", 150.0), ("stepover", 0.8)] {
         op.parameters
             .insert(name.into(), ParameterValue::Number(value));
     }
