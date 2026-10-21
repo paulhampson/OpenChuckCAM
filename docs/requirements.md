@@ -118,7 +118,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | SET-06 | Define clearance geometry (a safe cylinder around the axis plus a safe Z) used by retracts and rapid links. | P1 |
 | SET-07 | Multiple setups per project (for example re-gripping or flipping the part), each with its own coordinate system and starting stock. | P2 |
 | SET-08 | Optionally define a maximum acceleration for the rotary axis in the machine profile. Where it is set, time estimates (SIM-08) and motion smoothing use it; where it is not, no limit is assumed. Maximum feed rates stay in SET-01. | P2 |
-| SET-09 | Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth), with an optional holding diameter. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock. | P1 |
+| SET-09 | Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth). The held region is a cylinder of the holding diameter when one is given, otherwise the stock's own section over the gripped length. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock. | P1 |
 
 ### 3.4 Tool management
 

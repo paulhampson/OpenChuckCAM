@@ -132,6 +132,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        keep_out: &[],
     };
 
     let mut registry = Registry::builtin();

@@ -147,6 +147,7 @@ impl Rig {
             },
             max_feeds: self.machine.max_feeds,
             tags: &self.tags,
+            keep_out: &[],
         };
         generate(strategy, &input, v, &ctx)
     }
