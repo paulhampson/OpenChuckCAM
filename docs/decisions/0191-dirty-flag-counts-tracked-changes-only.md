@@ -1,6 +1,6 @@
 # 0191: The dirty flag counts tracked changes only; the nightly's untracked cache no longer marks it (lane BUG-BI; issue #241)
 
-- **Status:** proposed. Only the owner accepts a record.
+- **Status:** accepted (21 Oct 2026, by the owner directly in the lane BUG-REGEN session, into which lane BUG-BI was merged: "accept 0190 and 0191").
 - **What it amends:** [decision 0151](0151-build-traceability.md) item 4 (dirty means `git status --porcelain` lists anything, untracked files included). NFR-16 is unchanged.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-710.

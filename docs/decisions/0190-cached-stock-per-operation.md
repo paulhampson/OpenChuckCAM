@@ -1,6 +1,6 @@
 # 0190: The pipeline cache keeps the stock each operation leaves (lane BUG-REGEN; issue 239)
 
-- **Status:** proposed (21 Oct 2026). Only the owner accepts this record, directly in the lane's session (decision 0049). Item 3 and the status text of item 5 are the owner's answers to OI-626, relayed by the coordinator on 21 Oct 2026.
+- **Status:** accepted (21 Oct 2026, by the owner directly in the lane BUG-REGEN session: "accept 0190 and 0191"). Item 3 and the status text of item 5 are the owner's answers to OI-626, relayed by the coordinator on 21 Oct 2026.
 - **What it amends:** [decision 0030](0030-slice-9-pipeline-cache.md) item 5 ("Simulation is not cached") and its consequence on OI-132. Items 1 to 4 and 6 of 0030 are unchanged: the chained key is still the only cache key, and it now also keys the stock. Architecture section 6 already says "Generate and simulate write to the cache", so the architecture is not changed. No requirement changes.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-626 (the number of stocks kept) is new and closed by the owner's answer (item 3). OI-627 (the deviation is compared again when nothing changed) is new. OI-132 is progressed.
