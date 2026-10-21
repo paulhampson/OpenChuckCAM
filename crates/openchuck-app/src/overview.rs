@@ -267,6 +267,9 @@ pub enum MessageAction {
     EditWorkholding(SetupId),
     /// Generate the stale operations.
     Generate,
+    /// Select the operation and mark, in its inspector, the setting its
+    /// warning names, so the user can change it (decision record 0175).
+    ShowSetting(OperationId),
 }
 
 impl MessageAction {
@@ -278,6 +281,7 @@ impl MessageAction {
             Self::ReviewSetup(_) => "Review setup",
             Self::EditWorkholding(_) => "Edit workholding",
             Self::Generate => "Generate",
+            Self::ShowSetting(_) => "Show setting",
         }
     }
 }
@@ -643,6 +647,8 @@ struct RecordState {
 struct Made {
     key: StatusKey,
     before: Vec<(OperationId, Key)>,
+    /// The path's warnings when it was made (decision record 0175).
+    warnings: Vec<openchuck_path::PathWarning>,
 }
 
 #[derive(Debug, Clone)]
@@ -677,7 +683,20 @@ impl GenerationRecord {
                     .iter()
                     .map(|(id, k)| (*id, k.own))
                     .collect();
-                s.generated.insert(*id, Made { key: *key, before });
+                let warnings = run
+                    .groups
+                    .iter()
+                    .filter(|g| g.operation == *id)
+                    .flat_map(|g| g.warnings.iter().cloned())
+                    .collect();
+                s.generated.insert(
+                    *id,
+                    Made {
+                        key: *key,
+                        before,
+                        warnings,
+                    },
+                );
                 if simulated {
                     s.simulated.insert(*id, key.chained);
                 }
@@ -1100,6 +1119,32 @@ impl Application {
             _ => None,
         }
     }
+
+    /// The settings of `operation` its current path's warnings name (the
+    /// tolerance, for a swarf overcut), for the inspector to mark them and
+    /// the "Show setting" link to jump to the first (decision record 0175).
+    /// Empty when the operation is not up to date or its path has no
+    /// warning that names one.
+    pub fn operation_warning_settings(&self, operation: OperationId) -> Vec<String> {
+        let keys = status_keys(self.project());
+        let record = self.record.snapshot();
+        let (Some((_, key)), Some(made)) = (
+            keys.iter().find(|(id, _)| *id == operation),
+            record.generated.get(&operation),
+        ) else {
+            return Vec::new();
+        };
+        if key.chained != made.key.chained {
+            return Vec::new();
+        }
+        let mut names: Vec<String> = Vec::new();
+        for name in made.warnings.iter().filter_map(|w| w.parameter.clone()) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        names
+    }
 }
 
 /// The user's name for an operation: its number and name.
@@ -1221,6 +1266,38 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             messages.push(Message::new(
                 Severity::Error,
                 message.clone(),
+                Some((item, label.clone())),
+                Some(MessageAction::Show(item)),
+            ));
+        }
+        // An up-to-date path made with a warning: a known overcut, for
+        // example, so the state stays a warning while the path is used
+        // (NFR-12; decision record 0175).
+        if status.state == ItemState::UpToDate
+            && let Some(made) = made
+            && let Some(first) = made.warnings.first()
+        {
+            status = ItemStatus::new(ItemState::Warning, sentence(&first.message));
+            for warning in &made.warnings {
+                messages.push(Message::new(
+                    Severity::Warning,
+                    warning.message.clone(),
+                    Some((item, label.clone())),
+                    Some(if warning.parameter.is_some() {
+                        MessageAction::ShowSetting(o.id)
+                    } else {
+                        MessageAction::Show(item)
+                    }),
+                ));
+            }
+        }
+        // A strategy that needs a STEP part on a mesh part: said at once,
+        // before anything is generated (decision record 0174).
+        if let Some(reason) = crate::operation::brep_only(project, &app.strategies, o) {
+            status = ItemStatus::new(ItemState::Error, sentence(&reason));
+            messages.push(Message::new(
+                Severity::Error,
+                sentence(&reason),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
@@ -1703,6 +1780,7 @@ mod tests {
             MessageAction::ReviewSetup(setup),
             MessageAction::EditWorkholding(setup),
             MessageAction::Generate,
+            MessageAction::ShowSetting(OperationId::new()),
         ]
         .iter()
         .map(|a| a.label())
@@ -1714,7 +1792,8 @@ mod tests {
                 "Reselect",
                 "Review setup",
                 "Edit workholding",
-                "Generate"
+                "Generate",
+                "Show setting"
             ]
         );
         let severities: Vec<_> = Severity::ALL.iter().map(|s| s.name()).collect();
@@ -1752,5 +1831,102 @@ mod tests {
         let order: Vec<_> = o.messages.iter().map(|m| m.severity).collect();
         assert_eq!(order, [Severity::Error, Severity::Warning, Severity::Info]);
         assert_eq!(o.count(Severity::Warning), 1);
+    }
+
+    #[test]
+    fn req_op_07_req_nfr_12_a_path_made_with_a_warning_keeps_the_operation_in_warning() {
+        // Decision 0175 (issue #226): an operation whose up-to-date path was
+        // made with a warning (a swarf overcut above the tolerance) shows the
+        // warning state with the warning's words, lists it in Messages with
+        // a link to the setting it names, and the inspector is told which
+        // setting to mark. Once the operation changes, the warning goes with
+        // the stale path.
+        use openchuck_project::{Item, Operation, OrderKey, Placement};
+        let dir = std::env::temp_dir().join(format!("openchuck-warn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, "warn", crate::Threads::Exactly(1)).unwrap();
+        let setup = SetupId::new();
+        let op = OperationId::new();
+        app.execute(crate::Command::Add {
+            item: Item::Setup(openchuck_project::Setup::new(setup, "Setup 1")),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(crate::Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: op,
+                order: OrderKey::default(),
+                name: "Walls".into(),
+                setup,
+                strategy: "swarf".into(),
+                tool: None,
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                parameters: BTreeMap::new(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let message = "Swarf on face 7 cuts into the finished surface by 0.0131 mm at \
+                       (40.330, -5.370, -9.425), more than this operation's tolerance of 0.01 mm.";
+        let run = crate::Regeneration {
+            groups: vec![crate::pipeline::GroupInfo {
+                operation: op,
+                setup,
+                tool: openchuck_types::tool::Tool {
+                    shape: openchuck_types::tool::ToolShape::FlatEnd,
+                    diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_length: openchuck_types::units::Millimetres(15.0),
+                    overall_length: openchuck_types::units::Millimetres(60.0),
+                    shank_diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_count: 2,
+                    material: None,
+                    centre_cutting: None,
+                }
+                .profile()
+                .unwrap(),
+                part_bounds: openchuck_types::geometry::Aabb {
+                    min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
+                    max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
+                },
+                warnings: vec![openchuck_path::PathWarning {
+                    message: message.to_owned(),
+                    parameter: Some("tolerance".to_owned()),
+                }],
+            }],
+            ..crate::Regeneration::default()
+        };
+        app.record.succeeded(app.project(), false, &run);
+        let overview = app.overview(None, &JobLog::default());
+        let status = &overview.items[&ItemRef::Operation(op)];
+        assert_eq!(status.state, ItemState::Warning, "{status:?}");
+        assert!(status.cause.contains("0.0131 mm"), "{}", status.cause);
+        let warning = overview
+            .messages
+            .iter()
+            .find(|m| m.severity == Severity::Warning && m.text == message)
+            .unwrap_or_else(|| panic!("{:?}", overview.messages));
+        assert_eq!(warning.action, Some(MessageAction::ShowSetting(op)));
+        assert_eq!(warning.source, Some(ItemRef::Operation(op)));
+        assert_eq!(app.operation_warning_settings(op), ["tolerance"]);
+        // Raising the tolerance changes the operation: the path is stale, and
+        // the warning is no longer claimed for it.
+        app.execute(crate::Command::SetParameter {
+            operation: op,
+            name: "tolerance".into(),
+            value: Some(openchuck_project::ParameterValue::Number(0.02)),
+        })
+        .unwrap();
+        let overview = app.overview(None, &JobLog::default());
+        assert_eq!(
+            overview.items[&ItemRef::Operation(op)].state,
+            ItemState::Stale
+        );
+        assert!(!overview.messages.iter().any(|m| m.text == message));
+        assert!(app.operation_warning_settings(op).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

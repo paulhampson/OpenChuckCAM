@@ -63,6 +63,10 @@ pub struct GroupInfo {
     /// The bounds of the setup's placed part (bounding-box stock needs them
     /// when the stock is built again for playback).
     pub part_bounds: openchuck_types::geometry::Aabb,
+    /// The operation's warnings: its path was made but does not meet a limit
+    /// it sets (decision record 0175). They make the operation's state a
+    /// warning and are listed in Messages and the results.
+    pub warnings: Vec<openchuck_path::PathWarning>,
 }
 
 /// The result of regenerating a project.
@@ -240,6 +244,7 @@ pub(crate) fn regenerate(
             setup: operation.setup,
             tool: path.tool.clone(),
             part_bounds: path.part_bounds,
+            warnings: path.warnings.clone(),
         });
         context.report("regenerate", i as u64 + 1, Some(total));
     }

@@ -242,6 +242,36 @@ fn req_gc_15_writing_is_allowed_with_warnings_for_an_unsimulated_operation() {
 }
 
 #[test]
+fn req_gc_15_req_nfr_12_a_path_made_with_a_warning_is_said_at_writing_and_does_not_block_it() {
+    // Decision 0175 (issue #226): a path made with a warning (a swarf
+    // overcut above the tolerance) is written with it, so the checks before
+    // writing repeat the warning, naming the operation, and writing is still
+    // allowed (the owner chose a warning, not an acknowledgement).
+    let (dir, mut app) = project("checks-warned", false);
+    let mut run = post(&mut app, OutputGrouping::Setup);
+    let message = "Swarf on face 7 cuts into the finished surface by 0.0131 mm.";
+    run.groups[0].warnings.push(openchuck_path::PathWarning {
+        message: message.to_owned(),
+        parameter: Some("tolerance".to_owned()),
+    });
+    let name = app
+        .project()
+        .operation(run.groups[0].operation)
+        .unwrap()
+        .name
+        .clone();
+    let checks = app.export_checks(Some(&run), None, None);
+    assert!(checks.can_write(), "{:?}", blockers(&checks));
+    let w = warnings(&checks);
+    assert!(
+        w.iter()
+            .any(|t| t.contains(&format!("'{name}'")) && t.contains(message)),
+        "{w:?}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_gc_15_an_edit_makes_that_operation_and_the_ones_after_it_stale() {
     let (dir, mut app) = project("checks-stale", false);
     let run = post(&mut app, OutputGrouping::Setup);

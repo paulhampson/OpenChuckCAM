@@ -1021,7 +1021,7 @@ impl Application {
     /// The project's setup sheet (GC-12). Pass a regeneration's toolpath to
     /// include each operation's programmed time.
     pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
-        SetupSheet::new(&self.document.project, toolpath)
+        SetupSheet::new(&self.document.project, &self.strategies, toolpath)
     }
 
     /// The strategies operations can use (OP-16).

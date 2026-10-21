@@ -18,7 +18,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
 endobj
 7 0 obj
-<< /Length 3278 >>
+<< /Length 3344 >>
 stream
 BT /F2 14 Tf 40 793.50 Td (Setup sheet: sheet) Tj ET
 BT /F2 11 Tf 40 771.50 Td (Job) Tj ET
@@ -46,12 +46,12 @@ BT /F1 8.5 Tf 40 507.50 Td (----------------------------------------------------
 BT /F1 8.5 Tf 40 496.50 Td (T1    4 mm ball  ball end  4       2       10        40          4         Setup 1, Flip / side 2) Tj ET
 BT /F1 8.5 Tf 40 485.50 Td (T2    6 mm ball  ball end  6       2       10        40          6         Setup 1) Tj ET
 BT /F2 11 Tf 40 463.50 Td (Operations) Tj ET
-BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy           Setup          Tool          Spindle rpm  Time) Tj ET
-BT /F1 8.5 Tf 40 441.50 Td (---------------------------------------------------------------------------------) Tj ET
-BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    helical_finishing  Setup 1        T1 4 mm ball  10000        0:20) Tj ET
-BT /F1 8.5 Tf 40 419.50 Td (2   Finish B    helical_finishing  Setup 1        T2 6 mm ball  10000        0:20) Tj ET
-BT /F1 8.5 Tf 40 408.50 Td (3   Touch up A  helical_finishing  Setup 1        T1 4 mm ball  10000        0:18) Tj ET
-BT /F1 8.5 Tf 40 397.50 Td (4   Side two    helical_finishing  Flip / side 2  T1 4 mm ball  10000        0:20) Tj ET
+BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy           Setup          Tool          Spindle rpm  Tolerance  Time) Tj ET
+BT /F1 8.5 Tf 40 441.50 Td (--------------------------------------------------------------------------------------------) Tj ET
+BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    helical_finishing  Setup 1        T1 4 mm ball  10000        0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 419.50 Td (2   Finish B    helical_finishing  Setup 1        T2 6 mm ball  10000        0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 408.50 Td (3   Touch up A  helical_finishing  Setup 1        T1 4 mm ball  10000        0.01 mm    0:18) Tj ET
+BT /F1 8.5 Tf 40 397.50 Td (4   Side two    helical_finishing  Flip / side 2  T1 4 mm ball  10000        0.01 mm    0:20) Tj ET
 BT /F2 11 Tf 40 375.50 Td (Notes) Tj ET
 BT /F1 8.5 Tf 40 364.50 Td (Time is the sum of the toolpath's move durations at their programmed feeds. It leaves out) Tj ET
 BT /F1 8.5 Tf 40 353.50 Td (acceleration, tool changes and fixturing, and is not the simulated estimate. Generated G-code must) Tj ET
@@ -73,5 +73,5 @@ xref
 trailer
 << /Size 8 /Root 1 0 R /Info 5 0 R >>
 startxref
-3849
+3915
 %%EOF

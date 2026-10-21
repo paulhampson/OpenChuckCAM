@@ -118,6 +118,22 @@ pub struct FormOutcome {
     pub settings_changed: bool,
 }
 
+/// The sentence under a setting the operation's path warns about (decision
+/// record 0175): the warning itself, with its numbers, is in Messages.
+pub const WARNED_SETTING: &str = "The last path was made with a warning about this setting (see \
+     Messages): change it to accept or remove the warning.";
+
+/// The settings of an operation to mark, and the one to bring into view.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Marks {
+    /// The settings its current path's warnings point at (decision record
+    /// 0175), by parameter name.
+    pub warned: Vec<String>,
+    /// The setting to scroll to this frame, its section opened: the "Show
+    /// setting" link of a message.
+    pub jump: Option<String>,
+}
+
 /// The sections open by default, the first time an operation is shown.
 const DEFAULT_OPEN: [&str; 3] = ["tool", "pattern", "axis"];
 
@@ -128,6 +144,7 @@ pub fn show(
     form: &ParameterForm,
     state: &mut FormState,
     settings: &mut UserSettings,
+    marks: &Marks,
 ) -> FormOutcome {
     let mut outcome = FormOutcome::default();
     for section in FormSection::ALL {
@@ -140,18 +157,24 @@ pub fn show(
             continue;
         }
         let key = section.key();
+        // The jump to a setting opens the section it is in.
+        let forced = fields
+            .iter()
+            .any(|f| marks.jump.as_deref() == Some(f.name.as_str()));
         let open = settings.section_open("operation", key, DEFAULT_OPEN.contains(&key));
         let section = field_row::section(
             ui,
             egui::Id::new(("operation section", key)),
             section.title(),
             open,
-            false,
+            forced,
             |_| {},
             |ui| {
                 let mut edit = None;
                 for field in fields {
-                    if let Some(e) = row(ui, field, true, state) {
+                    let warned = marks.warned.contains(&field.name).then_some(WARNED_SETTING);
+                    let scroll = marks.jump.as_deref() == Some(field.name.as_str());
+                    if let Some(e) = row(ui, field, true, state, warned, scroll) {
                         edit = Some(e);
                     }
                 }
@@ -185,7 +208,7 @@ pub fn show_fields(
 ) -> Option<Edit> {
     let mut edit = None;
     for field in fields {
-        if let Some(e) = row(ui, field, reset, state) {
+        if let Some(e) = row(ui, field, reset, state, None, false) {
             edit = Some(e);
         }
     }
@@ -195,7 +218,14 @@ pub fn show_fields(
     edit
 }
 
-fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> Option<Edit> {
+fn row(
+    ui: &mut egui::Ui,
+    field: &Field,
+    reset: bool,
+    state: &mut FormState,
+    warned: Option<&str>,
+    scroll: bool,
+) -> Option<Edit> {
     let name = || field.name.clone();
     match &field.kind {
         FieldKind::Flag => {
@@ -245,6 +275,8 @@ fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> 
                 reset: reset && field.set.is_some(),
                 enabled: true,
                 focus: false,
+                warned,
+                scroll_to: scroll,
             };
             match field_row::text_row(ui, state, &row) {
                 Outcome::None => None,
@@ -364,5 +396,89 @@ mod tests {
             refusal("must not exceed the tool diameter (3.0 mm)"),
             "Must not exceed the tool diameter (3.0 mm). Not applied."
         );
+    }
+
+    fn texts(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
+        shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn req_op_07_req_nfr_12_the_setting_a_warning_names_is_marked_and_the_jump_opens_it() {
+        // Decision 0175 (issue #226): the tolerance a swarf overcut warning
+        // points at is marked with the warning shape and a sentence, not
+        // colour alone, and "Show setting" opens its section and brings it
+        // into view even when the user closed the section.
+        let form = ParameterForm {
+            operation: openchuck_app::project::id::OperationId::new(),
+            strategy: "swarf".into(),
+            fields: vec![Field {
+                name: "tolerance".into(),
+                label: "Tolerance".into(),
+                description: String::new(),
+                kind: FieldKind::Number {
+                    unit: "mm",
+                    min: Some(0.0),
+                    min_exclusive: true,
+                    max: None,
+                },
+                set: None,
+                value: Some(ParameterValue::Number(0.01)),
+                source: Source::Default,
+                section: FormSection::PatternAndTolerance,
+            }],
+            notes: Vec::new(),
+        };
+        let ctx = egui::Context::default();
+        let mut settings = UserSettings::default();
+        settings.set_section_open("operation", "pattern", false, &DEFAULT_OPEN);
+        let run = |settings: &mut UserSettings, marks: &Marks| {
+            let mut state = FormState::default();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(500.0, 400.0),
+                )),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                show(ui, &form, &mut state, settings, marks);
+            });
+            output.textures_delta.clear();
+            texts(&output.shapes)
+        };
+        let warned = Marks {
+            warned: vec!["tolerance".into()],
+            jump: None,
+        };
+        // Closed by the user, and no jump: the mark waits in the section.
+        assert!(
+            !run(&mut settings, &warned)
+                .iter()
+                .any(|t| t == WARNED_SETTING)
+        );
+        // The jump opens the section and shows the mark under the field.
+        let jump = Marks {
+            jump: Some("tolerance".into()),
+            ..warned.clone()
+        };
+        run(&mut settings, &jump);
+        // The section opens over the frames of its animation.
+        for _ in 0..30 {
+            run(&mut settings, &warned);
+        }
+        let shown = run(&mut settings, &warned);
+        assert!(shown.iter().any(|t| t == WARNED_SETTING), "{shown:?}");
+        assert!(WARNED_SETTING.contains("warning"));
+        // No warning: no mark.
+        settings.set_section_open("operation", "pattern", true, &DEFAULT_OPEN);
+        let shown = run(&mut settings, &Marks::default());
+        assert!(!shown.iter().any(|t| t == WARNED_SETTING), "{shown:?}");
+        assert!(shown.iter().any(|t| t == "Tolerance"), "{shown:?}");
     }
 }

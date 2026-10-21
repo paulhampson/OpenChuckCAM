@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use openchuck_path::Registry;
 use openchuck_project::{Operation, Project, Setup, ToolSnapshot};
 use openchuck_types::ir::Toolpath;
 use openchuck_types::notice::VERIFY_GCODE_NOTICE;
@@ -148,7 +149,12 @@ impl SetupSheet {
     /// rapid-traverse settling. It is not the SIM-08 estimate, which comes
     /// with the machine simulation, and the sheet says so (decision record
     /// 0028 item 4).
-    pub fn new(project: &Project, toolpath: Option<&Toolpath>) -> Self {
+    ///
+    /// Each operation's tolerance is the one it is generated with, its own
+    /// value or its strategy's default from `registry`, so a user checking
+    /// the program sees the limit a warning was measured against (decision
+    /// record 0175).
+    pub fn new(project: &Project, registry: &Registry, toolpath: Option<&Toolpath>) -> Self {
         let mut times: BTreeMap<String, f64> = BTreeMap::new();
         if let Some(toolpath) = toolpath {
             for group in &toolpath.groups {
@@ -257,6 +263,7 @@ impl SetupSheet {
                     "Setup",
                     "Tool",
                     "Spindle rpm",
+                    "Tolerance",
                     "Time",
                 ]
                 .map(String::from)
@@ -266,7 +273,9 @@ impl SetupSheet {
                     .iter()
                     .filter(|o| o.enabled)
                     .enumerate()
-                    .map(|(i, o)| operation_row(project, i, o, &times, toolpath.is_some()))
+                    .map(|(i, o)| {
+                        operation_row(project, registry, i, o, &times, toolpath.is_some())
+                    })
                     .collect(),
             },
         });
@@ -441,6 +450,7 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
 
 fn operation_row(
     project: &Project,
+    registry: &Registry,
     index: usize,
     operation: &Operation,
     times: &BTreeMap<String, f64>,
@@ -473,6 +483,20 @@ fn operation_row(
     } else {
         "-".to_string()
     };
+    let tolerance = crate::form::parameter_form(project, registry, operation.id)
+        .ok()
+        .and_then(|form| {
+            form.fields
+                .into_iter()
+                .find(|f| f.name == openchuck_path::params::names::TOLERANCE)
+        })
+        .and_then(|f| match f.value {
+            Some(openchuck_project::ParameterValue::Number(n)) => {
+                Some(format!("{} mm", plain(n, 4)))
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| "-".to_string());
     vec![
         (index + 1).to_string(),
         operation.name.clone(),
@@ -480,6 +504,7 @@ fn operation_row(
         setup,
         tool,
         rpm,
+        tolerance,
         time,
     ]
 }

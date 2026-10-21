@@ -136,6 +136,9 @@ pub struct Shell {
     app: Option<Application>,
     /// The window title last sent to the system (#218).
     sent_title: String,
+    /// The setting the inspector brings into view on its next frame: a
+    /// message's "Show setting" link (decision record 0175).
+    setting_jump: Option<(OperationId, String)>,
     viewport: Viewport,
     dialog: Option<Dialog>,
     scene_job: Option<(JobHandle<SceneView>, bool)>,
@@ -233,6 +236,7 @@ impl Shell {
         let mut shell = Self {
             app: None,
             sent_title: String::new(),
+            setting_jump: None,
             viewport: Viewport::new(viewport_available),
             dialog: None,
             scene_job: None,
@@ -882,6 +886,14 @@ impl Shell {
                 self.choose_setup(setup, Some(SetupPart::Workholding));
             }
             MessageAction::Generate => self.generate(false),
+            MessageAction::ShowSetting(op) => {
+                self.show_item(ItemRef::Operation(op));
+                self.setting_jump = self
+                    .app
+                    .as_ref()
+                    .and_then(|app| app.operation_warning_settings(op).into_iter().next())
+                    .map(|name| (op, name));
+            }
         }
     }
 

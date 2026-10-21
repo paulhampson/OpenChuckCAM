@@ -745,9 +745,20 @@ impl Shell {
         }
 
         let Some(app) = &mut self.app else { return };
+        // The settings the operation's path warns about are marked, and a
+        // "Show setting" link brings the first into view once (decision
+        // record 0175).
+        let marks = form_panel::Marks {
+            warned: app.operation_warning_settings(id),
+            jump: self
+                .setting_jump
+                .take_if(|(op, _)| *op == id)
+                .map(|(_, name)| name),
+        };
         let edit = match app.parameter_form(id) {
             Ok(form) => {
-                let outcome = form_panel::show(ui, &form, &mut self.form, &mut self.settings);
+                let outcome =
+                    form_panel::show(ui, &form, &mut self.form, &mut self.settings, &marks);
                 if outcome.settings_changed {
                     self.settings_changed = Some(std::time::Instant::now());
                 }
@@ -1018,6 +1029,8 @@ fn rows(
                 reset: false,
                 enabled: true,
                 focus: false,
+                warned: None,
+                scroll_to: false,
             },
         );
         if let Outcome::Commit(typed) = outcome {

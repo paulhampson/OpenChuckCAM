@@ -177,6 +177,11 @@ pub struct OperationPath {
     pub tool: openchuck_types::tool::RevolvedProfile,
     /// The bounds of the setup's placed part (for bounding-box stock).
     pub part_bounds: openchuck_types::geometry::Aabb,
+    /// What the user must see before using the path: it was made, but does
+    /// not meet a limit the operation sets, such as swarf cutting into the
+    /// finished surface deeper than the tolerance (NFR-12; decision record
+    /// 0175). Each is in `notes` too.
+    pub warnings: Vec<openchuck_path::PathWarning>,
 }
 
 /// Generates the toolpath of operation `id` of the project in `root`.
@@ -289,9 +294,10 @@ pub(crate) fn generate_with_part(
         .ok_or_else(|| AppError::UnknownOperation(id.to_string()))?;
     let edges = edges.unwrap_or_else(|| edge_options(project, operation));
     let strategy = registry.get(&operation.strategy)?;
-    // Swarf reads rulings from exact faces (decision 0021, OI-96): said
-    // before any selection on a mesh is judged.
-    if let Some(reason) = brep_only(project, operation) {
+    // Swarf reads rulings from exact faces and drilling finds holes in them
+    // (decision 0021, OI-96; decision 0174): said before any selection on a
+    // mesh is judged.
+    if let Some(reason) = brep_only(project, registry, operation) {
         return Err(missing(operation, &reason));
     }
     let limited = operation.selection_refs().next().is_some();
@@ -554,6 +560,7 @@ pub(crate) fn generate_with_part(
         notes,
         tool: profile,
         part_bounds,
+        warnings: path.warnings,
     })
 }
 
@@ -587,23 +594,57 @@ pub(crate) fn on_step_part(project: &Project, operation: &Operation) -> bool {
         })
 }
 
-/// Why `operation` cannot run on its setup's part when its strategy is
-/// swarf and the part is a mesh: swarf is B-rep only, reading rulings from a
-/// STEP model's exact faces (decision 0021, OI-96; OI-238). `None` for any
-/// other strategy, a STEP part, or a setup with no part (which is reported
-/// as missing where the part is read).
-pub(crate) fn brep_only(project: &Project, operation: &Operation) -> Option<String> {
-    if operation.strategy != swarf::NAME || on_step_part(project, operation) {
-        return None;
-    }
+/// The name of the part of `operation`'s setup when it is a mesh (an STL),
+/// read from its file name; `None` for a STEP part or a setup with no part.
+fn mesh_part_of_setup(project: &Project, setup: openchuck_project::id::SetupId) -> Option<&str> {
     let part = project
-        .setup(operation.setup)
+        .setup(setup)
         .and_then(|s| s.part)
         .and_then(|id| project.models().iter().find(|m| m.id == id))?;
+    let brep = openchuck_types::model::ModelFormat::from_file_name(part.path.as_str())
+        .is_some_and(|f| f.kind() == openchuck_types::model::ModelKind::Brep);
+    (!brep).then_some(part.path.as_str())
+}
+
+/// Why `strategy` cannot be used in `setup`: the strategy needs a B-rep
+/// (STEP) part by its registration ([`Strategy::needs_brep_part`]) and the
+/// setup's part is a mesh (decision 0174, amending decision 0111 item 3;
+/// decision 0021, OI-96). In plain words for the strategy list. `None` when
+/// it can be used, or the setup has no part yet.
+///
+/// [`Strategy::needs_brep_part`]: openchuck_path::Strategy::needs_brep_part
+pub(crate) fn unavailable_on_setup(
+    project: &Project,
+    strategy: &dyn openchuck_path::Strategy,
+    setup: openchuck_project::id::SetupId,
+) -> Option<String> {
+    let why = strategy.needs_brep_part()?;
+    let part = mesh_part_of_setup(project, setup)?;
     Some(format!(
-        "swarf is B-rep only: it cuts the faces of a STEP model, and the setup's part '{}' is a \
-         mesh, which has no rulings to follow; add the part as a STEP file",
-        part.path.as_str()
+        "Needs a STEP model: {why}. This setup's part '{part}' is a mesh (STL); add the part as \
+         a STEP file to use it"
+    ))
+}
+
+/// Why `operation` cannot run on its setup's part: its strategy needs a
+/// B-rep (STEP) part by its registration and the part is a mesh (decision
+/// 0021, OI-96; decision 0174). The operation could be added before the
+/// rule, or its part replaced since, so the form and generation still say
+/// so (NFR-07). `None` for a strategy that works on a mesh, a STEP part, a
+/// setup with no part (reported as missing where the part is read), or a
+/// strategy that is not registered (reported where it is looked up).
+pub(crate) fn brep_only(
+    project: &Project,
+    registry: &Registry,
+    operation: &Operation,
+) -> Option<String> {
+    let strategy = registry.get(&operation.strategy).ok()?;
+    let why = strategy.needs_brep_part()?;
+    let part = mesh_part_of_setup(project, operation.setup)?;
+    Some(format!(
+        "{} is B-rep only ({why}): the setup's part '{part}' is a mesh; add the part as a STEP \
+         file",
+        strategy.label()
     ))
 }
 
@@ -1579,6 +1620,53 @@ mod tests {
             centre_cutting: None,
         };
         fixture_on(swarf::NAME, &[], brep, Vec::new(), "boss.step", flat, 20.0)
+    }
+
+    #[test]
+    fn req_op_07_req_nfr_12_a_swarf_overcut_above_the_tolerance_is_made_with_a_warning() {
+        // Decision 0175 (issue #226): a straight tool on a drafted wall cuts
+        // into it beyond the tolerance. The path is made, with a warning that
+        // names the operation's tolerance, which reaches the operation's
+        // path (and so the operation's state and Messages) and its notes.
+        use openchuck_testkit::ruled::draft_cone;
+        let brep = draft_cone(BOSS_X, 10.0, 6f64.to_radians(), FOOT, 16.0);
+        let flat = Tool {
+            shape: ToolShape::FlatEnd,
+            diameter: Millimetres(FLAT),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(FLAT),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        let mut f = fixture_on(
+            swarf::NAME,
+            &[(swarf::parameter::MAX_MATERIAL_LEFT, Value::Number(1.0))],
+            brep,
+            Vec::new(),
+            "cone.step",
+            flat,
+            20.0,
+        );
+        f.select(SelectionTarget::Faces([FaceId(0)].into()), f.hash);
+        let path = f.run().unwrap();
+        assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
+        let warning = &path.warnings[0];
+        assert_eq!(warning.parameter.as_deref(), Some(names::TOLERANCE));
+        assert!(
+            warning
+                .message
+                .contains("cuts into the finished surface by")
+                && warning.message.contains("tolerance of 0.01 mm"),
+            "{}",
+            warning.message
+        );
+        assert!(
+            path.notes.iter().any(|n| n.contains(&warning.message)),
+            "{:?}",
+            path.notes
+        );
     }
 
     #[test]

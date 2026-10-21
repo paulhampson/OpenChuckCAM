@@ -1085,3 +1085,74 @@ fn req_op_07_req_nfr_07_swarf_on_a_mesh_part_says_it_is_b_rep_only() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_with_the_reason_on_an_stl_part()
+ {
+    // Decision 0174 (issue #206): on a setup whose part is a mesh, every
+    // strategy whose registration says it needs a STEP part is listed
+    // disabled with the reason, not hidden, and cannot be added; the others
+    // stay available. The list without a setup marks none.
+    let (dir, mut app, op) = project("brep-only-list");
+    let setup = app.project().operation(op).unwrap().setup;
+    let choices = app.strategy_choices_for(Some(setup));
+    let unavailable: Vec<&str> = choices
+        .iter()
+        .filter(|c| c.unavailable.is_some())
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(unavailable, ["radial_drilling", "swarf"]);
+    for c in &choices {
+        if let Some(why) = &c.unavailable {
+            assert!(
+                why.starts_with("Needs a STEP model") && why.contains("cube.stl"),
+                "{}: {why}",
+                c.name
+            );
+        }
+    }
+    assert!(
+        choices
+            .iter()
+            .any(|c| c.name == "edge_following" && c.unavailable.is_none())
+    );
+    assert_eq!(choices.len(), app.strategy_choices().len());
+    assert!(
+        app.strategy_choices()
+            .iter()
+            .all(|c| c.unavailable.is_none())
+    );
+    let count = app.project().operations().len();
+    let e = app
+        .add_operation("Walls", "swarf", setup, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("needs a STEP model") && e.contains("cube.stl"),
+        "{e}"
+    );
+    assert_eq!(app.project().operations().len(), count);
+    assert!(
+        app.add_operation("Edges", "edge_following", setup, None)
+            .is_ok()
+    );
+    // An operation that already uses one (made before the rule, or its part
+    // replaced since) is in error at once, before anything is generated.
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "radial_drilling".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let status = &overview.items[&openchuck_app::overview::ItemRef::Operation(op)];
+    assert_eq!(
+        status.state,
+        openchuck_app::overview::ItemState::Error,
+        "{status:?}"
+    );
+    assert!(
+        status.cause.contains("B-rep only") && status.cause.contains("cube.stl"),
+        "{}",
+        status.cause
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
