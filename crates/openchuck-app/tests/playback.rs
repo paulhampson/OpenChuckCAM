@@ -727,6 +727,20 @@ fn req_sim_05_triangles_are_sorted_into_the_bands_the_viewport_colours() {
 }
 
 #[test]
+fn req_sim_11_the_bands_keep_each_triangles_value_for_the_probe() {
+    // The probe reads the value a triangle is coloured by (decision record
+    // 0162), so the bands carry every triangle's value, in triangle order.
+    let values = [
+        Some((-1.02, false)),
+        None,
+        Some((0.35, false)),
+        Some((3.0, true)),
+    ];
+    let bands = deviation_bands(&values, 0.1);
+    assert_eq!(&*bands.values, &values);
+}
+
+#[test]
 fn req_sim_05_the_part_is_coloured_by_its_deviation_from_a_simulation() {
     let (dir, app, _) = project("bands");
     let run = Arc::new(app.simulate().unwrap());

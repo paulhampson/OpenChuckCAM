@@ -118,7 +118,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | SET-06 | Define clearance geometry (a safe cylinder around the axis plus a safe Z) used by retracts and rapid links. | P1 |
 | SET-07 | Multiple setups per project (for example re-gripping or flipping the part), each with its own coordinate system and starting stock. | P2 |
 | SET-08 | Optionally define a maximum acceleration for the rotary axis in the machine profile. Where it is set, time estimates (SIM-08) and motion smoothing use it; where it is not, no limit is assumed. Maximum feed rates stay in SET-01. | P2 |
-| SET-09 | Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth), with an optional holding diameter. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock. | P1 |
+| SET-09 | Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth). The held region is a cylinder of the holding diameter when one is given, otherwise the stock's own section over the gripped length. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock. | P1 |
 
 ### 3.4 Tool management
 
@@ -184,6 +184,7 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | SIM-12 | Show the posted G-code beside playback, following the current move. | P2 |
 | SIM-13 | Summarise each generated operation: moves, cut length, A travel, A unwinds and programmed time. | P2 |
 | SIM-14 | Show, for each operation, the largest overcut and the most material left after it, and the worst values after the current operation during playback. | P2 |
+| SIM-15 | Choose which deviation bands the result views show, as the histogram's bins and as a range the user sets, so the part shows only the overcut or the material left of interest; the colour scale, the legend and the histogram follow the choice, and the worst values and counts stay those of the whole part. | P2 |
 
 ### 3.7 G-code generation and post-processing
 

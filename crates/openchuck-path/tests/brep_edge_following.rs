@@ -408,6 +408,7 @@ impl Fixture {
             clearance: self.clearance,
             max_feeds: self.machine.max_feeds,
             tags: &self.tags,
+            keep_out: &[],
         }
     }
 }

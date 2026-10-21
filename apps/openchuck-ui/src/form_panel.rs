@@ -11,6 +11,8 @@ use openchuck_app::form::{Field, FieldKind, FormSection, ParameterForm, Source};
 use openchuck_app::project::ParameterValue;
 use openchuck_app::settings::UserSettings;
 
+use openchuck_app::requirements::{Requirement, RequirementField};
+
 use crate::field_row::{self, Outcome, TextRow};
 use crate::theme::DARK;
 
@@ -128,6 +130,8 @@ pub fn show(
     form: &ParameterForm,
     state: &mut FormState,
     settings: &mut UserSettings,
+    needs: &[&Requirement],
+    jump: Option<&RequirementField>,
 ) -> FormOutcome {
     let mut outcome = FormOutcome::default();
     for section in FormSection::ALL {
@@ -140,7 +144,11 @@ pub fn show(
             continue;
         }
         let key = section.key();
-        let open = settings.section_open("operation", key, DEFAULT_OPEN.contains(&key));
+        // The jump to the first missing value opens the section it is in.
+        let forced = fields
+            .iter()
+            .any(|f| jump == Some(&RequirementField::Parameter(f.name.clone())));
+        let open = settings.section_open("operation", key, DEFAULT_OPEN.contains(&key)) || forced;
         let section = field_row::section(
             ui,
             egui::Id::new(("operation section", key)),
@@ -151,7 +159,13 @@ pub fn show(
             |ui| {
                 let mut edit = None;
                 for field in fields {
-                    if let Some(e) = row(ui, field, true, state) {
+                    let field_key = RequirementField::Parameter(field.name.clone());
+                    let need = needs
+                        .iter()
+                        .find(|r| r.field == field_key)
+                        .map(|r| r.text.as_str());
+                    let scroll = jump == Some(&field_key);
+                    if let Some(e) = row(ui, field, true, state, need, scroll) {
                         edit = Some(e);
                     }
                 }
@@ -185,7 +199,7 @@ pub fn show_fields(
 ) -> Option<Edit> {
     let mut edit = None;
     for field in fields {
-        if let Some(e) = row(ui, field, reset, state) {
+        if let Some(e) = row(ui, field, reset, state, None, false) {
             edit = Some(e);
         }
     }
@@ -195,7 +209,14 @@ pub fn show_fields(
     edit
 }
 
-fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> Option<Edit> {
+fn row(
+    ui: &mut egui::Ui,
+    field: &Field,
+    reset: bool,
+    state: &mut FormState,
+    need: Option<&str>,
+    scroll: bool,
+) -> Option<Edit> {
     let name = || field.name.clone();
     match &field.kind {
         FieldKind::Flag => {
@@ -245,6 +266,8 @@ fn row(ui: &mut egui::Ui, field: &Field, reset: bool, state: &mut FormState) -> 
                 reset: reset && field.set.is_some(),
                 enabled: true,
                 focus: false,
+                needs: need,
+                scroll_to: scroll,
             };
             match field_row::text_row(ui, state, &row) {
                 Outcome::None => None,

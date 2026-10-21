@@ -48,11 +48,14 @@ fn refuse(message: impl Into<String>) -> AppError {
 /// the start, the one at the end, then each tab (those around the axis by
 /// ascending angle) (SET-09, OP-21).
 ///
-/// A held region is a cylinder about the rotary axis: of the holding diameter
-/// where one is set, else of the stock's own diameter. A stock that is not a
-/// cylinder has no single diameter, so a region on it needs a holding
-/// diameter that fits inside it (decision 0045 item 2). Fails with a message
-/// naming what to change when a dimension cannot make a solid.
+/// A held region spans the gripped length (SET-09; decision 0160). Where a
+/// holding diameter is given it is a cylinder of that diameter about the
+/// rotary axis, on any stock (on stock that is not round it must fit the
+/// stock's smaller side). Without one it is the stock's own section: a
+/// cylinder of the stock's diameter on round stock, else the box of its
+/// section (box and bounding-box stock exactly, imported stock its bounding
+/// box, which holds its outline). Fails with a message naming what to change
+/// when a dimension cannot make a solid.
 pub fn solids(
     workholding: &Workholding,
     stock: Option<&Stock>,
@@ -88,9 +91,13 @@ pub fn labelled_solids(
         let (Some(region), Some((lo, hi))) = (region, interval) else {
             continue;
         };
-        let radius = match (region.diameter, stock) {
-            (Some(d), Stock::Cylinder { .. }) => d.0 / 2.0,
-            (None, Stock::Cylinder { diameter, .. }) => diameter.0 / 2.0,
+        let solid = match (region.diameter, stock) {
+            (Some(d), Stock::Cylinder { .. }) => {
+                Solid::cylinder(Point3::new(lo, 0.0, 0.0), axis, hi - lo, d.0 / 2.0)
+            }
+            (None, Stock::Cylinder { diameter, .. }) => {
+                Solid::cylinder(Point3::new(lo, 0.0, 0.0), axis, hi - lo, diameter.0 / 2.0)
+            }
             (Some(d), _) => {
                 let inscribed = (bounds.max.y - bounds.min.y).min(bounds.max.z - bounds.min.z);
                 if d.0 > inscribed + 1e-9 {
@@ -100,19 +107,16 @@ pub fn labelled_solids(
                         d.0
                     )));
                 }
-                d.0 / 2.0
+                Solid::cylinder(Point3::new(lo, 0.0, 0.0), axis, hi - lo, d.0 / 2.0)
             }
-            (None, _) => {
-                return Err(refuse(format!(
-                    "the held region at the {name} of the stock needs a holding diameter: the \
-                     stock is not a cylinder, so it has no diameter to hold at"
-                )));
-            }
+            (None, _) => Solid::cuboid(openchuck_types::geometry::Aabb {
+                min: Point3::new(lo, bounds.min.y, bounds.min.z),
+                max: Point3::new(hi, bounds.max.y, bounds.max.z),
+            }),
         };
         out.push((
             format!("the held region at the {name} of the stock"),
-            Solid::cylinder(Point3::new(lo, 0.0, 0.0), axis, hi - lo, radius)
-                .map_err(AppError::from)?,
+            solid.map_err(AppError::from)?,
         ));
     }
     for (i, tab) in workholding.tabs.iter().enumerate() {
@@ -845,22 +849,53 @@ mod tests {
     }
 
     #[test]
-    fn req_set_09_a_held_region_on_box_stock_needs_a_diameter() {
+    fn req_set_09_a_held_region_is_its_holding_diameter_else_the_stock_section() {
+        // The owner's rule (decision 0160): a holding diameter gives a
+        // cylinder on any stock; without one the held region is the stock's
+        // own section over the gripped length.
+        let boxed = Stock::Box {
+            bounds: Aabb {
+                min: Point3::new(0.0, -15.0, -12.0),
+                max: Point3::new(100.0, 15.0, 12.0),
+            },
+        };
         let w = Workholding {
             start: Some(HeldRegion {
                 length: Millimetres(5.0),
+                diameter: Some(Millimetres(20.0)),
+            }),
+            end: Some(HeldRegion {
+                length: Millimetres(8.0),
                 diameter: None,
             }),
             ..Workholding::default()
         };
-        let boxed = Stock::Box {
-            bounds: Aabb {
-                min: Point3::new(0.0, -15.0, -15.0),
-                max: Point3::new(100.0, 15.0, 15.0),
-            },
+        let held = solids(&w, Some(&boxed), &part(10.0, 90.0)).unwrap();
+        assert_eq!(held[0].as_cuboid(), None);
+        assert!((held[0].base_radius() - 10.0).abs() < 1e-12);
+        assert_eq!((held[0].base().x, held[0].top().x), (0.0, 5.0));
+        assert_eq!(
+            held[1].as_cuboid(),
+            Some(Aabb {
+                min: Point3::new(92.0, -15.0, -12.0),
+                max: Point3::new(100.0, 15.0, 12.0),
+            })
+        );
+        // A holding diameter wider than the box's smaller side is refused.
+        let wide = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(5.0),
+                diameter: Some(Millimetres(25.0)),
+            }),
+            ..Workholding::default()
         };
-        let error = solids(&w, Some(&boxed), &part(10.0, 90.0)).unwrap_err();
-        assert!(error.to_string().contains("needs a holding diameter"));
+        let error = solids(&wide, Some(&boxed), &part(10.0, 90.0)).unwrap_err();
+        assert!(error.to_string().contains("smaller side"), "{error}");
+        // Round stock: the holding diameter, else the stock's diameter.
+        let round = solids(&w, Some(&stock()), &part(10.0, 90.0)).unwrap();
+        assert_eq!(round[0].as_cuboid(), None);
+        assert!((round[0].base_radius() - 10.0).abs() < 1e-12);
+        assert_eq!(round[1].as_cuboid(), None);
     }
 
     #[test]

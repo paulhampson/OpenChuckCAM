@@ -44,6 +44,7 @@ pub mod pick;
 mod pipeline;
 pub mod playback;
 mod posting;
+pub mod requirements;
 pub mod scene;
 pub mod selection;
 pub mod settings;
@@ -93,6 +94,7 @@ pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
 pub use openchuck_project as project;
+pub use openchuck_project::new_folder;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use opflow::StrategyChoice;

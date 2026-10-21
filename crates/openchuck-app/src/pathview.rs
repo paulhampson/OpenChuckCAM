@@ -423,6 +423,10 @@ pub struct DeviationBands {
     pub tolerance: f64,
     /// The triangles of each band, for the bands that have any.
     pub bands: Vec<(DeviationBand, TriangleSet)>,
+    /// Each triangle's value as given to [`deviation_bands`], the value it is
+    /// coloured by, for the probe that reads it under the pointer (SIM-11
+    /// in part, decision record 0162).
+    pub values: std::sync::Arc<[Option<(f64, bool)>]>,
 }
 
 /// Sorts triangles by their worst sampled deviation (see
@@ -462,6 +466,7 @@ pub fn deviation_bands(values: &[Option<(f64, bool)>], tolerance: f64) -> Deviat
             .zip(sets)
             .filter(|(_, s)| !s.is_empty())
             .collect(),
+        values: values.into(),
     }
 }
 

@@ -70,7 +70,7 @@ fn req_sim_05_req_sim_07_the_results_inspector_shows_the_numbers_and_the_resolut
     assert_eq!(summary[0].operations.len(), 1);
     assert_eq!(summary[0].operations[0].name, "Finish");
     assert!(summary[0].within.is_some_and(|w| (0.0..=1.0).contains(&w)));
-    assert!(summary[0].histogram.iter().sum::<usize>() > 0);
+    assert!(summary[0].histogram.iter().map(|b| b.count).sum::<usize>() > 0);
     // The resolution control changes the project's cell, finer than the
     // default at a stated cost, and refuses a value out of range.
     let app = rig.shell.app.as_mut().unwrap();
@@ -193,15 +193,40 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
     ] {
         assert!(rig.shows(text), "{text} is on screen");
     }
+    // The body sits between the header and the footer, and the buttons are
+    // under the footer text: nothing is squashed into a thin strip (#222).
+    let y_of = |rig: &Rig, text: &str| {
+        rig.text_rects()
+            .iter()
+            .find(|(t, _)| t == text)
+            .map(|(_, r)| r.top())
+            .unwrap_or_else(|| panic!("{text} is painted"))
+    };
+    let footer_y = y_of(
+        &rig,
+        "The file is not changed. Its path and hash are stored in the project.",
+    );
+    assert!(y_of(&rig, "1 UNITS") < y_of(&rig, "Holes"));
+    assert!(
+        y_of(&rig, "Holes") < footer_y,
+        "the body is above the footer"
+    );
+    assert!(
+        y_of(&rig, "Add to project") > footer_y,
+        "the buttons are under it: {} vs {footer_y}",
+        y_of(&rig, "Add to project")
+    );
     // The window has a fixed size, so the body scrolls (UI-16): the rest of
     // the check is reached by scrolling over it.
-    let holes_y = rig
-        .texts()
+    // The dialog is centred in the main window (decision 0164), so the
+    // pointer goes where the Holes row is painted.
+    let holes = rig
+        .text_rects()
         .iter()
         .find(|(t, _)| t == "Holes")
-        .map(|(_, y)| *y)
+        .map(|(_, r)| *r)
         .expect("the Holes row is painted");
-    rig.frame(vec![Event::PointerMoved(egui::pos2(200.0, holes_y))]);
+    rig.frame(vec![Event::PointerMoved(holes.center())]);
     for _ in 0..40 {
         if rig.shows("The check reports problems and changes nothing.") {
             break;
