@@ -80,8 +80,8 @@ pub use command::{
 pub use error::AppError;
 pub use export::{
     Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
-    ExportChecks, PostSummary, builtin_post_summaries, post_summary, run_is_current,
-    write_gcode_files,
+    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary, builtin_post_summaries, post_summary,
+    run_is_current, write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,

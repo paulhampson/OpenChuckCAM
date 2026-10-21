@@ -110,6 +110,11 @@ pub const EXPORT_ACKNOWLEDGE_LABEL: &str =
 /// (NFR-12; issue 214, decision record 0168).
 pub const EXPORT_STOCK_SKIPPED: &str = "Stock simulation is skipped for this project, so the cut has not been simulated. Untick \"Skip stock simulation\" in Simulate to check it.";
 
+/// The tick box that acknowledges, before writing, that the project skips
+/// the stock simulation (OI-602, the owner's option C; decision record 0168).
+pub const EXPORT_STOCK_SKIPPED_LABEL: &str =
+    "I know the cut has not been simulated for this project";
+
 /// The sentence that states the rule, shown under the checks.
 pub const EXPORT_RULE: &str = "G-code is written only when every enabled operation is up to date and the files pass their checks. Operations that were not simulated, and machine values not confirmed on the machine, give warnings. Disabled operations are not written.";
 
@@ -300,8 +305,9 @@ pub fn export_checks(
                 });
             if project.skip_stock_simulation() {
                 // One line naming the cause, not one per operation telling
-                // the user to run what they chose to skip (decision record
-                // 0168, OI-602).
+                // the user to run what they chose to skip; writing then
+                // waits for its acknowledgement (decision record 0168,
+                // OI-602).
                 push(CheckLevel::Warning, EXPORT_STOCK_SKIPPED.to_owned());
             }
             for operation in enabled.iter().filter(|_| !project.skip_stock_simulation()) {
