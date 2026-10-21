@@ -1906,6 +1906,30 @@ mod tests {
             dragged_window(crossed, end, 3, 100),
             Some(MoveWindow { first: 3, last: 9 })
         );
+        // Back onto the held boundary from either side, the window keeps
+        // the move on the side it is on.
+        assert_eq!(
+            dragged_window(crossed, end, 10, 100),
+            Some(MoveWindow { first: 9, last: 9 })
+        );
+        let crossed = dragged_window(w, start, 30, 100);
+        assert_eq!(
+            dragged_window(crossed, start, 21, 100),
+            Some(MoveWindow {
+                first: 21,
+                last: 21
+            })
+        );
+        // A one-move window keeps its move with either end on the other.
+        let one = Some(MoveWindow {
+            first: 20,
+            last: 20,
+        });
+        assert_eq!(dragged_window(one, start, 21, 100), one);
+        assert_eq!(
+            dragged_window(one, WindowDrag::End { fixed: 20 }, 20, 100),
+            one
+        );
         // The body keeps its length and stays inside the program.
         assert_eq!(
             drag(WindowDrag::Body(3), 13),
@@ -1943,6 +1967,15 @@ mod tests {
                 first: 99,
                 last: 99
             })
+        );
+        // A new window pressed on the first or the last boundary.
+        assert_eq!(
+            dragged_window(None, WindowDrag::End { fixed: 0 }, 0, 100),
+            Some(MoveWindow { first: 0, last: 0 })
+        );
+        assert_eq!(
+            dragged_window(None, WindowDrag::End { fixed: 100 }, 0, 100),
+            Some(MoveWindow { first: 0, last: 99 })
         );
         assert_eq!(dragged_window(w, end, 4, 0), None);
     }
