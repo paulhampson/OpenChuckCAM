@@ -1,0 +1,19 @@
+schema = 13
+id = "c0de0000-0000-4000-8000-000000000014"
+order = "Y"
+name = "Tapered ball r0.25 5 deg"
+
+[tool]
+diameter = 3.175
+flute_length = 20.0
+overall_length = 50.0
+shank_diameter = 3.175
+flute_count = 2
+
+[tool.shape]
+type = "tapered_ball"
+tip_radius = 0.25
+taper_half_angle = 5.0
+
+[controller]
+number = 1

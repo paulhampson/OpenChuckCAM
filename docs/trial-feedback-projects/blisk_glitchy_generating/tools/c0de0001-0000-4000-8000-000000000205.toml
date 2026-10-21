@@ -1,0 +1,39 @@
+schema = 13
+id = "c0de0001-0000-4000-8000-000000000205"
+order = "X"
+name = "Z1 ball 2x12"
+
+[tool]
+diameter = 2.0
+flute_length = 12.0
+overall_length = 38.0
+shank_diameter = 3.175
+flute_count = 2
+material = "carbide"
+
+[tool.shape]
+type = "ball_end"
+
+[controller]
+number = 205
+
+[cutting_data.Hardwood]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 200.0
+stepover = 0.285714
+stepdown = 1.0
+
+[cutting_data.Plastic]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 200.0
+stepover = 0.285714
+stepdown = 1.0
+
+[cutting_data.Softwood]
+spindle_speed = 12000.0
+feed_per_tooth = 0.02083333333
+plunge_feed = 200.0
+stepover = 0.285714
+stepdown = 2.0

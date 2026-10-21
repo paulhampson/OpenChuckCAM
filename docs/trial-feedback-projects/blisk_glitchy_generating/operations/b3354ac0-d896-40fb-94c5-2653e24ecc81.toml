@@ -1,0 +1,13 @@
+schema = 13
+id = "b3354ac0-d896-40fb-94c5-2653e24ecc81"
+order = "W"
+name = "Helical Finish"
+setup = "b31eaa65-cc27-4229-af17-fb0245a6aca4"
+strategy = "helical_finishing"
+tool = "c0de0001-0000-4000-8000-000000000205"
+selections = []
+
+[parameters]
+feed = 500.0
+max_angle_step = 2.0
+stepover = 0.3

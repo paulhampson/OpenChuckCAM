@@ -1,0 +1,13 @@
+schema = 13
+id = "0c06eef2-6fb7-485f-bb26-22fad6247c98"
+order = "X"
+name = "Rest machining"
+setup = "b31eaa65-cc27-4229-af17-fb0245a6aca4"
+strategy = "axial_finishing"
+tool = "c0de0000-0000-4000-8000-000000000014"
+selections = []
+
+[parameters]
+feed = 500.0
+plunge_feed = 200.0
+stepover = 0.12
