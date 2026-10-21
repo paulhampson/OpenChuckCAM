@@ -406,6 +406,15 @@ impl Placement<'_> {
     }
 }
 
+/// The angle `f` of the way from `from` to `to` as the machine turns: to
+/// the equivalent of `to` nearest `from`, the rule assembly unwraps by, so a
+/// move across the end of `a_facing`'s range is checked on the short arc it
+/// is cut along.
+fn angle_between(from: Degrees, to: Degrees, f: f64) -> Degrees {
+    let to = crate::rotary::nearest_turn(to, from);
+    Degrees(from.0 + (to.0 - from.0) * f)
+}
+
 impl Placement<'_> {
     /// The machine's position `f` of the way along the straight move from
     /// `from` to `to` (linear in its axes, as it is cut): the tool line there,
@@ -417,7 +426,7 @@ impl Placement<'_> {
             rotary.to_axis(to.tip, to.a),
         );
         let mix = |u: f64, v: f64| u + (v - u) * f;
-        let a = Degrees(mix(from.a.0, to.a.0));
+        let a = angle_between(from.a, to.a, f);
         let line = rotary.tool_line(
             Millimetres(mix(p.along, q.along)),
             a,
@@ -722,4 +731,22 @@ fn order(mut passes: Vec<Pass>) -> Vec<Pass> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_op_09_req_nfr_12_a_move_is_checked_on_the_arc_the_machine_turns() {
+        // Across the end of the range: 179 to -179 degrees is a 2 degree turn
+        // through 180, not 358 through 0.
+        let half = angle_between(Degrees(179.0), Degrees(-179.0), 0.5);
+        assert!((half.0 - 180.0).abs() < 1e-9, "{half:?}");
+        let half = angle_between(Degrees(-179.0), Degrees(179.0), 0.5);
+        assert!((half.0 + 180.0).abs() < 1e-9, "{half:?}");
+        // Within the range the move is the straight mix of the two.
+        let quarter = angle_between(Degrees(10.0), Degrees(50.0), 0.25);
+        assert!((quarter.0 - 20.0).abs() < 1e-9, "{quarter:?}");
+    }
 }

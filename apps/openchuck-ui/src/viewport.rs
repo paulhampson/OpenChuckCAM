@@ -1023,6 +1023,8 @@ impl Viewport {
             self.input = PickInput::default();
             self.hover_solid = None;
             self.cursor_point = None;
+            self.probe_hover = None;
+            self.rest = None;
         } else {
             self.pick(ui, &response, rect);
         }
@@ -1960,6 +1962,36 @@ pub(crate) mod tests {
         assert!(viewport.probe_pinned.is_some());
         viewport.set_bands(None);
         assert_eq!(viewport.probe_pinned, None);
+    }
+
+    #[test]
+    fn req_sim_11_the_probe_reads_nothing_over_an_overlay() {
+        let view = cube_scene("probe overlay");
+        let model = view.meshes[0].model.unwrap();
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        viewport.set_scene(view, true);
+        viewport.set_view(StandardView::Top);
+        let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((-1.02, false))).collect();
+        viewport.set_bands(Some((
+            model,
+            openchuck_app::pathview::deviation_bands(&values, 0.1),
+        )));
+        let middle = pos2(200.0, 200.0);
+        frame_at(&mut viewport, &ctx, pos2(190.0, 200.0), false, 0.0);
+        frame_at(&mut viewport, &ctx, middle, false, 0.1);
+        frame_at(&mut viewport, &ctx, middle, false, 0.2 + PROBE_PAUSE);
+        assert!(viewport.probe_hover.is_some());
+        // Over the view cube (top right) the part is not under the pointer,
+        // so no value is read and the old rest is forgotten.
+        let cube = pos2(346.0, crate::viewport_toolbar::HEIGHT + 54.0);
+        frame_at(&mut viewport, &ctx, cube, false, 1.0);
+        assert_eq!(viewport.probe_hover, None);
+        // Back on the part, the value waits for a new pause.
+        frame_at(&mut viewport, &ctx, middle, false, 1.2);
+        assert_eq!(viewport.probe_hover, None);
+        frame_at(&mut viewport, &ctx, middle, false, 1.3 + PROBE_PAUSE);
+        assert!(viewport.probe_hover.is_some());
     }
 
     /// The outlines the focus layer holds: colour and width.
