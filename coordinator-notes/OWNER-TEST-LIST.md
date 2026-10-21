@@ -1,6 +1,6 @@
 # Issues for the owner to verify and close on a new build
 
-Updated 21 Oct 2026. "Merged" = on main, so it is in the next nightly. "In PR" = fixed in an open pull request, not yet in a build. Close the issue yourself once you have checked it; if it is not fixed, reopen it or tell me and it joins the next lane.
+Updated 21 Oct 2026 (after #229, #230, #231 merged). "Merged" = on main, so it is in the next nightly. "In PR" = fixed in an open pull request, not yet in a build. Close the issue yourself once you have checked it; if it is not fixed, reopen it or tell me and it joins the next lane.
 
 ## A. Merged, verify on the next nightly build
 
@@ -22,14 +22,14 @@ Updated 21 Oct 2026. "Merged" = on main, so it is in the next nightly. "In PR" =
 
 | Issue | What to check | PR / status |
 | --- | --- | --- |
-| #196 | Removed or turned-off operation: its path is gone from viewport and is NOT in the exported G-code | #229 BUG-STALE, 0172 accepted, queued |
-| #209 | Renaming an operation does not mark it stale | #229 |
-| #189 | "Machine setting" wording in the Setup inspector | #229 |
-| #218 | Window title "OpenChuckCAM - Name* - path" | #230 BUG-IMP, queued after #229 |
-| #219 | New project: folder named after the project; warning when the folder exists | #230 |
-| #220 | STEP files can be chosen in the import dialog; label says "choose a model" | #230 |
-| #217 | Overcut histogram shows the 1.020 mm and has labelled bins | #231 BUG-RESULTS, records 0162/0163 await you |
-| #208 | Hover tooltip with value; click keeps it | #231 |
+| #196 | MERGED (4501256): removed or turned-off operation: its path is gone from viewport and is NOT in the exported G-code | #229 BUG-STALE |
+| #209 | MERGED: renaming an operation does not mark it stale | #229 |
+| #189 | MERGED: "Machine setting" wording in the Setup inspector | #229 |
+| #218 | MERGED (f0fd9cb): window title "OpenChuckCAM - Name* - path" | #230 BUG-IMP |
+| #219 | MERGED: new project folder named after the project; warning when the folder exists | #230 |
+| #220 | MERGED: STEP files can be chosen in the import dialog; label says "choose a model" | #230 |
+| #217 | MERGED (38e8b78): histogram has labelled bins and the extremes; the 1.020 mm overcut was pencil finishing through blade tips (fixed; re-generate and re-simulate your project and compare the G-code) | #231 BUG-RESULTS |
+| #208 | MERGED: hover tooltip with value; click keeps it | #231 |
 | #174, #176, #177, #178, #179, #198, #212 | Inspector widths and scroll bar, view cube artifact, missing icons, legend wrap | #180 BUG-INSP, 0187 pending |
 | #190, #191 | Tool library pane growth and scroll bar (did not reproduce in the rig; lane fixed the shared cause, OI-572) | #180 (Refs only) |
 | #215 | Playback tab fully visible (dock height about 260) and does not move when the simulation runs | #180 (Refs; OI-570/571) |
@@ -47,6 +47,15 @@ Updated 21 Oct 2026. "Merged" = on main, so it is in the next nightly. "In PR" =
 | OI-430, 431, 440, 442, 455 | Earlier Windows/display checks from the conformance pass |
 | OI-526 | Esc closes the tool library window; floating windows placed inside the window |
 | OI-535 | Before/after look of the inspector label/scroll bar fix (no screenshots from the lane) |
+
+## B2. Complete draft PRs waiting for records / release
+
+| Issue | PR | Waiting on |
+| --- | --- | --- |
+| #202, #187, #188 | #233 BUG-HELD (safety) | you accept records 0160 (+SET-09 edit) and 0161 in the lane session; confirm that the 'end held region' you saw in #202 was the tail tab (your project has none at the end; OI-553: a ramp entry is refused when a pass starts beside a held region) |
+| #210, #224 | #234 BUG-STALE part 2 | record 0173; OI-624 (unconfirmed machine values turn the bar yellow? built yes), OI-625 (yellow until simulated? built yes) |
+| #200 | #232 BUG-PERF | records 0166, 0167 |
+| #174 etc. | #180 BUG-INSP | record 0187 |
 
 ## D. Not built yet (no action until a lane delivers)
 
