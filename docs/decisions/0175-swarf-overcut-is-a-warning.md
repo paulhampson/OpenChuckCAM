@@ -1,6 +1,6 @@
 # 0175: A swarf cut into the face beyond the tolerance is a warning, not a refusal (lane BUG-SWARF; issue #226)
 
-- **Status:** proposed (21 Oct 2026). The owner's answers set the behaviour:
+- **Status:** accepted (21 Oct 2026, by the owner directly in the lane BUG-SWARF session). Proposed 21 Oct 2026. The owner's answers set the behaviour:
   - on issue #226 (20 Oct 2026): the path is produced with a warning and does not wait for an acknowledgement, and the swarf tolerance setting is highlighted when the warning occurs;
   - relayed by the coordinator on 21 Oct 2026 (OI-630): option A, so every overcut above the operation's tolerance is a warning, whatever its cause.
 
