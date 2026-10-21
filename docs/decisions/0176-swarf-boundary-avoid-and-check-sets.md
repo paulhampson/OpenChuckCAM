@@ -133,7 +133,7 @@ Requirements: OP-02 (selections, boundary, avoid, check), OP-07 (swarf), OP-12 (
      - `swarf::FacePath` gains `limits` (a new `swarf::Limits`: which boundary limits applied, the length outside the boundary, the most the tip was raised, the lengths left uncut by avoid and check surfaces, and each watched surface the tool breaks, a new `swarf::WatchedBreak`).
      - The two swarf parameters `boundary_limits_pass` and `boundary_limits_tip` that this record first proposed are not added, and `swarf::Settings` is unchanged.
 
-     These break the library API within the 0.13.0 cycle that decision 0175 opened, with changelog entries ([decision 0048](0048-pre-1-0-api-changes.md)).
+     These break the library API. Version 0.13.0 (decision 0175) is on `main` with pull request 235, so the workspace goes to 0.14.0, with changelog entries ([decision 0048](0048-pre-1-0-api-changes.md)).
 7. **Deterministic.** The limits are computed from the same inputs in a fixed order, and the only parallel work (the guard tests and the gate) goes through `crate::parallel` in order. The same project gives the same G-code at any thread count (GC-07, NFR-06).
 
 ## Alternatives considered
