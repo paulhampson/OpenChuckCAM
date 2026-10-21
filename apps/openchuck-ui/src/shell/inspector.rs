@@ -352,12 +352,17 @@ impl Shell {
                                 .workholding_panel
                                 .as_ref()
                                 .and_then(|p| p.part_extent());
+                            let known = openchuck_app::materials::known_materials(
+                                Some(app.project()),
+                                self.tool_library.library(),
+                            );
                             if let Some(e) = stock_section(
                                 ui,
                                 &mut self.form,
                                 &setup,
                                 copy.as_ref(),
                                 part_extent,
+                                &known,
                             ) {
                                 edited = Some(e);
                             }
@@ -369,6 +374,7 @@ impl Shell {
                                 &setup,
                                 copy.as_ref(),
                                 &setup_form::part_position_rows(&setup),
+                                &[],
                             ) {
                                 edited = Some(e);
                             }
@@ -1275,6 +1281,7 @@ fn rows(
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
     rows: &[SetupRow],
+    known_materials: &[String],
 ) -> Option<(Setup, Option<String>)> {
     let mut edited = None;
     for row in rows {
@@ -1300,6 +1307,14 @@ fn rows(
             },
         );
         if let Outcome::Commit(typed) = outcome {
+            // A material typed in another spelling of a known one takes the
+            // known spelling, so the tools' cutting data is found (decision
+            // 0196).
+            let typed = if row.field == setup_form::SetupField::Material {
+                openchuck_app::materials::canonical_material(known_materials, &typed)
+            } else {
+                typed
+            };
             match setup_form::apply(setup, machine, row.field, &typed) {
                 Ok(s) => edited = Some((s, Some(key))),
                 Err(reason) => state.refuse(&key, &typed, format!("{reason} Not applied.")),
@@ -1307,6 +1322,40 @@ fn rows(
         }
     }
     edited
+}
+
+/// The pick of a known material under the Material row: the names the tools
+/// of the project and the library have cutting data for (decision 0196).
+fn material_pick(
+    ui: &mut egui::Ui,
+    setup: &Setup,
+    known: &[String],
+) -> Option<(Setup, Option<String>)> {
+    if known.is_empty() {
+        return None;
+    }
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        egui::ComboBox::from_id_salt(("setup material pick", setup.id))
+            .selected_text("Pick a known material\u{2026}")
+            .show_ui(ui, |ui| {
+                for name in known {
+                    let current = setup.material.as_deref() == Some(name.as_str());
+                    if ui.selectable_label(current, name).clicked() && !current {
+                        let mut edited = setup.clone();
+                        edited.material = Some(name.clone());
+                        picked = Some((edited, None));
+                    }
+                }
+            })
+            .response
+            .on_hover_text(
+                "Materials the project's and the library's tools have cutting data for. A \
+                 material that matches one of them gets that tool's speeds and feeds.",
+            );
+    });
+    picked
 }
 
 /// The Stock section (SET-03; 11.3): the shape as a segmented control, its
@@ -1317,6 +1366,7 @@ fn stock_section(
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
     part: Option<openchuck_app::setup::PartExtent>,
+    known_materials: &[String],
 ) -> Option<(Setup, Option<String>)> {
     let shapes: Vec<&str> = StockShape::ALL.iter().map(|s| s.name()).collect();
     let current = StockShape::of(setup.stock.as_ref())
@@ -1345,7 +1395,16 @@ fn stock_section(
             None,
         ));
     }
-    rows(ui, state, setup, machine, &setup_form::stock_rows(setup)).or(edited)
+    let typed = rows(
+        ui,
+        state,
+        setup,
+        machine,
+        &setup_form::stock_rows(setup),
+        known_materials,
+    );
+    let picked = material_pick(ui, setup, known_materials);
+    typed.or(picked).or(edited)
 }
 
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
@@ -1380,6 +1439,7 @@ fn clearance_section(
         setup,
         machine,
         &setup_form::clearance_rows(setup, machine),
+        &[],
     ) {
         edited = Some(e);
     }

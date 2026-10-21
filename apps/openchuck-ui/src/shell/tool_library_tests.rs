@@ -489,3 +489,39 @@ fn req_tl_04_req_tl_05_every_tool_library_entry_has_a_plain_tooltip() {
         assert!(!field.description.to_lowercase().contains("safe to run"));
     }
 }
+
+/// The operation's Tool section has a spindle speed row (issue 249, F-79;
+/// decision 0196): the tool's cutting data fills it as a default, a missing
+/// one is marked with what to do, and a value set there is one undoable step.
+#[test]
+fn req_tl_05_req_nfr_12_the_operation_has_a_spindle_speed_row() {
+    use super::inspector::ToolAct;
+    let folder = library_folder("spindle");
+    let mut rig = Rig::cube("toollib-spindle", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Spindle speed"), "the row is there");
+    assert!(rig.shows("rpm"), "with its unit");
+    let spindle = |rig: &Rig| {
+        rig.shell.app.as_ref().unwrap().project().operations()[0]
+            .spindle_speed
+            .map(|s| s.0)
+    };
+    assert_eq!(spindle(&rig), None);
+    rig.shell.tool_act(op, ToolAct::Spindle("9000".into()));
+    assert_eq!(spindle(&rig), Some(9000.0));
+    rig.frame(Vec::new());
+    rig.shell.undo();
+    assert_eq!(spindle(&rig), None);
+    // A bad value is refused and leaves the operation alone.
+    rig.shell.tool_act(op, ToolAct::Spindle("fast".into()));
+    assert_eq!(spindle(&rig), None);
+    rig.shell.tool_act(op, ToolAct::Spindle("12000".into()));
+    rig.shell.tool_act(op, ToolAct::SpindleReset);
+    assert_eq!(spindle(&rig), None);
+    std::fs::remove_dir_all(&folder).ok();
+}
