@@ -1701,3 +1701,28 @@ fn req_ui_10_req_nfr_12_a_project_that_skips_the_stock_simulation_asks_only_for_
     assert!(o.step(Step::Simulate).complete);
     assert_eq!(o.step(Step::Simulate).health, StepHealth::Good);
 }
+
+/// The overview gives each model's extent as its placement puts it, from the
+/// checks, for the Setup inspector's read-only position: the setup's part is
+/// that extent moved by the setup's offset (SET-05; decision record 0201).
+#[test]
+fn req_set_05_the_overview_gives_the_model_extent_for_the_position_row() {
+    let mut f = fixture("model-extent", "cube_ascii.stl");
+    let o = f.app.overview(None, &JobLog::default());
+    assert_eq!(o.model_extent(f.model), None, "not read yet");
+    let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let extent = o.model_extent(f.model).expect("read by the checks");
+    let inspected = f.app.inspect_model(f.model).unwrap().extent.unwrap();
+    assert_eq!(extent, inspected);
+    // The offset changes the setup, not the model's own extent.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.frame.part_offset = Millimetres(4.0);
+    f.app
+        .execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    let checks = Arc::new(f.app.start_checks(Some(checks)).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let placed = o.model_extent(f.model).unwrap().in_setup(&setup.frame);
+    assert_eq!(placed.bounds.min.x, inspected.bounds.min.x + 4.0);
+}

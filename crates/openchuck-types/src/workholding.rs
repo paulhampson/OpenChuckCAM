@@ -668,7 +668,24 @@ mod tests {
         .to_string();
         assert!(text.contains("no room there"), "{text}");
         assert!(text.contains("keeps its last position"), "{text}");
-        assert_eq!(TabEnd::Tail.name(), "tail");
+        assert!(text.contains("at the head of the part"), "{text}");
+        // At the tail: the part reaches the end of the stock.
+        let flush = part_at(30.0, 100.0);
+        let found = check_tab_zones(&w, Some(&stock), Some(&flush));
+        assert_eq!(
+            found,
+            vec![SetupWarningKind::AutoTabNoRoom {
+                tab: 2,
+                end: TabEnd::Tail
+            }]
+        );
+        let text = crate::setup::SetupWarning {
+            kind: found[0].clone(),
+            unconfirmed: Vec::new(),
+        }
+        .to_string();
+        assert!(text.contains("at the tail of the part"), "{text}");
+        assert!(text.contains("the end of the stock"), "{text}");
     }
 
     /// A stored automatic tab may lie anywhere: a change of stock leaves its

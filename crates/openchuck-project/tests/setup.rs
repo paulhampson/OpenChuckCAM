@@ -411,6 +411,16 @@ fn req_prj_04_req_set_05_an_older_part_offset_moves_the_stock_tabs_and_work_zero
     assert_eq!((bounds.min.x, bounds.max.x), (2.0, 45.0));
     assert_eq!((bounds.min.y, bounds.max.z), (-10.0, 10.0));
 
+    // Stock that follows the part moves with it already.
+    let bounds = by_name("Bounds");
+    assert_eq!(
+        bounds.stock,
+        Some(Stock::OffsetBoundingBox {
+            offset: Millimetres(2.0)
+        })
+    );
+    assert_eq!(bounds.frame.work_offset.x, Millimetres(3.0));
+
     let still = by_name("Still");
     assert_eq!(still.frame, SetupFrame::default());
     assert_eq!(
@@ -432,9 +442,10 @@ fn req_prj_04_req_set_05_an_older_part_offset_moves_the_stock_tabs_and_work_zero
 
 /// A tab's `auto` is new in schema 17 (decision record 0202): an older
 /// file that holds one was not written by a version that knew it, so it is
-/// refused with what to do (NFR-07).
+/// refused with what to do; so is an older offset or position that is not a
+/// number, which the step cannot move (NFR-07).
 #[test]
-fn req_prj_04_req_nfr_07_an_older_tab_with_auto_is_refused() {
+fn req_prj_04_req_nfr_07_an_older_tab_with_auto_or_a_bad_offset_is_refused() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-15-offset");
     let dir = temp_dir("schema-16-auto");
     std::fs::create_dir_all(dir.join("setups")).unwrap();
@@ -454,5 +465,30 @@ fn req_prj_04_req_nfr_07_an_older_tab_with_auto_is_refused() {
         error.contains("`auto`, a field schema 17 introduced"),
         "{error}"
     );
+    // An offset or a position that is not a number cannot be moved.
+    let setup =
+        std::fs::read_to_string(fixture.join("setups/00000000-0000-0000-0000-00000000000a.toml"))
+            .unwrap()
+            .replace("schema = 15", "schema = 16");
+    for (from, to, what) in [
+        (
+            "part_offset = 20.0",
+            "part_offset = \"far\"",
+            "`part_offset` is not a number",
+        ),
+        (
+            "x_start = -2.0",
+            "x_start = \"start\"",
+            "`stock.x_start` is not a number",
+        ),
+    ] {
+        std::fs::write(
+            dir.join("setups/00000000-0000-0000-0000-00000000000a.toml"),
+            setup.replace(from, to),
+        )
+        .unwrap();
+        let error = file::load(&dir).unwrap_err().to_string();
+        assert!(error.contains(what), "{error}");
+    }
     std::fs::remove_dir_all(&dir).ok();
 }

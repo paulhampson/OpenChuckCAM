@@ -30,13 +30,13 @@ These rest on the part's position being right, which [decision 0201](0201-setup-
 
 - `openchuck-types` (breaking with 0201's change): `Tab` gains the public field `auto`; `TabEnd`, `MIN_TAB_ROOM`, `auto_tab_span`, `Workholding::resolved`, `Workholding::auto_tabs_without_room` and `SetupWarningKind::AutoTabNoRoom` are new. Library family 0.15.0.
 - `openchuck-project`: project schema 17 (shared with 0201); a schema 16 file with a tab holding `auto` is refused, with what to do.
-- `openchuck-app`: `workholding_view::end_tab`, `no_room`, `to_field_places`; `labelled_solids` resolves; the draft checks skip an automatic tab's stored position.
+- `openchuck-app`: `workholding_view::end_tab`, `no_room`, `to_field_places`, `set_tab_span`, `set_tab_auto`; `labelled_solids` resolves; the draft checks skip an automatic tab's stored position.
 - `openchuck-ui`: the two buttons, the check box, the header mark, the warning on the row.
 
 ## Tests
 
 - `crates/openchuck-types/src/workholding.rs`: `req_op_21_an_automatic_tab_fills_its_zone_and_follows_the_part`, `req_op_21_an_automatic_tab_with_no_room_keeps_its_position_and_warns`, `req_set_09_an_automatic_tab_is_not_held_to_its_stored_position`.
-- `crates/openchuck-app/src/workholding_view.rs`: `req_op_21_the_head_and_tail_buttons_make_automatic_tabs_or_say_why_not`, `req_op_21_a_new_tab_diameter_is_rounded_to_the_field`.
+- `crates/openchuck-app/tests/workholding_view.rs`: `req_op_21_the_head_and_tail_buttons_make_automatic_tabs_or_say_why_not`, `req_op_21_a_new_tab_diameter_is_rounded_to_the_field`, `req_op_21_a_hand_edit_unticks_an_automatic_tab` (`set_tab_span`, `set_tab_auto`).
 - `crates/openchuck-app/tests/workholding.rs`: `req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target`.
 - `crates/openchuck-project/tests/workholding.rs`: `req_op_21_req_prj_04_an_automatic_tab_survives_save_and_load`.
-- `apps/openchuck-ui/src/workholding_panel.rs`: `req_ui_25_head_and_tail_buttons_add_ticked_tabs_and_an_edit_unticks`.
+- `apps/openchuck-ui/src/workholding_panel.rs`: `req_ui_25_head_and_tail_buttons_add_ticked_tabs_and_the_box_unticks` (a second press adds another; the Tail button is disabled where the part runs past the stock's end; the header says "Automatic"; unticking keeps the shown position).

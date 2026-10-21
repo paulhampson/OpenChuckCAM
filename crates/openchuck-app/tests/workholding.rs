@@ -793,7 +793,7 @@ fn req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target(
 
     // With the part 2 mm further along, the automatic tabs span X -8 to 2
     // and 32 to 40; the stored values are still the old ones.
-    let mut a = build_with_mesh("auto-follow", auto, 1, BALL, (61, 72), false);
+    let mut a = build_with_mesh("auto-follow", auto, 1, BALL, (31, 36), false);
     moved(&mut a, 2.0);
     assert!(a.app.check_setups().unwrap()[0].warnings.is_empty());
     let followed = a.app.regenerate().unwrap();
@@ -802,7 +802,7 @@ fn req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target(
     by_hand.tabs[0].length = Millimetres(10.0);
     by_hand.tabs[1].x_start = Millimetres(32.0);
     by_hand.tabs[1].length = Millimetres(8.0);
-    let mut h = build_with_mesh("auto-hand", by_hand, 1, BALL, (61, 72), false);
+    let mut h = build_with_mesh("auto-hand", by_hand, 1, BALL, (31, 36), false);
     moved(&mut h, 2.0);
     let placed = h.app.regenerate().unwrap();
     // The same moves; only the IDs in the tags differ between the projects.
@@ -817,7 +817,7 @@ fn req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target(
 
     // The same tabs placed by hand at the old position are now across the
     // part and refused.
-    let mut stale = build_with_mesh("auto-stale", workholding(), 1, BALL, (61, 72), false);
+    let mut stale = build_with_mesh("auto-stale", workholding(), 1, BALL, (31, 36), false);
     moved(&mut stale, 2.0);
     let refused = stale.app.regenerate().unwrap_err().to_string();
     assert!(
