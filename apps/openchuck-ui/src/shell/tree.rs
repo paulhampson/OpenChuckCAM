@@ -662,4 +662,53 @@ mod tests {
         };
         assert!(shapes(false) > shapes(true));
     }
+
+    #[test]
+    fn req_sim_01_show_all_and_hide_all_say_which_was_pressed_and_rest_when_done() {
+        // Issue 213: "Show all" is on the left of "Hide all"; each is
+        // disabled when there is nothing for it to do.
+        let ctx = egui::Context::default();
+        let rects = std::cell::RefCell::new(Vec::new());
+        let chosen = std::cell::Cell::new(None);
+        let hidden = std::cell::Cell::new(1);
+        let draw = |ui: &mut egui::Ui| {
+            ui.horizontal(|ui| {
+                let at = ui.cursor().min;
+                let gap = ui.spacing().item_spacing.x;
+                if let Some(c) = all_eyes(ui, hidden.get(), 3) {
+                    chosen.set(Some(c));
+                }
+                rects.borrow_mut().push((at, gap));
+            });
+        };
+        frame(&ctx, Vec::new(), draw);
+        // Drawn in order: Hide all first, then Show all (in the header's
+        // right-to-left row that puts Show all on the left).
+        let (at, gap) = rects.borrow()[0];
+        let hide = at + egui::vec2(10.0, 9.0);
+        let show = at + egui::vec2(30.0 + gap, 9.0);
+        let click = |at: egui::Pos2| {
+            let button = |pressed| egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            frame(&ctx, vec![egui::Event::PointerMoved(at)], draw);
+            frame(&ctx, vec![button(true)], draw);
+            frame(&ctx, vec![button(false)], draw);
+        };
+        click(hide);
+        assert_eq!(chosen.take(), Some(false));
+        click(show);
+        assert_eq!(chosen.take(), Some(true));
+        // All hidden: Hide all does nothing.
+        hidden.set(3);
+        click(hide);
+        assert_eq!(chosen.take(), None);
+        // None hidden: Show all does nothing.
+        hidden.set(0);
+        click(show);
+        assert_eq!(chosen.take(), None);
+    }
 }

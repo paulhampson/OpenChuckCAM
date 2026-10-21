@@ -463,11 +463,6 @@ impl MoveWindow {
     pub fn moves(&self) -> std::ops::Range<usize> {
         self.first..self.last.saturating_add(1)
     }
-
-    /// Whether move `flat` is in the window.
-    pub fn contains(&self, flat: usize) -> bool {
-        self.moves().contains(&flat)
-    }
 }
 
 /// The playback controls (SIM-04). They hold a [`Cursor`] and move it; the

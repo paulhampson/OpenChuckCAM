@@ -242,6 +242,9 @@ pub struct PlaybackPanel {
     jump_move: usize,
     /// What a drag on the window strip moves (issue 205).
     window_drag: Option<WindowDrag>,
+    /// Where the window strip was drawn last, and the left and width of
+    /// the timeline it maps moves on.
+    strip: (egui::Rect, f32, f32),
     error: Option<String>,
     /// The layers need clearing before the next run is drawn.
     reset_layers: bool,
@@ -283,6 +286,7 @@ impl Default for PlaybackPanel {
             bands_setup: None,
             jump_move: 1,
             window_drag: None,
+            strip: (egui::Rect::NOTHING, 0.0, 0.0),
             error: None,
             reset_layers: false,
         }
@@ -455,9 +459,11 @@ impl PlaybackPanel {
             viewport.set_tool_readout(None);
         }
         busy |= self.poll_data();
-        // The cut part is prepared whenever it can be shown: the stock
-        // simulation is on by default (issue 214).
-        self.stock.show = viewport.simulate_show().cut_part;
+        // The cut part is prepared whenever it can be shown, on Simulate,
+        // where "Cut part" draws it: the stock simulation is on by default
+        // (issue 214), and no other step pays for it.
+        self.stock.show = viewport.simulate_show().cut_part
+            && viewport.step() == crate::viewport::ViewStep::Simulate;
         self.start_stock(app);
         self.follow_project(app);
         busy |= self.poll_lines(app, viewport);
@@ -1012,6 +1018,7 @@ impl PlaybackPanel {
         );
         let painter = ui.painter_at(rect);
         let width = width.max(1.0);
+        self.strip = (rect, left, width);
         let x_of = |m: usize| left + width * (m as f32 / moves.max(1) as f32);
         let window = self.playback.window();
         let (first, end) = window.map_or((0, moves), |w| (w.first, w.last + 1));
@@ -1028,8 +1035,12 @@ impl PlaybackPanel {
         let at = |pos: egui::Pos2| {
             (((pos.x - left) / width).clamp(0.0, 1.0) * moves as f32).round() as usize
         };
+        // A drag is told from a click only once the pointer has moved, so it
+        // starts where the button was pressed.
         if response.drag_started()
-            && let Some(pos) = response.interact_pointer_pos()
+            && let Some(pos) = ui
+                .input(|i| i.pointer.press_origin())
+                .or_else(|| response.interact_pointer_pos())
         {
             self.window_drag = Some(if (pos.x - band.left()).abs() <= HANDLE_REACH {
                 WindowDrag::First
@@ -1576,6 +1587,7 @@ mod tests {
     #[test]
     fn req_sim_05_the_stock_and_the_deviation_colours_come_from_jobs() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-stock");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
         let data = panel.data.clone().unwrap();
         // Ask for the stock: the job prepares the checkpoints, then the
         // mesh at the cursor is made for the moves done.
@@ -1820,6 +1832,11 @@ mod tests {
         // Issue 214 (decision record 0168): a simulated run shows the cut
         // part by default ("Cut part" is ticked), with no button to press.
         let (app, mut panel, mut viewport, dir) = prepared("panel-cut-part");
+        // Not on another step, where it is not drawn.
+        viewport.set_step(Some(crate::viewport::ViewStep::Operations));
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(panel.stock.playback.is_none() && panel.stock.prepare.is_none());
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
         settle_panel(&app, &mut panel, &mut viewport);
         assert!(panel.stock.playback.is_some());
         let stock = viewport.layer(Layer::Stock).expect("the cut part is drawn");
@@ -1877,6 +1894,90 @@ mod tests {
         panel.restore(&app, &run);
         assert!(panel.has_run());
         panel.frame(&app, &mut viewport, 0.0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Draws the dock's controls once in `ctx` with `events`.
+    fn show_frame(
+        ctx: &egui::Context,
+        panel: &mut PlaybackPanel,
+        app: &Application,
+        events: Vec<egui::Event>,
+    ) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 400.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            panel.show(ui, app);
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn req_sim_04_the_window_strip_is_dragged_and_the_numbers_follow() {
+        // Issue 205: dragging on the strip starts a window, its ends resize
+        // it and its band moves it; "Whole program" lifts it.
+        let (app, mut panel, mut viewport, dir) = prepared("panel-strip");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let ctx = egui::Context::default();
+        show_frame(&ctx, &mut panel, &app, Vec::new());
+        let moves = panel.data.as_ref().unwrap().timeline.move_count();
+        let (rect, left, width) = panel.strip;
+        let x = |f: f32| left + width * f;
+        let y = rect.center().y;
+        let drag = |panel: &mut PlaybackPanel, from: f32, to: f32| {
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let (a, b) = (egui::pos2(from, y), egui::pos2(to, y));
+            show_frame(&ctx, panel, &app, vec![egui::Event::PointerMoved(a)]);
+            show_frame(&ctx, panel, &app, vec![button(a, true)]);
+            for step in 1..=6 {
+                let p = a + (b - a) * (step as f32 / 6.0);
+                show_frame(&ctx, panel, &app, vec![egui::Event::PointerMoved(p)]);
+            }
+            show_frame(&ctx, panel, &app, vec![button(b, false)]);
+            show_frame(&ctx, panel, &app, Vec::new());
+        };
+        let at = |f: f32| (f * moves as f32).round() as usize;
+        // A new window, from 40% to 60% of the moves.
+        drag(&mut panel, x(0.4), x(0.6));
+        let w = panel.window().expect("a window is set");
+        assert!(
+            w.first.abs_diff(at(0.4)) <= 2 && w.last.abs_diff(at(0.6)) <= 2,
+            "{w:?}"
+        );
+        assert_eq!(
+            (panel.window_from, panel.window_to),
+            (w.first + 1, w.last + 1)
+        );
+        // Its start dragged left resizes it.
+        let start = x(w.first as f32 / moves as f32);
+        drag(&mut panel, start, x(0.2));
+        let resized = panel.window().unwrap();
+        assert!(
+            resized.first.abs_diff(at(0.2)) <= 2 && resized.last == w.last,
+            "{resized:?}"
+        );
+        // The band dragged right keeps its length.
+        let middle = x((resized.first + resized.last) as f32 / 2.0 / moves as f32);
+        drag(&mut panel, middle, middle + width * 0.1);
+        let moved = panel.window().unwrap();
+        assert_eq!(moved.last - moved.first, resized.last - resized.first);
+        assert!(moved.first > resized.first);
+        // The play head is inside it.
+        assert!(
+            moved.moves().contains(&panel.playback.cursor().done)
+                || panel.playback.cursor().done == moved.last + 1
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }
