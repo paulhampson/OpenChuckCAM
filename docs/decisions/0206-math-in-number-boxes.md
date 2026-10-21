@@ -1,6 +1,6 @@
 # 0206: Math in number boxes, and how an unreadable entry shows (lane NUMBOX; issue #183, trial feedback F-27)
 
-- **Status:** proposed. The design was put to the owner through the coordinator and agreed as written (option a, 21 Oct 2026, relayed by the coordinator); the owner accepts this record directly in the lane NUMBOX session. The owner's earlier answers on issue 183 (operators, show the result, round to the field's precision) and the decision on the error display are built in.
+- **Status:** accepted (21 Oct 2026, by the owner directly in the lane NUMBOX session: "Accept 0206"). The design was first agreed as written (option a) through the coordinator. The owner's earlier answers on issue 183 (operators, show the result, round to the field's precision) and the decision on the error display are built in.
 - **What it amends:** nothing yet. It proposes requirement **UI-26** (P2, below); `docs/requirements.md` and the verification plan are not edited here (the owner adds them).
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-800, OI-801, OI-802.
