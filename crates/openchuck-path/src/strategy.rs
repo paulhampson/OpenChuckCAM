@@ -10,7 +10,7 @@
 //! durations written into the IR (OP-13). A new strategy implements
 //! [`Strategy`] and is added to a [`Registry`]; nothing else changes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use openchuck_types::geometry::Point3;
@@ -332,9 +332,10 @@ fn generate_with(
         (passes, Vec::new())
     };
     context.check_cancelled()?;
-    let (passes, notes) = keep_clear(passes, notes, input.keep_out)?;
+    let mid = part_middle(input);
+    let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
     let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
-    check_clear(&path, input.keep_out)?;
+    check_clear(&path, input.keep_out, mid)?;
     if !notes.is_empty() {
         let mut notes: Vec<PathNote> = notes
             .into_iter()
@@ -354,6 +355,52 @@ fn generate_with(
 /// resolution (millimetres).
 const KEEP_OUT_SLACK: f64 = 1e-6;
 
+/// The middle of the part along X, which tells the held region at the start
+/// of the stock from the one at the end; NaN when the part has no extent.
+pub(crate) fn part_middle(input: &StrategyInput<'_>) -> f64 {
+    let b = input.surface.bounds();
+    0.5 * (b.min.x + b.max.x)
+}
+
+/// Where a held region is, in plain words for a message (decision record
+/// 0114): "at the start" or "at the end" of the stock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum HeldEnd {
+    Start,
+    End,
+    /// The part's middle is not known, so neither end can be named.
+    Unknown,
+}
+
+/// The held region whose keep-out interval a move whose tip spans `lo..=hi`
+/// along X reaches into, by the end of the stock it is at (below the part's
+/// middle `mid`, the start); `None` when the move stays clear.
+pub(crate) fn held_end(keep_out: &[(f64, f64)], mid: f64, lo: f64, hi: f64) -> Option<HeldEnd> {
+    let &(a, b) = keep_out
+        .iter()
+        .find(|&&(a, b)| hi > a + KEEP_OUT_SLACK && lo < b - KEEP_OUT_SLACK)?;
+    Some(if !mid.is_finite() {
+        HeldEnd::Unknown
+    } else if 0.5 * (a + b) < mid {
+        HeldEnd::Start
+    } else {
+        HeldEnd::End
+    })
+}
+
+/// The held regions at `ends`, named for a message: "the held region at the
+/// start of the stock", "the held regions at both ends of the stock".
+pub(crate) fn held_names(ends: &BTreeSet<HeldEnd>) -> &'static str {
+    let start = ends.contains(&HeldEnd::Start);
+    let end = ends.contains(&HeldEnd::End);
+    match (start, end, ends.contains(&HeldEnd::Unknown)) {
+        (true, true, _) => "the held regions at both ends of the stock",
+        (true, false, false) => "the held region at the start of the stock",
+        (false, true, false) => "the held region at the end of the stock",
+        _ => "a held region of the stock",
+    }
+}
+
 /// True when a move whose tip spans `lo..=hi` along X reaches into one of
 /// `keep_out`.
 fn reaches_in(keep_out: &[(f64, f64)], lo: f64, hi: f64) -> bool {
@@ -372,10 +419,28 @@ fn keep_clear(
     passes: Vec<Pass>,
     mut notes: Vec<String>,
     keep_out: &[(f64, f64)],
+    mid: f64,
 ) -> Result<(Vec<Pass>, Vec<String>)> {
     if keep_out.is_empty() || passes.is_empty() {
         return Ok((passes, notes));
     }
+    // Which held regions the left-out cuts reached, to name them.
+    let mut reached = BTreeSet::new();
+    let mut note_reach = |points: &[CutPoint]| {
+        for w in points.windows(2) {
+            if let [a, b] = w
+                && let Some(end) =
+                    held_end(keep_out, mid, a.tip.x.min(b.tip.x), a.tip.x.max(b.tip.x))
+            {
+                reached.insert(end);
+            }
+        }
+        for p in points {
+            if let Some(end) = held_end(keep_out, mid, p.tip.x, p.tip.x) {
+                reached.insert(end);
+            }
+        }
+    };
     let clear = |p: &CutPoint| !reaches_in(keep_out, p.tip.x, p.tip.x);
     let move_clear = |a: &CutPoint, b: &CutPoint| {
         !reaches_in(keep_out, a.tip.x.min(b.tip.x), a.tip.x.max(b.tip.x))
@@ -391,10 +456,12 @@ fn keep_clear(
             if whole {
                 kept.push(pass);
             } else {
+                note_reach(&pass.points);
                 holes += 1;
             }
             continue;
         }
+        note_reach(&pass.points);
         let single = pass.points.len() == 1;
         let mut run: Vec<CutPoint> = Vec::new();
         let mut runs: Vec<Vec<CutPoint>> = Vec::new();
@@ -424,23 +491,23 @@ fn keep_clear(
             });
         }
     }
+    let names = held_names(&reached);
     if kept.is_empty() {
-        return Err(PathError::Strategy(
-            "every cut of this operation would reach over a held region, where the workholding \
-             grips the stock, so nothing is left to cut"
-                .to_owned(),
-        ));
+        return Err(PathError::Strategy(format!(
+            "every cut of this operation would reach over {names}, where the workholding grips \
+             the stock, so nothing is left to cut; make the held region shorter or choose a \
+             selection away from it"
+        )));
     }
     if cut_short {
-        notes.push(
-            "Nothing within one tool radius of a held region is cut: no part of the tool \
-             reaches over the gripped length of the stock."
-                .to_owned(),
-        );
+        notes.push(format!(
+            "Nothing within one tool radius of {names} is cut: no part of the tool reaches \
+             over the gripped length of the stock."
+        ));
     }
     if holes > 0 {
         notes.push(format!(
-            "{holes} {} not drilled: the tool would reach over a held region.",
+            "{holes} {} not drilled: the tool would reach over {names}.",
             if holes == 1 { "hole is" } else { "holes are" }
         ));
     }
@@ -450,17 +517,20 @@ fn keep_clear(
 /// Refuses an assembled path with a move at feed that reaches into
 /// `keep_out` (an entry, an exit or a link the passes alone did not show),
 /// so such a path is never written (SET-09, NFR-12; decision record 0161).
-fn check_clear(path: &GeneratedPath, keep_out: &[(f64, f64)]) -> Result<()> {
+fn check_clear(path: &GeneratedPath, keep_out: &[(f64, f64)], mid: f64) -> Result<()> {
     if keep_out.is_empty() {
         return Ok(());
     }
     let mut from = path.group.start.tip;
     for segment in &path.group.segments {
         let to = segment.end.tip;
-        if segment.kind.is_fed() && reaches_in(keep_out, from.x.min(to.x), from.x.max(to.x)) {
+        if segment.kind.is_fed()
+            && let Some(end) = held_end(keep_out, mid, from.x.min(to.x), from.x.max(to.x))
+        {
+            let names = held_names(&BTreeSet::from([end]));
             return Err(PathError::Strategy(format!(
-                "a move at X {:.3} mm would reach over a held region, where the workholding \
-                 grips the stock; change the entry or the link settings",
+                "a move at X {:.3} mm would reach over {names}, where the workholding grips the \
+                 stock; change the entry or the link settings",
                 to.x
             )));
         }
@@ -563,6 +633,10 @@ mod tests {
     /// A held region at X -12 to -8 seen by a tool of radius 1.5.
     const KEEP_OUT: [(f64, f64); 1] = [(-13.5, -6.5)];
 
+    /// The middle of a part from X 0 to 30, so that held region is the
+    /// start's.
+    const MID: f64 = 15.0;
+
     #[test]
     fn req_set_09_a_pass_is_cut_short_where_it_would_reach_over_a_held_region() {
         // Into the keep-out and out again: two runs, the point inside and
@@ -575,6 +649,7 @@ mod tests {
             ],
             vec!["first".to_owned()],
             &KEEP_OUT,
+            MID,
         )
         .unwrap();
         let runs: Vec<Vec<f64>> = passes.iter().map(xs).collect();
@@ -588,10 +663,19 @@ mod tests {
         );
         assert_eq!(notes.len(), 2);
         assert_eq!(notes[0], "first");
-        assert!(notes[1].contains("held region"), "{}", notes[1]);
+        assert_eq!(
+            notes[1],
+            "Nothing within one tool radius of the held region at the start of the stock is \
+             cut: no part of the tool reaches over the gripped length of the stock."
+        );
         // A move that jumps over the whole keep-out is not kept either.
-        let (passes, _) =
-            keep_clear(vec![pass(&[-20.0, -16.0, 0.0, 4.0])], Vec::new(), &KEEP_OUT).unwrap();
+        let (passes, _) = keep_clear(
+            vec![pass(&[-20.0, -16.0, 0.0, 4.0])],
+            Vec::new(),
+            &KEEP_OUT,
+            MID,
+        )
+        .unwrap();
         assert_eq!(
             passes.iter().map(xs).collect::<Vec<_>>(),
             vec![vec![-20.0, -16.0], vec![0.0, 4.0]]
@@ -601,14 +685,15 @@ mod tests {
     #[test]
     fn req_set_09_nothing_changes_without_a_held_region_or_when_clear() {
         let given = vec![pass(&[-20.0, -16.0]), pass(&[0.0, 10.0])];
-        let (same, notes) = keep_clear(given.clone(), Vec::new(), &[]).unwrap();
+        let (same, notes) = keep_clear(given.clone(), Vec::new(), &[], MID).unwrap();
         assert_eq!(same, given);
         assert!(notes.is_empty());
-        let (same, notes) = keep_clear(vec![pass(&[0.0, 10.0])], Vec::new(), &KEEP_OUT).unwrap();
+        let (same, notes) =
+            keep_clear(vec![pass(&[0.0, 10.0])], Vec::new(), &KEEP_OUT, MID).unwrap();
         assert_eq!(same, vec![pass(&[0.0, 10.0])]);
         assert!(notes.is_empty());
         // A pass of one point that is clear stays.
-        let (same, _) = keep_clear(vec![pass(&[2.0])], Vec::new(), &KEEP_OUT).unwrap();
+        let (same, _) = keep_clear(vec![pass(&[2.0])], Vec::new(), &KEEP_OUT, MID).unwrap();
         assert_eq!(same, vec![pass(&[2.0])]);
     }
 
@@ -618,20 +703,64 @@ mod tests {
         hole.rapids = vec![2];
         let mut clear = pass(&[5.0, 5.0, 5.0]);
         clear.rapids = vec![2];
-        let (passes, notes) = keep_clear(vec![hole, clear.clone()], Vec::new(), &KEEP_OUT).unwrap();
+        let (passes, notes) =
+            keep_clear(vec![hole, clear.clone()], Vec::new(), &KEEP_OUT, MID).unwrap();
         assert_eq!(passes, vec![clear]);
         assert_eq!(
             notes,
-            vec!["1 hole is not drilled: the tool would reach over a held region."]
+            vec![
+                "1 hole is not drilled: the tool would reach over the held region at the start \
+                 of the stock."
+            ]
         );
     }
 
     #[test]
     fn req_set_09_req_nfr_07_an_operation_wholly_over_a_held_region_is_refused() {
-        let error = keep_clear(vec![pass(&[-12.0, -9.0])], Vec::new(), &KEEP_OUT).unwrap_err();
+        let error = keep_clear(vec![pass(&[-12.0, -9.0])], Vec::new(), &KEEP_OUT, MID).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "every cut of this operation would reach over the held region at the start of the \
+             stock, where the workholding grips the stock, so nothing is left to cut; make the \
+             held region shorter or choose a selection away from it"
+        );
+    }
+
+    #[test]
+    fn req_set_09_messages_name_the_held_region_by_its_end_of_the_stock() {
+        // Held at both ends of a part from X 0 to 30: each is named by the
+        // end it is at, and both together.
+        let both = [(-13.5, -6.5), (36.5, 43.5)];
+        assert_eq!(held_end(&both, MID, -10.0, -10.0), Some(HeldEnd::Start));
+        assert_eq!(held_end(&both, MID, 30.0, 40.0), Some(HeldEnd::End));
+        assert_eq!(held_end(&both, MID, 0.0, 30.0), None);
+        assert_eq!(
+            held_end(&both, f64::NAN, 40.0, 40.0),
+            Some(HeldEnd::Unknown)
+        );
+        let (_, notes) = keep_clear(
+            vec![pass(&[-20.0, -10.0, 0.0]), pass(&[30.0, 40.0])],
+            Vec::new(),
+            &both,
+            MID,
+        )
+        .unwrap();
         assert!(
-            error.to_string().contains("nothing is left to cut"),
-            "{error}"
+            notes[0].starts_with(
+                "Nothing within one tool radius of the held regions at both ends of the stock"
+            ),
+            "{}",
+            notes[0]
+        );
+        let error = check_clear(&path(&[(MoveKind::LeadIn, 38.0)]), &both, MID).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "a move at X 38.000 mm would reach over the held region at the end of the stock, \
+             where the workholding grips the stock; change the entry or the link settings"
+        );
+        assert_eq!(
+            held_names(&BTreeSet::from([HeldEnd::Unknown])),
+            "a held region of the stock"
         );
     }
 
@@ -675,14 +804,14 @@ mod tests {
             (MoveKind::Rapid, -20.0),
             (MoveKind::Cutting, -16.0),
         ]);
-        check_clear(&fine, &KEEP_OUT).unwrap();
+        check_clear(&fine, &KEEP_OUT, MID).unwrap();
         // An entry that runs into it is not.
         let entry = path(&[(MoveKind::LeadIn, -7.0), (MoveKind::Cutting, -2.0)]);
-        let error = check_clear(&entry, &KEEP_OUT).unwrap_err();
+        let error = check_clear(&entry, &KEEP_OUT, MID).unwrap_err();
         assert!(error.to_string().contains("X -7.000"), "{error}");
         // A link at feed that crosses it is not either.
         let link = path(&[(MoveKind::Linking, -20.0)]);
-        assert!(check_clear(&link, &KEEP_OUT).is_err());
-        check_clear(&link, &[]).unwrap();
+        assert!(check_clear(&link, &KEEP_OUT, MID).is_err());
+        check_clear(&link, &[], MID).unwrap();
     }
 }
