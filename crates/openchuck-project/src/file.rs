@@ -82,8 +82,9 @@ use openchuck_types::workholding::Workholding;
 /// - 13: the machine copy's feed limits gain the optional `rotary_in_feed`,
 ///   written only when A counts in the feed word; a copy of the built-in
 ///   Makera Z1 gains `"makera"` (decision record 0076).
-/// - 14: claimed by lane BUG-SWARF; on this branch a step that changes only
-///   the number, replaced by that lane's step when it merges.
+/// - 14: claimed by lane BUG-SWARF for its issue 227 pull request (not yet
+///   merged); until it is, a step that changes only the number, which that
+///   pull request's step replaces.
 /// - 15: `project.toml` gains `skip_stock_simulation`, written only when
 ///   true (decision record 0168), and `hidden_paths`, the operations whose
 ///   toolpath is hidden in the view, written only when one is (decision
@@ -267,8 +268,8 @@ fn schema_12_to_13(kind: FileKind, table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
-/// Schema 14 is lane BUG-SWARF's; this branch passes through it with no
-/// change, and that lane's step replaces this one when it merges.
+/// Schema 14 is lane BUG-SWARF's, for its issue 227 pull request; until that
+/// merges, files pass through it with no change, and its step replaces this.
 fn schema_13_to_14(_kind: FileKind, _table: &mut toml::Table) -> Result<(), String> {
     Ok(())
 }

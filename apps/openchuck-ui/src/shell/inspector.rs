@@ -328,7 +328,7 @@ impl Shell {
                 },
                 |ui| {
                     if let Some(need) = needs.iter().find(|r| section_of(&r.field) == part) {
-                        field_row::needs_line(ui, &need.text);
+                        field_row::warning_line(ui, &need.text);
                     }
                     match part {
                         SetupPart::Machine => {
@@ -516,7 +516,7 @@ impl Shell {
                         if jump_to_tool {
                             ui.scroll_to_cursor(Some(egui::Align::Center));
                         }
-                        field_row::needs_line(ui, "Choose a tool");
+                        field_row::warning_line(ui, "Choose a tool");
                     }
                     Some(tool) => {
                         ui.label(RichText::new(&tool.name).strong());
@@ -809,6 +809,16 @@ impl Shell {
         }
 
         let Some(app) = &mut self.app else { return };
+        // The settings the operation's path warns about are marked, and a
+        // "Show setting" link brings the first into view once (decision
+        // record 0175).
+        let marks = form_panel::Marks {
+            warned: app.operation_warning_settings(id),
+            jump: self
+                .setting_jump
+                .take_if(|(op, _)| *op == id)
+                .map(|(_, name)| name),
+        };
         let edit = match app.parameter_form(id) {
             Ok(form) => {
                 let need_refs: Vec<&openchuck_app::requirements::Requirement> =
@@ -820,6 +830,7 @@ impl Shell {
                     &mut self.settings,
                     &need_refs,
                     self.requirement_jump.as_ref(),
+                    &marks,
                 );
                 if outcome.settings_changed {
                     self.settings_changed = Some(std::time::Instant::now());
@@ -1093,6 +1104,7 @@ fn rows(
                 reset: false,
                 enabled: true,
                 focus: false,
+                warned: None,
                 needs: None,
                 scroll_to: false,
             },

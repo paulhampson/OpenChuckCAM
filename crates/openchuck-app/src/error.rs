@@ -80,6 +80,12 @@ pub enum AppError {
     /// The tool numbers cannot be used as asked (GC-14).
     #[error("tool numbers: {0}")]
     ToolNumbers(String),
+    /// The files were made before the project last changed, so they are not
+    /// written (decision 0189).
+    #[error(
+        "the project changed after the files were made, so they must be made again before writing"
+    )]
+    OutOfDate,
     /// The toolpath could not be posted to G-code.
     #[error("cannot post the G-code: {0}")]
     Post(String),

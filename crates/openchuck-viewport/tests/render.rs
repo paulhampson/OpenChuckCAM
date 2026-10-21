@@ -22,8 +22,8 @@ use openchuck_types::mesh::TriangleMesh;
 use openchuck_viewport::camera::{IDENTITY, multiply, place, rigid_inverse, rotation_x};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
-    Camera, DisplayMode, Frame, Hatch, Layer, LineStyle, Outline, Projection, Renderer, Scene,
-    Slot, StandardView,
+    Camera, DisplayMode, Frame, Hatch, Layer, LayerStats, LineStyle, Outline, Projection, Renderer,
+    Scene, Slot, StandardView,
 };
 
 const SIZE: u32 = 64;
@@ -127,34 +127,6 @@ fn render_layers(
     layers: &[(Layer, &Scene)],
     frame: &Frame,
 ) -> Vec<[u8; 4]> {
-    let target = device.create_texture(&wgpu::TextureDescriptor {
-        label: None,
-        size: wgpu::Extent3d {
-            width: SIZE,
-            height: SIZE,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let depth = device.create_texture(&wgpu::TextureDescriptor {
-        label: None,
-        size: wgpu::Extent3d {
-            width: SIZE,
-            height: SIZE,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: DEPTH,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    });
     let mut renderer = Renderer::new(device, FORMAT, DEPTH, 1);
     renderer.set_scene(device, scene);
     if let Some(overlay) = overlay {
@@ -164,6 +136,32 @@ fn render_layers(
         renderer.set_layer(device, *layer, extra);
     }
     renderer.prepare(device, queue, frame);
+    paint_and_read(device, queue, &renderer)
+}
+
+/// Paints a prepared renderer into a fresh target and reads it back.
+fn paint_and_read(device: &wgpu::Device, queue: &wgpu::Queue, renderer: &Renderer) -> Vec<[u8; 4]> {
+    let texture = |format, usage| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let target = texture(
+        FORMAT,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+    );
+    let depth = texture(DEPTH, wgpu::TextureUsages::RENDER_ATTACHMENT);
     let (view, depth_view) = (
         target.create_view(&wgpu::TextureViewDescriptor::default()),
         depth.create_view(&wgpu::TextureViewDescriptor::default()),
@@ -891,4 +889,137 @@ fn req_sim_01_the_window_path_draws_over_its_faint_trace() {
     );
     assert!(blue_pixels(&both) > 50, "{}", blue_pixels(&both));
     assert!(greys(&both) < greys(&alone) / 4, "{}", greys(&both));
+}
+
+/// A path of `runs` short dashed lines across the view, one row apart, as
+/// the playback panel draws a toolpath: one line per run of moves.
+fn many_runs(runs: usize) -> Vec<Scene> {
+    (0..runs)
+        .map(|i| {
+            let y = -30.0 + 2.0 * i as f64;
+            let mut scene = Scene::default();
+            let points = [
+                Point3::new(-30.0, 0.0, y),
+                Point3::new(0.0, 0.0, y),
+                Point3::new(30.0, 0.0, y),
+            ];
+            scene.add_styled_polyline(&points, BLUE, false, 2.0, LineStyle::Dashed);
+            scene.lines[0].slot = Slot::Part;
+            scene
+        })
+        .collect()
+}
+
+fn joined(scenes: &[&Scene]) -> Scene {
+    Scene {
+        meshes: Vec::new(),
+        lines: scenes
+            .iter()
+            .flat_map(|s| s.lines.iter().cloned())
+            .collect(),
+    }
+}
+
+#[test]
+fn req_nfr_03_a_path_of_many_runs_is_one_draw_per_look_and_looks_the_same() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // Issue #200: a long path is tens of thousands of runs. Each frame the
+    // renderer wrote one uniform buffer and issued one draw per run, which
+    // took 586 ms a frame for 19,200 runs. Runs that look alike are one
+    // draw, so the work of a frame no longer grows with the runs.
+    let runs = many_runs(30);
+    let all: Vec<&Scene> = runs.iter().collect();
+    let path = joined(&all);
+    let mut fit = Scene::default();
+    fit.add_mesh(&block([-32.0; 3], [32.0; 3]), &[], RED, BLACK);
+    let f = front(&fit, 1.0);
+
+    let mut renderer = Renderer::new(&device, FORMAT, DEPTH, 1);
+    renderer.set_layer(&device, Layer::Paths, &path);
+    let stats = renderer.layer_stats(Layer::Paths);
+    assert_eq!(stats.line_draws, 1, "{stats:?}");
+    // One vertex buffer and one uniform buffer for the whole path: four
+    // points of 16 bytes per run, and 160 bytes of uniforms.
+    assert_eq!(stats.buffers, 2, "{stats:?}");
+    assert_eq!(stats.bytes, 30 * 4 * 16 + 160, "{stats:?}");
+    renderer.prepare(&device, &queue, &f);
+    assert_eq!(renderer.uniform_writes(), 1);
+    // A second look is a second draw, whatever the number of runs.
+    let mut cut = many_runs(5);
+    for scene in &mut cut {
+        scene.lines[0].colour = RED;
+    }
+    let mixed: Vec<&Scene> = runs.iter().chain(&cut).collect();
+    renderer.set_layer(&device, Layer::Paths, &joined(&mixed));
+    assert_eq!(renderer.layer_stats(Layer::Paths).line_draws, 2);
+    assert_eq!(renderer.layer_stats(Layer::Stock), LayerStats::default());
+    // A mesh counts its vertices, triangles and the uniforms of its fill and
+    // edges: a box of 8 corners and 12 triangles.
+    renderer.set_layer(&device, Layer::Stock, &fit);
+    let stock = renderer.layer_stats(Layer::Stock);
+    assert_eq!((stock.meshes, stock.line_draws, stock.buffers), (1, 0, 4));
+    assert_eq!(stock.bytes, 8 * 12 + 12 * 3 * 4 + 2 * 160, "{stock:?}");
+
+    // The picture is the one drawn run by run: every run keeps its own dash
+    // pattern. Half the runs in another layer are drawn as other draws.
+    let empty = Scene::default();
+    let batched = render_layers(&device, &queue, &empty, None, &[(Layer::Paths, &path)], &f);
+    let even: Vec<&Scene> = runs.iter().step_by(2).collect();
+    let odd: Vec<&Scene> = runs.iter().skip(1).step_by(2).collect();
+    let (even, odd) = (joined(&even), joined(&odd));
+    let apart = render_layers(
+        &device,
+        &queue,
+        &empty,
+        None,
+        &[(Layer::Paths, &even), (Layer::Overlay, &odd)],
+        &f,
+    );
+    assert!(blue_pixels(&batched) > 500, "{}", blue_pixels(&batched));
+    assert_eq!(batched, apart);
+}
+
+#[test]
+fn req_nfr_04_a_hidden_layer_stays_uploaded_and_is_not_drawn() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    // Issue #200: hiding the toolpaths dropped them from the GPU, and showing
+    // them again uploaded the whole path on the interface thread (96 ms for
+    // a million points). A hidden layer keeps its buffers and is only left
+    // out of the frame.
+    let runs = many_runs(10);
+    let all: Vec<&Scene> = runs.iter().collect();
+    let path = joined(&all);
+    let mut fit = Scene::default();
+    fit.add_mesh(&block([-32.0; 3], [32.0; 3]), &[], RED, BLACK);
+    let f = front(&fit, 1.0);
+    let mut renderer = Renderer::new(&device, FORMAT, DEPTH, 1);
+    renderer.set_layer(&device, Layer::Paths, &path);
+    let uploaded = renderer.layer_stats(Layer::Paths);
+    let shown = draw_with(&device, &queue, &mut renderer, &f);
+    assert!(blue_pixels(&shown) > 100);
+    assert!(renderer.is_layer_shown(Layer::Paths));
+    renderer.set_layer_shown(Layer::Paths, false);
+    assert!(!renderer.is_layer_shown(Layer::Paths));
+    let hidden = draw_with(&device, &queue, &mut renderer, &f);
+    assert_eq!(blue_pixels(&hidden), 0);
+    // Its uniforms are not written while it is hidden, and its buffers stay.
+    assert_eq!(renderer.uniform_writes(), 0);
+    assert_eq!(renderer.layer_stats(Layer::Paths), uploaded);
+    renderer.set_layer_shown(Layer::Paths, true);
+    assert_eq!(draw_with(&device, &queue, &mut renderer, &f), shown);
+}
+
+/// Prepares and paints `renderer` as it stands and reads the pixels back.
+fn draw_with(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    renderer: &mut Renderer,
+    frame: &Frame,
+) -> Vec<[u8; 4]> {
+    renderer.prepare(device, queue, frame);
+    paint_and_read(device, queue, renderer)
 }

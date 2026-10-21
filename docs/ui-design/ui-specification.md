@@ -538,7 +538,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 
 **Right column:**
 
-- the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time;
+- the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189);
 - a preview of the first lines.
 
 **Safety notice band** (NFR-12; GC-16):
@@ -549,7 +549,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - **Once ticked,** the box stays visible, ticked, with "Acknowledged for this project on this computer".
 - **While the project skips the stock simulation,** the band also says so, with the tick box "I know the cut has not been simulated for this project", which must be ticked before writing; it is remembered as the export's is, per project on each computer ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)).
 
-**Footer:** "Export setup sheet (HTML / PDF)" (GC-12) on the left; Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the boxes are ticked, and its tooltip says which is missing.
+**Footer:** Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the boxes are ticked, and its tooltip says which is missing. It writes the G-code files and, beside them, the setup sheet as HTML and PDF (GC-12), made from the same run; there is no separate setup sheet button ([decision 0189](../decisions/0189-setup-sheet-written-with-the-g-code.md)).
 
 ### 11.7 Workholding and retaining tabs
 

@@ -554,7 +554,11 @@ fn run(
                 .to_owned(),
         );
     }
-    Ok(StrategyOutput { passes, notes })
+    Ok(StrategyOutput {
+        passes,
+        notes,
+        warnings: Vec::new(),
+    })
 }
 
 fn too_many(stepover: f64, length: f64, samples: f64) -> PathError {

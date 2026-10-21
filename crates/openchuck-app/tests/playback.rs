@@ -21,6 +21,7 @@ use openchuck_app::gcode::{Dialect, read, replay};
 use openchuck_app::model::TransformStep;
 use openchuck_app::pathview::{
     DeviationBand, LEVEL_TOLERANCES, PathClass, ToolpathDisplay, deviation_bands, simplify,
+    zoom_level,
 };
 use openchuck_app::playback::{Cursor, Playback, Timeline, ViewFrame, tool_meshes};
 use openchuck_app::project::id::{OperationId, SetupId, ToolId};
@@ -616,6 +617,73 @@ fn req_nfr_03_the_level_of_detail_follows_the_point_budget() {
         assert_eq!(chosen.tolerance, LEVEL_TOLERANCES[chosen.level]);
         previous = chosen.points;
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn req_nfr_03_the_level_follows_the_pixel_size_at_the_zoom() {
+    // Decision 0167 (OI-177): the coarsest level within half a pixel at the
+    // camera's target. 0.001 mm a pixel: every point.
+    assert_eq!(zoom_level(0, 0.001), 0);
+    // 0.026 mm a pixel, half a pixel 0.013 mm: the 0.01 mm level.
+    assert_eq!(zoom_level(0, 0.026), 1);
+    // A whole view of 100 mm on 1000 pixels, half a pixel 0.05 mm: the
+    // 0.03 mm level (0.03 x 1.25 is within 0.05).
+    assert_eq!(zoom_level(0, 0.1), 2);
+    // Within a level, no change, so no new path is made.
+    assert_eq!(zoom_level(2, 0.09), 2);
+    assert_eq!(zoom_level(2, 0.11), 2);
+    // Zoomed in so the level is coarser than half a pixel: finer at once.
+    assert_eq!(zoom_level(2, 0.05), 1);
+    // Zoomed out, coarser only once half a pixel is 1.25 times the coarser
+    // tolerance, so a zoom that hovers at the boundary does not swap the
+    // path back and forth: 0.065 mm a pixel (half 0.0325) keeps 0.03 mm
+    // when it has it, and does not go to it from 0.01 mm.
+    assert_eq!(zoom_level(2, 0.065), 2);
+    assert_eq!(zoom_level(1, 0.065), 1);
+    assert_eq!(zoom_level(1, 0.08), 2);
+    // Far out: the coarsest level; a size that is not a positive finite
+    // number gives every point, and the budget still applies.
+    assert_eq!(zoom_level(0, 100.0), LEVEL_TOLERANCES.len() - 1);
+    assert_eq!(zoom_level(99, 100.0), LEVEL_TOLERANCES.len() - 1);
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert_eq!(zoom_level(3, bad), 0, "{bad}");
+    }
+}
+
+#[test]
+fn req_nfr_03_req_gc_07_the_zoom_level_never_goes_past_the_budget_or_into_the_output() {
+    let (dir, app, _) = project("lod-zoom");
+    let run = Arc::new(app.regenerate().unwrap());
+    let gcode = run.gcode.clone();
+    assert!(!gcode.is_empty());
+    let t = Timeline::new(app.project(), Arc::clone(&run)).unwrap();
+    let display = ToolpathDisplay::build(&t);
+    let runs = display.runs().to_vec();
+    let all = |_: usize| true;
+    let full = display.full_points(&all);
+    // The zoom asks for a level; the budget still wins when it needs a
+    // coarser one.
+    let budget = display.lines(&all, full / 5);
+    assert!(budget.level > 1);
+    assert_eq!(display.lines_for(&all, full / 5, 1).level, budget.level);
+    assert_eq!(display.lines_for(&all, full / 5, 0), budget);
+    let coarse = display.lines_for(&all, usize::MAX, LEVEL_TOLERANCES.len() - 1);
+    assert_eq!(coarse.level, LEVEL_TOLERANCES.len() - 1);
+    assert_eq!(coarse.tolerance, LEVEL_TOLERANCES[coarse.level]);
+    assert!(coarse.points < full);
+    assert_eq!(display.lines_for(&all, usize::MAX, 99).level, coarse.level);
+    // The level is for drawing only: the runs, the playback poses and the
+    // program are as they were.
+    assert_eq!(display.runs(), runs.as_slice());
+    let cursor = Cursor {
+        done: 3,
+        fraction: 0.5,
+    };
+    let again = Timeline::new(app.project(), Arc::clone(&run)).unwrap();
+    assert_eq!(t.sample(cursor).unwrap(), again.sample(cursor).unwrap());
+    let after = app.regenerate().unwrap();
+    assert_eq!((after.toolpath, after.gcode), (run.toolpath.clone(), gcode));
     let _ = std::fs::remove_dir_all(dir);
 }
 
