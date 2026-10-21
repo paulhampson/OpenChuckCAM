@@ -547,11 +547,21 @@ fn req_gc_12_req_nfr_12_the_sheet_records_the_tolerance_each_operation_is_genera
         value: Some(ParameterValue::Number(0.010049)),
     })
     .unwrap();
+    // A whole number is stored without a decimal point (decision 0008
+    // item 6), so a project read back holds it as an integer.
+    let second = app.project().operations()[1].id;
+    app.execute(Command::SetParameter {
+        operation: second,
+        name: "tolerance".into(),
+        value: Some(ParameterValue::Integer(1)),
+    })
+    .unwrap();
     let sheet = app.setup_sheet(None);
     let operations = cell_rows(&sheet, "Operations");
     assert_eq!(operations[0][6], "0.010049 mm");
+    assert_eq!(operations[1][6], "1 mm");
     assert!(
-        operations[1..].iter().all(|r| r[6] == "0.01 mm"),
+        operations[2..].iter().all(|r| r[6] == "0.01 mm"),
         "{operations:?}"
     );
     std::fs::remove_dir_all(dir).unwrap();
