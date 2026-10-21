@@ -366,6 +366,13 @@ fn apply_metrics(style: &mut egui::Style) {
     s.icon_spacing = 2.0 * GRID;
 }
 
+/// Gives the scroll areas drawn in `ui` a bar that takes its own strip, so it
+/// never lies over a field (UI-16; issue 174, F-19). Used where field rows
+/// scroll: the inspector and the tool library window.
+pub fn solid_scroll_bar(ui: &mut egui::Ui) {
+    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+}
+
 /// Installs the visuals and metrics for `theme` on `ctx`: the dark style on
 /// the dark egui theme and the light one on the light theme.
 pub fn install_style(ctx: &egui::Context, theme: Theme) {
@@ -691,5 +698,84 @@ mod tests {
             }
         }
         h.iter().map(|x| format!("{x:08x}")).collect()
+    }
+
+    /// Every non-ASCII character the interface draws is in the bundled Plex
+    /// fonts or in egui's own fallback fonts, so none shows as an empty
+    /// square on any system (issue 177, F-22: the drop-down arrows and a
+    /// button glyph did on Windows). The sweep reads the sources, so a new
+    /// character is checked without a list to keep.
+    #[test]
+    fn req_nfr_09_req_ui_16_every_character_the_interface_draws_has_a_glyph() {
+        fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    && !path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .contains("_tests")
+                {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        rust_files(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
+        let mut wanted: BTreeMap<char, String> = BTreeMap::new();
+        for file in files {
+            let source = std::fs::read_to_string(&file).unwrap();
+            for line in source.lines() {
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                // Escapes such as "\u{21ba}" count as the character they name.
+                let mut rest = line;
+                while let Some(at) = rest.find("\\u{") {
+                    let tail = &rest[at + 3..];
+                    if let Some(end) = tail.find('}')
+                        && let Ok(code) = u32::from_str_radix(&tail[..end], 16)
+                        && let Some(c) = char::from_u32(code)
+                    {
+                        wanted
+                            .entry(c)
+                            .or_insert_with(|| file.display().to_string());
+                    }
+                    rest = &rest[at + 3..];
+                }
+                for c in line.chars().filter(|c| !c.is_ascii()) {
+                    wanted
+                        .entry(c)
+                        .or_insert_with(|| file.display().to_string());
+                }
+            }
+        }
+        assert!(wanted.len() > 20, "the sweep found only {}", wanted.len());
+        let ctx = egui::Context::default();
+        install_fonts(&ctx);
+        // The fonts load on the next frame.
+        ctx.run_ui(egui::RawInput::default(), |_| {})
+            .textures_delta
+            .clear();
+        ctx.run_ui(egui::RawInput::default(), |_| {})
+            .textures_delta
+            .clear();
+        let missing: Vec<String> = ctx.fonts_mut(|fonts| {
+            wanted
+                .iter()
+                .filter(|(c, _)| {
+                    !fonts.has_glyph(&FontId::new(12.0, FontFamily::Proportional), **c)
+                        || !fonts.has_glyph(&FontId::new(12.0, FontFamily::Monospace), **c)
+                })
+                .map(|(c, file)| format!("U+{:04X} {c} in {file}", *c as u32))
+                .collect()
+        });
+        assert!(missing.is_empty(), "no glyph for: {missing:#?}");
     }
 }
