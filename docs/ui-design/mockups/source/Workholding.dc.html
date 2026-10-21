@@ -30,6 +30,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .tab{height:44px;padding:0 16px;display:flex;align-items:center;gap:8px;border:0;border-bottom:2px solid transparent;background:none;color:var(--mu);font-weight:500;font-size:13px;text-decoration:none}
 .tab i{font-style:normal;width:20px;height:20px;border-radius:10px;border:1px solid var(--mu);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
 .tab.on{color:var(--tx);border-bottom-color:var(--ac)}.tab.on i{background:var(--ac);border-color:var(--ac);color:#0b1620}
+.tab .hm{width:12px;height:12px;flex:none;margin-left:2px}
+.wf.hs-good .tab,.wf.hs-attn .tab,.wf.hs-err .tab{height:42px}
+.wf.hs-good{border-bottom:2px solid var(--ok)}.wf.hs-attn{border-bottom:2px solid var(--wn)}.wf.hs-err{border-bottom:2px solid var(--er)}
+.badge{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 10px;margin-left:6px;border:1.5px solid var(--ln);border-radius:4px;background:var(--fld);color:var(--tx);font-weight:500;font-size:13px;white-space:nowrap}
+.badge.hs-good{border-color:var(--ok)}.badge.hs-attn{border-color:var(--wn)}.badge.hs-err{border-color:var(--er)}
+.badge .hm{width:12px;height:12px;flex:none}
 .tab.done i{border-color:var(--ok);color:var(--ok)}
 .sep{width:1px;height:22px;background:var(--ln);margin:0 4px;flex:none}
 .panel{background:var(--p);display:flex;flex-direction:column;min-height:0;min-width:0}
@@ -114,15 +120,16 @@ button{font:inherit;color:inherit;cursor:pointer}
       <a class="btn ic" href="UndoHistory.dc.html" aria-label="Undo history" title="Undo history (Ctrl H)"><svg class="ib" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></a>
     </div>
   </div>
-  <div class="wf">
+  <div class="wf hs-err">
     <div style="display:flex">
-      <a class="tab done" href="Model.dc.html" title="Model (Alt 1)"><i>1</i>Model</a>
-      <a class="tab on" href="Setup.dc.html" title="Setup (Alt 2)"><i>2</i>Setup</a>
-      <a class="tab" href="Main.dc.html" title="Operations (Alt 3)"><i>3</i>Operations</a>
-      <a class="tab" href="Simulate.dc.html" title="Simulate (Alt 4)"><i>4</i>Simulate</a>
-      <a class="tab" href="Export.dc.html" title="Post and export (Alt 5)"><i>5</i>Post and export</a>
+      <a class="tab done" href="Model.dc.html" title="Model (Alt 1)"><i>1</i>Model<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab on" href="Setup.dc.html" title="Setup (Alt 2)"><i>2</i>Setup<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab" href="Main.dc.html" title="Operations (Alt 3)"><i>3</i>Operations<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg></a>
+      <a class="tab" href="Simulate.dc.html" title="Simulate (Alt 4)"><i>4</i>Simulate<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg></a>
+      <a class="tab" href="Export.dc.html" title="Post and export (Alt 5)"><i>5</i>Post and export<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
     </div>
-    <div style="display:flex;align-items:center;gap:8px"><span class="mu">Changing a setup marks its operations stale.</span><button class="btn">Add setup</button></div>
+    <div style="display:flex;align-items:center;gap:8px"><span class="mu">Changing a setup marks its operations stale.</span><button class="btn">Add setup</button>  <span class="badge hs-err" title="Overall status: Error to fix&#10;Operations: An operation has an error&#10;Simulate: Not simulated yet&#10;Click to go to the first problem"><svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg>Error to fix</span>
+    </div>
   </div>
 
   <div style="flex:1;min-height:0;display:flex">

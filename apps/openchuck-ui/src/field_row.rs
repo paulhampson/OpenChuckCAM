@@ -110,6 +110,13 @@ pub struct TextRow<'a> {
     pub enabled: bool,
     /// Ask for keyboard focus this frame (a new tab's Start X, 11.7).
     pub focus: bool,
+    /// A required value that is missing, in a few plain words ("Enter feed"):
+    /// an amber border and, under the field, the same warning shape the tree
+    /// uses and these words, so the mark does not rest on colour alone
+    /// (UI-11; issue 224). Calmer than `problem`, which is for a refusal.
+    pub needs: Option<&'a str>,
+    /// Scroll this row into view this frame (the "Show first" jump).
+    pub scroll_to: bool,
 }
 
 /// Shows `text` as the tooltip of `response` on hover and while it has
@@ -176,6 +183,10 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     let mut outcome = Outcome::None;
     let error = state.error(row.key).map(str::to_owned);
     let marked = error.is_some() || row.problem.is_some();
+    let needed = row.needs.is_some() && !marked && row.applied.trim().is_empty();
+    if row.scroll_to {
+        ui.scroll_to_cursor(Some(egui::Align::Center));
+    }
     ui.horizontal(|ui| {
         if label_cell(ui, row.label, row.description, row.reset && row.enabled) {
             outcome = Outcome::Reset;
@@ -219,10 +230,17 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
             DARK.error
         } else if response.has_focus() {
             DARK.accent
+        } else if needed {
+            DARK.warning
         } else {
             DARK.line
         };
-        prepared.frame.stroke = Stroke::new(if response.has_focus() { 2.0 } else { 1.0 }, border);
+        let width = if response.has_focus() || needed {
+            2.0
+        } else {
+            1.0
+        };
+        prepared.frame.stroke = Stroke::new(width, border);
         prepared.end(ui);
         let response = match row.range {
             Some(range) => response.on_hover_text(format!("Allowed: {range}.")),
@@ -250,8 +268,20 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     });
     if let Some(reason) = error.as_deref().or(row.problem) {
         reason_line(ui, reason, DARK.error);
+    } else if let (true, Some(text)) = (needed, row.needs) {
+        needs_line(ui, text);
     }
     outcome
+}
+
+/// What is missing, under a field or a section: the warning shape and a few
+/// plain words, indented past the label column (issue 224; UI-11).
+pub fn needs_line(ui: &mut egui::Ui, text: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        crate::shell::marks::mark(ui, openchuck_app::overview::ItemState::Warning, text);
+        ui.label(RichText::new(text).color(DARK.warning));
+    });
 }
 
 /// The inspector header's name, in an editable field with no label (section

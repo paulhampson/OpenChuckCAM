@@ -188,6 +188,17 @@ pub fn colour(severity: Severity) -> Color32 {
     }
 }
 
+/// The colour a state's mark is drawn in.
+pub fn colour_of(state: ItemState) -> Color32 {
+    match state {
+        ItemState::UpToDate => DARK.ok,
+        ItemState::Stale | ItemState::Warning => DARK.warning,
+        ItemState::Running => DARK.accent,
+        ItemState::Error => DARK.error,
+        ItemState::Off => DARK.muted,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -44,6 +44,7 @@ pub mod pick;
 mod pipeline;
 pub mod playback;
 mod posting;
+pub mod requirements;
 pub mod scene;
 pub mod selection;
 pub mod settings;
