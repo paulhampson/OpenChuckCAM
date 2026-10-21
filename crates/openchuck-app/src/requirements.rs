@@ -168,7 +168,12 @@ pub(crate) fn operation_requirements(
     }
     // An unknown strategy is reported when the operation is generated.
     if let Ok(strategy) = registry.get(&op.strategy) {
-        for (name, label) in missing_parameters(project, op, &strategy.schema()) {
+        // In the order the inspector shows them, so "Show first" goes to the
+        // field nearest the top (a stable sort keeps the schema's order
+        // within a section).
+        let mut parameters = missing_parameters(project, op, &strategy.schema());
+        parameters.sort_by_key(|(name, _)| crate::form::FormSection::of(name));
+        for (name, label) in parameters {
             // The feeds and the stepover come from the tool's cutting data:
             // until a tool is chosen the tool is what is missing, and one line
             // keeps a fresh operation calm (issue 224).

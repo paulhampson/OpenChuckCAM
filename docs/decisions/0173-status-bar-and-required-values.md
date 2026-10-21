@@ -1,8 +1,8 @@
 # 0173: The step bar's status and the list of required values (lane BUG-STALE, part 2)
 
-- **Status:** proposed (21 Oct 2026). Only the project owner accepts a record.
+- **Status:** accepted (21 Oct 2026) by the project owner, in the lane's own session.
 - **Date:** 21 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-621 to OI-625 are new and open; OI-692 and OI-693 (the two CodeRabbit findings deferred from decision 0172, pull request 229) and OI-694 (a finding on pull request 230) are closed by this change. Amends decision 0148 item 1 and the interface specification sections 4 and 8.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-621 to OI-623 are new and open; OI-624 and OI-625 are new and closed by the owner's answers of 21 Oct 2026; OI-692 and OI-693 (the two CodeRabbit findings deferred from decision 0172, pull request 229) and OI-694 (a finding on pull request 230) are closed by this change. Amends decision 0148 item 1 and the interface specification sections 4 and 8.
 
 ## Context
 
@@ -16,9 +16,9 @@ Before this change the bar showed only a green ring for a complete step, the ins
 2. **Generation checks the same values (NFR-07).** `parameter_values` builds its "is required" error from the same function, so the list and the error cannot disagree. A missing tool, stock, machine or part still stops generation with its own message; the marks do not replace those checks.
 3. **Step health.** Each step has a health: *good* (green, a filled circle), *needs attention* (amber, a triangle outline) or *error* (red, a filled triangle), the shapes of the item marks (UI-11), and a reason for the tooltip. The whole job's health is the worst of the five.
    - Model: error when a model cannot be read; attention with no model or with model warnings.
-   - Setup: error when a machine, a stock or a part is missing, or a setup is in error; attention with no setup or with setup warnings (this includes machine values not confirmed on the machine, OI-624).
+   - Setup: error when a machine, a stock or a part is missing, or a setup is in error; attention with no setup or with setup warnings. Machine values not confirmed on the machine do not count (the owner's answer on OI-624): they stay in the footer and on the machine row, and the bar does not change.
    - Operations: error when an enabled operation lacks a value or is in error; attention with no operation, with stale operations or a warning.
-   - Simulate: attention until every enabled operation is simulated as it is now (OI-625).
+   - Simulate: attention until every enabled operation is simulated as it is now (the owner agreed on OI-625).
    - Post and export: attention when its blocker applies.
    - A step out of reach reads as attention, so the job is never green while a step cannot be opened; its tab shows no mark, only the dimmed reason.
    A rename is not stale (decision 0172), so it never turns the bar yellow.
@@ -43,4 +43,4 @@ Section 4: the step indicator gains the health mark and tooltip, the badge, and 
 
 - `openchuck-app`: new `requirements.rs`; `overview.rs` gains `StepHealth`, `Missing`, `StepState::health` and `reason`, `Overview::health`, `health_lines`, `missing_for`, `first_problem`, `ItemRef::step`; `operation.rs` shares the missing-value function; `cache.rs` leaves the tool's name and position out of the key.
 - `openchuck-ui`: `field_row.rs` (`needs`, `scroll_to`, `needs_line`), `form_panel.rs`, `shell/inspector.rs`, `shell/frame.rs` (step marks, badge), `shell/marks.rs` (`colour_of`), `shell.rs` (`go_to_first_problem`, the restore), `playback_panel.rs` (`restore`).
-- No project format change. Tests: `req_ui_11_*` and `req_op_16_req_nfr_07_*` in `crates/openchuck-app/tests/overview.rs`; `req_ui_11_the_step_bar_*`, `req_ui_11_a_setup_without_stock_*` and `req_nfr_12_req_ui_06_undoing_*` in `shell/frame_tests.rs`; the contrast test in `theme.rs`. The layout of the badge against the step names is tested at 1366 by 768 at 100 % and 120 % scale; it has not been looked at on a real screen (OI-623).
+- No project format change. Tests: `req_ui_11_*` and `req_op_16_req_nfr_07_*` in `crates/openchuck-app/tests/overview.rs`; `req_ui_11_the_step_bar_*`, `req_ui_11_a_setup_without_stock_*` and `req_nfr_12_req_ui_06_undoing_*` in `shell/frame_tests.rs`; the contrast test in `theme.rs`. The layout of the badge against the step names is tested at 1366 by 768 at 100 % and 120 % scale; it has not been looked at on a real screen (OI-623). The boards that show the step bar (01, 02, 03, 04, 13, 14, 15 and 16) are re-rendered with the marks and the badge, and a new board 03c shows an operation with required values missing; the sources are in `docs/ui-design/mockups/source/`.

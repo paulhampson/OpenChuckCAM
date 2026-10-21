@@ -1782,7 +1782,24 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .count()
     };
     let on_model = |i: ItemRef| matches!(i, ItemRef::Model(_));
-    let on_setup = |i: ItemRef| matches!(i, ItemRef::Setup(_) | ItemRef::SetupPart(..));
+    // Machine values not confirmed on the machine are for the footer and the
+    // machine row, not the bar (the owner's answer on OI-624): the machine
+    // row, and the setup row that only carries its warning up the tree, are
+    // left out of what the bar counts.
+    let from_machine_row: Vec<ItemRef> = project
+        .setups()
+        .iter()
+        .filter_map(|s| {
+            let up = items.get(&ItemRef::Setup(s.id))?;
+            let machine = items.get(&ItemRef::SetupPart(s.id, SetupPart::Machine))?;
+            (up.cause == machine.cause).then_some(ItemRef::Setup(s.id))
+        })
+        .collect();
+    let on_setup = |i: ItemRef| match i {
+        ItemRef::Setup(_) => !from_machine_row.contains(&i),
+        ItemRef::SetupPart(_, part) => part != SetupPart::Machine,
+        _ => false,
+    };
     let on_ops = |i: ItemRef| matches!(i, ItemRef::Operation(_) | ItemRef::SelectionSet(_));
     let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
     let model_health = if model_error || count_state(ItemState::Error, &on_model) > 0 {

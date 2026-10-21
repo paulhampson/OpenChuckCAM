@@ -99,6 +99,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
   - Post and export: G-code has been written from every enabled operation as it is now.
 - An unavailable step is dimmed, and its tooltip gives the reason.
 - Each available step shows its own health after its name, by shape as well as colour: a green filled circle (good to go), an amber triangle outline (stale or needs attention) or a red filled triangle (an error to deal with, such as a missing tool or stock); its tooltip names what needs attention (decision 0173).
+- Machine values not confirmed on the machine do not change the bar (they are in the footer and on the machine row; decision 0173, OI-624). The bar stays amber until every enabled operation is simulated as it is now (OI-625).
 - A badge at the right end of the bar shows the worst of the five as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem.
 - Alt 1 to Alt 5 open the steps.
 
@@ -878,7 +879,7 @@ Tracked in [open-items.md](../open-items.md):
 
 ## 20. Rendered mockups
 
-Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3, [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
+Images of the design canvas boards, rendered at 100% scale in headless Chromium (15 Oct 2026; images 03, 13, 14 and 17 again on 18 Oct 2026 by lane X3; images 01, 02, 03, 04, 13, 14, 15 and 16 again, and 03c added, on 21 Oct 2026 by lane BUG-STALE for the step bar's status (decision 0173), [decision 0119](../decisions/0119-slice-22-viewport-drawing.md)), for reference. They show example data; where an image and the text above disagree, the text wins. The board sources (`.dc.html`) are in [mockups/source/](mockups/source/).
 
 | Image | Board | Section |
 | --- | --- | --- |
@@ -888,6 +889,7 @@ Images of the design canvas boards, rendered at 100% scale in headless Chromium 
 | [02-setup.png](mockups/02-setup.png) | Setup, with a status tooltip open on keyboard focus | 11.3 |
 | [03-operations.png](mockups/03-operations.png) | Operations: one operation generating, one in error | 11.4 |
 | [03b-operation-error.png](mockups/03b-operation-error.png) | Inspector for an operation in error | 11.4 |
+| [03c-operation-missing.png](mockups/03c-operation-missing.png) | Inspector for a new operation with required values missing: the count and "Show first", the amber fields and their sentences (21 Oct 2026) | 8 |
 | [04-simulate.png](mockups/04-simulate.png) | Simulate, with the deviation probe | 11.5 |
 | [05-export-dialog.png](mockups/05-export-dialog.png) | Post and export | 11.6 |
 | [10-tool-library.png](mockups/10-tool-library.png) | Tool library and profile editor | 12.1 |

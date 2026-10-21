@@ -1513,6 +1513,10 @@ fn req_op_16_req_nfr_07_required_values_come_from_the_strategy_and_generation_ag
         })
         .collect();
     assert!(names.contains(&"feed"), "{names:?}");
+    // In the order the inspector shows them: the feeds, in Tool and feeds,
+    // before the stepover, in Pattern and tolerance.
+    let at = |n: &str| names.iter().position(|x| *x == n);
+    assert!(at("feed") < at("stepover"), "{names:?}");
     assert!(needs.iter().all(|r| !r.text.is_empty()));
     let err = f.app.regenerate().unwrap_err().to_string();
     for name in &names {
@@ -1568,4 +1572,41 @@ fn req_ui_11_req_gc_07_renaming_or_moving_a_tool_keeps_operations_up_to_date() {
     tool.tool.diameter = Millimetres(5.0);
     f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
     assert!(!f.overview().stale.is_empty());
+}
+
+#[test]
+fn req_ui_11_machine_values_not_confirmed_stay_in_the_footer_and_not_the_bar() {
+    // Owner's answer on OI-624 (21 Oct 2026): unconfirmed machine values are
+    // for the footer; they do not change the bar.
+    let mut f = calm("health-unconfirmed");
+    f.add_operation("Ring", "one_ring");
+    f.app.simulate().unwrap();
+    assert_eq!(f.overview().health(), StepHealth::Good);
+    // The example profile confirms nothing.
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(
+            MachineProfile::example_x_rotary(),
+        ))))
+        .unwrap();
+    // The machine is an input to the operation's key: make it again.
+    f.app.simulate().unwrap();
+    let o = f.overview();
+    assert!(!o.machine_warnings.is_empty(), "the footer still says so");
+    assert_eq!(
+        o.status(ItemRef::SetupPart(f.setup, SetupPart::Machine))
+            .map(|s| s.state),
+        Some(ItemState::Warning),
+        "and so does the setup's machine row"
+    );
+    assert_eq!(health(&o, Step::Setup), StepHealth::Good);
+    assert_eq!(o.health(), StepHealth::Good);
+    // A real setup warning still counts.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(5.0),
+        length: Millimetres(5.0),
+        x_start: Millimetres(0.0),
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert_eq!(health(&f.overview(), Step::Setup), StepHealth::Attention);
 }
