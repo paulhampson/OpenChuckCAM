@@ -942,7 +942,7 @@ fn set_options(
     };
     match role {
         SelectionRole::Boundary => {
-            let Some(id) = sets.first() else { return None };
+            let id = sets.first()?;
             let mut boundary = options.boundary;
             ui.horizontal_wrapped(|ui| {
                 ui.add_space(indent);

@@ -1446,6 +1446,16 @@ fn req_op_02_req_ui_05_each_restriction_set_carries_its_own_options() {
     ] {
         assert!(app.set_on_break(op, role, set, OnBreak::Ignore).is_err());
     }
+    // A check set has the same choice, kept apart from the avoid sets'.
+    app.set_operation_selection(op, SelectionRole::Check, fence, true)
+        .unwrap();
+    app.set_on_break(op, SelectionRole::Check, fence, OnBreak::Ignore)
+        .unwrap();
+    assert_eq!(options(&app).check(fence).on_break, OnBreak::Ignore);
+    assert_eq!(options(&app).avoid(fence), SetOptions::default());
+    app.set_operation_selection(op, SelectionRole::Check, fence, false)
+        .unwrap();
+    assert!(options(&app).check.is_empty());
     // Back to the default: nothing kept.
     app.set_on_break(op, SelectionRole::Avoid, rib, OnBreak::CutShort)
         .unwrap();
