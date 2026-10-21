@@ -193,15 +193,40 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
     ] {
         assert!(rig.shows(text), "{text} is on screen");
     }
+    // The body sits between the header and the footer, and the buttons are
+    // under the footer text: nothing is squashed into a thin strip (#222).
+    let y_of = |rig: &Rig, text: &str| {
+        rig.text_rects()
+            .iter()
+            .find(|(t, _)| t == text)
+            .map(|(_, r)| r.top())
+            .unwrap_or_else(|| panic!("{text} is painted"))
+    };
+    let footer_y = y_of(
+        &rig,
+        "The file is not changed. Its path and hash are stored in the project.",
+    );
+    assert!(y_of(&rig, "1 UNITS") < y_of(&rig, "Holes"));
+    assert!(
+        y_of(&rig, "Holes") < footer_y,
+        "the body is above the footer"
+    );
+    assert!(
+        y_of(&rig, "Add to project") > footer_y,
+        "the buttons are under it: {} vs {footer_y}",
+        y_of(&rig, "Add to project")
+    );
     // The window has a fixed size, so the body scrolls (UI-16): the rest of
     // the check is reached by scrolling over it.
-    let holes_y = rig
-        .texts()
+    // The dialog is centred in the main window (decision 0164), so the
+    // pointer goes where the Holes row is painted.
+    let holes = rig
+        .text_rects()
         .iter()
         .find(|(t, _)| t == "Holes")
-        .map(|(_, y)| *y)
+        .map(|(_, r)| *r)
         .expect("the Holes row is painted");
-    rig.frame(vec![Event::PointerMoved(egui::pos2(200.0, holes_y))]);
+    rig.frame(vec![Event::PointerMoved(holes.center())]);
     for _ in 0..40 {
         if rig.shows("The check reports problems and changes nothing.") {
             break;

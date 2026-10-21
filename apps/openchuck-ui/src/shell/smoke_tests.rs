@@ -137,6 +137,11 @@ fn req_ui_01_every_dialog_and_window_opens_and_draws() {
         Dialog::OfferCreate {
             folder: std::env::temp_dir(),
         },
+        Dialog::FolderExists {
+            parent: "parent".to_owned(),
+            name: "Smoke".to_owned(),
+            folder: std::env::temp_dir(),
+        },
         Dialog::Folder {
             create: false,
             folder: String::new(),

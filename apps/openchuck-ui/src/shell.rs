@@ -18,11 +18,13 @@
 //! [`tree`] (the project panel) and [`dock`] (Messages, Selection sets, Jobs,
 //! Setup checks and Playback).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::theme::DARK;
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
+use openchuck_app::new_folder;
 use openchuck_app::overview::{
     Checks, ItemRef, Message, MessageAction, Overview, PrimaryKind, SetupPart, Severity, Step,
 };
@@ -102,6 +104,14 @@ enum Dialog {
         folder: String,
         name: String,
     },
+    /// The folder a new project would get already exists and holds none of a
+    /// project's files: ask whether to use it or change the name (#219,
+    /// decision record 0165). Nothing in it is changed or deleted.
+    FolderExists {
+        parent: String,
+        name: String,
+        folder: PathBuf,
+    },
     /// The folder has no project: offer to create one there (decision record
     /// 0008 item 8).
     OfferCreate { folder: PathBuf },
@@ -124,6 +134,8 @@ enum Dialog {
 /// The shell's state.
 pub struct Shell {
     app: Option<Application>,
+    /// The window title last sent to the system (#218).
+    sent_title: String,
     viewport: Viewport,
     dialog: Option<Dialog>,
     scene_job: Option<(JobHandle<SceneView>, bool)>,
@@ -220,6 +232,7 @@ impl Shell {
         };
         let mut shell = Self {
             app: None,
+            sent_title: String::new(),
             viewport: Viewport::new(viewport_available),
             dialog: None,
             scene_job: None,
@@ -1022,6 +1035,7 @@ impl Shell {
             if self.step == Step::Simulate && !windowed {
                 self.play.handle_keys(ctx);
             }
+            self.play.forget_removed(app);
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
@@ -1237,7 +1251,11 @@ impl Shell {
                 } else {
                     "Open project"
                 });
-                ui.label("Project folder:");
+                ui.label(if create {
+                    "Parent folder:"
+                } else {
+                    "Project folder:"
+                });
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut folder);
                     if ui.button("Browse…").clicked()
@@ -1246,35 +1264,103 @@ impl Shell {
                         folder = picked;
                     }
                 });
+                // What a new project would get: the cleaned folder name, and
+                // whether it can be made there (#219).
+                let mut found = None;
                 if create {
                     ui.label("Project name:");
                     ui.text_edit_singleline(&mut name);
+                    if !folder.trim().is_empty() {
+                        found = Some(new_folder::inspect(Path::new(folder.trim()), name.trim()));
+                    }
+                    if let Some(found) = &found {
+                        ui.label(format!("Folder to create: {}", found.name));
+                        if let Some(problem) = new_folder_problem(found) {
+                            ui.colored_label(DARK.error, problem);
+                        }
+                    }
                 }
+                let blocked = found
+                    .as_ref()
+                    .is_some_and(|f| new_folder_problem(f).is_some());
                 ui.horizontal(|ui| {
                     let ok = ui
-                        .add_enabled(!folder.trim().is_empty(), egui::Button::new("OK"))
+                        .add_enabled(
+                            !folder.trim().is_empty() && !blocked,
+                            egui::Button::new("OK"),
+                        )
                         .clicked();
                     if ui.button("Cancel").clicked() {
                         close = true;
                     }
                     if ok {
-                        let path = PathBuf::from(folder.trim());
-                        let name = name.trim().to_owned();
                         close = true;
-                        action = Some(if create {
-                            Box::new(move |s: &mut Self| s.create(path, &name))
-                        } else {
-                            Box::new(move |s: &mut Self| s.open(path))
-                        });
+                        match found.take() {
+                            // The folder exists and is usable: ask first.
+                            Some(f) if f.state == new_folder::FolderState::ExistsUsable => {
+                                self.dialog = Some(Dialog::FolderExists {
+                                    parent: folder.trim().to_owned(),
+                                    name: name.trim().to_owned(),
+                                    folder: f.path,
+                                });
+                                close = false;
+                            }
+                            Some(f) => {
+                                let name = name.trim().to_owned();
+                                action = Some(Box::new(move |s: &mut Self| s.create(f.path, &name)));
+                            }
+                            None => {
+                                let path = PathBuf::from(folder.trim());
+                                action = Some(Box::new(move |s: &mut Self| s.open(path)));
+                            }
+                        }
                     }
                 });
                 if !close {
-                    self.dialog = Some(Dialog::Folder {
-                        create,
-                        folder,
-                        name,
-                    });
+                    // `FolderExists` replaced the dialog above when it was asked for.
+                    if !matches!(self.dialog, Some(Dialog::FolderExists { .. })) {
+                        self.dialog = Some(Dialog::Folder {
+                            create,
+                            folder,
+                            name,
+                        });
+                    }
                 }
+            }
+            Dialog::FolderExists {
+                parent,
+                name,
+                folder,
+            } => {
+                ui.heading("Folder already exists");
+                ui.label(format!(
+                    "A folder named \"{}\" already exists in {parent}.",
+                    folder
+                        .file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+                ));
+                ui.label(
+                    "If you use it, the project's files are added to it. Nothing in it is changed or deleted.",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Use the existing folder").clicked() {
+                        close = true;
+                        let project_name = name.clone();
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.create(folder, &project_name);
+                        }));
+                    }
+                    if ui.button("Change the name").clicked() {
+                        close = true;
+                        action = Some(Box::new(move |s: &mut Self| {
+                            s.dialog = Some(Dialog::Folder {
+                                create: true,
+                                folder: parent,
+                                name,
+                            });
+                        }));
+                    }
+                });
             }
             Dialog::OfferCreate { folder } => {
                 ui.label(format!(
@@ -1354,7 +1440,8 @@ impl Shell {
             }
             Dialog::About => {
                 let build = openchuck_buildinfo::current_text();
-                if about::show(ui, build, about::licence_text()).close {
+                let project = self.project_facts().map(|(_, _, path)| path);
+                if about::show(ui, build, about::licence_text(), project.as_deref()).close {
                     close = true;
                 }
             }
@@ -1450,6 +1537,27 @@ fn edit_shortcuts(i: &mut egui::InputState) -> (bool, bool, bool) {
 /// Asks the platform's folder dialog for a folder, starting near `current`
 /// (OI-127). `None` when the user cancels or no dialog is available, in
 /// which case the typed path stays.
+/// Why a new project cannot be made in the folder `found` names, in plain
+/// words, or `None` when it can (or the user is first asked, for a folder
+/// that exists and is usable).
+fn new_folder_problem(found: &new_folder::NewFolder) -> Option<String> {
+    use new_folder::FolderState;
+    match &found.state {
+        FolderState::NoParent => Some("The parent folder does not exist.".to_owned()),
+        FolderState::Free | FolderState::ExistsUsable => None,
+        FolderState::ExistsAsFile => Some(format!(
+            "A file named \"{}\" is already there. Choose another name.",
+            found.name
+        )),
+        FolderState::ExistsWithProject(names) => Some(format!(
+            "The folder \"{}\" already holds an OpenChuckCAM project or its files ({}). \
+Nothing is overwritten. Choose another name.",
+            found.name,
+            names.join(", ")
+        )),
+    }
+}
+
 fn pick_folder(current: &str) -> Option<String> {
     let mut dialog = rfd::FileDialog::new().set_title("Project folder");
     if let Some(start) = existing_dir(current) {
@@ -1460,10 +1568,17 @@ fn pick_folder(current: &str) -> Option<String> {
 
 /// Asks the platform's file dialog for a model file, starting near `current`
 /// or in the project folder (OI-127).
+/// The name of the model file filter and the extensions it offers (IMP-01,
+/// IMP-02): STL and STEP, in either case.
+pub(crate) const MODEL_FILTER: (&str, &[&str]) = (
+    "3D models (STL, STEP)",
+    &["stl", "STL", "step", "STEP", "stp", "STP"],
+);
+
 pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
     let mut dialog = rfd::FileDialog::new()
         .set_title("Import model")
-        .add_filter("STL model", &["stl", "STL"]);
+        .add_filter(MODEL_FILTER.0, MODEL_FILTER.1);
     let start = existing_dir(current).or_else(|| app.map(|a| a.location().to_path_buf()));
     if let Some(start) = start {
         dialog = dialog.set_directory(start);
@@ -1534,12 +1649,39 @@ impl eframe::App for Shell {
 }
 
 impl Shell {
+    /// The project's name, whether it has unsaved changes and its folder.
+    fn project_facts(&self) -> Option<(String, bool, String)> {
+        self.app.as_ref().map(|a| {
+            (
+                a.project().name().to_owned(),
+                a.is_modified(),
+                a.location().display().to_string(),
+            )
+        })
+    }
+
+    /// The window title for the project now open (#218).
+    fn window_title(&self) -> String {
+        let facts = self.project_facts();
+        crate::window_title::title(facts.as_ref().map(|(n, m, p)| (n.as_str(), *m, p.as_str())))
+    }
+
+    /// Sends the window title to the system when it has changed.
+    fn update_window_title(&mut self, ctx: &egui::Context) {
+        let title = self.window_title();
+        if title != self.sent_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.sent_title = title;
+        }
+    }
+
     /// Draws one frame: the regions, the viewport, the dialogs and the work
     /// that keeps the jobs moving. The whole of the app's `ui`, apart from
     /// the eframe frame it does not use, so a test can run it.
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.guard_close(&ctx);
+        self.update_window_title(&ctx);
         self.poll_scene(&ctx);
         self.overview_frame(&ctx);
         self.bench_frame(&ctx);
@@ -1561,6 +1703,15 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn req_imp_02_the_file_chooser_offers_step_and_stl() {
+        let (name, extensions) = MODEL_FILTER;
+        assert_eq!(name, "3D models (STL, STEP)");
+        for wanted in ["stl", "STL", "step", "STEP", "stp", "STP"] {
+            assert!(extensions.contains(&wanted), "{wanted} is not offered");
+        }
+    }
 
     /// The shortcuts pressed in one frame with `key` and `modifiers` down.
     fn press(key: Key, modifiers: Modifiers) -> (bool, bool, bool) {
@@ -1745,6 +1896,9 @@ mod keys_tests;
 
 #[cfg(test)]
 mod frame_tests;
+
+#[cfg(test)]
+mod new_project_tests;
 
 #[cfg(test)]
 mod simulate_tests;
