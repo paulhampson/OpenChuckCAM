@@ -37,7 +37,7 @@
 //! `cargo build -p openchuck-import --features kernel --bin openchuck-step-worker`.
 
 use std::ffi::OsString;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -304,6 +304,10 @@ something the reader cannot handle{}",
     }
 }
 
+/// How many bytes of the end of the worker's standard error go into an error
+/// message.
+const WORKER_TAIL: u64 = 2048;
+
 /// The file the worker's standard error goes to, in its scratch folder.
 const STDERR_FILE: &str = "worker.log";
 
@@ -338,8 +342,17 @@ fn worker_messages(dir: &Path) -> String {
     let Ok(file) = std::fs::File::open(dir.join(STDERR_FILE)) else {
         return String::new();
     };
+    // The end of the file: the last thing the worker said is the reason.
+    let mut file = file;
+    let length = file.metadata().map_or(0, |m| m.len());
+    if file
+        .seek(SeekFrom::Start(length.saturating_sub(WORKER_TAIL)))
+        .is_err()
+    {
+        return String::new();
+    }
     let mut bytes = Vec::new();
-    if file.take(2048).read_to_end(&mut bytes).is_err() {
+    if file.take(WORKER_TAIL).read_to_end(&mut bytes).is_err() {
         return String::new();
     }
     let text = String::from_utf8_lossy(&bytes);
@@ -700,6 +713,11 @@ mod tests {
         assert_eq!(worker_messages(&dir), "");
         std::fs::write(dir.join(STDERR_FILE), "bad entity\n").unwrap();
         assert_eq!(worker_messages(&dir), " (the reader said: bad entity)");
+        // A long log gives its end, not its beginning.
+        let long = format!("{}final reason\n", "early noise\n".repeat(500));
+        std::fs::write(dir.join(STDERR_FILE), long).unwrap();
+        let said = worker_messages(&dir);
+        assert!(said.contains("final reason"), "{said}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

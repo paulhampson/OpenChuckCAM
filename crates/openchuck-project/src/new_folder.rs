@@ -15,6 +15,10 @@ use crate::file::{FileKind, MACHINE_FILE, PROJECT_FILE};
 /// characters, so a shorter name leaves room for the folders round it.
 pub const MAX_NAME_CHARS: usize = 100;
 
+/// The most UTF-8 bytes a folder name may have: one name is limited to 255
+/// bytes on ext4 and APFS, and a character can take up to four.
+pub const MAX_NAME_BYTES: usize = 255;
+
 /// The name used when nothing of the project's name is left after cleaning.
 pub const FALLBACK_NAME: &str = "Untitled";
 
@@ -66,7 +70,8 @@ fn is_invisible(c: char) -> bool {
 ///   a leading dot hides the folder; `.` and `..` are not names).
 /// - A Windows device name (`CON`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`,
 ///   with or without an extension) gets a `_` in front.
-/// - At most [`MAX_NAME_CHARS`] characters are kept.
+/// - At most [`MAX_NAME_CHARS`] characters and [`MAX_NAME_BYTES`] UTF-8 bytes
+///   are kept, cut between characters, after any `_` prefix.
 /// - Nothing left gives [`FALLBACK_NAME`].
 pub fn folder_name(name: &str) -> String {
     let mut cleaned = String::with_capacity(name.len());
@@ -84,9 +89,6 @@ pub fn folder_name(name: &str) -> String {
     }
     let trim = |s: &str| s.trim_matches(|c: char| c == ' ' || c == '.').to_owned();
     let mut cleaned = trim(&cleaned);
-    if cleaned.chars().count() > MAX_NAME_CHARS {
-        cleaned = trim(&cleaned.chars().take(MAX_NAME_CHARS).collect::<String>());
-    }
     if cleaned.is_empty() {
         return FALLBACK_NAME.to_owned();
     }
@@ -94,7 +96,20 @@ pub fn folder_name(name: &str) -> String {
     if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(stem)) {
         cleaned.insert(0, '_');
     }
-    cleaned
+    // Cut last, so the prefix cannot push the name over a limit.
+    let mut cut = String::new();
+    for c in cleaned.chars().take(MAX_NAME_CHARS) {
+        if cut.len() + c.len_utf8() > MAX_NAME_BYTES {
+            break;
+        }
+        cut.push(c);
+    }
+    let cut = trim(&cut);
+    if cut.is_empty() {
+        FALLBACK_NAME.to_owned()
+    } else {
+        cut
+    }
 }
 
 /// What is at the place a new project's folder would be made.
@@ -252,6 +267,21 @@ mod tests {
         // The cut is cleaned again: no trailing space or dot is left.
         let spaced = format!("{} .", "a".repeat(MAX_NAME_CHARS - 1));
         assert_eq!(folder_name(&spaced), "a".repeat(MAX_NAME_CHARS - 1));
+    }
+
+    #[test]
+    fn req_nfr_07_a_long_name_fits_the_byte_limit_and_the_prefix_does_not_add_to_it() {
+        // Three bytes a character: 100 characters would be 300 bytes.
+        let cjk = folder_name(&"叶".repeat(300));
+        assert!(cjk.len() <= MAX_NAME_BYTES, "{} bytes", cjk.len());
+        assert_eq!(cjk.chars().count(), 85);
+        // Four bytes a character.
+        let emoji = folder_name(&"🛠".repeat(300));
+        assert!(emoji.len() <= MAX_NAME_BYTES && emoji.chars().count() == 63);
+        // The prefix of a device name counts towards the limit.
+        let device = folder_name(&format!("con.{}", "a".repeat(200)));
+        assert!(device.starts_with("_con."));
+        assert_eq!(device.chars().count(), MAX_NAME_CHARS);
     }
 
     #[test]

@@ -510,7 +510,7 @@ impl ImportSession {
                 .inner_margin(egui::Margin::symmetric(10, 6))
         };
         egui::Area::new(egui::Id::new("import legend"))
-            .order(egui::Order::Foreground)
+            .order(egui::Order::Middle)
             .fixed_pos(area.left_bottom() + egui::vec2(12.0, -12.0))
             .pivot(egui::Align2::LEFT_BOTTOM)
             .show(ctx, |ui| {
@@ -524,7 +524,7 @@ impl ImportSession {
             });
         let lines = readout_lines(i);
         egui::Area::new(egui::Id::new("import readout"))
-            .order(egui::Order::Foreground)
+            .order(egui::Order::Middle)
             .fixed_pos(area.right_bottom() + egui::vec2(-12.0 - 460.0, -12.0))
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .show(ctx, |ui| {
