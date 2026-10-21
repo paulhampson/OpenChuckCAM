@@ -135,7 +135,8 @@ pub fn legend_collapsed(height: f32) -> bool {
 }
 
 /// The readout's lines (7.2): X, Y and Z in mm to 3 places and A in degrees
-/// to 2, then the source and the frame ("G54 work coordinates").
+/// to 2, wrapped into 0 to 360 (issue 207), then the source and the frame
+/// ("G54 work coordinates").
 pub fn readout_lines(work: [f64; 4], source: &str, register: Option<&str>) -> Vec<String> {
     let frame = match register {
         Some(r) => format!("{r} work coordinates"),
@@ -145,7 +146,10 @@ pub fn readout_lines(work: [f64; 4], source: &str, register: Option<&str>) -> Ve
         format!("X {:>10.3} mm", work[0]),
         format!("Y {:>10.3} mm", work[1]),
         format!("Z {:>10.3} mm", work[2]),
-        format!("A {:>10.2} deg", work[3]),
+        format!(
+            "A {:>10} deg",
+            openchuck_app::playback::wrapped_a_text(work[3], 2)
+        ),
         format!("{source}, {frame}"),
     ]
 }
@@ -501,6 +505,10 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     }
     if let (Some(r), Some((work, source))) = (b.readout, readout(viewport)) {
         frame(&painter, r);
+        // The continuous A, as the G-code gives it, on hovering the box
+        // (issue 207).
+        ui.interact(r, ui.id().with("readout"), egui::Sense::hover())
+            .on_hover_text(crate::playback_panel::continuous_a_tip(work[3], 2));
         let colours = [
             roles::WORK_X,
             roles::WORK_Y,
@@ -935,7 +943,12 @@ mod tests {
         );
         assert_eq!(lines[0], "X    142.318 mm");
         assert_eq!(lines[1], "Y    -11.900 mm");
-        assert_eq!(lines[3], "A     -53.20 deg");
+        // Issue 207: A reads 0 to 360 degrees.
+        assert_eq!(lines[3], "A     306.80 deg");
+        assert_eq!(
+            readout_lines([0.0, 0.0, 0.0, 720.0], "", None)[3],
+            "A       0.00 deg"
+        );
         assert_eq!(lines[4], "Cursor on surface, G54 work coordinates");
         let lines = readout_lines([0.0; 4], "Tool at move 12", None);
         assert_eq!(lines[4], "Tool at move 12, work coordinates");

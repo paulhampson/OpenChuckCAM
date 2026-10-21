@@ -5,6 +5,7 @@ All notable changes to `openchuck-project` are recorded here.
 ## Unreleased
 
 - Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
+- Lane BUG-SIM (decisions 0168 and 0169): project schema 15. `project.toml` gains `skip_stock_simulation` and `hidden_paths`, written only when set; `Project::skip_stock_simulation`, `set_skip_stock_simulation`, `path_shown`, `set_paths_shown` and `same_output` (equal apart from what the view uses and the skip). Schema 14 is lane BUG-SWARF's; this branch passes through it with a step that changes only the number.
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
 - `file::load_files` loads a project from the texts of its files in memory, with every check `file::load` makes; `load` now reads every file before it checks any (decision 0107, for the `project_folder` fuzz target).
 - Slice 23 (decision 0081, TL-12): `tools::default_tools`, `standard_tools`, `z1_tools`, `default_tool_sets`, `ToolLibrary::install_defaults`, `ToolLibrary::restore_defaults`, `InstallReport` and `LEDGER_FILE`; 23 standard tools, 23 Makera Z1 tools and the Z1 default tool set embedded in the crate.

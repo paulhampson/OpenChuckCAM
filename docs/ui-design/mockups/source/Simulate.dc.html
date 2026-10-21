@@ -136,11 +136,11 @@ button{font:inherit;color:inherit;cursor:pointer}
         <div class="grp"><span>TOOLS</span><span class="r"><span>2</span><a class="add" href="ToolLibrary.dc.html" title="Add a tool from the library" aria-label="Add a tool">+</a></span></div>
         <div class="tr l1"><span class="chip m">T1</span><span class="nm">Ball Ø3 · 2 flute</span></div>
         <div class="tr l1"><span class="chip m">T2</span><span class="nm">Flat Ø6 · 3 flute</span></div>
-        <div class="grp"><span>OPERATIONS</span><span class="r"><span>4</span><a class="add" href="Main.dc.html" title="New operation (N)" aria-label="New operation">+</a></span></div>
+        <div class="grp"><span>OPERATIONS</span><span class="r"><span>4</span><button class="eye" aria-label="Show all toolpaths" title="Show all toolpaths in the view"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg></button><button class="eye" aria-label="Hide all toolpaths" title="Hide all toolpaths in the view"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2" fill="none"/><path d="M1.5 14L14.5 2"/></svg></button><a class="add" href="Main.dc.html" title="New operation (N)" aria-label="New operation">+</a></span></div>
         <div class="tr l1"><span class="cb on" title="Enabled"></span><span class="st ok" title="Up to date"></span><span class="nm">1 Rough · continuous</span><button class="eye" aria-label="Hide operation 1 in the view" title="Hide in view (H)"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg></button></div>
         <div class="tr l1 sel"><span class="cb on" title="Enabled"></span><span class="st ok" title="Up to date"></span><span class="nm" style="font-weight:500">2 Helical finish · Groove</span><button class="eye" aria-label="Hide operation 2 in the view" title="Hide in view (H)"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg></button></div>
-        <div class="tr l1"><span class="cb on" title="Enabled"></span><span class="st stale" title="Stale: not generated"></span><span class="nm">3 Axial finish · Body</span><button class="eye mu" aria-label="Show operation 3 in the view" title="Show in view (H)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 14L14 2M1 8s2.5-4.5 7-4.5c1.2 0 2.3.3 3.2.8"/></svg></button></div>
-        <div class="tr l1 mu"><span class="cb" title="Off"></span><span class="st off" title="Off"></span><span class="nm" style="text-decoration:line-through">4 Engrave · Lettering</span><span class="chip m">T1</span></div>
+        <div class="tr l1"><span class="cb on" title="Enabled"></span><span class="st stale" title="Stale: not generated"></span><span class="nm">3 Axial finish · Body</span><button class="eye mu" aria-label="Show operation 3's toolpath" title="Show or hide this operation's toolpath in the view. Nothing it makes changes"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2" fill="none"/><path d="M1.5 14L14.5 2"/></svg></button></div>
+        <div class="tr l1 mu"><span class="cb" title="Off"></span><span class="st off" title="Off"></span><span class="nm" style="text-decoration:line-through">4 Engrave · Lettering</span><span class="chip m">T1</span><button class="eye" aria-label="Hide operation 4's toolpath" title="Show or hide this operation's toolpath in the view. Nothing it makes changes"><svg class="ib" viewBox="0 0 16 16"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg></button></div>
         <div class="grp"><span>STOCK CARRIED IN</span></div>
         <div class="tr l1 mu"><span class="nm">Operation 2 starts from the stock left by 1</span></div>
       </div>
@@ -152,7 +152,7 @@ button{font:inherit;color:inherit;cursor:pointer}
       <div class="vbar">
         <div class="seg" style="width:168px"><span class="on">Shaded</span><span>Wire</span><span>Edges</span></div>
         <div class="seg" style="width:96px"><span class="on">Persp</span><span>Ortho</span></div>
-        <div class="seg" style="width:220px"><span class="on">Stock</span><span>Part + path</span><span>Both</span></div>
+        <span class="mu">Show</span><label style="display:inline-flex;align-items:center;gap:4px"><span class="cb"></span>Model</label><label style="display:inline-flex;align-items:center;gap:4px" title="At least one must stay ticked, so the view is never empty"><span class="cb on"></span>Cut part</label><label style="display:inline-flex;align-items:center;gap:4px"><span class="cb on"></span>Toolpath</label>
         <button class="btn ic" aria-label="Fit all" title="Fit all (F)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
         <button class="btn ic" aria-label="Section plane" title="Section plane (S)"><svg class="ib" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11"/><path d="M2.5 10.5l11-5"/></svg></button>
         <button class="btn ic" aria-label="Measure" title="Measure (M)"><svg class="ib" viewBox="0 0 16 16"><path d="M2 11l9-9 3 3-9 9zM5 8l1.5 1.5M7 6l1.5 1.5M9 4l1.5 1.5"/></svg></button>
@@ -182,13 +182,13 @@ button{font:inherit;color:inherit;cursor:pointer}
             <rect x="415" y="206" width="22" height="30" fill="#c9d0d9"/>
             <circle cx="426" cy="236" r="11" fill="#e8b6ff" stroke="#fff"/>
           </g>
-          <text x="460" y="112" fill="#e8b6ff" font-size="12" font-family="IBM Plex Mono">T1 · Ball Ø3 · A −53.20°</text>
+          <text x="460" y="112" fill="#e8b6ff" font-size="12" font-family="IBM Plex Mono">T1 · Ball Ø3 · A 306.80°</text>
           <path d="M700 270a62 62 0 0 1 4 70" fill="none" stroke="#35d0e0" stroke-width="1.5"/><path d="M704 340l-7-3 9-4z" fill="#35d0e0"/>
           <text x="712" y="274" fill="#35d0e0" font-size="12" font-family="IBM Plex Mono">A+</text>
         </svg>
         <div class="vf m" style="left:444px;top:250px;padding:6px 10px;font-size:12px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.4)">
           <div style="font-family:'IBM Plex Sans';font-weight:600;color:#f0a6e4">Overcut −0.004 mm</div>
-          <div class="mu">X 112.74 · A −53.20° · op 2, move 11,192</div>
+          <div class="mu">X 112.74 · A 306.80° · op 2, move 11,192</div>
         </div>
         <div class="vf" style="right:12px;top:12px;width:84px;height:84px;display:flex;align-items:center;justify-content:center">
           <svg viewBox="0 0 80 80" width="76" height="76" role="img" aria-label="View cube"><path d="M40 8l28 16v32L40 72 12 56V24z" fill="#2b2f35" stroke="#7b8490"/><path d="M12 24l28 16 28-16M40 40v32" fill="none" stroke="#7b8490"/><path d="M40 8l28 16-28 16-28-16z" fill="#3a4048"/><text x="40" y="28" fill="#e4e7eb" font-size="8" text-anchor="middle" font-family="IBM Plex Sans">TOP</text></svg>
@@ -205,12 +205,12 @@ button{font:inherit;color:inherit;cursor:pointer}
           <span style="color:#ff7b72">X</span><span style="text-align:right">112.740</span><span class="mu">mm</span>
           <span style="color:#6fd3a8">Y</span><span style="text-align:right">-9.114</span><span class="mu">mm</span>
           <span style="color:#6fb2ff">Z</span><span style="text-align:right">11.060</span><span class="mu">mm</span>
-          <span style="color:#35d0e0">A</span><span style="text-align:right">-53.20</span><span class="mu">deg</span>
+          <span style="color:#35d0e0">A</span><span style="text-align:right" title="Continuous A in the G-code: -53.20°">306.80</span><span class="mu">deg</span>
         </div>
       </div>
       <div class="splh" role="separator" aria-orientation="horizontal" aria-label="Resize playback panel"><i></i></div>
       <div class="panel" style="height:216px;flex:none">
-        <div class="ph"><span>Playback</span><span class="n m">Move 11,240 of 18,420 · operation 2</span></div>
+        <div class="ph"><span>Playback</span><span style="display:flex;gap:14px;align-items:center;text-transform:none;letter-spacing:0;font-weight:400"><label style="display:inline-flex;align-items:center;gap:4px" title="Generate only the toolpaths, for a quicker result"><span class="cb"></span>Skip stock simulation</label><label style="display:inline-flex;align-items:center;gap:4px"><span class="cb on"></span>Turn part with A</label><label style="display:inline-flex;align-items:center;gap:4px" title="Draw only the moves in the window; otherwise the rest of the path is drawn faintly"><span class="cb"></span>Hide path outside window</label></span><span class="n m">Move 11,240 of 18,420 · operation 2</span></div>
         <div style="flex:1;min-height:0;display:flex">
           <div style="flex:1;min-width:0;padding:10px 12px;display:flex;flex-direction:column;gap:10px">
             <div style="display:flex;align-items:center;gap:6px">
@@ -219,6 +219,8 @@ button{font:inherit;color:inherit;cursor:pointer}
               <button class="tbt" style="background:#2f6fbd;border-color:#4a8fe0;color:#fff" aria-label="Play" title="Play or pause (Space)"><svg class="ib" viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"/></svg></button>
               <button class="tbt" aria-label="Step forward" title="Step forward (→)"><svg class="ib" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"/></svg></button>
               <button class="tbt" aria-label="Next operation" title="Next operation (Shift →)"><svg class="ib" viewBox="0 0 16 16"><path d="M12 3v10M3 3l6 5-6 5z"/></svg></button>
+              <span style="flex:1"></span>
+              <span class="mu" style="white-space:nowrap">Window: moves</span><div class="fld" style="width:58px"><b class="m" style="font-weight:400">9580</b></div><span class="mu">to</span><div class="fld" style="width:58px"><b class="m" style="font-weight:400">12530</b></div><button class="btn" style="white-space:nowrap">Whole program</button>
             </div>
             <div style="display:flex;align-items:center;gap:6px;white-space:nowrap">
               <span class="mu">Speed</span>
@@ -233,6 +235,7 @@ button{font:inherit;color:inherit;cursor:pointer}
                 <div style="width:31%;background:transparent;border:1px dashed var(--wn);color:var(--wn)" title="3 Axial finish: not generated">3 Not generated</div>
                 <span style="position:absolute;left:61%;top:-4px;bottom:-4px;width:2px;background:var(--tx)"></span>
               </div>
+              <div title="The playback window: drag its ends to resize it, or its middle to move it" style="position:relative;height:8px;margin-top:3px;border-radius:2px;background:rgba(55,80,107,.4)"><span style="position:absolute;left:52%;width:16%;top:0;bottom:0;border-radius:2px;background:rgba(47,111,189,.6)"></span><span style="position:absolute;left:calc(52% - 2px);width:4px;top:-1px;bottom:-1px;background:var(--tx)"></span><span style="position:absolute;left:calc(68% - 2px);width:4px;top:-1px;bottom:-1px;background:var(--tx)"></span></div>
               <div class="m mu" style="display:flex;justify-content:space-between;font-size:11px;margin-top:3px"><span>0</span><span>6,100</span><span>12,300</span><span>18,420</span></div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">

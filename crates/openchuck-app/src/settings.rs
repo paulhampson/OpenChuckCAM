@@ -94,6 +94,56 @@ pub mod region {
     pub const DOCK: (f32, f32, f32) = (260.0, 120.0, 2000.0);
 }
 
+/// The Simulate step's choices one user keeps (decision records 0168 and
+/// 0169). A settings file written before a field existed reads it as its
+/// default: the table is additive and the file has no version number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SimulateSettings {
+    /// "Turn part with A": the tool stands upright and the part turns, as on
+    /// the machine (SIM-02). On by default, also for projects made before
+    /// it was (issue 203).
+    pub turn_part_with_a: bool,
+    /// The view's "Model" tick box (issue 204).
+    pub show_model: bool,
+    /// The view's "Cut part" tick box, the simulated stock (issue 204). The
+    /// only one ticked by default.
+    pub show_cut_part: bool,
+    /// The view's "Toolpath" tick box (issue 204).
+    pub show_toolpath: bool,
+    /// "Hide path outside window" on the playback bar (issue 205): off, so
+    /// the rest of the path is drawn faintly.
+    pub hide_outside_window: bool,
+    /// Whether a new project skips the stock simulation (issue 214); each
+    /// project then keeps its own choice.
+    pub skip_stock_simulation: bool,
+}
+
+impl Default for SimulateSettings {
+    fn default() -> Self {
+        Self {
+            turn_part_with_a: true,
+            show_model: false,
+            show_cut_part: true,
+            show_toolpath: false,
+            hide_outside_window: false,
+            skip_stock_simulation: false,
+        }
+    }
+}
+
+impl SimulateSettings {
+    /// The settings with at least one of the view's tick boxes on: a file
+    /// with none gives "Cut part", so the view is never empty (issue 204).
+    #[must_use]
+    pub fn clamped(mut self) -> Self {
+        if !(self.show_model || self.show_cut_part || self.show_toolpath) {
+            self.show_cut_part = true;
+        }
+        self
+    }
+}
+
 /// What one user keeps on one computer (specification section 13).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -123,6 +173,8 @@ pub struct UserSettings {
     /// before this field existed reads as on: the field is additive and the
     /// file has no version number.
     pub record_actions: bool,
+    /// The Simulate step's choices.
+    pub simulate: SimulateSettings,
 }
 
 impl Default for UserSettings {
@@ -138,6 +190,7 @@ impl Default for UserSettings {
             recent: Vec::new(),
             open_sections: BTreeMap::new(),
             record_actions: true,
+            simulate: SimulateSettings::default(),
         }
     }
 }
@@ -162,6 +215,7 @@ impl UserSettings {
             .clamped(range(region::INSPECTOR), region::INSPECTOR.0);
         self.dock = self.dock.clamped(range(region::DOCK), region::DOCK.0);
         self.recent.truncate(RECENT_KEPT);
+        self.simulate = self.simulate.clamped();
         self.window = self.window.filter(|[w, h]| {
             (WINDOW_RANGE.0..=WINDOW_RANGE.1).contains(w)
                 && (WINDOW_RANGE.0..=WINDOW_RANGE.1).contains(h)

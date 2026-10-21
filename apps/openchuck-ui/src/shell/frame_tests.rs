@@ -24,7 +24,7 @@ pub(super) struct Rig {
     pub(super) ctx: egui::Context,
     pub(super) size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
-    dirs: Vec<PathBuf>,
+    pub(super) dirs: Vec<PathBuf>,
 }
 
 impl Rig {
@@ -180,7 +180,7 @@ impl Drop for Rig {
     }
 }
 
-fn temp(name: &str) -> PathBuf {
+pub(super) fn temp(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir
@@ -282,7 +282,8 @@ fn req_ui_10_req_ui_11_the_steps_marks_and_primary_follow_the_project() {
     assert!(rig.shows("Continue to simulate"));
     rig.press(Key::Num4, Modifiers::ALT);
     assert_eq!(rig.shell.step, Step::Simulate);
-    assert!(rig.shows("Run simulation"));
+    // Generating simulated the stock too (issue 214), so Simulate goes on.
+    assert!(rig.shows("Continue to post and export"));
     rig.press(Key::Num1, Modifiers::ALT);
     assert_eq!(rig.shell.step, Step::Model);
     assert!(rig.shows("Continue to setup"));
@@ -1229,7 +1230,7 @@ fn is_text_box(r: &egui::Rect, window_width: f32) -> bool {
 
 impl Rig {
     /// A click at `at`, over three frames.
-    fn click(&mut self, at: egui::Pos2) {
+    pub(super) fn click(&mut self, at: egui::Pos2) {
         let button = |pressed| Event::PointerButton {
             pos: at,
             button: egui::PointerButton::Primary,

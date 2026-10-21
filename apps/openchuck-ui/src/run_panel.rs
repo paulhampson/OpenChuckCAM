@@ -221,8 +221,9 @@ impl RunPanel {
         self.job.is_some()
     }
 
-    /// Starts generating, and simulating when `simulate`. Does nothing while
-    /// a job runs.
+    /// Starts generating, with the stock simulation unless the project skips
+    /// it (issue 214), or always when `simulate` ("Generate and simulate").
+    /// Does nothing while a job runs.
     pub fn start(&mut self, app: &Application, simulate: bool) {
         if self.job.is_some() {
             return;
@@ -230,9 +231,9 @@ impl RunPanel {
         let handle = if simulate {
             app.start_simulate()
         } else {
-            app.start_regenerate()
+            app.start_generate()
         };
-        self.begin(handle, simulate);
+        self.begin(handle, simulate || app.simulates());
     }
 
     /// Starts generating up to and including `operation` (G, "generate
@@ -240,7 +241,7 @@ impl RunPanel {
     /// runs.
     pub fn start_until(&mut self, app: &Application, operation: OperationId) {
         if self.job.is_none() {
-            self.begin(app.start_regenerate_until(operation), false);
+            self.begin(app.start_generate_until(operation), app.simulates());
         }
     }
 

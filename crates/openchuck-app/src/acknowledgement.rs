@@ -20,6 +20,12 @@ use crate::error::AppError;
 /// The file name under the configuration folder's `OpenChuckCAM/` folder.
 pub const SETTINGS_FILE: &str = "settings.toml";
 
+/// The key of the export acknowledgement in the `[export]` table.
+const ACKNOWLEDGED: &str = "acknowledged";
+
+/// The key of the acknowledgement that a project skips the stock simulation.
+const STOCK_SKIPPED: &str = "stock_skipped_acknowledged";
+
 /// The acknowledgements in one settings file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Acknowledgements {
@@ -91,10 +97,10 @@ impl Acknowledgements {
         }
     }
 
-    fn listed(table: &toml::Table) -> Vec<String> {
+    fn listed(table: &toml::Table, field: &str) -> Vec<String> {
         table
             .get("export")
-            .and_then(|e| e.get("acknowledged"))
+            .and_then(|e| e.get(field))
             .and_then(|a| a.as_array())
             .map(|a| {
                 a.iter()
@@ -106,9 +112,20 @@ impl Acknowledgements {
 
     /// Whether `project` (the project folder) is acknowledged on this computer.
     pub fn lookup(&self, project: &Path) -> Lookup {
+        self.lookup_field(project, ACKNOWLEDGED)
+    }
+
+    /// Whether the user has acknowledged on this computer that `project`'s
+    /// cut is not simulated while it skips the stock simulation (decision
+    /// record 0168, OI-602).
+    pub fn lookup_stock_skipped(&self, project: &Path) -> Lookup {
+        self.lookup_field(project, STOCK_SKIPPED)
+    }
+
+    fn lookup_field(&self, project: &Path, field: &str) -> Lookup {
         let (table, problem) = self.read();
         Lookup {
-            acknowledged: Self::listed(&table).contains(&Self::key(project)),
+            acknowledged: Self::listed(&table, field).contains(&Self::key(project)),
             problem,
         }
     }
@@ -117,6 +134,16 @@ impl Acknowledgements {
     /// `project` on this computer. A settings file that cannot be read is
     /// kept beside the new one as `settings.toml.bad`, so nothing is lost.
     pub fn acknowledge(&self, project: &Path) -> Result<(), AppError> {
+        self.acknowledge_field(project, ACKNOWLEDGED)
+    }
+
+    /// Records that the user acknowledged that `project` skips the stock
+    /// simulation, as [`Acknowledgements::acknowledge`] does for the export.
+    pub fn acknowledge_stock_skipped(&self, project: &Path) -> Result<(), AppError> {
+        self.acknowledge_field(project, STOCK_SKIPPED)
+    }
+
+    fn acknowledge_field(&self, project: &Path, field: &str) -> Result<(), AppError> {
         let io = |path: &Path| {
             let path = path.to_path_buf();
             move |source| AppError::Io { path, source }
@@ -126,7 +153,7 @@ impl Acknowledgements {
             let bad = self.file.with_extension("toml.bad");
             std::fs::rename(&self.file, &bad).map_err(io(&bad))?;
         }
-        let mut listed = Self::listed(&table);
+        let mut listed = Self::listed(&table, field);
         let key = Self::key(project);
         if !listed.contains(&key) {
             listed.push(key);
@@ -137,13 +164,13 @@ impl Acknowledgements {
             .or_insert_with(|| toml::Value::Table(toml::Table::new()));
         if let Some(export) = entry.as_table_mut() {
             export.insert(
-                "acknowledged".to_owned(),
+                field.to_owned(),
                 toml::Value::Array(listed.into_iter().map(toml::Value::String).collect()),
             );
         } else {
             let mut export = toml::Table::new();
             export.insert(
-                "acknowledged".to_owned(),
+                field.to_owned(),
                 toml::Value::Array(listed.into_iter().map(toml::Value::String).collect()),
             );
             *entry = toml::Value::Table(export);

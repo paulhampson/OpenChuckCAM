@@ -46,6 +46,19 @@ pub enum Command {
     /// Sets whether a plain click of the other kind warns before it resets
     /// the working selection (decision record 0066 item 3).
     SetWarnOnSelectionReset(bool),
+    /// Sets whether generating leaves out the stock simulation for this
+    /// project (issue 214; decision record 0168).
+    SetSkipStockSimulation(bool),
+    /// Shows or hides the toolpaths of operations in the view: one, or the
+    /// whole group with "Show all" and "Hide all" (SIM-01, issue 213;
+    /// decision record 0169). Saved with the project, but no input to a
+    /// toolpath, the simulation or the G-code (GC-07).
+    SetPathsShown {
+        /// The operations.
+        operations: Vec<OperationId>,
+        /// Whether their toolpaths are drawn.
+        shown: bool,
+    },
     /// Adds an item.
     Add {
         /// The new item, with a fresh ID.
@@ -134,6 +147,13 @@ impl Command {
             Self::SetWarnOnSelectionReset(warn) => {
                 Self::SetWarnOnSelectionReset(project.set_warn_on_selection_reset(warn))
             }
+            Self::SetSkipStockSimulation(skip) => {
+                Self::SetSkipStockSimulation(project.set_skip_stock_simulation(skip))
+            }
+            Self::SetPathsShown { operations, shown } => Self::SetPathsShown {
+                operations: project.set_paths_shown(&operations, shown),
+                shown: !shown,
+            },
             Self::Add { item, placement } => {
                 let id = item.id();
                 let rekeyed = project.insert(item, placement)?;
