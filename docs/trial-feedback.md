@@ -181,3 +181,5 @@ Coordinator status on the five issues sent before the rule (21 Oct 2026, 16:11 U
 - #243 (revert button): lane BUG-INSP2 (Sonnet) started minutes before the rule, no work pushed; paused by the coordinator.
 - #242 (strategy heading): not started.
 - The coordinator will ask the owner which of #239, #241 and #243 continue. No lane starts for any later issue until the owner approves a grouping.
+
+Owner instruction (21 Oct 2026): merge the fixes into a single lane. Read as #239 (BUG-REGEN), #241 (BUG-BI) and #243 (BUG-INSP2) becoming one lane; #242 stays held. The owner has not said which lane absorbs the others; the coordinator chooses and reports any conflict.
