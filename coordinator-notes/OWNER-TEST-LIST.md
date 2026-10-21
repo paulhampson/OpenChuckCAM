@@ -48,6 +48,17 @@ https://github.com/paulhampson/OpenChuckCAM/actions/runs/39640543774 (in progres
 | #213 | Eye toggle per operation in all views, show-all/hide-all, saved with the project (schema 15) | #238 |
 | #214 | Stock simulation on by default; skip is per project; skipping needs an acknowledgement before writing | #238 |
 
+## B4. Third nightly (run 15, main 452724e): additionally in this build
+
+https://github.com/paulhampson/OpenChuckCAM/actions/runs/39663424881
+
+| Issue | What to check | PR |
+| --- | --- | --- |
+| #227 | Swarf honours boundary / avoid / check FACE sets with per-set options (boundary: limits the pass, limits the cut length at the tip; avoid/check: Cut short / Warn only / Ignore); project schema 14; library 0.14.0 | #240 |
+| #239 | Changing a later operation's parameter no longer replays the roughing's simulation; the status bar says "Re-running the simulation for <operation>" when a replay is needed | #247 |
+| #243 | In the operation inspector the revert button appearing does not move the label | #247 |
+| #241 | The About window of THIS nightly should say "Uncommitted changes: no" (the dirty flag now counts tracked changes only; occt-install is ignored). The lane keeps #241 open until the nightly confirms: you close it (OI-710) | #247 (Refs) |
+
 ## C. Windows-only checks that keep an issue open
 
 | Item | What to do |
