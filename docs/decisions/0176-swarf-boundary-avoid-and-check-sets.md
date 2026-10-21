@@ -1,13 +1,12 @@
 # 0176: Swarf honours boundary, avoid and check face sets (lane BUG-SWARF; issue #227)
 
-- **Status:** proposed (21 Oct 2026). Owner answers so far, relayed by the coordinator on 21 Oct 2026:
+- **Status:** proposed (21 Oct 2026). Every question is answered; the owner accepts the record directly in the lane's session (decision 0049). Owner answers, relayed by the coordinator on 21 Oct 2026:
   - **OI-631, decision 2:** option C. A boundary limits the pass along the face, across the rulings (limit A), and also limits the cut length along the rulings at the tool tip (limit B). The two compose, the notes say which one limited a cut, this record explains how B relates to the existing Tip extension, and the operation's note says plainly that the far end of a ruling cannot be limited.
 
-  - **OI-635, whether A and B are settings:** yes, but not as two operation-wide parameters. They are tick boxes in the operation inspector's Geometry section, where the boundary, avoid and check sets are chosen, and they belong to each set in its role within the operation: each boundary, avoid and check set carries its own options. For the boundary they are A and B, both on by default. The lane proposes the options of avoid and check sets, and a set whose options are all off keeps the warning "the set 'X' limits nothing" (item 3).
-
-  Still waiting on the owner, with this record built to the lane's recommendations (the coordinator asked the lane to build on them until told otherwise; the coordinator is putting them to the owner one at a time, and the answers decide the defaults):
-  - **OI-632, decision 3:** what avoid and check sets do to a swarf path (3a), and whether they may be mesh sets (3b). The lane recommends cutting the pass short (item 4) and face sets only (item 5).
-  - **The options of an avoid or check set** (item 3): Cut short (the default, 3a), Warn only, or Ignore.
+  - **OI-635, whether A and B are settings:** yes, but not as two operation-wide parameters. They are tick boxes in the operation inspector's Geometry section, where the boundary, avoid and check sets are chosen, and they belong to each set in its role within the operation: each boundary, avoid and check set carries its own options. For the boundary they are A and B, both on by default. A set whose options leave it limiting nothing keeps the warning "the set 'X' limits nothing", and the options are stored in optional tables of the operation file, project schema 14, where older files take the defaults (item 3).
+  - **OI-632, decision 3a:** an avoid or check set cuts the pass short by default (item 4).
+  - **OI-632, decision 3b:** face sets only for now; mesh avoid and check sets on a STEP part stay OI-634 (item 5).
+  - **The options of an avoid or check set**, as the lane proposed: one choice per set, shown beside it in the Geometry section: Cut short (the default), Warn only or Ignore (item 3).
 
   Only the owner accepts this record (decision 0049).
 - **What it amends:**
@@ -20,8 +19,7 @@
   OP-02 and OP-07 and the requirements are unchanged: OP-02 already asks for "an optional containment boundary and optional avoid or check surfaces" on every operation.
 - **Date:** 21 Oct 2026.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md):
-  - OI-631 and OI-635 are closed by the owner's answers;
-  - OI-632 stays open until the owner answers;
+  - OI-631, OI-632 and OI-635 are closed by the owner's answers;
   - OI-634 (mesh avoid and check sets on a STEP part), OI-636 (how finely an avoid or check face is sampled) and OI-637 (whether the other strategies take per-set options) are new;
   - OI-233 stays open for the other strategies.
 
@@ -65,7 +63,7 @@ Requirements: OP-02 (selections, boundary, avoid, check), OP-07 (swarf), OP-12 (
      - with B, the most the tip was raised;
      - the far-end sentence above.
    - **A boundary that leaves nothing.** A face with nothing left to cut is refused, naming it: "none of its rulings lies inside the boundary set, so the boundary leaves nothing of it to cut".
-3. **Each set's options (OI-635, the owner's decision; the avoid and check choices are the lane's proposal, awaiting the owner).** The options belong to a set in its role within one operation, not to the operation and not to the set: the same set may be a boundary in one operation and an avoid set in another.
+3. **Each set's options (OI-635, the owner's decision, with the avoid and check choices the lane proposed).** The options belong to a set in its role within one operation, not to the operation and not to the set: the same set may be a boundary in one operation and an avoid set in another.
    - **Where they are shown.** In the operation inspector's Geometry section, under the role that holds the set, for a strategy that takes them (swarf, so far; OI-637). Another strategy shows none.
    - **A boundary set:** two tick boxes, both **on by default**, so the default is the owner's option C:
      - **"Limits the pass"** (limit A);
@@ -109,7 +107,7 @@ Requirements: OP-02 (selections, boundary, avoid, check), OP-07 (swarf), OP-12 (
      - The options are part of the operation's selection inputs (decision 0032's cache key, UI-05): changing one makes the path again. Options at their defaults leave the key as it was, so no older operation is made again.
      - On another strategy the options are kept but not used, and the inspector does not show them (OI-637). A strategy that does not take them refuses a region that sets any (item 6), but the application never builds one for it.
 
-4. **Avoid and check sets cut the pass short (OI-632 part a, the lane's recommendation, awaiting the owner).** This is what the default choice of item 3, Cut short, does.
+4. **Avoid and check sets cut the pass short (OI-632 part a, the owner's decision 3a).** This is what the default choice of item 3, Cut short, does.
    - **How each surface is measured.** Each avoid or check surface is sampled, and the tool is measured against every sample, as the gate measures the cut face. This uses the same tool body: the revolved profile continued upward at the cutting radius.
    - **When a tool position breaks a surface.** A position breaks an avoid surface when the tool cuts into it deeper than the operation's tolerance. It breaks a check surface when it comes closer than the stock to leave, less the tolerance. A check surface therefore keeps the operation's stock to leave clear, as the cut face does, and is stricter than an avoid surface whenever there is stock to leave. With none, the two behave alike for swarf, since a flank that touches is a flank that cuts. The tolerance's slack lets a flank meet a neighbouring face along their shared edge, for example a floor at the foot of a wall.
    - **What is left out.** Every pose, and every point of the machine's motion between poses that the gate looks at, is tested.
@@ -119,7 +117,7 @@ Requirements: OP-02 (selections, boundary, avoid, check), OP-07 (swarf), OP-12 (
    - **What the note says.** The face's note gives the length along the face left uncut because of each kind of surface.
    - **A face with nothing left.** It is refused, naming it and why: "the tool would cut into the avoid surfaces wherever it cuts it, so nothing of it is left to cut".
    - **The other choices.** Keeping the path and warning (as decision 0175 does for an overcut) is not the default: the user marked these faces as protected. It is the Warn only choice of item 3, for a user who wants it. Refusing the whole face when any position breaks a set was not chosen: a wall that meets a check face at one end could never be cut.
-5. **Face sets only (OI-632 part b, the lane's recommendation, awaiting the owner).** An avoid or check set on a STEP part is a face set, measured against the exact faces. A triangle set cannot be made on a STEP part today: decision 0111 item 2 picks triangles only on a mesh, and a set must be on the setup's part. Allowing mesh sets would mean picking triangles of a STEP part's tessellation, and they would be only as accurate as that tessellation. That is OI-634, for a later lane. Workholding needs no check set: the held region and tabs are kept clear by SET-09 (decision 0161) for every strategy, swarf included.
+5. **Face sets only, for now (OI-632 part b, the owner's decision 3b).** An avoid or check set on a STEP part is a face set, measured against the exact faces. A triangle set cannot be made on a STEP part today: decision 0111 item 2 picks triangles only on a mesh, and a set must be on the setup's part. Allowing mesh sets would mean picking triangles of a STEP part's tessellation, and they would be only as accurate as that tessellation. That is OI-634, for a later lane. Workholding needs no check set: the held region and tabs are kept clear by SET-09 (decision 0161) for every strategy, swarf included.
 6. **How the library takes the limits (OP-16).**
    - **The strategy.** Swarf now honours a region (`honours_region` is true) and its restriction options (`honours_restriction_options` is true). It takes the `RegionConstraint` of decision 0032 through `generate_in_region`:
      - its `boundary` is the window, and its new `boundary_limits` (a new `BoundaryLimits`, `pass` and `tip`, both true by default) say how it limits swarf;
@@ -168,7 +166,7 @@ Requirements: OP-02 (selections, boundary, avoid, check), OP-07 (swarf), OP-12 (
 
 ## Open items
 
-- **OI-632** (open): the owner's decision 3, for items 4 and 5.
+- **OI-632** (closed): the owner's decisions 3a and 3b, items 4 and 5.
 - **OI-634** (new): mesh avoid and check sets on a STEP part, which need triangle picking on its tessellation.
 - **OI-635** (closed): limits A and B are settings, per boundary set in the Geometry section (the owner's answer, item 3).
 - **OI-637** (new): whether the other strategies take options on their boundary, avoid and check sets, and what each means for them.
