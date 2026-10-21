@@ -29,7 +29,8 @@ pub fn commit_from_output(output: &str) -> Option<String> {
     (digits && hash.bytes().all(|b| b.is_ascii_hexdigit())).then(|| hash.to_ascii_lowercase())
 }
 
-/// The tree has uncommitted changes when `git status --porcelain` lists anything.
+/// The tree has uncommitted changes when `git status --porcelain --untracked-files=no` lists
+/// anything: a changed, staged, removed or renamed tracked file (decision 0191).
 pub fn dirty_from_status(porcelain: &str) -> bool {
     !porcelain.trim().is_empty()
 }
@@ -41,7 +42,7 @@ pub fn commit(git: &str, dir: &Path) -> Option<String> {
 
 /// Whether the tree at `dir` has uncommitted changes, or `None` when that cannot be told.
 pub fn dirty(git: &str, dir: &Path) -> Option<bool> {
-    run(git, dir, &["status", "--porcelain"]).map(|s| dirty_from_status(&s))
+    run(git, dir, &["status", "--porcelain", "--untracked-files=no"]).map(|s| dirty_from_status(&s))
 }
 
 /// The first line of `rustc --version`.

@@ -1,4 +1,6 @@
 /target
+# The cached OpenCASCADE install the CI restores into the checkout (.github/actions/occt).
+/occt-install
 /fuzz/target
 /fuzz/corpus
 /fuzz/artifacts
