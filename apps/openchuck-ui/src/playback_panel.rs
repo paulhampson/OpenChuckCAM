@@ -141,10 +141,11 @@ pub fn tool_scene(meshes: &ToolMeshes) -> Scene {
 /// What a drag on the playback window's strip moves.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum WindowDrag {
-    /// The start.
-    First,
-    /// The end.
-    Last,
+    /// An end, the other held at the strip boundary `fixed` (moves done):
+    /// the start's boundary when the end is dragged, the boundary after the
+    /// last move when the start is. Held for the whole drag, so an end
+    /// dragged past the other keeps its distance from the right one.
+    End { fixed: usize },
     /// The whole window, held this many moves from its start.
     Body(isize),
 }
@@ -153,7 +154,8 @@ enum WindowDrag {
 const HANDLE_REACH: f32 = 6.0;
 
 /// The window `drag` makes on a strip of `moves` moves when the pointer is
-/// over move `at` (issue 205). Dragging an end past the other swaps them;
+/// at boundary `at`, the number of moves done there (issue 205). An end
+/// takes the moves between the held boundary and the pointer, at least one;
 /// dragging the body keeps its length.
 fn dragged_window(
     window: Option<MoveWindow>,
@@ -162,21 +164,21 @@ fn dragged_window(
     moves: usize,
 ) -> Option<MoveWindow> {
     let last_move = moves.checked_sub(1)?;
-    let at = at.min(last_move);
     let w = window.unwrap_or(MoveWindow {
         first: 0,
         last: last_move,
     });
     Some(match drag {
-        WindowDrag::First => MoveWindow {
-            first: at.min(w.last),
-            last: at.max(w.last),
-        },
-        WindowDrag::Last => MoveWindow {
-            first: at.min(w.first),
-            last: at.max(w.first),
-        },
+        WindowDrag::End { fixed } => {
+            let first = fixed.min(at).min(last_move);
+            let end = fixed.max(at).clamp(first + 1, moves);
+            MoveWindow {
+                first,
+                last: end - 1,
+            }
+        }
         WindowDrag::Body(offset) => {
+            let at = at.min(last_move);
             let length = w.last - w.first;
             let first = at.saturating_add_signed(-offset).min(last_move - length);
             MoveWindow {
@@ -1068,33 +1070,25 @@ impl PlaybackPanel {
                 .or_else(|| response.interact_pointer_pos())
         {
             self.window_drag = Some(if (pos.x - band.left()).abs() <= HANDLE_REACH {
-                WindowDrag::First
+                WindowDrag::End { fixed: end }
             } else if (pos.x - band.right()).abs() <= HANDLE_REACH {
-                WindowDrag::Last
+                WindowDrag::End { fixed: first }
             } else if band.x_range().contains(pos.x) && window.is_some() {
                 WindowDrag::Body(at(pos) as isize - first as isize)
             } else {
                 // A new window from here, made by dragging its end.
+                let fixed = at(pos);
                 self.playback.set_window(
                     timeline,
-                    Some(MoveWindow {
-                        first: at(pos),
-                        last: at(pos),
-                    }),
+                    dragged_window(None, WindowDrag::End { fixed }, fixed, moves),
                 );
-                WindowDrag::Last
+                WindowDrag::End { fixed }
             });
         }
         if response.dragged()
             && let (Some(drag), Some(pos)) = (self.window_drag, response.interact_pointer_pos())
         {
-            // The band's right edge is the boundary after the last move,
-            // so the move under it is the one before.
-            let point = match drag {
-                WindowDrag::Last => at(pos).saturating_sub(1),
-                _ => at(pos),
-            };
-            let next = dragged_window(self.playback.window(), drag, point, moves);
+            let next = dragged_window(self.playback.window(), drag, at(pos), moves);
             self.playback.set_window(timeline, next);
             self.window_numbers();
         }
@@ -1855,32 +1849,47 @@ mod tests {
 
     #[test]
     fn req_sim_04_dragging_the_window_moves_and_resizes_it() {
+        // Moves 10 to 20: the boundaries 10 and 21 on the strip.
         let w = Some(MoveWindow {
             first: 10,
             last: 20,
         });
         let drag = |d, at| dragged_window(w, d, at, 100);
+        // The start, held at the end's boundary 21.
+        let start = WindowDrag::End { fixed: 21 };
+        assert_eq!(drag(start, 5), Some(MoveWindow { first: 5, last: 20 }));
+        // Past the end, the held boundary becomes the start.
         assert_eq!(
-            drag(WindowDrag::First, 5),
-            Some(MoveWindow { first: 5, last: 20 })
-        );
-        assert_eq!(
-            drag(WindowDrag::First, 30),
+            drag(start, 30),
             Some(MoveWindow {
-                first: 20,
-                last: 30
+                first: 21,
+                last: 29
             })
         );
+        // The end, held at the start's boundary 10.
+        let end = WindowDrag::End { fixed: 10 };
         assert_eq!(
-            drag(WindowDrag::Last, 50),
+            drag(end, 51),
             Some(MoveWindow {
                 first: 10,
                 last: 50
             })
         );
+        assert_eq!(drag(end, 2), Some(MoveWindow { first: 2, last: 9 }));
+        // Back over the held boundary, the window keeps one move.
         assert_eq!(
-            drag(WindowDrag::Last, 2),
-            Some(MoveWindow { first: 2, last: 10 })
+            drag(end, 10),
+            Some(MoveWindow {
+                first: 10,
+                last: 10
+            })
+        );
+        // The held boundary stays held after a crossing: a later move of the
+        // pointer is measured from it, not from the window's new start.
+        let crossed = dragged_window(w, end, 4, 100);
+        assert_eq!(
+            dragged_window(crossed, end, 3, 100),
+            Some(MoveWindow { first: 3, last: 9 })
         );
         // The body keeps its length and stays inside the program.
         assert_eq!(
@@ -1908,12 +1917,19 @@ mod tests {
             drag(WindowDrag::Body(3), 0),
             Some(MoveWindow { first: 0, last: 10 })
         );
-        // No window yet: the ends start at the program's.
+        // The ends stay inside the program.
         assert_eq!(
-            dragged_window(None, WindowDrag::Last, 40, 100),
-            Some(MoveWindow { first: 0, last: 40 })
+            dragged_window(None, WindowDrag::End { fixed: 0 }, 400, 100),
+            Some(MoveWindow { first: 0, last: 99 })
         );
-        assert_eq!(dragged_window(w, WindowDrag::Last, 4, 0), None);
+        assert_eq!(
+            dragged_window(None, WindowDrag::End { fixed: 100 }, 100, 100),
+            Some(MoveWindow {
+                first: 99,
+                last: 99
+            })
+        );
+        assert_eq!(dragged_window(w, end, 4, 0), None);
     }
 
     #[test]
@@ -2066,6 +2082,17 @@ mod tests {
             "{longer:?}"
         );
         let resized = longer;
+        // A new window dragged leftwards, from 95% to 80% (outside the band),
+        // covers the moves between the two boundaries.
+        drag(&mut panel, x(0.95), x(0.8));
+        let leftwards = panel.window().unwrap();
+        assert_eq!(
+            (leftwards.first, leftwards.last),
+            (at(0.8), at(0.95) - 1),
+            "{leftwards:?}"
+        );
+        let data = panel.data.as_ref().unwrap();
+        panel.playback.set_window(&data.timeline, Some(resized));
         // The band dragged right keeps its length.
         let middle = x((resized.first + resized.last) as f32 / 2.0 / moves as f32);
         drag(&mut panel, middle, middle + width * 0.1);
