@@ -619,3 +619,34 @@ fn req_nfr_15_export_warning_names_machine_values_in_plain_words() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_gc_12_req_gc_07_a_rename_is_posted_without_regenerating_and_is_deterministic() {
+    // Issue 209 (decision 0172): the operation name is a comment in the
+    // G-code (GC-12) but not an input to the toolpath, so a rename makes the
+    // next run reuse every path and post again with the new name. The same
+    // project always gives the same bytes (GC-07, NFR-06).
+    let (dir, mut app) = project("rename-post", false);
+    let before = post(&mut app, OutputGrouping::Setup);
+    assert!(before.gcode[0].1.contains("Finish B"));
+
+    let id = app.project().operations()[1].id;
+    let mut renamed = app.project().operation(id).unwrap().clone();
+    assert_eq!(renamed.name, "Finish B");
+    renamed.name = "Finish the barrel".into();
+    app.execute(Command::Replace(Item::Operation(renamed)))
+        .unwrap();
+
+    // The export check is satisfied by the old run: the toolpath is current.
+    let checks = app.export_checks(Some(&before), None, None);
+    assert!(checks.can_write(), "{:?}", blockers(&checks));
+
+    let after = app.regenerate().unwrap();
+    assert!(after.generated.is_empty(), "no toolpath was regenerated");
+    assert_eq!(after.reused.len(), before.groups.len());
+    assert_eq!(after.toolpath, before.toolpath);
+    let text = &after.gcode[0].1;
+    assert!(text.contains("Finish the barrel") && !text.contains("Finish B"));
+    assert_eq!(app.regenerate().unwrap().gcode, after.gcode);
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -97,6 +97,11 @@ pub struct SetupRow {
     pub range: Option<&'static str>,
 }
 
+/// What a value taken from the machine is called wherever the interface shows
+/// where it comes from (issue 189): one wording, so the same words appear in
+/// the hint, the tooltips and the messages.
+pub const MACHINE_SETTING: &str = "Machine setting";
+
 fn mm(v: f64) -> String {
     format!("{v:.3}")
 }
@@ -223,11 +228,11 @@ pub fn part_position_rows(setup: &Setup) -> Vec<SetupRow> {
 
 /// The rows of the Work offset and clearance section (SET-05, SET-06): the
 /// work zero along X, the safe radius and the safe Z. A clearance the setup
-/// does not set is the machine's, given as the hint.
+/// does not set is the Machine setting, given as the hint (issue 189).
 pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<SetupRow> {
     let own = setup.clearance;
     let from_machine = machine.map(|m| m.clearance);
-    let hint = |v: Option<f64>| v.map(|v| format!("{} \u{b7} the machine's", mm(v)));
+    let hint = |v: Option<f64>| v.map(|v| format!("{} \u{b7} {MACHINE_SETTING}", mm(v)));
     vec![
         row(
             SetupField::WorkZeroX,
@@ -242,7 +247,7 @@ pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<Se
                 SetupField::SafeRadius,
                 "Safe radius",
                 "The radius of the safe cylinder about the rotary axis that links keep \
-                 outside. Empty uses the machine's clearance.",
+                 outside. Empty uses the Machine setting.",
                 own.map(|c| c.radius.0),
                 Some("above 0 mm"),
             )
@@ -252,7 +257,7 @@ pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<Se
             ..row(
                 SetupField::SafeZ,
                 "Safe Z",
-                "The safe height above the rotary axis. Empty uses the machine's clearance.",
+                "The safe height above the rotary axis. Empty uses the Machine setting.",
                 own.map(|c| c.safe_z.0),
                 Some("at least the safe radius"),
             )
@@ -532,7 +537,18 @@ mod tests {
             .unwrap();
         let rows = clearance_rows(&s, Some(&z1));
         assert!(rows[1].value.is_empty());
-        assert!(rows[1].hint.as_deref().unwrap().ends_with("the machine's"));
+        assert!(rows[1].hint.as_deref().unwrap().ends_with(MACHINE_SETTING));
+        // Issue 189: every row that falls back to the machine says "Machine
+        // setting", in the hint and in the tooltip, never "the machine's".
+        for row in &rows[1..] {
+            assert!(row.hint.as_deref().unwrap().ends_with(MACHINE_SETTING));
+            assert!(
+                row.description.contains(MACHINE_SETTING),
+                "{}",
+                row.description
+            );
+            assert!(!row.description.contains("the machine's"));
+        }
         let own = apply(&s, Some(&z1), SetupField::SafeRadius, "18").unwrap();
         let c = own.clearance.unwrap();
         assert_eq!(c.radius, Millimetres(18.0));
