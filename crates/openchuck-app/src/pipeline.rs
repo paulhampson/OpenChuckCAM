@@ -90,6 +90,11 @@ pub struct Regeneration {
     /// Operations whose toolpath came from the cache because nothing it
     /// depends on, including the operations before it, changed.
     pub reused: Vec<OperationId>,
+    /// Operations whose moves were run through their setup's stock
+    /// simulation in this run. An operation's stock is simulated when a later
+    /// operation of its setup is made on it (SIM-06) or a simulation is asked
+    /// for, unless the cache holds the stock it leaves (decision record 0190).
+    pub simulated: Vec<OperationId>,
     /// The operation the run stopped after, when it was asked to generate up
     /// to and including one operation ("generate selected", specification
     /// section 16; decision record 0117, OI-351). The enabled operations after
@@ -150,7 +155,10 @@ pub(crate) fn regenerate(
         stopped_after: until,
         ..Regeneration::default()
     };
-    let mut setups: Vec<SetupState> = Vec::new();
+    // Each setup's simulation so far. It is shared with the cache, which keeps
+    // it as the stock an operation leaves, and copied only when the run
+    // simulates on from a state the cache holds (decision record 0190).
+    let mut setups: Vec<Arc<SetupState>> = Vec::new();
     // Disabled operations keep their cached results, so enabling one again
     // can reuse them; only removed operations are dropped.
     let ids: Vec<OperationId> = project.operations().iter().map(|o| o.id).collect();
@@ -168,10 +176,6 @@ pub(crate) fn regenerate(
         context.check_cancelled()?;
         // A failure from here to the next operation is this operation's.
         record.working_on(Some(operation.id));
-        let carried = setups
-            .iter()
-            .find(|s| s.id == operation.setup)
-            .map(|s| s.stock() as &dyn StockModel);
         // The key chains from the operations before, which fixes the stock
         // they leave (SIM-06), so a hit is valid on carried stock too.
         let key = if caching {
@@ -181,10 +185,16 @@ pub(crate) fn regenerate(
         } else {
             None
         };
-        let path = if let Some(hit) = key.and_then(|k| cache.get(operation.id, k)) {
+        let (path, cached_stock) = if let Some(hit) = key.and_then(|k| cache.get(operation.id, k)) {
             regeneration.reused.push(operation.id);
-            hit
+            (hit.path, hit.stock)
         } else {
+            // Only an operation that is made, or simulated, shows as running.
+            record.busy();
+            let carried = setups
+                .iter()
+                .find(|s| s.id == operation.setup)
+                .map(|s| s.stock() as &dyn StockModel);
             let made = Arc::new(crate::operation::generate_operation_on(
                 location,
                 project,
@@ -199,7 +209,7 @@ pub(crate) fn regenerate(
                 cache.put(operation.id, key, Arc::clone(&made), generation);
             }
             regeneration.generated.push(operation.id);
-            made
+            (made, None)
         };
         previous = key;
         for note in &path.notes {
@@ -213,29 +223,58 @@ pub(crate) fn regenerate(
             .iter()
             .any(|o| o.setup == operation.setup);
         if simulate || followed {
-            let index = match setups.iter().position(|s| s.id == operation.setup) {
-                Some(index) => index,
-                None => {
-                    let (setup, stock, machine) = setup_parts(project, operation)?;
-                    setups.push(SetupState::new(
-                        setup.id,
-                        &setup.name,
-                        stock,
-                        path.part_bounds,
-                        machine,
-                        settings,
-                    )?);
-                    setups.len() - 1
+            let mut index = setups.iter().position(|s| s.id == operation.setup);
+            if let Some(stock) = cached_stock {
+                // The stock this operation leaves is cached under its key,
+                // which fixes everything simulated before it in the setup.
+                match index.and_then(|at| setups.get_mut(at)) {
+                    Some(slot) => *slot = stock,
+                    None => {
+                        setups.push(stock);
+                        index = Some(setups.len() - 1);
+                    }
                 }
-            };
-            if let Some(state) = setups.get_mut(index) {
-                let result = state.run(&operation.name, &path.group, &path.tool, context)?;
-                for cut in result.rapid_cuts {
-                    regeneration.notes.push(format!(
-                        "operation '{}': move {} is a rapid that removes {:.3} mm3 of material",
-                        operation.name, cut.segment, cut.volume
-                    ));
+            } else {
+                record.busy();
+                let at = match index {
+                    Some(at) => at,
+                    None => {
+                        let (setup, stock, machine) = setup_parts(project, operation)?;
+                        setups.push(Arc::new(SetupState::new(
+                            setup.id,
+                            &setup.name,
+                            stock,
+                            path.part_bounds,
+                            machine,
+                            settings,
+                        )?));
+                        setups.len() - 1
+                    }
+                };
+                index = Some(at);
+                if let Some(state) = setups.get_mut(at) {
+                    Arc::make_mut(state).run(
+                        operation.id,
+                        &operation.name,
+                        &path.group,
+                        &path.tool,
+                        context,
+                    )?;
+                    regeneration.simulated.push(operation.id);
+                    if let Some(key) = key {
+                        cache.put_stock(operation.id, key, Arc::clone(state), generation);
+                    }
                 }
+            }
+            let cuts = index
+                .and_then(|at| setups.get(at))
+                .map(|s| s.last_rapid_cuts())
+                .unwrap_or_default();
+            for cut in cuts {
+                regeneration.notes.push(format!(
+                    "operation '{}': move {} is a rapid that removes {:.3} mm3 of material",
+                    operation.name, cut.segment, cut.volume
+                ));
             }
         }
         regeneration.toolpath.groups.push(path.group.clone());
@@ -256,6 +295,8 @@ pub(crate) fn regenerate(
         };
         for state in setups {
             context.check_cancelled()?;
+            let mut state = Arc::unwrap_or_clone(state);
+            state.rename(project);
             let setup = project.setup(state.id);
             let part = setup
                 .and_then(|s| s.part)

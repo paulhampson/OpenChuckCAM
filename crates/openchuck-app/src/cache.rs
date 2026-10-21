@@ -7,7 +7,12 @@
 //! operation's generation reads, the engine version, and the previous
 //! operation's key. Chaining the keys makes editing operation N change the
 //! key of N and of every later operation, and of none before it, so exactly
-//! those are regenerated. The cache lives in memory and is never written to
+//! those are regenerated. With a result the cache keeps the stock the
+//! operation leaves in its setup's simulation, once a run has simulated it,
+//! so an operation taken from the cache is not run through the stock again
+//! (decision record 0190; issue 239). The key fixes that stock too: it
+//! chains every operation before, and covers the setup, the machine and the
+//! simulation settings. The cache lives in memory and is never written to
 //! the project (PRJ-03).
 
 use std::collections::BTreeMap;
@@ -19,6 +24,7 @@ use openchuck_project::{ContentHash, ModelRef, Operation, OrderKey, Project};
 
 use crate::AppError;
 use crate::operation::OperationPath;
+use crate::simulation::SetupState;
 
 /// The engine version that goes into every key, so a new build never reuses
 /// results from an older one.
@@ -33,8 +39,17 @@ pub(crate) type Key = ContentHash;
 /// toolpath is held at most three times.
 pub const DEFAULT_CACHE_VERSIONS: usize = 3;
 
+/// One cached result of an operation.
+#[derive(Debug, Clone)]
+pub(crate) struct Entry {
+    /// The operation's path.
+    pub(crate) path: Arc<OperationPath>,
+    /// Its setup's simulation just after it, once a run has simulated it.
+    pub(crate) stock: Option<Arc<SetupState>>,
+}
+
 /// Results of one operation, most recently used first.
-type Versions = Vec<(Key, Arc<OperationPath>)>;
+type Versions = Vec<(Key, Entry)>;
 
 /// The entries and the number kept, under one lock so that changing the
 /// number and storing a result cannot overtake each other.
@@ -89,7 +104,7 @@ impl PipelineCache {
 
     /// The result stored for `id` under `key`, now the most recently used.
     /// Nothing is returned while caching is off.
-    pub(crate) fn get(&self, id: OperationId, key: Key) -> Option<Arc<OperationPath>> {
+    pub(crate) fn get(&self, id: OperationId, key: Key) -> Option<Entry> {
         let mut state = self.lock();
         if state.versions == 0 {
             return None;
@@ -97,7 +112,7 @@ impl PipelineCache {
         let versions = state.entries.get_mut(&id)?;
         let at = versions.iter().position(|(k, _)| *k == key)?;
         let hit = versions.remove(at);
-        let value = Arc::clone(&hit.1);
+        let value = hit.1.clone();
         versions.insert(0, hit);
         Some(value)
     }
@@ -124,8 +139,41 @@ impl PipelineCache {
         }
         let versions = state.entries.entry(id).or_default();
         versions.retain(|(k, _)| *k != key);
-        versions.insert(0, (key, value));
+        versions.insert(
+            0,
+            (
+                key,
+                Entry {
+                    path: value,
+                    stock: None,
+                },
+            ),
+        );
         versions.truncate(keep);
+    }
+
+    /// Keeps `stock`, the setup's simulation just after the operation, with
+    /// the result stored for `id` under `key`. Nothing is kept if there is no
+    /// such result (it was not cached, or has been dropped since) or the cache
+    /// was cleared since `generation` was read.
+    pub(crate) fn put_stock(
+        &self,
+        id: OperationId,
+        key: Key,
+        stock: Arc<SetupState>,
+        generation: u64,
+    ) {
+        let mut state = self.lock();
+        if state.versions == 0 || state.generation != generation {
+            return;
+        }
+        if let Some((_, entry)) = state
+            .entries
+            .get_mut(&id)
+            .and_then(|versions| versions.iter_mut().find(|(k, _)| *k == key))
+        {
+            entry.stock = Some(stock);
+        }
     }
 
     /// Drops results of operations that are not in `keep`.

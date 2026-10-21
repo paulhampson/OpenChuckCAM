@@ -724,3 +724,26 @@ fn req_sim_06_a_simulator_without_checkpoints_keeps_no_copies() {
     assert_eq!(full.checkpoints().len(), 3);
     assert_eq!(lean.into_stock().state_hash(), full.stock().state_hash());
 }
+
+#[test]
+fn req_nfr_06_a_shrunk_stock_holds_the_same_material_and_memory_as_a_copy() {
+    // The memory a stock reports follows its vectors' capacities, so the
+    // same stock reached by cutting or by copying a cut one (the pipeline
+    // cache, decision record 0190) reports the same only once shrunk.
+    let m = machine();
+    let profile = ball(4.0);
+    let poses = turning_poses(&m, &Cyl(10.0), 2.0, (-4.0, 4.0), 1.0, 10.0);
+    let g = group("op", &poses, MoveKind::Cutting);
+    let stock = DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let (sim, _) = run(stock, &[(&g, &profile)]);
+    let mut cut = sim.into_stock();
+    let copy = cut.clone();
+    let before = cut.state_hash();
+    cut.shrink_to_fit();
+    assert_eq!(cut.state_hash(), before);
+    assert_eq!(cut, copy);
+    assert_eq!(cut.memory_bytes(), copy.memory_bytes());
+    let mut again = copy.clone();
+    again.shrink_to_fit();
+    assert_eq!(again.memory_bytes(), copy.memory_bytes());
+}

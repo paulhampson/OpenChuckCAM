@@ -342,6 +342,16 @@ impl DexelStock {
         v * self.cx * self.cy
     }
 
+    /// Releases the capacity the columns hold beyond their material, so the
+    /// stock holds, and [`DexelStock::memory_bytes`] reports, the same as a
+    /// copy of it, however it was cut. The material is unchanged.
+    pub fn shrink_to_fit(&mut self) {
+        for column in &mut self.cols {
+            column.shrink_to_fit();
+        }
+        self.cols.shrink_to_fit();
+    }
+
     /// Bytes held by the stock, an estimate from the vectors' capacities.
     pub fn memory_bytes(&self) -> usize {
         self.cols

@@ -757,6 +757,9 @@ struct RecordState {
     exported: BTreeMap<OperationId, Key>,
     failure: Option<Failure>,
     current: Option<OperationId>,
+    /// Whether `current` is being made or simulated, not only taken from the
+    /// cache: only then is it shown running (issue 239).
+    busy: bool,
 }
 
 /// What an operation was made from: its keys, and the own keys of the
@@ -781,9 +784,20 @@ impl GenerationRecord {
         self.0.lock().ok().map(|mut state| f(&mut state))
     }
 
-    /// The pipeline is generating `operation` now, or none.
+    /// The pipeline has reached `operation`, or none. A failure from now on
+    /// is its own; it shows running once [`GenerationRecord::busy`] says it
+    /// is being made or simulated.
     pub(crate) fn working_on(&self, operation: Option<OperationId>) {
-        self.with(|s| s.current = operation);
+        self.with(|s| {
+            s.current = operation;
+            s.busy = false;
+        });
+    }
+
+    /// The operation reached is being made or simulated, not only taken from
+    /// the cache.
+    pub(crate) fn busy(&self) {
+        self.with(|s| s.busy = true);
     }
 
     /// A pipeline run on `project` succeeded with `run`. Only the operations
@@ -1353,7 +1367,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             };
             ItemStatus::new(ItemState::Stale, cause)
         };
-        if record.current == Some(o.id) && running_pipeline.is_some() {
+        if record.current == Some(o.id) && record.busy && running_pipeline.is_some() {
             status = ItemStatus::new(ItemState::Running, "generating");
             status.progress = running_pipeline.and_then(|e| e.fraction());
         }

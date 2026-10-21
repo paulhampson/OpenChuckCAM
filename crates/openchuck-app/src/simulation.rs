@@ -9,7 +9,8 @@
 //! for. The first operation of a setup is generated against the setup's
 //! stock definition itself, which is exact.
 
-use openchuck_project::id::SetupId;
+use openchuck_project::Project;
+use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
     Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_cancellable,
 };
@@ -73,13 +74,20 @@ pub struct SimulationReport {
 }
 
 /// One setup's simulator while the pipeline runs. It keeps no checkpoints:
-/// the pipeline needs only the stock each operation leaves.
+/// the pipeline needs only the stock each operation leaves. A copy of it after
+/// an operation is what the pipeline cache keeps as the stock that operation
+/// leaves (decision record 0190).
+#[derive(Clone)]
 pub(crate) struct SetupState {
     pub(crate) id: SetupId,
     simulator: Simulator,
     name: String,
     initial_volume: f64,
     operations: Vec<OperationSimulation>,
+    /// The operation each entry of `operations` simulated: names are not
+    /// cache inputs, so a state taken from the cache is named again from the
+    /// project it is reported in.
+    operation_ids: Vec<OperationId>,
 }
 
 impl std::fmt::Debug for SetupState {
@@ -108,6 +116,7 @@ impl SetupState {
             simulator: Simulator::without_checkpoints(stock, machine),
             name: name.to_owned(),
             operations: Vec::new(),
+            operation_ids: Vec::new(),
         })
     }
 
@@ -119,12 +128,14 @@ impl SetupState {
     /// Simulates an operation's moves.
     pub(crate) fn run(
         &mut self,
+        id: OperationId,
         operation: &str,
         group: &ToolpathGroup,
         tool: &RevolvedProfile,
         context: &JobContext<'_>,
     ) -> Result<GroupResult, AppError> {
         let result = self.simulator.run_group(group, tool, context)?;
+        self.operation_ids.push(id);
         self.operations.push(OperationSimulation {
             operation: operation.to_owned(),
             moves: result.moves,
@@ -135,6 +146,27 @@ impl SetupState {
         Ok(result)
     }
 
+    /// The rapid moves that removed material in the last operation simulated.
+    pub(crate) fn last_rapid_cuts(&self) -> &[RapidCut] {
+        self.operations
+            .last()
+            .map_or(&[], |o| o.rapid_cuts.as_slice())
+    }
+
+    /// Takes the setup's and its operations' names from `project`, for a
+    /// state that came from the cache (names are not cache inputs, issue 209).
+    /// A name the project no longer has is left as it was.
+    pub(crate) fn rename(&mut self, project: &Project) {
+        if let Some(setup) = project.setup(self.id) {
+            self.name.clone_from(&setup.name);
+        }
+        for (simulated, id) in self.operations.iter_mut().zip(&self.operation_ids) {
+            if let Some(operation) = project.operation(*id) {
+                simulated.operation.clone_from(&operation.name);
+            }
+        }
+    }
+
     /// Finishes the setup's report, comparing the stock with `part` when
     /// given. The stock moves into the report; nothing is copied.
     pub(crate) fn finish(
@@ -143,7 +175,11 @@ impl SetupState {
         settings: SimulationSettings,
         context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<SetupSimulation, AppError> {
-        let stock = self.simulator.into_stock();
+        let mut stock = self.simulator.into_stock();
+        // The report holds the stock; without the slack cutting left, it holds
+        // and reports the same memory whether the stock was simulated in this
+        // run or copied from the cache (NFR-06; decision record 0190).
+        stock.shrink_to_fit();
         let deviation = match part {
             Some(mesh) => Some(compare_cancellable(
                 &stock,
