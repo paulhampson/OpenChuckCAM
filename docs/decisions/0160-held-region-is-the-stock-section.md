@@ -2,7 +2,7 @@
 
 - **Status:** proposed (lane BUG-HELD, 20 Oct 2026). The project owner gave the rule and agreed the SET-09 wording on 20 Oct 2026, relayed by the coordinator session as owner decision 1 of 2 (decision 0049). The owner accepts the record, and the edit to `docs/requirements.md`, directly in the lane BUG-HELD session. Until then the requirement text is not edited. The code on `claude/lane-bug-held-region` builds the rule. It amends [decision 0045](0045-slice-21c-wiring.md) item 2 and refines [decision 0035](0035-workholding-and-retaining-tabs.md) item 1.
 - **Date:** 20 Oct 2026.
-- **Open items:** closes OI-195 on acceptance. New: OI-550 and OI-551.
+- **Open items:** closes OI-195 on acceptance. New: OI-550, OI-551 and OI-554.
 
 Numbering: the coordinator assigned records 0160 and 0161 and OI-550 to OI-559 to lane BUG-HELD. They were checked free on `main` and every remote branch on 20 Oct 2026. No project schema number: the file does not change.
 
@@ -49,3 +49,5 @@ The lane proposed three options for a holding diameter on box stock: not used (t
   - OI-195 closes when the owner accepts.
   - OI-550: the owner checks the fix on a nightly build.
   - OI-551: imported stock is held at its bounding box, not its own section.
+  - OI-554: a held region that reaches into the part is not warned about. The owner's answer of 21 Oct 2026 on #202 (the end was meant to be held) was checked on `blisk_bad_roughing`. The saved project has no end held region, and its tail tab fills the 0.825 mm of free stock at the end. With the tab removed, an end held region of 0.8 mm or 5 mm is saved, kept out of and kept in the simulation exactly like the start, at both ends together. A 5 mm one silently covers 4.175 mm of the part.
+- `openchuck-cli` `report` and `setup` name a held region with no diameter on stock that is not round as "the stock's outline", not "the stock's diameter".

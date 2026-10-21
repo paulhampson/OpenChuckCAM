@@ -975,6 +975,51 @@ fn req_set_09_req_op_21_cli_reports_the_end_region_and_tabs_around_the_axis() {
 }
 
 #[test]
+fn req_set_09_cli_names_the_stock_outline_as_the_held_region_on_box_stock() {
+    // Without a holding diameter box stock is held at its own outline
+    // (decision 0160), and the summary says so rather than "diameter".
+    let project = empty_project("holding-box");
+    let p = project.to_str().unwrap();
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    std::fs::copy(corpus("cube_ascii.stl"), project.join("models/cube.stl")).unwrap();
+    let out = run(&args(&[
+        "import",
+        p,
+        project.join("models/cube.stl").to_str().unwrap(),
+    ]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&args(&["transform", p, "models/cube.stl", "centre"]));
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let out = run(&args(&[
+        "setup",
+        p,
+        "--new",
+        "Setup 1",
+        "--part",
+        "models/cube.stl",
+        "--stock",
+        "box=-25,-15,-15,25,15,15",
+        "--held-start",
+        "5",
+        "--held-end",
+        "4,20",
+    ]));
+    assert_eq!(out.code, Some(0), "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stdout
+            .contains("held at the start of the stock for 5 mm, the stock's outline"),
+        "{}",
+        out.stdout
+    );
+    assert!(
+        out.stdout
+            .contains("held at the end of the stock for 4 mm, diameter 20 mm"),
+        "{}",
+        out.stdout
+    );
+}
+
+#[test]
 fn req_set_09_req_op_21_cli_sets_held_regions_and_tabs() {
     let project = empty_project("holding-set");
     let p = project.to_str().unwrap();
