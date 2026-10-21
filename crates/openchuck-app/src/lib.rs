@@ -54,6 +54,8 @@ pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
 pub mod stockplay;
+#[cfg(test)]
+mod test_project;
 pub mod tool_edit;
 pub mod tool_library;
 pub mod tools;
@@ -871,6 +873,18 @@ impl Application {
     /// [`Application::start_regenerate_until`], waiting for the result.
     pub fn regenerate_until(&self, operation: OperationId) -> Result<Regeneration, AppError> {
         self.start_regenerate_until(operation).wait()
+    }
+
+    /// What the running pipeline job is doing, in the status bar's words: the
+    /// operation it is generating, or the operation whose simulation it is
+    /// running again because the stock it leaves is not cached (decision
+    /// record 0190). `None` while no operation is being worked on, including
+    /// while operations are only taken from the cache. The job's progress is
+    /// reported separately, on the event stream.
+    pub fn pipeline_activity(&self) -> Option<String> {
+        let (id, activity) = self.record.activity()?;
+        let name = self.project().operation(id).map_or("", |o| o.name.as_str());
+        Some(activity.text(name))
     }
 
     /// Starts regenerating and simulating every operation as a background

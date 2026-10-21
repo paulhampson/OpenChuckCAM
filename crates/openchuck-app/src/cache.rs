@@ -153,7 +153,10 @@ impl PipelineCache {
     }
 
     /// Keeps `stock`, the setup's simulation just after the operation, with
-    /// the result stored for `id` under `key`. Nothing is kept if there is no
+    /// the result stored for `id` under `key`, and drops the stock of every
+    /// other result of `id`: one stock is kept per operation, the latest, so
+    /// memory is bounded whatever the number of results kept (the owner's
+    /// choice B, decision record 0190 item 3). Nothing is kept if there is no
     /// such result (it was not cached, or has been dropped since) or the cache
     /// was cleared since `generation` was read.
     pub(crate) fn put_stock(
@@ -167,13 +170,27 @@ impl PipelineCache {
         if state.versions == 0 || state.generation != generation {
             return;
         }
-        if let Some((_, entry)) = state
-            .entries
-            .get_mut(&id)
-            .and_then(|versions| versions.iter_mut().find(|(k, _)| *k == key))
-        {
-            entry.stock = Some(stock);
+        let Some(versions) = state.entries.get_mut(&id) else {
+            return;
+        };
+        if !versions.iter().any(|(k, _)| *k == key) {
+            return;
         }
+        let mut stock = Some(stock);
+        for (k, entry) in versions.iter_mut() {
+            entry.stock = if *k == key { stock.take() } else { None };
+        }
+    }
+
+    /// How many stocks are kept, over all operations.
+    #[cfg(test)]
+    pub(crate) fn stocks_kept(&self) -> usize {
+        self.lock()
+            .entries
+            .values()
+            .flatten()
+            .filter(|(_, entry)| entry.stock.is_some())
+            .count()
     }
 
     /// Drops results of operations that are not in `keep`.
@@ -387,4 +404,98 @@ pub(crate) fn status_keys(project: &Project) -> Vec<(OperationId, StatusKey)> {
         keys.push((operation.id, StatusKey { chained, own }));
     }
     keys
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
+    use openchuck_path::params::ParameterKind;
+    use openchuck_project::ParameterValue;
+
+    use super::*;
+    use crate::Command;
+    use crate::test_project::TestProject;
+
+    /// A value of `kind` that differs from its default.
+    fn other_value(kind: &ParameterKind) -> ParameterValue {
+        match kind {
+            ParameterKind::Number { default, max, .. } => {
+                let value = default.map_or(1.25, |d| d + 0.125);
+                ParameterValue::Number(max.map_or(value, |m| value.min(m) * 0.5))
+            }
+            ParameterKind::Integer { min, max, default } => {
+                ParameterValue::Integer(if *default == Some(*max) { *min } else { *max })
+            }
+            ParameterKind::Flag { default } => ParameterValue::Flag(!default),
+            ParameterKind::Choice { options, default } => ParameterValue::Text(
+                options
+                    .iter()
+                    .find(|o| *o != default)
+                    .cloned()
+                    .unwrap_or_else(|| format!("{default} changed")),
+            ),
+            ParameterKind::AngleList { .. } => ParameterValue::Text("15, 30".into()),
+            other => panic!("give the sweep a value for {other:?}"),
+        }
+    }
+
+    #[test]
+    fn req_nfr_04_no_parameter_of_a_later_operation_reaches_an_earlier_operations_key() {
+        // Issue 239: the owner saw a parameter change on the operation after
+        // the roughing make the roughing again. Every parameter of every
+        // built-in strategy, set on the later operation, leaves the
+        // roughing's keys as they were and changes the later operation's.
+        let mut p = TestProject::new("key-sweep");
+        let rough = p.add_operation("Roughing", "rotary_roughing");
+        let later = p.add_operation("Finishing", "helical_finishing");
+        let keys = |app: &crate::Application| status_keys(app.project());
+        let before = keys(&p.app);
+        let rough_before = before.iter().find(|(id, _)| *id == rough).unwrap().1;
+        let strategies: Vec<(String, Vec<openchuck_path::ParameterSpec>)> = p
+            .app
+            .strategies()
+            .iter()
+            .map(|s| (s.name().to_owned(), s.schema().parameters))
+            .collect();
+        let mut swept = 0;
+        for (strategy, parameters) in strategies {
+            let mut operation = p.app.project().operation(later).unwrap().clone();
+            operation.strategy = strategy.clone();
+            operation.parameters.clear();
+            p.app
+                .execute(Command::Replace(openchuck_project::Item::Operation(
+                    operation,
+                )))
+                .unwrap();
+            for spec in parameters {
+                let previous = keys(&p.app);
+                p.app
+                    .execute(Command::SetParameter {
+                        operation: later,
+                        name: spec.name.clone(),
+                        value: Some(other_value(&spec.kind)),
+                    })
+                    .unwrap();
+                let after = keys(&p.app);
+                let find = |k: &[(OperationId, StatusKey)], id| {
+                    k.iter().find(|(o, _)| *o == id).map(|(_, k)| *k)
+                };
+                assert_eq!(
+                    find(&after, rough),
+                    Some(rough_before),
+                    "{strategy}: {}",
+                    spec.name
+                );
+                assert_ne!(
+                    find(&after, later),
+                    find(&previous, later),
+                    "{strategy}: {} is not an input of its own operation",
+                    spec.name
+                );
+                swept += 1;
+            }
+        }
+        assert!(swept > 20, "only {swept} parameters swept");
+    }
 }

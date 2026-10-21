@@ -185,12 +185,14 @@ pub(crate) fn regenerate(
         } else {
             None
         };
-        let (path, cached_stock) = if let Some(hit) = key.and_then(|k| cache.get(operation.id, k)) {
+        let hit = key.and_then(|k| cache.get(operation.id, k));
+        let cached_path = hit.is_some();
+        let (path, cached_stock) = if let Some(hit) = hit {
             regeneration.reused.push(operation.id);
             (hit.path, hit.stock)
         } else {
             // Only an operation that is made, or simulated, shows as running.
-            record.busy();
+            record.doing(crate::overview::PipelineActivity::Generating);
             let carried = setups
                 .iter()
                 .find(|s| s.id == operation.setup)
@@ -235,7 +237,11 @@ pub(crate) fn regenerate(
                     }
                 }
             } else {
-                record.busy();
+                if cached_path {
+                    // The path is reused, but the stock it leaves must be
+                    // worked out again; the status bar says so.
+                    record.doing(crate::overview::PipelineActivity::Resimulating);
+                }
                 let at = match index {
                     Some(at) => at,
                     None => {
@@ -334,4 +340,162 @@ pub(crate) fn regenerate(
         regeneration.notes.extend(notes);
     }
     Ok(regeneration)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+    use std::sync::Mutex;
+
+    use openchuck_path::{CutPoint, ParameterSchema, Parameters, Pass, Strategy, StrategyInput};
+    use openchuck_types::job::{CancelToken, Progress, ProgressSink};
+    use openchuck_types::units::{Degrees, Millimetres};
+
+    use super::*;
+    use crate::overview::{GenerationRecord, PipelineActivity};
+    use crate::test_project::TestProject;
+    use crate::{Application, Command};
+
+    /// One ring of cuts at model X = 0 (a test strategy, OP-16).
+    #[derive(Debug)]
+    struct OneRing;
+
+    impl Strategy for OneRing {
+        fn name(&self) -> &str {
+            "one_ring"
+        }
+        fn label(&self) -> &str {
+            "One ring"
+        }
+        fn schema(&self) -> ParameterSchema {
+            ParameterSchema::with_common(Vec::new())
+        }
+        fn passes(
+            &self,
+            input: &StrategyInput<'_>,
+            _: &Parameters,
+            _: &JobContext<'_>,
+        ) -> openchuck_path::Result<Vec<Pass>> {
+            let points = (0..=36)
+                .filter_map(|i| {
+                    let a = Degrees(10.0 * f64::from(i));
+                    let line = input
+                        .rotary
+                        .tool_line(Millimetres(0.0), a, Millimetres(0.0));
+                    let c = input.surface.drop_tool(input.tool, &line)?;
+                    Some(CutPoint {
+                        tip: c.tip,
+                        a,
+                        contact: c.contact,
+                    })
+                })
+                .collect();
+            Ok(vec![Pass {
+                points,
+                stock: None,
+                rapids: Vec::new(),
+            }])
+        }
+    }
+
+    /// Notes what the record says the run is doing each time the stock
+    /// simulation reports progress.
+    struct Spy {
+        record: Arc<GenerationRecord>,
+        seen: Mutex<Vec<(OperationId, PipelineActivity)>>,
+    }
+
+    impl ProgressSink for Spy {
+        fn report(&self, progress: Progress) {
+            if progress.stage == "simulate"
+                && let Some(activity) = self.record.activity()
+            {
+                self.seen.lock().unwrap().push(activity);
+            }
+        }
+    }
+
+    /// Runs the pipeline with a simulation, as the Simulate job does, and
+    /// returns the run with what the record said during the simulation.
+    fn simulate(app: &Application) -> (Regeneration, Vec<(OperationId, PipelineActivity)>) {
+        let spy = Spy {
+            record: Arc::clone(&app.record),
+            seen: Mutex::new(Vec::new()),
+        };
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &spy);
+        let run = regenerate(
+            app.location(),
+            app.project(),
+            &app.strategies,
+            None,
+            true,
+            &app.cache,
+            &app.record,
+            None,
+            &context,
+        )
+        .unwrap();
+        (run, spy.seen.into_inner().unwrap())
+    }
+
+    #[test]
+    fn req_nfr_04_req_ui_09_a_replayed_simulation_says_so_and_one_stock_is_kept_per_operation() {
+        // Decision record 0190, the owner's choice B: one stock is kept per
+        // operation, the latest. Going back to an earlier state reuses the
+        // paths, but their stock is worked out again, and the status bar
+        // says so; a reused operation is never said to be generating.
+        let mut p = TestProject::new("replay");
+        p.app.register_strategy(Arc::new(OneRing)).unwrap();
+        let ring = p.add_operation("Ring", "one_ring");
+        let next = p.add_operation("Ring again", "one_ring");
+        let ids = [ring, next];
+
+        let (first, seen) = simulate(&p.app);
+        assert_eq!(first.generated, ids);
+        assert_eq!(first.simulated, ids);
+        assert!(seen.contains(&(ring, PipelineActivity::Generating)));
+        assert_eq!(p.app.cache.stocks_kept(), 2);
+
+        // Nothing changed: no simulation runs, so nothing is said.
+        let (again, seen) = simulate(&p.app);
+        assert_eq!(again.reused, ids);
+        assert!(again.simulated.is_empty());
+        assert!(seen.is_empty(), "{seen:?}");
+
+        p.app
+            .execute(Command::SetParameter {
+                operation: ring,
+                name: openchuck_path::params::names::STOCK_TO_LEAVE.into(),
+                value: Some(openchuck_project::ParameterValue::Number(0.3)),
+            })
+            .unwrap();
+        let (edited, _) = simulate(&p.app);
+        assert_eq!(edited.generated, ids);
+        // Each operation keeps one stock, the latest, though it keeps three
+        // paths.
+        assert_eq!(p.app.cache.stocks_kept(), 2);
+
+        p.app.undo().unwrap();
+        let (back, seen) = simulate(&p.app);
+        assert!(back.generated.is_empty());
+        assert_eq!(back.reused, ids);
+        assert_eq!(back.simulated, ids);
+        assert!(
+            seen.contains(&(ring, PipelineActivity::Resimulating)),
+            "{seen:?}"
+        );
+        assert!(
+            !seen.iter().any(|(_, a)| *a == PipelineActivity::Generating),
+            "{seen:?}"
+        );
+        assert_eq!(p.app.cache.stocks_kept(), 2);
+        assert_eq!(
+            PipelineActivity::Resimulating.text("Ring"),
+            "Re-running the simulation for 'Ring'"
+        );
+        // Between runs, nothing is being done.
+        assert_eq!(p.app.pipeline_activity(), None);
+    }
 }

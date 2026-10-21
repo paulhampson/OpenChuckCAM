@@ -1066,7 +1066,7 @@ impl Shell {
             }
             ui.label("mm · deg").on_hover_text("Display units");
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                let running = self.run.running_text().or_else(|| {
+                let running = self.run.running_text(self.app.as_ref()).or_else(|| {
                     self.jobs.running().first().map(|e| {
                         let percent = e
                             .fraction()
