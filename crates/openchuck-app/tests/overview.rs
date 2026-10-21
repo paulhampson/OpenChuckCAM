@@ -1697,7 +1697,7 @@ fn req_nfr_12_req_ui_11_a_simulation_out_of_date_says_why() {
     // Issue 260: a simulation that no longer matches the project says so, in
     // plain words, with the same stale set the export check uses.
     use openchuck_app::simulation_out_of_date;
-    let (mut f, [_, two, three]) = three_operations("sim-why");
+    let (mut f, [one, two, three]) = three_operations("sim-why");
     let run = f.app.simulate().unwrap();
     assert_eq!(simulation_out_of_date(f.app.project(), &run), None);
 
@@ -1747,6 +1747,12 @@ fn req_nfr_12_req_ui_11_a_simulation_out_of_date_says_why() {
     assert_eq!(
         simulation_out_of_date(f.app.project(), &run).as_deref(),
         Some("Operation 'Second' was removed. 1 more operation is out of date too.")
+    );
+    f.app.undo().unwrap();
+    f.app.delete_operation(one).unwrap();
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &run).as_deref(),
+        Some("Operation 'First' was removed. 2 more operations are out of date too.")
     );
     f.app.undo().unwrap();
 
