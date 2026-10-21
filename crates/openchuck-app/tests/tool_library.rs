@@ -79,6 +79,7 @@ fn project_with_operation(tool: Option<ToolId>) -> Project {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: Default::default(),
         }),
         Placement::End,

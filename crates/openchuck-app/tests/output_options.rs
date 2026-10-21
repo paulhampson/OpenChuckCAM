@@ -81,6 +81,7 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         avoid: Vec::new(),
         check: Vec::new(),
         restriction_options: Default::default(),
+        spindle_speed: None,
         parameters,
     }
 }

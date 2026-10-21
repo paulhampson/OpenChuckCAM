@@ -10,7 +10,7 @@
 
 use openchuck_types::tool::{
     ControllerMapping, CuttingData, CuttingTable, ProfilePoint, ProfileSegment, Tool, ToolProfile,
-    ToolShape, validate_entry,
+    ToolShape, find_cutting_data, material_key, validate_entry,
 };
 use openchuck_types::units::{Degrees, FeedRate, Millimetres, SpindleSpeed};
 
@@ -501,4 +501,53 @@ fn req_tl_04_a_stated_centre_cutting_flag_overrides_the_shape() {
     );
     c.centre_cutting = Some(true);
     assert!(c.can_plunge());
+}
+
+fn sample_data() -> CuttingData {
+    CuttingData {
+        spindle_speed: SpindleSpeed(18000.0),
+        feed_per_tooth: Millimetres(0.05),
+        plunge_feed: FeedRate(500.0),
+        stepover: Millimetres(2.0),
+        stepdown: Millimetres(3.0),
+    }
+}
+
+#[test]
+fn req_tl_05_material_names_match_ignoring_case_and_repeated_spaces() {
+    assert_eq!(material_key("Soft  wood "), material_key("soft wood"));
+    assert_ne!(material_key("Softwood"), material_key("Soft wood"));
+    let mut table = CuttingTable::new();
+    table.insert("Softwood".into(), sample_data());
+    let (name, data) = find_cutting_data(&table, "softwood").unwrap();
+    assert_eq!((name, data.spindle_speed.0), ("Softwood", 18000.0));
+    assert!(find_cutting_data(&table, " SOFTWOOD ").is_some());
+    assert!(find_cutting_data(&table, "Hardwood").is_none());
+}
+
+#[test]
+fn req_tl_05_an_exact_name_wins_over_a_case_match() {
+    let mut table = CuttingTable::new();
+    let mut other = sample_data();
+    other.spindle_speed = SpindleSpeed(12000.0);
+    table.insert("oak".into(), sample_data());
+    table.insert("Oak".into(), other);
+    // Callers cannot hold both (validate_entry refuses it), but the lookup
+    // is still deterministic: the exact name first.
+    assert_eq!(
+        find_cutting_data(&table, "Oak").unwrap().1.spindle_speed.0,
+        12000.0
+    );
+}
+
+#[test]
+fn req_tl_05_two_entries_that_differ_only_by_case_are_refused() {
+    let t = tool(ToolShape::FlatEnd);
+    let mut table = CuttingTable::new();
+    table.insert("Oak".into(), sample_data());
+    table.insert("oak".into(), sample_data());
+    let err = validate_entry(&t, &ControllerMapping::numbered(3), &table)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Oak") && err.contains("oak"), "{err}");
 }
