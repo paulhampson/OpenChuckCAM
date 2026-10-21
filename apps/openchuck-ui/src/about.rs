@@ -93,12 +93,18 @@ pub struct Outcome {
 
 /// Draws the window's content. `build` is the build information (what Copy copies) and
 /// `licences` the licence box's text.
-pub fn show(ui: &mut egui::Ui, build: &str, licences: &str) -> Outcome {
+pub fn show(ui: &mut egui::Ui, build: &str, licences: &str, project: Option<&str>) -> Outcome {
     let mut outcome = Outcome::default();
     ui.heading("OpenChuckCAM");
     ui.label("Free software under the GNU Affero General Public License, version 3 or later.");
     ui.label(openchuck_app::VERIFY_GCODE_NOTICE);
     ui.add_space(6.0);
+
+    if let Some(path) = project {
+        ui.strong("Project folder");
+        ui.label(path);
+        ui.add_space(6.0);
+    }
 
     ui.strong("Build");
     ui.label(RichText::new(build.trim_end()).monospace());
@@ -165,6 +171,7 @@ mod tests {
     struct Rig {
         ctx: egui::Context,
         outcome: Outcome,
+        project: Option<&'static str>,
         copied: Vec<String>,
         shapes: Vec<egui::epaint::ClippedShape>,
     }
@@ -176,6 +183,7 @@ mod tests {
             let mut rig = Self {
                 ctx,
                 outcome: Outcome::default(),
+                project: None,
                 copied: Vec::new(),
                 shapes: Vec::new(),
             };
@@ -193,7 +201,7 @@ mod tests {
                 ..Default::default()
             };
             let mut output = self.ctx.run_ui(input, |ui| {
-                self.outcome = show(ui, BUILD, licence_text());
+                self.outcome = show(ui, BUILD, licence_text(), self.project);
             });
             output.textures_delta.clear();
             for command in output.platform_output.commands {
@@ -348,5 +356,15 @@ mod tests {
         rig.click(at);
         assert!(rig.outcome.close);
         assert!(rig.copied.is_empty());
+    }
+
+    #[test]
+    fn req_ui_01_about_shows_the_project_folder_when_a_project_is_open() {
+        let mut rig = Rig::new();
+        assert!(!rig.shows("Project folder"), "no project, no line");
+        rig.project = Some("/home/paul/Blisk");
+        rig.frame(Vec::new());
+        assert!(rig.shows("Project folder"));
+        assert!(rig.shows("/home/paul/Blisk"));
     }
 }

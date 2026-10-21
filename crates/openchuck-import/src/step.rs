@@ -37,7 +37,7 @@
 //! `cargo build -p openchuck-import --features kernel --bin openchuck-step-worker`.
 
 use std::ffi::OsString;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -194,8 +194,8 @@ impl ModelImporter for StepImporter {
         check_settings(settings)?;
         let worker = self.locate_worker().ok_or_else(|| {
             ImportError::Worker(format!(
-                "the STEP reader program '{WORKER_NAME}' was not found; install it next to the \
-application or set {WORKER_ENV}"
+                "this build cannot read STEP files: the STEP reader program '{WORKER_NAME}' was not \
+found next to the application (or set {WORKER_ENV})"
             ))
         })?;
         let override_mm = options.units.map_or(0.0, LengthUnit::millimetres);
@@ -247,12 +247,19 @@ fn run_worker(
         settings.angular.to_string().into(),
         override_mm.to_string().into(),
     ];
-    let mut child = Command::new(worker)
+    // The worker's own messages go to a file beside its answer, never to a
+    // console: a GUI program has none, and a visible one is a defect (NFR-17).
+    let stderr =
+        std::fs::File::create(dir.join(STDERR_FILE)).map_or_else(|_| Stdio::null(), Stdio::from);
+    let mut command = Command::new(worker);
+    command
         .args(args)
         .current_dir(dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(stderr);
+    hide_window(&mut command);
+    let mut child = command
         .spawn()
         .map_err(|e| ImportError::Worker(format!("cannot start '{}': {e}", worker.display())))?;
     let start = Instant::now();
@@ -267,8 +274,9 @@ fn run_worker(
                 }
                 return Err(ImportError::Worker(format!(
                     "the STEP reader stopped without an answer ({}); the file is damaged or uses \
-something the reader cannot handle",
-                    describe_status(&status)
+something the reader cannot handle{}",
+                    describe_status(&status),
+                    worker_messages(dir)
                 )));
             }
             Ok(None) => {}
@@ -293,6 +301,66 @@ something the reader cannot handle",
             )));
         }
         std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// How many bytes of the end of the worker's standard error go into an error
+/// message.
+const WORKER_TAIL: u64 = 2048;
+
+/// The file the worker's standard error goes to, in its scratch folder.
+const STDERR_FILE: &str = "worker.log";
+
+/// The Windows process creation flag that starts a program without a console
+/// window (`CREATE_NO_WINDOW`).
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// The process creation flags every helper program is started with: hidden on
+/// Windows (NFR-17), none elsewhere.
+const fn helper_creation_flags() -> u32 {
+    if cfg!(windows) { CREATE_NO_WINDOW } else { 0 }
+}
+
+/// Starts `command` without a visible window on Windows; does nothing
+/// elsewhere.
+fn hide_window(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(helper_creation_flags());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (command, helper_creation_flags());
+    }
+}
+
+/// The last part of what the worker wrote to its standard error, as a
+/// sentence to add to an error message (empty if it wrote nothing). The UI
+/// writes the message to the log file.
+fn worker_messages(dir: &Path) -> String {
+    let Ok(file) = std::fs::File::open(dir.join(STDERR_FILE)) else {
+        return String::new();
+    };
+    // The end of the file: the last thing the worker said is the reason.
+    let mut file = file;
+    let length = file.metadata().map_or(0, |m| m.len());
+    if file
+        .seek(SeekFrom::Start(length.saturating_sub(WORKER_TAIL)))
+        .is_err()
+    {
+        return String::new();
+    }
+    let mut bytes = Vec::new();
+    if file.take(WORKER_TAIL).read_to_end(&mut bytes).is_err() {
+        return String::new();
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let text = text.trim();
+    if text.is_empty() {
+        String::new()
+    } else {
+        format!(" (the reader said: {text})")
     }
 }
 
@@ -625,6 +693,32 @@ mod tests {
             .import(b"x", &ImportOptions::default(), &context)
             .unwrap_err();
         assert!(matches!(err, ImportError::Cancelled), "{err}");
+    }
+
+    #[test]
+    fn req_nfr_17_helper_programs_start_without_a_console_window() {
+        // The real check (no window flashes) needs Windows: OI-580.
+        let expected = if cfg!(windows) { 0x0800_0000 } else { 0 };
+        assert_eq!(helper_creation_flags(), expected);
+        let mut command = Command::new("openchuck-step-worker");
+        hide_window(&mut command);
+    }
+
+    #[test]
+    fn req_nfr_07_worker_messages_reach_the_error() {
+        let dir = std::env::temp_dir().join(format!("oc-wm-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(worker_messages(&dir), "");
+        std::fs::write(dir.join(STDERR_FILE), "  \n").unwrap();
+        assert_eq!(worker_messages(&dir), "");
+        std::fs::write(dir.join(STDERR_FILE), "bad entity\n").unwrap();
+        assert_eq!(worker_messages(&dir), " (the reader said: bad entity)");
+        // A long log gives its end, not its beginning.
+        let long = format!("{}final reason\n", "early noise\n".repeat(500));
+        std::fs::write(dir.join(STDERR_FILE), long).unwrap();
+        let said = worker_messages(&dir);
+        assert!(said.contains("final reason"), "{said}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

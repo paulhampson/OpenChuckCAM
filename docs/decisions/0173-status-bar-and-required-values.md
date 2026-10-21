@@ -2,7 +2,7 @@
 
 - **Status:** proposed (21 Oct 2026). Only the project owner accepts a record.
 - **Date:** 21 Oct 2026.
-- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-621 to OI-625 are new and open; OI-692 and OI-693 (the two CodeRabbit findings deferred from decision 0172, pull request 229) are closed by this change. Amends decision 0148 item 1 and the interface specification sections 4 and 8.
+- **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-621 to OI-625 are new and open; OI-692 and OI-693 (the two CodeRabbit findings deferred from decision 0172, pull request 229) and OI-694 (a finding on pull request 230) are closed by this change. Amends decision 0148 item 1 and the interface specification sections 4 and 8.
 
 ## Context
 
@@ -26,6 +26,8 @@ Before this change the bar showed only a green ring for a complete step, the ins
 5. **The inspectors.** The operation and setup inspectors show, under the header, "1 value is missing" or "n values are missing" with a "Show first" button, from the moment the operation exists. Under a missing field (or under the Tool, Stock, Part position or Machine section) the same warning shape and the short sentence are drawn, with an amber 2 pixel border on an empty field. Nothing is red on a fresh operation (red is for a refusal or an error). "Show first" and the bar's jump scroll to the field and open its section.
 6. **Post and export (issue 140; amends decision 0148 item 1).** The step and File > Post and export are also blocked while a value is missing: "Fill in the missing values first", after the existing reasons (model, setup, machine, tool, operation). Operations still need not be generated.
 7. **OI-692.** The playback panel shows the run again when every operation in it is back and on (undo or redo of a turn-off or a deletion), which the export check already allowed. **OI-693.** A tool's name and position are no longer inputs to an operation's cache key, as an operation's are not (decision 0172). The tool's geometry, cutting data and machining numbers still are. A note kept in a cached result that names the tool keeps the old name until the operation is regenerated (OI-621).
+
+8. **OI-694.** In the New project dialog a blank or whitespace-only project name is refused: "Give the project a name." is shown in red under the name and OK stays disabled, so no folder with a fallback name is made without the user choosing it.
 
 ## Specification edits (same change)
 

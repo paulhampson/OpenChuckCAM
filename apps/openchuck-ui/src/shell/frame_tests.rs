@@ -1087,3 +1087,33 @@ fn req_nfr_12_req_ui_06_undoing_a_turn_off_brings_the_path_back() {
     assert!(!rig.shell.play.has_run());
     assert!(!drawn(&rig));
 }
+
+/// The window title names the application, the project and its folder, and
+/// is sent to the system once it is known (#218).
+#[test]
+fn req_ui_01_the_window_title_follows_the_open_project() {
+    let mut blank = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    blank.frame(Vec::new());
+    assert_eq!(blank.shell.sent_title, "OpenChuckCAM");
+
+    let mut rig = Rig::cube("window-title", None);
+    rig.frame(Vec::new());
+    let folder = rig
+        .shell
+        .app
+        .as_ref()
+        .unwrap()
+        .location()
+        .display()
+        .to_string();
+    let title = rig.shell.sent_title.clone();
+    assert!(title.starts_with("OpenChuckCAM - "), "{title}");
+    assert!(
+        !title.contains("* - "),
+        "saved project has no mark: {title}"
+    );
+    assert!(
+        title.ends_with(&crate::window_title::shorten_middle(&folder, 70)),
+        "{title}"
+    );
+}
