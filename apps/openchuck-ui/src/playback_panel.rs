@@ -458,6 +458,7 @@ impl PlaybackPanel {
         };
         let mut shown = bands.clone();
         shown.bands.retain(|(band, _)| self.colour_by.shows(*band));
+        viewport.colour_by = self.colour_by;
         viewport.set_bands(Some((model, shown)));
     }
 

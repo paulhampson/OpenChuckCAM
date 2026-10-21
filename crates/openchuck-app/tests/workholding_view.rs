@@ -19,7 +19,7 @@ use openchuck_app::setup::{
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, PartFacing, check_draft, default_chips,
-    default_tabs_state, held_span, new_tab, part_facing, set_layout, set_shape,
+    default_tabs_state, held_span, holding_hint, new_tab, part_facing, set_layout, set_shape,
 };
 use openchuck_app::{Application, Command, Threads};
 use openchuck_types::units::Degrees;
@@ -205,7 +205,10 @@ fn req_ui_25_validation_marks_the_field_with_a_plain_message() {
 }
 
 #[test]
-fn req_ui_25_a_held_region_on_box_stock_needs_a_holding_diameter_as_it_is_edited() {
+fn req_ui_25_req_set_09_a_held_region_on_box_stock_needs_no_holding_diameter() {
+    // Without a holding diameter box stock is held at its own outline over
+    // the gripped length (decision 0160; issue #188), so none is asked for;
+    // one that is given makes a cylinder and must fit the smaller side.
     let boxed = Stock::Box {
         bounds: Aabb {
             min: Point3::new(-16.0, -10.0, -12.0),
@@ -216,13 +219,15 @@ fn req_ui_25_a_held_region_on_box_stock_needs_a_holding_diameter_as_it_is_edited
         start: Some(held(6.0)),
         ..Workholding::default()
     };
-    assert_eq!(
-        problem(&w, Some(&boxed)),
-        (
-            Field::HoldingDiameter(End::Start),
-            "Needed: box stock has no diameter to hold at.".to_owned()
-        )
-    );
+    assert_eq!(check_draft(&w, Some(&boxed)), None);
+    let fits = Workholding {
+        start: Some(HeldRegion {
+            length: Millimetres(6.0),
+            diameter: Some(Millimetres(20.0)),
+        }),
+        ..Workholding::default()
+    };
+    assert_eq!(check_draft(&fits, Some(&boxed)), None);
     let too_wide = Workholding {
         start: Some(HeldRegion {
             length: Millimetres(6.0),
@@ -231,9 +236,21 @@ fn req_ui_25_a_held_region_on_box_stock_needs_a_holding_diameter_as_it_is_edited
         ..Workholding::default()
     };
     assert_eq!(
-        problem(&too_wide, Some(&boxed)).1,
-        "Wider than the stock's smaller side (20.000 mm)."
+        problem(&too_wide, Some(&boxed)),
+        (
+            Field::HoldingDiameter(End::Start),
+            "Wider than the stock's smaller side (20.000 mm).".to_owned()
+        )
     );
+    // The field's hint says what the held region is without a diameter.
+    assert_eq!(holding_hint(Some(&boxed)), "Stock outline");
+    let round = Stock::Cylinder {
+        diameter: Millimetres(20.0),
+        length: Millimetres(32.0),
+        x_start: Millimetres(-16.0),
+    };
+    assert_eq!(holding_hint(Some(&round)), "Stock diameter (20.000 mm)");
+    assert_eq!(holding_hint(None), "Stock diameter");
 }
 
 #[test]

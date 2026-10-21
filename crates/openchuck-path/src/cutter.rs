@@ -218,6 +218,33 @@ pub(crate) fn drop_on_mesh(
     })
 }
 
+/// Drops the tool along `line` onto a few triangles, each tried in full (no
+/// acceleration): a solid's flat faces. The same vertex, edge and facet
+/// tests as [`drop_on_mesh`], with ties to the lowest-numbered triangle.
+pub(crate) fn drop_on_triangles(
+    triangles: &[[Point3; 3]],
+    profile: &RevolvedProfile,
+    line: &ToolLine,
+) -> Option<Contact> {
+    let frame = Frame::new(line);
+    let mut best: Option<Best> = None;
+    for (i, tri) in (0u32..).zip(triangles) {
+        let [a, b, c] = tri.map(|p| frame.local(p));
+        for v in [a, b, c] {
+            vertex(profile, v, &mut best, i);
+        }
+        for (p, q) in [(a, b), (b, c), (c, a)] {
+            edge(profile, p, q, &mut best, i);
+        }
+        facet(profile, &[a, b, c], &mut best, i);
+    }
+    best.map(|b| Contact {
+        tip: line.at(b.tip_z),
+        contact: frame.model(b.contact),
+        offset: b.tip_z,
+    })
+}
+
 /// Horizontal distance from the axis, evaluated directly.
 fn radial(x: f64, y: f64) -> f64 {
     (x * x + y * y).sqrt()

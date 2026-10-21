@@ -148,6 +148,7 @@ fn req_op_08_step_a_rotary_blank_is_engraved_along_its_b_rep_edges_at_constant_d
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        keep_out: &[],
     };
     let strategy = EdgeFollowing::with_source(BrepEdges::new(&model).unwrap().shared());
     let depth = 0.2;

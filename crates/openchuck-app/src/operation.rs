@@ -372,6 +372,10 @@ pub(crate) fn generate_with_part(
     // strategies see (SET-09, OP-21; decision 0035 item 1). A setup without
     // them uses the model's own surface, so its G-code is unchanged.
     let mut reach_notes = Vec::new();
+    // No part of the tool reaches over a gripped length while it cuts
+    // (SET-09; decision 0161): each held region widened by the tool's largest
+    // radius, its shank included.
+    let keep_out = keep_out_of(setup, &part_bounds, &profile, &snapshot.tool);
     let composite = if setup.workholding.is_empty() {
         None
     } else {
@@ -427,6 +431,7 @@ pub(crate) fn generate_with_part(
         clearance: setup.clearance.unwrap_or(machine.clearance),
         max_feeds: machine.max_feeds,
         tags: &tags,
+        keep_out: &keep_out,
     };
     let resolved = parameter_values(project, operation, registry)?;
     // The values as the strategy's schema reads them (a whole number given for
@@ -853,6 +858,47 @@ fn brep_curves(
         .with_min_length(parameters.number(MIN_LENGTH)?)
         .shared())
 }
+
+/// The model X intervals the tool's tip keeps out of while it cuts: each held
+/// region of `setup` on its stock, widened on both sides by the largest radius
+/// of `tool` (its cutting profile or its shank), as the tool is always across
+/// the rotary axis, and by [`HELD_CLEARANCE`] (SET-09; decision 0161). Empty with no held region, or
+/// when the stock's extent is not known (the held regions are then refused
+/// when their solids are built).
+fn keep_out_of(
+    setup: &openchuck_project::Setup,
+    part_bounds: &openchuck_types::geometry::Aabb,
+    profile: &openchuck_types::tool::profile::RevolvedProfile,
+    tool: &openchuck_types::tool::Tool,
+) -> Vec<(f64, f64)> {
+    let part = openchuck_types::setup::PartExtent {
+        bounds: *part_bounds,
+        radius: openchuck_types::units::Millimetres(0.0),
+    };
+    let Some(bounds) = setup.stock.as_ref().and_then(|s| s.bounds(Some(&part))) else {
+        return Vec::new();
+    };
+    let reach = profile
+        .pieces()
+        .iter()
+        .map(|p| p.end().radius.0)
+        .fold(profile.cutting_radius(), f64::max)
+        .max(tool.shank_diameter.0 / 2.0);
+    let (start, end) = setup
+        .workholding
+        .held_intervals((bounds.min.x, bounds.max.x));
+    [start, end]
+        .into_iter()
+        .flatten()
+        .map(|(lo, hi)| (lo - reach - HELD_CLEARANCE, hi + reach + HELD_CLEARANCE))
+        .collect()
+}
+
+/// How far, beyond its largest radius, the tool keeps from a held region
+/// along the axis, in millimetres (decision 0161): the jaw face is not a
+/// surface to cut against, and the simulation's cells would read a tool
+/// flush with it as touching the held stock.
+pub const HELD_CLEARANCE: f64 = 0.5;
 
 #[cfg(test)]
 #[allow(

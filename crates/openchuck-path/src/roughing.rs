@@ -644,13 +644,42 @@ impl<'a> Job<'a> {
         runs
     }
 
-    fn continuous(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+    /// The X range the passes cut over: [`Self::x_range`] cut short at the
+    /// edges of the keep-out intervals on either side of its middle (the held
+    /// regions widened by the tool, SET-09; decision record 0161), with
+    /// whether each end was cut short. The stock field keeps the whole range,
+    /// so links still see the held stock.
+    fn cut_range(&self) -> (f64, f64, bool, bool) {
         let (x0, x1) = self.x_range;
+        let mid = 0.5 * (x0 + x1);
+        let (mut lo, mut hi) = (x0, x1);
+        for &(a, b) in self.input.keep_out {
+            if b <= mid && b > lo {
+                lo = b;
+            } else if a >= mid && a < hi {
+                hi = a;
+            }
+        }
+        if hi <= lo {
+            return (x0, x1, false, false);
+        }
+        (lo, hi, lo > x0, hi < x1)
+    }
+
+    fn continuous(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        // Where a held region cuts the range short, the helix turns once at
+        // that end without advancing, so the stock beside the keep-out is
+        // cleared all round, as it is beyond the part's ends where the
+        // margin gives a whole first and last turn (decision record 0161).
+        let (x0, x1, ring_start, ring_end) = self.cut_range();
         let length = x1 - x0;
         let turns = (length / self.stepover).ceil().max(1.0);
+        let rings = f64::from(u8::from(ring_start) + u8::from(ring_end));
+        let ring_before = f64::from(u8::from(ring_start));
+        let all_turns = turns + rings;
         let step = p.number(parameter::MAX_ANGLE_STEP)?;
         let per_turn = (360.0 / step).ceil().max(4.0);
-        let nodes = turns * per_turn;
+        let nodes = all_turns * per_turn;
         if nodes > MAX_NODES {
             return Err(PathError::Parameter {
                 name: names::STEPOVER.to_owned(),
@@ -665,9 +694,19 @@ impl<'a> Job<'a> {
         let fine = coarse * SUB;
         let site_at = move |f: f64| {
             let t = f / fine as f64;
+            if rings == 0.0 {
+                // As before held regions: the same arithmetic, so the same
+                // positions to the last bit (GC-07).
+                return Site {
+                    x: x0 + length * t,
+                    a: self.start + 360.0 * turns * t,
+                    across: 0.0,
+                };
+            }
+            let turn = all_turns * t;
             Site {
-                x: x0 + length * t,
-                a: self.start + 360.0 * turns * t,
+                x: x0 + length * ((turn - ring_before) / turns).clamp(0.0, 1.0),
+                a: self.start + 360.0 * turn,
                 across: 0.0,
             }
         };
@@ -733,7 +772,7 @@ impl<'a> Job<'a> {
     }
 
     fn indexed(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
-        let (x0, x1) = self.x_range;
+        let (x0, x1, _, _) = self.cut_range();
         let length = x1 - x0;
         let index = p.number(parameter::INDEX_ANGLE)?;
         let positions = (360.0 / index).ceil().max(1.0) as usize;

@@ -1642,17 +1642,24 @@ fn print_machine(profile: &MachineProfile) {
     }
 }
 
-/// Prints the held regions and tabs of a setup (SET-09, OP-21).
-fn print_workholding(w: &Workholding) {
+/// Prints the held regions and tabs of a setup (SET-09, OP-21). Without a
+/// holding diameter a held region is the stock's own diameter on round stock,
+/// else its outline (decision 0160).
+fn print_workholding(w: &Workholding, stock: Option<&Stock>) {
+    let own = if matches!(stock, None | Some(Stock::Cylinder { .. })) {
+        "the stock's diameter"
+    } else {
+        "the stock's outline"
+    };
     if w.is_empty() {
         println!("holding:    none");
         return;
     }
     for (name, region) in [("start", &w.start), ("end", &w.end)] {
         let Some(r) = region else { continue };
-        let across = r.diameter.map_or("the stock's diameter".to_owned(), |d| {
-            format!("diameter {} mm", d.0)
-        });
+        let across = r
+            .diameter
+            .map_or(own.to_owned(), |d| format!("diameter {} mm", d.0));
         println!(
             "holding:    held at the {name} of the stock for {} mm, {across}; never machined",
             r.length.0
@@ -1725,7 +1732,7 @@ fn print_setup(app: &Application, report: &SetupReport) {
         Some(_) => "imported (not available yet)".to_owned(),
     };
     println!("stock:      {stock}");
-    print_workholding(&setup.workholding);
+    print_workholding(&setup.workholding, setup.stock.as_ref());
     println!(
         "material:   {}",
         setup.material.as_deref().unwrap_or("not set")
