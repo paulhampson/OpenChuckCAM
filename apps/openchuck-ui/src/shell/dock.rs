@@ -348,15 +348,22 @@ impl Shell {
         let again = self.app.is_some() && self.out_of_date_banner(ui);
         let skip = match &self.app {
             Some(app) if self.play.has_run() => {
-                egui::ScrollArea::vertical()
-                    .id_salt("playback")
-                    .show(ui, |ui| {
-                        if stale {
-                            ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
-                        }
-                        self.play.show(ui, app)
-                    })
-                    .inner
+                // The transport and the timeline stay in a strip that does
+                // not scroll; the rest scrolls under it, with a bar in a strip
+                // of its own so it never lies over a control (issue 262).
+                ui.scope(|ui| {
+                    if stale {
+                        ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
+                    }
+                    let skip = self.play.show_strip(ui, app);
+                    crate::theme::solid_scroll_bar(ui);
+                    egui::ScrollArea::vertical()
+                        .id_salt("playback")
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| self.play.show_rest(ui, app));
+                    skip
+                })
+                .inner
             }
             Some(app) => {
                 let skip = crate::playback_panel::waiting_row(ui, app);

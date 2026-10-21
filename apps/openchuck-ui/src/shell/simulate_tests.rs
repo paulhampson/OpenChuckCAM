@@ -625,3 +625,130 @@ fn req_ui_16_req_sim_04_the_playback_tab_keeps_its_place_while_the_simulation_ru
     rig.settle();
     assert_eq!(top(&rig), Some(before));
 }
+
+/// Checks the Playback tab as a whole (issue 262): the strip that does not
+/// scroll (the transport row, "Skip stock simulation" and the timeline) is
+/// wholly in the dock, and so is every row in `rows`; no two texts overlap;
+/// and a scroll bar, where there is one, lies over neither a text nor the
+/// timeline. `what` names the case in a failure.
+fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
+    let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
+        .expect("the dock was drawn")
+        .outer_rect;
+    let painted: Vec<_> = rig
+        .painted()
+        .into_iter()
+        .filter(|(_, r)| dock.contains_rect(r.shrink(0.5)))
+        .collect();
+    let texts: Vec<_> = painted
+        .iter()
+        .filter_map(|(t, r)| t.as_ref().map(|t| (t.as_str(), *r)))
+        .filter(|(t, _)| !t.trim().is_empty())
+        .collect();
+    for row in ["⏮", "⏭", "Skip stock simulation"].iter().chain(rows) {
+        assert!(
+            texts.iter().any(|(t, _)| t == row),
+            "{what}: {row:?} is not wholly in the dock: {texts:?}"
+        );
+    }
+    let timeline: Vec<egui::Rect> = painted
+        .iter()
+        .filter(|(t, r)| t.is_none() && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0)
+        .map(|(_, r)| *r)
+        .collect();
+    assert!(
+        !timeline.is_empty(),
+        "{what}: the timeline is not wholly in the dock"
+    );
+    for (i, (a, ra)) in texts.iter().enumerate() {
+        for (b, rb) in texts.iter().skip(i + 1) {
+            assert!(
+                !ra.shrink(1.0).intersects(rb.shrink(1.0)),
+                "{what}: {a:?} {ra:?} overlaps {b:?} {rb:?}"
+            );
+        }
+    }
+    let bars: Vec<egui::Rect> = painted
+        .iter()
+        .filter(|(t, r)| t.is_none() && r.width() < 12.0 && r.height() > 40.0)
+        .map(|(_, r)| *r)
+        .collect();
+    for bar in &bars {
+        for (t, r) in &texts {
+            assert!(
+                !bar.intersects(r.shrink(0.5)),
+                "{what}: the scroll bar lies over {t:?}"
+            );
+        }
+        for segment in &timeline {
+            assert!(
+                !segment.intersects(bar.shrink(0.5)),
+                "{what}: the timeline {segment:?} runs under the scroll bar {bar:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
+    // Issue 262 (seen maximised at 1920 x 1080): at the default dock height,
+    // at 100% and 120%, every playback control fits without scrolling; with
+    // the out-of-date banner (issue 260) or in a shorter dock the transport
+    // and the timeline stay in their strip and the rest scrolls, its bar in a
+    // strip of its own; a playback window (issue 205) changes nothing.
+    let all = [
+        "Speed",
+        "Go to move",
+        "Turn part with A",
+        "Colour the part by deviation",
+        "Hide path outside window",
+    ];
+    for zoom in [1.0, 1.2] {
+        let mut rig = simulated(&format!("sim-dock-layout-{}", (zoom * 10.0) as u32));
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.size = egui::vec2(1920.0, 1080.0);
+        rig.ctx.set_zoom_factor(zoom);
+        rig.shell.dock_tab = DockTab::Playback;
+        rig.settle();
+        assert!((rig.shell.settings.dock.size - 260.0).abs() < 1e-6);
+        check_dock(&rig, &all, &format!("{zoom}: current"));
+
+        rig.shell
+            .play
+            .set_window(Some(openchuck_app::playback::MoveWindow {
+                first: 10,
+                last: 200,
+            }));
+        rig.settle();
+        check_dock(&rig, &all, &format!("{zoom}: window"));
+
+        let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .set_parameter(
+                op,
+                "stepover",
+                Some(openchuck_app::project::ParameterValue::Number(0.6)),
+            )
+            .unwrap();
+        rig.settle();
+        assert!(rig.shows(super::out_of_date::TITLE));
+        check_dock(
+            &rig,
+            &[super::out_of_date::TITLE],
+            &format!("{zoom}: out of date"),
+        );
+
+        rig.shell.undo();
+        rig.shell.settings.dock.size = 170.0;
+        rig.settle();
+        assert!(!rig.shows(super::out_of_date::TITLE));
+        check_dock(&rig, &[], &format!("{zoom}: short dock"));
+        assert!(
+            !rig.bar_rects().is_empty(),
+            "{zoom}: the rest scrolls, with a bar to say so"
+        );
+    }
+}

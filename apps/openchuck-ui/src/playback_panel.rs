@@ -1153,9 +1153,21 @@ impl PlaybackPanel {
         }
     }
 
-    /// Draws the controls. Returns the project's new "Skip stock simulation"
-    /// choice when the user changed it, for the shell to apply as a command.
+    /// Draws the controls: the strip that does not scroll, then the rest,
+    /// as the dock does. Returns the project's new "Skip stock simulation"
+    /// choice when the user changed it.
+    #[cfg(test)]
     pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+        let skip = self.show_strip(ui, app);
+        self.show_rest(ui, app);
+        skip
+    }
+
+    /// The controls used most, which the dock keeps in a strip that does not
+    /// scroll (issue 262): the transport row with "Skip stock simulation",
+    /// and the timeline with the window strip. Returns the tick box's new
+    /// choice when it was clicked.
+    pub fn show_strip(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
         let mut skip = None;
         let Some(data) = self.data.clone() else {
             // The transport row keeps its place while there is nothing to
@@ -1174,8 +1186,6 @@ impl PlaybackPanel {
             return skip;
         };
         let timeline = &data.timeline;
-        let total = timeline.total_time();
-        let moves = timeline.move_count();
         let current = self.pose().map(|p| p.group);
         ui.horizontal(|ui| {
             let group_count = timeline.group_count();
@@ -1224,6 +1234,20 @@ impl PlaybackPanel {
             ui.separator();
             skip = skip_box(ui, app);
         });
+        self.timeline_bar(ui, app, &data);
+        skip
+    }
+
+    /// The rest of the controls, under the strip: the speeds, go to move and
+    /// the window, the readout, the view's tick boxes and the notes. Nothing
+    /// while there is nothing to play.
+    pub fn show_rest(&mut self, ui: &mut egui::Ui, app: &Application) {
+        let Some(data) = self.data.clone() else {
+            return;
+        };
+        let timeline = &data.timeline;
+        let total = timeline.total_time();
+        let moves = timeline.move_count();
         ui.horizontal(|ui| {
             ui.label("Speed");
             let speed = self.playback.speed();
@@ -1246,7 +1270,6 @@ impl PlaybackPanel {
                 }
             }
         });
-        self.timeline_bar(ui, app, &data);
         ui.horizontal_wrapped(|ui| {
             ui.label(format!(
                 "{} / {}",
@@ -1348,7 +1371,6 @@ impl PlaybackPanel {
             ui.colored_label(PROBLEM, error);
         }
         let _ = DeviationBand::ALL;
-        skip
     }
 
     /// What the cut part is doing: being prepared, or why there is none.

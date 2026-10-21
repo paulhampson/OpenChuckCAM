@@ -502,7 +502,7 @@ Board 4 (SIM-01 to SIM-07).
 
 **A result out of date** *(NFR-12, UI-11; [decision 0192](../decisions/0192-simulate-result-out-of-date.md))*. While the latest run no longer matches the project (the export check's test: an operation in it changed, was turned off or removed, or an enabled operation is not in it), one banner says so over the top of the view, at the top of the Playback tab and at the top of the results inspector: the stale mark, "Simulation out of date", the reason in plain words ("Operation 'Roughing' was turned off.") and the Simulate primary action (section 5) as its button. The old numbers stay to compare, dimmed under "Results of the out-of-date simulation:", and so do the playback controls the tab still has. A run that holds an operation turned off or removed leaves the view (decision 0172 item 3), and the Playback tab shows the banner in place of the controls.
 
-**Playback dock** (SIM-04):
+**Playback dock** (SIM-04). The transport row (with "Skip stock simulation"), the timeline and the window strip are a strip that does not scroll; the rest scrolls under it, its bar in a strip of its own so it never lies over a control. At the default dock height everything fits without scrolling (issue 262; [decision 0192](../decisions/0192-simulate-result-out-of-date.md) item 7).
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
