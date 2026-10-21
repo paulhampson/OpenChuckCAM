@@ -86,7 +86,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 | 2 Setup | Machine, stock, part position, work offset, clearance (SET-01, SET-03, SET-05, SET-06) | A model is in the project | "Import a model first" | "Continue to operations" |
 | 3 Operations | Select geometry, add operations, generate (OP, UI-04 to UI-07) | The setup has a machine and stock | "Set up the machine and stock first" | Section 5 |
 | 4 Simulate | Play the cut and compare stock with model (SIM-01 to SIM-07) | One enabled operation has been generated | "Generate an operation first" | Section 5 |
-| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | The project has a model, a setup, a machine, a tool and an operation (generated or not: the dialog makes its own files; decision 0148 item 1) | The first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first" or "Add an operation first". File > Post and export gives the same reason | Opens the export dialog; "Write G-code" is its primary action |
+| 5 Post and export | Write G-code and the setup sheet (GC-02 to GC-06, GC-12, GC-14) | The project has a model, a setup, a machine, a tool and an operation, and no required value is missing (generated or not: the dialog makes its own files; decision 0148 item 1, amended by decision 0173 item 6) | The first missing item: "Import a model first", "Add a setup first", "Choose a machine first", "Add a tool first", "Add an operation first" or "Fill in the missing values first". File > Post and export gives the same reason | Opens the export dialog; "Write G-code" is its primary action |
 
 **The step indicator.** Each step shows a numbered circle and a name.
 
@@ -98,6 +98,8 @@ The steps are views over one project, not modes. The tree, menus, undo history a
   - Simulate: every enabled operation has been simulated as it is now;
   - Post and export: G-code has been written from every enabled operation as it is now.
 - An unavailable step is dimmed, and its tooltip gives the reason.
+- Each available step shows its own health after its name, by shape as well as colour: a green filled circle (good to go), an amber triangle outline (stale or needs attention) or a red filled triangle (an error to deal with, such as a missing tool or stock); its tooltip names what needs attention (decision 0173).
+- A badge at the right end of the bar shows the worst of the five as the same shape and words ("Good to go", "Needs attention", "Error to fix"), with a line in its colour along the foot of the bar. Its tooltip lists each step that is not good and why; clicking it goes to the first problem.
 - Alt 1 to Alt 5 open the steps.
 
 *(UI-10)*
@@ -276,7 +278,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 **Order** (principle 3):
 
-1. **Header.** The name in an editable field, and a status chip in the words of the status mark.
+1. **Header.** The name in an editable field, and a status chip in the words of the status mark. An operation or a setup with required values missing shows "1 value is missing" or "n values are missing" under it, with "Show first", from the moment it exists; each missing field has an amber border and, under it, the warning shape and a short sentence ("Choose a tool", "Enter feed", "Set the stock"). Nothing is red until a value is refused or the item is in error (decision 0173).
 2. **Error banner,** when the item is in error. It gives what cannot be done, why, and the actions that fix it (the "Inspector: operation in error" board).
 3. **Result summary** of an operation: moves, cut length, A travel, A unwinds and programmed time, in a two-by-two (or two-by-three) grid of large numbers. Programmed time is labelled "programmed time" and is not the SIM-08 estimate (decision 0028 item 3). *(SIM-13)*
 4. **Basic and Advanced switch.** *(UI-19)* Without it, every field is shown, grouped.

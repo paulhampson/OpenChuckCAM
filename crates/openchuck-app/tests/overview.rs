@@ -273,6 +273,12 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
     let setup = SetupId::new();
     let mut s = Setup::new(setup, "Setup 1");
     s.part = Some(model);
+    s.material = Some("oak".into());
+    s.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(20.0),
+        length: Millimetres(14.0),
+        x_start: Millimetres(-7.0),
+    });
     app.execute(Command::Add {
         item: Item::Setup(s),
         placement: Placement::End,
@@ -305,7 +311,16 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
                 length_offset: None,
                 diameter_offset: None,
             },
-            cutting_data: BTreeMap::new(),
+            cutting_data: BTreeMap::from([(
+                "oak".to_owned(),
+                CuttingData {
+                    spindle_speed: SpindleSpeed(10000.0),
+                    feed_per_tooth: Millimetres(0.02),
+                    plunge_feed: FeedRate(150.0),
+                    stepover: Millimetres(0.8),
+                    stepdown: Millimetres(1.0),
+                },
+            )]),
         }),
         placement: Placement::End,
     })
@@ -332,6 +347,15 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
     // Nothing is generated, and the menu item is still enabled. So is the
     // Post and export step, which gives the same reason (OI-436, decision
     // 0148 item 1); Simulate still needs a generated operation.
+    assert_eq!(blocker(&app), None);
+    // Decision 0173 (issue 140): a missing value blocks it too.
+    let id = app.project().operations()[0].id;
+    let mut bare = app.project().operation(id).unwrap().clone();
+    bare.tool = None;
+    app.execute(Command::Replace(Item::Operation(bare)))
+        .unwrap();
+    assert_eq!(blocker(&app), Some("Fill in the missing values first"));
+    app.undo().unwrap();
     assert_eq!(blocker(&app), None);
     let o = app.overview(None, &JobLog::default());
     assert!(o.step(Step::Export).is_available());
@@ -1331,4 +1355,217 @@ fn req_nfr_12_req_gc_15_a_removed_or_disabled_operation_blocks_a_run_that_still_
     let made: Vec<_> = again.groups.iter().map(|g| g.operation).collect();
     assert_eq!(made, [one, three]);
     assert!(f.app.export_checks(Some(&again), None, None).can_write());
+}
+
+/// The fixture with a stock the part fits in and a machine whose values are
+/// all confirmed, so that nothing but what a test does shows on the bar.
+fn calm(name: &str) -> Fixture {
+    let mut f = fixture(name, "cube_ascii.stl");
+    let mut machine = f.app.project().machine().unwrap().clone();
+    for field in openchuck_app::setup::ProfileField::ALL {
+        machine.provenance.insert(
+            field,
+            openchuck_app::setup::Provenance {
+                state: openchuck_app::setup::Confirmation::Confirmed,
+                source: "test".into(),
+            },
+        );
+    }
+    f.app
+        .execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(60.0),
+        length: Millimetres(60.0),
+        x_start: Millimetres(-30.0),
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    f
+}
+
+use openchuck_app::overview::StepHealth;
+use openchuck_app::requirements::RequirementField;
+
+fn health(o: &Overview, step: Step) -> StepHealth {
+    o.step(step).health
+}
+
+#[test]
+fn req_ui_11_the_bar_is_green_only_when_nothing_is_stale_or_missing() {
+    // Issue 210: green good to go, yellow stale or needs attention, red an
+    // error to deal with; each step has its own health as well.
+    let mut f = calm("health-green");
+    let one = f.add_operation("Ring", "one_ring");
+    let o = f.overview();
+    // Never generated: stale, so yellow, never green.
+    assert_eq!(health(&o, Step::Operations), StepHealth::Attention);
+    assert_eq!(o.health(), StepHealth::Attention);
+    assert!(
+        o.step(Step::Operations)
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("stale"),
+        "{:?}",
+        o.step(Step::Operations).reason
+    );
+
+    f.app.simulate().unwrap();
+    let o = f.overview();
+    assert_eq!(health(&o, Step::Model), StepHealth::Good);
+    assert_eq!(health(&o, Step::Setup), StepHealth::Good);
+    assert_eq!(health(&o, Step::Operations), StepHealth::Good);
+    assert_eq!(health(&o, Step::Simulate), StepHealth::Good);
+    assert_eq!(health(&o, Step::Export), StepHealth::Good);
+    assert_eq!(o.health(), StepHealth::Good);
+
+    // A rename does not turn it yellow (issue 209).
+    rename_operation(&mut f, one, "Rough the barrel");
+    assert_eq!(f.overview().health(), StepHealth::Good);
+
+    // A parameter change does.
+    f.set_stepover(one, 0.5);
+    let o = f.overview();
+    assert_eq!(health(&o, Step::Operations), StepHealth::Attention);
+    assert_eq!(o.health(), StepHealth::Attention);
+}
+
+#[test]
+fn req_ui_11_a_missing_tool_or_stock_is_red_and_agrees_with_the_marks() {
+    // The owner's answer on issue 210: an incomplete setup (a missing tool
+    // or stock) is red. The same list gives the marks in the inspector
+    // (issue 224) and the Post and export blocker (issue 140).
+    let mut f = calm("health-red");
+    let op = f.add_operation("Ring", "one_ring");
+    f.app.simulate().unwrap();
+    assert_eq!(f.overview().health(), StepHealth::Good);
+
+    // No tool.
+    let mut item = f.app.project().operation(op).unwrap().clone();
+    item.tool = None;
+    f.app
+        .execute(Command::Replace(Item::Operation(item)))
+        .unwrap();
+    let o = f.overview();
+    assert_eq!(health(&o, Step::Operations), StepHealth::Error);
+    assert_eq!(o.health(), StepHealth::Error);
+    let needs = f.app.operation_requirements(op);
+    assert_eq!(needs.len(), 1);
+    assert_eq!(needs[0].field, RequirementField::Tool);
+    assert_eq!(needs[0].text, "Choose a tool");
+    assert!(
+        o.missing_for(ItemRef::Operation(op))
+            .iter()
+            .any(|r| r.field == RequirementField::Tool)
+    );
+    assert!(
+        o.step(Step::Operations)
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("Ring")
+    );
+    assert_eq!(o.post_blocker(), Some("Fill in the missing values first"));
+    assert!(!o.step(Step::Export).is_available());
+    assert_eq!(o.first_problem(), Some(ItemRef::Operation(op)));
+    // Generation still stops with its own message about the same thing
+    // (NFR-07).
+    let err = f.app.regenerate().unwrap_err().to_string();
+    assert!(
+        err.contains("Ring") && err.to_lowercase().contains("tool"),
+        "{err}"
+    );
+    f.app.undo().unwrap();
+    assert_eq!(f.overview().health(), StepHealth::Good);
+
+    // No stock.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.stock = None;
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let o = f.overview();
+    assert_eq!(health(&o, Step::Setup), StepHealth::Error);
+    assert_eq!(o.health(), StepHealth::Error);
+    let needs = f.app.setup_requirements(f.setup);
+    assert_eq!(needs.len(), 1);
+    assert_eq!(needs[0].field, RequirementField::Stock);
+    assert_eq!(o.first_problem(), Some(ItemRef::Setup(f.setup)));
+    assert_eq!(o.post_blocker(), Some("Fill in the missing values first"));
+}
+
+#[test]
+fn req_op_16_req_nfr_07_required_values_come_from_the_strategy_and_generation_agrees() {
+    // A required number with no default, that neither the operation nor the
+    // tool's cutting data gives, is listed by name, and generation reports
+    // the same value (issue 224: the list is not fixed in the interface).
+    let mut f = fixture("health-params", "cube_ascii.stl");
+    // The fixture's tool has cutting data for oak; take it away.
+    let mut tool = f.app.project().tools()[0].clone();
+    tool.cutting_data.clear();
+    f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    let op = f.add_operation("Finish", "helical_finishing");
+    let needs = f.app.operation_requirements(op);
+    let names: Vec<_> = needs
+        .iter()
+        .filter_map(|r| match &r.field {
+            RequirementField::Parameter(n) => Some(n.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(names.contains(&"feed"), "{names:?}");
+    assert!(needs.iter().all(|r| !r.text.is_empty()));
+    let err = f.app.regenerate().unwrap_err().to_string();
+    for name in &names {
+        if matches!(*name, "feed" | "plunge_feed" | "stepover" | "stepdown") {
+            assert!(err.contains(name), "{err} should name {name}");
+        }
+    }
+    // Setting a value removes exactly that line.
+    f.app
+        .execute(Command::SetParameter {
+            operation: op,
+            name: "feed".into(),
+            value: Some(ParameterValue::Number(500.0)),
+        })
+        .unwrap();
+    let after: Vec<_> = f
+        .app
+        .operation_requirements(op)
+        .into_iter()
+        .map(|r| r.field)
+        .collect();
+    assert!(!after.contains(&RequirementField::Parameter("feed".into())));
+    assert_eq!(after.len() + 1, needs.len());
+}
+
+#[test]
+fn req_ui_11_a_fresh_operation_with_a_tool_and_data_is_calm() {
+    // Issue 224: what New operation fills in reduces what is missing; a
+    // fresh operation with a tool whose cutting data fits has no marks.
+    let mut f = fixture("health-calm", "cube_ascii.stl");
+    let op = f.add_operation("Finish", "helical_finishing");
+    assert!(f.app.operation_requirements(op).is_empty());
+    assert!(f.overview().missing_for(ItemRef::Operation(op)).is_empty());
+}
+
+#[test]
+fn req_ui_11_req_gc_07_renaming_or_moving_a_tool_keeps_operations_up_to_date() {
+    // OI-693: a tool's name and position are labels, as an operation's are
+    // (decision 0172); the geometry, the cutting data and the machining
+    // numbers are what its operations are made from.
+    let mut f = fixture("rename-tool", "cube_ascii.stl");
+    f.add_operation("Ring", "one_ring");
+    f.app.regenerate().unwrap();
+    assert!(f.overview().stale.is_empty());
+    let mut tool = f.app.project().tools()[0].clone();
+    tool.name = "Renamed ball".into();
+    f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    assert!(f.overview().stale.is_empty(), "a tool rename is not stale");
+    let again = f.app.regenerate().unwrap();
+    assert!(again.generated.is_empty());
+    // A change to the tool's geometry still is.
+    let mut tool = f.app.project().tools()[0].clone();
+    tool.tool.diameter = Millimetres(5.0);
+    f.app.execute(Command::Replace(Item::Tool(tool))).unwrap();
+    assert!(!f.overview().stale.is_empty());
 }

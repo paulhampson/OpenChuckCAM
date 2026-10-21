@@ -273,8 +273,12 @@ pub(crate) fn operation_key(
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
     // The controller mapping (tool number and offsets) is read when posting, not
     // when the path is made, so renumbering tools (GC-14) leaves results valid.
+    // The name and the position in the list are labels, as an operation's are
+    // (OI-693): the post reads the name when writing.
     let tool = tool.map(|t| {
         let mut t = t.clone();
+        t.name.clear();
+        t.order = OrderKey::default();
         t.controller = openchuck_types::tool::ControllerMapping {
             number: 0,
             length_offset: None,

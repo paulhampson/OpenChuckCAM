@@ -51,7 +51,7 @@ mod actions;
 mod dock;
 mod frame;
 mod inspector;
-mod marks;
+pub(crate) mod marks;
 mod tree;
 
 use dock::DockTab;
@@ -136,6 +136,9 @@ pub struct Shell {
     selected: Option<Selection>,
     /// The section of the setup inspector a setup's child row chose.
     setup_section: Option<SetupPart>,
+    /// The missing value the "Show first" jump is taking the user to, until
+    /// the inspector has scrolled to it.
+    requirement_jump: Option<openchuck_app::requirements::RequirementField>,
     /// The tool library window (specification 12.1).
     tool_library: ToolLibraryWindow,
     /// A model being imported; the viewport shows its preview meanwhile.
@@ -229,6 +232,7 @@ impl Shell {
             bench: None,
             selected: None,
             setup_section: None,
+            requirement_jump: None,
             tool_library: ToolLibraryWindow::default(),
             import: None,
             model_panel: None,
@@ -872,6 +876,37 @@ impl Shell {
         }
     }
 
+    /// Takes the user to the first problem: the step it belongs to, the item
+    /// in the tree and, for a missing value, the field (issue 210).
+    fn go_to_first_problem(&mut self) {
+        use openchuck_app::requirements::RequirementField;
+        let Some(item) = self.overview.first_problem() else {
+            return;
+        };
+        let field = self
+            .overview
+            .missing
+            .iter()
+            .find(|m| m.item == item)
+            .map(|m| m.requirement.field.clone());
+        self.open_step(item.step());
+        match (item, &field) {
+            (ItemRef::Setup(id), Some(field)) => {
+                let part = match field {
+                    RequirementField::Machine => SetupPart::Machine,
+                    RequirementField::Part => SetupPart::PartPosition,
+                    _ => SetupPart::Stock,
+                };
+                self.choose_setup(id, Some(part));
+                self.settings.inspector.collapsed = false;
+            }
+            _ => {
+                self.show_item(item);
+                self.requirement_jump = field;
+            }
+        }
+    }
+
     /// Selects `item` in the tree and the inspector (a message's source).
     fn show_item(&mut self, item: ItemRef) {
         match item {
@@ -1023,6 +1058,9 @@ impl Shell {
                 self.play.handle_keys(ctx);
             }
             self.play.forget_removed(app);
+            if let Some(last) = self.run.last() {
+                self.play.restore(app, last);
+            }
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();

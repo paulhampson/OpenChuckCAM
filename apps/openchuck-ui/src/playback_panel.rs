@@ -234,6 +234,24 @@ impl PlaybackPanel {
         }
     }
 
+    /// Shows `run` again when the panel dropped it (see
+    /// [`PlaybackPanel::forget_removed`]) and every operation in it is back
+    /// and on, as after undoing a turn-off or a deletion (OI-692). Does
+    /// nothing while the panel has a run, or when `run` still holds an
+    /// operation that is gone.
+    pub fn restore(&mut self, app: &Application, run: &Arc<Regeneration>) {
+        let back = run.groups.iter().all(|g| {
+            app.project()
+                .operation(g.operation)
+                .is_some_and(|o| o.enabled)
+        });
+        if self.run.is_none() && back && !run.groups.is_empty() {
+            let open = self.open;
+            self.set_run(app, Arc::clone(run));
+            self.open = open;
+        }
+    }
+
     /// Whether the panel has a run to show.
     pub fn has_run(&self) -> bool {
         self.run.is_some()
