@@ -17,13 +17,13 @@ use openchuck_path::params::names;
 use openchuck_path::swarf::{self, Family, Flank, Settings, detect_rulings, face_path};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BrepSurface, FaceClosest, FaceRef, MeshSurface, ParameterValue,
-    ParametricFace, RayHit, Registry, RotaryMapping, Strategy, StrategyInput, SurfacePoint,
-    SurfaceSource, Swarf, ToolLine, Uv, generate, generate_in_region,
+    ParametricFace, RayHit, RegionConstraint, Registry, RotaryMapping, Strategy, StrategyInput,
+    SurfacePoint, SurfaceSource, Swarf, ToolLine, Uv, Window, generate, generate_in_region,
 };
 use openchuck_testkit::gouge::Outline;
 use openchuck_testkit::ruled::{
-    boss_cylinder, coaxial_cylinder, draft_cone, pocket_cylinder, point, sphere_band, torus_band,
-    wall_plane,
+    boss_cylinder, coaxial_cylinder, cross_plane, draft_cone, floor_plane, pocket_cylinder, point,
+    sphere_band, torus_band, wall_plane,
 };
 use openchuck_types::brep::BrepModel;
 use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
@@ -155,6 +155,8 @@ impl Fixture {
             max_material_left: LIMIT,
             reverse_tip_end: false,
             reverse_direction: false,
+            boundary_limits_pass: true,
+            boundary_limits_tip: true,
         }
     }
 
@@ -550,7 +552,17 @@ fn req_op_07_the_flank_is_the_straight_side_of_the_tool_as_one_cone() {
 fn req_op_07_a_radial_cylinder_boss_is_cut_with_the_flank_at_constant_a_within_tolerance() {
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let f = Fixture::brep(&model, flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(path.closed, "a whole boss is one closed run");
     assert_eq!(path.runs.len(), 1);
     assert!(path.max_tilt < 1e-9, "{}", path.max_tilt);
@@ -599,7 +611,17 @@ fn req_op_07_a_plane_wall_uses_the_family_the_four_axes_can_reach() {
     // four axes, so the lines along Z are used (decision 0061 item 1).
     let model = wall_plane(8.0, 22.0, 38.0, Z0, Z1);
     let f = Fixture::brep(&model, flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert_eq!(path.family, Family::AlongU);
     assert!(!path.closed);
     assert_eq!(path.runs.len(), 1);
@@ -625,7 +647,17 @@ fn req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refuse
     // The matching taper: the tool axis is vertical and the flank follows
     // the cone exactly.
     let f = Fixture::brep(&model, tapered(half));
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(path.max_tilt < 1e-9, "{}", path.max_tilt);
     assert!(path.gouge <= TOL && path.left <= TOL, "{path:?}");
     assert!(path.suggested_taper.is_none());
@@ -653,7 +685,17 @@ fn req_op_07_a_draft_cone_needs_the_matching_taper_and_a_straight_tool_is_refuse
     // along X, and gouges: refused, naming the tilt and the taper that
     // would remove it (OI-94).
     let f = Fixture::brep(&model, flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!((path.max_tilt - half).abs() < 0.01, "{}", path.max_tilt);
     assert!(path.gouge > TOL, "{path:?}");
     assert!(
@@ -690,7 +732,17 @@ fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_
     // 12 mm rulings and the straight flank stays within tolerance.
     let faces = ExactFaces::helicoid(0.3, 200.0);
     let f = Fixture::with_surface(Box::new(faces), flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(path.twist > 0.3 && path.twist < 1.0, "{}", path.twist);
     assert!(path.max_tilt < 1e-9, "the rulings are perpendicular to X");
     assert!(path.gouge <= TOL, "{path:?}");
@@ -733,7 +785,17 @@ fn req_op_07_a_helicoid_is_accepted_at_a_small_twist_and_refused_with_the_twist_
     // twist (decision 0175, issue #226).
     let faces = ExactFaces::helicoid(3.0, 200.0);
     let f = Fixture::with_surface(Box::new(faces), flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(path.twist > 5.0, "{}", path.twist);
     assert!(path.gouge > TOL, "{path:?}");
     let made = self::generated(&f, &[]);
@@ -843,7 +905,17 @@ fn req_op_07_req_op_12_material_left_is_silent_within_the_tolerance_noted_within
     // leftover, and the default limit on the schema.
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let f = Fixture::brep(&model, flat());
-    let measured = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let measured = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(measured.left <= TOL, "{}", measured.left);
     let at = Point3::new(1.0, 2.0, 3.0);
     let with = |left: f64| swarf::FacePath {
@@ -932,6 +1004,8 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
         max_material_left: 0.0,
         reverse_tip_end: false,
         reverse_direction: false,
+        boundary_limits_pass: true,
+        boundary_limits_tip: true,
     };
     let with_stock = Settings {
         stock_to_leave: 0.5,
@@ -953,7 +1027,17 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
     // and without stock to leave: refused beyond 0.1 mm, noted within it.
     let model = boss_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let f = Fixture::brep(&model, flat());
-    let measured = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &with_stock, ctx)).unwrap();
+    let measured = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &with_stock,
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     let path = swarf::FacePath {
         left: 0.3,
         ..measured
@@ -1008,7 +1092,17 @@ fn req_op_07_req_op_12_a_pocket_wall_is_cut_from_inside_and_a_limit_below_its_ch
     // refuses with the amount and the advice.
     let model = pocket_cylinder(BOSS_X, BOSS_RADIUS, Z0, Z1);
     let f = Fixture::brep(&model, flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     assert!(path.gouge <= 1e-6, "{}", path.gouge);
     assert!(path.left > 1e-4 && path.left <= 0.4 * TOL, "{}", path.left);
     for p in path.poses() {
@@ -1163,10 +1257,13 @@ fn req_op_16_swarf_is_in_the_registry_with_the_common_parameters() {
         swarf::parameter::MAX_MATERIAL_LEFT,
         swarf::parameter::TIP_END,
         swarf::parameter::DIRECTION,
+        swarf::parameter::BOUNDARY_LIMITS_PASS,
+        swarf::parameter::BOUNDARY_LIMITS_TIP,
     ] {
         assert!(schema.get(name).is_some(), "{name}");
     }
-    assert!(!s.honours_region());
+    // A boundary, avoid and check set limit swarf (decision 0176).
+    assert!(s.honours_region());
     assert!(!s.honours_leave_zones());
 }
 
@@ -1178,17 +1275,18 @@ fn req_nfr_07_req_op_07_a_mesh_a_region_and_a_cancelled_job_are_refused_clearly(
     let f = Fixture::with_surface(Box::new(mesh), flat());
     let message = refused(&f, &[]);
     assert!(message.contains("a mesh has no rulings"), "{message}");
-    // A region is not what swarf cuts.
+    // A selected region is not what swarf cuts: its faces are its selection
+    // (decision 0176).
     let f = Fixture::brep(&model, flat());
-    let region = openchuck_path::RegionConstraint::default();
+    let selected = BrepSurface::new(&model).unwrap();
+    let region = RegionConstraint {
+        region: Some(&selected),
+        ..RegionConstraint::default()
+    };
     let err = run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx))
         .err()
         .unwrap();
-    assert!(
-        err.to_string().contains("cannot be limited to a region")
-            || err.to_string().contains("not a region"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("not a region"), "{err}");
     // A negative tip extension is refused by the schema.
     let err = run(|ctx| {
         generate(
@@ -1292,7 +1390,17 @@ fn req_op_07_req_nfr_12_an_overcut_above_the_tolerance_is_a_warning_that_says_ho
     // one the gate measured: the same moves whether or not it warns.
     let faces = ExactFaces::helicoid(3.0, 200.0);
     let f = Fixture::with_surface(Box::new(faces), flat());
-    let path = run(|ctx| face_path(f.face(), &f.tool, f.rotary, &f.settings(), ctx)).unwrap();
+    let path = run(|ctx| {
+        face_path(
+            f.face(),
+            &f.tool,
+            f.rotary,
+            &f.settings(),
+            &RegionConstraint::default(),
+            ctx,
+        )
+    })
+    .unwrap();
     let made = generated(&f, &[]);
     let message = overcut_warning(&made);
     let depth = format!("{:.4} mm", path.gouge);
@@ -1349,4 +1457,298 @@ fn req_op_16_req_op_07_strategies_say_in_their_registration_whether_they_need_a_
             assert!(why.contains("STEP"), "{}: {why}", s.name());
         }
     }
+}
+
+// ---- limits: boundary, avoid and check (OP-02; decision 0176) -------------
+
+/// The wall of the limit tests: `y = 8`, X from 22 to 38, Z from `Z0` to
+/// `Z1`, facing +Y, so the flat tool stands at `y = 11` with its tip at
+/// `Z0`.
+fn limit_wall() -> BrepModel {
+    wall_plane(8.0, 22.0, 38.0, Z0, Z1)
+}
+
+fn limited(
+    f: &Fixture,
+    region: &RegionConstraint<'_>,
+    settings: &Settings,
+) -> openchuck_path::Result<swarf::FacePath> {
+    run(|ctx| face_path(f.face(), &f.tool, f.rotary, settings, region, ctx))
+}
+
+fn boundary(window: Window) -> RegionConstraint<'static> {
+    RegionConstraint {
+        boundary: Some(window),
+        ..RegionConstraint::default()
+    }
+}
+
+/// The angle about X of a point of the wall at height `z`.
+fn wall_angle(z: f64) -> f64 {
+    z.atan2(8.0)
+}
+
+#[test]
+fn req_op_02_req_op_07_a_boundary_limits_the_swarf_pass_across_the_rulings() {
+    // Limit A: only the rulings inside the boundary are cut, each whole, and
+    // the pass stops where they leave it (decision 0176).
+    let f = Fixture::brep(&limit_wall(), flat());
+    let window = Window {
+        x_min: 22.0,
+        x_max: 30.0,
+        arc: None,
+    };
+    let settings = Settings {
+        boundary_limits_tip: false,
+        ..f.settings()
+    };
+    let path = limited(&f, &boundary(window), &settings).unwrap();
+    let poses: Vec<_> = path.poses().collect();
+    assert!(!poses.is_empty());
+    for p in &poses {
+        assert!(p.contact.x <= 30.0 + 1e-3, "{p:?}");
+        assert!(
+            (p.ruling_length - (Z1 - Z0)).abs() < 1e-9,
+            "cut whole: {p:?}"
+        );
+        assert!((p.tip.z - Z0).abs() < 1e-9, "the tip is not raised: {p:?}");
+    }
+    let reach = poses.iter().map(|p| p.contact.x).fold(f64::MIN, f64::max);
+    assert!(
+        reach > 30.0 - 1e-3,
+        "the pass reaches the boundary: {reach}"
+    );
+    assert!(
+        (path.limits.outside_boundary - 8.0).abs() < 1e-3,
+        "{:?}",
+        path.limits
+    );
+    let note = path.note(TOL, LIMIT);
+    assert!(
+        note.contains("The boundary limits the pass: about 8.000 mm"),
+        "{note}"
+    );
+    // A boundary in the middle splits the pass into two runs; one between
+    // them leaves two pieces, each its own run with a retract between.
+    let middle = Window {
+        x_min: 25.0,
+        x_max: 35.0,
+        arc: None,
+    };
+    let path = limited(&f, &boundary(middle), &settings).unwrap();
+    assert_eq!(path.runs.len(), 1);
+    assert!(
+        path.poses()
+            .all(|p| (25.0 - 1e-3..=35.0 + 1e-3).contains(&p.contact.x))
+    );
+}
+
+#[test]
+fn req_op_02_req_op_07_a_boundary_limits_the_cut_length_at_the_tool_tip() {
+    // Limit B: the tip is raised along each ruling to where it enters the
+    // boundary, so the bottom of the flank stops there (decision 0176).
+    let f = Fixture::brep(&limit_wall(), flat());
+    let window = Window {
+        x_min: 0.0,
+        x_max: 60.0,
+        arc: Some((wall_angle(12.0), wall_angle(25.0) - wall_angle(12.0))),
+    };
+    let tip_only = Settings {
+        boundary_limits_pass: false,
+        ..f.settings()
+    };
+    for settings in [tip_only, f.settings()] {
+        let path = limited(&f, &boundary(window), &settings).unwrap();
+        for p in path.poses() {
+            assert!((p.tip.z - 12.0).abs() < 1e-3, "{p:?}");
+            assert!((p.ruling_length - (Z1 - 12.0)).abs() < 1e-3, "{p:?}");
+        }
+        assert!(
+            (path.limits.tip_raised - 2.0).abs() < 1e-3,
+            "{:?}",
+            path.limits
+        );
+        let note = path.note(TOL, LIMIT);
+        assert!(note.contains("raised by up to 2.000 mm"), "{note}");
+        assert!(
+            note.contains("far end of the rulings is not limited"),
+            "{note}"
+        );
+        // The face below the boundary is not judged as material left: the
+        // tool is raised off it on purpose.
+        assert!(path.left <= TOL, "{path:?}");
+    }
+    // The tip limit adds to the tip extension.
+    let extended = Settings {
+        tip_extension: 0.5,
+        ..f.settings()
+    };
+    let path = limited(&f, &boundary(window), &extended).unwrap();
+    assert!(path.poses().all(|p| (p.tip.z - 11.5).abs() < 1e-3));
+    // With the pass limited and the tip not, no ruling lies whole inside,
+    // so nothing is left to cut, and generation says why.
+    let pass_only = Settings {
+        boundary_limits_tip: false,
+        ..f.settings()
+    };
+    let err = limited(&f, &boundary(window), &pass_only).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("none of its rulings lies inside the boundary set"),
+        "{err}"
+    );
+}
+
+#[test]
+fn req_op_02_req_op_07_the_two_boundary_limits_compose_and_both_off_is_a_warning() {
+    let f = Fixture::brep(&limit_wall(), flat());
+    // The boundary leaves out the bottom 2 mm everywhere and the wall beyond
+    // X = 30. With both limits the tip is raised and the pass stops at 30;
+    // with the tip limit alone the whole length is cut, raised.
+    let window = Window {
+        x_min: 0.0,
+        x_max: 30.0,
+        arc: Some((wall_angle(12.0), wall_angle(25.0) - wall_angle(12.0))),
+    };
+    let both = limited(&f, &boundary(window), &f.settings()).unwrap();
+    assert!(
+        both.poses()
+            .all(|p| p.contact.x <= 30.0 + 1e-3 && (p.tip.z - 12.0).abs() < 1e-3)
+    );
+    assert!(both.limits.outside_boundary > 7.9);
+    let note = both.note(TOL, LIMIT);
+    assert!(
+        note.contains("limits the pass") && note.contains("raised by up to"),
+        "{note}"
+    );
+    let tip_only = Settings {
+        boundary_limits_pass: false,
+        ..f.settings()
+    };
+    let path = limited(&f, &boundary(window), &tip_only).unwrap();
+    // Beyond X = 30 no part of a ruling is inside, so those rulings are not
+    // cut either: the tip cannot be raised into the boundary there.
+    assert!(path.poses().all(|p| p.contact.x <= 30.0 + 1e-3));
+    // Both off: the boundary limits nothing, the path is the one without a
+    // boundary, and a warning points at the setting.
+    let off = [
+        (
+            swarf::parameter::BOUNDARY_LIMITS_PASS,
+            ParameterValue::Flag(false),
+        ),
+        (
+            swarf::parameter::BOUNDARY_LIMITS_TIP,
+            ParameterValue::Flag(false),
+        ),
+    ];
+    let region = boundary(window);
+    let with =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&off), ctx)).unwrap();
+    let without = generated(&f, &off);
+    assert_eq!(with.group, without.group);
+    assert_eq!(with.warnings.len(), 1, "{:?}", with.warnings);
+    assert_eq!(
+        with.warnings[0].parameter.as_deref(),
+        Some(swarf::parameter::BOUNDARY_LIMITS_PASS)
+    );
+    assert!(with.warnings[0].message.contains("limits nothing"));
+    assert!(without.warnings.is_empty());
+}
+
+#[test]
+fn req_op_02_req_op_07_req_nfr_12_swarf_stops_short_of_an_avoid_surface_and_further_of_a_check_surface()
+ {
+    // A wall across the end of the cut wall, at X = 38: the flat tool, of
+    // radius 3, cannot pass X = 35 without cutting into it (decision 0176).
+    let f = Fixture::brep(&limit_wall(), flat());
+    let end = BrepSurface::new(&cross_plane(38.0, 8.0, 20.0, Z0, Z1)).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&end),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &avoid, &f.settings()).unwrap();
+    let reach = path.poses().map(|p| p.contact.x).fold(f64::MIN, f64::max);
+    assert!(reach <= 35.0 + TOL, "{reach}");
+    assert!(
+        reach > 35.0 - 0.01,
+        "the pass stops close to the surface: {reach}"
+    );
+    assert!(
+        (path.limits.avoid_uncut - (38.0 - reach)).abs() < 1e-3,
+        "{:?}",
+        path.limits
+    );
+    assert!(path.note(TOL, LIMIT).contains("cut into an avoid surface"));
+    // A thin rib across the middle of the wall, at X = 30: the pass stops
+    // short of it and starts again beyond it, as two runs.
+    let rib = BrepSurface::new(&cross_plane(30.0, 8.0, 20.0, Z0, Z1)).unwrap();
+    let middle = RegionConstraint {
+        avoid: Some(&rib),
+        ..RegionConstraint::default()
+    };
+    let split = limited(&f, &middle, &f.settings()).unwrap();
+    assert_eq!(split.runs.len(), 2, "{:?}", split.limits);
+    assert!(split.runs[0].iter().all(|p| p.contact.x <= 27.0 + TOL));
+    assert!(split.runs[1].iter().all(|p| p.contact.x >= 33.0 - TOL));
+    assert!(!split.closed);
+    // A check surface keeps the stock to leave clear too: with 0.5 mm left
+    // the tool stops 0.5 mm earlier than for an avoid surface.
+    let leave = Settings {
+        stock_to_leave: 0.5,
+        ..f.settings()
+    };
+    let check = RegionConstraint {
+        check: Some(&end),
+        ..RegionConstraint::default()
+    };
+    let as_avoid = limited(&f, &avoid, &leave).unwrap();
+    let as_check = limited(&f, &check, &leave).unwrap();
+    let last = |p: &swarf::FacePath| p.poses().map(|p| p.contact.x).fold(f64::MIN, f64::max);
+    assert!(
+        (last(&as_avoid) - last(&as_check) - 0.5).abs() < 0.02,
+        "{} {}",
+        last(&as_avoid),
+        last(&as_check)
+    );
+    assert!(as_check.limits.check_uncut > 0.0 && as_check.limits.avoid_uncut == 0.0);
+    assert!(as_check.note(TOL, LIMIT).contains("touch a check surface"));
+    // The independent checker: no pose of the generated path comes into the
+    // end wall.
+    let region = avoid;
+    let generated =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+    let outline = Outline::new(&flat());
+    let poses = motion(&cutting_poses(&generated.group), 8);
+    let end_points = samples(&cross_plane(38.0, 8.0, 20.0, Z0, Z1), 24, 24, 0.0);
+    let (gouge, _) = verdict(&outline, &poses, &end_points, 0.0);
+    assert!(gouge <= TOL, "the end wall is cut into by {gouge}");
+}
+
+#[test]
+fn req_op_02_req_op_07_a_floor_the_flank_only_meets_is_kept_and_a_tip_extension_into_it_is_refused()
+{
+    // The floor at the foot of the wall, as an avoid surface: a flat tool
+    // with its tip at the foot only meets it, so nothing is dropped; a tip
+    // extension cuts into it everywhere, so nothing is left, and the face is
+    // refused naming why (decision 0176).
+    let f = Fixture::brep(&limit_wall(), flat());
+    let floor = BrepSurface::new(&floor_plane(Z0, 15.0, 45.0, 8.0, 30.0)).unwrap();
+    let avoid = RegionConstraint {
+        avoid: Some(&floor),
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &avoid, &f.settings()).unwrap();
+    assert_eq!(path.limits.avoid_uncut, 0.0, "{:?}", path.limits);
+    let plain = limited(&f, &RegionConstraint::default(), &f.settings()).unwrap();
+    assert_eq!(path.runs, plain.runs);
+    let extended = Settings {
+        tip_extension: 0.5,
+        ..f.settings()
+    };
+    let err = limited(&f, &avoid, &extended).unwrap_err().to_string();
+    assert!(err.contains("swarf cannot cut face 0"), "{err}");
+    assert!(
+        err.contains("cut into the avoid surfaces wherever it cuts it"),
+        "{err}"
+    );
 }
