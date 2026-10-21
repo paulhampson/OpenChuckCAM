@@ -1,6 +1,6 @@
 # 0176: Swarf honours boundary, avoid and check face sets (lane BUG-SWARF; issue #227)
 
-- **Status:** proposed (21 Oct 2026). Every question is answered; the owner accepts the record directly in the lane's session (decision 0049). Owner answers, relayed by the coordinator on 21 Oct 2026:
+- **Status:** accepted (21 Oct 2026, by the owner directly in the lane BUG-SWARF session). Proposed 21 Oct 2026. Owner answers, relayed by the coordinator on 21 Oct 2026:
   - **OI-631, decision 2:** option C. A boundary limits the pass along the face, across the rulings (limit A), and also limits the cut length along the rulings at the tool tip (limit B). The two compose, the notes say which one limited a cut, this record explains how B relates to the existing Tip extension, and the operation's note says plainly that the far end of a ruling cannot be limited.
 
   - **OI-635, whether A and B are settings:** yes, but not as two operation-wide parameters. They are tick boxes in the operation inspector's Geometry section, where the boundary, avoid and check sets are chosen, and they belong to each set in its role within the operation: each boundary, avoid and check set carries its own options. For the boundary they are A and B, both on by default. A set whose options leave it limiting nothing keeps the warning "the set 'X' limits nothing", and the options are stored in optional tables of the operation file, project schema 14, where older files take the defaults (item 3).
