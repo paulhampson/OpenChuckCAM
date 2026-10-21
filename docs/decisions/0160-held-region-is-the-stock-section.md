@@ -1,8 +1,8 @@
 # 0160: The held region is a cylinder of the holding diameter, otherwise the stock's own section (SET-09; issues #187, #188, #202; lane BUG-HELD)
 
-- **Status:** proposed (lane BUG-HELD, 20 Oct 2026). The project owner gave the rule and agreed the SET-09 wording on 20 Oct 2026, relayed by the coordinator session as owner decision 1 of 2 (decision 0049). The owner accepts the record, and the edit to `docs/requirements.md`, directly in the lane BUG-HELD session. Until then the requirement text is not edited. The code on `claude/lane-bug-held-region` builds the rule. It amends [decision 0045](0045-slice-21c-wiring.md) item 2 and refines [decision 0035](0035-workholding-and-retaining-tabs.md) item 1.
+- **Status:** accepted (21 Oct 2026), by the project owner directly in the lane BUG-HELD session, with the edit to SET-09 in `docs/requirements.md` (item 5), which this change makes. The owner gave the rule and agreed the SET-09 wording on 20 Oct 2026, relayed by the coordinator session as owner decision 1 of 2 (decision 0049). The code on `claude/lane-bug-held-region` builds the rule. It amends [decision 0045](0045-slice-21c-wiring.md) item 2 and refines [decision 0035](0035-workholding-and-retaining-tabs.md) item 1.
 - **Date:** 20 Oct 2026.
-- **Open items:** closes OI-195 on acceptance. New: OI-550, OI-551 and OI-554.
+- **Open items:** closes OI-195. New: OI-550, OI-551 and OI-554.
 
 Numbering: the coordinator assigned records 0160 and 0161 and OI-550 to OI-559 to lane BUG-HELD. They were checked free on `main` and every remote branch on 20 Oct 2026. No project schema number: the file does not change.
 
@@ -27,7 +27,7 @@ The box's corners in the gripped length, outside the cylinder, were not part of 
 2. **Box corners outside a holding diameter are outside the held region, by design.** On the owner's project the held region is the 40 mm cylinder, not the box. The stock outside it in the gripped length is not held region, and the deviation report does not count it as part. Decision 0161 still keeps every cutting move off the whole gripped length, so in practice it is not cut either.
 3. **No diameter is needed.** The #188 error goes: with no holding diameter the held region is the stock's own outline. A holding diameter on stock that is not round must still fit the stock's smaller side; a wider one is refused, as before, because the cylinder would stand outside the stock. The holding diameter field's hint says what the held region is without one: "Stock diameter (… mm)" on round stock, "Stock outline" on other stock.
 4. **A box solid in `openchuck-path`.** `Solid::cuboid(bounds)` is a box with faces parallel to the model's planes. It answers every query of the solid exactly: closest point and normal by clamping, the ray by the slab method, and the tool drop by the mesh drop-cutter's vertex, edge and facet tests on its twelve triangles (`cutter::drop_on_triangles`). `Solid::as_cuboid` tells a box from a cylinder or frustum. A box also reads as a solid along X: base, top and length as usual, and both radii the radius through its section's corners. The display draws a box's end outlines as rectangles, and the Setup panes draw its height along Z. `Solid` keeps its fields private and stays `Copy`, so this is an addition, not a breaking change.
-5. **SET-09 as the owner agreed it** (the requirement text to edit when the owner accepts this record): "Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth). The held region is a cylinder of the holding diameter when one is given, otherwise the stock's own section over the gripped length. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock."
+5. **SET-09 as the owner agreed it** (edited in `docs/requirements.md` on acceptance): "Workholding: define, for each setup, how much of the stock the chuck or other workholding grips at the start and at the end of the stock along the axis (the gripped length, the chuck depth). The held region is a cylinder of the holding diameter when one is given, otherwise the stock's own section over the gripped length. The held region is never machined, strategies and links keep clear of it, and it stays in the simulated stock."
 
 ## Alternatives considered
 
@@ -46,7 +46,7 @@ The lane proposed three options for a holding diameter on box stock: not used (t
 - Unit and view tests in `openchuck-app` that held the old rule ("needs a holding diameter") now hold the owner's rule.
 - Round stock gives the same solids as before, so this record does not change its G-code; decision 0161 does.
 - Open items:
-  - OI-195 closes when the owner accepts.
+  - OI-195 closes.
   - OI-550: the owner checks the fix on a nightly build.
   - OI-551: imported stock is held at its bounding box, not its own section.
   - OI-554: a held region that reaches into the part is not warned about. The owner's answer of 21 Oct 2026 on #202 (the end was meant to be held) was checked on `blisk_bad_roughing`. The saved project has no end held region, and its tail tab fills the 0.825 mm of free stock at the end. With the tab removed, an end held region of 0.8 mm or 5 mm is saved, kept out of and kept in the simulation exactly like the start, at both ends together. A 5 mm one silently covers 4.175 mm of the part.

@@ -1,6 +1,6 @@
 # 0161: No cutting move reaches over the gripped length (SET-09; issue #202; lane BUG-HELD)
 
-- **Status:** proposed (lane BUG-HELD, 20 Oct 2026). The project owner chose option 1 on 20 Oct 2026, relayed by the coordinator session as owner decision 2 of 2 (decision 0049); the owner accepts the record directly in the lane BUG-HELD session. The code on `claude/lane-bug-held-region` builds option 1. It refines [decision 0035](0035-workholding-and-retaining-tabs.md) item 1 and keeps it: the held region stays in the target.
+- **Status:** accepted (21 Oct 2026), by the project owner directly in the lane BUG-HELD session, with the lane's refinements of option 1 (the 0.5 mm clearance and roughing's turn at a held end, item 6). The owner chose option 1 on 20 Oct 2026, relayed by the coordinator session as owner decision 2 of 2 (decision 0049). The code on `claude/lane-bug-held-region` builds option 1. It refines [decision 0035](0035-workholding-and-retaining-tabs.md) item 1 and keeps it: the held region stays in the target.
 - **Date:** 20 Oct 2026.
 - **Open items:** new OI-552 and OI-553. OI-160 (chuck geometry from the machine profile, with COL-04) stays deferred.
 
