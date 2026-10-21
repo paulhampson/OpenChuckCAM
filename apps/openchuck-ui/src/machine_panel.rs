@@ -249,14 +249,37 @@ impl MachinePanel {
             .map(label)
             .unwrap_or_default();
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt("machine choice")
-                .selected_text(selected)
-                .width(260.0)
-                .show_ui(ui, |ui| {
-                    for (i, a) in self.available.iter().enumerate() {
-                        ui.selectable_value(&mut self.chosen, i, label(a));
-                    }
-                });
+            // The list takes what the Refresh button leaves, so the row
+            // never outgrows the pane.
+            let refresh = ui
+                .painter()
+                .layout_no_wrap(
+                    "Refresh".to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    DARK.text,
+                )
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x;
+            let list = (ui.available_width() - refresh - ui.spacing().item_spacing.x).max(80.0);
+            // The list is laid out in a cell of its own width, so a long
+            // profile name is cut to it (the combo box only truncates at the
+            // width it is offered) instead of holding the pane open.
+            ui.allocate_ui_with_layout(
+                egui::vec2(list, ui.spacing().interact_size.y),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    egui::ComboBox::from_id_salt("machine choice")
+                        .selected_text(selected)
+                        .truncate()
+                        .width(list)
+                        .show_ui(ui, |ui| {
+                            for (i, a) in self.available.iter().enumerate() {
+                                ui.selectable_value(&mut self.chosen, i, label(a));
+                            }
+                        });
+                },
+            );
             if ui.button("Refresh").clicked() {
                 self.refresh();
             }

@@ -128,35 +128,66 @@ pub fn tip(response: egui::Response, text: &str) -> egui::Response {
     response.on_hover_text(text)
 }
 
+/// A small outlined chip ("Not applied"): measured first and drawn in one
+/// allocated rectangle, so its place does not depend on the layout it is in
+/// (a frame in a right-to-left row lay outside the pane and widened it).
+pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(
+        text.to_owned(),
+        egui::TextStyle::Small.resolve(ui.style()),
+        colour,
+    );
+    let size = galley.size() + egui::vec2(10.0, 2.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter().rect_stroke(
+        rect,
+        3.0,
+        Stroke::new(1.0, DARK.line),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, colour);
+    response
+}
+
 /// The label column: the label with its tooltip, and ↺ at its right end.
 /// Returns true when ↺ was clicked.
 fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) -> bool {
     let height = ui.spacing().interact_size.y;
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(width::LABEL_COLUMN, height),
-        egui::Sense::hover(),
-    );
-    let mut clicked = false;
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect)
-            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-    );
-    if reset {
-        child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = ui
-                .add(egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent)).small())
-                .on_hover_text("Reset: the default or the tool's cutting data applies");
-            button.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset {label}"))
-            });
-            clicked = button.clicked();
-            label_text(ui, label, description);
-        });
-    } else {
-        label_text(ui, label, description);
-    }
-    clicked
+    let size = egui::vec2(width::LABEL_COLUMN, height);
+    // Allocated and drawn in one step, so the cell is where the cursor is and
+    // the value follows it directly.
+    ui.allocate_ui_with_layout(
+        size,
+        egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Min),
+        |ui| {
+            // The cell is the full column whatever the label's width.
+            ui.set_min_size(size);
+            let mut clicked = false;
+            if reset {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let button = ui
+                        .add(
+                            egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent)).small(),
+                        )
+                        .on_hover_text("Reset: the default or the tool's cutting data applies");
+                    button.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::Button,
+                            true,
+                            format!("Reset {label}"),
+                        )
+                    });
+                    clicked = button.clicked();
+                    label_text(ui, label, description);
+                });
+            } else {
+                label_text(ui, label, description);
+            }
+            clicked
+        },
+    )
+    .inner
 }
 
 fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
@@ -194,13 +225,26 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         let mut typed = state
             .typed(row.key)
             .map_or_else(|| row.applied.clone(), str::to_owned);
-        let mut prepared = egui::Frame::new()
-            .fill(DARK.field)
-            .corner_radius(RADIUS)
-            .inner_margin(egui::Margin::symmetric(6, 2))
-            .begin(ui);
+        // The box takes the rest of the row as one fixed rectangle, so what is
+        // typed in it cannot change its size or the size of the pane around
+        // it (a row that grew with its content made the inspector widen).
+        let margin = egui::vec2(6.0, 2.0);
+        let box_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0 * margin.y;
+        let (frame_rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width().max(60.0), box_height),
+            egui::Sense::hover(),
+        );
+        let background = ui.painter().add(egui::Shape::Noop);
         let response = {
-            let ui = &mut prepared.content_ui;
+            let mut inner = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(frame_rect.shrink2(margin))
+                    .layout(
+                        egui::Layout::left_to_right(egui::Align::Center)
+                            .with_main_align(egui::Align::Min),
+                    ),
+            );
+            let ui = &mut inner;
             let unit = (!row.unit.is_empty()).then(|| {
                 ui.painter().layout_no_wrap(
                     row.unit.to_owned(),
@@ -214,7 +258,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
             let mut edit = egui::TextEdit::singleline(&mut typed)
                 .frame(egui::Frame::NONE)
                 .font(egui::TextStyle::Monospace)
-                .desired_width((ui.available_width() - unit_width).max(40.0))
+                .desired_width((ui.available_width() - unit_width).max(0.0))
                 .interactive(row.enabled);
             if let Some(hint) = &row.hint {
                 edit = edit.hint_text(RichText::new(hint).color(DARK.muted));
@@ -235,13 +279,23 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         } else {
             DARK.line
         };
-        let width = if response.has_focus() || needed {
-            2.0
-        } else {
-            1.0
-        };
-        prepared.frame.stroke = Stroke::new(width, border);
-        prepared.end(ui);
+        ui.painter().set(
+            background,
+            egui::epaint::RectShape::new(
+                frame_rect,
+                RADIUS,
+                DARK.field,
+                Stroke::new(
+                    if response.has_focus() || needed {
+                        2.0
+                    } else {
+                        1.0
+                    },
+                    border,
+                ),
+                egui::StrokeKind::Inside,
+            ),
+        );
         let response = match row.range {
             Some(range) => response.on_hover_text(format!("Allowed: {range}.")),
             None => response,
@@ -398,6 +452,27 @@ pub fn segmented(
     chosen
 }
 
+/// The width the segmented control of `options` needs, so a row can fall
+/// back to a drop-down list when the pane is too narrow for it (a rigid
+/// control that does not fit holds the pane open).
+fn segmented_width(ui: &egui::Ui, options: &[&str]) -> f32 {
+    options
+        .iter()
+        .map(|option| {
+            ui.painter()
+                .layout_no_wrap(
+                    (*option).to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    DARK.text,
+                )
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x
+                + 2.0
+        })
+        .sum()
+}
+
 /// A row of a choice: a segmented control for two to four options, else a
 /// drop-down list. Returns the index chosen this frame.
 pub fn choice_row(
@@ -411,7 +486,8 @@ pub fn choice_row(
 ) -> Option<usize> {
     ui.horizontal(|ui| {
         label_cell(ui, label, description, false);
-        if (2..=4).contains(&options.len()) {
+        if (2..=4).contains(&options.len()) && segmented_width(ui, options) <= ui.available_width()
+        {
             segmented(ui, options, current, enabled)
         } else {
             let mut chosen = None;

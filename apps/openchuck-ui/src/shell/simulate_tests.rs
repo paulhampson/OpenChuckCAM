@@ -220,12 +220,15 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
     // the check is reached by scrolling over it.
     // The dialog is centred in the main window (decision 0164), so the
     // pointer goes where the Holes row is painted.
+    // (The first row of the body, above the default dock: the dock is
+    // 260 high now, decision 0187, and the wheel goes to what is under the
+    // pointer.)
     let holes = rig
         .text_rects()
         .iter()
-        .find(|(t, _)| t == "Holes")
+        .find(|(t, _)| t == "1 UNITS")
         .map(|(_, r)| *r)
-        .expect("the Holes row is painted");
+        .expect("the UNITS row is painted");
     rig.frame(vec![Event::PointerMoved(holes.center())]);
     for _ in 0..40 {
         if rig.shows("The check reports problems and changes nothing.") {
