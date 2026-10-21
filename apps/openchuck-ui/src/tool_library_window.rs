@@ -215,6 +215,10 @@ pub struct ToolLibraryWindow {
     view: ToolLibraryView,
     /// Whether `view` was given by the settings since the window last opened.
     view_synced: bool,
+    /// Whether a text field had the keyboard when the last frame ended. egui
+    /// takes the keyboard from a field as a frame begins when Esc is pressed, so
+    /// the frame cannot tell Esc ended an edit; this can (OI-536).
+    field_had_keyboard: bool,
     chosen: Option<Chosen>,
     /// The library tool being edited (with `Chosen::Library`).
     draft: Option<Draft>,
@@ -247,6 +251,7 @@ impl ToolLibraryWindow {
             search: String::new(),
             view: ToolLibraryView::default(),
             view_synced: false,
+            field_had_keyboard: false,
             chosen: None,
             draft: None,
             fields: FormState::default(),
@@ -297,6 +302,7 @@ impl ToolLibraryWindow {
     pub fn open(&mut self, purpose: Purpose, chosen: Option<Chosen>) {
         self.purpose = purpose;
         self.view_synced = false;
+        self.field_had_keyboard = false;
         if !self.open || !self.is_dirty() {
             self.reload();
         }
@@ -422,6 +428,7 @@ impl ToolLibraryWindow {
         if event == WindowEvent::CloseRequested {
             acts.push(Act::Close);
         }
+        self.field_had_keyboard = ctx.egui_wants_keyboard_input();
         for act in acts {
             let (status, added) = self.act(act, app.as_deref_mut());
             if status.is_some() {
@@ -436,10 +443,9 @@ impl ToolLibraryWindow {
 
     fn draw(&mut self, ui: &mut egui::Ui, project: Option<&Project>, acts: &mut Vec<Act>) {
         // Esc closes the window (it asks first when a draft would be lost) unless a field
-        // has the keyboard, where Esc belongs to the field (specification section 16).
-        if !ui.ctx().egui_wants_keyboard_input()
-            && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape))
-        {
+        // had the keyboard, where Esc belongs to the field and only ends the edit
+        // (specification section 16; OI-536).
+        if !self.field_had_keyboard && ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
             acts.push(Act::Close);
         }
         egui::Panel::bottom("tool library footer")

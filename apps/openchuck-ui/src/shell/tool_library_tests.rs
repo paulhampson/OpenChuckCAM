@@ -599,3 +599,29 @@ fn req_tl_12_a_default_tool_shows_its_dimensions_read_only_and_copies_to_edit() 
     assert!(reread.get(copy).is_some());
     std::fs::remove_dir_all(&folder).ok();
 }
+
+#[test]
+fn req_tl_01_esc_in_a_text_field_ends_the_edit_and_a_second_esc_closes_the_window() {
+    // OI-536: Esc in a text field ended the edit and acted on the window too.
+    let folder = library_folder("esc-field");
+    let id = library_with(&folder, ToolType::FlatEnd, "6 mm flat");
+    let mut rig = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    // The search box has the keyboard: Esc ends the edit, the window stays.
+    rig.click(centre_of(&rig, "Search tools"));
+    rig.frame(Vec::new());
+    assert!(rig.ctx.egui_wants_keyboard_input());
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(rig.shell.tool_library.is_open(), "the first Esc closed it");
+    assert!(!rig.ctx.egui_wants_keyboard_input());
+    // With no field editing, Esc closes the window.
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(!rig.shell.tool_library.is_open());
+    std::fs::remove_dir_all(&folder).ok();
+}
