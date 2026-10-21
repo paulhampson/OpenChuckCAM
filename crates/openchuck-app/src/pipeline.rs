@@ -28,26 +28,29 @@ pub const STAGE_GENERATE: &str = "regenerate";
 /// (issue 201).
 pub const STAGE_SIMULATE: &str = "simulate the stock";
 
-/// Where an operation's own progress goes while the run makes it: the
-/// strategy's stages and the stock simulation's moves, each with its own
-/// count. Shown as they come, they replaced the run's count of operations,
-/// so the text jumped between totals in the middle of a run (issue 248).
-/// Each is passed on as the run's count instead, the operation still being
-/// worked on, so the run is seen to be alive and its count never changes
-/// total or goes back. One percentage across the stages, with the
-/// operation's own share in it, is lane BUG-PROG's (issue 201): it is made
-/// here, from the report this drops.
+/// Where the progress of one step of a run goes: an operation's (the
+/// strategy's stages and the stock simulation's moves) or a setup's
+/// comparison with the part (reading the model, comparing), each with its
+/// own count. Shown as they came, they replaced the run's count, so the text
+/// jumped between totals in the middle of a run (issue 248). Each is passed
+/// on as the run's count instead, at the step still being worked on, so the
+/// run is seen to be alive and its count never changes total or goes back
+/// within a stage. One percentage across the stages, with the step's own
+/// share in it, is lane BUG-PROG's (issue 201): it is made here, from the
+/// report this drops.
 struct OperationProgress<'a> {
     run: &'a JobContext<'a>,
-    /// Operations made before this one.
+    /// The run's stage: [`STAGE_GENERATE`] or [`STAGE_SIMULATE`].
+    stage: &'static str,
+    /// Steps of the stage done before this one.
     done: u64,
-    /// Operations in the run.
+    /// Steps in the stage.
     total: u64,
 }
 
 impl ProgressSink for OperationProgress<'_> {
     fn report(&self, _own: Progress) {
-        self.run.report(STAGE_GENERATE, self.done, Some(self.total));
+        self.run.report(self.stage, self.done, Some(self.total));
     }
 }
 
@@ -211,6 +214,7 @@ pub(crate) fn regenerate(
         record.working_on(Some(operation.id));
         let own = OperationProgress {
             run: context,
+            stage: STAGE_GENERATE,
             done: i as u64,
             total,
         };
@@ -342,6 +346,13 @@ pub(crate) fn regenerate(
         for (done, state) in (0_u64..).zip(setups) {
             context.report(STAGE_SIMULATE, done, Some(count));
             context.check_cancelled()?;
+            let own = OperationProgress {
+                run: context,
+                stage: STAGE_SIMULATE,
+                done,
+                total: count,
+            };
+            let within = JobContext::new(context.cancel, &own);
             let mut state = Arc::unwrap_or_clone(state);
             state.rename(project);
             let setup = project.setup(state.id);
@@ -353,13 +364,13 @@ pub(crate) fn regenerate(
             let mesh = match (part, setup) {
                 (Some(model), Some(setup)) => Some(crate::workholding::setup_deviation_target(
                     setup,
-                    crate::model::placed_mesh(location, model, context)?,
+                    crate::model::placed_mesh(location, model, &within)?,
                 )?),
                 _ => None,
             };
             report
                 .setups
-                .push(state.finish(mesh.as_ref(), settings, context)?);
+                .push(state.finish(mesh.as_ref(), settings, &within)?);
         }
         context.report(STAGE_SIMULATE, count, Some(count));
         regeneration.simulation = Some(report);
@@ -561,7 +572,8 @@ mod tests {
         // own stages, each with its own count, and those reports replaced
         // the run's count of operations, so the text shown jumped between
         // totals ("0 of 1", "0 of 10") in the middle of a run. The run shows
-        // one count, of operations, until the comparison with the part.
+        // one count, of operations, then one of setups for the comparison
+        // with the part.
         let mut p = TestProject::new("progress");
         p.app.register_strategy(Arc::new(OneRing)).unwrap();
         p.add_operation("Ring", "one_ring");
@@ -595,12 +607,13 @@ mod tests {
             done = r.done;
         }
         assert_eq!(done, 2);
-        assert!(
-            reports
-                .iter()
-                .skip(generate.len())
-                .all(|r| r.stage == STAGE_SIMULATE),
-            "{reports:?}"
-        );
+        let mut done = 0;
+        for r in reports.iter().skip(generate.len()) {
+            assert_eq!(r.stage, STAGE_SIMULATE, "{reports:?}");
+            assert_eq!(r.total, Some(1), "{reports:?}");
+            assert!(r.done >= done, "{reports:?}");
+            done = r.done;
+        }
+        assert_eq!(done, 1);
     }
 }
