@@ -3,7 +3,7 @@
 - **Status:** proposed. Only the project owner accepts this record, in the lane TB session (decision 0049); until then it is guidance.
 - **What it builds:** [decision 0110](0110-setup-sheet-traceability.md) (accepted 17 Oct 2026), which this record does not change. [Decision 0189](0189-setup-sheet-written-with-the-g-code.md) (Write G-code writes the sheet from the same run) and [decision 0028](0028-slice-19-output-options-and-setup-sheet.md) item 4 are unchanged.
 - **Date:** 21 Oct 2026.
-- **Open items:** OI-538 (closed by this change), OI-691 (closed by this change), OI-810.
+- **Open items:** OI-538 (closed by this change), OI-691 (closed by this change), OI-810 (closed: the owner chose UTC, relayed by the coordinator, 21 Oct 2026).
 
 Numbering: the coordinator assigned 0207 and OI-810 to OI-819; `main` and the unmerged branches end at 0191.
 
@@ -14,7 +14,7 @@ GC-12 as amended by decision 0110 asks for a block that ties a printed sheet to 
 ## Decision
 
 1. **A "Traceability" section is the last section of the sheet**, in the HTML and the PDF, with five lines: *Generated*, *Project last saved*, *Software version*, *Project fingerprint* and *Version control*. It follows the Notes, where a printed copy ends. The Operations table already carries the spindle speed column; lane BUG-SPINDLE adds the operation's spindle speed and direction there, so this change touches no operation column.
-2. **Generated** is ISO 8601 to the second in UTC with the `Z` zone designator (`2026-10-21T09:30:05Z`). It is read from an injected `Clock` (`SystemClock` at export, `FixedClock` in tests), held by `Application` and replaced with `Application::set_clock`. UTC is the same on every computer and needs no time-zone library (OI-810).
+2. **Generated** is ISO 8601 to the second in UTC with the `Z` zone designator (`2026-10-21T09:30:05Z`). It is read from an injected `Clock` (`SystemClock` at export, `FixedClock` in tests), held by `Application` and replaced with `Application::set_clock`. UTC is the same on every computer and needs no time-zone library (OI-810, the owner's choice A).
 3. **Project last saved** is the newest modification time of the project's files on disk. The files are the ones the project was last opened or saved as (`file::render` of that state), so nothing is stored in the project (PRJ-01). If the project has changed since, the line says "(changes made since are not saved)". When any of those files is missing the line reads "not saved yet".
 4. **Project fingerprint** is `blake3:` and 64 hex digits, the hash of each saved file's relative path, length and bytes in path order, read from disk. It reads "not saved yet" with the saved time.
 5. **Software version** is the workspace version (`CARGO_PKG_VERSION`). **Version control** reads "not tracked" until `openchuck-vcs` exists.
@@ -25,7 +25,7 @@ GC-12 as amended by decision 0110 asks for a block that ties a printed sheet to 
 
 ## Alternatives considered
 
-- **Local time with an offset.** Closer to what a shop reads, but the standard library cannot give the offset without a time-zone dependency or unsafe code, and a sheet would differ between computers. Deferred as OI-810.
+- **Local time with an offset.** Closer to what a shop reads, but the standard library cannot give the offset without a time-zone dependency or unsafe code, and a sheet would differ between computers. Not chosen (OI-810, the owner chose UTC).
 - **Store the saved time in the project.** Rejected by decision 0110 (PRJ-01).
 - **Fingerprint the in-memory project.** It would also change with unsaved edits and could not be matched to a file; the saved files are what a printed sheet is matched to.
 
