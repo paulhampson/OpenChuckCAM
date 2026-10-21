@@ -16,9 +16,10 @@
 use openchuck_path::params::names;
 use openchuck_path::swarf::{self, Family, Flank, Settings, detect_rulings, face_path};
 use openchuck_path::{
-    AcceptAll, AnalyticStock, BrepSurface, FaceClosest, FaceRef, MeshSurface, ParameterValue,
-    ParametricFace, RayHit, RegionConstraint, Registry, RotaryMapping, Strategy, StrategyInput,
-    SurfacePoint, SurfaceSource, Swarf, ToolLine, Uv, Window, generate, generate_in_region,
+    AcceptAll, AnalyticStock, BoundaryLimits, BrepSurface, FaceClosest, FaceRef, MeshSurface,
+    ParameterValue, ParametricFace, Protection, RayHit, RegionConstraint, Registry, RotaryMapping,
+    Strategy, StrategyInput, SurfacePoint, SurfaceSource, Swarf, ToolLine, Uv, WatchedSurface,
+    Window, generate, generate_in_region,
 };
 use openchuck_testkit::gouge::Outline;
 use openchuck_testkit::ruled::{
@@ -155,8 +156,6 @@ impl Fixture {
             max_material_left: LIMIT,
             reverse_tip_end: false,
             reverse_direction: false,
-            boundary_limits_pass: true,
-            boundary_limits_tip: true,
         }
     }
 
@@ -1004,8 +1003,6 @@ fn req_op_07_req_op_12_the_default_material_left_limit_is_the_same_on_every_pass
         max_material_left: 0.0,
         reverse_tip_end: false,
         reverse_direction: false,
-        boundary_limits_pass: true,
-        boundary_limits_tip: true,
     };
     let with_stock = Settings {
         stock_to_leave: 0.5,
@@ -1257,13 +1254,14 @@ fn req_op_16_swarf_is_in_the_registry_with_the_common_parameters() {
         swarf::parameter::MAX_MATERIAL_LEFT,
         swarf::parameter::TIP_END,
         swarf::parameter::DIRECTION,
-        swarf::parameter::BOUNDARY_LIMITS_PASS,
-        swarf::parameter::BOUNDARY_LIMITS_TIP,
     ] {
         assert!(schema.get(name).is_some(), "{name}");
     }
-    // A boundary, avoid and check set limit swarf (decision 0176).
+    // A boundary, avoid and check set limit swarf, each with its own
+    // options, which are not operation parameters (decision 0176).
     assert!(s.honours_region());
+    assert!(s.honours_restriction_options());
+    assert!(schema.get("boundary_limits_pass").is_none());
     assert!(!s.honours_leave_zones());
 }
 
@@ -1477,8 +1475,15 @@ fn limited(
 }
 
 fn boundary(window: Window) -> RegionConstraint<'static> {
+    limits(window, true, true)
+}
+
+/// A boundary of `window` with limit A (`pass`) and limit B (`tip`) on or
+/// off.
+fn limits(window: Window, pass: bool, tip: bool) -> RegionConstraint<'static> {
     RegionConstraint {
         boundary: Some(window),
+        boundary_limits: BoundaryLimits { pass, tip },
         ..RegionConstraint::default()
     }
 }
@@ -1498,11 +1503,8 @@ fn req_op_02_req_op_07_a_boundary_limits_the_swarf_pass_across_the_rulings() {
         x_max: 30.0,
         arc: None,
     };
-    let settings = Settings {
-        boundary_limits_tip: false,
-        ..f.settings()
-    };
-    let path = limited(&f, &boundary(window), &settings).unwrap();
+    let settings = f.settings();
+    let path = limited(&f, &limits(window, true, false), &settings).unwrap();
     let poses: Vec<_> = path.poses().collect();
     assert!(!poses.is_empty());
     for p in &poses {
@@ -1535,7 +1537,7 @@ fn req_op_02_req_op_07_a_boundary_limits_the_swarf_pass_across_the_rulings() {
         x_max: 35.0,
         arc: None,
     };
-    let path = limited(&f, &boundary(middle), &settings).unwrap();
+    let path = limited(&f, &limits(middle, true, false), &settings).unwrap();
     assert_eq!(path.runs.len(), 1);
     assert!(
         path.poses()
@@ -1553,12 +1555,8 @@ fn req_op_02_req_op_07_a_boundary_limits_the_cut_length_at_the_tool_tip() {
         x_max: 60.0,
         arc: Some((wall_angle(12.0), wall_angle(25.0) - wall_angle(12.0))),
     };
-    let tip_only = Settings {
-        boundary_limits_pass: false,
-        ..f.settings()
-    };
-    for settings in [tip_only, f.settings()] {
-        let path = limited(&f, &boundary(window), &settings).unwrap();
+    for region in [limits(window, false, true), boundary(window)] {
+        let path = limited(&f, &region, &f.settings()).unwrap();
         for p in path.poses() {
             assert!((p.tip.z - 12.0).abs() < 1e-3, "{p:?}");
             assert!((p.ruling_length - (Z1 - 12.0)).abs() < 1e-3, "{p:?}");
@@ -1587,11 +1585,7 @@ fn req_op_02_req_op_07_a_boundary_limits_the_cut_length_at_the_tool_tip() {
     assert!(path.poses().all(|p| (p.tip.z - 11.5).abs() < 1e-3));
     // With the pass limited and the tip not, no ruling lies whole inside,
     // so nothing is left to cut, and generation says why.
-    let pass_only = Settings {
-        boundary_limits_tip: false,
-        ..f.settings()
-    };
-    let err = limited(&f, &boundary(window), &pass_only).unwrap_err();
+    let err = limited(&f, &limits(window, true, false), &f.settings()).unwrap_err();
     assert!(
         err.to_string()
             .contains("none of its rulings lies inside the boundary set"),
@@ -1621,11 +1615,7 @@ fn req_op_02_req_op_07_the_two_boundary_limits_compose_and_both_off_is_a_warning
         note.contains("limits the pass") && note.contains("raised by up to"),
         "{note}"
     );
-    let tip_only = Settings {
-        boundary_limits_pass: false,
-        ..f.settings()
-    };
-    let path = limited(&f, &boundary(window), &tip_only).unwrap();
+    let path = limited(&f, &limits(window, false, true), &f.settings()).unwrap();
     // Beyond X = 30 no part of a ruling is inside, so those rulings are not
     // cut either: the tip cannot be raised into the boundary there.
     assert!(path.poses().all(|p| p.contact.x <= 30.0 + 1e-3));
@@ -1652,27 +1642,15 @@ fn req_op_02_req_op_07_the_two_boundary_limits_compose_and_both_off_is_a_warning
     }
     assert!((path.limits.tip_raised - (Z1 - 16.0)).abs() < 1e-3);
     // Both off: the boundary limits nothing, the path is the one without a
-    // boundary, and a warning points at the setting.
-    let off = [
-        (
-            swarf::parameter::BOUNDARY_LIMITS_PASS,
-            ParameterValue::Flag(false),
-        ),
-        (
-            swarf::parameter::BOUNDARY_LIMITS_TIP,
-            ParameterValue::Flag(false),
-        ),
-    ];
-    let region = boundary(window);
+    // boundary, and a warning says so. The options are the set's, not an
+    // operation parameter, so the warning names none.
+    let region = limits(window, false, false);
     let with =
-        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&off), ctx)).unwrap();
-    let without = generated(&f, &off);
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+    let without = generated(&f, &[]);
     assert_eq!(with.group, without.group);
     assert_eq!(with.warnings.len(), 1, "{:?}", with.warnings);
-    assert_eq!(
-        with.warnings[0].parameter.as_deref(),
-        Some(swarf::parameter::BOUNDARY_LIMITS_PASS)
-    );
+    assert_eq!(with.warnings[0].parameter, None);
     assert!(with.warnings[0].message.contains("limits nothing"));
     assert!(without.warnings.is_empty());
 }
@@ -1744,6 +1722,111 @@ fn req_op_02_req_op_07_req_nfr_12_swarf_stops_short_of_an_avoid_surface_and_furt
     let end_points = samples(&cross_plane(38.0, 8.0, 20.0, Z0, Z1), 24, 24, 0.0);
     let (gouge, _) = verdict(&outline, &poses, &end_points, 0.0);
     assert!(gouge <= TOL, "the end wall is cut into by {gouge}");
+}
+
+#[test]
+fn req_op_02_req_op_07_req_nfr_12_a_watched_avoid_or_check_surface_keeps_the_path_and_warns() {
+    // An avoid or check set set to warn only (decision 0176 item 3): the
+    // path is the one without it, the face's note and a warning naming the
+    // set give the length along which the tool breaks it, and an unbroken
+    // watched surface says nothing.
+    let f = Fixture::brep(&limit_wall(), flat());
+    let end = BrepSurface::new(&cross_plane(38.0, 8.0, 20.0, Z0, Z1)).unwrap();
+    let plain = limited(&f, &RegionConstraint::default(), &f.settings()).unwrap();
+    let cut_short = RegionConstraint {
+        avoid: Some(&end),
+        ..RegionConstraint::default()
+    };
+    let stopped = limited(&f, &cut_short, &f.settings()).unwrap();
+    for (protection, name, says) in [
+        (
+            Protection::Avoid,
+            "End wall",
+            "cuts into the avoid set 'End wall'",
+        ),
+        (
+            Protection::Check,
+            "Rib",
+            "closer than the stock to leave to the check set 'Rib'",
+        ),
+    ] {
+        let watch = [WatchedSurface {
+            name,
+            protection,
+            surface: &end,
+        }];
+        let region = RegionConstraint {
+            watch: &watch,
+            ..RegionConstraint::default()
+        };
+        let path = limited(&f, &region, &f.settings()).unwrap();
+        assert_eq!(path.runs, plain.runs, "{name}: the path is kept");
+        assert_eq!(path.limits.watched.len(), 1, "{:?}", path.limits);
+        let broken = &path.limits.watched[0];
+        assert_eq!(
+            (broken.index, broken.name.as_str(), broken.protection),
+            (0, name, protection)
+        );
+        // The tool breaks the end wall over the length a cut-short set
+        // leaves uncut.
+        assert!(
+            (broken.length - stopped.limits.avoid_uncut).abs() < 0.05,
+            "{} against {}",
+            broken.length,
+            stopped.limits.avoid_uncut
+        );
+        assert!(
+            path.note(TOL, LIMIT).contains(says),
+            "{}",
+            path.note(TOL, LIMIT)
+        );
+        let made =
+            run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+        assert_eq!(made.group, generated(&f, &[]).group);
+        assert_eq!(made.warnings.len(), 1, "{:?}", made.warnings);
+        let warning = &made.warnings[0];
+        assert!(warning.message.contains(says), "{}", warning.message);
+        assert!(warning.message.contains("of face 0"), "{}", warning.message);
+        assert_eq!(warning.parameter, None);
+    }
+    // A watched surface the tool keeps clear of: no break, no warning.
+    let far = BrepSurface::new(&cross_plane(60.0, 8.0, 20.0, Z0, Z1)).unwrap();
+    let watch = [WatchedSurface {
+        name: "Far wall",
+        protection: Protection::Avoid,
+        surface: &far,
+    }];
+    let region = RegionConstraint {
+        watch: &watch,
+        ..RegionConstraint::default()
+    };
+    let made =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+    assert!(made.warnings.is_empty(), "{:?}", made.warnings);
+    // Two watched surfaces of the same name are told apart by their place:
+    // only the second is broken.
+    let watch = [
+        WatchedSurface {
+            name: "Wall",
+            protection: Protection::Avoid,
+            surface: &far,
+        },
+        WatchedSurface {
+            name: "Wall",
+            protection: Protection::Avoid,
+            surface: &end,
+        },
+    ];
+    let region = RegionConstraint {
+        watch: &watch,
+        ..RegionConstraint::default()
+    };
+    let path = limited(&f, &region, &f.settings()).unwrap();
+    assert_eq!(path.limits.watched.len(), 1, "{:?}", path.limits);
+    assert_eq!(path.limits.watched[0].index, 1);
+    let made =
+        run(|ctx| generate_in_region(&Swarf, &f.input(), &region, &values(&[]), ctx)).unwrap();
+    assert_eq!(made.warnings.len(), 1, "{:?}", made.warnings);
 }
 
 #[test]

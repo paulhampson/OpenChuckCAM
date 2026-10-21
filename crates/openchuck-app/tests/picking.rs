@@ -65,6 +65,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {

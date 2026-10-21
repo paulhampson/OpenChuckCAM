@@ -4,6 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- **Project schema 14** (decision 0176 item 3, issue #227; OP-02): an operation's boundary, avoid and check sets each carry their own options. `Operation` has a new public field, `restriction_options` (a new `RestrictionOptions`: the boundary's `BoundaryOptions`, `limits_pass` and `limits_tip`, both true by default, and a `SetOptions` per avoid or check set, whose `on_break` is a new `OnBreak`: `CutShort` by default, `Warn` or `Ignore`); code that builds an `Operation` adds `restriction_options: Default::default()`. They are stored in the operation file as the optional `[boundary_options]`, `[avoid_options.<set id>]` and `[check_options.<set id>]` tables, each written only when it differs from the defaults; a schema 13 file loads with the defaults, and one that already holds a table is refused. Options for a set not in that role, or boundary options without a boundary set, are refused. They join `file::selection_inputs_hash`, which is unchanged at the defaults.
 - Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
 - `file::load_files` loads a project from the texts of its files in memory, with every check `file::load` makes; `load` now reads every file before it checks any (decision 0107, for the `project_folder` fuzz target).

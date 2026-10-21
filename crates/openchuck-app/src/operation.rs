@@ -17,13 +17,16 @@ use std::sync::Arc;
 use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
-    AcceptAll, AnalyticStock, BrepEdges, BrepSurface, ChosenSegments, CompositeSurface,
-    CurveSource, EdgeFollowing, MeshSurface, ParameterValue, RegionConstraint, Registry,
-    RotaryMapping, StockModel, Strategy, StrategyInput, SurfaceSource, Window, drill,
-    edge_following, generate, generate_in_region, generate_in_zones, swarf,
+    AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
+    CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
+    Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy, StrategyInput,
+    SurfaceSource, WatchedSurface, Window, drill, edge_following, generate, generate_in_region,
+    generate_in_zones, swarf,
 };
 use openchuck_project::id::{OperationId, SelectionSetId};
-use openchuck_project::{ContentHash, ModelRef, Operation, Project, SelectionTarget};
+use openchuck_project::{
+    BoundaryOptions, ContentHash, ModelRef, OnBreak, Operation, Project, SelectionTarget,
+};
 use openchuck_types::brep::{BrepModel, EdgeId, FaceId};
 use openchuck_types::ir::PathTags;
 use openchuck_types::job::JobContext;
@@ -428,9 +431,13 @@ pub(crate) fn generate_with_part(
         (Some(brep), Some(choice)) => BrepLimits::of(brep, choice)?,
         _ => None,
     };
+    let watch = brep_limits
+        .as_ref()
+        .map(BrepLimits::watch)
+        .unwrap_or_default();
     let constraint = match (&resolved_region, &brep_limits) {
         (Some(r), _) => Some(r.constraint()),
-        (None, Some(l)) => Some(l.constraint()),
+        (None, Some(l)) => Some(l.constraint(&watch)),
         (None, None) => None,
     };
     let analytic = AnalyticStock::from_stock(stock, Some(part_bounds))?;
@@ -541,8 +548,16 @@ pub(crate) fn generate_with_part(
             context,
         )?
     };
+    // A set the operation's options leave limiting nothing is a warning,
+    // said first in the notes as well (decision 0176), as the library does
+    // for its own warnings.
+    let mut warnings = brep_limits
+        .as_ref()
+        .map(|l| l.warnings.clone())
+        .unwrap_or_default();
     // Notes about the values come first, then the notes about moves.
-    let mut notes = resolved.notes;
+    let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
+    notes.extend(resolved.notes);
     notes.extend(leave_notes);
     notes.extend(reach_notes);
     // The registry's strategy: a B-rep edge source uses the crease angle and
@@ -569,7 +584,10 @@ pub(crate) fn generate_with_part(
         notes,
         tool: profile,
         part_bounds,
-        warnings: path.warnings,
+        warnings: {
+            warnings.extend(path.warnings);
+            warnings
+        },
     })
 }
 
@@ -739,17 +757,22 @@ pub(crate) fn default_override(
 
 /// The boundary, avoid and check faces of swarf on a STEP part as the
 /// pathing library takes them (OP-02; decision 0176): the boundary as the
-/// window of its faces, the others as their exact faces.
+/// window of its faces, the avoid and check sets that cut the pass short as
+/// their exact faces, and those that only warn as watched surfaces, each
+/// named. A set that limits nothing is left out, with a warning naming it.
 struct BrepLimits {
     boundary: Option<Window>,
+    boundary_limits: BoundaryLimits,
     avoid: Option<BrepSurface>,
     check: Option<BrepSurface>,
+    watched: Vec<(String, Protection, BrepSurface)>,
+    warnings: Vec<PathWarning>,
 }
 
 impl BrepLimits {
-    /// `None` when `choice` has no boundary, avoid or check faces.
+    /// `None` when `choice` has no boundary, avoid or check sets.
     fn of(brep: &BrepModel, choice: &BrepChoice) -> Result<Option<Self>, AppError> {
-        if choice.boundary.is_empty() && choice.avoid.is_empty() && choice.check.is_empty() {
+        if choice.boundary.is_none() && choice.avoid.is_empty() && choice.check.is_empty() {
             return Ok(None);
         }
         let surface = |faces: &[FaceId]| {
@@ -757,24 +780,111 @@ impl BrepLimits {
                 .then(|| BrepSurface::with_faces(brep, faces))
                 .transpose()
         };
-        let boundary = surface(&choice.boundary)?
-            .map(|b| Window::of_mesh(b.tessellation()))
-            .transpose()?;
+        let mut warnings = Vec::new();
+        let mut boundary = None;
+        let mut boundary_limits = BoundaryLimits::default();
+        if let Some(set) = &choice.boundary {
+            if set.boundary.limits_nothing() {
+                warnings.push(limits_nothing(
+                    &format!("boundary set '{}'", set.name),
+                    "both Limits the pass and Limits the tip are off: the faces are cut as if \
+                     there were no boundary",
+                    "Turn one of them on",
+                ));
+            } else {
+                boundary = surface(&set.faces)?
+                    .map(|b| Window::of_mesh(b.tessellation()))
+                    .transpose()?;
+                boundary_limits = BoundaryLimits {
+                    pass: set.boundary.limits_pass,
+                    tip: set.boundary.limits_tip,
+                };
+            }
+        }
+        let mut cut_short = [Vec::new(), Vec::new()];
+        let mut watched = Vec::new();
+        for (sets, protection, role, short) in [
+            (&choice.avoid, Protection::Avoid, "avoid", 0),
+            (&choice.check, Protection::Check, "check", 1),
+        ] {
+            for set in sets {
+                match set.on_break {
+                    OnBreak::CutShort => {
+                        if let Some(faces) = cut_short.get_mut(short) {
+                            faces.extend_from_slice(&set.faces);
+                        }
+                    }
+                    OnBreak::Warn => {
+                        if let Some(s) = surface(&set.faces)? {
+                            watched.push((set.name.clone(), protection, s));
+                        }
+                    }
+                    OnBreak::Ignore => warnings.push(limits_nothing(
+                        &format!("{role} set '{}'", set.name),
+                        "it is set to Ignore: the tool is not kept clear of it",
+                        "Set it to Cut short or Warn only",
+                    )),
+                }
+            }
+        }
+        for faces in &mut cut_short {
+            faces.sort_unstable();
+            faces.dedup();
+        }
+        let [avoid, check] = cut_short;
         Ok(Some(Self {
             boundary,
-            avoid: surface(&choice.avoid)?,
-            check: surface(&choice.check)?,
+            boundary_limits,
+            avoid: surface(&avoid)?,
+            check: surface(&check)?,
+            watched,
+            warnings,
         }))
     }
 
-    fn constraint(&self) -> RegionConstraint<'_> {
+    /// The watched surfaces, for [`constraint`](Self::constraint).
+    fn watch(&self) -> Vec<WatchedSurface<'_>> {
+        self.watched
+            .iter()
+            .map(|(name, protection, surface)| WatchedSurface {
+                name,
+                protection: *protection,
+                surface,
+            })
+            .collect()
+    }
+
+    fn constraint<'a>(&'a self, watch: &'a [WatchedSurface<'a>]) -> RegionConstraint<'a> {
         RegionConstraint {
             region: None,
             boundary: self.boundary,
             avoid: self.avoid.as_ref().map(|s| s as _),
             check: self.check.as_ref().map(|s| s as _),
+            boundary_limits: self.boundary_limits,
+            watch,
         }
     }
+}
+
+/// The warning for a set whose options leave it limiting nothing (decision
+/// 0176): the path is made as if it were not there.
+fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
+    PathWarning {
+        message: format!(
+            "The {set} limits nothing, because {why}. {fix} beside the set in the operation \
+             inspector's Geometry section, or take the set out of the operation."
+        ),
+        parameter: None,
+    }
+}
+
+/// A boundary, avoid or check set of swarf on a STEP part, with its
+/// options (decision 0176).
+struct LimitSet {
+    name: String,
+    faces: Vec<FaceId>,
+    boundary: BoundaryOptions,
+    on_break: OnBreak,
 }
 
 /// What an operation on a STEP part selects: the faces whose holes radial
@@ -783,11 +893,11 @@ impl BrepLimits {
 struct BrepChoice {
     faces: Vec<FaceId>,
     edges: Vec<EdgeId>,
-    /// The faces of the boundary, avoid and check sets, for swarf (decision
-    /// 0176).
-    boundary: Vec<FaceId>,
-    avoid: Vec<FaceId>,
-    check: Vec<FaceId>,
+    /// The boundary, avoid and check sets, for swarf, each with its faces
+    /// and options (decision 0176).
+    boundary: Option<LimitSet>,
+    avoid: Vec<LimitSet>,
+    check: Vec<LimitSet>,
 }
 
 /// Reads the selections of `operation` on its STEP part `part` (decision
@@ -811,15 +921,44 @@ fn brep_selection(
                 .to_owned(),
         ));
     }
-    let limit = |ids: &mut dyn Iterator<Item = SelectionSetId>| {
-        limit_faces(project, operation, part, hash, brep, ids)
+    let options = &operation.restriction_options;
+    let limit = |id: SelectionSetId, on_break: OnBreak| -> Result<LimitSet, AppError> {
+        Ok(LimitSet {
+            name: project
+                .selection_sets()
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| s.name.clone())
+                .unwrap_or_default(),
+            faces: limit_faces(
+                project,
+                operation,
+                part,
+                hash,
+                brep,
+                &mut std::iter::once(id),
+            )?,
+            boundary: options.boundary,
+            on_break,
+        })
     };
     let mut choice = BrepChoice {
         faces: Vec::new(),
         edges: Vec::new(),
-        boundary: limit(&mut operation.boundary.into_iter())?,
-        avoid: limit(&mut operation.avoid.iter().copied())?,
-        check: limit(&mut operation.check.iter().copied())?,
+        boundary: operation
+            .boundary
+            .map(|id| limit(id, OnBreak::default()))
+            .transpose()?,
+        avoid: operation
+            .avoid
+            .iter()
+            .map(|id| limit(*id, options.avoid(*id).on_break))
+            .collect::<Result<_, _>>()?,
+        check: operation
+            .check
+            .iter()
+            .map(|id| limit(*id, options.check(*id).on_break))
+            .collect::<Result<_, _>>()?,
     };
     for id in &operation.selections {
         let set = project
@@ -1099,8 +1238,8 @@ mod tests {
 
     use openchuck_project::id::{ModelId, SelectionSetId, SetupId, ToolId};
     use openchuck_project::{
-        Item, OrderKey, ParameterValue as Value, Placement, RelativePath, SelectionSet, Setup,
-        ToolSnapshot,
+        Item, OrderKey, ParameterValue as Value, Placement, RelativePath, RestrictionOptions,
+        SelectionSet, SetOptions, Setup, ToolSnapshot,
     };
     use openchuck_testkit::brep::{Built, HoleSpec, drilled_blank};
     use openchuck_types::geometry::Point3;
@@ -1239,6 +1378,7 @@ mod tests {
                 boundary: None,
                 avoid: Vec::new(),
                 check: Vec::new(),
+                restriction_options: Default::default(),
                 parameters: values,
             }),
         ] {
@@ -1269,14 +1409,14 @@ mod tests {
         }
 
         /// Adds a selection set on `model` and puts it in `role` of the
-        /// operation.
+        /// operation. Returns its ID.
         fn select_as(
             &mut self,
             target: SelectionTarget,
             hash: ContentHash,
             model: ModelId,
             role: Role,
-        ) {
+        ) -> SelectionSetId {
             let id = SelectionSetId::new();
             self.project
                 .insert(
@@ -1302,6 +1442,15 @@ mod tests {
                 Role::Avoid => operation.avoid.push(id),
                 Role::Check => operation.check.push(id),
             }
+            self.project.replace(Item::Operation(operation)).unwrap();
+            id
+        }
+
+        /// Changes the options of the operation's boundary, avoid and check
+        /// sets (decision 0176).
+        fn set_options(&mut self, change: impl FnOnce(&mut RestrictionOptions)) {
+            let mut operation = self.project.operation(self.operation).unwrap().clone();
+            change(&mut operation.restriction_options);
             self.project.replace(Item::Operation(operation)).unwrap();
         }
 
@@ -2006,26 +2155,103 @@ mod tests {
             "{:?}",
             path.notes
         );
-        // With both boundary limits off, the boundary limits nothing and the
-        // operation says so as a warning on the setting.
-        let off = [
-            (swarf::parameter::BOUNDARY_LIMITS_PASS, Value::Flag(false)),
-            (swarf::parameter::BOUNDARY_LIMITS_TIP, Value::Flag(false)),
-        ];
-        let mut f = swarf_limits_fixture(&off);
+        // With both of the boundary set's limits off, it limits nothing and
+        // the operation says so as a warning naming the set (decision 0176
+        // item 3, the owner's per-set options).
+        let mut f = swarf_limits_fixture(&[]);
         f.select_as(
             SelectionTarget::Faces([FaceId(2)].into()),
             f.hash,
             f.model,
             Role::Boundary,
         );
+        f.set_options(|o| {
+            o.boundary = BoundaryOptions {
+                limits_pass: false,
+                limits_tip: false,
+            };
+        });
         let path = f.run().unwrap();
         assert!((furthest_cut(&path) - 38.0).abs() < 0.02);
         assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
-        assert_eq!(
-            path.warnings[0].parameter.as_deref(),
-            Some(swarf::parameter::BOUNDARY_LIMITS_PASS)
+        let warning = &path.warnings[0];
+        assert!(
+            warning
+                .message
+                .starts_with("The boundary set 'chosen' limits nothing"),
+            "{}",
+            warning.message
         );
+        assert_eq!(warning.parameter, None);
+        assert_eq!(path.notes.first(), Some(&warning.message));
+        // Limit A alone stops the pass at the strip as before.
+        let mut f = swarf_limits_fixture(&[]);
+        f.select_as(
+            SelectionTarget::Faces([FaceId(2)].into()),
+            f.hash,
+            f.model,
+            Role::Boundary,
+        );
+        f.set_options(|o| o.boundary.limits_tip = false);
+        let path = f.run().unwrap();
+        assert!((furthest_cut(&path) - 30.0).abs() < 0.02);
+        assert!(
+            !path
+                .notes
+                .iter()
+                .any(|n| n.contains("far end of the rulings")),
+            "{:?}",
+            path.notes
+        );
+        // An avoid or check set that only warns keeps the whole cut and
+        // warns naming the set; one set to Ignore limits nothing, and says
+        // so.
+        for (role, on_break, said) in [
+            (
+                Role::Avoid,
+                OnBreak::Warn,
+                "cuts into the avoid set 'chosen'",
+            ),
+            (Role::Check, OnBreak::Warn, "to the check set 'chosen'"),
+            (
+                Role::Avoid,
+                OnBreak::Ignore,
+                "The avoid set 'chosen' limits nothing",
+            ),
+            (
+                Role::Check,
+                OnBreak::Ignore,
+                "The check set 'chosen' limits nothing",
+            ),
+        ] {
+            let mut f = swarf_limits_fixture(&[]);
+            let id = f.select_as(
+                SelectionTarget::Faces([FaceId(1)].into()),
+                f.hash,
+                f.model,
+                role,
+            );
+            f.set_options(|o| {
+                let options = SetOptions { on_break };
+                if role == Role::Avoid {
+                    o.set_avoid(id, options);
+                } else {
+                    o.set_check(id, options);
+                }
+            });
+            let path = f.run().unwrap();
+            assert!(
+                (furthest_cut(&path) - 38.0).abs() < 0.02,
+                "{role:?} {on_break:?}: {}",
+                furthest_cut(&path)
+            );
+            assert_eq!(path.warnings.len(), 1, "{:?}", path.warnings);
+            assert!(
+                path.warnings[0].message.contains(said),
+                "{}",
+                path.warnings[0].message
+            );
+        }
         // A wall that is cut and kept clear of is refused, naming it.
         let mut f = swarf_limits_fixture(&[]);
         f.select_as(

@@ -113,6 +113,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -1379,4 +1380,90 @@ fn req_ui_05_req_prj_06_replacing_a_stale_set_makes_it_current_and_add_and_remov
     );
     assert_eq!(app.project().selection_sets()[0].model_hash, old.model_hash);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Each boundary, avoid and check set of an operation carries its own
+/// options (decision record 0176 item 3): set as one undoable step, kept in
+/// the project file, refused for a set not in that role, and dropped when the
+/// set leaves the role, so a set put back starts from the defaults. They
+/// change the operation's selection inputs, so its path is made again.
+#[test]
+fn req_op_02_req_ui_05_each_restriction_set_carries_its_own_options() {
+    use openchuck_app::SelectionRole;
+    use openchuck_app::project::{BoundaryOptions, OnBreak, SetOptions};
+    let (dir, mut app, op, model) = project("set-options");
+    let top = top_face(&app, model);
+    let fence = app.save_selection("Fence", model, top.clone()).unwrap();
+    let rib = app.save_selection("Rib", model, top).unwrap();
+    // No boundary yet: its options are refused.
+    let off = BoundaryOptions {
+        limits_pass: false,
+        limits_tip: true,
+    };
+    let err = app.set_boundary_options(op, off).unwrap_err().to_string();
+    assert!(err.contains("no boundary set"), "{err}");
+    app.set_operation_selection(op, SelectionRole::Boundary, fence, true)
+        .unwrap();
+    app.set_operation_selection(op, SelectionRole::Avoid, rib, true)
+        .unwrap();
+    let before = selection_inputs_hash(app.project(), op).unwrap();
+    app.set_boundary_options(op, off).unwrap();
+    app.set_on_break(op, SelectionRole::Avoid, rib, OnBreak::Warn)
+        .unwrap();
+    let options = |app: &Application| {
+        app.project()
+            .operation(op)
+            .unwrap()
+            .restriction_options
+            .clone()
+    };
+    assert_eq!(options(&app).boundary, off);
+    assert_eq!(options(&app).avoid(rib).on_break, OnBreak::Warn);
+    assert_eq!(options(&app).check(rib), SetOptions::default());
+    assert_ne!(selection_inputs_hash(app.project(), op).unwrap(), before);
+    // Undoable, one step each.
+    assert!(app.undo().unwrap());
+    assert_eq!(options(&app).avoid(rib), SetOptions::default());
+    assert!(app.redo().unwrap());
+    // Saved and read back.
+    app.save().unwrap();
+    let text = std::fs::read_to_string(dir.join("operations").join(format!("{op}.toml"))).unwrap();
+    assert!(text.contains("[boundary_options]"), "{text}");
+    assert!(text.contains(&format!("[avoid_options.{rib}]")), "{text}");
+    let reopened = Application::open(&dir, Threads::Exactly(2)).unwrap();
+    assert_eq!(
+        reopened
+            .project()
+            .operation(op)
+            .unwrap()
+            .restriction_options,
+        options(&app)
+    );
+    // Only an avoid or check set in that role has the choice.
+    for (role, set) in [
+        (SelectionRole::Check, rib),
+        (SelectionRole::Boundary, fence),
+    ] {
+        assert!(app.set_on_break(op, role, set, OnBreak::Ignore).is_err());
+    }
+    // Back to the default: nothing kept.
+    app.set_on_break(op, SelectionRole::Avoid, rib, OnBreak::CutShort)
+        .unwrap();
+    assert!(options(&app).avoid.is_empty());
+    // A set leaving its role takes its options with it.
+    app.set_on_break(op, SelectionRole::Avoid, rib, OnBreak::Ignore)
+        .unwrap();
+    app.set_operation_selection(op, SelectionRole::Avoid, rib, false)
+        .unwrap();
+    app.set_operation_selection(op, SelectionRole::Avoid, rib, true)
+        .unwrap();
+    assert_eq!(options(&app).avoid(rib), SetOptions::default());
+    // Another boundary set starts from the defaults.
+    app.set_operation_selection(op, SelectionRole::Boundary, rib, true)
+        .unwrap();
+    assert_eq!(options(&app).boundary, BoundaryOptions::default());
+    app.set_boundary_options(op, off).unwrap();
+    app.set_operation_selection(op, SelectionRole::Boundary, rib, false)
+        .unwrap();
+    assert_eq!(options(&app).boundary, BoundaryOptions::default());
 }

@@ -129,6 +129,7 @@ fn build(name: &str, profile: &[(f64, f64)], radius: f64) -> (PathBuf, Applicati
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters,
         }),
     ] {
