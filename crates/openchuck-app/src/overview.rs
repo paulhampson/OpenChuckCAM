@@ -770,6 +770,38 @@ struct RecordState {
     exported: BTreeMap<OperationId, Key>,
     failure: Option<Failure>,
     current: Option<OperationId>,
+    /// What the run is doing with `current`: nothing while it only takes it
+    /// from the cache, which is not shown running (issue 239).
+    activity: Option<PipelineActivity>,
+}
+
+/// What a pipeline run is doing with the operation it has reached
+/// (decision record 0190).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipelineActivity {
+    /// Making its toolpath, then simulating it when its stock is needed.
+    Generating,
+    /// Its toolpath came from the cache, but the stock it leaves did not, so
+    /// its moves are run through the stock simulation again.
+    Resimulating,
+}
+
+impl PipelineActivity {
+    /// What the status bar says, naming the operation (decision 0114 wording).
+    pub fn text(self, operation: &str) -> String {
+        match self {
+            Self::Generating => format!("Generating '{operation}'"),
+            Self::Resimulating => format!("Re-running the simulation for '{operation}'"),
+        }
+    }
+
+    /// The cause an operation's running state gives in the project tree.
+    fn cause(self) -> &'static str {
+        match self {
+            Self::Generating => "generating",
+            Self::Resimulating => "re-running the simulation",
+        }
+    }
 }
 
 /// What an operation was made from: its keys, and the own keys of the
@@ -794,9 +826,26 @@ impl GenerationRecord {
         self.0.lock().ok().map(|mut state| f(&mut state))
     }
 
-    /// The pipeline is generating `operation` now, or none.
+    /// The pipeline has reached `operation`, or none. A failure from now on
+    /// is its own; it shows running once [`GenerationRecord::doing`] says
+    /// what is being done with it.
     pub(crate) fn working_on(&self, operation: Option<OperationId>) {
-        self.with(|s| s.current = operation);
+        self.with(|s| {
+            s.current = operation;
+            s.activity = None;
+        });
+    }
+
+    /// The operation reached is being made, or simulated again, not only
+    /// taken from the cache.
+    pub(crate) fn doing(&self, activity: PipelineActivity) {
+        self.with(|s| s.activity = Some(activity));
+    }
+
+    /// The operation a run is working on and what it is doing with it, while
+    /// that is more than taking it from the cache.
+    pub(crate) fn activity(&self) -> Option<(OperationId, PipelineActivity)> {
+        self.with(|s| s.current.zip(s.activity)).flatten()
     }
 
     /// A pipeline run on `project` succeeded with `run`. Only the operations
@@ -1369,8 +1418,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             };
             ItemStatus::new(ItemState::Stale, cause)
         };
-        if record.current == Some(o.id) && running_pipeline.is_some() {
-            status = ItemStatus::new(ItemState::Running, "generating");
+        if let (Some(activity), true) = (
+            record.activity.filter(|_| record.current == Some(o.id)),
+            running_pipeline.is_some(),
+        ) {
+            status = ItemStatus::new(ItemState::Running, activity.cause());
             status.progress = running_pipeline.and_then(|e| e.fraction());
         }
         // A selection set with a problem makes its operations' error too

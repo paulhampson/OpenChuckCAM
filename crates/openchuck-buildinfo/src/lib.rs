@@ -113,7 +113,7 @@ fn parse_crates(list: &str) -> Vec<CrateVersion> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::*;
@@ -210,7 +210,7 @@ mod tests {
         assert!(info.rustc.is_some_and(|r| r.starts_with("rustc ")));
     }
 
-    /// NFR-16: the dirty flag is true exactly when `git status --porcelain` lists something.
+    /// NFR-16: the dirty flag is true exactly when the status of tracked files lists something.
     #[test]
     fn req_nfr_16_dirty_flag_logic() {
         assert!(!probe::dirty_from_status(""));
@@ -218,7 +218,58 @@ mod tests {
         assert!(probe::dirty_from_status(
             " M crates/openchuck-path/src/lib.rs\n"
         ));
-        assert!(probe::dirty_from_status("?? new_file.rs\n"));
+        // Untracked files are left out of the status the build script asks for (decision 0191).
+    }
+
+    /// A throwaway repository with one committed file, for the dirty-flag tests.
+    fn temp_repo(tag: &str) -> Option<PathBuf> {
+        let dir =
+            std::env::temp_dir().join(format!("openchuck-dirty-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        probe::run("git", &dir, &["init", "-q"])?;
+        std::fs::write(dir.join("tracked.txt"), "one\n").unwrap();
+        let identity = ["-c", "user.name=t", "-c", "user.email=t@example.com"];
+        probe::run("git", &dir, &["add", "tracked.txt"])?;
+        let mut commit = identity.to_vec();
+        commit.extend(["commit", "-q", "-m", "first"]);
+        probe::run("git", &dir, &commit)?;
+        Some(dir)
+    }
+
+    /// NFR-16, decision 0191: a clean checkout is not dirty; a modified tracked file is; an
+    /// untracked file (a restored cache such as `occt-install/`, a generated notice) is not,
+    /// because it is not part of the commit's code; a staged change is.
+    #[test]
+    fn req_nfr_16_dirty_flag_on_a_real_checkout() {
+        let Some(dir) = temp_repo("real") else {
+            return; // no Git on this machine: the fallback test covers it
+        };
+        assert_eq!(probe::dirty("git", &dir), Some(false), "clean checkout");
+
+        std::fs::create_dir_all(dir.join("occt-install")).unwrap();
+        std::fs::write(dir.join("occt-install/lib.a"), "x").unwrap();
+        std::fs::write(dir.join("THIRD-PARTY-NOTICES.html"), "x").unwrap();
+        assert_eq!(probe::dirty("git", &dir), Some(false), "untracked files");
+
+        std::fs::write(dir.join("tracked.txt"), "two\n").unwrap();
+        assert_eq!(
+            probe::dirty("git", &dir),
+            Some(true),
+            "modified tracked file"
+        );
+
+        probe::run("git", &dir, &["add", "tracked.txt"]).unwrap();
+        assert_eq!(probe::dirty("git", &dir), Some(true), "staged change");
+
+        std::fs::remove_file(dir.join("tracked.txt")).unwrap();
+        probe::run("git", &dir, &["rm", "-q", "--cached", "tracked.txt"]).unwrap();
+        assert_eq!(
+            probe::dirty("git", &dir),
+            Some(true),
+            "removed tracked file"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// NFR-16: only a full hexadecimal hash is taken as the commit.

@@ -322,17 +322,24 @@ impl RunPanel {
 
     /// What the footer says while a job runs: "Generating… 2 of 4", or
     /// `None` when nothing runs.
-    pub fn running_text(&self) -> Option<String> {
+    pub fn running_text(&self, app: Option<&Application>) -> Option<String> {
         let job = self.job.as_ref()?;
         let what = if job.simulate {
             "Simulating"
         } else {
             "Generating"
         };
-        Some(match &self.progress {
+        let mut text = match &self.progress {
             Some(p) => format!("{what}… {p}"),
             None => format!("{what}…"),
-        })
+        };
+        // The operation being worked on, and whether its simulation is being
+        // run again because its stock was not cached (decision record 0190).
+        if let Some(activity) = app.and_then(Application::pipeline_activity) {
+            text.push_str(": ");
+            text.push_str(&activity);
+        }
+        Some(text)
     }
 
     /// Whether the results window or the add-operation dialog is open.

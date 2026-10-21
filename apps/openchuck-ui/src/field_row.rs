@@ -157,44 +157,50 @@ pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) -> egui::Respo
     response
 }
 
-/// The label column: the label with its tooltip, and ↺ at its right end.
+/// The label column: the label with its tooltip at the left, and ↺ in a slot
+/// at its right end. The slot is reserved whether or not ↺ is shown, so
+/// showing or hiding it never moves the label or the value (issue 243).
 /// Returns true when ↺ was clicked.
 fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) -> bool {
     let height = ui.spacing().interact_size.y;
     let size = egui::vec2(width::LABEL_COLUMN, height);
     // Allocated and drawn in one step, so the cell is where the cursor is and
     // the value follows it directly.
-    ui.allocate_ui_with_layout(
-        size,
-        egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Min),
-        |ui| {
-            // The cell is the full column whatever the label's width.
-            ui.set_min_size(size);
-            let mut clicked = false;
-            if reset {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let button = ui
-                        .add(
-                            egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent)).small(),
-                        )
-                        .on_hover_text("Reset: the default or the tool's cutting data applies");
-                    button.widget_info(|| {
-                        egui::WidgetInfo::labeled(
-                            egui::WidgetType::Button,
-                            true,
-                            format!("Reset {label}"),
-                        )
-                    });
-                    clicked = button.clicked();
-                    label_text(ui, label, description);
-                });
-            } else {
-                label_text(ui, label, description);
-            }
-            clicked
-        },
-    )
-    .inner
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let slot = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - height, rect.top()),
+        egui::vec2(height, height),
+    );
+    let text = egui::Rect::from_min_max(rect.min, egui::pos2(slot.left(), rect.bottom()));
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(text)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    label_text(&mut child, label, description);
+    // A child of its own, so a button wider than the slot cannot push the
+    // cursor on. Made whether or not ↺ is shown: each child takes an
+    // automatic ID from the row, so a child made only with ↺ would change the
+    // value's ID and take its focus as ↺ comes and goes.
+    let mut slot_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(slot)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    if !reset {
+        return false;
+    }
+    let button = slot_ui
+        .add(
+            egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent))
+                .small()
+                .min_size(slot.size()),
+        )
+        .on_hover_text("Reset: the default or the tool's cutting data applies");
+    button.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset {label}"))
+    });
+    button.clicked()
 }
 
 fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
@@ -744,5 +750,88 @@ mod tests {
         // More places where the fixed ones would show another value.
         assert_eq!(number(0.0005, places("mm")), "0.0005");
         assert_eq!(number(0.1, None), "0.1");
+    }
+
+    /// The label's position and the field's rectangle in one frame of a row.
+    fn placed(
+        ctx: &egui::Context,
+        state: &mut FieldState,
+        row: &TextRow<'_>,
+        width: f32,
+    ) -> (egui::Pos2, egui::Rect) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width, 300.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            text_row(ui, state, row);
+        });
+        output.textures_delta.clear();
+        let mut label = None;
+        let mut field = None;
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::Shape::Text(t) if t.galley.text() == row.label => label = Some(t.pos),
+                egui::Shape::Rect(r) if r.rect.width() > 60.0 => field = Some(r.rect),
+                _ => {}
+            }
+        }
+        (label.unwrap(), field.unwrap())
+    }
+
+    #[test]
+    fn req_ui_07_the_reset_button_never_moves_the_label_or_the_field() {
+        for scale in [1.0_f32, 1.2] {
+            for width in [260.0_f32, 320.0, 420.0] {
+                let ctx = egui::Context::default();
+                ctx.set_zoom_factor(scale);
+                let mut state = FieldState::default();
+                let default = stepover(false);
+                let entered = TextRow {
+                    reset: true,
+                    ..stepover(false)
+                };
+                // Settle the first frame, then compare the two states.
+                placed(&ctx, &mut state, &default, width);
+                let before = placed(&ctx, &mut state, &default, width);
+                let during = placed(&ctx, &mut state, &entered, width);
+                let after = placed(&ctx, &mut state, &default, width);
+                assert_eq!(before, during, "value set, scale {scale}, width {width}");
+                assert_eq!(before, after, "reverted, scale {scale}, width {width}");
+            }
+        }
+    }
+
+    #[test]
+    fn req_ui_07_a_focused_field_keeps_focus_and_text_when_the_reset_button_comes_and_goes() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let entered = TextRow {
+            reset: true,
+            ..stepover(false)
+        };
+        frame(&ctx, &mut state, &stepover(true), Vec::new());
+        let focused = ctx.memory(egui::Memory::focused);
+        assert!(focused.is_some());
+        frame(&ctx, &mut state, &entered, vec![key(Key::End)]);
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button shown");
+        frame(
+            &ctx,
+            &mut state,
+            &entered,
+            vec![egui::Event::Text("7".into())],
+        );
+        frame(&ctx, &mut state, &stepover(false), Vec::new());
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button hidden");
+        frame(
+            &ctx,
+            &mut state,
+            &stepover(false),
+            vec![egui::Event::Text("1".into())],
+        );
+        assert_eq!(state.typed("stepover"), Some("0.50071"));
     }
 }

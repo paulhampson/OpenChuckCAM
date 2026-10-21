@@ -579,6 +579,43 @@ fn req_ui_11_a_running_job_gives_the_operation_running() {
 }
 
 #[test]
+fn req_ui_11_req_nfr_04_an_operation_taken_from_the_cache_is_never_shown_running() {
+    // Issue 239: while the operation after it runs, the one before it, whose
+    // path and stock come from the cache, stays up to date.
+    let mut f = fixture("reused-not-running", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    f.app.simulate().unwrap();
+    let mut forever = f.app.project().operation(two).unwrap().clone();
+    forever.strategy = "until_cancelled".into();
+    f.app
+        .execute(Command::Replace(Item::Operation(forever)))
+        .unwrap();
+    let mut log = JobLog::default();
+    let handle = f.app.start_simulate();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        log.update(f.app.drain_events());
+        let o = f.app.overview(None, &log);
+        assert_eq!(f.state(&o, one), ItemState::UpToDate);
+        if f.state(&o, two) == ItemState::Running {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the second operation never showed running"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(f.app.cancel_job(handle.id()));
+    assert!(handle.wait().unwrap_err().is_cancelled());
+    log.update(f.app.drain_events());
+    let o = f.app.overview(None, &log);
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(f.state(&o, two), ItemState::Stale);
+}
+
+#[test]
 fn req_ui_11_req_ui_12_a_selection_set_with_a_problem_is_an_error_up_the_tree() {
     let mut f = fixture("set-error", "cube_ascii.stl");
     let op = f.add_operation("Ring", "one_ring");
