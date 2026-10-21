@@ -268,7 +268,7 @@ fn req_op_11_ramp_reaches_the_first_cut_point_at_the_requested_angle() {
 /// plunge, as the owner's blisk roughing at 3 degrees needs (issue 199;
 /// decision 0204), and the lead-out has nothing to follow either.
 #[test]
-fn req_op_11_nr_07_a_single_point_pass_is_entered_by_plunge_for_ramp_and_lead() {
+fn req_op_11_nfr_07_a_single_point_pass_is_entered_by_plunge_for_ramp_and_lead() {
     let (_, fixture) = cylinder();
     let plain = path(&fixture, &values(10.0, 10.0, &[])).unwrap();
     for style in ["ramp", "lead"] {

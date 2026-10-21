@@ -649,6 +649,16 @@ impl RunPanel {
     }
 }
 
+/// The heading over a group of the strategy list.
+fn group_heading(group: openchuck_app::StrategyGroup) -> &'static str {
+    use openchuck_app::StrategyGroup;
+    match group {
+        StrategyGroup::Roughing => "Roughing",
+        StrategyGroup::Finishing => "Finishing",
+        StrategyGroup::Specialist => "Specialist",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -741,15 +751,5 @@ mod tests {
             .takes_selections;
         assert!(takes, "{}", form.strategy);
         std::fs::remove_dir_all(dir).unwrap();
-    }
-}
-
-/// The heading over a group of the strategy list.
-fn group_heading(group: openchuck_app::StrategyGroup) -> &'static str {
-    use openchuck_app::StrategyGroup;
-    match group {
-        StrategyGroup::Roughing => "Roughing",
-        StrategyGroup::Finishing => "Finishing",
-        StrategyGroup::Specialist => "Specialist",
     }
 }
