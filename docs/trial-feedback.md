@@ -173,3 +173,11 @@ Build for new feedback (owner, 21 Oct 2026): from F-73 on, feedback uses OpenChu
 | F-76 | Operation inspector | The label shifts right when "revert to default" appears, and back when it is used. | Reserve the button's space; same family as F-42, F-19, F-23, F-24, F-34, F-59 (lane BUG-INSP); layout test. Issue [#243](https://github.com/paulhampson/OpenChuckCAM/issues/243). | Answered: only the operations inspector; the Setup inspector has no revert buttons. |
 
 Owner instruction (21 Oct 2026): do not dispatch fix tasks until the owner has requested and approved the grouping into lanes. The 13 work packages of [trial-feedback-work-packages.md](trial-feedback-work-packages.md) (issues up to #227) were approved. New issues from #236 on are filed and logged but held for the owner's grouping request; #236, #239, #241, #242 and #243 were sent to the coordinator before this rule and are held (the coordinator is asked not to start them and to report if any has started).
+
+Coordinator status on the five issues sent before the rule (21 Oct 2026, 16:11 UTC)
+- #236 (volume sets): the owner told the coordinator directly to create only a future P2 requirement and not to implement. Lane REQ-VOL did that: docs-only PR 237 (OP-22 P2, a verification row, OI-700 to OI-702), record 0188 accepted by the owner in the lane session, queued for merge.
+- #239 (regeneration): lane BUG-REGEN (Opus) started. Root cause reported: the per-setup stock simulation replays on every run; the cache keys are fine. The owner decided the memory design with the coordinator (record 0190, option B: the latest stock per operation, plus a status-bar message). Building, no PR yet.
+- #241 (build dirty flag): lane BUG-BI (Sonnet) started minutes before the rule, no work pushed; paused by the coordinator.
+- #243 (revert button): lane BUG-INSP2 (Sonnet) started minutes before the rule, no work pushed; paused by the coordinator.
+- #242 (strategy heading): not started.
+- The coordinator will ask the owner which of #239, #241 and #243 continue. No lane starts for any later issue until the owner approves a grouping.
