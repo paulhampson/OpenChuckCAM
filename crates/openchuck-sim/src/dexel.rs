@@ -146,6 +146,22 @@ pub struct DexelStock {
     ny: usize,
     cols: Vec<Vec<[f64; 2]>>,
     reach: f64,
+    /// The material's extent in Z, worked out on first use after a cut.
+    z_range: ZRange,
+}
+
+/// The material's lowest and highest Z, kept once worked out until the stock
+/// is cut again (issue #252): [`DexelStock::bounds`] reads every column, and
+/// a toolpath's entry moves cast thousands of rays, each of which asked for
+/// it. It is derived from the columns, so it takes no part in comparing two
+/// stocks.
+#[derive(Debug, Clone, Default)]
+struct ZRange(std::sync::OnceLock<(f64, f64)>);
+
+impl PartialEq for ZRange {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 /// The largest grid a stock may have, in columns (a guard against a cell far
@@ -248,6 +264,7 @@ impl DexelStock {
             ny,
             cols,
             reach: 0.0,
+            z_range: ZRange::default(),
         };
         stock.reach = stock.max_radius_of_material() + cx.hypot(cy);
         Ok(stock)
@@ -299,16 +316,16 @@ impl DexelStock {
     /// The grid's extent in X and Y, and the material's in Z (empty stock
     /// gives an empty Z range at zero).
     pub fn bounds(&self) -> Aabb {
-        let (mut zlo, mut zhi) = (f64::INFINITY, f64::NEG_INFINITY);
-        for c in &self.cols {
-            if let (Some(first), Some(last)) = (c.first(), c.last()) {
-                zlo = zlo.min(first[0]);
-                zhi = zhi.max(last[1]);
+        let (zlo, zhi) = *self.z_range.0.get_or_init(|| {
+            let (mut zlo, mut zhi) = (f64::INFINITY, f64::NEG_INFINITY);
+            for c in &self.cols {
+                if let (Some(first), Some(last)) = (c.first(), c.last()) {
+                    zlo = zlo.min(first[0]);
+                    zhi = zhi.max(last[1]);
+                }
             }
-        }
-        if zlo > zhi {
-            (zlo, zhi) = (0.0, 0.0);
-        }
+            if zlo > zhi { (0.0, 0.0) } else { (zlo, zhi) }
+        });
         Aabb {
             min: Point3::new(self.x0, self.y0, zlo),
             max: Point3::new(
@@ -413,6 +430,8 @@ impl DexelStock {
         if poses.is_empty() {
             return 0.0;
         }
+        // The extent is worked out again from the columns as they are cut.
+        self.z_range = ZRange::default();
         let reach = self.reach();
         let prepared: Vec<Prepared> = poses
             .iter()

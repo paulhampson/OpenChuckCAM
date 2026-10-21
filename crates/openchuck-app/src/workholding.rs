@@ -14,7 +14,8 @@
 //! from +Y towards +Z, as in the setup data.
 
 use openchuck_path::{Solid, SurfaceSource};
-use openchuck_types::geometry::{Point3, UnitVec3};
+use openchuck_sim::SampleOn;
+use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::setup::{PartExtent, SetupWarningKind};
 use openchuck_types::stock::Stock;
@@ -667,93 +668,167 @@ pub(crate) fn default_tabs_of(
     default_tabs(&setup.workholding, stock, &mesh, &part)
 }
 
-/// The comparison target of the deviation report (SIM-05): the model's
-/// triangles, then the triangles of each solid, with every triangle that lies
-/// inside the union of the parts, where two of them meet or overlap, turned
-/// into a degenerate one, so it takes no samples. A held region or tab then
-/// counts as part of the finished surface only where it shows, and the
-/// model's triangles keep their indices (the deviation colours of the part
-/// read the first `model.triangles.len()` entries).
-///
-/// A triangle is inside when its centroid is inside another part, or on its
-/// surface with the other surface facing it. Decided at the centroid, which
-/// is exact for a plane or a cylinder wall met at its edge and approximate
-/// where a face is partly covered (decision 0045 item 4).
-pub fn deviation_target(
-    model: &TriangleMesh,
-    model_surface: &dyn SurfaceSource,
-    solids: &[Solid],
-) -> TriangleMesh {
-    let mut target = model.clone();
-    let model_count = target.triangles.len();
-    for solid in solids {
-        let offset = u32::try_from(target.vertices.len()).unwrap_or(u32::MAX);
-        let part = solid.mesh(TARGET_SEGMENTS);
-        target.vertices.extend(part.vertices);
-        target.triangles.extend(
-            part.triangles
-                .iter()
-                .map(|t| t.map(|i| i.saturating_add(offset))),
-        );
+/// The comparison target of the deviation report (SIM-05): the part and the
+/// held regions and tabs as one surface (SET-09, OP-21; decision 0045 item
+/// 6), with what tells each sample of it what it lies on (decision 0194).
+pub struct DeviationTarget {
+    /// The model's triangles, then the triangles of each solid, with every
+    /// triangle that lies wholly inside the union, by its centroid, turned
+    /// into a degenerate one, so it takes no samples. The model's triangles
+    /// keep their indices (the deviation colours of the part read the first
+    /// `model.triangles.len()` entries).
+    pub mesh: TriangleMesh,
+    model_triangles: usize,
+    solids: Vec<Solid>,
+    /// Each solid's triangles in `mesh`: a held region of a box section has
+    /// 12 and a round solid `4 * TARGET_SEGMENTS`.
+    ranges: Vec<std::ops::Range<usize>>,
+    /// The model's surface, for the samples on the solids.
+    model: Option<openchuck_path::MeshSurface>,
+}
+
+impl std::fmt::Debug for DeviationTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviationTarget")
+            .field("triangles", &self.mesh.triangles.len())
+            .field("model_triangles", &self.model_triangles)
+            .field("solids", &self.solids.len())
+            .finish_non_exhaustive()
     }
-    for t in 0..target.triangles.len() {
-        let Some([a, b, c]) = target.triangle(t) else {
-            continue;
-        };
-        let cross = (b - a).cross(c - a);
-        let length = cross.length();
-        if length.is_nan() || length <= 1e-18 {
-            continue;
+}
+
+impl DeviationTarget {
+    /// The model's own surface, with no held regions or tabs: every sample
+    /// is on the part.
+    pub fn part_only(mesh: TriangleMesh) -> Self {
+        Self {
+            model_triangles: mesh.triangles.len(),
+            mesh,
+            solids: Vec::new(),
+            ranges: Vec::new(),
+            model: None,
         }
-        let normal = cross * (1.0 / length);
-        let centroid = Point3::new(
-            (a.x + b.x + c.x) / 3.0,
-            (a.y + b.y + c.y) / 3.0,
-            (a.z + b.z + c.z) / 3.0,
-        );
+    }
+
+    /// The target over `model` (whose surface is `model_surface`) and
+    /// `solids`.
+    pub fn new(
+        model: &TriangleMesh,
+        model_surface: openchuck_path::MeshSurface,
+        solids: Vec<Solid>,
+    ) -> Self {
+        let mut mesh = model.clone();
+        let model_triangles = mesh.triangles.len();
+        let mut ranges = Vec::with_capacity(solids.len());
+        for solid in &solids {
+            let offset = u32::try_from(mesh.vertices.len()).unwrap_or(u32::MAX);
+            let part = solid.mesh(TARGET_SEGMENTS);
+            let first = mesh.triangles.len();
+            mesh.vertices.extend(part.vertices);
+            mesh.triangles.extend(
+                part.triangles
+                    .iter()
+                    .map(|t| t.map(|i| i.saturating_add(offset))),
+            );
+            ranges.push(first..mesh.triangles.len());
+        }
+        let mut target = Self {
+            mesh,
+            model_triangles,
+            solids,
+            ranges,
+            model: Some(model_surface),
+        };
+        for t in 0..target.mesh.triangles.len() {
+            let Some([a, b, c]) = target.mesh.triangle(t) else {
+                continue;
+            };
+            let Some(normal) = unit_normal(a, b, c) else {
+                continue;
+            };
+            let centroid = Point3::new(
+                (a.x + b.x + c.x) / 3.0,
+                (a.y + b.y + c.y) / 3.0,
+                (a.z + b.z + c.z) / 3.0,
+            );
+            if target.covered(t, centroid, normal)
+                && let Some(slot) = target.mesh.triangles.get_mut(t)
+            {
+                let v = slot[0];
+                *slot = [v, v, v];
+            }
+        }
+        target
+    }
+
+    /// What a sample at `point` on triangle `triangle`, of outward unit
+    /// normal `normal`, lies on: inside the union (under a tab, or where a
+    /// tab meets a held region) wherever another part holds it, else the
+    /// face of a held region or tab, else the part (decision 0194). Decided
+    /// at each sample, so a large triangle partly under a tab, kept by its
+    /// centroid, takes no part where it is covered.
+    pub fn classify(&self, triangle: usize, point: Point3, normal: Vec3) -> SampleOn {
+        if self.covered(triangle, point, normal) {
+            SampleOn::Inside
+        } else if triangle < self.model_triangles {
+            SampleOn::Part
+        } else {
+            SampleOn::Workholding
+        }
+    }
+
+    /// Whether `point` on triangle `triangle` lies inside another part of the
+    /// union: strictly inside it, or on its surface with that surface facing
+    /// the triangle's own.
+    fn covered(&self, triangle: usize, point: Point3, normal: Vec3) -> bool {
         // Which solid the triangle belongs to, so it is not tested against
         // itself.
-        let own = t
-            .checked_sub(model_count)
-            .map(|i| i / (4 * TARGET_SEGMENTS as usize));
-        let inside_solid = solids.iter().enumerate().any(|(i, s)| {
-            own != Some(i) && inside(s.contains(centroid), s.project(centroid), centroid, normal)
+        let own = self.ranges.iter().position(|r| r.contains(&triangle));
+        let inside_solid = self.solids.iter().enumerate().any(|(i, s)| {
+            own != Some(i) && inside(s.contains(point), s.project(point), point, normal)
         });
         let inside_model = own.is_some()
-            && model_surface.project(centroid).is_some_and(|p| {
-                if p.point.distance(centroid) <= SURFACE_TOLERANCE {
-                    p.normal.get().dot(normal) < -0.5
-                } else {
-                    // Behind the nearest point's outward normal: inside.
-                    (centroid - p.point).dot(p.normal.get()) < 0.0
-                }
+            && self.model.as_ref().is_some_and(|m| {
+                m.project(point).is_some_and(|p| {
+                    if p.point.distance(point) <= SURFACE_TOLERANCE {
+                        p.normal.get().dot(normal) < -0.5
+                    } else {
+                        // Behind the nearest point's outward normal: inside.
+                        (point - p.point).dot(p.normal.get()) < 0.0
+                    }
+                })
             });
-        if (inside_solid || inside_model)
-            && let Some(slot) = target.triangles.get_mut(t)
-        {
-            let v = slot[0];
-            *slot = [v, v, v];
-        }
+        inside_solid || inside_model
     }
-    target
+}
+
+/// The outward unit normal of the triangle `a b c`, or `None` for a
+/// degenerate one.
+fn unit_normal(a: Point3, b: Point3, c: Point3) -> Option<Vec3> {
+    let cross = (b - a).cross(c - a);
+    let length = cross.length();
+    if length.is_nan() || length <= 1e-18 {
+        return None;
+    }
+    Some(cross * (1.0 / length))
 }
 
 /// The target the deviation report compares the stock with for `setup`: the
-/// placed part's mesh as it is when the setup holds nothing, else
-/// [`deviation_target`] over the part and the setup's solids. The part's own
+/// placed part's mesh alone when the setup holds nothing, else the
+/// [`DeviationTarget`] over the part and the setup's solids. The part's own
 /// triangles come first and keep their indices either way.
 pub(crate) fn setup_deviation_target(
     setup: &openchuck_project::Setup,
     mesh: TriangleMesh,
-) -> Result<TriangleMesh, AppError> {
+) -> Result<DeviationTarget, AppError> {
     if setup.workholding.is_empty() {
-        return Ok(mesh);
+        return Ok(DeviationTarget::part_only(mesh));
     }
     let part = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     let solids = solids(&setup.workholding, setup.stock.as_ref(), &part)?;
     let surface = openchuck_path::MeshSurface::new(&mesh)?;
-    Ok(deviation_target(&mesh, &surface, &solids))
+    Ok(DeviationTarget::new(&mesh, surface, solids))
 }
 
 /// Whether a centroid is inside a part: strictly inside, or on the surface
@@ -896,6 +971,131 @@ mod tests {
         assert_eq!(round[0].as_cuboid(), None);
         assert!((round[0].base_radius() - 10.0).abs() < 1e-12);
         assert_eq!(round[1].as_cuboid(), None);
+    }
+
+    /// The triangles of the part in [`owners_layout`]: 24 segments of two
+    /// side triangles and two end-face triangles.
+    const OWNERS_MODEL: usize = 96;
+
+    /// The owner's layout in blisk_glitchy_generating (issue 248): box
+    /// stock held 5 mm at its start by its own section, a 10 mm tab from X
+    /// 5 to 10, and a part of radius 20 from X 10, whose end faces are fans
+    /// of large triangles.
+    fn owners_layout() -> DeviationTarget {
+        let mesh = openchuck_testkit::parts::revolve(&[(10.0, 20.0), (60.0, 20.0)], 24);
+        let boxed = Stock::Box {
+            bounds: Aabb {
+                min: Point3::new(0.0, -21.0, -20.0),
+                max: Point3::new(60.0, 21.0, 20.0),
+            },
+        };
+        let w = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(5.0),
+                diameter: None,
+            }),
+            end: None,
+            tabs: vec![Tab {
+                x_start: Millimetres(5.0),
+                length: Millimetres(5.0),
+                shape: TabShape::Cylinder {
+                    diameter: Millimetres(10.0),
+                },
+                layout: TabLayout::OnAxis,
+            }],
+        };
+        let extent = openchuck_geom::part_extent(&mesh).unwrap();
+        let solids = solids(&w, Some(&boxed), &extent).unwrap();
+        let surface = openchuck_path::MeshSurface::new(&mesh).unwrap();
+        DeviationTarget::new(&mesh, surface, solids)
+    }
+
+    /// The first triangle of `target` whose centroid satisfies `pick`.
+    fn triangle_at(target: &DeviationTarget, pick: impl Fn(Point3) -> bool) -> usize {
+        (0..target.mesh.triangles.len())
+            .find(|&t| {
+                target.mesh.triangle(t).is_some_and(|[a, b, c]| {
+                    unit_normal(a, b, c).is_some()
+                        && pick(Point3::new(
+                            (a.x + b.x + c.x) / 3.0,
+                            (a.y + b.y + c.y) / 3.0,
+                            (a.z + b.z + c.z) / 3.0,
+                        ))
+                })
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn req_sim_05_req_op_21_req_set_09_each_sample_says_what_it_lies_on() {
+        // Decision 0194: whether a sample is on the part, on the face of a
+        // held region or tab, or inside the finished part (under a tab) is
+        // decided at the sample, not at its triangle's centre.
+        let target = owners_layout();
+        let minus_x = Vec3::new(-1.0, 0.0, 0.0);
+        let plus_x = Vec3::new(1.0, 0.0, 0.0);
+        // The part's end face at X 10: its fan triangles reach the axis, but
+        // their centres lie at two thirds of the radius, outside the tab, so
+        // they are kept whole.
+        let face = triangle_at(&target, |c| (c.x - 10.0).abs() < 1e-9);
+        assert!(face < OWNERS_MODEL);
+        assert_eq!(
+            target.classify(face, Point3::new(10.0, 1.0, 0.5), minus_x),
+            SampleOn::Inside,
+            "under the tab"
+        );
+        assert_eq!(
+            target.classify(face, Point3::new(10.0, 12.0, 0.0), minus_x),
+            SampleOn::Part,
+            "beside the tab"
+        );
+        // The held region's face at X 5 under the tab is inside too; beside
+        // it, it is the held region's own face.
+        let held = triangle_at(&target, |c| (c.x - 5.0).abs() < 1e-9);
+        assert!((OWNERS_MODEL..OWNERS_MODEL + 12).contains(&held), "{held}");
+        assert_eq!(
+            target.classify(held, Point3::new(5.0, 2.0, 1.0), plus_x),
+            SampleOn::Inside
+        );
+        assert_eq!(
+            target.classify(held, Point3::new(5.0, 15.0, 15.0), plus_x),
+            SampleOn::Workholding
+        );
+        // The tab's wall is its own face.
+        let wall = triangle_at(&target, |c| {
+            c.x > 5.5 && c.x < 9.5 && (c.y.hypot(c.z) - 5.0).abs() < 0.1
+        });
+        assert_eq!(
+            target.classify(wall, Point3::new(7.5, 0.0, 5.0), Vec3::new(0.0, 0.0, 1.0)),
+            SampleOn::Workholding
+        );
+    }
+
+    #[test]
+    fn req_sim_05_req_op_21_a_tab_after_a_box_held_region_is_tested_against_it() {
+        // A held region of a box section has 12 triangles, not the 384 of a
+        // round solid; the tab after it was taken as part of the box, never
+        // tested against it, so its end face, buried in the held region's
+        // face at X 5, was sampled as a surface of the finished part.
+        let target = owners_layout();
+        let ends: Vec<usize> = (0..target.mesh.triangles.len())
+            .filter(|&t| {
+                t >= OWNERS_MODEL + 12
+                    && target
+                        .mesh
+                        .triangle(t)
+                        .is_some_and(|[a, b, c]| [a, b, c].iter().all(|p| (p.x - 5.0).abs() < 1e-9))
+            })
+            .collect();
+        // The tab's whole end disc at X 5 is dropped from the target.
+        assert_eq!(ends.len(), 96);
+        assert!(ends.iter().all(|&t| {
+            target
+                .mesh
+                .triangles
+                .get(t)
+                .is_some_and(|[a, b, c]| a == b && b == c)
+        }));
     }
 
     #[test]

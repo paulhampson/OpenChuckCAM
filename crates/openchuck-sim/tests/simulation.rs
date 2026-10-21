@@ -11,12 +11,12 @@ use std::f64::consts::PI;
 use std::sync::Mutex;
 
 use openchuck_sim::{
-    DeviationOptions, DexelStock, Pose, Simulator, ToolSolid, compare, compare_cancellable,
-    cut_spans, stock_mesh, triangle_values,
+    DeviationOptions, DexelStock, Pose, SampleOn, Simulator, ToolSolid, compare,
+    compare_cancellable, compare_classified, cut_spans, stock_mesh, triangle_values,
 };
 use openchuck_testkit::parts::{Cylinder, RadialPart};
 use openchuck_types::Error;
-use openchuck_types::geometry::{Aabb, Point3, Vec3};
+use openchuck_types::geometry::{Aabb, Point3, UnitVec3, Vec3};
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::job::{CancelToken, JobContext, NoProgress, Progress, ProgressSink};
 use openchuck_types::simulation::SimulationSettings;
@@ -746,4 +746,138 @@ fn req_nfr_06_a_shrunk_stock_holds_the_same_material_and_memory_as_a_copy() {
     let mut again = copy.clone();
     again.shrink_to_fit();
     assert_eq!(again.memory_bytes(), copy.memory_bytes());
+}
+
+/// The stock's extent is kept between rays (issue #252: every slanted ray
+/// read every column for it), so it must follow every cut: a cut that takes
+/// the top off lowers it, and a copy made before the cut keeps its own.
+#[test]
+fn req_sim_03_the_stock_extent_follows_each_cut() {
+    let profile = ball(4.0);
+    let tool = ToolSolid::new(&profile);
+    let mut stock = DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap();
+    let before = stock.bounds();
+    assert!((before.max.z - 15.0).abs() < 0.2, "{before:?}");
+    let copy = stock.clone();
+    // A ball 2 mm deep across the whole top, in rows 1 mm apart.
+    let poses: Vec<Pose> = (0..=30)
+        .flat_map(|j| {
+            (0..=180).map(move |i| Pose {
+                tip: Point3::new(-12.0 + f64::from(i) * 0.2, -15.0 + f64::from(j), 13.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+            })
+        })
+        .collect();
+    // A slanted ray asks for the extent, as an entry move's rays do.
+    let slant = UnitVec3::new(Vec3::new(0.3, 0.0, -1.0)).unwrap();
+    assert!(
+        stock
+            .first_material(Point3::new(0.0, 0.0, 40.0), slant.get(), 60.0)
+            .is_some()
+    );
+    stock.cut(&tool, &poses);
+    let after = stock.bounds();
+    assert!(after.max.z < 13.0 + 0.2, "{after:?}");
+    assert!(after.max.z > 13.0 - 0.2, "{after:?}");
+    assert_eq!(copy.bounds(), before);
+    // Equal stocks compare equal whether or not the extent was asked for.
+    assert_eq!(
+        copy,
+        DexelStock::from_stock(&cylinder_stock(30.0, -12.0, 24.0), None, 0.2).unwrap()
+    );
+}
+
+/// What each sample lies on decides whether it counts (SIM-05, OP-21,
+/// SET-09; decision record 0194): a sample inside the finished part (under a
+/// tab) never counts, one on a held region or tab counts only where it is
+/// overcut, and one on the part always counts, right up to the others.
+#[test]
+fn req_sim_05_req_op_21_req_set_09_only_the_samples_that_count_make_the_figures() {
+    let stock = DexelStock::from_stock(&cylinder_stock(20.0, 0.0, 30.0), None, 0.2).unwrap();
+    let options = DeviationOptions::for_cell(0.2);
+    let never = CancelToken::new();
+    let context = JobContext::new(&never, &NoProgress);
+    // Below X 10 inside, from 10 to 15 a held region's or tab's face, from
+    // 15 the part.
+    let on = |_: usize, p: Point3, _: Vec3| {
+        if p.x < 10.0 {
+            SampleOn::Inside
+        } else if p.x < 15.0 {
+            SampleOn::Workholding
+        } else {
+            SampleOn::Part
+        }
+    };
+
+    // A target inside the stock: material left everywhere, more of it to
+    // the left of X 10 (the radius there is smaller).
+    let left =
+        openchuck_testkit::parts::revolve(&[(1.0, 4.0), (10.0, 4.0), (10.0, 8.0), (29.0, 8.0)], 48);
+    let d = compare_classified(&stock, &left, &options, &on, &context).unwrap();
+    let worst = d.worst_remaining.unwrap();
+    assert_eq!(worst.on, SampleOn::Part, "{worst:?}");
+    assert!(worst.value < 2.5, "{worst:?}");
+    assert!(
+        d.points
+            .iter()
+            .any(|p| p.on == SampleOn::Inside && p.value > 3.0 - 1e-9)
+    );
+    assert!(
+        d.points
+            .iter()
+            .any(|p| p.on == SampleOn::Workholding && p.value > 1.0)
+    );
+    let counted = d.points.iter().filter(|p| p.counts()).count();
+    assert_eq!(d.leftover(0.0, 0.1).samples, counted);
+    assert!(counted > 0 && counted < d.points.len());
+    // A triangle wholly inside takes no colour.
+    let values = triangle_values(&d, &left, options.spacing).unwrap();
+    let mut inside = 0;
+    for (t, v) in values.iter().enumerate() {
+        if let Some([a, b, c]) = left.triangle(t)
+            && [a, b, c].iter().all(|p| p.x < 9.0)
+            && a != b
+        {
+            inside += 1;
+            assert_eq!(*v, None, "triangle {t}");
+        }
+    }
+    assert!(inside > 0);
+
+    // A target outside the stock: overcut everywhere. The overcut on the
+    // workholding counts (a cut into it), the one inside does not.
+    let over = openchuck_testkit::parts::revolve(&[(1.0, 11.0), (29.0, 11.0)], 48);
+    let d = compare_classified(&stock, &over, &options, &on, &context).unwrap();
+    let expected = d
+        .points
+        .iter()
+        .filter(|p| p.on != SampleOn::Inside && -p.value > options.overcut_limit)
+        .count();
+    assert!(
+        d.points
+            .iter()
+            .any(|p| p.on == SampleOn::Workholding && p.value < -0.5)
+    );
+    assert_eq!(d.overcut_count, expected);
+    assert!(
+        d.points
+            .iter()
+            .any(|p| p.on == SampleOn::Inside && p.value < -0.5)
+    );
+    assert!(
+        expected
+            < d.points
+                .iter()
+                .filter(|p| -p.value > options.overcut_limit)
+                .count()
+    );
+
+    // With every sample on the part, it is the comparison as it was.
+    let plain = compare_cancellable(&stock, &over, &options, &context).unwrap();
+    assert!(
+        plain
+            .points
+            .iter()
+            .all(|p| p.on == SampleOn::Part && p.counts())
+    );
 }

@@ -12,7 +12,7 @@
 use openchuck_project::Project;
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
-    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_cancellable,
+    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_classified,
 };
 use openchuck_types::geometry::Aabb;
 use openchuck_types::ir::ToolpathGroup;
@@ -171,7 +171,7 @@ impl SetupState {
     /// given. The stock moves into the report; nothing is copied.
     pub(crate) fn finish(
         self,
-        part: Option<&openchuck_types::mesh::TriangleMesh>,
+        part: Option<&crate::workholding::DeviationTarget>,
         settings: SimulationSettings,
         context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<SetupSimulation, AppError> {
@@ -181,10 +181,11 @@ impl SetupState {
         // run or copied from the cache (NFR-06; decision record 0190).
         stock.shrink_to_fit();
         let deviation = match part {
-            Some(mesh) => Some(compare_cancellable(
+            Some(target) => Some(compare_classified(
                 &stock,
-                mesh,
+                &target.mesh,
                 &DeviationOptions::for_cell(settings.cell.0),
+                &|t, p, n| target.classify(t, p, n),
                 context,
             )?),
             None => None,

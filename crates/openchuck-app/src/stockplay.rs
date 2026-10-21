@@ -264,7 +264,9 @@ impl Application {
                 // regions and tabs; the colours are of the part's triangles,
                 // which come first.
                 let target = match run.project.setup(setup) {
-                    Some(setup) => crate::workholding::setup_deviation_target(setup, mesh.clone())?,
+                    Some(setup) => {
+                        crate::workholding::setup_deviation_target(setup, mesh.clone())?.mesh
+                    }
                     None => mesh.clone(),
                 };
                 let options = DeviationOptions::for_cell(report.settings.cell.0);

@@ -10,7 +10,9 @@
 //! close the circle exactly. Each pass is fitted by the same bisection as
 //! helical finishing ([`crate::wrap_fit`]).
 
-use openchuck_types::job::JobContext;
+use std::sync::Mutex;
+
+use openchuck_types::job::{JobContext, NoProgress};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
@@ -18,6 +20,7 @@ use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
 use crate::helical::CONSTRAINED_SPACING;
+use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
@@ -312,6 +315,45 @@ impl<'a> AlongX<'a> {
         };
         fit_region(&fit, self.seeds, "axial finishing", context)
     }
+
+    /// The passes at each of `angles` in order, every other one backwards
+    /// when zig-zagging. The passes are fitted in parallel, one to a thread
+    /// (issue #252): a pass has too few points to spread over the threads by
+    /// itself. Each pass is fitted alone and they are joined in order, so the
+    /// path never depends on the thread count (NFR-06). `label` names the
+    /// strategy in the one progress count it reports, of passes.
+    pub(crate) fn passes_at(
+        &self,
+        angles: &[f64],
+        label: &str,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let stage = format!("{label}: fitting the passes");
+        let total = angles.len() as u64;
+        context.report(&stage, 0, Some(total));
+        // The passes report nothing of their own: their counts, from many
+        // threads at once, would replace each other in the progress shown.
+        let quiet = JobContext::new(context.cancel, &NoProgress);
+        let done = Mutex::new(0_u64);
+        let indexed: Vec<(usize, f64)> = angles.iter().copied().enumerate().collect();
+        let fitted = parallel::map_each_in_order(&indexed, |&(i, a)| {
+            quiet.check_cancelled()?;
+            let pass = self.pass(Degrees(a), self.zigzag && i % 2 == 1, &quiet);
+            // Counted under the lock, so the count shown only goes up.
+            if let Ok(mut done) = done.lock() {
+                *done += 1;
+                context.report(&stage, *done, Some(total));
+            }
+            pass
+        });
+        let mut out = Vec::new();
+        // The first error in pass order, so a failure is the same at any
+        // thread count.
+        for pass in fitted {
+            out.extend(pass?);
+        }
+        Ok(out)
+    }
 }
 
 fn passes(
@@ -335,12 +377,6 @@ fn passes(
     let count = pass_count(along.radius, stepover, scallop)?;
     along.check_passes(count)?;
     let step = 360.0 / count as f64;
-
-    let mut out = Vec::new();
-    for i in 0..count {
-        context.check_cancelled()?;
-        let a = Degrees(start + step * i as f64);
-        out.extend(along.pass(a, along.zigzag && i % 2 == 1, context)?);
-    }
-    Ok(out)
+    let angles: Vec<f64> = (0..count).map(|i| start + step * i as f64).collect();
+    along.passes_at(&angles, "axial finishing", context)
 }

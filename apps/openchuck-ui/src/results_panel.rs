@@ -190,7 +190,14 @@ impl SetupResults {
         let Some(d) = deviation else {
             return r;
         };
-        let values: Vec<f64> = d.points.iter().map(|p| p.value).collect();
+        // The samples that count: none inside the finished part, and on a
+        // held region or tab only an overcut (decision 0194).
+        let values: Vec<f64> = d
+            .points
+            .iter()
+            .filter(|p| p.counts())
+            .map(|p| p.value)
+            .collect();
         r.samples = values.len();
         r.histogram = histogram(&values, tolerance);
         if r.samples > 0 {
@@ -695,6 +702,7 @@ mod tests {
             normal: Point3::new(0.0, 0.0, 1.0) - Point3::new(0.0, 0.0, 0.0),
             value,
             at_least,
+            on: openchuck_app::sim::SampleOn::Part,
         };
         let points: Vec<DeviationPoint> =
             values.iter().enumerate().map(|(i, v)| at(i, *v)).collect();

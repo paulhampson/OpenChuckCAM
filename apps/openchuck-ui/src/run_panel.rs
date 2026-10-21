@@ -20,6 +20,9 @@ use openchuck_app::{Application, JobHandle, JobId, JobLog, Regeneration, Strateg
 
 use crate::theme::DARK;
 
+/// How often the window is drawn again while a job runs, for its progress.
+const RUNNING_REPAINT: std::time::Duration = std::time::Duration::from_millis(100);
+
 const PROBLEM: Color32 = DARK.error;
 const NOTE: Color32 = DARK.warning;
 
@@ -292,7 +295,10 @@ impl RunPanel {
         }
         match job.handle.try_result() {
             None => {
-                ctx.request_repaint();
+                // The progress text and the end of the job need no more than
+                // this; a repaint every frame kept the graphics busy for the
+                // whole of a long generation (issue 252).
+                ctx.request_repaint_after(RUNNING_REPAINT);
                 None
             }
             Some(result) => {
@@ -650,6 +656,60 @@ mod tests {
         let panel = RunPanel::default();
         assert!(!panel.is_running());
         assert!(panel.last.is_none());
+    }
+
+    /// While a job runs the window is drawn again at a steady pace for its
+    /// progress, not at every frame the display can show (issue 252: a
+    /// generation of 20 minutes kept the graphics busy the whole time).
+    #[test]
+    fn req_ui_09_req_nfr_04_a_running_job_redraws_at_a_steady_pace() {
+        use std::time::{Duration, Instant};
+
+        use openchuck_app::JobLog;
+
+        use crate::testing::cube_project;
+
+        let (dir, app, _, _) = cube_project("run-pace");
+        let ctx = egui::Context::default();
+        let pass = |f: &mut dyn FnMut(&egui::Context)| {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| f(ui.ctx()));
+            // No renderer here takes the font texture.
+            output.textures_delta.clear();
+            output
+                .viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .map(|v| v.repaint_delay)
+        };
+        // egui's own first passes ask for repaints of their own; with
+        // nothing running it then waits for input.
+        let mut warm = 0;
+        while pass(&mut |_| {}) != Some(Duration::MAX) {
+            warm += 1;
+            assert!(warm < 10);
+        }
+        let mut panel = RunPanel::default();
+        panel.start(&app, false);
+        let started = Instant::now();
+        let mut running_passes = 0;
+        while panel.is_running() {
+            let delay = pass(&mut |ctx| {
+                panel.poll(&JobLog::default(), ctx);
+            });
+            if panel.is_running() {
+                running_passes += 1;
+                // egui takes its own frame time off the delay.
+                let delay = delay.unwrap();
+                assert!(
+                    delay > Duration::from_millis(50) && delay <= RUNNING_REPAINT,
+                    "{delay:?}"
+                );
+            }
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(running_passes > 0);
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// A cancelled run must not make an older run look current: what the
