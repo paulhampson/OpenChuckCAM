@@ -155,8 +155,9 @@ const HANDLE_REACH: f32 = 6.0;
 
 /// The window `drag` makes on a strip of `moves` moves when the pointer is
 /// at boundary `at`, the number of moves done there (issue 205). An end
-/// takes the moves between the held boundary and the pointer, at least one;
-/// dragging the body keeps its length.
+/// takes the moves between the held boundary and the pointer, at least one:
+/// with the pointer on the held boundary, the move on the window's side of
+/// it. Dragging the body keeps its length.
 fn dragged_window(
     window: Option<MoveWindow>,
     drag: WindowDrag,
@@ -170,6 +171,12 @@ fn dragged_window(
     });
     Some(match drag {
         WindowDrag::End { fixed } => {
+            // On the held boundary, a window before it keeps its last move.
+            let at = if at == fixed && w.last < fixed {
+                at - 1
+            } else {
+                at
+            };
             let first = fixed.min(at).min(last_move);
             let end = fixed.max(at).clamp(first + 1, moves);
             MoveWindow {
@@ -1876,6 +1883,14 @@ mod tests {
             })
         );
         assert_eq!(drag(end, 2), Some(MoveWindow { first: 2, last: 9 }));
+        // At the held boundary, the window keeps the one move on its side.
+        assert_eq!(
+            drag(start, 21),
+            Some(MoveWindow {
+                first: 20,
+                last: 20
+            })
+        );
         // Back over the held boundary, the window keeps one move.
         assert_eq!(
             drag(end, 10),
