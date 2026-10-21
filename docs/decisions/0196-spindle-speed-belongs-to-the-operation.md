@@ -1,9 +1,9 @@
 # 0196: The spindle speed belongs to the operation (lane BUG-SPINDLE; issue 249, trial finding F-79)
 
-- **Status:** proposed. The owner's answers to decisions 1, 2 and 3 below were relayed by the coordinator session on 21 Oct 2026 (the owner's option A in each case); decision 4 is the coordinator's "build on A until told". This record is accepted only when the owner says so directly in the lane BUG-SPINDLE session.
+- **Status:** proposed. The owner's answers to decisions 1, 2 and 3 below were relayed by the coordinator session on 21 Oct 2026 (the owner's option A in each case); decision 4 (existing projects, option A) was relayed the same way later. This record is accepted only when the owner says so directly in the lane BUG-SPINDLE session.
 - **What it amends:** the data flow of TL-05 (cutting data per tool and stock material) and GC-14 (spindle speed per tool in the post job), [decision 0014](0014-slice-4-tool-library.md) item 5 (stock material names matched exactly). Requirements TL-05, GC-14 and NFR-12 are unchanged.
 - **Date:** 21 Oct 2026.
-- **Open items:** OI-750 to OI-752 (answered, closed), OI-753 (existing projects; build on A until the owner answers), OI-754 and OI-755 (new).
+- **Open items:** OI-750 to OI-753 (answered, closed), OI-754 and OI-755 (new).
 
 ## Context
 
@@ -19,7 +19,7 @@ Cause, read from the code on `main` (9a84c01): the only source of a spindle spee
 4. **The post gets the speed per operation.** `PostJob` and `ConvertOptions` gain `operation_spindle` (rpm by operation tag); an operation with an entry runs at it, any other at its tool's `ToolSetting::spindle_rpm`. Two operations with one tool can run at different speeds. This is a breaking change to the library family: version 0.15.0, changelogs in each affected crate (decision 0048).
 5. **The inspector.** The operation's Tool section has a Spindle speed row (unit rpm, the tooltip says what it is and that the user checks it before running the program). Empty, it shows the tool's value as the hint; ↺ takes the operation's own value away. Text that is not a number above 0 is refused in plain words (NFR-07). The setup sheet's rpm column shows the speed the program uses.
 6. **Project schema 16 (claimed in the work breakdown).** The operation file gains `spindle_speed`, written only when set. Additive: the migration changes only the number, and refuses a schema 15 operation file that already holds the field. A value that is not finite and above 0 is refused when the project is checked.
-7. **Existing projects (OI-753; built on A until the owner answers).** No migration of values. An older project opens unchanged and keeps taking the tool's cutting data, so its G-code is byte-identical. Only a project whose tool lacks data for the material shows the new message, and it could not be posted before either.
+7. **Existing projects (OI-753; the owner's option A, relayed).** No migration of values. An older project opens unchanged and keeps taking the tool's cutting data, so its G-code is byte-identical. Only a project whose tool lacks data for the material shows the new message, and it could not be posted before either.
 
 ## G-code and golden files
 
