@@ -14,7 +14,9 @@
 use std::sync::Arc;
 
 use eframe::egui::{self, Color32, RichText};
-use openchuck_app::pathview::{DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData};
+use openchuck_app::pathview::{
+    DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData, zoom_level,
+};
 use openchuck_app::playback::{Cursor, Playback, PoseSample, ToolMeshes, ViewFrame, tool_meshes};
 use openchuck_app::project::id::{ModelId, OperationId, SetupId};
 use openchuck_app::stockplay::StockPlayback;
@@ -29,9 +31,11 @@ use crate::viewport::{ToolReadout, Viewport};
 
 const PROBLEM: Color32 = DARK.error;
 
-/// Points of toolpath the viewport is asked to draw at most. A million line
-/// vertices is about 24 MB on the GPU and draws well within a frame on the
-/// reference class of machine.
+/// Points of toolpath the viewport is asked to draw at most. A million
+/// points is about 31 MB on the GPU (two 16-byte vertices per segment;
+/// measured with the `path_frames` example, decision record 0166). Its
+/// frame time on the reference machines is still to be measured (OI-176,
+/// OI-590).
 pub const DEFAULT_POINT_BUDGET: usize = 1_000_000;
 
 /// Program seconds per second of the clock the speed list offers; the last
@@ -114,6 +118,9 @@ pub struct PlaybackPanel {
     budget: usize,
     lines_job: Option<JobHandle<PathLines>>,
     lines_dirty: bool,
+    /// The level of detail the zoom asks for ([`zoom_level`]; decision
+    /// record 0167).
+    zoom_level: usize,
     detail: Option<(usize, usize, f64)>,
     /// The group whose tool the tool layer holds.
     tool_group: Option<usize>,
@@ -150,6 +157,7 @@ impl Default for PlaybackPanel {
             budget: DEFAULT_POINT_BUDGET,
             lines_job: None,
             lines_dirty: false,
+            zoom_level: 0,
             detail: None,
             tool_group: None,
             tool_dirty: false,
@@ -288,6 +296,16 @@ impl PlaybackPanel {
     }
 
     fn poll_lines(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
+        // The level follows the zoom: a new one is made by a job only when
+        // the zoom crosses into another level, and the path drawn stays
+        // until the job hands over the next (decision record 0167, OI-177).
+        let wanted = viewport
+            .mm_per_pixel()
+            .map_or(0, |mm| zoom_level(self.zoom_level, mm));
+        if wanted != self.zoom_level {
+            self.zoom_level = wanted;
+            self.lines_dirty = true;
+        }
         if let Some(job) = &self.lines_job {
             match job.try_result() {
                 None => return true,
@@ -313,8 +331,12 @@ impl PlaybackPanel {
             } else {
                 vec![false; self.visible.len()]
             };
-            self.lines_job =
-                Some(app.start_path_lines(Arc::clone(&data.display), visible, self.budget));
+            self.lines_job = Some(app.start_path_lines(
+                Arc::clone(&data.display),
+                visible,
+                self.budget,
+                self.zoom_level,
+            ));
             return true;
         }
         false
@@ -982,6 +1004,64 @@ mod tests {
         let (drawn, full, tolerance) = panel.detail.unwrap();
         assert_eq!(drawn, full, "a small job is drawn in full");
         assert!(tolerance.abs() < 1e-12);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Draws frames until the path-lines job is done.
+    fn settle(app: &Application, panel: &mut PlaybackPanel, viewport: &mut Viewport) {
+        let started = Instant::now();
+        while panel.lines_job.is_some() || panel.lines_dirty {
+            panel.frame(app, viewport, 0.0);
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn req_nfr_03_req_nfr_04_the_path_detail_follows_the_zoom_off_the_interface_thread() {
+        // Decision 0167 (OI-177): zoomed far out, the path is drawn at a
+        // coarser level; the level is made by a job, the old path stays drawn
+        // until the new one arrives, and a zoom within a level makes nothing.
+        let (app, mut panel, mut viewport, dir) = prepared("panel-zoom");
+        let pose = panel.pose();
+        assert_eq!(panel.zoom_level, 0, "no frame size yet: every point");
+        let before = viewport.layer(Layer::Paths).unwrap() as *const Scene;
+        viewport.set_pixels_for_tests([800, 600]);
+        viewport.camera.projection = openchuck_viewport::Projection::Orthographic;
+        viewport.camera.distance = 1.0e6;
+        panel.frame(&app, &mut viewport, 0.0);
+        let coarsest = openchuck_app::pathview::LEVEL_TOLERANCES.len() - 1;
+        assert_eq!(panel.zoom_level, coarsest);
+        // The frame only started the job; the path drawn is still the old one.
+        assert!(panel.lines_job.is_some());
+        assert_eq!(
+            viewport.layer(Layer::Paths).unwrap() as *const Scene,
+            before
+        );
+        settle(&app, &mut panel, &mut viewport);
+        let (_, _, tolerance) = panel.detail.unwrap();
+        assert_eq!(
+            tolerance,
+            openchuck_app::pathview::LEVEL_TOLERANCES[coarsest]
+        );
+        let coarse = viewport.layer(Layer::Paths).unwrap() as *const Scene;
+        assert_ne!(coarse, before);
+        // A zoom within the level: no job, the same path.
+        viewport.camera.distance = 1.2e6;
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.lines_job.is_none() && !panel.lines_dirty);
+        assert_eq!(
+            viewport.layer(Layer::Paths).unwrap() as *const Scene,
+            coarse
+        );
+        // Zoomed right in, every point again.
+        viewport.camera.distance = 0.01;
+        panel.frame(&app, &mut viewport, 0.0);
+        assert_eq!(panel.zoom_level, 0);
+        settle(&app, &mut panel, &mut viewport);
+        assert_eq!(panel.detail.unwrap().2, 0.0);
+        // The level is for drawing only: playback is where it was.
+        assert_eq!(panel.pose(), pose);
         let _ = std::fs::remove_dir_all(dir);
     }
 

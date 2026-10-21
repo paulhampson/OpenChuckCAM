@@ -404,9 +404,11 @@ struct Resources {
 /// One frame's draw request.
 struct Callback {
     frame: Frame,
-    /// Every layer with its generation: the renderer uploads the ones whose
-    /// generation it has not seen.
-    layers: Vec<(Layer, u64, Arc<Scene>)>,
+    /// Every layer with its generation and whether it is shown: the
+    /// renderer uploads the ones whose generation it has not seen, and keeps
+    /// a hidden one uploaded without drawing it, so showing it again costs
+    /// nothing (issue #200).
+    layers: Vec<(Layer, u64, Arc<Scene>, bool)>,
 }
 
 impl egui_wgpu::CallbackTrait for Callback {
@@ -419,13 +421,14 @@ impl egui_wgpu::CallbackTrait for Callback {
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(r) = resources.get_mut::<Resources>() {
-            for (layer, generation, scene) in &self.layers {
+            for (layer, generation, scene, shown) in &self.layers {
                 if let Some(seen) = r.generations.get_mut(layer.index())
                     && *seen != *generation
                 {
                     r.renderer.set_layer(device, *layer, scene);
                     *seen = *generation;
                 }
+                r.renderer.set_layer_shown(*layer, *shown);
             }
             r.renderer.prepare(device, queue, &self.frame);
         }
@@ -563,10 +566,6 @@ pub struct PickInput {
     /// opens the inspector at the workholding section with it expanded.
     pub solid_click: Option<WorkholdingItem>,
 }
-
-/// The high bit of a layer's generation marks it hidden, so showing it
-/// again uploads it once more.
-const HIDDEN: u64 = 1 << 63;
 
 impl Viewport {
     /// A viewport; `available` is false when there is no wgpu renderer.
@@ -917,6 +916,32 @@ impl Viewport {
         self.pixels
     }
 
+    /// Sets the size the last frame had, in physical pixels (tests).
+    #[cfg(test)]
+    pub(crate) fn set_pixels_for_tests(&mut self, pixels: [u32; 2]) {
+        self.pixels = pixels;
+    }
+
+    /// The millimetres one physical pixel spans on the nearest part of the
+    /// scene, which the level of detail of the toolpath follows (decision
+    /// record 0167): at the camera's target in the orthographic view, and
+    /// in perspective where the scene's sphere comes nearest the eye, where
+    /// a pixel spans least. `None` before the first frame, or with the eye
+    /// inside the scene.
+    pub fn mm_per_pixel(&self) -> Option<f64> {
+        let rows = f64::from(self.pixels[1]);
+        if rows < 1.0 {
+            return None;
+        }
+        let camera = &self.camera;
+        let nearest = match camera.projection {
+            Projection::Orthographic => 1.0,
+            Projection::Perspective => (camera.distance - camera.scene_radius) / camera.distance,
+        };
+        let mm = camera.visible_height() / rows * nearest;
+        (mm.is_finite() && mm > 0.0).then_some(mm)
+    }
+
     /// Fits the camera to the scene.
     pub fn fit(&mut self) {
         if let Some((min, max)) = self.scene.bounds() {
@@ -1009,21 +1034,7 @@ impl Viewport {
         frame.pixels_per_point = scale;
         frame.set_transform(Slot::Part, self.part_transform);
         frame.set_transform(Slot::Tool, self.tool_transform);
-        let empty = Arc::new(Scene::default());
-        let layers = std::iter::once((Layer::Scene, self.generation, Arc::clone(&self.scene)))
-            .chain(self.layers.iter().map(|(l, s, g)| {
-                if self.layer_shown(*l) {
-                    (*l, *g, Arc::clone(s))
-                } else {
-                    (*l, *g | HIDDEN, Arc::clone(&empty))
-                }
-            }))
-            .chain(std::iter::once((
-                Layer::Focus,
-                self.focus.1,
-                Arc::clone(&self.focus.0),
-            )))
-            .collect();
+        let layers = self.frame_layers();
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(
             rect,
             Callback { frame, layers },
@@ -1037,6 +1048,25 @@ impl Viewport {
             });
         }
         crate::viewport_overlays::paint(ui, self, rect);
+    }
+
+    /// Every layer for the next frame, with its generation and whether it
+    /// is shown. A hidden layer is sent as it is, so the renderer keeps it
+    /// uploaded and showing it again uploads nothing (issue #200).
+    fn frame_layers(&self) -> Vec<(Layer, u64, Arc<Scene>, bool)> {
+        std::iter::once((Layer::Scene, self.generation, Arc::clone(&self.scene), true))
+            .chain(
+                self.layers
+                    .iter()
+                    .map(|(l, s, g)| (*l, *g, Arc::clone(s), self.layer_shown(*l))),
+            )
+            .chain(std::iter::once((
+                Layer::Focus,
+                self.focus.1,
+                Arc::clone(&self.focus.0),
+                true,
+            )))
+            .collect()
     }
 
     /// Whether a layer other than the scene is drawn, after "Show or hide"
@@ -1830,6 +1860,35 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn req_nfr_03_the_pixel_size_is_taken_where_the_scene_is_nearest() {
+        // Decision 0167: the level of detail is chosen from the millimetres
+        // a pixel spans, so the view must say it. Before the first frame it
+        // cannot.
+        let mut viewport = Viewport::new(true);
+        assert_eq!(viewport.mm_per_pixel(), None);
+        viewport.pixels = [1000, 500];
+        viewport.camera = Camera {
+            distance: 100.0,
+            scene_radius: 20.0,
+            projection: Projection::Orthographic,
+            ..Camera::default()
+        };
+        let ortho = viewport.mm_per_pixel().unwrap();
+        assert!((ortho - viewport.camera.visible_height() / 500.0).abs() < 1e-12);
+        // In perspective, pixels are smallest on the scene nearest the eye:
+        // 80 mm away instead of 100.
+        viewport.camera.projection = Projection::Perspective;
+        let near = viewport.mm_per_pixel().unwrap();
+        assert!((near - ortho * 0.8).abs() < 1e-12, "{near}");
+        // Zoomed out twice as far, a pixel spans more.
+        viewport.camera.distance = 200.0;
+        assert!(viewport.mm_per_pixel().unwrap() > 2.0 * near);
+        // With the eye inside the scene, no size: every point is drawn.
+        viewport.camera.distance = 10.0;
+        assert_eq!(viewport.mm_per_pixel(), None);
+    }
+
+    #[test]
     fn req_ui_03_req_sim_03_the_step_and_show_or_hide_choose_what_is_drawn() {
         let mut viewport = Viewport::new(true);
         // With nothing held the view is taken to be on Setup; toolpaths make
@@ -1856,7 +1915,18 @@ pub(crate) mod tests {
         });
         assert!(!viewport.layer_shown(Layer::Paths));
         assert!(!viewport.layer_shown(Layer::Overlay));
+        // Hidden, the path goes to the renderer as it is, with the same
+        // generation, so it stays uploaded and showing it again uploads
+        // nothing (issue #200).
+        let sent = |v: &Viewport| {
+            v.frame_layers()
+                .into_iter()
+                .find(|(l, ..)| *l == Layer::Paths)
+                .map(|(_, g, s, shown)| (g, s.lines.len(), shown))
+        };
+        assert_eq!(sent(&viewport), Some((1, 1, false)));
         viewport.set_visibility(Visibility::default());
+        assert_eq!(sent(&viewport), Some((1, 1, true)));
         viewport.set_step(Some(ViewStep::Simulate));
         viewport.simulate_show = SimulateShow::Stock;
         assert!(!viewport.layer_shown(Layer::Paths) && viewport.layer_shown(Layer::Stock));

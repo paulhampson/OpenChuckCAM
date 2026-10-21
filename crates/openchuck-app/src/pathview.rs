@@ -205,24 +205,24 @@ impl ToolpathDisplay {
     /// The lines of the groups `visible` says to draw, at the finest level of
     /// detail whose points fit `max_points` (the coarsest if none does).
     pub fn lines(&self, visible: &dyn Fn(usize) -> bool, max_points: usize) -> PathLines {
+        self.lines_for(visible, max_points, 0)
+    }
+
+    /// The lines of the groups `visible` says to draw, at `min_level` (the
+    /// level the zoom asks for, [`zoom_level`]) or at the level the budget
+    /// of `max_points` needs, whichever is coarser (decision record 0167).
+    /// A level past the coarsest is the coarsest.
+    pub fn lines_for(
+        &self,
+        visible: &dyn Fn(usize) -> bool,
+        max_points: usize,
+        min_level: usize,
+    ) -> PathLines {
         let full_points = self.full_points(visible);
-        let mut chosen = 0;
-        for level in 0..LEVEL_TOLERANCES.len() {
-            chosen = level;
-            let count: usize = match self.level(level) {
-                Some(runs) => self
-                    .runs
-                    .iter()
-                    .zip(runs)
-                    .filter(|(r, _)| visible(r.group))
-                    .map(|(_, p)| p.len())
-                    .sum(),
-                None => usize::MAX,
-            };
-            if count <= max_points {
-                break;
-            }
-        }
+        let chosen = self
+            .budget_level(visible, max_points)
+            .max(min_level)
+            .min(LEVEL_TOLERANCES.len() - 1);
         let runs = self.level(chosen);
         let lines: Vec<PathLine> = self
             .runs
@@ -242,6 +242,67 @@ impl ToolpathDisplay {
             full_points,
             lines,
         }
+    }
+
+    /// The finest level whose visible points fit `max_points`, or the
+    /// coarsest if none does.
+    fn budget_level(&self, visible: &dyn Fn(usize) -> bool, max_points: usize) -> usize {
+        let mut chosen = 0;
+        for level in 0..LEVEL_TOLERANCES.len() {
+            chosen = level;
+            let count: usize = match self.level(level) {
+                Some(runs) => self
+                    .runs
+                    .iter()
+                    .zip(runs)
+                    .filter(|(r, _)| visible(r.group))
+                    .map(|(_, p)| p.len())
+                    .sum(),
+                None => usize::MAX,
+            };
+            if count <= max_points {
+                break;
+            }
+        }
+        chosen
+    }
+}
+
+/// How much of a pixel a level's error may span: half (decision record
+/// 0167).
+pub const PIXEL_SHARE: f64 = 0.5;
+
+/// How far past a coarser level's tolerance half a pixel must reach before
+/// the drawing switches to it.
+const COARSEN_MARGIN: f64 = 1.25;
+
+/// The level of detail for a view where one pixel spans `mm_per_pixel` at
+/// the camera's target, starting from the level `current` drawn now
+/// (decision record 0167, OI-177): the coarsest level whose tolerance is
+/// within half a pixel. It goes finer at once when the current level is
+/// coarser than that, and coarser only once half a pixel is 1.25 times the
+/// coarser level's tolerance, so a zoom that hovers at a boundary does not
+/// swap the path back and forth, and a zoom within a level asks for no new
+/// path. A size that is not a positive finite number gives level 0 (every
+/// point; the budget still applies). The level is for drawing only: the
+/// runs, playback and the output never see it.
+pub fn zoom_level(current: usize, mm_per_pixel: f64) -> usize {
+    if !(mm_per_pixel.is_finite() && mm_per_pixel > 0.0) {
+        return 0;
+    }
+    let half = PIXEL_SHARE * mm_per_pixel;
+    let coarsest = |margin: f64| {
+        (0..LEVEL_TOLERANCES.len())
+            .rev()
+            .find(|&l| LEVEL_TOLERANCES.get(l).is_some_and(|t| t * margin <= half))
+            .unwrap_or(0)
+    };
+    let within = coarsest(1.0);
+    let current = current.min(LEVEL_TOLERANCES.len() - 1);
+    if within < current {
+        within
+    } else {
+        coarsest(COARSEN_MARGIN).max(current)
     }
 }
 
@@ -434,22 +495,26 @@ impl crate::Application {
 
     /// Chooses the lines of the toolpath to draw, as a job: the groups with
     /// `visible[group]` true, at the finest level of detail that fits
-    /// `max_points` (item 8). Making a level the first time simplifies every
-    /// run, which takes a while on a path of millions of moves.
+    /// `max_points` (item 8), or at `min_level` (the zoom's level,
+    /// [`zoom_level`]) when that is coarser. Making a level the first time
+    /// simplifies every run, which takes a while on a path of millions of
+    /// moves.
     pub fn start_path_lines(
         &self,
         display: std::sync::Arc<ToolpathDisplay>,
         visible: Vec<bool>,
         max_points: usize,
+        min_level: usize,
     ) -> crate::JobHandle<PathLines> {
         self.jobs.submit(
             "choose path detail",
             self.events_tx.clone(),
             move |context| {
                 context.check_cancelled()?;
-                let lines = display.lines(
+                let lines = display.lines_for(
                     &|group| visible.get(group).copied().unwrap_or(false),
                     max_points,
+                    min_level,
                 );
                 context.check_cancelled()?;
                 Ok(lines)
