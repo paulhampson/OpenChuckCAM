@@ -739,7 +739,10 @@ mod tests {
             Some(HeldEnd::Unknown)
         );
         let (_, notes) = keep_clear(
-            vec![pass(&[-20.0, -10.0, 0.0]), pass(&[30.0, 40.0])],
+            vec![
+                pass(&[-20.0, -16.0, -10.0, 0.0, 4.0]),
+                pass(&[25.0, 30.0, 40.0]),
+            ],
             Vec::new(),
             &both,
             MID,
