@@ -1,6 +1,6 @@
 # 0196: The spindle speed belongs to the operation (lane BUG-SPINDLE; issue 249, trial finding F-79)
 
-- **Status:** proposed. The owner's answers to decisions 1, 2 and 3 below were relayed by the coordinator session on 21 Oct 2026 (the owner's option A in each case); decision 4 (existing projects, option A) was relayed the same way later. This record is accepted only when the owner says so directly in the lane BUG-SPINDLE session.
+- **Status:** accepted on 21 Oct 2026, by the owner, directly in the lane BUG-SPINDLE session. The owner's answers to decisions 1, 2 and 3 below were relayed by the coordinator session on 21 Oct 2026 (the owner's option A in each case); decision 4 (existing projects, option A) was relayed the same way later.
 - **What it amends:** the data flow of TL-05 (cutting data per tool and stock material) and GC-14 (spindle speed per tool in the post job), [decision 0014](0014-slice-4-tool-library.md) item 5 (stock material names matched exactly). Requirements TL-05, GC-14 and NFR-12 are unchanged.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-750 to OI-753 (answered, closed), OI-754 and OI-755 (new).

@@ -1,6 +1,6 @@
 # 0197: Stock material names match ignoring case; one list of materials; the tool library's tooltips and boxes (lane BUG-SPINDLE; issues 249 and 250, trial findings F-79 and F-80)
 
-- **Status:** proposed. The owner's answer on matching (decision 3, with the tool library addition) was relayed by the coordinator session on 21 Oct 2026. This record is accepted only when the owner says so directly in the lane BUG-SPINDLE session.
+- **Status:** accepted on 21 Oct 2026, by the owner, directly in the lane BUG-SPINDLE session. The owner's answer on matching (decision 3, with the tool library addition) was relayed by the coordinator session on 21 Oct 2026.
 - **What it amends:** [decision 0014](0014-slice-4-tool-library.md) item 5 (the stock material name a setup gives is matched exactly to a tool's cutting data). TL-05 and TL-09 are unchanged.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-752 (answered, closed), OI-756 (new).
