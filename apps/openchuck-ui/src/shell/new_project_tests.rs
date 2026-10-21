@@ -169,3 +169,28 @@ fn req_nfr_07_a_missing_parent_folder_is_said() {
     open_dialog(&mut rig, &parent, "Blisk");
     assert!(rig.shows("The parent folder does not exist."));
 }
+
+#[test]
+fn req_nfr_07_a_blank_project_name_is_said_and_makes_nothing() {
+    // OI-694: a blank or whitespace-only name left OK enabled and made a
+    // project named "". The dialog says what is missing and OK does nothing.
+    for name in ["", "   ", "\t "] {
+        let parent = scratch("blank");
+        let mut rig = blank();
+        open_dialog(&mut rig, &parent, name);
+        assert!(rig.shows("Give the project a name."), "{name:?}");
+        click(&mut rig, "OK");
+        assert!(
+            matches!(rig.shell.dialog, Some(Dialog::Folder { .. })),
+            "the dialog stays open"
+        );
+        assert!(rig.shell.app.is_none(), "no project was made");
+        assert_eq!(
+            std::fs::read_dir(&parent).unwrap().count(),
+            0,
+            "nothing was created in {}",
+            parent.display()
+        );
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+}

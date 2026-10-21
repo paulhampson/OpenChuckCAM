@@ -37,6 +37,7 @@ use openchuck_types::setup::{PartExtent, SetupWarning, SetupWarningKind};
 
 use crate::cache::{Key, StatusKey, status_keys};
 use crate::jobs::{JobLog, JobOutcome};
+use crate::requirements::Requirement;
 use crate::{AppError, Application, JobHandle, SelectionSummary};
 
 /// The five workflow steps, in pipeline order (UI-10; specification
@@ -87,6 +88,49 @@ impl Step {
     }
 }
 
+/// How well a step, or the whole job, stands (issue 210; UI-11): the bar's
+/// colour and, for a user who cannot tell colours apart, its shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StepHealth {
+    /// Good to go: green, a filled circle.
+    Good,
+    /// Something is stale or needs attention: amber, a triangle outline.
+    Attention,
+    /// There is an error to deal with, such as a missing tool or stock: red,
+    /// a filled triangle.
+    Error,
+}
+
+impl StepHealth {
+    /// The item state whose mark (shape and colour) shows this health.
+    pub fn mark(self) -> ItemState {
+        match self {
+            Self::Good => ItemState::UpToDate,
+            Self::Attention => ItemState::Warning,
+            Self::Error => ItemState::Error,
+        }
+    }
+
+    /// The words for the legend and the tooltip.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Good => "Good to go",
+            Self::Attention => "Needs attention",
+            Self::Error => "Error to fix",
+        }
+    }
+}
+
+/// A value an item needs that nothing gives yet, with the item it belongs
+/// to (issues 210 and 224).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Missing {
+    /// The setup or operation that needs it.
+    pub item: ItemRef,
+    /// The value.
+    pub requirement: Requirement,
+}
+
 /// Whether a step can be opened, and whether its outputs are complete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StepState {
@@ -97,6 +141,11 @@ pub struct StepState {
     pub unavailable: Option<String>,
     /// Whether its outputs are complete (the green ring round its number).
     pub complete: bool,
+    /// How well the step stands. An unavailable step reads as needing
+    /// attention, so the job is never green with a step out of reach.
+    pub health: StepHealth,
+    /// What needs attention, for the tooltip; `None` when it is good.
+    pub reason: Option<String>,
 }
 
 impl StepState {
@@ -161,6 +210,17 @@ pub enum ItemRef {
     Tool(ToolId),
     /// An operation.
     Operation(OperationId),
+}
+
+impl ItemRef {
+    /// The workflow step the item belongs to, for a jump to it.
+    pub fn step(self) -> Step {
+        match self {
+            Self::Model(_) => Step::Model,
+            Self::Setup(_) | Self::SetupPart(..) => Step::Setup,
+            Self::SelectionSet(_) | Self::Tool(_) | Self::Operation(_) => Step::Operations,
+        }
+    }
 }
 
 /// The state an item shows in the tree, by shape as well as colour
@@ -387,6 +447,10 @@ pub struct Overview {
     pub setup_checks: Vec<SetupCheck>,
     /// The enabled operations that are stale, in machining order.
     pub stale: Vec<OperationId>,
+    /// The values the setups and the enabled operations need, setups first,
+    /// in project order: one list for the inspectors' marks, the step bar and
+    /// the Post and export blocker (issues 210, 224 and 140).
+    pub missing: Vec<Missing>,
     /// The machine's values not confirmed on the machine, for the footer
     /// ("Axis height unconfirmed").
     pub machine_warnings: Vec<String>,
@@ -412,6 +476,8 @@ impl Overview {
                 step,
                 unavailable: (step != Step::Model).then(|| "Open or start a project first".into()),
                 complete: false,
+                health: StepHealth::Attention,
+                reason: Some("Open or start a project first".to_owned()),
             })
             .collect();
         Self {
@@ -421,6 +487,7 @@ impl Overview {
             messages: Vec::new(),
             setup_checks: Vec::new(),
             stale: Vec::new(),
+            missing: Vec::new(),
             machine_warnings: Vec::new(),
             checks_current: true,
             simulated_all: false,
@@ -451,6 +518,58 @@ impl Overview {
                 step,
                 unavailable: Some("Open or start a project first".to_owned()),
                 complete: false,
+                health: StepHealth::Attention,
+                reason: Some("Open or start a project first".to_owned()),
+            })
+    }
+
+    /// How well the whole job stands: the worst of the five steps.
+    pub fn health(&self) -> StepHealth {
+        self.steps
+            .iter()
+            .map(|s| s.health)
+            .max()
+            .unwrap_or(StepHealth::Attention)
+    }
+
+    /// What needs attention, one line per step that is not good, for the
+    /// bar's tooltip.
+    pub fn health_lines(&self) -> Vec<(Step, StepHealth, String)> {
+        self.steps
+            .iter()
+            .filter(|s| s.health != StepHealth::Good)
+            .filter_map(|s| Some((s.step, s.health, s.reason.clone()?)))
+            .collect()
+    }
+
+    /// The values `item` needs, in the order to show them.
+    pub fn missing_for(&self, item: ItemRef) -> Vec<&Requirement> {
+        self.missing
+            .iter()
+            .filter(|m| m.item == item)
+            .map(|m| &m.requirement)
+            .collect()
+    }
+
+    /// The item to take the user to for the first problem: the first item
+    /// with a missing value, else the first in error, else the first stale
+    /// operation, else the first with a warning.
+    pub fn first_problem(&self) -> Option<ItemRef> {
+        self.missing
+            .first()
+            .map(|m| m.item)
+            .or_else(|| {
+                self.items
+                    .iter()
+                    .find(|(_, s)| s.state == ItemState::Error)
+                    .map(|(i, _)| *i)
+            })
+            .or_else(|| self.stale.first().map(|o| ItemRef::Operation(*o)))
+            .or_else(|| {
+                self.items
+                    .iter()
+                    .find(|(_, s)| s.state == ItemState::Warning)
+                    .map(|(i, _)| *i)
             })
     }
 
@@ -1659,38 +1778,198 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let generated = any_enabled && any_generated;
     // Post and export, in the File menu and as a step, needs what the dialog
     // needs to make its files, not generated operations (decision 0148).
+    // The values still missing, setups first (issues 210, 224 and 140). The
+    // machine belongs to the project, so it is listed once, on the first
+    // setup.
+    let mut missing: Vec<Missing> = Vec::new();
+    for (index, setup) in project.setups().iter().enumerate() {
+        for requirement in crate::requirements::setup_requirements(project, setup.id) {
+            if requirement.field == crate::requirements::RequirementField::Machine && index > 0 {
+                continue;
+            }
+            missing.push(Missing {
+                item: ItemRef::Setup(setup.id),
+                requirement,
+            });
+        }
+    }
+    for o in ops.iter().filter(|o| o.enabled) {
+        for requirement in app.operation_requirements(o.id) {
+            missing.push(Missing {
+                item: ItemRef::Operation(o.id),
+                requirement,
+            });
+        }
+    }
     let post_blocker = [
         (has_model, "Import a model first"),
         (!project.setups().is_empty(), "Add a setup first"),
         (project.machine().is_some(), "Choose a machine first"),
         (!project.tools().is_empty(), "Add a tool first"),
         (!project.operations().is_empty(), "Add an operation first"),
+        (missing.is_empty(), "Fill in the missing values first"),
     ]
     .into_iter()
     .find_map(|(present, text)| (!present).then_some(text));
-    let state = |step, unavailable: Option<&str>, complete| StepState {
-        step,
-        unavailable: unavailable.map(str::to_owned),
-        complete,
+    let state =
+        |step, unavailable: Option<&str>, complete, health: (StepHealth, Option<String>)| {
+            let (health, reason) = match (unavailable, health) {
+                // A step out of reach reads as needing attention, with its reason.
+                (Some(why), (StepHealth::Good, _)) => (StepHealth::Attention, Some(why.to_owned())),
+                (_, (health, reason)) => (health, reason),
+            };
+            StepState {
+                step,
+                unavailable: unavailable.map(str::to_owned),
+                complete,
+                health,
+                reason,
+            }
+        };
+    let good = (StepHealth::Good, None);
+    let item_label = |item: ItemRef| match item {
+        ItemRef::Operation(id) => ops
+            .iter()
+            .position(|o| o.id == id)
+            .and_then(|i| ops.get(i).map(|o| operation_name(i, &o.name)))
+            .map_or_else(|| "An operation".to_owned(), |n| format!("Operation {n}")),
+        ItemRef::Setup(id) => project
+            .setups()
+            .iter()
+            .find(|s| s.id == id)
+            .map_or_else(|| "A setup".to_owned(), |s| format!("Setup '{}'", s.name)),
+        _ => "An item".to_owned(),
+    };
+    let first_missing = |operation: bool| {
+        missing
+            .iter()
+            .find(|m| matches!(m.item, ItemRef::Operation(_)) == operation)
+            .map(|m| {
+                format!(
+                    "{} needs: {}",
+                    item_label(m.item),
+                    m.requirement.text.to_lowercase()
+                )
+            })
+    };
+    let count_state = |wanted: ItemState, pick: &dyn Fn(ItemRef) -> bool| {
+        items
+            .iter()
+            .filter(|(i, s)| s.state == wanted && pick(**i))
+            .count()
+    };
+    let on_model = |i: ItemRef| matches!(i, ItemRef::Model(_));
+    // Machine values not confirmed on the machine are for the footer and the
+    // machine row, not the bar (the owner's answer on OI-624): the machine
+    // row, and the setup row that only carries its warning up the tree, are
+    // left out of what the bar counts.
+    let from_machine_row: Vec<ItemRef> = project
+        .setups()
+        .iter()
+        .filter_map(|s| {
+            let up = items.get(&ItemRef::Setup(s.id))?;
+            let machine = items.get(&ItemRef::SetupPart(s.id, SetupPart::Machine))?;
+            (up.cause == machine.cause).then_some(ItemRef::Setup(s.id))
+        })
+        .collect();
+    let on_setup = |i: ItemRef| match i {
+        ItemRef::Setup(_) => !from_machine_row.contains(&i),
+        ItemRef::SetupPart(_, part) => part != SetupPart::Machine,
+        _ => false,
+    };
+    let on_ops = |i: ItemRef| matches!(i, ItemRef::Operation(_) | ItemRef::SelectionSet(_));
+    let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
+    let model_health = if model_error || count_state(ItemState::Error, &on_model) > 0 {
+        (StepHealth::Error, Some("A model cannot be read".to_owned()))
+    } else if !has_model {
+        (StepHealth::Attention, Some("Import a model".to_owned()))
+    } else if count_state(ItemState::Warning, &on_model) > 0 {
+        (
+            StepHealth::Attention,
+            Some("The model has warnings".to_owned()),
+        )
+    } else {
+        good.clone()
+    };
+    let setup_health = if let Some(text) =
+        first_missing(false).filter(|_| missing.iter().any(|m| matches!(m.item, ItemRef::Setup(_))))
+    {
+        (StepHealth::Error, Some(text))
+    } else if project.machine().is_none() {
+        (StepHealth::Error, Some("Choose a machine".to_owned()))
+    } else if count_state(ItemState::Error, &on_setup) > 0 {
+        (StepHealth::Error, Some("A setup has an error".to_owned()))
+    } else if project.setups().is_empty() {
+        (StepHealth::Attention, Some("Add a setup".to_owned()))
+    } else if count_state(ItemState::Warning, &on_setup) > 0 {
+        let n = count_state(ItemState::Warning, &on_setup);
+        (
+            StepHealth::Attention,
+            Some(format!("{} to check", plural(n, "setup warning"))),
+        )
+    } else {
+        good.clone()
+    };
+    let operations_health = if let Some(text) = first_missing(true) {
+        (StepHealth::Error, Some(text))
+    } else if count_state(ItemState::Error, &on_ops) > 0 {
+        (
+            StepHealth::Error,
+            Some("An operation has an error".to_owned()),
+        )
+    } else if !any_enabled {
+        (StepHealth::Attention, Some("Add an operation".to_owned()))
+    } else if !stale.is_empty() {
+        (
+            StepHealth::Attention,
+            Some(format!(
+                "{} stale: generate again",
+                plural(stale.len(), "operation")
+            )),
+        )
+    } else if count_state(ItemState::Warning, &on_ops) > 0 {
+        (
+            StepHealth::Attention,
+            Some("An operation has a warning".to_owned()),
+        )
+    } else {
+        good.clone()
+    };
+    let simulate_health = if any_enabled && !simulated_all {
+        (StepHealth::Attention, Some("Not simulated yet".to_owned()))
+    } else {
+        good.clone()
+    };
+    let export_health = match post_blocker {
+        Some(why) => (StepHealth::Attention, Some(why.to_owned())),
+        None => good,
     };
     let steps = vec![
-        state(Step::Model, None, has_model && !model_error),
+        state(Step::Model, None, has_model && !model_error, model_health),
         state(
             Step::Setup,
             (!has_model).then_some("Import a model first"),
             setup_complete,
+            setup_health,
         ),
         state(
             Step::Operations,
             (!has_machine_and_stock).then_some("Set up the machine and stock first"),
             any_enabled && stale.is_empty(),
+            operations_health,
         ),
         state(
             Step::Simulate,
             (!generated).then_some("Generate an operation first"),
             any_enabled && simulated_all,
+            simulate_health,
         ),
-        state(Step::Export, post_blocker, any_enabled && exported_all),
+        state(
+            Step::Export,
+            post_blocker,
+            any_enabled && exported_all,
+            export_health,
+        ),
     ];
     Overview {
         revision: app.revision,
@@ -1699,6 +1978,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         messages,
         setup_checks,
         stale,
+        missing,
         machine_warnings,
         checks_current: checks.is_some_and(|c| c.revision == app.revision),
         simulated_all: any_enabled && simulated_all,

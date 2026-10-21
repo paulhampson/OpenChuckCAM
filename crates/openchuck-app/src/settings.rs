@@ -91,7 +91,7 @@ pub mod region {
     pub const INSPECTOR: (f32, f32, f32) = (340.0, 280.0, 520.0);
     /// The dock's height; its largest is half the window, which the front
     /// end applies.
-    pub const DOCK: (f32, f32, f32) = (196.0, 120.0, 2000.0);
+    pub const DOCK: (f32, f32, f32) = (260.0, 120.0, 2000.0);
 }
 
 /// What one user keeps on one computer (specification section 13).

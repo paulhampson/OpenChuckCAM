@@ -636,6 +636,59 @@ fn req_gc_12_the_setup_sheet_is_written_as_html_and_pdf_named_for_the_project() 
 }
 
 #[test]
+fn req_gc_12_req_gc_05_writing_the_g_code_writes_the_setup_sheet_from_the_same_run() {
+    // Decision 0189: the sheet is written with the G-code, from the run the
+    // G-code was posted from, so its times and settings match the program.
+    let (dir, mut app) = project("Together", false);
+    let run = post(&mut app, OutputGrouping::Operation);
+    let out = folder("together-out");
+    let written = app.write_output(&out, &run).unwrap();
+    let names: Vec<_> = written
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    let mut expected: Vec<String> = run.gcode.iter().map(|(n, _)| n.clone()).collect();
+    expected.extend(app.setup_sheet_file_names());
+    assert_eq!(names, expected);
+    assert_eq!(
+        app.setup_sheet_file_names(),
+        ["together-setup-sheet.html", "together-setup-sheet.pdf"]
+    );
+    for ((name, text), path) in run.gcode.iter().zip(&written) {
+        assert_eq!(path, &out.join(name));
+        assert_eq!(&std::fs::read_to_string(path).unwrap(), text);
+    }
+    let sheet = app.setup_sheet(Some(&run.toolpath));
+    assert_eq!(
+        std::fs::read_to_string(out.join(&expected[expected.len() - 2])).unwrap(),
+        sheet.to_html()
+    );
+    assert_eq!(
+        std::fs::read(out.join(&expected[expected.len() - 1])).unwrap(),
+        sheet.to_pdf()
+    );
+    std::fs::remove_dir_all(out).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_gc_15_req_nfr_12_a_run_made_before_an_edit_writes_nothing() {
+    // An edit after posting (here the tolerance the sheet records) means the
+    // run no longer matches the project: nothing is written, and the error
+    // says to make the files again.
+    let (dir, mut app) = project("together-stale", false);
+    let run = post(&mut app, OutputGrouping::Setup);
+    let first = app.project().operations()[0].id;
+    app.set_parameter(first, "tolerance", Some(ParameterValue::Number(0.02)))
+        .unwrap();
+    let out = folder("together-stale-out");
+    let error = app.write_output(&out, &run).unwrap_err();
+    assert!(error.to_string().contains("made again"), "{error}");
+    assert!(!out.exists(), "nothing is written");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_nfr_15_export_warning_names_machine_values_in_plain_words() {
     let (dir, mut app) = project("checks-words", false);
     let run = post(&mut app, OutputGrouping::Setup);

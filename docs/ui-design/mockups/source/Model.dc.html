@@ -98,15 +98,16 @@ button{font:inherit;color:inherit;cursor:pointer}
       <a class="btn ic" href="UndoHistory.dc.html" aria-label="Undo history" title="Undo history (Ctrl H)"><svg class="ib" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></a>
     </div>
   </div>
-  <div class="wf">
+  <div class="wf hs-err">
     <div style="display:flex">
-      <a class="tab on" href="Model.dc.html" title="Model (Alt 1)"><i>1</i>Model</a>
-      <a class="tab" href="Setup.dc.html" title="Setup (Alt 2)"><i>2</i>Setup</a>
-      <a class="tab" href="Main.dc.html" title="Operations (Alt 3)"><i>3</i>Operations</a>
+      <a class="tab on" href="Model.dc.html" title="Model (Alt 1)"><i>1</i>Model<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab" href="Setup.dc.html" title="Setup (Alt 2)"><i>2</i>Setup<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--ok)"/></svg></a>
+      <a class="tab" href="Main.dc.html" title="Operations (Alt 3)"><i>3</i>Operations<svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg></a>
       <button class="tab" disabled title="Available after an operation is generated"><i>4</i>Simulate</button>
       <button class="tab" disabled title="Available after an operation is generated"><i>5</i>Post and export</button>
     </div>
-    <div style="display:flex;align-items:center;gap:6px"><a class="btn" href="ImportCheck.dc.html" title="Import model (Ctrl I)"><svg class="ib" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>Import model…</a></div>
+    <div style="display:flex;align-items:center;gap:6px"><a class="btn" href="ImportCheck.dc.html" title="Import model (Ctrl I)"><svg class="ib" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>Import model…</a>  <span class="badge hs-err" title="Overall status: Error to fix&#10;Operations: An operation has an error&#10;Simulate: Not simulated yet&#10;Click to go to the first problem"><svg class="hm" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1L11.6 11H.4Z" fill="var(--er)"/></svg>Error to fix</span>
+    </div>
   </div>
 
   <div style="flex:1;min-height:0;display:flex">

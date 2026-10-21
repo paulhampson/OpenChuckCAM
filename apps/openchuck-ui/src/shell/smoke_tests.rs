@@ -220,7 +220,7 @@ fn req_ui_16_the_default_dock_shows_the_playback_controls_and_a_clamp_is_not_rem
     let mut rig = rig("smoke-dock-height");
     rig.shell.open_step(Step::Simulate);
     draw(&mut rig);
-    assert_eq!(rig.shell.settings.dock.size, 196.0);
+    assert_eq!(rig.shell.settings.dock.size, 260.0);
     // Every row of the playback tab is on screen without scrolling.
     for text in ["Speed", "Whole program", "Go to move"] {
         assert!(rig.shows(text), "{text}: {:?}", rig.texts());
@@ -256,4 +256,61 @@ fn req_ui_12_req_ui_16_a_message_link_keeps_clear_of_its_wrapped_sentence() {
         link.1,
         sentence.1
     );
+}
+
+/// Issue 215 (F-59, OI-570, decision 0187): the default dock shows the whole
+/// playback tab, down to its last row, above the footer, and no row moves
+/// when the simulation plays or steps. At the reference window and at
+/// 1920 × 1080.
+#[test]
+fn req_ui_16_req_sim_04_the_whole_playback_tab_shows_in_the_default_dock_and_stays_put() {
+    let rows = [
+        "Speed",
+        "Whole program",
+        "Go to move",
+        "Turn the part with A",
+        "Colour the part by deviation",
+    ];
+    for window in [WINDOW, egui::vec2(1920.0, 1080.0)] {
+        let mut rig = rig("smoke-playback-tab");
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.size = window;
+        rig.shell.open_step(Step::Simulate);
+        draw(&mut rig);
+        let footer = rig
+            .text_rects()
+            .iter()
+            .find(|(t, _)| t == "Verify G-code before running it")
+            .unwrap()
+            .1
+            .top();
+        let probe = |rig: &Rig| -> Vec<(f32, f32)> {
+            rows.iter()
+                .map(|row| {
+                    let r = rig
+                        .text_rects()
+                        .iter()
+                        .find(|(t, _)| t == row)
+                        .unwrap_or_else(|| panic!("{row:?} is not shown at {window:?}"))
+                        .1;
+                    (r.top(), r.bottom())
+                })
+                .collect()
+        };
+        let idle = probe(&rig);
+        for (row, (_, bottom)) in rows.iter().zip(&idle) {
+            assert!(
+                *bottom <= footer,
+                "{row:?} reaches the footer at {window:?}"
+            );
+        }
+        rig.press(Key::Space, Modifiers::NONE);
+        for _ in 0..10 {
+            rig.frame(Vec::new());
+        }
+        assert_eq!(probe(&rig), idle, "playing, {window:?}");
+        rig.press(Key::ArrowRight, Modifiers::NONE);
+        draw(&mut rig);
+        assert_eq!(probe(&rig), idle, "stepped, {window:?}");
+    }
 }

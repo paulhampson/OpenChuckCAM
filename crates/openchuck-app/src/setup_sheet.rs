@@ -491,9 +491,10 @@ fn operation_row(
                 .find(|f| f.name == openchuck_path::params::names::TOLERANCE)
         })
         .and_then(|f| match f.value {
-            Some(openchuck_project::ParameterValue::Number(n)) => {
-                Some(format!("{} mm", plain(n, 4)))
-            }
+            // As set, not rounded: the sheet records the tolerance used.
+            Some(openchuck_project::ParameterValue::Number(n)) => Some(format!("{n} mm")),
+            // A whole number is stored without a decimal point (decision 0008).
+            Some(openchuck_project::ParameterValue::Integer(i)) => Some(format!("{i} mm")),
             _ => None,
         })
         .unwrap_or_else(|| "-".to_string());

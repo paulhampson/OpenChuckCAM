@@ -134,16 +134,13 @@ pub fn parameter_values(
             }
         }
     }
-    // A required value that neither the operation nor the cutting data gives.
-    let missing: Vec<&str> = [names::FEED, names::PLUNGE_FEED, names::STEPOVER, STEPDOWN]
+    // A required value that neither the operation nor the cutting data gives:
+    // the same list the interface marks (`requirements`), narrowed to the
+    // values whose cause is the cutting data.
+    let missing: Vec<String> = crate::requirements::missing_parameters(project, operation, &schema)
         .into_iter()
-        .filter(|name| {
-            !values.contains_key(*name)
-                && matches!(
-                    schema.get(name).map(|p| &p.kind),
-                    Some(ParameterKind::Number { default: None, .. })
-                )
-        })
+        .map(|(name, _)| name)
+        .filter(|name| crate::requirements::FROM_CUTTING_DATA.contains(&name.as_str()))
         .collect();
     if !missing.is_empty() {
         let why = match (material, snapshot) {

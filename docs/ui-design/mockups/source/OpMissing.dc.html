@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inspector: operation with required values missing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.app{--p:#23262b;--p2:#2b2f35;--ln:#383d45;--ln2:#2d3137;--tx:#e4e7eb;--mu:#a3abb5;--hd:#c3c9d1;--ac:#5aa9ff;--ok:#4cc38a;--er:#ff7b72;--fld:#16181b;--chip:#101215;--wn:#f2b84b;--ebg:#2e1a1a;--ebd:#7a3330;--etx:#ffb4ae;width:360px;height:776px;display:flex;flex-direction:column;background:var(--p);color:var(--tx);font:12px/1.4 'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;border-left:1px solid var(--ln)}
+.app.light{--p:#f6f7f9;--p2:#fff;--ln:#c9ced5;--ln2:#e2e5e9;--tx:#1d2125;--mu:#56606b;--hd:#2f363d;--ac:#1d6ad0;--ok:#1b7f53;--wn:#8a5d00;--er:#c22b2b;--fld:#fff;--chip:#eef0f3;--ebg:#fde8e7;--ebd:#e59a95;--etx:#7a1d18}
+.app *{box-sizing:border-box}
+.m{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.mu{color:var(--mu)}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{height:28px;padding:0 12px;border:1px solid var(--ln);background:var(--p2);color:var(--tx);border-radius:3px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:#2f6fbd;border-color:#4a8fe0;color:#fff;font-weight:500}
+.ib{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ph{height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--ln);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--hd)}
+.chip{flex:none;font-size:11px;padding:0 5px;border-radius:3px;background:var(--chip);border:1px solid var(--ln);color:var(--tx);line-height:20px;white-space:nowrap}
+.st{width:9px;height:9px;flex:none;display:inline-block}
+.st.er{background:var(--er);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.row{display:grid;grid-template-columns:120px 1fr;align-items:start;gap:8px;min-height:30px;padding:2px 0}
+.lb{color:var(--mu);line-height:26px;white-space:nowrap}
+.fld{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--fld);border:1px solid var(--ln);border-radius:3px;height:26px;padding:0 8px;min-width:0}
+.fld span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fld.bad{border-color:var(--er)}
+.fld.need{border:2px solid var(--wn)}
+.nd{display:flex;align-items:center;gap:6px;margin-top:3px;color:var(--wn);line-height:1.35}
+.nd svg,.cnt svg{width:12px;height:12px;flex:none}
+.cnt{display:flex;align-items:center;gap:8px;color:var(--wn)}
+.cnt .btn{height:22px;padding:0 8px;color:var(--tx)}
+.st.wn{background:none;clip-path:none}
+.err{color:var(--er);font-size:12px;margin-top:3px;line-height:1.35}
+.sec{border-top:1px solid var(--ln)}
+.sh{display:flex;align-items:center;justify-content:space-between;height:32px;padding:0 12px;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--hd)}
+.sb{padding:0 12px 10px}
+.seg{display:flex;border:1px solid var(--ln);border-radius:3px;overflow:hidden;height:26px}
+.seg span{flex:1;display:flex;align-items:center;justify-content:center;background:var(--fld);color:var(--mu)}
+.seg span.on{background:#264466;color:#fff}
+</style>
+</helmet>
+<div class="app {{theme}}">
+  <div class="ph"><span>Operation</span></div>
+  <div style="padding:10px 12px;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="fld" style="flex:1;height:28px;font-weight:500;font-size:13px"><span>5 Helical finish</span></div>
+      <span class="chip" style="display:inline-flex;align-items:center;gap:5px"><span class="st" style="background:var(--wn);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)"></span>Stale</span>
+    </div>
+    <div class="mu">Helical finishing</div>
+    <div class="cnt"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg><span>3 values are missing</span><button class="btn" title="Go to: Cutting feed">Show first</button></div>
+    <div class="seg"><span class="on">Basic</span><span>Advanced</span></div>
+  </div>
+  <div class="sec"><div class="sh"><span>Geometry</span></div><div class="sb">
+    <div class="row"><span class="lb">Cut on</span><div class="fld"><span>Whole part</span><span class="mu">▾</span></div></div>
+  </div></div>
+  <div class="sec"><div class="sh"><span>Tool</span></div><div class="sb">
+    <div style="font-weight:600">T1 · Ball Ø3 · 2 flute</div>
+    <div class="mu">No cutting data for Oak: the feeds and the stepover come from the operation.</div>
+  </div></div>
+  <div class="sec"><div class="sh"><span>Tool and feeds</span></div><div class="sb">
+    <div class="row"><span class="lb">Cutting feed</span><div><div class="fld need"><span class="mu"></span><span class="mu">mm/min</span></div><div class="nd"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Enter cutting feed</span></div></div></div>
+    <div class="row"><span class="lb">Plunge feed</span><div><div class="fld need"><span class="mu"></span><span class="mu">mm/min</span></div><div class="nd"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Enter plunge feed</span></div></div></div>
+  </div></div>
+  <div class="sec"><div class="sh"><span>Pattern and tolerance</span></div><div class="sb">
+    <div class="row"><span class="lb">Stepover</span><div><div class="fld need"><span class="mu"></span><span class="mu">mm</span></div><div class="nd"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.6L11 10.4H1Z" fill="none" stroke="var(--wn)" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Enter stepover</span></div></div></div>
+    <div class="row"><span class="lb">Tolerance</span><div class="fld"><b class="m" style="font-weight:400">0.010</b><span class="mu">mm</span></div></div>
+  </div></div>
+  <div class="sec" style="padding:10px 12px;color:var(--mu);line-height:1.5">A new operation shows what it still needs, in amber, with a shape and a short sentence. Nothing is red until a value is refused.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":360,"height":776}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'dark' };
+}
+}
+</script>
+</body>
+</html>

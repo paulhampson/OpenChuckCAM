@@ -1021,7 +1021,7 @@ impl SelectionPanel {
             Some(Hover::Edge(_)) => (roles::to_color32(roles::EDGE_HOVER), "Over an edge"),
             None => (roles::OVERLAY_MUTED, "Over nothing"),
         };
-        ui.label(egui::RichText::new(format!("■ {text}")).color(colour));
+        ui.label(egui::RichText::new(format!("• {text}")).color(colour));
     }
 
     /// The selection tools box, drawn over the top left of the viewport
@@ -1542,14 +1542,14 @@ impl SelectionPanel {
                             Some(problem) => {
                                 ui.add(
                                     egui::Label::new(
-                                        RichText::new(format!("▲ {problem}")).color(PROBLEM),
+                                        RichText::new(format!("! {problem}")).color(PROBLEM),
                                     )
                                     .truncate(),
                                 )
                                 .on_hover_text(problem);
                             }
                             None => {
-                                ui.label("● Matches model");
+                                ui.label("• Matches model");
                             }
                         }
                         ui.horizontal(|ui| {
@@ -1567,7 +1567,7 @@ impl SelectionPanel {
                             {
                                 self.select_set_in_view(app, summary, t);
                             }
-                            ui.menu_button("⋯", |ui| {
+                            ui.menu_button("…", |ui| {
                                 if ui.button("Rename").clicked() {
                                     self.row_action = Some((summary.id, RowAction::Rename));
                                     ui.close();
@@ -1635,9 +1635,9 @@ impl SelectionPanel {
                 .unwrap_or("a model that is gone")
         ));
         if let Some(problem) = &summary.problem {
-            ui.colored_label(PROBLEM, format!("▲ {problem}"));
+            ui.colored_label(PROBLEM, format!("! {problem}"));
             ui.label(
-                RichText::new("┄ Old selection, may not match the new model").color(DARK.muted),
+                RichText::new("– Old selection, may not match the new model").color(DARK.muted),
             );
         }
         if summary.uses.is_empty() {

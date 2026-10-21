@@ -811,7 +811,7 @@ impl WorkholdingPanel {
                         ),
                     );
                 }
-                let more = ui.small_button("\u{22ef}").on_hover_text("Tab menu");
+                let more = ui.small_button("\u{2026}").on_hover_text("Tab menu");
                 more.widget_info(|| {
                     egui::WidgetInfo::labeled(
                         egui::WidgetType::Button,

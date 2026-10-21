@@ -11,6 +11,8 @@ use openchuck_app::form::{Field, FieldKind, FormSection, ParameterForm, Source};
 use openchuck_app::project::ParameterValue;
 use openchuck_app::settings::UserSettings;
 
+use openchuck_app::requirements::{Requirement, RequirementField};
+
 use crate::field_row::{self, Outcome, TextRow};
 use crate::theme::DARK;
 
@@ -144,6 +146,8 @@ pub fn show(
     form: &ParameterForm,
     state: &mut FormState,
     settings: &mut UserSettings,
+    needs: &[&Requirement],
+    jump: Option<&RequirementField>,
     marks: &Marks,
 ) -> FormOutcome {
     let mut outcome = FormOutcome::default();
@@ -157,11 +161,13 @@ pub fn show(
             continue;
         }
         let key = section.key();
-        // The jump to a setting opens the section it is in.
-        let forced = fields
-            .iter()
-            .any(|f| marks.jump.as_deref() == Some(f.name.as_str()));
-        let open = settings.section_open("operation", key, DEFAULT_OPEN.contains(&key));
+        // The jump to the first missing value, or to a setting a path's
+        // warning points at, opens the section it is in.
+        let forced = fields.iter().any(|f| {
+            jump == Some(&RequirementField::Parameter(f.name.clone()))
+                || marks.jump.as_deref() == Some(f.name.as_str())
+        });
+        let open = settings.section_open("operation", key, DEFAULT_OPEN.contains(&key)) || forced;
         let section = field_row::section(
             ui,
             egui::Id::new(("operation section", key)),
@@ -172,9 +178,15 @@ pub fn show(
             |ui| {
                 let mut edit = None;
                 for field in fields {
+                    let field_key = RequirementField::Parameter(field.name.clone());
+                    let need = needs
+                        .iter()
+                        .find(|r| r.field == field_key)
+                        .map(|r| r.text.as_str());
                     let warned = marks.warned.contains(&field.name).then_some(WARNED_SETTING);
-                    let scroll = marks.jump.as_deref() == Some(field.name.as_str());
-                    if let Some(e) = row(ui, field, true, state, warned, scroll) {
+                    let scroll = jump == Some(&field_key)
+                        || marks.jump.as_deref() == Some(field.name.as_str());
+                    if let Some(e) = row(ui, field, true, state, need, warned, scroll) {
                         edit = Some(e);
                     }
                 }
@@ -208,7 +220,7 @@ pub fn show_fields(
 ) -> Option<Edit> {
     let mut edit = None;
     for field in fields {
-        if let Some(e) = row(ui, field, reset, state, None, false) {
+        if let Some(e) = row(ui, field, reset, state, None, None, false) {
             edit = Some(e);
         }
     }
@@ -223,6 +235,7 @@ fn row(
     field: &Field,
     reset: bool,
     state: &mut FormState,
+    need: Option<&str>,
     warned: Option<&str>,
     scroll: bool,
 ) -> Option<Edit> {
@@ -275,6 +288,7 @@ fn row(
                 reset: reset && field.set.is_some(),
                 enabled: true,
                 focus: false,
+                needs: need,
                 warned,
                 scroll_to: scroll,
             };
@@ -447,7 +461,7 @@ mod tests {
                 ..Default::default()
             };
             let mut output = ctx.run_ui(input, |ui| {
-                show(ui, &form, &mut state, settings, marks);
+                show(ui, &form, &mut state, settings, &[], None, marks);
             });
             output.textures_delta.clear();
             texts(&output.shapes)
