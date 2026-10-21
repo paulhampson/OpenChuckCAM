@@ -21,8 +21,8 @@ use openchuck_app::overview::{
 };
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{
-    Item, Operation, OrderKey, ParameterValue, Placement, SelectionSet, SelectionTarget, Setup,
-    ToolSnapshot,
+    Item, ItemId, Operation, OrderKey, ParameterValue, Placement, SelectionSet, SelectionTarget,
+    Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{
     HeldRegion, MachineProfile, Millimetres, Stock, Tab, TabLayout, TabShape,
@@ -1173,4 +1173,162 @@ fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     for field in ["rotary_origin", "max_feeds", "a_sense"] {
         assert!(!text.iter().any(|t| t.contains(field)), "{field}: {text:?}");
     }
+}
+
+/// Renames operation `op` with a `Replace`, as the inspector's name field does.
+fn rename_operation(f: &mut Fixture, op: OperationId, name: &str) {
+    let mut item = f.app.project().operation(op).unwrap().clone();
+    item.name = name.into();
+    f.app
+        .execute(Command::Replace(Item::Operation(item)))
+        .unwrap();
+}
+
+#[test]
+fn req_ui_11_req_gc_07_a_rename_keeps_every_operation_up_to_date() {
+    // The stale state follows the inputs of the operation's cache key, and the
+    // name is not one of them (issue 209; decision 0172).
+    let mut f = fixture("rename-stale", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    let two = f.add_operation("Ring again", "one_ring");
+    let run = f.app.simulate().unwrap();
+    assert!(f.overview().stale.is_empty());
+
+    rename_operation(&mut f, one, "Rough the barrel");
+    rename_operation(&mut f, two, "Finish");
+    let o = f.overview();
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(f.state(&o, two), ItemState::UpToDate);
+    assert!(o.stale.is_empty());
+
+    // The export check agrees: nothing is out of date, and the simulation the
+    // run made under the old names still counts for the renamed operations.
+    let checks = f.app.export_checks(Some(&run), None, None);
+    assert!(
+        checks
+            .checks
+            .iter()
+            .all(|c| !c.text.contains("out of date") && !c.text.contains("not been simulated")),
+        "a rename left a check: {:?}",
+        checks.checks
+    );
+    assert!(checks.can_write());
+
+    // Generating again reuses every result: the key did not change.
+    let again = f.app.regenerate().unwrap();
+    assert!(again.generated.is_empty());
+    assert_eq!(again.reused, [one, two]);
+    assert_eq!(again.toolpath, run.toolpath);
+}
+
+#[test]
+fn req_ui_11_renaming_a_setup_keeps_its_operations_up_to_date() {
+    let mut f = fixture("rename-setup", "cube_ascii.stl");
+    let one = f.add_operation("Ring", "one_ring");
+    f.app.regenerate().unwrap();
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.name = "Barrel, end one".into();
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let o = f.overview();
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+}
+
+#[test]
+fn req_ui_11_moving_and_turning_off_then_on_are_exact_inverses() {
+    // The position is in the chain of keys, not in an operation's own key, so
+    // putting an operation back where it was makes everything up to date.
+    let (mut f, [one, two, three]) = three_operations("move-back");
+    f.app.regenerate().unwrap();
+    assert!(f.overview().stale.is_empty());
+
+    f.app
+        .execute(Command::Move {
+            id: ItemId::Operation(three),
+            index: 0,
+        })
+        .unwrap();
+    let o = f.overview();
+    assert!(o.stale.contains(&three), "the moved operation is stale");
+    f.app
+        .execute(Command::Move {
+            id: ItemId::Operation(three),
+            index: 2,
+        })
+        .unwrap();
+    assert!(f.overview().stale.is_empty(), "back in place, up to date");
+
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: true,
+        })
+        .unwrap();
+    let o = f.overview();
+    assert!(o.stale.is_empty());
+    assert_eq!(f.state(&o, one), ItemState::UpToDate);
+    assert_eq!(f.state(&o, two), ItemState::UpToDate);
+}
+
+#[test]
+fn req_nfr_12_req_gc_15_a_removed_or_disabled_operation_blocks_a_run_that_still_holds_it() {
+    // Issue 196: the toolpath of an operation that is gone must not be used
+    // as if it were current. A run that holds the path of an operation the
+    // project no longer has, or has turned off, is out of date at export.
+    let (mut f, [one, two, three]) = three_operations("removed");
+    let run = f.app.regenerate().unwrap();
+    assert!(f.app.export_checks(Some(&run), None, None).can_write());
+
+    // Strategy change: the key changes, as before.
+    let mut op = f.app.project().operation(three).unwrap().clone();
+    op.strategy = "one_ring".into();
+    f.app
+        .execute(Command::Replace(Item::Operation(op)))
+        .unwrap();
+    assert!(!f.app.export_checks(Some(&run), None, None).can_write());
+    f.app.undo().unwrap();
+    assert!(f.app.export_checks(Some(&run), None, None).can_write());
+
+    // Turned off.
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    let checks = f.app.export_checks(Some(&run), None, None);
+    assert!(!checks.can_write());
+    assert!(
+        checks
+            .checks
+            .iter()
+            .any(|c| c.text.contains("Third") && c.text.contains("turned off")),
+        "{:?}",
+        checks.checks
+    );
+    f.app.undo().unwrap();
+
+    // Removed.
+    f.app.delete_operation(two).unwrap();
+    let checks = f.app.export_checks(Some(&run), None, None);
+    assert!(!checks.can_write());
+    assert!(
+        checks
+            .checks
+            .iter()
+            .any(|c| c.text.contains("Second") && c.text.contains("removed")),
+        "{:?}",
+        checks.checks
+    );
+
+    // Generating again leaves the path of the removed operation out.
+    let again = f.app.regenerate().unwrap();
+    let made: Vec<_> = again.groups.iter().map(|g| g.operation).collect();
+    assert_eq!(made, [one, three]);
+    assert!(f.app.export_checks(Some(&again), None, None).can_write());
 }

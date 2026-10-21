@@ -1035,6 +1035,7 @@ impl Shell {
             if self.step == Step::Simulate && !windowed {
                 self.play.handle_keys(ctx);
             }
+            self.play.forget_removed(app);
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
                 ctx.request_repaint();
