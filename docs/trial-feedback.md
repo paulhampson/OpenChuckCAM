@@ -183,3 +183,9 @@ Coordinator status on the five issues sent before the rule (21 Oct 2026, 16:11 U
 - The coordinator will ask the owner which of #239, #241 and #243 continue. No lane starts for any later issue until the owner approves a grouping.
 
 Owner instruction (21 Oct 2026): merge the fixes into a single lane. Read as #239 (BUG-REGEN), #241 (BUG-BI) and #243 (BUG-INSP2) becoming one lane; #242 stays held. The owner has not said which lane absorbs the others; the coordinator chooses and reports any conflict.
+
+Held for the owner's grouping request (not sent to the coordinator): #242 (F-75), #246 (F-77).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-77 | Roughing | Option to run roughing along X or along Y. | A direction option in the operation inspector with plain labels; the current direction stays the default (GC-07); OP-03, lane E, decisions 0026, 0058, 0076; held region, tabs and travel limits stay respected (NFR-12). Issue [#246](https://github.com/paulhampson/OpenChuckCAM/issues/246). | Current direction; meaning of "along Y" for a part turning about X; indexed only or continuous too? |
