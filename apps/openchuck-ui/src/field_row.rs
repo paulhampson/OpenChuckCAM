@@ -178,16 +178,18 @@ fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) ->
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     label_text(&mut child, label, description);
-    if !reset {
-        return false;
-    }
     // A child of its own, so a button wider than the slot cannot push the
-    // cursor on.
+    // cursor on. Made whether or not ↺ is shown: each child takes an
+    // automatic ID from the row, so a child made only with ↺ would change the
+    // value's ID and take its focus as ↺ comes and goes.
     let mut slot_ui = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(slot)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
+    if !reset {
+        return false;
+    }
     let button = slot_ui
         .add(
             egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent))
@@ -801,5 +803,35 @@ mod tests {
                 assert_eq!(before, after, "reverted, scale {scale}, width {width}");
             }
         }
+    }
+
+    #[test]
+    fn req_ui_07_a_focused_field_keeps_focus_and_text_when_the_reset_button_comes_and_goes() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let entered = TextRow {
+            reset: true,
+            ..stepover(false)
+        };
+        frame(&ctx, &mut state, &stepover(true), Vec::new());
+        let focused = ctx.memory(egui::Memory::focused);
+        assert!(focused.is_some());
+        frame(&ctx, &mut state, &entered, vec![key(Key::End)]);
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button shown");
+        frame(
+            &ctx,
+            &mut state,
+            &entered,
+            vec![egui::Event::Text("7".into())],
+        );
+        frame(&ctx, &mut state, &stepover(false), Vec::new());
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button hidden");
+        frame(
+            &ctx,
+            &mut state,
+            &stepover(false),
+            vec![egui::Event::Text("1".into())],
+        );
+        assert_eq!(state.typed("stepover"), Some("0.50071"));
     }
 }
