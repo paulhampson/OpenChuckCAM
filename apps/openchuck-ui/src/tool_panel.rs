@@ -299,6 +299,15 @@ fn segment_points(profile: &ToolProfile, index: usize) -> Vec<[f64; 2]> {
     profile_outline(&upto).split_off(start)
 }
 
+/// The silhouette of `tool`, drawn as for a custom profile but with nothing
+/// to edit (a default tool, issue 194). Nothing is drawn for a tool whose
+/// shape has no profile.
+pub fn read_only_preview(ui: &mut egui::Ui, tool: &Tool) {
+    if let Some(profile) = openchuck_app::tool_edit::starting_profile(tool) {
+        preview(ui, &profile, true, None);
+    }
+}
+
 /// The profile revolved into its silhouette: both sides of the axis, the tip
 /// at the bottom, drawn to scale in a square, with the selected segment and
 /// its end points highlighted.

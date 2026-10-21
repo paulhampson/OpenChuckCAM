@@ -13,13 +13,13 @@ use openchuck_app::project::{
 };
 use openchuck_app::tool_edit::starting_profile;
 use openchuck_app::tool_library::{
-    ConflictChoice, CopyState, ListGroup, ToolType, add_to_project, apply_import, cutting_rows,
-    delete_impact, delete_tool, duplicate_draft, edit_cutting_data, edit_field, edit_material,
-    edit_name, edit_profile, edit_type, export_profile, export_tools, is_dirty, new_draft,
-    operation_tool, preview_import, project_rows, project_tool_as_edit, remove_cutting_data,
-    remove_from_project, save_draft, save_to_library, save_to_library_changes, set_operation_tool,
-    set_project_tool_number, set_tool_set_number, snapshot_command, tool_list, tool_set_numbers,
-    update_from_library,
+    ConflictChoice, CopyState, ListGroup, ListQuery, ToolType, add_to_project, apply_import,
+    cutting_rows, delete_impact, delete_tool, duplicate_draft, edit_cutting_data, edit_field,
+    edit_material, edit_name, edit_profile, edit_type, export_profile, export_tools, is_dirty,
+    new_draft, operation_tool, preview_import, project_rows, project_tool_as_edit,
+    remove_cutting_data, remove_from_project, save_draft, save_to_library, save_to_library_changes,
+    set_operation_tool, set_project_tool_number, set_tool_set_number, snapshot_command, tool_list,
+    tool_set_numbers, update_from_library,
 };
 use openchuck_app::tools::{
     CuttingData, FeedRate, LibraryTool, Millimetres, NumberSource, SpindleSpeed, ToolLibrary,
@@ -130,7 +130,10 @@ fn req_tl_02_req_tl_03_a_new_tool_of_every_type_is_a_draft_until_saved() {
     );
     // Reopened, the folder gives the same tools.
     assert_eq!(ToolLibrary::open(&dir).unwrap(), lib);
-    let groups: Vec<ListGroup> = tool_list(&lib, None, "").iter().map(|g| g.0).collect();
+    let sections = tool_list(&lib, None, &ListQuery::default());
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].title, "Standard tools");
+    let groups: Vec<ListGroup> = sections[0].groups.iter().map(|g| g.group).collect();
     assert_eq!(
         groups,
         [
@@ -158,16 +161,18 @@ fn req_tl_01_search_matches_name_type_and_material_and_marks_project_tools() {
 
     let mut project = Project::new("p");
     add(&mut project, &lib, ball);
-    let all = tool_list(&lib, Some(&project), "");
-    assert!(all[0].1[0].in_project);
+    let all = tool_list(&lib, Some(&project), &ListQuery::default());
+    let groups = &all[0].groups;
+    assert!(groups[0].rows[0].in_project);
     // Names sort by their numbers: 2 before 10.
-    let flats: Vec<&str> = all[1].1.iter().map(|r| r.name.as_str()).collect();
+    let flats: Vec<&str> = groups[1].rows.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(flats, ["Flat 2 mm", "Flat 10 mm"]);
-    assert!(all[1].1.iter().all(|r| !r.in_project));
-    assert!(all[1].1[0].summary.starts_with("Flat end mill · Ø"));
-    assert_eq!(tool_list(&lib, None, "BALL END").len(), 1);
-    assert_eq!(tool_list(&lib, None, "hss")[0].1[0].id, flat2.id);
-    assert!(tool_list(&lib, None, "nothing like it").is_empty());
+    assert!(groups[1].rows.iter().all(|r| !r.in_project));
+    assert!(groups[1].rows[0].summary.starts_with("Flat end mill · Ø"));
+    let find = |text: &str| tool_list(&lib, None, &ListQuery::searching(text));
+    assert_eq!(find("BALL END")[0].groups.len(), 1);
+    assert_eq!(find("hss")[0].groups[0].rows[0].id, flat2.id);
+    assert!(find("nothing like it").is_empty());
     std::fs::remove_dir_all(&dir).ok();
 }
 

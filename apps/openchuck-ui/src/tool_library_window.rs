@@ -26,7 +26,8 @@ use openchuck_app::project::id::{OperationId, ToolId};
 use openchuck_app::project::{ParameterValue, Project};
 use openchuck_app::tool_edit::{self, starting_profile};
 use openchuck_app::tool_library::{
-    self as library, ConflictChoice, CopyState, CuttingRow, DeleteImpact, ImportPreview, ToolType,
+    self as library, ConflictChoice, CopyState, CuttingRow, DeleteImpact, ImportPreview, ListQuery,
+    ToolLibraryView, ToolType,
 };
 use openchuck_app::tools::{
     CuttingData, FeedRate, LibraryTool, Millimetres, SpindleSpeed, ToolLibrary, ToolProfile,
@@ -210,6 +211,10 @@ pub struct ToolLibraryWindow {
     /// Why the library could not be read.
     unreadable: Option<String>,
     search: String,
+    /// The folded groups and the size filter, kept per user (UI-15).
+    view: ToolLibraryView,
+    /// Whether `view` was given by the settings since the window last opened.
+    view_synced: bool,
     chosen: Option<Chosen>,
     /// The library tool being edited (with `Chosen::Library`).
     draft: Option<Draft>,
@@ -240,6 +245,8 @@ impl ToolLibraryWindow {
             library: None,
             unreadable: None,
             search: String::new(),
+            view: ToolLibraryView::default(),
+            view_synced: false,
             chosen: None,
             draft: None,
             fields: FormState::default(),
@@ -252,6 +259,34 @@ impl ToolLibraryWindow {
         }
     }
 
+    /// The folded groups and the filter as the user left them, for the shell
+    /// to keep in the settings.
+    pub fn view(&self) -> &ToolLibraryView {
+        &self.view
+    }
+
+    /// Gives the window the folded groups and the filter the settings kept.
+    pub fn set_view(&mut self, view: ToolLibraryView) {
+        self.view = view;
+        self.view_synced = true;
+    }
+
+    /// Whether the view came from the settings since the window last opened,
+    /// so that what it holds may be kept.
+    pub fn view_synced(&self) -> bool {
+        self.view_synced
+    }
+
+    /// Whether the chosen tool is a default tool as shipped: shown read-only
+    /// until it is copied (issue 194).
+    fn read_only(&self) -> bool {
+        matches!(self.chosen, Some(Chosen::Library(_)))
+            && self
+                .draft
+                .as_ref()
+                .is_some_and(|d| library::is_shipped_default(&d.tool))
+    }
+
     /// Whether the window is open.
     pub fn is_open(&self) -> bool {
         self.open
@@ -261,6 +296,7 @@ impl ToolLibraryWindow {
     /// folder, with `chosen` shown when given. A draft with changes is kept.
     pub fn open(&mut self, purpose: Purpose, chosen: Option<Chosen>) {
         self.purpose = purpose;
+        self.view_synced = false;
         if !self.open || !self.is_dirty() {
             self.reload();
         }
@@ -420,7 +456,14 @@ impl ToolLibraryWindow {
             .default_size(270.0)
             .resizable(true)
             .show(ui, |ui| {
-                list(ui, lib, project, &mut self.search, self.chosen, acts)
+                list(
+                    ui,
+                    lib,
+                    project,
+                    (&mut self.search, &mut self.view),
+                    self.chosen,
+                    acts,
+                );
             });
         let tool = self.shown(project);
         egui::Panel::right("tool library data")
@@ -529,6 +572,10 @@ impl ToolLibraryWindow {
     /// The tool form: name, type, sizes and material, then the profile
     /// editor for a custom profile (12.1, centre).
     fn tool_form(&mut self, ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>) {
+        if self.read_only() {
+            default_tool_view(ui, tool, acts);
+            return;
+        }
         ui.horizontal(|ui| {
             heading(ui, "Tool");
             match self.chosen {
@@ -668,6 +715,7 @@ impl ToolLibraryWindow {
         acts: &mut Vec<Act>,
     ) {
         heading(ui, "Cutting data by material");
+        let read_only = self.read_only();
         let rows = library::cutting_rows(tool);
         egui::Grid::new("cutting data")
             .num_columns(4)
@@ -682,14 +730,18 @@ impl ToolLibraryWindow {
                         .cutting
                         .as_ref()
                         .is_some_and(|d| d.editing.as_deref() == Some(row.material.as_str()));
+                    let tip = format!(
+                        "Stepover {} mm, stepdown {} mm; cutting feed {:.0} mm/min.{}",
+                        row.data.stepover.0,
+                        row.data.stepdown.0,
+                        row.feed,
+                        if read_only { "" } else { " Click to edit." }
+                    );
                     if ui
                         .selectable_label(open, &row.material)
-                        .on_hover_text(format!(
-                            "Stepover {} mm, stepdown {} mm; cutting feed {:.0} mm/min. \
-                             Click to edit.",
-                            row.data.stepover.0, row.data.stepdown.0, row.feed
-                        ))
+                        .on_hover_text(tip)
                         .clicked()
+                        && !read_only
                     {
                         self.cutting = if open {
                             None
@@ -706,7 +758,12 @@ impl ToolLibraryWindow {
         if rows.is_empty() {
             ui.label(RichText::new("No cutting data yet.").color(DARK.muted));
         }
-        if self.cutting.is_none() && ui.small_button("Add material").clicked() {
+        if read_only {
+            ui.label(
+                RichText::new("A default tool: copy it to edit its cutting data.")
+                    .color(DARK.muted),
+            );
+        } else if self.cutting.is_none() && ui.small_button("Add material").clicked() {
             self.cutting = Some(CuttingDraft::default());
         }
         if let Some(draft) = &mut self.cutting {
@@ -1482,7 +1539,7 @@ fn list(
     ui: &mut egui::Ui,
     lib: &ToolLibrary,
     project: Option<&Project>,
-    search: &mut String,
+    (search, view): (&mut String, &mut ToolLibraryView),
     chosen: Option<Chosen>,
     acts: &mut Vec<Act>,
 ) {
@@ -1492,6 +1549,7 @@ fn list(
             .hint_text("Search tools")
             .desired_width(f32::INFINITY),
     );
+    size_filter(ui, &mut view.filter);
     egui::Panel::bottom("tool list buttons")
         .resizable(false)
         .show(ui, |ui| {
@@ -1563,31 +1621,52 @@ fn list(
                     }
                 }
             }
-            let groups = library::tool_list(lib, project, search);
-            if groups.is_empty() {
+            let query = ListQuery {
+                search: search.clone(),
+                filter: view.filter.clone(),
+            };
+            let sections = library::tool_list(lib, project, &query);
+            if sections.is_empty() {
                 ui.add_space(6.0);
                 ui.label(RichText::new("No library tools match.").color(DARK.muted));
             }
-            for (group, rows) in groups {
-                group_title(ui, group.title());
-                for row in rows {
-                    let selected = chosen == Some(Chosen::Library(row.id));
-                    let response = ui
-                        .horizontal(|ui| {
-                            let r = ui.selectable_label(selected, &row.name);
-                            if row.in_project {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        crate::shell::chip(ui, "in project");
-                                    },
-                                );
-                            }
-                            r
-                        })
-                        .inner;
-                    if response.on_hover_text(&row.summary).clicked() {
-                        acts.push(Act::Choose(Chosen::Library(row.id)));
+            for section in sections {
+                let count: usize = section.groups.iter().map(|g| g.rows.len()).sum();
+                if fold_title(ui, view, &section.key, &section.title, count, 0.0, true) {
+                    continue;
+                }
+                for group in section.groups {
+                    if fold_title(
+                        ui,
+                        view,
+                        &group.key,
+                        group.group.title(),
+                        group.rows.len(),
+                        12.0,
+                        false,
+                    ) {
+                        continue;
+                    }
+                    for row in group.rows {
+                        let selected = chosen == Some(Chosen::Library(row.id));
+                        let response = ui
+                            .horizontal(|ui| {
+                                ui.add_space(12.0);
+                                let r = ui.selectable_label(selected, &row.name);
+                                if row.in_project {
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            crate::shell::chip(ui, "in project");
+                                        },
+                                    );
+                                }
+                                r
+                            })
+                            .inner;
+                        if response.on_hover_text(&row.summary).clicked() {
+                            acts.push(Act::Choose(Chosen::Library(row.id)));
+                        }
                     }
                 }
             }
@@ -1660,6 +1739,150 @@ fn buttons(ui: &mut egui::Ui, acts: &mut Vec<Act>, yes: (&str, Act), no: (&str, 
     });
 }
 
+/// A default tool as the application ships it (TL-12): its profile drawn
+/// as for a custom profile, with the dimensions that make it up, and nothing
+/// to edit. "Copy to edit" makes an editable library tool and leaves this one
+/// as it is (issue 194; decision record 0199).
+fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>) {
+    ui.horizontal(|ui| {
+        heading(ui, "Tool");
+        if crate::shell::primary_button(ui, "Copy to edit", true)
+            .on_hover_text("Make an editable copy in the library; this tool stays as it is")
+            .clicked()
+        {
+            acts.push(Act::Duplicate);
+        }
+        ui.label(RichText::new("A default tool: it cannot be edited").color(DARK.muted));
+    });
+    field_row::read_only_row(
+        ui,
+        "Name",
+        "The tool's name in lists and on the setup sheet.",
+        tool.name.as_str(),
+    );
+    field_row::read_only_row(
+        ui,
+        "Type",
+        "The tool's shape (TL-02, TL-03).",
+        ToolType::of(&tool.tool.shape).label(),
+    );
+    for (label, value) in library::default_dimensions(&tool.tool) {
+        field_row::read_only_row(
+            ui,
+            &label,
+            "A dimension of the tool (TL-04).",
+            RichText::new(value).monospace(),
+        );
+    }
+    field_row::read_only_row(
+        ui,
+        "Flutes",
+        "The number of flutes (TL-04).",
+        RichText::new(tool.tool.flute_count.to_string()).monospace(),
+    );
+    field_row::read_only_row(
+        ui,
+        "Material",
+        "What the tool is made of (TL-04). Not the stock material.",
+        tool.tool
+            .material
+            .as_deref()
+            .unwrap_or("Not given")
+            .to_owned(),
+    );
+    ui.add_space(8.0);
+    ui.separator();
+    heading(ui, "Profile");
+    tool_panel::read_only_preview(ui, &tool.tool);
+    ui.label(
+        RichText::new(
+            "The shape follows the dimensions above. To change the tool or draw its profile, \
+             copy it to edit.",
+        )
+        .color(DARK.muted),
+    );
+}
+
+/// The size filter of the tool list (TL-04; issue 193): the diameter and the
+/// flute length, each as an exact value or a range, and a way to clear it by
+/// hand. What is typed is kept (it is not reset when the window closes).
+fn size_filter(ui: &mut egui::Ui, filter: &mut library::ToolFilter) {
+    ui.add_space(4.0);
+    for (label, size) in [
+        ("Diameter", &mut filter.diameter),
+        ("Flute length", &mut filter.flute_length),
+    ] {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new(format!("{label} (mm)"))
+                    .small()
+                    .color(DARK.muted),
+            );
+            for (hint, text, tip) in [
+                ("exact", &mut size.exact, "Only tools of exactly this size"),
+                ("min", &mut size.min, "Only tools at least this size"),
+                ("max", &mut size.max, "Only tools at most this size"),
+            ] {
+                ui.add(
+                    egui::TextEdit::singleline(text)
+                        .hint_text(hint)
+                        .desired_width(44.0),
+                )
+                .on_hover_text(tip);
+            }
+        });
+    }
+    if let Some(problem) = filter.problem() {
+        ui.label(
+            RichText::new(format!("{problem} That part of the filter is not used."))
+                .small()
+                .color(DARK.warning),
+        );
+    }
+    let on = !filter.is_empty();
+    if ui
+        .add_enabled(on, egui::Button::new("Clear filter").small())
+        .on_hover_text("Empty the size fields; the filter is kept until you do")
+        .clicked()
+    {
+        *filter = library::ToolFilter::default();
+        ui.ctx().request_repaint();
+    }
+}
+
+/// A foldable heading of the tool list: a section (a machine, or standard
+/// tools) or a type group inside one. Returns whether it is folded, which
+/// is remembered in `view` (UI-15). The count is of the tools inside.
+fn fold_title(
+    ui: &mut egui::Ui,
+    view: &mut ToolLibraryView,
+    key: &str,
+    title: &str,
+    count: usize,
+    indent: f32,
+    section: bool,
+) -> bool {
+    let folded = view.is_folded(key);
+    ui.add_space(6.0);
+    let marker = if folded { "\u{23f5}" } else { "\u{23f7}" };
+    let text = RichText::new(format!("{marker} {} ({count})", title.to_uppercase()))
+        .small()
+        .strong()
+        .color(if section { DARK.heading } else { DARK.muted });
+    let response = ui
+        .horizontal(|ui| {
+            ui.add_space(indent);
+            ui.add(egui::Label::new(text).sense(egui::Sense::click()))
+        })
+        .inner
+        .on_hover_text(if folded { "Unfold" } else { "Fold" });
+    if response.clicked() {
+        view.set_folded(key, !folded);
+        ui.ctx().request_repaint();
+    }
+    folded
+}
+
 /// A list group's heading.
 fn group_title(ui: &mut egui::Ui, title: &str) {
     ui.add_space(6.0);
@@ -1722,6 +1945,12 @@ impl ToolLibraryWindow {
     /// Chooses another tool, as a click in the list does.
     pub fn click(&mut self, chosen: Chosen) {
         self.act(Act::Choose(chosen), None);
+    }
+
+    /// Closes the window as the Close button does, without a prompt.
+    pub fn close_for_test(&mut self) {
+        self.forget();
+        self.open = false;
     }
 
     /// Whether the discard prompt is showing.

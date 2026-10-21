@@ -317,7 +317,7 @@ fn req_ui_16_req_tl_01_the_library_panes_do_not_move_with_the_mouse() {
         // Frames run only while the mouse moves in the application, so a
         // pane that creeps a little each frame must be caught from the
         // first frames on, not after it has settled.
-        let headings = ["CUTTING DATA BY MATERIAL", "FLAT END MILLS"];
+        let headings = ["CUTTING DATA BY MATERIAL", "\u{23f7} FLAT END MILLS (1)"];
         for _ in 0..3 {
             rig.frame(Vec::new());
         }
@@ -412,4 +412,190 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
         }
         std::fs::remove_dir_all(&folder).ok();
     }
+}
+
+/// The centre of the first text that contains `needle`.
+fn centre_of(rig: &Rig, needle: &str) -> egui::Pos2 {
+    rig.text_rects()
+        .into_iter()
+        .find(|(t, _)| t.contains(needle))
+        .unwrap_or_else(|| panic!("no text {needle:?}"))
+        .1
+        .center()
+}
+
+/// A library with a Makera Z1 tool set holding one ball end mill, and one
+/// flat end mill that no machine holds.
+fn library_with_machine(folder: &std::path::Path) -> (ToolId, ToolId) {
+    use openchuck_app::tools::{ControllerMapping, ToolSet, ToolSetEntry};
+    let ball = library_with(folder, ToolType::BallEnd, "Z1 ball");
+    let flat = library_with(folder, ToolType::FlatEnd, "Loose flat");
+    let mut library = ToolLibrary::open(folder).unwrap();
+    library
+        .save_tool_set(ToolSet {
+            machine: "Makera Z1".into(),
+            entries: vec![ToolSetEntry {
+                tool: ball,
+                controller: ControllerMapping::numbered(1),
+            }],
+        })
+        .unwrap();
+    (ball, flat)
+}
+
+#[test]
+fn req_tl_11_req_ui_15_the_list_has_foldable_machine_and_standard_sections_that_are_remembered() {
+    let folder = library_folder("sections");
+    let (ball, _) = library_with_machine(&folder);
+    let mut rig = Rig::cube("toollib-sections", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(ball)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for text in [
+        "MAKERA Z1 (1)",
+        "STANDARD TOOLS (1)",
+        "BALL END MILLS (1)",
+        "FLAT END MILLS (1)",
+        "Loose flat",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // Folding the type group hides its tools; the section stays.
+    rig.click(centre_of(&rig, "FLAT END MILLS (1)"));
+    rig.frame(Vec::new());
+    assert!(rig.shows("FLAT END MILLS (1)"));
+    assert!(!rig.shows("Loose flat"), "a folded group shows no tools");
+    assert!(rig.shows("STANDARD TOOLS (1)"));
+    // Folding the machine section hides its groups.
+    rig.click(centre_of(&rig, "MAKERA Z1 (1)"));
+    rig.frame(Vec::new());
+    assert!(!rig.shows("BALL END MILLS (1)"));
+    // Both folds are in the settings, per user (UI-15).
+    let view = rig.shell.settings.tool_library.clone();
+    assert!(view.is_folded("machine:makera z1"));
+    assert!(view.is_folded("standard/flat-end"));
+    // Closing and opening the window again keeps them.
+    rig.shell.tool_library.click(Chosen::Library(ball));
+    rig.shell.tool_library.close_for_test();
+    rig.frame(Vec::new());
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("MAKERA Z1 (1)") && !rig.shows("BALL END MILLS (1)"));
+    assert!(!rig.shows("Loose flat"));
+    // Unfolding shows them again.
+    rig.click(centre_of(&rig, "MAKERA Z1 (1)"));
+    rig.frame(Vec::new());
+    assert!(rig.shows("BALL END MILLS (1)"));
+    assert!(
+        !rig.shell
+            .settings
+            .tool_library
+            .is_folded("machine:makera z1")
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_04_the_size_filter_hides_tools_keeps_its_state_and_is_cleared_by_hand() {
+    use openchuck_app::tool_library::{SizeFilter, ToolFilter};
+    let folder = library_folder("filter");
+    let (ball, _) = library_with_machine(&folder);
+    // The new tools are 6 mm ball and 6 mm flat: make the flat one 10 mm.
+    {
+        let mut library = ToolLibrary::open(&folder).unwrap();
+        let mut flat = library
+            .tools()
+            .find(|t| t.name == "Loose flat")
+            .unwrap()
+            .clone();
+        flat.tool.diameter = openchuck_app::tools::Millimetres(10.0);
+        flat.tool.shank_diameter = openchuck_app::tools::Millimetres(10.0);
+        tool_library::save_draft(&mut library, &flat, &[]).unwrap();
+        let mut ball = library.get(ball).unwrap().clone();
+        ball.tool.diameter = openchuck_app::tools::Millimetres(6.0);
+        ball.tool.shank_diameter = openchuck_app::tools::Millimetres(6.0);
+        tool_library::save_draft(&mut library, &ball, &[]).unwrap();
+    }
+    let mut rig = Rig::cube("toollib-filter", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.settings.tool_library.filter = ToolFilter {
+        diameter: SizeFilter {
+            exact: "10".into(),
+            ..SizeFilter::default()
+        },
+        ..ToolFilter::default()
+    };
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(ball)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Loose flat"));
+    // The machine section had only the 6 mm ball: gone with its group.
+    assert!(!rig.shows("MAKERA Z1 ("), "a filter hides empty sections");
+    assert!(rig.shows("Clear filter"));
+    // Closed and opened again, the filter is still on (no reset).
+    rig.shell.tool_library.close_for_test();
+    rig.frame(Vec::new());
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Loose flat") && !rig.shows("MAKERA Z1 ("));
+    // Clear filter empties it by hand and the machine section is back.
+    rig.click(centre_of(&rig, "Clear filter"));
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.tool_library.filter.is_empty());
+    assert!(rig.shows("MAKERA Z1 (1)"));
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_12_a_default_tool_shows_its_dimensions_read_only_and_copies_to_edit() {
+    let folder = library_folder("default");
+    let mut library = ToolLibrary::open(&folder).unwrap();
+    library.install_defaults().unwrap();
+    let default = library
+        .tools()
+        .find(|t| ToolType::of(&t.tool.shape) == ToolType::BullNose)
+        .unwrap()
+        .clone();
+    let mut rig = Rig::cube("toollib-default", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(default.id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for text in [
+        "A default tool: it cannot be edited",
+        "Copy to edit",
+        "Diameter",
+        "Flute length",
+        "Overall length",
+        "Shank diameter",
+        "Corner radius",
+        "copy it to edit",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // Nothing to save or change in a default.
+    assert!(!rig.shows("Saved in the library"));
+    assert!(!rig.shows("Add material"));
+    assert!(!rig.shows("Edit the profile"));
+    // The copy is a new library draft; the default is unchanged.
+    rig.click(centre_of(&rig, "Copy to edit"));
+    let Some(Chosen::Library(copy)) = rig.shell.tool_library.chosen() else {
+        panic!("{:?}", rig.shell.tool_library.chosen())
+    };
+    assert_ne!(copy, default.id);
+    rig.frame(Vec::new());
+    assert!(rig.shows("New: not saved yet"));
+    assert!(!rig.shows("A default tool: it cannot be edited"));
+    assert!(rig.shows(&format!("{} copy", default.name)));
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    assert_eq!(reread.get(default.id), Some(&default));
+    assert!(reread.get(copy).is_some());
+    std::fs::remove_dir_all(&folder).ok();
 }

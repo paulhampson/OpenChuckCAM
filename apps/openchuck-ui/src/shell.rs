@@ -1129,8 +1129,19 @@ impl Shell {
                 ctx.request_repaint();
             }
         }
-        // The tool library window works with or without a project (12.1).
+        // The tool library window works with or without a project (12.1). Its
+        // folded groups and size filter are kept in the settings (UI-15).
+        if !self.tool_library.view_synced() {
+            self.tool_library
+                .set_view(self.settings.tool_library.clone());
+        }
         let library = self.tool_library.frame(ctx, self.app.as_mut());
+        if self.tool_library.view_synced()
+            && *self.tool_library.view() != self.settings.tool_library
+        {
+            self.settings.tool_library = self.tool_library.view().clone();
+            self.settings_touched();
+        }
         if let Some(status) = library.status {
             self.status = status;
         }
