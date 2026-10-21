@@ -54,6 +54,8 @@ pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
 pub mod stockplay;
+#[cfg(test)]
+mod test_project;
 pub mod tool_edit;
 pub mod tool_library;
 pub mod tools;
@@ -79,8 +81,9 @@ pub use command::{
 };
 pub use error::AppError;
 pub use export::{
-    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, ExportChecks,
-    PostSummary, builtin_post_summaries, post_summary, write_gcode_files,
+    Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
+    EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary, builtin_post_summaries, post_summary,
+    run_is_current, write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,
@@ -98,7 +101,7 @@ pub use openchuck_project::new_folder;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
 pub use opflow::StrategyChoice;
-pub use pipeline::{GroupInfo, Regeneration};
+pub use pipeline::{GroupInfo, Regeneration, STAGE_GENERATE, STAGE_SIMULATE};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
 pub use selection::{
     CheckedSet, EditStart, RegionRequest, SelectionEdit, SelectionRole, SelectionSummary,
@@ -200,6 +203,14 @@ pub struct Application {
     actions: Vec<String>,
 }
 
+/// What a new project starts with, from the user's settings
+/// ([`settings::SimulateSettings`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NewProject {
+    /// Whether it skips the stock simulation (issue 214).
+    pub skip_stock_simulation: bool,
+}
+
 impl Application {
     /// Opens the project in `folder` with a worker pool of `threads`.
     ///
@@ -222,7 +233,22 @@ impl Application {
     /// Creates a new, empty project named `name` in `folder` (created if
     /// needed) and opens it. Fails if the folder already holds a project.
     pub fn create(folder: &Path, name: &str, threads: Threads) -> Result<Self, AppError> {
-        let project = openchuck_project::file::create(folder, name)?;
+        Self::create_with(folder, name, threads, NewProject::default())
+    }
+
+    /// [`Application::create`], with the user's defaults for a new project
+    /// (decision record 0168) saved in it from the start.
+    pub fn create_with(
+        folder: &Path,
+        name: &str,
+        threads: Threads,
+        defaults: NewProject,
+    ) -> Result<Self, AppError> {
+        let mut project = openchuck_project::file::create(folder, name)?;
+        if defaults.skip_stock_simulation {
+            project.set_skip_stock_simulation(true);
+            openchuck_project::file::save(&project, folder)?;
+        }
         Self::with_project(folder, project, threads)
     }
 
@@ -873,10 +899,48 @@ impl Application {
         self.start_regenerate_until(operation).wait()
     }
 
+    /// What the running pipeline job is doing, in the status bar's words: the
+    /// operation it is generating, or the operation whose simulation it is
+    /// running again because the stock it leaves is not cached (decision
+    /// record 0190). `None` while no operation is being worked on, including
+    /// while operations are only taken from the cache. The job's progress is
+    /// reported separately, on the event stream.
+    pub fn pipeline_activity(&self) -> Option<String> {
+        let (id, activity) = self.record.activity()?;
+        let name = self.project().operation(id).map_or("", |o| o.name.as_str());
+        Some(activity.text(name))
+    }
+
     /// Starts regenerating and simulating every operation as a background
     /// job: the result carries a simulation report (SIM-03, SIM-05 to SIM-07).
     pub fn start_simulate(&self) -> JobHandle<Regeneration> {
         self.start_pipeline("simulate", true, None)
+    }
+
+    /// Starts generating every enabled operation's toolpath as a background
+    /// job, with the stock simulation unless the project skips it (issue
+    /// 214; decision record 0168): what the Generate commands do.
+    pub fn start_generate(&self) -> JobHandle<Regeneration> {
+        if self.simulates() {
+            self.start_simulate()
+        } else {
+            self.start_regenerate()
+        }
+    }
+
+    /// [`Application::start_generate`] up to and including `operation`
+    /// ("generate selected"): the operations made are simulated unless the
+    /// project skips the stock simulation.
+    pub fn start_generate_until(&self, operation: OperationId) -> JobHandle<Regeneration> {
+        let simulate = self.simulates();
+        let name = if simulate { "simulate" } else { "regenerate" };
+        self.start_pipeline(name, simulate, Some(operation))
+    }
+
+    /// Whether generating simulates the stock: unless the project skips it
+    /// (decision record 0168).
+    pub fn simulates(&self) -> bool {
+        !self.document.project.skip_stock_simulation()
     }
 
     fn start_pipeline(
@@ -988,18 +1052,50 @@ impl Application {
         folder: &Path,
         toolpath: Option<&openchuck_types::ir::Toolpath>,
     ) -> Result<Vec<PathBuf>, AppError> {
-        let sheet = self.setup_sheet(toolpath);
+        export::write_bytes(folder, &self.setup_sheet_files(toolpath))
+    }
+
+    /// The setup sheet's two file names, HTML then PDF, named after the
+    /// project (GC-12).
+    pub fn setup_sheet_file_names(&self) -> [String; 2] {
         let stem = format!(
             "{}-setup-sheet",
             posting::slug(self.document.project.name(), "project")
         );
-        export::write_bytes(
-            folder,
-            &[
-                (format!("{stem}.html"), sheet.to_html().into_bytes()),
-                (format!("{stem}.pdf"), sheet.to_pdf()),
-            ],
-        )
+        [format!("{stem}.html"), format!("{stem}.pdf")]
+    }
+
+    fn setup_sheet_files(
+        &self,
+        toolpath: Option<&openchuck_types::ir::Toolpath>,
+    ) -> Vec<(String, Vec<u8>)> {
+        let sheet = self.setup_sheet(toolpath);
+        let [html, pdf] = self.setup_sheet_file_names();
+        vec![(html, sheet.to_html().into_bytes()), (pdf, sheet.to_pdf())]
+    }
+
+    /// Writes `run`'s G-code files and, with them, the setup sheet made from
+    /// the same run, into `folder`, and records the export (GC-05, GC-12;
+    /// decision 0189). Returns the paths, the G-code first. A run made before
+    /// the project last changed writes nothing ([`AppError::OutOfDate`]), so
+    /// the sheet always describes the program beside it.
+    pub fn write_output(
+        &self,
+        folder: &Path,
+        run: &Regeneration,
+    ) -> Result<Vec<PathBuf>, AppError> {
+        if *run.project != self.document.project {
+            return Err(AppError::OutOfDate);
+        }
+        let mut files: Vec<(String, Vec<u8>)> = run
+            .gcode
+            .iter()
+            .map(|(name, text)| (name.clone(), text.as_bytes().to_vec()))
+            .collect();
+        files.extend(self.setup_sheet_files(Some(&run.toolpath)));
+        let written = export::write_bytes(folder, &files)?;
+        self.record_export(run);
+        Ok(written)
     }
 
     /// The checks before writing G-code (GC-15). `run` is the latest
@@ -1022,7 +1118,7 @@ impl Application {
     /// The project's setup sheet (GC-12). Pass a regeneration's toolpath to
     /// include each operation's programmed time.
     pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
-        SetupSheet::new(&self.document.project, toolpath)
+        SetupSheet::new(&self.document.project, &self.strategies, toolpath)
     }
 
     /// The strategies operations can use (OP-16).

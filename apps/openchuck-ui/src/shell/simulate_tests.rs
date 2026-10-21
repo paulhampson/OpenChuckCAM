@@ -132,7 +132,7 @@ fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons(
             rig.texts()
         );
     }
-    assert!(rig.shows("The simulation results do not change"));
+    assert!(rig.shows("The toolpaths, the simulation and the G-code do not change"));
     assert!(!rig.shows("Max"), "there is no Max speed");
     // The timeline's "Go to move" is under the speeds: scroll the dock to it.
     scroll_dock_to(&mut rig, "Go to move");
@@ -142,12 +142,17 @@ fn req_sim_04_the_dock_plays_with_space_and_speeds_and_the_tree_has_eye_buttons(
     assert!(rig.shell.play.is_playing());
     rig.press(Key::Space, Modifiers::NONE);
     assert!(!rig.shell.play.is_playing());
-    // The eye button hides one operation in the view only.
+    // The eye button hides one operation in the view only (issue 213).
     let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
-    assert_eq!(rig.shell.play.is_shown(op), Some(true));
-    rig.shell.tree_action(TreeAction::ToggleShown(op));
-    assert_eq!(rig.shell.play.is_shown(op), Some(false));
+    assert!(rig.shell.play.draws_group(0));
+    rig.shell
+        .tree_action(TreeAction::Command(Box::new(Command::SetPathsShown {
+            operations: vec![op],
+            shown: false,
+        })));
     rig.frame(Vec::new());
+    assert!(!rig.shell.app.as_ref().unwrap().project().path_shown(op));
+    assert!(!rig.shell.play.draws_group(0));
     assert!(
         rig.shell.run.last().unwrap().simulation.is_some(),
         "hiding keeps the results"
@@ -220,12 +225,15 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
     // the check is reached by scrolling over it.
     // The dialog is centred in the main window (decision 0164), so the
     // pointer goes where the Holes row is painted.
+    // (The first row of the body, above the default dock: the dock is
+    // 260 high now, decision 0187, and the wheel goes to what is under the
+    // pointer.)
     let holes = rig
         .text_rects()
         .iter()
-        .find(|(t, _)| t == "Holes")
+        .find(|(t, _)| t == "1 UNITS")
         .map(|(_, r)| *r)
-        .expect("the Holes row is painted");
+        .expect("the UNITS row is painted");
     rig.frame(vec![Event::PointerMoved(holes.center())]);
     for _ in 0..40 {
         if rig.shows("The check reports problems and changes nothing.") {
@@ -262,4 +270,148 @@ fn req_imp_01_req_imp_04_the_import_window_has_the_path_the_checks_and_the_prima
         rig.shell.app.as_ref().unwrap().project().models().len(),
         before
     );
+}
+
+/// Where `text` is painted.
+fn at(rig: &Rig, text: &str) -> egui::Pos2 {
+    rig.text_rects()
+        .iter()
+        .find(|(t, _)| t == text)
+        .unwrap_or_else(|| panic!("{text} is shown"))
+        .1
+        .center()
+}
+
+#[test]
+fn req_sim_03_the_skip_tick_box_is_the_projects_and_generating_follows_it() {
+    // Issue 214 (decision record 0168): the stock is simulated with the
+    // toolpaths unless the project's tick box says to skip it; the choice is
+    // one undoable step and the dock says why there is no cut part.
+    let mut rig = Rig::cube("sim-skip", None);
+    rig.shell.open_step(Step::Operations);
+    rig.shell.primary();
+    rig.settle();
+    assert!(
+        rig.shell.run.last().unwrap().simulation.is_some(),
+        "generating simulates by default"
+    );
+    rig.shell.open_step(Step::Simulate);
+    rig.settle();
+    rig.frame(Vec::new());
+    let skip = at(&rig, "Skip stock simulation");
+    rig.click(skip);
+    let app = rig.shell.app.as_ref().unwrap();
+    assert!(app.project().skip_stock_simulation());
+    assert!(app.is_modified(), "saved with the project");
+    // Generating now makes the toolpaths only.
+    rig.shell.generate(false);
+    rig.settle();
+    rig.frame(Vec::new());
+    assert!(rig.shell.run.last().unwrap().simulation.is_none());
+    assert!(rig.shows("No cut part: the stock simulation is skipped for this project"));
+    // Undo turns it back on.
+    rig.shell.undo();
+    assert!(
+        !rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .skip_stock_simulation()
+    );
+}
+
+#[test]
+fn req_ui_15_req_sim_02_the_simulate_choices_are_remembered_and_the_window_is_not() {
+    // Issues 203, 204, 205: "Turn part with A", the view's tick boxes and
+    // "Hide path outside window" are kept between runs; the window resets
+    // when Simulate is left.
+    let config = super::frame_tests::temp("sim-settings");
+    let file = SettingsFile::in_folder(&config);
+    let mut rig = simulated("sim-settings");
+    rig.shell.settings_file = Some(file.clone());
+    rig.dirs.push(config.clone());
+    assert!(rig.shell.play.turns_part_with_a(), "on by default");
+    rig.shell.play.set_turn_part_with_a(false);
+    rig.shell.play.set_hide_outside_window(true);
+    rig.shell
+        .viewport
+        .set_simulate_show(crate::viewport::SimulateShow {
+            model: true,
+            cut_part: false,
+            toolpath: true,
+        });
+    rig.shell
+        .play
+        .set_window(Some(openchuck_app::playback::MoveWindow {
+            first: 2,
+            last: 5,
+        }));
+    rig.frame(Vec::new());
+    rig.shell.save_settings();
+    let kept = file.load().settings.simulate;
+    assert!(!kept.turn_part_with_a && kept.hide_outside_window);
+    assert!(kept.show_model && !kept.show_cut_part && kept.show_toolpath);
+    // A restart starts from them.
+    let shell = Shell::with_settings(false, None, Some(file));
+    assert!(!shell.play.turns_part_with_a());
+    assert!(shell.play.hides_outside_window());
+    assert!(shell.viewport.simulate_show().toolpath);
+    // The window is not remembered: leaving Simulate lifts it.
+    assert!(rig.shell.play.window().is_some());
+    rig.shell.open_step(Step::Operations);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.play.window(), None);
+}
+
+#[test]
+fn req_sim_03_a_new_project_takes_the_users_default_for_the_skip() {
+    let mut shell = Shell::with_settings(false, None, None);
+    shell.settings.simulate.skip_stock_simulation = true;
+    let folder = super::frame_tests::temp("sim-new-skip");
+    shell.create(folder.clone(), "Skipping");
+    assert!(
+        shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .skip_stock_simulation()
+    );
+    drop(shell);
+    let _ = std::fs::remove_dir_all(folder);
+}
+
+#[test]
+fn req_sim_01_req_ui_11_the_tree_hides_paths_in_every_step_and_all_at_once() {
+    // Issue 213 (decision record 0169): on Operations too, and for the whole
+    // group; saved with the project, and the toolpath stays up to date.
+    let mut rig = Rig::cube("tree-eyes", None);
+    rig.shell.open_step(Step::Operations);
+    rig.shell.primary();
+    rig.settle();
+    let ops: Vec<_> = rig
+        .shell
+        .app
+        .as_ref()
+        .unwrap()
+        .project()
+        .operations()
+        .iter()
+        .map(|o| o.id)
+        .collect();
+    rig.shell
+        .tree_action(TreeAction::Command(Box::new(Command::SetPathsShown {
+            operations: ops.clone(),
+            shown: false,
+        })));
+    rig.settle();
+    let app = rig.shell.app.as_ref().unwrap();
+    assert!(ops.iter().all(|id| !app.project().path_shown(*id)));
+    assert!(rig.shell.overview.stale.is_empty(), "nothing is made stale");
+    assert!(!rig.shell.play.draws_group(0));
+    // Simulate's line says what hiding changes.
+    rig.shell.open_step(Step::Simulate);
+    rig.frame(Vec::new());
+    assert!(rig.shows("Hiding a toolpath changes the view only."));
 }

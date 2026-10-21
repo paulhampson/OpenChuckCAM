@@ -14,9 +14,14 @@
 use std::sync::Arc;
 
 use eframe::egui::{self, Color32, RichText};
-use openchuck_app::pathview::{DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData};
-use openchuck_app::playback::{Cursor, Playback, PoseSample, ToolMeshes, ViewFrame, tool_meshes};
-use openchuck_app::project::id::{ModelId, OperationId, SetupId};
+use openchuck_app::pathview::{
+    DeviationBand, DeviationBands, PathClass, PathLines, PlaybackData, zoom_level,
+};
+use openchuck_app::playback::{
+    Cursor, MoveWindow, Playback, PoseSample, ToolMeshes, ViewFrame, continuous_a_text,
+    tool_meshes, wrapped_a_text,
+};
+use openchuck_app::project::id::{ModelId, SetupId};
 use openchuck_app::stockplay::StockPlayback;
 use openchuck_app::{Application, JobHandle, Regeneration};
 use openchuck_viewport::camera::place;
@@ -29,9 +34,11 @@ use crate::viewport::{ToolReadout, Viewport};
 
 const PROBLEM: Color32 = DARK.error;
 
-/// Points of toolpath the viewport is asked to draw at most. A million line
-/// vertices is about 24 MB on the GPU and draws well within a frame on the
-/// reference class of machine.
+/// Points of toolpath the viewport is asked to draw at most. A million
+/// points is about 31 MB on the GPU (two 16-byte vertices per segment;
+/// measured with the `path_frames` example, decision record 0166). Its
+/// frame time on the reference machines is still to be measured (OI-176,
+/// OI-590).
 pub const DEFAULT_POINT_BUDGET: usize = 1_000_000;
 
 /// Program seconds per second of the clock the speed list offers; the last
@@ -48,6 +55,20 @@ const SPEEDS: [(&str, f64); 5] = [
 const CUTTER: Colour = roles::TOOL_TIP;
 const SHANK: Colour = roles::TOOL_BODY;
 const STOCK_GLASS: Colour = [0.85, 0.72, 0.45, 0.30];
+
+/// The faint trace of the path outside the playback window: grey, thin and
+/// see-through (issue 205; decision record 0169).
+pub const TRACE: Colour = [0.62, 0.64, 0.68, 0.35];
+
+/// The tooltip's words on the A readout (issue 207): the angle the G-code
+/// gives, which keeps counting past 360 degrees.
+pub const CONTINUOUS_A: &str = "Continuous A in the G-code";
+
+/// The tick box that hides the path outside the playback window (issue 205).
+pub const HIDE_OUTSIDE: &str = "Hide path outside window";
+
+/// The tick box that turns the project's stock simulation off (issue 214).
+pub const SKIP_STOCK: &str = "Skip stock simulation";
 
 /// How a class of move is drawn (SIM-01; specification 7.4): its colour,
 /// width and line style. Cut moves amber and solid; link moves green, solid
@@ -74,6 +95,35 @@ pub fn paths_scene(lines: &PathLines) -> Scene {
     scene
 }
 
+/// The faint trace of the path: every line in one batch, in one colour, so
+/// it is one draw call however many runs the path has (decision record
+/// 0169).
+pub fn trace_scene(lines: &PathLines) -> Scene {
+    let mut scene = Scene::default();
+    let segments: Vec<[f32; 3]> = lines
+        .lines
+        .iter()
+        .flat_map(|line| {
+            line.points.windows(2).flat_map(|pair| {
+                pair.iter()
+                    .map(|p| [p.x as f32, p.y as f32, p.z as f32])
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    if !segments.is_empty() {
+        scene.lines.push(openchuck_viewport::LineItem {
+            segments,
+            colour: TRACE,
+            on_top: false,
+            slot: Slot::Part,
+            width: 0.0,
+            style: LineStyle::Solid,
+        });
+    }
+    scene
+}
+
 /// The scene of a tool: its cutter and shank, built at the origin along +Z
 /// and in the tool slot, so one transform per frame puts them in place.
 pub fn tool_scene(meshes: &ToolMeshes) -> Scene {
@@ -86,6 +136,55 @@ pub fn tool_scene(meshes: &ToolMeshes) -> Scene {
         mesh.slot = Slot::Tool;
     }
     scene
+}
+
+/// What a drag on the playback window's strip moves.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum WindowDrag {
+    /// The start.
+    First,
+    /// The end.
+    Last,
+    /// The whole window, held this many moves from its start.
+    Body(isize),
+}
+
+/// How near to an end of the window, in pixels, a drag takes that end.
+const HANDLE_REACH: f32 = 6.0;
+
+/// The window `drag` makes on a strip of `moves` moves when the pointer is
+/// over move `at` (issue 205). Dragging an end past the other swaps them;
+/// dragging the body keeps its length.
+fn dragged_window(
+    window: Option<MoveWindow>,
+    drag: WindowDrag,
+    at: usize,
+    moves: usize,
+) -> Option<MoveWindow> {
+    let last_move = moves.checked_sub(1)?;
+    let at = at.min(last_move);
+    let w = window.unwrap_or(MoveWindow {
+        first: 0,
+        last: last_move,
+    });
+    Some(match drag {
+        WindowDrag::First => MoveWindow {
+            first: at.min(w.last),
+            last: at.max(w.last),
+        },
+        WindowDrag::Last => MoveWindow {
+            first: at.min(w.first),
+            last: at.max(w.first),
+        },
+        WindowDrag::Body(offset) => {
+            let length = w.last - w.first;
+            let first = at.saturating_add_signed(-offset).min(last_move - length);
+            MoveWindow {
+                first,
+                last: first + length,
+            }
+        }
+    })
 }
 
 #[derive(Default)]
@@ -107,13 +206,31 @@ pub struct PlaybackPanel {
     data_job: Option<JobHandle<PlaybackData>>,
     data: Option<PlaybackData>,
     playback: Playback,
+    /// Which groups' paths are drawn, as the project says (issue 213), as
+    /// last given to the path jobs.
     visible: Vec<bool>,
     view: ViewFrame,
     show_tool: bool,
-    show_paths: bool,
+    /// "Hide path outside window" (issue 205).
+    hide_outside: bool,
+    /// The window as drawn last, to tell when the path must be made again.
+    drawn_window: Option<MoveWindow>,
+    /// The faint trace of the whole path, made once per path and visible
+    /// groups, and whether it is on screen.
+    trace_job: Option<(Vec<bool>, JobHandle<PathLines>)>,
+    trace: Option<(Vec<bool>, Arc<PathLines>)>,
+    trace_shown: bool,
+    /// What the trace costs: (points drawn, points of the path).
+    trace_cost: Option<(usize, usize)>,
+    /// The window's ends as the number fields hold them, counted from 1.
+    window_from: usize,
+    window_to: usize,
     budget: usize,
     lines_job: Option<JobHandle<PathLines>>,
     lines_dirty: bool,
+    /// The level of detail the zoom asks for ([`zoom_level`]; decision
+    /// record 0167).
+    zoom_level: usize,
     detail: Option<(usize, usize, f64)>,
     /// The group whose tool the tool layer holds.
     tool_group: Option<usize>,
@@ -130,6 +247,11 @@ pub struct PlaybackPanel {
     /// The setup the bands on screen (or being made) belong to.
     bands_setup: Option<SetupId>,
     jump_move: usize,
+    /// What a drag on the window strip moves (issue 205).
+    window_drag: Option<WindowDrag>,
+    /// Where the window strip was drawn last, and the left and width of
+    /// the timeline it maps moves on.
+    strip: (egui::Rect, f32, f32),
     error: Option<String>,
     /// The layers need clearing before the next run is drawn.
     reset_layers: bool,
@@ -144,12 +266,22 @@ impl Default for PlaybackPanel {
             data: None,
             playback: Playback::new(),
             visible: Vec::new(),
-            view: ViewFrame::Part,
+            // "Turn part with A" is on unless the user turned it off (issue
+            // 203); the shell gives the user's choice.
+            view: ViewFrame::Machine,
             show_tool: true,
-            show_paths: true,
+            hide_outside: false,
+            drawn_window: None,
+            trace_job: None,
+            trace: None,
+            trace_shown: false,
+            trace_cost: None,
+            window_from: 1,
+            window_to: 1,
             budget: DEFAULT_POINT_BUDGET,
             lines_job: None,
             lines_dirty: false,
+            zoom_level: 0,
             detail: None,
             tool_group: None,
             tool_dirty: false,
@@ -161,6 +293,8 @@ impl Default for PlaybackPanel {
             colour_by: ColourBy::default(),
             bands_setup: None,
             jump_move: 1,
+            window_drag: None,
+            strip: (egui::Rect::NOTHING, 0.0, 0.0),
             error: None,
             reset_layers: false,
         }
@@ -176,6 +310,9 @@ impl PlaybackPanel {
             job.cancel();
         }
         if let Some(job) = &self.lines_job {
+            job.cancel();
+        }
+        if let Some((_, job)) = &self.trace_job {
             job.cancel();
         }
         if let Some((_, job)) = &self.bands_job {
@@ -194,6 +331,8 @@ impl PlaybackPanel {
         self.cancel_jobs();
         *self = Self {
             open: self.open,
+            view: self.view,
+            hide_outside: self.hide_outside,
             colour_by: self.colour_by,
             reset_layers: true,
             ..Self::default()
@@ -207,7 +346,7 @@ impl PlaybackPanel {
             open: true,
             view: self.view,
             show_tool: self.show_tool,
-            show_paths: self.show_paths,
+            hide_outside: self.hide_outside,
             budget: self.budget,
             colour_by: self.colour_by,
             reset_layers: true,
@@ -235,17 +374,13 @@ impl PlaybackPanel {
     }
 
     /// Shows `run` again when the panel dropped it (see
-    /// [`PlaybackPanel::forget_removed`]) and every operation in it is back
-    /// and on, as after undoing a turn-off or a deletion (OI-692). Does
-    /// nothing while the panel has a run, or when `run` still holds an
-    /// operation that is gone.
+    /// [`PlaybackPanel::forget_removed`]) and every operation in it is back,
+    /// on and up to date, as after undoing a turn-off or a deletion (OI-692).
+    /// Does nothing while the panel has a run, or when `run` holds an
+    /// operation that is gone or has changed since it was made, so a run the
+    /// tree marks stale is never shown again (OI-697).
     pub fn restore(&mut self, app: &Application, run: &Arc<Regeneration>) {
-        let back = run.groups.iter().all(|g| {
-            app.project()
-                .operation(g.operation)
-                .is_some_and(|o| o.enabled)
-        });
-        if self.run.is_none() && back && !run.groups.is_empty() {
+        if self.run.is_none() && openchuck_app::run_is_current(app.project(), run) {
             let open = self.open;
             self.set_run(app, Arc::clone(run));
             self.open = open;
@@ -255,6 +390,61 @@ impl PlaybackPanel {
     /// Whether the panel has a run to show.
     pub fn has_run(&self) -> bool {
         self.run.is_some()
+    }
+
+    /// Whether the part turns with A in the view ("Turn part with A", issue
+    /// 203).
+    pub fn turns_part_with_a(&self) -> bool {
+        self.view == ViewFrame::Machine
+    }
+
+    /// Sets "Turn part with A".
+    pub fn set_turn_part_with_a(&mut self, turn: bool) {
+        self.view = if turn {
+            ViewFrame::Machine
+        } else {
+            ViewFrame::Part
+        };
+    }
+
+    /// Whether the path outside the playback window is hidden (issue 205).
+    pub fn hides_outside_window(&self) -> bool {
+        self.hide_outside
+    }
+
+    /// Sets "Hide path outside window".
+    pub fn set_hide_outside_window(&mut self, hide: bool) {
+        self.hide_outside = hide;
+    }
+
+    /// The playback window, if one is set (issue 205).
+    pub fn window(&self) -> Option<MoveWindow> {
+        self.playback.window()
+    }
+
+    /// Sets the playback window, or lifts it with `None`.
+    pub fn set_window(&mut self, window: Option<MoveWindow>) {
+        if let Some(data) = &self.data {
+            self.playback.set_window(&data.timeline, window);
+            self.window_numbers();
+        }
+    }
+
+    /// Lifts the playback window: it is not remembered, so leaving Simulate
+    /// resets it (the owner's answer on issue 205).
+    pub fn reset_window(&mut self) {
+        self.set_window(None);
+    }
+
+    /// The number fields follow the window, or the whole program.
+    fn window_numbers(&mut self) {
+        let moves = self.data.as_ref().map_or(0, |d| d.timeline.move_count());
+        let (from, to) = match self.playback.window() {
+            Some(w) => (w.first + 1, w.last + 1),
+            None => (1, moves.max(1)),
+        };
+        self.window_from = from;
+        self.window_to = to;
     }
 
     /// Where playback is, once the run is prepared.
@@ -269,7 +459,7 @@ impl PlaybackPanel {
     pub fn frame(&mut self, app: &Application, viewport: &mut Viewport, dt: f64) -> bool {
         let mut busy = false;
         if std::mem::take(&mut self.reset_layers) {
-            for layer in [Layer::Paths, Layer::Tool, Layer::Stock] {
+            for layer in [Layer::Paths, Layer::Trace, Layer::Tool, Layer::Stock] {
                 viewport.set_layer(layer, Scene::default());
             }
             viewport.set_bands(None);
@@ -277,7 +467,15 @@ impl PlaybackPanel {
             viewport.set_tool_readout(None);
         }
         busy |= self.poll_data();
+        // The cut part is prepared whenever it can be shown, on Simulate,
+        // where "Cut part" draws it: the stock simulation is on by default
+        // (issue 214), and no other step pays for it.
+        self.stock.show = viewport.simulate_show().cut_part
+            && viewport.step() == crate::viewport::ViewStep::Simulate;
+        self.start_stock(app);
+        self.follow_project(app);
         busy |= self.poll_lines(app, viewport);
+        busy |= self.poll_trace(app, viewport);
         let Some(data) = self.data.clone() else {
             return busy || self.data_job.is_some();
         };
@@ -314,6 +512,7 @@ impl PlaybackPanel {
                         self.lines_dirty = true;
                         self.tool_dirty = true;
                         self.data = Some(data);
+                        self.window_numbers();
                     }
                     Err(e) => self.error = Some(e.to_string()),
                 }
@@ -322,7 +521,114 @@ impl PlaybackPanel {
         }
     }
 
+    /// Takes which paths are drawn from the project (issue 213), and asks for
+    /// the path again when that or the window changed.
+    fn follow_project(&mut self, app: &Application) {
+        let Some(data) = &self.data else { return };
+        let timeline = &data.timeline;
+        let visible: Vec<bool> = (0..timeline.group_count())
+            .map(|g| {
+                timeline
+                    .operation(g)
+                    .is_none_or(|op| app.project().path_shown(op))
+            })
+            .collect();
+        if visible != self.visible {
+            self.visible = visible;
+            self.lines_dirty = true;
+        }
+        if self.playback.window() != self.drawn_window {
+            self.drawn_window = self.playback.window();
+            self.lines_dirty = true;
+        }
+    }
+
+    /// Starts preparing the cut part (the stock at the play head) when the
+    /// run was simulated and it is to be shown (issue 214).
+    fn start_stock(&mut self, app: &Application) {
+        let can = self.run.as_ref().is_some_and(|r| r.simulation.is_some());
+        if let Some(data) = &self.data
+            && can
+            && self.stock.show
+            && self.stock.playback.is_none()
+            && self.stock.prepare.is_none()
+            && self.stock.error.is_none()
+        {
+            self.stock.prepare = Some(app.start_stock_playback(Arc::clone(&data.timeline)));
+        }
+    }
+
+    /// Keeps the faint trace of the path outside the window in its layer: made
+    /// once per path and visible groups, shown only while a window is set and
+    /// the path outside it is not hidden (issue 205).
+    fn poll_trace(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
+        let mut busy = false;
+        if let Some((for_visible, job)) = &self.trace_job {
+            match job.try_result() {
+                None => busy = true,
+                Some(result) => {
+                    let for_visible = for_visible.clone();
+                    self.trace_job = None;
+                    match result {
+                        Ok(lines) => {
+                            self.trace_cost = Some((lines.points, lines.full_points));
+                            self.trace = Some((for_visible, Arc::new(lines)));
+                            self.trace_shown = false;
+                        }
+                        Err(e) if e.is_cancelled() => {}
+                        Err(e) => self.error = Some(e.to_string()),
+                    }
+                }
+            }
+        }
+        let wanted = self.playback.window().is_some() && !self.hide_outside;
+        let current = self
+            .trace
+            .as_ref()
+            .filter(|(visible, _)| *visible == self.visible);
+        match (wanted, current) {
+            (true, Some((_, lines))) => {
+                if !self.trace_shown {
+                    viewport.set_layer(Layer::Trace, trace_scene(lines));
+                    self.trace_shown = true;
+                }
+            }
+            (true, None) => {
+                if let Some(data) = &self.data
+                    && self.trace_job.is_none()
+                {
+                    self.trace_job = Some((
+                        self.visible.clone(),
+                        app.start_trace_lines(
+                            Arc::clone(&data.display),
+                            self.visible.clone(),
+                            self.budget,
+                        ),
+                    ));
+                    busy = true;
+                }
+            }
+            (false, _) => {
+                if self.trace_shown {
+                    viewport.set_layer(Layer::Trace, Scene::default());
+                    self.trace_shown = false;
+                }
+            }
+        }
+        busy
+    }
+
     fn poll_lines(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
+        // The level follows the zoom: a new one is made by a job only when
+        // the zoom crosses into another level, and the path drawn stays
+        // until the job hands over the next (decision record 0167, OI-177).
+        let wanted = viewport
+            .mm_per_pixel()
+            .map_or(0, |mm| zoom_level(self.zoom_level, mm));
+        if wanted != self.zoom_level {
+            self.zoom_level = wanted;
+            self.lines_dirty = true;
+        }
         if let Some(job) = &self.lines_job {
             match job.try_result() {
                 None => return true,
@@ -343,13 +649,28 @@ impl PlaybackPanel {
             && let Some(data) = &self.data
         {
             self.lines_dirty = false;
-            let visible = if self.show_paths {
-                self.visible.clone()
-            } else {
-                vec![false; self.visible.len()]
-            };
-            self.lines_job =
-                Some(app.start_path_lines(Arc::clone(&data.display), visible, self.budget));
+            if let Some(job) = self.lines_job.take() {
+                job.cancel();
+            }
+            let visible = self.visible.clone();
+            // The detail follows the zoom in the window too (decision
+            // records 0167 and 0169).
+            self.lines_job = Some(match self.playback.window() {
+                // Only the window's part, at full detail when it fits.
+                Some(window) => app.start_window_lines(
+                    Arc::clone(&data.display),
+                    visible,
+                    window.moves(),
+                    self.budget,
+                    self.zoom_level,
+                ),
+                None => app.start_path_lines(
+                    Arc::clone(&data.display),
+                    visible,
+                    self.budget,
+                    self.zoom_level,
+                ),
+            });
             return true;
         }
         false
@@ -527,6 +848,12 @@ impl PlaybackPanel {
         self.playback.is_playing()
     }
 
+    /// Whether group `group`'s path is drawn, as the project says.
+    #[cfg(test)]
+    pub fn draws_group(&self, group: usize) -> bool {
+        self.visible.get(group).copied().unwrap_or(false)
+    }
+
     /// Plays or pauses (Space).
     pub fn toggle_play(&mut self, timeline: &openchuck_app::playback::Timeline) {
         if self.playback.is_playing() {
@@ -584,28 +911,6 @@ impl PlaybackPanel {
             self.playback.step(timeline, -1);
         } else if key(egui::Key::ArrowRight, false) {
             self.playback.step(timeline, 1);
-        }
-    }
-
-    /// Whether the operation's path is drawn, for the tree's eye button;
-    /// `None` when the run has no group of it.
-    pub fn is_shown(&self, operation: OperationId) -> Option<bool> {
-        let data = self.data.as_ref()?;
-        let group = (0..data.timeline.group_count())
-            .find(|g| data.timeline.operation(*g) == Some(operation))?;
-        self.visible.get(group).copied()
-    }
-
-    /// Shows or hides an operation's path, in the view only: the simulation
-    /// results do not change (specification section 11.5).
-    pub fn toggle_shown(&mut self, operation: OperationId) {
-        let Some(data) = &self.data else { return };
-        if let Some(group) = (0..data.timeline.group_count())
-            .find(|g| data.timeline.operation(*g) == Some(operation))
-            && let Some(v) = self.visible.get_mut(group)
-        {
-            *v = !*v;
-            self.lines_dirty = true;
         }
     }
 
@@ -709,6 +1014,7 @@ impl PlaybackPanel {
             self.playback
                 .jump_to_move(timeline, (f * moves as f32) as usize);
         }
+        self.window_strip(ui, timeline, rect.left(), made_width);
         ui.horizontal(|ui| {
             ui.label(RichText::new("0").small().monospace());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -717,8 +1023,139 @@ impl PlaybackPanel {
         });
     }
 
-    /// Draws the controls.
-    pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) {
+    /// The playback window's strip under the timeline (issue 205): the window
+    /// as a band with a handle at each end. Dragging an end resizes it,
+    /// dragging the band moves it, and dragging elsewhere starts a window
+    /// there. The number fields under it do the same from the keyboard.
+    fn window_strip(
+        &mut self,
+        ui: &mut egui::Ui,
+        timeline: &openchuck_app::playback::Timeline,
+        left: f32,
+        width: f32,
+    ) {
+        let moves = timeline.move_count();
+        let full = ui.available_width().max(160.0);
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(full, 8.0), egui::Sense::click_and_drag());
+        let response = response.on_hover_text(
+            "The playback window: drag its ends to resize it, or its middle to move it",
+        );
+        let painter = ui.painter_at(rect);
+        let width = width.max(1.0);
+        self.strip = (rect, left, width);
+        let x_of = |m: usize| left + width * (m as f32 / moves.max(1) as f32);
+        let window = self.playback.window();
+        let (first, end) = window.map_or((0, moves), |w| (w.first, w.last + 1));
+        let band = egui::Rect::from_x_y_ranges(x_of(first)..=x_of(end), rect.y_range());
+        painter.rect_filled(rect, 2.0, DARK.selected.gamma_multiply(0.4));
+        painter.rect_filled(band, 2.0, DARK.accent.gamma_multiply(0.6));
+        for x in [band.left(), band.right()] {
+            painter.rect_filled(
+                egui::Rect::from_center_size(egui::pos2(x, rect.center().y), egui::vec2(4.0, 10.0)),
+                1.0,
+                DARK.text,
+            );
+        }
+        let at = |pos: egui::Pos2| {
+            (((pos.x - left) / width).clamp(0.0, 1.0) * moves as f32).round() as usize
+        };
+        // A drag is told from a click only once the pointer has moved, so it
+        // starts where the button was pressed.
+        if response.drag_started()
+            && let Some(pos) = ui
+                .input(|i| i.pointer.press_origin())
+                .or_else(|| response.interact_pointer_pos())
+        {
+            self.window_drag = Some(if (pos.x - band.left()).abs() <= HANDLE_REACH {
+                WindowDrag::First
+            } else if (pos.x - band.right()).abs() <= HANDLE_REACH {
+                WindowDrag::Last
+            } else if band.x_range().contains(pos.x) && window.is_some() {
+                WindowDrag::Body(at(pos) as isize - first as isize)
+            } else {
+                // A new window from here, made by dragging its end.
+                self.playback.set_window(
+                    timeline,
+                    Some(MoveWindow {
+                        first: at(pos),
+                        last: at(pos),
+                    }),
+                );
+                WindowDrag::Last
+            });
+        }
+        if response.dragged()
+            && let (Some(drag), Some(pos)) = (self.window_drag, response.interact_pointer_pos())
+        {
+            // The band's right edge is the boundary after the last move,
+            // so the move under it is the one before.
+            let point = match drag {
+                WindowDrag::Last => at(pos).saturating_sub(1),
+                _ => at(pos),
+            };
+            let next = dragged_window(self.playback.window(), drag, point, moves);
+            self.playback.set_window(timeline, next);
+            self.window_numbers();
+        }
+        if response.drag_stopped() {
+            self.window_drag = None;
+            self.window_numbers();
+        }
+    }
+
+    /// The window's ends as numbers, from the keyboard (issue 205).
+    fn window_fields(&mut self, ui: &mut egui::Ui, timeline: &openchuck_app::playback::Timeline) {
+        let moves = timeline.move_count().max(1);
+        {
+            ui.separator();
+            ui.label("Window: moves");
+            let from = ui
+                .add(
+                    egui::DragValue::new(&mut self.window_from)
+                        .range(1..=moves)
+                        .speed(1.0),
+                )
+                .on_hover_text("The first move in the playback window");
+            ui.label("to");
+            let to = ui
+                .add(
+                    egui::DragValue::new(&mut self.window_to)
+                        .range(1..=moves)
+                        .speed(1.0),
+                )
+                .on_hover_text("The last move in the playback window");
+            if from.changed() || to.changed() {
+                self.playback.set_window(
+                    timeline,
+                    Some(MoveWindow {
+                        first: self.window_from.saturating_sub(1),
+                        last: self.window_to.saturating_sub(1),
+                    }),
+                );
+            }
+            if from.lost_focus() || to.lost_focus() {
+                self.window_numbers();
+            }
+            if ui
+                .add_enabled(
+                    self.playback.window().is_some(),
+                    egui::Button::new("Whole program"),
+                )
+                .on_hover_text("Play and show every move again")
+                .on_disabled_hover_text("The window already holds every move")
+                .clicked()
+            {
+                self.playback.set_window(timeline, None);
+                self.window_numbers();
+            }
+        }
+    }
+
+    /// Draws the controls. Returns the project's new "Skip stock simulation"
+    /// choice when the user changed it, for the shell to apply as a command.
+    pub fn show(&mut self, ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+        let mut skip = None;
         let Some(data) = self.data.clone() else {
             if self.data_job.is_some() {
                 ui.horizontal(|ui| {
@@ -730,7 +1167,7 @@ impl PlaybackPanel {
             } else {
                 ui.label("Generate toolpaths to see and play them.");
             }
-            return;
+            return skip_box(ui, app);
         };
         let timeline = &data.timeline;
         let total = timeline.total_time();
@@ -747,7 +1184,7 @@ impl PlaybackPanel {
                 self.previous_operation(timeline);
             }
             if ui
-                .button("◀")
+                .button("\u{23f4}")
                 .on_hover_text("Step back one move (←)")
                 .clicked()
             {
@@ -756,7 +1193,7 @@ impl PlaybackPanel {
             let label = if self.playback.is_playing() {
                 "⏸"
             } else {
-                "▶"
+                "\u{23f5}"
             };
             if ui
                 .button(label)
@@ -766,7 +1203,7 @@ impl PlaybackPanel {
                 self.toggle_play(timeline);
             }
             if ui
-                .button("▶|")
+                .button("\u{23f5}|")
                 .on_hover_text("Step on one move (→)")
                 .clicked()
             {
@@ -780,6 +1217,8 @@ impl PlaybackPanel {
             {
                 self.next_operation(timeline);
             }
+            ui.separator();
+            skip = skip_box(ui, app);
         });
         ui.horizontal(|ui| {
             ui.label("Speed");
@@ -821,7 +1260,12 @@ impl PlaybackPanel {
                 self.playback
                     .jump_to_move(timeline, self.jump_move.saturating_sub(1));
             }
+            self.window_fields(ui, timeline);
         });
+        // The readout keeps its line before there is a pose (issue 215).
+        if self.pose().is_none() {
+            ui.monospace(" ");
+        }
         if let Some(pose) = self.pose() {
             let kind = pose.kind.map_or("-", |k| match k {
                 openchuck_app::playback::MoveKind::Rapid => "rapid",
@@ -834,21 +1278,23 @@ impl PlaybackPanel {
             let feed = pose
                 .feed
                 .map_or_else(String::new, |f| format!("   Feed {f:.0} mm/min"));
+            // A reads 0 to 360 degrees; the tooltip gives the continuous
+            // value the G-code holds, to compare with it (issue 207).
             ui.monospace(format!(
-                "{}  move {}  {kind}   X{:.3} Y{:.3} Z{:.3} A{:.3}{feed}",
+                "{}  move {}  {kind}   X{:.3} Y{:.3} Z{:.3} A{}{feed}",
                 timeline.operation_name(pose.group).unwrap_or(""),
                 pose.cursor.done.min(moves),
                 pose.work[0],
                 pose.work[1],
                 pose.work[2],
-                pose.work[3],
-            ));
+                wrapped_a_text(pose.work[3], 3),
+            ))
+            .on_hover_text(continuous_a_tip(pose.work[3], 3));
         }
         ui.horizontal_wrapped(|ui| {
-            let mut changed = false;
             let mut machine = self.view == ViewFrame::Machine;
             if ui
-                .checkbox(&mut machine, "Turn the part with A")
+                .checkbox(&mut machine, "Turn part with A")
                 .on_hover_text(
                     "The tool stands upright and the workpiece turns, as on the machine; \
                      otherwise the part is fixed and the tool moves round it",
@@ -864,18 +1310,25 @@ impl PlaybackPanel {
             if ui.checkbox(&mut self.show_tool, "Tool").changed() {
                 self.tool_dirty = true;
             }
-            changed |= ui.checkbox(&mut self.show_paths, "Toolpaths").changed();
             let can_stock = self.run.as_ref().is_some_and(|r| r.simulation.is_some());
             ui.add_enabled_ui(can_stock, |ui| {
-                self.stock_controls(ui, app, &data);
                 ui.checkbox(&mut self.bands_on, "Colour the part by deviation")
-                    .on_disabled_hover_text("Generate with a simulation first")
+                    .on_disabled_hover_text(NO_STOCK_SIMULATION)
                     .on_hover_text("Overcut, on the surface, and material left");
             });
-            if changed {
-                self.lines_dirty = true;
-            }
+            ui.add_enabled(
+                self.playback.window().is_some(),
+                egui::Checkbox::new(&mut self.hide_outside, HIDE_OUTSIDE),
+            )
+            .on_hover_text(
+                "Draw only the moves in the window; otherwise the rest of the path is drawn \
+                 faintly. Drawing less is quicker on slow graphics",
+            )
+            .on_disabled_hover_text("Set a window first, by dragging under the timeline");
+            self.stock_status(ui, app);
         });
+        // The note keeps its line while it has nothing to say, so the rows
+        // do not move when it appears (issue 215).
         if let Some((drawn, full, tolerance)) = self.detail {
             if drawn < full {
                 ui.weak(format!(
@@ -884,35 +1337,52 @@ impl PlaybackPanel {
             } else {
                 ui.weak(format!("Drawing all {full} points"));
             }
+        } else {
+            ui.weak(" ");
         }
         if let Some(error) = self.stock.error.as_ref().or(self.error.as_ref()) {
             ui.colored_label(PROBLEM, error);
         }
         let _ = DeviationBand::ALL;
+        skip
     }
 
-    fn stock_controls(&mut self, ui: &mut egui::Ui, app: &Application, data: &PlaybackData) {
+    /// What the cut part is doing: being prepared, or why there is none.
+    fn stock_status(&self, ui: &mut egui::Ui, app: &Application) {
         if self.stock.prepare.is_some() {
             ui.spinner();
-            ui.label("Preparing the stock…");
-            return;
-        }
-        if self.stock.playback.is_none() {
-            if ui
-                .button("Show the stock…")
-                .on_hover_text(
-                    "Simulates again with checkpoints so the stock can be shown at any move",
-                )
-                .clicked()
-            {
-                self.stock.error = None;
-                self.stock.show = true;
-                self.stock.prepare = Some(app.start_stock_playback(Arc::clone(&data.timeline)));
-            }
-        } else {
-            ui.checkbox(&mut self.stock.show, "Stock");
+            ui.label("Simulating the cut part…");
+        } else if self.run.as_ref().is_some_and(|r| r.simulation.is_none()) {
+            ui.weak(if app.project().skip_stock_simulation() {
+                "No cut part: the stock simulation is skipped for this project"
+            } else {
+                "No cut part: generate again to simulate the stock"
+            });
         }
     }
+}
+
+/// The project's "Skip stock simulation" tick box (issue 214; decision
+/// record 0168). Returns the new choice when it was clicked.
+pub fn skip_box(ui: &mut egui::Ui, app: &Application) -> Option<bool> {
+    let mut skip = app.project().skip_stock_simulation();
+    ui.checkbox(&mut skip, SKIP_STOCK)
+        .on_hover_text(
+            "Generate only the toolpaths, for a quicker result. The cut is then not simulated, \
+             so there is no cut part, no deviation and no simulated check before posting",
+        )
+        .changed()
+        .then_some(skip)
+}
+
+/// Why the colours by deviation are unavailable: the run has no stock
+/// simulation.
+const NO_STOCK_SIMULATION: &str = "There is no stock simulation for this toolpath";
+
+/// The A readout's tooltip: the continuous angle the G-code gives (issue
+/// 207).
+pub fn continuous_a_tip(a: f64, places: usize) -> String {
+    format!("{CONTINUOUS_A}: {}°", continuous_a_text(a, places))
 }
 
 /// `h:mm:ss` for a number of seconds.
@@ -975,6 +1445,7 @@ mod tests {
 
     use crate::run_panel::RunPanel;
     use crate::testing::cube_project;
+    use crate::viewport::SimulateShow;
 
     /// Generates with a simulation and prepares the display, polling as the
     /// shell does, until everything is ready.
@@ -1021,6 +1492,64 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Draws frames until the path-lines job is done.
+    fn settle(app: &Application, panel: &mut PlaybackPanel, viewport: &mut Viewport) {
+        let started = Instant::now();
+        while panel.lines_job.is_some() || panel.lines_dirty {
+            panel.frame(app, viewport, 0.0);
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn req_nfr_03_req_nfr_04_the_path_detail_follows_the_zoom_off_the_interface_thread() {
+        // Decision 0167 (OI-177): zoomed far out, the path is drawn at a
+        // coarser level; the level is made by a job, the old path stays drawn
+        // until the new one arrives, and a zoom within a level makes nothing.
+        let (app, mut panel, mut viewport, dir) = prepared("panel-zoom");
+        let pose = panel.pose();
+        assert_eq!(panel.zoom_level, 0, "no frame size yet: every point");
+        let before = viewport.layer(Layer::Paths).unwrap() as *const Scene;
+        viewport.set_pixels_for_tests([800, 600]);
+        viewport.camera.projection = openchuck_viewport::Projection::Orthographic;
+        viewport.camera.distance = 1.0e6;
+        panel.frame(&app, &mut viewport, 0.0);
+        let coarsest = openchuck_app::pathview::LEVEL_TOLERANCES.len() - 1;
+        assert_eq!(panel.zoom_level, coarsest);
+        // The frame only started the job; the path drawn is still the old one.
+        assert!(panel.lines_job.is_some());
+        assert_eq!(
+            viewport.layer(Layer::Paths).unwrap() as *const Scene,
+            before
+        );
+        settle(&app, &mut panel, &mut viewport);
+        let (_, _, tolerance) = panel.detail.unwrap();
+        assert_eq!(
+            tolerance,
+            openchuck_app::pathview::LEVEL_TOLERANCES[coarsest]
+        );
+        let coarse = viewport.layer(Layer::Paths).unwrap() as *const Scene;
+        assert_ne!(coarse, before);
+        // A zoom within the level: no job, the same path.
+        viewport.camera.distance = 1.2e6;
+        panel.frame(&app, &mut viewport, 0.0);
+        assert!(panel.lines_job.is_none() && !panel.lines_dirty);
+        assert_eq!(
+            viewport.layer(Layer::Paths).unwrap() as *const Scene,
+            coarse
+        );
+        // Zoomed right in, every point again.
+        viewport.camera.distance = 0.01;
+        panel.frame(&app, &mut viewport, 0.0);
+        assert_eq!(panel.zoom_level, 0);
+        settle(&app, &mut panel, &mut viewport);
+        assert_eq!(panel.detail.unwrap().2, 0.0);
+        // The level is for drawing only: playback is where it was.
+        assert_eq!(panel.pose(), pose);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn req_nfr_12_req_ui_06_removing_or_disabling_an_operation_clears_its_path_from_the_view() {
         // Issue 196: a toolpath whose operation is gone is not drawn, played
@@ -1062,6 +1591,10 @@ mod tests {
     #[test]
     fn req_sim_02_the_tool_follows_the_cursor_and_the_machine_view_turns_the_part() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-tool");
+        // "Turn part with A" is on at first (issue 203); this test starts in
+        // the part's frame.
+        assert!(panel.turns_part_with_a());
+        panel.set_turn_part_with_a(false);
         // The tool is in its layer, in the tool slot: a cutter and a shank.
         let tool = viewport.layer(Layer::Tool).expect("the tool layer is set");
         assert_eq!(tool.meshes.len(), 2);
@@ -1110,6 +1643,12 @@ mod tests {
     #[test]
     fn req_sim_04_playing_moves_the_cursor_with_the_frame_time_and_stops_at_the_end() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-play");
+        // Without the cut part, whose meshes would keep the frame busy.
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: false,
+            toolpath: true,
+        });
         let data = panel.data.clone().unwrap();
         panel
             .playback
@@ -1137,6 +1676,7 @@ mod tests {
     #[test]
     fn req_sim_05_the_stock_and_the_deviation_colours_come_from_jobs() {
         let (app, mut panel, mut viewport, dir) = prepared("panel-stock");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
         let data = panel.data.clone().unwrap();
         // Ask for the stock: the job prepares the checkpoints, then the
         // mesh at the cursor is made for the moves done.
@@ -1154,8 +1694,12 @@ mod tests {
         assert_eq!(stock.meshes.len(), 1);
         assert!(stock.meshes[0].translucent && stock.meshes[0].slot == Slot::Part);
         assert_eq!(panel.stock.shown, Some(panel.playback.cursor().done));
-        // Hiding it empties the layer.
-        panel.stock.show = false;
+        // Unticking "Cut part" empties the layer.
+        viewport.set_simulate_show(SimulateShow {
+            model: true,
+            cut_part: false,
+            toolpath: false,
+        });
         panel.frame(&app, &mut viewport, 0.0);
         assert!(viewport.layer(Layer::Stock).unwrap().meshes.is_empty());
         // Colouring by deviation splits the part into bands in the scene.
@@ -1232,6 +1776,307 @@ mod tests {
         panel.bands_on = false;
         panel.frame(&app, &mut viewport, 0.0);
         assert!(panel.bands_job.is_none() && panel.bands_setup.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Draws frames until nothing the panel runs is busy.
+    fn settle_panel(app: &Application, panel: &mut PlaybackPanel, viewport: &mut Viewport) {
+        let started = Instant::now();
+        while panel.frame(app, viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn points(scene: &Scene) -> usize {
+        scene.lines.iter().map(|l| l.segments.len()).sum()
+    }
+
+    #[test]
+    fn req_sim_01_req_sim_04_the_window_draws_its_part_over_a_faint_trace_or_alone() {
+        // Issue 205 (decision record 0169).
+        let (app, mut panel, mut viewport, dir) = prepared("panel-window");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let whole = points(viewport.layer(Layer::Paths).unwrap());
+        let moves = panel.data.as_ref().unwrap().timeline.move_count();
+        assert_eq!((panel.window_from, panel.window_to), (1, moves));
+        let window = MoveWindow {
+            first: moves / 3,
+            last: moves / 2,
+        };
+        panel.set_window(Some(window));
+        assert_eq!(panel.window(), Some(window));
+        assert_eq!(
+            (panel.window_from, panel.window_to),
+            (window.first + 1, window.last + 1)
+        );
+        assert_eq!(
+            panel.playback.cursor().done,
+            window.first,
+            "the play head is inside"
+        );
+        settle_panel(&app, &mut panel, &mut viewport);
+        let windowed = points(viewport.layer(Layer::Paths).unwrap());
+        assert!(windowed > 0 && windowed < whole, "{windowed} of {whole}");
+        // The rest is a faint trace: one batch, coarser than the path.
+        let trace = viewport.layer(Layer::Trace).unwrap();
+        assert_eq!(trace.lines.len(), 1);
+        assert_eq!(trace.lines[0].colour, TRACE);
+        let (drawn, full) = panel.trace_cost.unwrap();
+        assert!(drawn <= full);
+        // Hidden: only the window's part is drawn.
+        panel.set_hide_outside_window(true);
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(viewport.layer(Layer::Trace).unwrap().lines.is_empty());
+        assert_eq!(points(viewport.layer(Layer::Paths).unwrap()), windowed);
+        // Moving the window makes the path again but never the trace.
+        panel.set_hide_outside_window(false);
+        settle_panel(&app, &mut panel, &mut viewport);
+        let trace_before = viewport.layer(Layer::Trace).unwrap() as *const Scene;
+        panel.set_window(Some(MoveWindow {
+            first: window.first + 1,
+            last: window.last + 1,
+        }));
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert_eq!(
+            viewport.layer(Layer::Trace).unwrap() as *const Scene,
+            trace_before
+        );
+        // Reset: the whole path, no trace.
+        panel.reset_window();
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert_eq!(panel.window(), None);
+        assert_eq!(points(viewport.layer(Layer::Paths).unwrap()), whole);
+        assert!(viewport.layer(Layer::Trace).unwrap().lines.is_empty());
+        // The window never changes what the run holds (GC-07).
+        assert!(panel.run.as_ref().unwrap().simulation.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_sim_04_dragging_the_window_moves_and_resizes_it() {
+        let w = Some(MoveWindow {
+            first: 10,
+            last: 20,
+        });
+        let drag = |d, at| dragged_window(w, d, at, 100);
+        assert_eq!(
+            drag(WindowDrag::First, 5),
+            Some(MoveWindow { first: 5, last: 20 })
+        );
+        assert_eq!(
+            drag(WindowDrag::First, 30),
+            Some(MoveWindow {
+                first: 20,
+                last: 30
+            })
+        );
+        assert_eq!(
+            drag(WindowDrag::Last, 50),
+            Some(MoveWindow {
+                first: 10,
+                last: 50
+            })
+        );
+        assert_eq!(
+            drag(WindowDrag::Last, 2),
+            Some(MoveWindow { first: 2, last: 10 })
+        );
+        // The body keeps its length and stays inside the program.
+        assert_eq!(
+            drag(WindowDrag::Body(3), 13),
+            Some(MoveWindow {
+                first: 10,
+                last: 20
+            })
+        );
+        assert_eq!(
+            drag(WindowDrag::Body(3), 50),
+            Some(MoveWindow {
+                first: 47,
+                last: 57
+            })
+        );
+        assert_eq!(
+            drag(WindowDrag::Body(3), 500),
+            Some(MoveWindow {
+                first: 89,
+                last: 99
+            })
+        );
+        assert_eq!(
+            drag(WindowDrag::Body(3), 0),
+            Some(MoveWindow { first: 0, last: 10 })
+        );
+        // No window yet: the ends start at the program's.
+        assert_eq!(
+            dragged_window(None, WindowDrag::Last, 40, 100),
+            Some(MoveWindow { first: 0, last: 40 })
+        );
+        assert_eq!(dragged_window(w, WindowDrag::Last, 4, 0), None);
+    }
+
+    #[test]
+    fn req_sim_03_the_cut_part_is_prepared_without_being_asked_for() {
+        // Issue 214 (decision record 0168): a simulated run shows the cut
+        // part by default ("Cut part" is ticked), with no button to press.
+        let (app, mut panel, mut viewport, dir) = prepared("panel-cut-part");
+        // Not on another step, where it is not drawn.
+        viewport.set_step(Some(crate::viewport::ViewStep::Operations));
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(panel.stock.playback.is_none() && panel.stock.prepare.is_none());
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        settle_panel(&app, &mut panel, &mut viewport);
+        assert!(panel.stock.playback.is_some());
+        let stock = viewport.layer(Layer::Stock).expect("the cut part is drawn");
+        assert_eq!(stock.meshes.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_sim_02_the_a_readout_tooltip_gives_the_continuous_angle() {
+        // Issue 207: the readout wraps; the tooltip keeps the G-code's value.
+        assert_eq!(
+            continuous_a_tip(725.5, 3),
+            "Continuous A in the G-code: 725.500°"
+        );
+        assert_eq!(
+            continuous_a_tip(-0.0, 2),
+            "Continuous A in the G-code: 0.00°"
+        );
+    }
+
+    #[test]
+    fn req_nfr_12_a_run_changed_since_is_not_shown_again() {
+        // OI-697: a turn-off drops the run; after another edit and the turn-on
+        // by hand (not an undo), the old run is stale and stays off screen.
+        let (mut app, mut panel, mut viewport, dir) = prepared("panel-stale-restore");
+        let run = Arc::clone(panel.run.as_ref().unwrap());
+        let op = app.project().operations()[0].id;
+        app.execute(openchuck_app::Command::SetOperationEnabled {
+            operation: op,
+            enabled: false,
+        })
+        .unwrap();
+        panel.forget_removed(&app);
+        assert!(!panel.has_run());
+        let mut edited = app.project().operation(op).unwrap().clone();
+        edited.parameters.insert(
+            "stepover".into(),
+            openchuck_app::project::ParameterValue::Number(0.6),
+        );
+        app.execute(openchuck_app::Command::Replace(
+            openchuck_app::project::Item::Operation(edited),
+        ))
+        .unwrap();
+        app.execute(openchuck_app::Command::SetOperationEnabled {
+            operation: op,
+            enabled: true,
+        })
+        .unwrap();
+        panel.restore(&app, &run);
+        assert!(!panel.has_run(), "the stale run is not shown again");
+        // Undoing back to what the run was made from shows it again (OI-692).
+        app.undo().unwrap();
+        app.undo().unwrap();
+        app.undo().unwrap();
+        panel.restore(&app, &run);
+        assert!(panel.has_run());
+        panel.frame(&app, &mut viewport, 0.0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Draws the dock's controls once in `ctx` with `events`.
+    fn show_frame(
+        ctx: &egui::Context,
+        panel: &mut PlaybackPanel,
+        app: &Application,
+        events: Vec<egui::Event>,
+    ) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 400.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            panel.show(ui, app);
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn req_sim_04_the_window_strip_is_dragged_and_the_numbers_follow() {
+        // Issue 205: dragging on the strip starts a window, its ends resize
+        // it and its band moves it; "Whole program" lifts it.
+        let (app, mut panel, mut viewport, dir) = prepared("panel-strip");
+        settle_panel(&app, &mut panel, &mut viewport);
+        let ctx = egui::Context::default();
+        show_frame(&ctx, &mut panel, &app, Vec::new());
+        let moves = panel.data.as_ref().unwrap().timeline.move_count();
+        let (rect, left, width) = panel.strip;
+        let x = |f: f32| left + width * f;
+        let y = rect.center().y;
+        let drag = |panel: &mut PlaybackPanel, from: f32, to: f32| {
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let (a, b) = (egui::pos2(from, y), egui::pos2(to, y));
+            show_frame(&ctx, panel, &app, vec![egui::Event::PointerMoved(a)]);
+            show_frame(&ctx, panel, &app, vec![button(a, true)]);
+            for step in 1..=6 {
+                let p = a + (b - a) * (step as f32 / 6.0);
+                show_frame(&ctx, panel, &app, vec![egui::Event::PointerMoved(p)]);
+            }
+            show_frame(&ctx, panel, &app, vec![button(b, false)]);
+            show_frame(&ctx, panel, &app, Vec::new());
+        };
+        let at = |f: f32| (f * moves as f32).round() as usize;
+        // A new window, from 40% to 60% of the moves.
+        drag(&mut panel, x(0.4), x(0.6));
+        let w = panel.window().expect("a window is set");
+        // The start is the boundary pressed; the end the move before the
+        // boundary released, so the band ends where the pointer is.
+        assert_eq!((w.first, w.last), (at(0.4), at(0.6) - 1), "{w:?}");
+        assert_eq!(
+            (panel.window_from, panel.window_to),
+            (w.first + 1, w.last + 1)
+        );
+        // Its start dragged left resizes it.
+        let start = x(w.first as f32 / moves as f32);
+        drag(&mut panel, start, x(0.2));
+        let resized = panel.window().unwrap();
+        assert_eq!(
+            (resized.first, resized.last),
+            (at(0.2), w.last),
+            "{resized:?}"
+        );
+        // Its end dragged right resizes it, and the band ends at the pointer.
+        let end = x((resized.last + 1) as f32 / moves as f32);
+        drag(&mut panel, end, x(0.7));
+        let longer = panel.window().unwrap();
+        assert_eq!(
+            (longer.first, longer.last),
+            (at(0.2), at(0.7) - 1),
+            "{longer:?}"
+        );
+        let resized = longer;
+        // The band dragged right keeps its length.
+        let middle = x((resized.first + resized.last) as f32 / 2.0 / moves as f32);
+        drag(&mut panel, middle, middle + width * 0.1);
+        let moved = panel.window().unwrap();
+        assert_eq!(moved.last - moved.first, resized.last - resized.first);
+        assert!(moved.first > resized.first);
+        // The play head is inside it.
+        assert!(
+            moved.moves().contains(&panel.playback.cursor().done)
+                || panel.playback.cursor().done == moved.last + 1
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

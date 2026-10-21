@@ -321,6 +321,55 @@ pub(crate) fn line_vertices(segments: &[[f32; 3]]) -> Vec<[f32; 4]> {
     out
 }
 
+/// What decides how a line is drawn, besides its points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LineLook {
+    pub slot: Slot,
+    pub on_top: bool,
+    pub colour: Colour,
+    pub width: f32,
+    pub style: LineStyle,
+}
+
+impl LineLook {
+    fn of(line: &LineItem) -> Self {
+        Self {
+            slot: line.slot,
+            on_top: line.on_top,
+            colour: line.colour,
+            width: line.width,
+            style: line.style,
+        }
+    }
+}
+
+/// The lines of one look, drawn in one call: their points with their
+/// distances along ([`line_vertices`]), one line after another.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LineBatch {
+    pub look: LineLook,
+    pub vertices: Vec<[f32; 4]>,
+}
+
+/// The lines put together by look, in the order each look first appears
+/// (issue #200: a toolpath is one line per run of moves, tens of thousands
+/// of them in a few looks, and one draw each made a frame cost more than
+/// half a second). Each line's dash count starts from 0 as it would alone,
+/// so the picture is the same; only the order between lines of different
+/// looks can change, which shows only where they cross at the same depth.
+pub(crate) fn batch_lines(lines: &[LineItem]) -> Vec<LineBatch> {
+    let mut batches: Vec<LineBatch> = Vec::new();
+    for line in lines.iter().filter(|l| l.segments.len() >= 2) {
+        let look = LineLook::of(line);
+        let vertices = line_vertices(&line.segments);
+        match batches.iter_mut().find(|b| b.look == look) {
+            Some(batch) => batch.vertices.extend(vertices),
+            None => batches.push(LineBatch { look, vertices }),
+        }
+    }
+    batches
+}
+
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
@@ -536,6 +585,78 @@ mod tests {
         let line = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]];
         assert!(outline_edges(&line, &[0, 1, 2]).is_empty());
         assert!(outline_edges(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn req_nfr_03_lines_of_one_look_share_one_batch() {
+        // Issue #200: a toolpath is one line per run of moves, and a long
+        // path has tens of thousands of runs in four looks. Lines that look
+        // alike are drawn as one batch, in the order each look first
+        // appears, and each keeps its own dash count from 0.
+        let line = |x: f32, colour: Colour, width: f32, style: LineStyle| LineItem {
+            segments: vec![
+                [x, 0.0, 0.0],
+                [x + 3.0, 0.0, 0.0],
+                [x + 3.0, 0.0, 0.0],
+                [x + 3.0, 4.0, 0.0],
+            ],
+            colour,
+            width,
+            style,
+            ..LineItem::default()
+        };
+        let (blue, red) = ([0.0, 0.0, 1.0, 1.0], [1.0, 0.0, 0.0, 1.0]);
+        let lines = [
+            line(0.0, blue, 2.0, LineStyle::Dashed),
+            line(10.0, red, 2.0, LineStyle::Dashed),
+            line(20.0, blue, 2.0, LineStyle::Dashed),
+            // Too short to draw: left out.
+            LineItem {
+                segments: vec![[0.0; 3]],
+                ..line(30.0, blue, 2.0, LineStyle::Dashed)
+            },
+        ];
+        let batches = batch_lines(&lines);
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].look.colour, blue);
+        assert_eq!(batches[1].look.colour, red);
+        let along: Vec<f32> = batches[0].vertices.iter().map(|v| v[3]).collect();
+        assert_eq!(along, [0.0, 3.0, 3.0, 7.0, 0.0, 3.0, 3.0, 7.0]);
+        assert_eq!(batches[0].vertices[4][0], 20.0);
+        // Anything that changes how a line is drawn keeps it apart.
+        let base = line(0.0, blue, 2.0, LineStyle::Solid);
+        let others = [
+            LineItem {
+                slot: Slot::Part,
+                ..base.clone()
+            },
+            LineItem {
+                on_top: true,
+                ..base.clone()
+            },
+            LineItem {
+                width: 1.0,
+                ..base.clone()
+            },
+            LineItem {
+                style: LineStyle::Dotted,
+                ..base.clone()
+            },
+            LineItem {
+                colour: [0.0, 0.0, 1.0, 0.5],
+                ..base.clone()
+            },
+        ];
+        let mut all = vec![base.clone()];
+        all.extend(others);
+        assert_eq!(batch_lines(&all).len(), 6);
+        // An odd last point has no partner and is left out, as before.
+        let odd = LineItem {
+            segments: base.segments[..3].to_vec(),
+            ..base.clone()
+        };
+        assert_eq!(batch_lines(&[odd])[0].vertices.len(), 2);
+        assert!(batch_lines(&[]).is_empty());
     }
 
     #[test]

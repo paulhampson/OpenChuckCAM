@@ -4,7 +4,8 @@
 //!
 //! The left column chooses the post, the file grouping and the output folder,
 //! settles the tool numbers and lists the checks before writing. The right
-//! column lists the files to write with a preview. The amber safety notice is
+//! column lists the files to write with a preview; the setup sheet is
+//! written with the G-code, from the same run (decision 0189). The amber safety notice is
 //! always shown, and the tick box under it is asked once per project on each
 //! computer (the user's settings file, never the project). "Write G-code" is
 //! disabled until the checks pass and the box is ticked, and says which is
@@ -20,9 +21,9 @@ use openchuck_app::project::id::ToolId;
 use openchuck_app::tools::{ToolNumbering, tool_number_plan, tool_numbering_command};
 use openchuck_app::{
     AcknowledgementLookup, Acknowledgements, Application, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL,
-    EXPORT_NOTICE, EXPORT_RULE, ExportChecks, JobHandle, OutputGrouping, PlannedFile,
-    PostSelection, PostSummary, Regeneration, builtin_post_summaries, post_summary,
-    write_gcode_files,
+    EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED, EXPORT_STOCK_SKIPPED_LABEL, ExportChecks,
+    JobHandle, OutputGrouping, PlannedFile, PostSelection, PostSummary, Regeneration,
+    builtin_post_summaries, post_summary,
 };
 
 use crate::floating::{WindowEvent, floating_unscrolled};
@@ -47,11 +48,22 @@ enum NumberChoice {
 }
 
 /// What a G-code run was made from; a new key means the files are made again.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 struct Key {
     post: PostSelection,
     grouping: OutputGrouping,
     project: Project,
+}
+
+/// Two keys are the same when they give the same files: what only the view
+/// uses (the hidden toolpaths) and the stock simulation choice do not count
+/// (decision records 0168 and 0169; GC-07).
+impl PartialEq for Key {
+    fn eq(&self, other: &Self) -> bool {
+        self.post == other.post
+            && self.grouping == other.grouping
+            && self.project.same_output(&other.project)
+    }
 }
 
 /// The files made for a key.
@@ -68,7 +80,6 @@ enum Act {
     ChooseFolder,
     ApplyNumbers(ToolNumbering),
     Write,
-    WriteSheet,
 }
 
 /// What the dialog hands back to the shell.
@@ -103,6 +114,11 @@ pub struct ExportPanel {
     preview: usize,
     ack: Option<Acknowledgements>,
     ack_lookup: AcknowledgementLookup,
+    /// Whether this computer has the acknowledgement that the project skips
+    /// the stock simulation, and the box for it (OI-602; decision record
+    /// 0168).
+    skip_lookup: AcknowledgementLookup,
+    skip_ticked: bool,
     ticked: bool,
 }
 
@@ -133,6 +149,11 @@ impl ExportPanel {
             summary: None,
             preview: 0,
             ack,
+            skip_lookup: AcknowledgementLookup {
+                acknowledged: false,
+                problem: None,
+            },
+            skip_ticked: false,
             ack_lookup: AcknowledgementLookup {
                 acknowledged: false,
                 problem: None,
@@ -162,6 +183,7 @@ impl ExportPanel {
         self.files_error = None;
         self.summary = None;
         self.ticked = false;
+        self.skip_ticked = false;
         self.refresh_acknowledgement(app);
         self.read_numbers(app);
     }
@@ -177,6 +199,29 @@ impl ExportPanel {
             },
             |a| a.lookup(app.location()),
         );
+        self.skip_lookup = self.ack.as_ref().map_or(
+            AcknowledgementLookup {
+                acknowledged: false,
+                problem: None,
+            },
+            |a| a.lookup_stock_skipped(app.location()),
+        );
+    }
+
+    /// Whether the project skips the stock simulation, or the files were made
+    /// while it did: the skip does not change the files, so they stay current
+    /// when it is unticked, and still hold a cut that was not simulated.
+    fn skips(&self, app: &Application) -> bool {
+        app.project().skip_stock_simulation()
+            || self
+                .files_current(app)
+                .is_some_and(|f| f.key.project.skip_stock_simulation())
+    }
+
+    /// Whether writing waits for the acknowledgement that the project skips
+    /// the stock simulation (OI-602).
+    fn skip_unacknowledged(&self, app: &Application) -> bool {
+        self.skips(app) && !(self.skip_lookup.acknowledged || self.skip_ticked)
     }
 
     fn read_numbers(&mut self, app: &Application) {
@@ -215,7 +260,7 @@ impl ExportPanel {
 
     fn files_current(&self, app: &Application) -> Option<&Files> {
         let files = self.files.as_ref()?;
-        (files.key.project == *app.project()
+        (files.key.project.same_output(app.project())
             && Some(&files.key.post) == self.selection().as_ref()
             && files.key.grouping == self.grouping)
             .then_some(files)
@@ -287,6 +332,12 @@ impl ExportPanel {
         if !acknowledged {
             return Some(
                 "Tick the box to say you will verify the G-code before running it.".to_owned(),
+            );
+        }
+        if self.skip_unacknowledged(app) {
+            return Some(
+                "Tick the box to say you know the cut has not been simulated for this project."
+                    .to_owned(),
             );
         }
         None
@@ -417,37 +468,23 @@ impl ExportPanel {
                         outcome = self.write(app, files);
                     }
                 }
-                Act::WriteSheet => {
-                    let folder = PathBuf::from(self.folder.trim());
-                    let toolpath = run.map(|r| &r.toolpath);
-                    match app.write_setup_sheet(&folder, toolpath) {
-                        Ok(written) => {
-                            outcome.status = Some(format!(
-                                "Wrote the setup sheet to {}.",
-                                written.first().and_then(|p| p.parent()).map_or_else(
-                                    || folder.display().to_string(),
-                                    |p| p.display().to_string()
-                                )
-                            ));
-                        }
-                        Err(e) => outcome.error = Some(e.to_string()),
-                    }
-                }
             }
         }
         outcome
     }
 
-    /// Writes the files into the output folder, and keeps the
-    /// acknowledgement on this computer after the first export of a project.
+    /// Writes the G-code and the setup sheet into the output folder, and
+    /// keeps the acknowledgement on this computer after the first export of a
+    /// project.
     fn write(&mut self, app: &Application, files: &Regeneration) -> Outcome {
         let mut outcome = Outcome::default();
         let folder = PathBuf::from(self.folder.trim());
-        match write_gcode_files(&folder, &files.gcode) {
-            Ok(written) => {
-                // The Post and export step is complete until something
-                // changes (UI-10).
-                app.record_export(files);
+        // The sheet is written from the same run as the G-code (decision
+        // 0189), and the export recorded: the Post and export step is
+        // complete until something changes (UI-10).
+        match app.write_output(&folder, files) {
+            Ok(_) => {
+                let count = files.gcode.len();
                 if !self.ack_lookup.acknowledged
                     && let Some(ack) = &self.ack
                 {
@@ -458,10 +495,21 @@ impl ExportPanel {
                     }
                     self.refresh_acknowledgement(app);
                 }
+                // The skip's acknowledgement is kept the same way (OI-602).
+                if self.skips(app)
+                    && !self.skip_lookup.acknowledged
+                    && let Some(ack) = &self.ack
+                {
+                    if let Err(e) = ack.acknowledge_stock_skipped(app.location()) {
+                        outcome.error = Some(format!(
+                            "The files were written, but the acknowledgement could not be kept on this computer: {e}"
+                        ));
+                    }
+                    self.refresh_acknowledgement(app);
+                }
                 outcome.status = Some(format!(
-                    "Wrote {} G-code file{} to {}.",
-                    written.len(),
-                    if written.len() == 1 { "" } else { "s" },
+                    "Wrote {count} G-code file{} and the setup sheet (HTML and PDF) to {}.",
+                    if count == 1 { "" } else { "s" },
                     folder.display()
                 ));
             }
@@ -481,18 +529,6 @@ impl ExportPanel {
         egui::Panel::bottom("export footer").show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                let sheet_ready = !self.folder.trim().is_empty() && self.job.is_none();
-                if ui
-                    .add_enabled(
-                        sheet_ready,
-                        egui::Button::new("Export setup sheet (HTML / PDF)"),
-                    )
-                    .on_disabled_hover_text("Choose an output folder first.")
-                    .on_hover_text("Writes the setup sheet as an HTML page and a PDF.")
-                    .clicked()
-                {
-                    acts.push(Act::WriteSheet);
-                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // The primary styling shows the action that can be taken now; a
                     // blocked one is drawn as an ordinary disabled button (OI-349).
@@ -530,10 +566,11 @@ impl ExportPanel {
                 let [left, right] = columns else { return };
                 self.left(left, app, checks, acts);
                 let current = self.files_current(app).is_some();
-                self.right(right, current);
+                self.right(right, app, current);
             });
             ui.add_space(8.0);
             self.notice(ui);
+            self.skip_notice(ui, app);
         });
     }
 
@@ -759,7 +796,7 @@ impl ExportPanel {
     /// The files column. `current` says the files were made from the project and
     /// choices as they stand; old files are not listed or previewed, since
     /// they are not what "Write G-code" would write.
-    fn right(&mut self, ui: &mut egui::Ui, current: bool) {
+    fn right(&mut self, ui: &mut egui::Ui, app: &Application, current: bool) {
         ui.heading("Files to write");
         if self.job.is_some() {
             ui.horizontal(|ui| {
@@ -805,6 +842,10 @@ impl ExportPanel {
                     ui.end_row();
                 }
             });
+        let [html, pdf] = app.setup_sheet_file_names();
+        ui.label(format!(
+            "The setup sheet is written with the G-code, from the same run: {html} and {pdf}."
+        ));
         ui.weak("Programmed time is the sum of the moves at their programmed feeds. It is not an estimate of the machine's time.");
         ui.add_space(4.0);
         let shown_index = chosen.unwrap_or(self.preview);
@@ -822,6 +863,26 @@ impl ExportPanel {
         }
         if let Some(i) = chosen {
             self.preview = i;
+        }
+    }
+
+    /// While the project skips the stock simulation, the warning and its tick
+    /// box in the safety band, asked once per project on each computer like
+    /// the export's (OI-602, the owner's option C; decision record 0168).
+    fn skip_notice(&mut self, ui: &mut egui::Ui, app: &Application) {
+        if !self.skips(app) {
+            return;
+        }
+        ui.add_space(6.0);
+        ui.label(RichText::new(EXPORT_STOCK_SKIPPED).color(DARK.warning_box.text));
+        if self.skip_lookup.acknowledged {
+            ui.add_enabled(
+                false,
+                egui::Checkbox::new(&mut true.clone(), EXPORT_STOCK_SKIPPED_LABEL),
+            );
+            ui.label("Acknowledged for this project on this computer.");
+        } else {
+            ui.checkbox(&mut self.skip_ticked, EXPORT_STOCK_SKIPPED_LABEL);
         }
     }
 
@@ -1085,9 +1146,13 @@ mod tests {
             outcome
                 .status
                 .unwrap()
-                .starts_with("Wrote 1 G-code file to")
+                .starts_with("Wrote 1 G-code file and the setup sheet (HTML and PDF) to")
         );
         assert!(out.join(&posted.gcode[0].0).exists());
+        // The setup sheet is written with the G-code (decision 0189).
+        for name in app.setup_sheet_file_names() {
+            assert!(out.join(&name).exists(), "{name}");
+        }
         assert!(
             panel.ack_lookup.acknowledged,
             "acknowledged after the first export"
@@ -1129,6 +1194,95 @@ mod tests {
             panel.files_current(&app).is_none(),
             "old files are not listed or previewed once the project changed"
         );
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    #[test]
+    fn req_nfr_12_req_gc_16_a_skipped_stock_simulation_is_acknowledged_before_writing() {
+        // OI-602, the owner's option C (decision record 0168): while the
+        // project skips the stock simulation, writing waits for its own box,
+        // asked once per project on each computer like the export's.
+        let (dir, mut app, _, _) = cube_project("export-skip");
+        app.set_post(None);
+        app.execute(openchuck_app::Command::SetSkipStockSimulation(true))
+            .unwrap();
+        let (settings_dir, ack) = settings("export-skip-settings");
+        let mut panel = ExportPanel::new(Some(ack));
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        panel.folder = dir.join("out").display().to_string();
+        let checks = app.export_checks(Some(&run), panel.files.as_ref().map(|f| &*f.run), None);
+        assert!(checks.can_write(), "a warning, not a blocking check");
+        assert!(
+            checks
+                .checks
+                .iter()
+                .any(|c| c.text == openchuck_app::EXPORT_STOCK_SKIPPED)
+        );
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("not been simulated"), "{reason}");
+        panel.skip_ticked = true;
+        assert_eq!(panel.write_blocker(&app, &checks, true), None);
+        panel.ticked = true;
+        let posted = panel
+            .files_current(&app)
+            .map(|f| Arc::clone(&f.run))
+            .unwrap();
+        assert_eq!(panel.write(&app, &posted).error, None);
+        // Kept on this computer: not asked again.
+        let mut again = ExportPanel::new(Some(Acknowledgements::in_folder(&settings_dir)));
+        again.open(&app);
+        assert!(again.skip_lookup.acknowledged);
+        assert!(again.ack_lookup.acknowledged);
+        assert!(!again.skip_unacknowledged(&app));
+        // A project that does not skip asks nothing more.
+        app.execute(openchuck_app::Command::SetSkipStockSimulation(false))
+            .unwrap();
+        let mut fresh = ExportPanel::new(Some(Acknowledgements::in_folder(
+            &settings_dir.join("other"),
+        )));
+        fresh.open(&app);
+        assert!(!fresh.skip_unacknowledged(&app));
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    #[test]
+    fn req_nfr_12_files_made_while_skipping_still_ask_after_the_skip_is_unticked() {
+        // OI-602 (decision record 0168): the skip does not change the files,
+        // so files made while it was ticked stay current when it is unticked;
+        // they still hold a cut that was not simulated, so writing them still
+        // waits for the box.
+        let (dir, mut app, _, _) = cube_project("export-skip-unticked");
+        app.set_post(None);
+        app.execute(openchuck_app::Command::SetSkipStockSimulation(true))
+            .unwrap();
+        let (settings_dir, ack) = settings("export-skip-unticked-settings");
+        let mut panel = ExportPanel::new(Some(ack));
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        panel.folder = dir.join("out").display().to_string();
+        app.execute(openchuck_app::Command::SetSkipStockSimulation(false))
+            .unwrap();
+        assert!(
+            panel.files_current(&app).is_some(),
+            "the files stay current"
+        );
+        assert!(panel.skip_unacknowledged(&app));
+        let checks = app.export_checks(Some(&run), panel.files.as_ref().map(|f| &*f.run), None);
+        assert!(
+            checks
+                .checks
+                .iter()
+                .any(|c| c.text == openchuck_app::EXPORT_STOCK_SKIPPED)
+        );
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("not been simulated"), "{reason}");
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
     }

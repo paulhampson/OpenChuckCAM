@@ -110,12 +110,19 @@ pub struct TextRow<'a> {
     pub enabled: bool,
     /// Ask for keyboard focus this frame (a new tab's Start X, 11.7).
     pub focus: bool,
+    /// The operation's path was made with a warning that points at this
+    /// setting, in a plain sentence: an amber border and, under the field,
+    /// the warning shape and the sentence, so the mark does not rest on
+    /// colour alone (decision record 0175; the marks of decision record
+    /// 0173). Shown whatever the field holds, unlike a refusal.
+    pub warned: Option<&'a str>,
     /// A required value that is missing, in a few plain words ("Enter feed"):
     /// an amber border and, under the field, the same warning shape the tree
     /// uses and these words, so the mark does not rest on colour alone
     /// (UI-11; issue 224). Calmer than `problem`, which is for a refusal.
     pub needs: Option<&'a str>,
-    /// Scroll this row into view this frame (the "Show first" jump).
+    /// Scroll this row into view this frame (the "Show setting" and "Show
+    /// first" jumps).
     pub scroll_to: bool,
 }
 
@@ -128,35 +135,72 @@ pub fn tip(response: egui::Response, text: &str) -> egui::Response {
     response.on_hover_text(text)
 }
 
-/// The label column: the label with its tooltip, and ↺ at its right end.
+/// A small outlined chip ("Not applied"): measured first and drawn in one
+/// allocated rectangle, so its place does not depend on the layout it is in
+/// (a frame in a right-to-left row lay outside the pane and widened it).
+pub fn chip(ui: &mut egui::Ui, text: &str, colour: egui::Color32) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(
+        text.to_owned(),
+        egui::TextStyle::Small.resolve(ui.style()),
+        colour,
+    );
+    let size = galley.size() + egui::vec2(10.0, 2.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter().rect_stroke(
+        rect,
+        3.0,
+        Stroke::new(1.0, DARK.line),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, colour);
+    response
+}
+
+/// The label column: the label with its tooltip at the left, and ↺ in a slot
+/// at its right end. The slot is reserved whether or not ↺ is shown, so
+/// showing or hiding it never moves the label or the value (issue 243).
 /// Returns true when ↺ was clicked.
 fn label_cell(ui: &mut egui::Ui, label: &str, description: &str, reset: bool) -> bool {
     let height = ui.spacing().interact_size.y;
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(width::LABEL_COLUMN, height),
-        egui::Sense::hover(),
+    let size = egui::vec2(width::LABEL_COLUMN, height);
+    // Allocated and drawn in one step, so the cell is where the cursor is and
+    // the value follows it directly.
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let slot = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - height, rect.top()),
+        egui::vec2(height, height),
     );
-    let mut clicked = false;
+    let text = egui::Rect::from_min_max(rect.min, egui::pos2(slot.left(), rect.bottom()));
     let mut child = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(rect)
+            .max_rect(text)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    if reset {
-        child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = ui
-                .add(egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent)).small())
-                .on_hover_text("Reset: the default or the tool's cutting data applies");
-            button.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset {label}"))
-            });
-            clicked = button.clicked();
-            label_text(ui, label, description);
-        });
-    } else {
-        label_text(ui, label, description);
+    label_text(&mut child, label, description);
+    // A child of its own, so a button wider than the slot cannot push the
+    // cursor on. Made whether or not ↺ is shown: each child takes an
+    // automatic ID from the row, so a child made only with ↺ would change the
+    // value's ID and take its focus as ↺ comes and goes.
+    let mut slot_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(slot)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    if !reset {
+        return false;
     }
-    clicked
+    let button = slot_ui
+        .add(
+            egui::Button::new(RichText::new("\u{21ba}").color(DARK.accent))
+                .small()
+                .min_size(slot.size()),
+        )
+        .on_hover_text("Reset: the default or the tool's cutting data applies");
+    button.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset {label}"))
+    });
+    button.clicked()
 }
 
 fn label_text(ui: &mut egui::Ui, label: &str, description: &str) {
@@ -184,6 +228,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     let error = state.error(row.key).map(str::to_owned);
     let marked = error.is_some() || row.problem.is_some();
     let needed = row.needs.is_some() && !marked && row.applied.trim().is_empty();
+    let warned = row.warned.is_some() && !marked;
     if row.scroll_to {
         ui.scroll_to_cursor(Some(egui::Align::Center));
     }
@@ -194,13 +239,26 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         let mut typed = state
             .typed(row.key)
             .map_or_else(|| row.applied.clone(), str::to_owned);
-        let mut prepared = egui::Frame::new()
-            .fill(DARK.field)
-            .corner_radius(RADIUS)
-            .inner_margin(egui::Margin::symmetric(6, 2))
-            .begin(ui);
+        // The box takes the rest of the row as one fixed rectangle, so what is
+        // typed in it cannot change its size or the size of the pane around
+        // it (a row that grew with its content made the inspector widen).
+        let margin = egui::vec2(6.0, 2.0);
+        let box_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0 * margin.y;
+        let (frame_rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width().max(60.0), box_height),
+            egui::Sense::hover(),
+        );
+        let background = ui.painter().add(egui::Shape::Noop);
         let response = {
-            let ui = &mut prepared.content_ui;
+            let mut inner = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(frame_rect.shrink2(margin))
+                    .layout(
+                        egui::Layout::left_to_right(egui::Align::Center)
+                            .with_main_align(egui::Align::Min),
+                    ),
+            );
+            let ui = &mut inner;
             let unit = (!row.unit.is_empty()).then(|| {
                 ui.painter().layout_no_wrap(
                     row.unit.to_owned(),
@@ -214,7 +272,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
             let mut edit = egui::TextEdit::singleline(&mut typed)
                 .frame(egui::Frame::NONE)
                 .font(egui::TextStyle::Monospace)
-                .desired_width((ui.available_width() - unit_width).max(40.0))
+                .desired_width((ui.available_width() - unit_width).max(0.0))
                 .interactive(row.enabled);
             if let Some(hint) = &row.hint {
                 edit = edit.hint_text(RichText::new(hint).color(DARK.muted));
@@ -230,18 +288,28 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
             DARK.error
         } else if response.has_focus() {
             DARK.accent
-        } else if needed {
+        } else if needed || warned {
             DARK.warning
         } else {
             DARK.line
         };
-        let width = if response.has_focus() || needed {
-            2.0
-        } else {
-            1.0
-        };
-        prepared.frame.stroke = Stroke::new(width, border);
-        prepared.end(ui);
+        ui.painter().set(
+            background,
+            egui::epaint::RectShape::new(
+                frame_rect,
+                RADIUS,
+                DARK.field,
+                Stroke::new(
+                    if response.has_focus() || needed || warned {
+                        2.0
+                    } else {
+                        1.0
+                    },
+                    border,
+                ),
+                egui::StrokeKind::Inside,
+            ),
+        );
         let response = match row.range {
             Some(range) => response.on_hover_text(format!("Allowed: {range}.")),
             None => response,
@@ -269,17 +337,21 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
     if let Some(reason) = error.as_deref().or(row.problem) {
         reason_line(ui, reason, DARK.error);
     } else if let (true, Some(text)) = (needed, row.needs) {
-        needs_line(ui, text);
+        warning_line(ui, text);
+    } else if let Some(text) = row.warned {
+        warning_line(ui, text);
     }
     outcome
 }
 
-/// What is missing, under a field or a section: the warning shape and a few
-/// plain words, indented past the label column (issue 224; UI-11).
-pub fn needs_line(ui: &mut egui::Ui, text: &str) {
-    ui.horizontal(|ui| {
+/// A warning under a field or a section: the warning shape the tree uses and
+/// a plain sentence, indented past the label column. It says what is missing
+/// (issue 224; UI-11) or why a setting is marked by its path's warning
+/// (decision record 0175).
+pub fn warning_line(ui: &mut egui::Ui, text: &str) {
+    ui.horizontal_wrapped(|ui| {
         ui.add_space(width::LABEL_COLUMN + ui.spacing().item_spacing.x);
-        crate::shell::marks::mark(ui, openchuck_app::overview::ItemState::Warning, text);
+        crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, text);
         ui.label(RichText::new(text).color(DARK.warning));
     });
 }
@@ -398,6 +470,27 @@ pub fn segmented(
     chosen
 }
 
+/// The width the segmented control of `options` needs, so a row can fall
+/// back to a drop-down list when the pane is too narrow for it (a rigid
+/// control that does not fit holds the pane open).
+fn segmented_width(ui: &egui::Ui, options: &[&str]) -> f32 {
+    options
+        .iter()
+        .map(|option| {
+            ui.painter()
+                .layout_no_wrap(
+                    (*option).to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    DARK.text,
+                )
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x
+                + 2.0
+        })
+        .sum()
+}
+
 /// A row of a choice: a segmented control for two to four options, else a
 /// drop-down list. Returns the index chosen this frame.
 pub fn choice_row(
@@ -411,7 +504,8 @@ pub fn choice_row(
 ) -> Option<usize> {
     ui.horizontal(|ui| {
         label_cell(ui, label, description, false);
-        if (2..=4).contains(&options.len()) {
+        if (2..=4).contains(&options.len()) && segmented_width(ui, options) <= ui.available_width()
+        {
             segmented(ui, options, current, enabled)
         } else {
             let mut chosen = None;
@@ -656,5 +750,88 @@ mod tests {
         // More places where the fixed ones would show another value.
         assert_eq!(number(0.0005, places("mm")), "0.0005");
         assert_eq!(number(0.1, None), "0.1");
+    }
+
+    /// The label's position and the field's rectangle in one frame of a row.
+    fn placed(
+        ctx: &egui::Context,
+        state: &mut FieldState,
+        row: &TextRow<'_>,
+        width: f32,
+    ) -> (egui::Pos2, egui::Rect) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width, 300.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            text_row(ui, state, row);
+        });
+        output.textures_delta.clear();
+        let mut label = None;
+        let mut field = None;
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::Shape::Text(t) if t.galley.text() == row.label => label = Some(t.pos),
+                egui::Shape::Rect(r) if r.rect.width() > 60.0 => field = Some(r.rect),
+                _ => {}
+            }
+        }
+        (label.unwrap(), field.unwrap())
+    }
+
+    #[test]
+    fn req_ui_07_the_reset_button_never_moves_the_label_or_the_field() {
+        for scale in [1.0_f32, 1.2] {
+            for width in [260.0_f32, 320.0, 420.0] {
+                let ctx = egui::Context::default();
+                ctx.set_zoom_factor(scale);
+                let mut state = FieldState::default();
+                let default = stepover(false);
+                let entered = TextRow {
+                    reset: true,
+                    ..stepover(false)
+                };
+                // Settle the first frame, then compare the two states.
+                placed(&ctx, &mut state, &default, width);
+                let before = placed(&ctx, &mut state, &default, width);
+                let during = placed(&ctx, &mut state, &entered, width);
+                let after = placed(&ctx, &mut state, &default, width);
+                assert_eq!(before, during, "value set, scale {scale}, width {width}");
+                assert_eq!(before, after, "reverted, scale {scale}, width {width}");
+            }
+        }
+    }
+
+    #[test]
+    fn req_ui_07_a_focused_field_keeps_focus_and_text_when_the_reset_button_comes_and_goes() {
+        let ctx = egui::Context::default();
+        let mut state = FieldState::default();
+        let entered = TextRow {
+            reset: true,
+            ..stepover(false)
+        };
+        frame(&ctx, &mut state, &stepover(true), Vec::new());
+        let focused = ctx.memory(egui::Memory::focused);
+        assert!(focused.is_some());
+        frame(&ctx, &mut state, &entered, vec![key(Key::End)]);
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button shown");
+        frame(
+            &ctx,
+            &mut state,
+            &entered,
+            vec![egui::Event::Text("7".into())],
+        );
+        frame(&ctx, &mut state, &stepover(false), Vec::new());
+        assert_eq!(ctx.memory(egui::Memory::focused), focused, "button hidden");
+        frame(
+            &ctx,
+            &mut state,
+            &stepover(false),
+            vec![egui::Event::Text("1".into())],
+        );
+        assert_eq!(state.typed("stepover"), Some("0.50071"));
     }
 }

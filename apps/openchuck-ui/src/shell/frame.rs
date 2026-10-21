@@ -122,14 +122,11 @@ pub(super) fn status_chip(ui: &mut egui::Ui, status: Option<&ItemStatus>) {
     }
 }
 
-/// A small bordered chip.
+/// A small bordered chip, measured and drawn in one rectangle so its place
+/// does not depend on the layout it is in (see `field_row::chip`).
 pub(crate) fn chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    egui::Frame::new()
-        .stroke(Stroke::new(1.0, DARK.line))
-        .corner_radius(3.0)
-        .inner_margin(egui::Margin::symmetric(5, 0))
-        .show(ui, |ui| ui.label(RichText::new(text).small()))
-        .response
+    let colour = ui.visuals().text_color();
+    crate::field_row::chip(ui, text, colour)
 }
 
 /// The filled primary button (specification sections 5 and 14.1).
@@ -408,8 +405,11 @@ impl Shell {
             match region {
                 Region::Project => self.tree(ui),
                 _ => {
+                    crate::theme::solid_scroll_bar(ui);
                     egui::ScrollArea::vertical()
                         .id_salt("inspector scroll")
+                        // The pane's width is the user's, not the content's.
+                        .auto_shrink([false, false])
                         .show(ui, |ui| self.properties(ui));
                 }
             }
@@ -485,7 +485,7 @@ impl Shell {
                 .show(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         if ui
-                            .small_button("︿")
+                            .small_button("\u{23f6}")
                             .on_hover_text("Open the dock (Ctrl 3)")
                             .clicked()
                         {
@@ -1066,7 +1066,7 @@ impl Shell {
             }
             ui.label("mm · deg").on_hover_text("Display units");
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                let running = self.run.running_text().or_else(|| {
+                let running = self.run.running_text(self.app.as_ref()).or_else(|| {
                     self.jobs.running().first().map(|e| {
                         let percent = e
                             .fraction()

@@ -182,6 +182,38 @@ pub fn wall_plane(y0: f64, x0: f64, x1: f64, z0: f64, z1: f64) -> BrepModel {
     )
 }
 
+/// A flat wall across X: the plane `x = x0`, with `u` along Z from `z0` to
+/// `z1` and `v` along Y from `y0` to `y1`, facing -X.
+pub fn cross_plane(x0: f64, y0: f64, y1: f64, z0: f64, z1: f64) -> BrepModel {
+    single_face(
+        Surface::Plane {
+            frame: frame(
+                Point3::new(x0, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+                Vec3::new(-1.0, 0.0, 0.0),
+            ),
+        },
+        [z0, z1, y0, y1],
+        false,
+    )
+}
+
+/// A floor: the plane `z = z0`, with `u` along X from `x0` to `x1` and `v`
+/// along Y from `y0` to `y1`, facing +Z.
+pub fn floor_plane(z0: f64, x0: f64, x1: f64, y0: f64, y1: f64) -> BrepModel {
+    single_face(
+        Surface::Plane {
+            frame: frame(
+                Point3::new(0.0, 0.0, z0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ),
+        },
+        [x0, x1, y0, y1],
+        false,
+    )
+}
+
 /// A cylinder coaxial with the rotary axis, of `radius` from `x0` to `x1`:
 /// its rulings run along the rotary axis.
 pub fn coaxial_cylinder(radius: f64, x0: f64, x1: f64) -> BrepModel {

@@ -327,6 +327,9 @@ pub enum MessageAction {
     EditWorkholding(SetupId),
     /// Generate the stale operations.
     Generate,
+    /// Select the operation and mark, in its inspector, the setting its
+    /// warning names, so the user can change it (decision record 0175).
+    ShowSetting(OperationId),
 }
 
 impl MessageAction {
@@ -338,6 +341,7 @@ impl MessageAction {
             Self::ReviewSetup(_) => "Review setup",
             Self::EditWorkholding(_) => "Edit workholding",
             Self::Generate => "Generate",
+            Self::ShowSetting(_) => "Show setting",
         }
     }
 }
@@ -392,6 +396,11 @@ pub struct SetupCheck {
     /// The action that fixes a warning, if one does.
     pub action: Option<MessageAction>,
 }
+
+/// What the Simulate step says while the project skips the stock simulation
+/// (issue 214; decision record 0168).
+pub const STOCK_SIMULATION_SKIPPED: &str =
+    "Stock simulation is skipped for this project, so the cut has not been simulated";
 
 /// What the footer's primary button does (specification section 5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -454,6 +463,8 @@ pub struct Overview {
     /// while they are being worked out again.
     pub checks_current: bool,
     simulated_all: bool,
+    /// The project skips the stock simulation (decision record 0168).
+    skip_stock: bool,
     first_unsimulated_unmade: Option<usize>,
     any_enabled: bool,
     models: usize,
@@ -487,6 +498,7 @@ impl Overview {
             machine_warnings: Vec::new(),
             checks_current: true,
             simulated_all: false,
+            skip_stock: false,
             first_unsimulated_unmade: None,
             any_enabled: false,
             models: 0,
@@ -647,6 +659,11 @@ impl Overview {
                 blocked(action(PrimaryKind::GenerateStale(self.stale.len())))
             }
             Step::Operations => blocked(continue_to(Step::Simulate)),
+            // Skipping the stock simulation: Simulate asks only for the
+            // toolpaths (decision record 0168).
+            Step::Simulate if self.skip_stock && !self.stale.is_empty() => {
+                blocked(action(PrimaryKind::GenerateStale(self.stale.len())))
+            }
             Step::Simulate if self.any_enabled && !self.simulated_all => {
                 blocked(match self.first_unsimulated_unmade {
                     Some(n) => action(PrimaryKind::GenerateAndSimulate(n)),
@@ -753,6 +770,38 @@ struct RecordState {
     exported: BTreeMap<OperationId, Key>,
     failure: Option<Failure>,
     current: Option<OperationId>,
+    /// What the run is doing with `current`: nothing while it only takes it
+    /// from the cache, which is not shown running (issue 239).
+    activity: Option<PipelineActivity>,
+}
+
+/// What a pipeline run is doing with the operation it has reached
+/// (decision record 0190).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipelineActivity {
+    /// Making its toolpath, then simulating it when its stock is needed.
+    Generating,
+    /// Its toolpath came from the cache, but the stock it leaves did not, so
+    /// its moves are run through the stock simulation again.
+    Resimulating,
+}
+
+impl PipelineActivity {
+    /// What the status bar says, naming the operation (decision 0114 wording).
+    pub fn text(self, operation: &str) -> String {
+        match self {
+            Self::Generating => format!("Generating '{operation}'"),
+            Self::Resimulating => format!("Re-running the simulation for '{operation}'"),
+        }
+    }
+
+    /// The cause an operation's running state gives in the project tree.
+    fn cause(self) -> &'static str {
+        match self {
+            Self::Generating => "generating",
+            Self::Resimulating => "re-running the simulation",
+        }
+    }
 }
 
 /// What an operation was made from: its keys, and the own keys of the
@@ -762,6 +811,8 @@ struct RecordState {
 struct Made {
     key: StatusKey,
     before: Vec<(OperationId, Key)>,
+    /// The path's warnings when it was made (decision record 0175).
+    warnings: Vec<openchuck_path::PathWarning>,
 }
 
 #[derive(Debug, Clone)]
@@ -775,9 +826,26 @@ impl GenerationRecord {
         self.0.lock().ok().map(|mut state| f(&mut state))
     }
 
-    /// The pipeline is generating `operation` now, or none.
+    /// The pipeline has reached `operation`, or none. A failure from now on
+    /// is its own; it shows running once [`GenerationRecord::doing`] says
+    /// what is being done with it.
     pub(crate) fn working_on(&self, operation: Option<OperationId>) {
-        self.with(|s| s.current = operation);
+        self.with(|s| {
+            s.current = operation;
+            s.activity = None;
+        });
+    }
+
+    /// The operation reached is being made, or simulated again, not only
+    /// taken from the cache.
+    pub(crate) fn doing(&self, activity: PipelineActivity) {
+        self.with(|s| s.activity = Some(activity));
+    }
+
+    /// The operation a run is working on and what it is doing with it, while
+    /// that is more than taking it from the cache.
+    pub(crate) fn activity(&self) -> Option<(OperationId, PipelineActivity)> {
+        self.with(|s| s.current.zip(s.activity)).flatten()
     }
 
     /// A pipeline run on `project` succeeded with `run`. Only the operations
@@ -796,7 +864,20 @@ impl GenerationRecord {
                     .iter()
                     .map(|(id, k)| (*id, k.own))
                     .collect();
-                s.generated.insert(*id, Made { key: *key, before });
+                let warnings = run
+                    .groups
+                    .iter()
+                    .filter(|g| g.operation == *id)
+                    .flat_map(|g| g.warnings.iter().cloned())
+                    .collect();
+                s.generated.insert(
+                    *id,
+                    Made {
+                        key: *key,
+                        before,
+                        warnings,
+                    },
+                );
                 if simulated {
                     s.simulated.insert(*id, key.chained);
                 }
@@ -1219,6 +1300,32 @@ impl Application {
             _ => None,
         }
     }
+
+    /// The settings of `operation` its current path's warnings name (the
+    /// tolerance, for a swarf overcut), for the inspector to mark them and
+    /// the "Show setting" link to jump to the first (decision record 0175).
+    /// Empty when the operation is not up to date or its path has no
+    /// warning that names one.
+    pub fn operation_warning_settings(&self, operation: OperationId) -> Vec<String> {
+        let keys = status_keys(self.project());
+        let record = self.record.snapshot();
+        let (Some((_, key)), Some(made)) = (
+            keys.iter().find(|(id, _)| *id == operation),
+            record.generated.get(&operation),
+        ) else {
+            return Vec::new();
+        };
+        if key.chained != made.key.chained {
+            return Vec::new();
+        }
+        let mut names: Vec<String> = Vec::new();
+        for name in made.warnings.iter().filter_map(|w| w.parameter.clone()) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        names
+    }
 }
 
 /// The user's name for an operation: its number and name.
@@ -1262,6 +1369,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     let ops = project.operations();
     let mut stale = Vec::new();
     let mut first_unsimulated_unmade = None;
+    let skip_stock = project.skip_stock_simulation();
     let mut simulated_all = true;
     let mut any_enabled = false;
     let mut any_generated = false;
@@ -1284,8 +1392,10 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         let made = record.generated.get(&o.id);
         any_generated |= made.is_some();
         let up_to_date = matches!((key, made), (Some(k), Some(m)) if k.chained == m.key.chained);
-        let simulated =
-            matches!((key, record.simulated.get(&o.id)), (Some(k), Some(s)) if k.chained == *s);
+        // A project that skips the stock simulation asks only for its
+        // toolpaths at Simulate (issue 214, decision record 0168).
+        let simulated = matches!((key, record.simulated.get(&o.id)), (Some(k), Some(s)) if k.chained == *s)
+            || (skip_stock && up_to_date);
         simulated_all &= simulated;
         exported_all &=
             matches!((key, record.exported.get(&o.id)), (Some(k), Some(s)) if k.chained == *s);
@@ -1308,8 +1418,11 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             };
             ItemStatus::new(ItemState::Stale, cause)
         };
-        if record.current == Some(o.id) && running_pipeline.is_some() {
-            status = ItemStatus::new(ItemState::Running, "generating");
+        if let (Some(activity), true) = (
+            record.activity.filter(|_| record.current == Some(o.id)),
+            running_pipeline.is_some(),
+        ) {
+            status = ItemStatus::new(ItemState::Running, activity.cause());
             status.progress = running_pipeline.and_then(|e| e.fraction());
         }
         // A selection set with a problem makes its operations' error too
@@ -1340,6 +1453,38 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             messages.push(Message::new(
                 Severity::Error,
                 message.clone(),
+                Some((item, label.clone())),
+                Some(MessageAction::Show(item)),
+            ));
+        }
+        // An up-to-date path made with a warning: a known overcut, for
+        // example, so the state stays a warning while the path is used
+        // (NFR-12; decision record 0175).
+        if status.state == ItemState::UpToDate
+            && let Some(made) = made
+            && let Some(first) = made.warnings.first()
+        {
+            status = ItemStatus::new(ItemState::Warning, sentence(&first.message));
+            for warning in &made.warnings {
+                messages.push(Message::new(
+                    Severity::Warning,
+                    warning.message.clone(),
+                    Some((item, label.clone())),
+                    Some(if warning.parameter.is_some() {
+                        MessageAction::ShowSetting(o.id)
+                    } else {
+                        MessageAction::Show(item)
+                    }),
+                ));
+            }
+        }
+        // A strategy that needs a STEP part on a mesh part: said at once,
+        // before anything is generated (decision record 0174).
+        if let Some(reason) = crate::operation::brep_only(project, &app.strategies, o) {
+            status = ItemStatus::new(ItemState::Error, sentence(&reason));
+            messages.push(Message::new(
+                Severity::Error,
+                sentence(&reason),
                 Some((item, label.clone())),
                 Some(MessageAction::Show(item)),
             ));
@@ -1860,6 +2005,13 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     };
     let simulate_health = if any_enabled && !simulated_all {
         (StepHealth::Attention, Some("Not simulated yet".to_owned()))
+    } else if any_enabled && skip_stock {
+        // Skipping is the user's choice, but the cut is then not checked
+        // before posting, so the step says so (NFR-12).
+        (
+            StepHealth::Attention,
+            Some(STOCK_SIMULATION_SKIPPED.to_owned()),
+        )
     } else {
         good.clone()
     };
@@ -1905,6 +2057,7 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         machine_warnings,
         checks_current: checks.is_some_and(|c| c.revision == app.revision),
         simulated_all: any_enabled && simulated_all,
+        skip_stock,
         first_unsimulated_unmade,
         any_enabled,
         models: project.models().len(),
@@ -1983,6 +2136,7 @@ mod tests {
             MessageAction::ReviewSetup(setup),
             MessageAction::EditWorkholding(setup),
             MessageAction::Generate,
+            MessageAction::ShowSetting(OperationId::new()),
         ]
         .iter()
         .map(|a| a.label())
@@ -1994,7 +2148,8 @@ mod tests {
                 "Reselect",
                 "Review setup",
                 "Edit workholding",
-                "Generate"
+                "Generate",
+                "Show setting"
             ]
         );
         let severities: Vec<_> = Severity::ALL.iter().map(|s| s.name()).collect();
@@ -2032,5 +2187,103 @@ mod tests {
         let order: Vec<_> = o.messages.iter().map(|m| m.severity).collect();
         assert_eq!(order, [Severity::Error, Severity::Warning, Severity::Info]);
         assert_eq!(o.count(Severity::Warning), 1);
+    }
+
+    #[test]
+    fn req_op_07_req_nfr_12_a_path_made_with_a_warning_keeps_the_operation_in_warning() {
+        // Decision 0175 (issue #226): an operation whose up-to-date path was
+        // made with a warning (a swarf overcut above the tolerance) shows the
+        // warning state with the warning's words, lists it in Messages with
+        // a link to the setting it names, and the inspector is told which
+        // setting to mark. Once the operation changes, the warning goes with
+        // the stale path.
+        use openchuck_project::{Item, Operation, OrderKey, Placement};
+        let dir = std::env::temp_dir().join(format!("openchuck-warn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = Application::create(&dir, "warn", crate::Threads::Exactly(1)).unwrap();
+        let setup = SetupId::new();
+        let op = OperationId::new();
+        app.execute(crate::Command::Add {
+            item: Item::Setup(openchuck_project::Setup::new(setup, "Setup 1")),
+            placement: Placement::End,
+        })
+        .unwrap();
+        app.execute(crate::Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: op,
+                order: OrderKey::default(),
+                name: "Walls".into(),
+                setup,
+                strategy: "swarf".into(),
+                tool: None,
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                restriction_options: Default::default(),
+                parameters: BTreeMap::new(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+        let message = "Swarf on face 7 cuts into the finished surface by 0.0131 mm at \
+                       (40.330, -5.370, -9.425), more than this operation's tolerance of 0.01 mm.";
+        let run = crate::Regeneration {
+            groups: vec![crate::pipeline::GroupInfo {
+                operation: op,
+                setup,
+                tool: openchuck_types::tool::Tool {
+                    shape: openchuck_types::tool::ToolShape::FlatEnd,
+                    diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_length: openchuck_types::units::Millimetres(15.0),
+                    overall_length: openchuck_types::units::Millimetres(60.0),
+                    shank_diameter: openchuck_types::units::Millimetres(6.0),
+                    flute_count: 2,
+                    material: None,
+                    centre_cutting: None,
+                }
+                .profile()
+                .unwrap(),
+                part_bounds: openchuck_types::geometry::Aabb {
+                    min: openchuck_types::geometry::Point3::new(0.0, 0.0, 0.0),
+                    max: openchuck_types::geometry::Point3::new(1.0, 1.0, 1.0),
+                },
+                warnings: vec![openchuck_path::PathWarning {
+                    message: message.to_owned(),
+                    parameter: Some("tolerance".to_owned()),
+                }],
+            }],
+            ..crate::Regeneration::default()
+        };
+        app.record.succeeded(app.project(), false, &run);
+        let overview = app.overview(None, &JobLog::default());
+        let status = &overview.items[&ItemRef::Operation(op)];
+        assert_eq!(status.state, ItemState::Warning, "{status:?}");
+        assert!(status.cause.contains("0.0131 mm"), "{}", status.cause);
+        let warning = overview
+            .messages
+            .iter()
+            .find(|m| m.severity == Severity::Warning && m.text == message)
+            .unwrap_or_else(|| panic!("{:?}", overview.messages));
+        assert_eq!(warning.action, Some(MessageAction::ShowSetting(op)));
+        assert_eq!(warning.source, Some(ItemRef::Operation(op)));
+        assert_eq!(app.operation_warning_settings(op), ["tolerance"]);
+        // Raising the tolerance changes the operation: the path is stale, and
+        // the warning is no longer claimed for it.
+        app.execute(crate::Command::SetParameter {
+            operation: op,
+            name: "tolerance".into(),
+            value: Some(openchuck_project::ParameterValue::Number(0.02)),
+        })
+        .unwrap();
+        let overview = app.overview(None, &JobLog::default());
+        assert_eq!(
+            overview.items[&ItemRef::Operation(op)].state,
+            ItemState::Stale
+        );
+        assert!(!overview.messages.iter().any(|m| m.text == message));
+        assert!(app.operation_warning_settings(op).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -134,6 +134,10 @@ impl Strategy for RadialDrilling {
         "Radial drilling"
     }
 
+    fn needs_brep_part(&self) -> Option<&str> {
+        Some("it finds round holes in the cylindrical faces of a STEP model, and a mesh has none")
+    }
+
     fn schema(&self) -> ParameterSchema {
         use parameter::*;
         let mut schema = ParameterSchema::with_common(vec![
@@ -369,7 +373,11 @@ fn drill(
             passes.push(hole_pass(input, parameters, site, Degrees(*a))?);
         }
     }
-    Ok(StrategyOutput { passes, notes })
+    Ok(StrategyOutput {
+        passes,
+        notes,
+        warnings: Vec::new(),
+    })
 }
 
 /// The A positions in the order to visit them, each with the holes there.

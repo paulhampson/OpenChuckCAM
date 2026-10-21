@@ -18,6 +18,16 @@ use openchuck_project::id::OperationId;
 use crate::AppError;
 use crate::simulation::{SetupState, SimulationReport};
 
+/// The progress stage of making the toolpaths, one step per operation.
+pub const STAGE_GENERATE: &str = "regenerate";
+
+/// The progress stage of the stock simulation's comparison with the part,
+/// one step per setup, after the toolpaths (issue 214; decision record
+/// 0168). The material removal itself runs with each operation, inside
+/// [`STAGE_GENERATE`]. One percentage across the stages is lane BUG-PROG's
+/// (issue 201).
+pub const STAGE_SIMULATE: &str = "simulate the stock";
+
 /// The setup, stock and machine an operation's simulation needs.
 pub(crate) fn setup_parts<'a>(
     project: &'a Project,
@@ -63,6 +73,10 @@ pub struct GroupInfo {
     /// The bounds of the setup's placed part (bounding-box stock needs them
     /// when the stock is built again for playback).
     pub part_bounds: openchuck_types::geometry::Aabb,
+    /// The operation's warnings: its path was made but does not meet a limit
+    /// it sets (decision record 0175). They make the operation's state a
+    /// warning and are listed in Messages and the results.
+    pub warnings: Vec<openchuck_path::PathWarning>,
 }
 
 /// The result of regenerating a project.
@@ -86,6 +100,11 @@ pub struct Regeneration {
     /// Operations whose toolpath came from the cache because nothing it
     /// depends on, including the operations before it, changed.
     pub reused: Vec<OperationId>,
+    /// Operations whose moves were run through their setup's stock
+    /// simulation in this run. An operation's stock is simulated when a later
+    /// operation of its setup is made on it (SIM-06) or a simulation is asked
+    /// for, unless the cache holds the stock it leaves (decision record 0190).
+    pub simulated: Vec<OperationId>,
     /// The operation the run stopped after, when it was asked to generate up
     /// to and including one operation ("generate selected", specification
     /// section 16; decision record 0117, OI-351). The enabled operations after
@@ -139,14 +158,17 @@ pub(crate) fn regenerate(
         }
     }
     let total = operations.len() as u64;
-    context.report("regenerate", 0, Some(total));
+    context.report(STAGE_GENERATE, 0, Some(total));
     let settings = project.simulation();
     let mut regeneration = Regeneration {
         project: Arc::new(project.clone()),
         stopped_after: until,
         ..Regeneration::default()
     };
-    let mut setups: Vec<SetupState> = Vec::new();
+    // Each setup's simulation so far. It is shared with the cache, which keeps
+    // it as the stock an operation leaves, and copied only when the run
+    // simulates on from a state the cache holds (decision record 0190).
+    let mut setups: Vec<Arc<SetupState>> = Vec::new();
     // Disabled operations keep their cached results, so enabling one again
     // can reuse them; only removed operations are dropped.
     let ids: Vec<OperationId> = project.operations().iter().map(|o| o.id).collect();
@@ -164,10 +186,6 @@ pub(crate) fn regenerate(
         context.check_cancelled()?;
         // A failure from here to the next operation is this operation's.
         record.working_on(Some(operation.id));
-        let carried = setups
-            .iter()
-            .find(|s| s.id == operation.setup)
-            .map(|s| s.stock() as &dyn StockModel);
         // The key chains from the operations before, which fixes the stock
         // they leave (SIM-06), so a hit is valid on carried stock too.
         let key = if caching {
@@ -177,10 +195,18 @@ pub(crate) fn regenerate(
         } else {
             None
         };
-        let path = if let Some(hit) = key.and_then(|k| cache.get(operation.id, k)) {
+        let hit = key.and_then(|k| cache.get(operation.id, k));
+        let cached_path = hit.is_some();
+        let (path, cached_stock) = if let Some(hit) = hit {
             regeneration.reused.push(operation.id);
-            hit
+            (hit.path, hit.stock)
         } else {
+            // Only an operation that is made, or simulated, shows as running.
+            record.doing(crate::overview::PipelineActivity::Generating);
+            let carried = setups
+                .iter()
+                .find(|s| s.id == operation.setup)
+                .map(|s| s.stock() as &dyn StockModel);
             let made = Arc::new(crate::operation::generate_operation_on(
                 location,
                 project,
@@ -195,7 +221,7 @@ pub(crate) fn regenerate(
                 cache.put(operation.id, key, Arc::clone(&made), generation);
             }
             regeneration.generated.push(operation.id);
-            made
+            (made, None)
         };
         previous = key;
         for note in &path.notes {
@@ -209,29 +235,62 @@ pub(crate) fn regenerate(
             .iter()
             .any(|o| o.setup == operation.setup);
         if simulate || followed {
-            let index = match setups.iter().position(|s| s.id == operation.setup) {
-                Some(index) => index,
-                None => {
-                    let (setup, stock, machine) = setup_parts(project, operation)?;
-                    setups.push(SetupState::new(
-                        setup.id,
-                        &setup.name,
-                        stock,
-                        path.part_bounds,
-                        machine,
-                        settings,
-                    )?);
-                    setups.len() - 1
+            let mut index = setups.iter().position(|s| s.id == operation.setup);
+            if let Some(stock) = cached_stock {
+                // The stock this operation leaves is cached under its key,
+                // which fixes everything simulated before it in the setup.
+                match index.and_then(|at| setups.get_mut(at)) {
+                    Some(slot) => *slot = stock,
+                    None => {
+                        setups.push(stock);
+                        index = Some(setups.len() - 1);
+                    }
                 }
-            };
-            if let Some(state) = setups.get_mut(index) {
-                let result = state.run(&operation.name, &path.group, &path.tool, context)?;
-                for cut in result.rapid_cuts {
-                    regeneration.notes.push(format!(
-                        "operation '{}': move {} is a rapid that removes {:.3} mm3 of material",
-                        operation.name, cut.segment, cut.volume
-                    ));
+            } else {
+                if cached_path {
+                    // The path is reused, but the stock it leaves must be
+                    // worked out again; the status bar says so.
+                    record.doing(crate::overview::PipelineActivity::Resimulating);
                 }
+                let at = match index {
+                    Some(at) => at,
+                    None => {
+                        let (setup, stock, machine) = setup_parts(project, operation)?;
+                        setups.push(Arc::new(SetupState::new(
+                            setup.id,
+                            &setup.name,
+                            stock,
+                            path.part_bounds,
+                            machine,
+                            settings,
+                        )?));
+                        setups.len() - 1
+                    }
+                };
+                index = Some(at);
+                if let Some(state) = setups.get_mut(at) {
+                    Arc::make_mut(state).run(
+                        operation.id,
+                        &operation.name,
+                        &path.group,
+                        &path.tool,
+                        context,
+                    )?;
+                    regeneration.simulated.push(operation.id);
+                    if let Some(key) = key {
+                        cache.put_stock(operation.id, key, Arc::clone(state), generation);
+                    }
+                }
+            }
+            let cuts = index
+                .and_then(|at| setups.get(at))
+                .map(|s| s.last_rapid_cuts())
+                .unwrap_or_default();
+            for cut in cuts {
+                regeneration.notes.push(format!(
+                    "operation '{}': move {} is a rapid that removes {:.3} mm3 of material",
+                    operation.name, cut.segment, cut.volume
+                ));
             }
         }
         regeneration.toolpath.groups.push(path.group.clone());
@@ -240,8 +299,9 @@ pub(crate) fn regenerate(
             setup: operation.setup,
             tool: path.tool.clone(),
             part_bounds: path.part_bounds,
+            warnings: path.warnings.clone(),
         });
-        context.report("regenerate", i as u64 + 1, Some(total));
+        context.report(STAGE_GENERATE, i as u64 + 1, Some(total));
     }
     record.working_on(None);
     if simulate {
@@ -249,8 +309,12 @@ pub(crate) fn regenerate(
             settings,
             setups: Vec::new(),
         };
-        for state in setups {
+        let count = setups.len() as u64;
+        for (done, state) in (0_u64..).zip(setups) {
+            context.report(STAGE_SIMULATE, done, Some(count));
             context.check_cancelled()?;
+            let mut state = Arc::unwrap_or_clone(state);
+            state.rename(project);
             let setup = project.setup(state.id);
             let part = setup
                 .and_then(|s| s.part)
@@ -268,6 +332,7 @@ pub(crate) fn regenerate(
                 .setups
                 .push(state.finish(mesh.as_ref(), settings, context)?);
         }
+        context.report(STAGE_SIMULATE, count, Some(count));
         regeneration.simulation = Some(report);
     }
     // Every operation was keyed and made from the part files as they were at
@@ -288,4 +353,162 @@ pub(crate) fn regenerate(
         regeneration.notes.extend(notes);
     }
     Ok(regeneration)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+    use std::sync::Mutex;
+
+    use openchuck_path::{CutPoint, ParameterSchema, Parameters, Pass, Strategy, StrategyInput};
+    use openchuck_types::job::{CancelToken, Progress, ProgressSink};
+    use openchuck_types::units::{Degrees, Millimetres};
+
+    use super::*;
+    use crate::overview::{GenerationRecord, PipelineActivity};
+    use crate::test_project::TestProject;
+    use crate::{Application, Command};
+
+    /// One ring of cuts at model X = 0 (a test strategy, OP-16).
+    #[derive(Debug)]
+    struct OneRing;
+
+    impl Strategy for OneRing {
+        fn name(&self) -> &str {
+            "one_ring"
+        }
+        fn label(&self) -> &str {
+            "One ring"
+        }
+        fn schema(&self) -> ParameterSchema {
+            ParameterSchema::with_common(Vec::new())
+        }
+        fn passes(
+            &self,
+            input: &StrategyInput<'_>,
+            _: &Parameters,
+            _: &JobContext<'_>,
+        ) -> openchuck_path::Result<Vec<Pass>> {
+            let points = (0..=36)
+                .filter_map(|i| {
+                    let a = Degrees(10.0 * f64::from(i));
+                    let line = input
+                        .rotary
+                        .tool_line(Millimetres(0.0), a, Millimetres(0.0));
+                    let c = input.surface.drop_tool(input.tool, &line)?;
+                    Some(CutPoint {
+                        tip: c.tip,
+                        a,
+                        contact: c.contact,
+                    })
+                })
+                .collect();
+            Ok(vec![Pass {
+                points,
+                stock: None,
+                rapids: Vec::new(),
+            }])
+        }
+    }
+
+    /// Notes what the record says the run is doing each time the stock
+    /// simulation reports progress.
+    struct Spy {
+        record: Arc<GenerationRecord>,
+        seen: Mutex<Vec<(OperationId, PipelineActivity)>>,
+    }
+
+    impl ProgressSink for Spy {
+        fn report(&self, progress: Progress) {
+            if progress.stage == "simulate"
+                && let Some(activity) = self.record.activity()
+            {
+                self.seen.lock().unwrap().push(activity);
+            }
+        }
+    }
+
+    /// Runs the pipeline with a simulation, as the Simulate job does, and
+    /// returns the run with what the record said during the simulation.
+    fn simulate(app: &Application) -> (Regeneration, Vec<(OperationId, PipelineActivity)>) {
+        let spy = Spy {
+            record: Arc::clone(&app.record),
+            seen: Mutex::new(Vec::new()),
+        };
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &spy);
+        let run = regenerate(
+            app.location(),
+            app.project(),
+            &app.strategies,
+            None,
+            true,
+            &app.cache,
+            &app.record,
+            None,
+            &context,
+        )
+        .unwrap();
+        (run, spy.seen.into_inner().unwrap())
+    }
+
+    #[test]
+    fn req_nfr_04_req_ui_09_a_replayed_simulation_says_so_and_one_stock_is_kept_per_operation() {
+        // Decision record 0190, the owner's choice B: one stock is kept per
+        // operation, the latest. Going back to an earlier state reuses the
+        // paths, but their stock is worked out again, and the status bar
+        // says so; a reused operation is never said to be generating.
+        let mut p = TestProject::new("replay");
+        p.app.register_strategy(Arc::new(OneRing)).unwrap();
+        let ring = p.add_operation("Ring", "one_ring");
+        let next = p.add_operation("Ring again", "one_ring");
+        let ids = [ring, next];
+
+        let (first, seen) = simulate(&p.app);
+        assert_eq!(first.generated, ids);
+        assert_eq!(first.simulated, ids);
+        assert!(seen.contains(&(ring, PipelineActivity::Generating)));
+        assert_eq!(p.app.cache.stocks_kept(), 2);
+
+        // Nothing changed: no simulation runs, so nothing is said.
+        let (again, seen) = simulate(&p.app);
+        assert_eq!(again.reused, ids);
+        assert!(again.simulated.is_empty());
+        assert!(seen.is_empty(), "{seen:?}");
+
+        p.app
+            .execute(Command::SetParameter {
+                operation: ring,
+                name: openchuck_path::params::names::STOCK_TO_LEAVE.into(),
+                value: Some(openchuck_project::ParameterValue::Number(0.3)),
+            })
+            .unwrap();
+        let (edited, _) = simulate(&p.app);
+        assert_eq!(edited.generated, ids);
+        // Each operation keeps one stock, the latest, though it keeps three
+        // paths.
+        assert_eq!(p.app.cache.stocks_kept(), 2);
+
+        p.app.undo().unwrap();
+        let (back, seen) = simulate(&p.app);
+        assert!(back.generated.is_empty());
+        assert_eq!(back.reused, ids);
+        assert_eq!(back.simulated, ids);
+        assert!(
+            seen.contains(&(ring, PipelineActivity::Resimulating)),
+            "{seen:?}"
+        );
+        assert!(
+            !seen.iter().any(|(_, a)| *a == PipelineActivity::Generating),
+            "{seen:?}"
+        );
+        assert_eq!(p.app.cache.stocks_kept(), 2);
+        assert_eq!(
+            PipelineActivity::Resimulating.text("Ring"),
+            "Re-running the simulation for 'Ring'"
+        );
+        // Between runs, nothing is being done.
+        assert_eq!(p.app.pipeline_activity(), None);
+    }
 }

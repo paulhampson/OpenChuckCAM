@@ -118,33 +118,61 @@ pub struct PathLines {
 #[derive(Debug)]
 pub struct ToolpathDisplay {
     runs: Vec<PathRun>,
+    /// Which moves each run draws, in the same order as `runs`, for the
+    /// playback window (issue 205).
+    moves: Vec<RunMoves>,
     groups: usize,
     levels: Vec<OnceLock<Vec<Vec<Point3>>>>,
 }
+
+/// The moves of one run: the first, counted across all groups, and the index
+/// of the point each move ends at.
+#[derive(Debug, Clone, Default)]
+struct RunMoves {
+    first: usize,
+    ends: Vec<usize>,
+}
+
+/// The level of detail of the faint trace of the path outside the playback
+/// window, or coarser when the budget needs it (issue 205; decision record
+/// 0169): 1 mm, enough to keep one's bearings. On the owner's roughing path
+/// of 23 311 moves (issue 200) it is 29 384 points of the path's 47 826; a
+/// finer level kept 94% of them.
+pub const TRACE_LEVEL: usize = 5;
 
 impl ToolpathDisplay {
     /// Cuts the timeline's toolpath into runs. Linear in the number of moves.
     pub fn build(timeline: &Timeline) -> Self {
         let path = &timeline.run().toolpath;
         let mut runs: Vec<PathRun> = Vec::new();
+        let mut moves: Vec<RunMoves> = Vec::new();
+        let mut flat = 0_usize;
         for (g, group) in path.groups.iter().enumerate() {
             let frame = timeline.work_frame(g);
             let mut here = group.start;
-            let mut open: Option<PathRun> = None;
+            let mut open: Option<(PathRun, RunMoves)> = None;
             for segment in &group.segments {
                 let class = PathClass::of(segment.kind);
-                let run = match open.take() {
-                    Some(run) if run.class == class => run,
+                let (mut run, mut marks) = match open.take() {
+                    Some((run, marks)) if run.class == class => (run, marks),
                     other => {
-                        runs.extend(other);
-                        PathRun {
-                            group: g,
-                            class,
-                            points: vec![here.tip],
+                        if let Some((run, marks)) = other {
+                            runs.push(run);
+                            moves.push(marks);
                         }
+                        (
+                            PathRun {
+                                group: g,
+                                class,
+                                points: vec![here.tip],
+                            },
+                            RunMoves {
+                                first: flat,
+                                ends: Vec::new(),
+                            },
+                        )
                     }
                 };
-                let mut run = run;
                 let turn = (segment.end.a.0 - here.a.0).abs();
                 let steps = if turn > ARC_STEP_DEGREES {
                     ((turn / ARC_STEP_DEGREES).ceil() as usize).min(144)
@@ -159,13 +187,19 @@ impl ToolpathDisplay {
                     }
                 }
                 run.points.push(segment.end.tip);
+                marks.ends.push(run.points.len() - 1);
+                flat += 1;
                 here = segment.end;
-                open = Some(run);
+                open = Some((run, marks));
             }
-            runs.extend(open);
+            if let Some((run, marks)) = open {
+                runs.push(run);
+                moves.push(marks);
+            }
         }
         Self {
             runs,
+            moves,
             groups: path.groups.len(),
             levels: LEVEL_TOLERANCES.iter().map(|_| OnceLock::new()).collect(),
         }
@@ -205,24 +239,24 @@ impl ToolpathDisplay {
     /// The lines of the groups `visible` says to draw, at the finest level of
     /// detail whose points fit `max_points` (the coarsest if none does).
     pub fn lines(&self, visible: &dyn Fn(usize) -> bool, max_points: usize) -> PathLines {
+        self.lines_for(visible, max_points, 0)
+    }
+
+    /// The lines of the groups `visible` says to draw, at `min_level` (the
+    /// level the zoom asks for, [`zoom_level`]) or at the level the budget
+    /// of `max_points` needs, whichever is coarser (decision record 0167).
+    /// A level past the coarsest is the coarsest.
+    pub fn lines_for(
+        &self,
+        visible: &dyn Fn(usize) -> bool,
+        max_points: usize,
+        min_level: usize,
+    ) -> PathLines {
         let full_points = self.full_points(visible);
-        let mut chosen = 0;
-        for level in 0..LEVEL_TOLERANCES.len() {
-            chosen = level;
-            let count: usize = match self.level(level) {
-                Some(runs) => self
-                    .runs
-                    .iter()
-                    .zip(runs)
-                    .filter(|(r, _)| visible(r.group))
-                    .map(|(_, p)| p.len())
-                    .sum(),
-                None => usize::MAX,
-            };
-            if count <= max_points {
-                break;
-            }
-        }
+        let chosen = self
+            .budget_level(visible, max_points)
+            .max(min_level)
+            .min(LEVEL_TOLERANCES.len() - 1);
         let runs = self.level(chosen);
         let lines: Vec<PathLine> = self
             .runs
@@ -242,6 +276,192 @@ impl ToolpathDisplay {
             full_points,
             lines,
         }
+    }
+
+    /// The finest level whose visible points fit `max_points`, or the
+    /// coarsest if none does.
+    fn budget_level(&self, visible: &dyn Fn(usize) -> bool, max_points: usize) -> usize {
+        let mut chosen = 0;
+        for level in 0..LEVEL_TOLERANCES.len() {
+            chosen = level;
+            let count: usize = match self.level(level) {
+                Some(runs) => self
+                    .runs
+                    .iter()
+                    .zip(runs)
+                    .filter(|(r, _)| visible(r.group))
+                    .map(|(_, p)| p.len())
+                    .sum(),
+                None => usize::MAX,
+            };
+            if count <= max_points {
+                break;
+            }
+        }
+        chosen
+    }
+}
+
+/// How much of a pixel a level's error may span: half (decision record
+/// 0167).
+pub const PIXEL_SHARE: f64 = 0.5;
+
+/// How far past a coarser level's tolerance half a pixel must reach before
+/// the drawing switches to it.
+const COARSEN_MARGIN: f64 = 1.25;
+
+/// The level of detail for a view where one pixel spans `mm_per_pixel` at
+/// the camera's target, starting from the level `current` drawn now
+/// (decision record 0167, OI-177): the coarsest level whose tolerance is
+/// within half a pixel. It goes finer at once when the current level is
+/// coarser than that, and coarser only once half a pixel is 1.25 times the
+/// coarser level's tolerance, so a zoom that hovers at a boundary does not
+/// swap the path back and forth, and a zoom within a level asks for no new
+/// path. A size that is not a positive finite number gives level 0 (every
+/// point; the budget still applies). The level is for drawing only: the
+/// runs, playback and the output never see it.
+pub fn zoom_level(current: usize, mm_per_pixel: f64) -> usize {
+    if !(mm_per_pixel.is_finite() && mm_per_pixel > 0.0) {
+        return 0;
+    }
+    let half = PIXEL_SHARE * mm_per_pixel;
+    let coarsest = |margin: f64| {
+        (0..LEVEL_TOLERANCES.len())
+            .rev()
+            .find(|&l| LEVEL_TOLERANCES.get(l).is_some_and(|t| t * margin <= half))
+            .unwrap_or(0)
+    };
+    let within = coarsest(1.0);
+    let current = current.min(LEVEL_TOLERANCES.len() - 1);
+    if within < current {
+        within
+    } else {
+        coarsest(COARSEN_MARGIN).max(current)
+    }
+}
+
+impl ToolpathDisplay {
+    /// The points of each visible run within the moves `window` (counted
+    /// from 0 across all groups), at full detail: the run's index and the
+    /// slice.
+    fn window_slices<'a>(
+        &'a self,
+        visible: &'a dyn Fn(usize) -> bool,
+        window: std::ops::Range<usize>,
+    ) -> impl Iterator<Item = (usize, &'a [Point3])> + 'a {
+        self.runs
+            .iter()
+            .zip(&self.moves)
+            .enumerate()
+            .filter(move |(_, (r, _))| visible(r.group))
+            .filter_map(move |(i, (run, marks))| {
+                let end = marks.first + marks.ends.len();
+                let (from, to) = (window.start.max(marks.first), window.end.min(end));
+                if from >= to {
+                    return None;
+                }
+                // A move starts where the one before it ended; the run's
+                // first starts at its first point.
+                let start = match from - marks.first {
+                    0 => 0,
+                    k => *marks.ends.get(k - 1)?,
+                };
+                let stop = *marks.ends.get(to - marks.first - 1)?;
+                Some((i, run.points.get(start..=stop)?))
+            })
+    }
+
+    /// The lines of the visible groups within the moves `window` (issue 205;
+    /// decision record 0169): every point when the window's points fit
+    /// `max_points` and `min_level` asks for no coarser level, else
+    /// simplified at the coarser of `min_level` and the level the whole
+    /// path needs for the budget. A window cuts a run at a move's end, so
+    /// the drawing starts and stops where the play head can.
+    pub fn window_lines(
+        &self,
+        visible: &dyn Fn(usize) -> bool,
+        window: std::ops::Range<usize>,
+        max_points: usize,
+        min_level: usize,
+    ) -> PathLines {
+        let full_points: usize = self
+            .window_slices(visible, window.clone())
+            .map(|(_, p)| p.len())
+            .sum();
+        let chosen = if full_points <= max_points {
+            min_level
+        } else {
+            self.level_for_budget(visible, max_points).max(min_level)
+        }
+        .min(LEVEL_TOLERANCES.len() - 1);
+        let tolerance = LEVEL_TOLERANCES.get(chosen).copied().unwrap_or(0.0);
+        let lines: Vec<PathLine> = self
+            .window_slices(visible, window)
+            .filter_map(|(i, points)| {
+                let run = self.runs.get(i)?;
+                Some(PathLine {
+                    group: run.group,
+                    class: run.class,
+                    points: simplify(points, tolerance),
+                })
+            })
+            .collect();
+        PathLines {
+            level: chosen,
+            tolerance,
+            points: lines.iter().map(|l| l.points.len()).sum(),
+            full_points,
+            lines,
+        }
+    }
+
+    /// The faint trace of the whole visible path, drawn under the playback
+    /// window's part (issue 205; decision record 0169): at [`TRACE_LEVEL`],
+    /// or coarser when the budget needs it. It is made from the cached level
+    /// and depends only on the path and the visible groups, so moving or
+    /// resizing the window never makes it again.
+    pub fn trace_lines(&self, visible: &dyn Fn(usize) -> bool, max_points: usize) -> PathLines {
+        let chosen = self
+            .level_for_budget(visible, max_points)
+            .max(TRACE_LEVEL)
+            .min(LEVEL_TOLERANCES.len() - 1);
+        let full_points = self.full_points(visible);
+        let lines: Vec<PathLine> = self
+            .runs
+            .iter()
+            .zip(self.level(chosen).into_iter().flatten())
+            .filter(|(r, _)| visible(r.group))
+            .map(|(r, points)| PathLine {
+                group: r.group,
+                class: r.class,
+                points: points.clone(),
+            })
+            .collect();
+        PathLines {
+            level: chosen,
+            tolerance: LEVEL_TOLERANCES.get(chosen).copied().unwrap_or(0.0),
+            points: lines.iter().map(|l| l.points.len()).sum(),
+            full_points,
+            lines,
+        }
+    }
+
+    /// The finest level whose visible points fit `max_points`, or the
+    /// coarsest if none does.
+    fn level_for_budget(&self, visible: &dyn Fn(usize) -> bool, max_points: usize) -> usize {
+        (0..LEVEL_TOLERANCES.len())
+            .find(|&level| {
+                self.level(level).is_some_and(|runs| {
+                    self.runs
+                        .iter()
+                        .zip(runs)
+                        .filter(|(r, _)| visible(r.group))
+                        .map(|(_, p)| p.len())
+                        .sum::<usize>()
+                        <= max_points
+                })
+            })
+            .unwrap_or(LEVEL_TOLERANCES.len() - 1)
     }
 }
 
@@ -437,24 +657,70 @@ impl crate::Application {
             })
     }
 
-    /// Chooses the lines of the toolpath to draw, as a job: the groups with
-    /// `visible[group]` true, at the finest level of detail that fits
-    /// `max_points` (item 8). Making a level the first time simplifies every
-    /// run, which takes a while on a path of millions of moves.
-    pub fn start_path_lines(
+    /// [`ToolpathDisplay::window_lines`] as a job (issue 205).
+    pub fn start_window_lines(
         &self,
         display: std::sync::Arc<ToolpathDisplay>,
         visible: Vec<bool>,
+        window: std::ops::Range<usize>,
         max_points: usize,
+        min_level: usize,
     ) -> crate::JobHandle<PathLines> {
         self.jobs.submit(
             "choose path detail",
             self.events_tx.clone(),
             move |context| {
                 context.check_cancelled()?;
-                let lines = display.lines(
+                Ok(display.window_lines(
+                    &|group| visible.get(group).copied().unwrap_or(false),
+                    window,
+                    max_points,
+                    min_level,
+                ))
+            },
+        )
+    }
+
+    /// [`ToolpathDisplay::trace_lines`] as a job (issue 205): the first time
+    /// it simplifies every run at the trace's level.
+    pub fn start_trace_lines(
+        &self,
+        display: std::sync::Arc<ToolpathDisplay>,
+        visible: Vec<bool>,
+        max_points: usize,
+    ) -> crate::JobHandle<PathLines> {
+        self.jobs
+            .submit("draw path trace", self.events_tx.clone(), move |context| {
+                context.check_cancelled()?;
+                Ok(display.trace_lines(
                     &|group| visible.get(group).copied().unwrap_or(false),
                     max_points,
+                ))
+            })
+    }
+
+    /// Chooses the lines of the toolpath to draw, as a job: the groups with
+    /// `visible[group]` true, at the finest level of detail that fits
+    /// `max_points` (item 8), or at `min_level` (the zoom's level,
+    /// [`zoom_level`]) when that is coarser. Making a level the first time
+    /// simplifies every run, which takes a while on a path of millions of
+    /// moves.
+    pub fn start_path_lines(
+        &self,
+        display: std::sync::Arc<ToolpathDisplay>,
+        visible: Vec<bool>,
+        max_points: usize,
+        min_level: usize,
+    ) -> crate::JobHandle<PathLines> {
+        self.jobs.submit(
+            "choose path detail",
+            self.events_tx.clone(),
+            move |context| {
+                context.check_cancelled()?;
+                let lines = display.lines_for(
+                    &|group| visible.get(group).copied().unwrap_or(false),
+                    max_points,
+                    min_level,
                 );
                 context.check_cancelled()?;
                 Ok(lines)

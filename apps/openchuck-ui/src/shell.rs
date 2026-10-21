@@ -136,6 +136,9 @@ pub struct Shell {
     app: Option<Application>,
     /// The window title last sent to the system (#218).
     sent_title: String,
+    /// The setting the inspector brings into view on its next frame: a
+    /// message's "Show setting" link (decision record 0175).
+    setting_jump: Option<(OperationId, String)>,
     viewport: Viewport,
     dialog: Option<Dialog>,
     scene_job: Option<(JobHandle<SceneView>, bool)>,
@@ -236,6 +239,7 @@ impl Shell {
         let mut shell = Self {
             app: None,
             sent_title: String::new(),
+            setting_jump: None,
             viewport: Viewport::new(viewport_available),
             dialog: None,
             scene_job: None,
@@ -278,10 +282,44 @@ impl Shell {
             recorder: actions::Recorder::default(),
         };
         crate::logging::set_recording(shell.settings.record_actions);
+        shell.apply_simulate_settings();
         if let Some(folder) = folder {
             shell.open(folder);
         }
         shell
+    }
+
+    /// Gives the playback panel and the view the user's Simulate choices
+    /// (decision records 0168 and 0169).
+    fn apply_simulate_settings(&mut self) {
+        let simulate = self.settings.simulate;
+        self.play.set_turn_part_with_a(simulate.turn_part_with_a);
+        self.play
+            .set_hide_outside_window(simulate.hide_outside_window);
+        self.viewport
+            .set_simulate_show(crate::viewport::SimulateShow {
+                model: simulate.show_model,
+                cut_part: simulate.show_cut_part,
+                toolpath: simulate.show_toolpath,
+            });
+    }
+
+    /// Keeps the Simulate choices the user made in the settings, so they are
+    /// remembered between runs (issues 203, 204, 205).
+    fn keep_simulate_settings(&mut self) {
+        let show = self.viewport.simulate_show();
+        let now = openchuck_app::settings::SimulateSettings {
+            turn_part_with_a: self.play.turns_part_with_a(),
+            show_model: show.model,
+            show_cut_part: show.cut_part,
+            show_toolpath: show.toolpath,
+            hide_outside_window: self.play.hides_outside_window(),
+            ..self.settings.simulate
+        };
+        if now != self.settings.simulate {
+            self.settings.simulate = now;
+            self.settings_touched();
+        }
     }
 
     /// The interface scale the settings keep, for the window's first frame.
@@ -335,7 +373,10 @@ impl Shell {
     }
 
     fn create(&mut self, folder: PathBuf, name: &str) {
-        match Application::create(&folder, name, Threads::All) {
+        let defaults = openchuck_app::NewProject {
+            skip_stock_simulation: self.settings.simulate.skip_stock_simulation,
+        };
+        match Application::create_with(&folder, name, Threads::All, defaults) {
             Ok(app) => self.set_app(app),
             Err(e) => {
                 self.dialog = Some(Dialog::Error(format!(
@@ -886,6 +927,14 @@ impl Shell {
                 self.choose_setup(setup, Some(SetupPart::Workholding));
             }
             MessageAction::Generate => self.generate(false),
+            MessageAction::ShowSetting(op) => {
+                self.show_item(ItemRef::Operation(op));
+                self.setting_jump = self
+                    .app
+                    .as_ref()
+                    .and_then(|app| app.operation_warning_settings(op).into_iter().next())
+                    .map(|name| (op, name));
+            }
         }
     }
 
@@ -964,10 +1013,6 @@ impl Shell {
         let command = match action {
             TreeAction::Select(id) => {
                 self.select(Selection::Operation(id));
-                return;
-            }
-            TreeAction::ToggleShown(id) => {
-                self.play.toggle_shown(id);
                 return;
             }
             TreeAction::SelectModel(id) => {
@@ -1073,6 +1118,11 @@ impl Shell {
             self.play.forget_removed(app);
             if let Some(last) = self.run.last() {
                 self.play.restore(app, last);
+            }
+            // The playback window is not remembered: leaving Simulate lifts
+            // it (issue 205).
+            if self.step != Step::Simulate && self.play.window().is_some() {
+                self.play.reset_window();
             }
             let dt = f64::from(ctx.input(|i| i.stable_dt)).min(0.25);
             if self.play.frame(app, &mut self.viewport, dt) {
@@ -1491,6 +1541,20 @@ impl Shell {
             }
             Dialog::Settings => {
                 ui.heading("Settings");
+                let mut skip = self.settings.simulate.skip_stock_simulation;
+                if ui
+                    .checkbox(&mut skip, "Skip the stock simulation in new projects")
+                    .on_hover_text(
+                        "New projects then make only their toolpaths when generating. \
+                         Each project keeps its own choice, in Simulate",
+                    )
+                    .changed()
+                {
+                    action = Some(Box::new(move |s: &mut Self| {
+                        s.settings.simulate.skip_stock_simulation = skip;
+                        s.settings_touched();
+                    }));
+                }
                 let mut record = crate::logging::recording();
                 if ui
                     .checkbox(&mut record, "Record my actions in the log")
@@ -1654,8 +1718,6 @@ enum TreeAction {
     Delete(OperationId),
     /// Show this operation's parameters.
     Select(OperationId),
-    /// Show or hide this operation's path in the view (Simulate).
-    ToggleShown(OperationId),
     /// Show this model's units, placement and checks.
     SelectModel(ModelId),
     /// Show this selection set.
@@ -1736,6 +1798,7 @@ impl Shell {
         self.run_frame(&ctx);
         self.import_frame(&ctx);
         self.dialogs(&ctx);
+        self.keep_simulate_settings();
         self.settings_frame(&ctx);
         self.text_had_focus = ctx.egui_wants_keyboard_input();
         self.record_actions_frame(&ctx);
@@ -1854,7 +1917,10 @@ mod tests {
         drop(app);
         let ctx = egui::Context::default();
         let mut shell = Shell::with_settings(false, Some(dir.clone()), None);
-        let deadline = Instant::now() + Duration::from_secs(120);
+        // Every generation simulates the stock now (issue 214), and Simulate
+        // prepares the cut part: about 8 s uninstrumented, several times that
+        // in the instrumented coverage run, so the bound leaves room for it.
+        let deadline = Instant::now() + Duration::from_secs(300);
         let wait = |shell: &mut Shell, done: &dyn Fn(&Shell) -> bool| {
             while !done(shell) {
                 assert!(Instant::now() < deadline, "timed out");

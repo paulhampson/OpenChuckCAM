@@ -25,6 +25,8 @@ const CUBE_LABEL: f32 = 8.0;
 /// How squarely a cube face must face the eye for its label to show: the
 /// sine of 15 degrees.
 const LABEL_FACING: f32 = 0.258_819;
+/// The least a cube face must face the eye to be drawn (about 1.1 degrees).
+const MIN_FACING: f64 = 0.02;
 /// The axes gadget's size.
 const TRIAD: f32 = 78.0;
 /// Below this height the path legend collapses to a button (7.2).
@@ -133,7 +135,8 @@ pub fn legend_collapsed(height: f32) -> bool {
 }
 
 /// The readout's lines (7.2): X, Y and Z in mm to 3 places and A in degrees
-/// to 2, then the source and the frame ("G54 work coordinates").
+/// to 2, wrapped into 0 to 360 (issue 207), then the source and the frame
+/// ("G54 work coordinates").
 pub fn readout_lines(work: [f64; 4], source: &str, register: Option<&str>) -> Vec<String> {
     let frame = match register {
         Some(r) => format!("{r} work coordinates"),
@@ -143,7 +146,10 @@ pub fn readout_lines(work: [f64; 4], source: &str, register: Option<&str>) -> Ve
         format!("X {:>10.3} mm", work[0]),
         format!("Y {:>10.3} mm", work[1]),
         format!("Z {:>10.3} mm", work[2]),
-        format!("A {:>10.2} deg", work[3]),
+        format!(
+            "A {:>10} deg",
+            openchuck_app::playback::wrapped_a_text(work[3], 2)
+        ),
         format!("{source}, {frame}"),
     ]
 }
@@ -217,7 +223,10 @@ pub fn cube_faces(camera: &Camera) -> Vec<CubeFace> {
         .iter()
         .filter_map(|&(view, label, n)| {
             let facing = dot(n, back);
-            if facing <= 1e-3 {
+            // A face within a degree of edge-on is under a pixel thick: its
+            // neighbours' edges already draw it, and tessellating such a
+            // sliver gave long spikes across the cube (issue 176).
+            if facing < MIN_FACING {
                 return None;
             }
             // Two directions across the face, so its corners are n ± u ± v.
@@ -426,6 +435,42 @@ fn flat_text(painter: &egui::Painter, text: &str, centre: Pos2, right: egui::Vec
     painter.add(egui::Shape::mesh(mesh));
 }
 
+/// Draws the faces of the view cube in `cube` as the camera sees them.
+fn paint_cube(painter: &egui::Painter, cube: Rect, camera: &Camera) {
+    let half = cube.width() * 0.25;
+    for face in cube_faces(camera) {
+        let points: Vec<Pos2> = face
+            .corners
+            .iter()
+            .map(|c| cube.center() + vec2(c[0], c[1]) * half)
+            .collect();
+        let shade = (0x2b as f32 + 0x18 as f32 * face.facing) as u8;
+        // The fill has no outline of its own: a face seen almost edge-on is a
+        // sliver whose sharp corners, outlined as one path, grow long spikes
+        // (issue 176). Each edge is a line of its own.
+        painter.add(egui::Shape::convex_polygon(
+            points.clone(),
+            Color32::from_rgb(shade, shade + 4, shade + 9),
+            Stroke::NONE,
+        ));
+        let edge = Stroke::new(1.0, Color32::from_rgb(0x7b, 0x84, 0x90));
+        for (a, b) in points.iter().zip(points.iter().cycle().skip(1)) {
+            painter.line_segment([*a, *b], edge);
+        }
+        let centre = points.iter().fold(Pos2::ZERO, |a, p| a + p.to_vec2()) / 4.0;
+        // A face within 15 degrees of edge-on is too thin to read.
+        if face.facing >= LABEL_FACING {
+            flat_text(
+                painter,
+                face.label,
+                centre,
+                vec2(face.right[0], face.right[1]),
+                vec2(face.up[0], face.up[1]),
+            );
+        }
+    }
+}
+
 /// Draws the overlays.
 pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     let painter = ui.painter_at(rect);
@@ -433,31 +478,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     let font = egui::FontId::proportional(12.0);
     if let Some(cube) = b.cube {
         frame(&painter, cube);
-        let half = cube.width() * 0.25;
-        for face in cube_faces(&viewport.camera) {
-            let points: Vec<Pos2> = face
-                .corners
-                .iter()
-                .map(|c| cube.center() + vec2(c[0], c[1]) * half)
-                .collect();
-            let shade = (0x2b as f32 + 0x18 as f32 * face.facing) as u8;
-            painter.add(egui::Shape::convex_polygon(
-                points.clone(),
-                Color32::from_rgb(shade, shade + 4, shade + 9),
-                Stroke::new(1.0, Color32::from_rgb(0x7b, 0x84, 0x90)),
-            ));
-            let centre = points.iter().fold(Pos2::ZERO, |a, p| a + p.to_vec2()) / 4.0;
-            // A face within 15 degrees of edge-on is too thin to read.
-            if face.facing >= LABEL_FACING {
-                flat_text(
-                    &painter,
-                    face.label,
-                    centre,
-                    vec2(face.right[0], face.right[1]),
-                    vec2(face.up[0], face.up[1]),
-                );
-            }
-        }
+        paint_cube(&painter, cube, &viewport.camera);
     }
     if let Some(triad) = b.triad {
         let (right, up, _) = viewport.camera.basis();
@@ -484,6 +505,10 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     }
     if let (Some(r), Some((work, source))) = (b.readout, readout(viewport)) {
         frame(&painter, r);
+        // The continuous A, as the G-code gives it, on hovering the box
+        // (issue 207).
+        ui.interact(r, ui.id().with("readout"), egui::Sense::hover())
+            .on_hover_text(crate::playback_panel::continuous_a_tip(work[3], 2));
         let colours = [
             roles::WORK_X,
             roles::WORK_Y,
@@ -780,6 +805,62 @@ pub fn arrowhead(painter: &egui::Painter, from: Pos2, tip: Pos2, colour: Color32
 mod tests {
     use super::*;
 
+    /// Issue 176 (F-21): in axis-aligned views and near them nothing of the
+    /// cube is drawn outside its box (a nearly edge-on face made a long
+    /// horizontal spike across it).
+    #[test]
+    fn req_ui_02_req_ui_16_the_cube_never_draws_outside_its_box() {
+        let cube = Rect::from_min_size(pos2(100.0, 20.0), vec2(CUBE, CUBE));
+        let mut camera = Camera::default();
+        let mut views = Vec::new();
+        for view in [
+            StandardView::Front,
+            StandardView::Back,
+            StandardView::Left,
+            StandardView::Right,
+            StandardView::Top,
+            StandardView::Bottom,
+            StandardView::Isometric,
+        ] {
+            camera.set_view(view);
+            views.push((camera.yaw, camera.pitch));
+        }
+        // And a sweep through the angles the faces turn edge-on at.
+        for yaw in [-90.0, -45.0, -0.4, -0.05, 0.0, 0.05, 0.4, 45.0, 90.0, 180.0] {
+            for pitch in [
+                -90.0, -89.95, -89.0, -0.4, -0.05, 0.0, 0.05, 0.4, 89.0, 89.95, 90.0,
+            ] {
+                views.push((yaw, pitch));
+            }
+        }
+        for (yaw, pitch) in views {
+            camera.yaw = yaw;
+            camera.pitch = pitch;
+            let ctx = egui::Context::default();
+            let input = || egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(300.0, 200.0))),
+                ..Default::default()
+            };
+            ctx.run_ui(input(), |_| {}).textures_delta.clear();
+            let mut output = ctx.run_ui(input(), |ui| {
+                paint_cube(ui.painter(), cube, &camera);
+            });
+            output.textures_delta.clear();
+            let shapes = std::mem::take(&mut output.shapes);
+            for primitive in ctx.tessellate(shapes, 1.0) {
+                if let egui::epaint::Primitive::Mesh(mesh) = primitive.primitive {
+                    for vertex in &mesh.vertices {
+                        assert!(
+                            cube.expand(2.0).contains(vertex.pos),
+                            "a vertex at {:?} lies outside the cube {cube:?} at yaw {yaw}, pitch {pitch}",
+                            vertex.pos
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn req_ui_02_the_view_cube_shows_the_faces_toward_the_eye_and_gives_their_view() {
         let mut camera = Camera::default();
@@ -862,7 +943,12 @@ mod tests {
         );
         assert_eq!(lines[0], "X    142.318 mm");
         assert_eq!(lines[1], "Y    -11.900 mm");
-        assert_eq!(lines[3], "A     -53.20 deg");
+        // Issue 207: A reads 0 to 360 degrees.
+        assert_eq!(lines[3], "A     306.80 deg");
+        assert_eq!(
+            readout_lines([0.0, 0.0, 0.0, 720.0], "", None)[3],
+            "A       0.00 deg"
+        );
         assert_eq!(lines[4], "Cursor on surface, G54 work coordinates");
         let lines = readout_lines([0.0; 4], "Tool at move 12", None);
         assert_eq!(lines[4], "Tool at move 12, work coordinates");

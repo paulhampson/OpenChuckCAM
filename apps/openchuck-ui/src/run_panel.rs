@@ -221,8 +221,9 @@ impl RunPanel {
         self.job.is_some()
     }
 
-    /// Starts generating, and simulating when `simulate`. Does nothing while
-    /// a job runs.
+    /// Starts generating, with the stock simulation unless the project skips
+    /// it (issue 214), or always when `simulate` ("Generate and simulate").
+    /// Does nothing while a job runs.
     pub fn start(&mut self, app: &Application, simulate: bool) {
         if self.job.is_some() {
             return;
@@ -230,9 +231,9 @@ impl RunPanel {
         let handle = if simulate {
             app.start_simulate()
         } else {
-            app.start_regenerate()
+            app.start_generate()
         };
-        self.begin(handle, simulate);
+        self.begin(handle, simulate || app.simulates());
     }
 
     /// Starts generating up to and including `operation` (G, "generate
@@ -240,7 +241,7 @@ impl RunPanel {
     /// runs.
     pub fn start_until(&mut self, app: &Application, operation: OperationId) {
         if self.job.is_none() {
-            self.begin(app.start_regenerate_until(operation), false);
+            self.begin(app.start_generate_until(operation), app.simulates());
         }
     }
 
@@ -321,17 +322,24 @@ impl RunPanel {
 
     /// What the footer says while a job runs: "Generating… 2 of 4", or
     /// `None` when nothing runs.
-    pub fn running_text(&self) -> Option<String> {
+    pub fn running_text(&self, app: Option<&Application>) -> Option<String> {
         let job = self.job.as_ref()?;
         let what = if job.simulate {
             "Simulating"
         } else {
             "Generating"
         };
-        Some(match &self.progress {
+        let mut text = match &self.progress {
             Some(p) => format!("{what}… {p}"),
             None => format!("{what}…"),
-        })
+        };
+        // The operation being worked on, and whether its simulation is being
+        // run again because its stock was not cached (decision record 0190).
+        if let Some(activity) = app.and_then(Application::pipeline_activity) {
+            text.push_str(": ");
+            text.push_str(&activity);
+        }
+        Some(text)
     }
 
     /// Whether the results window or the add-operation dialog is open.
@@ -361,8 +369,17 @@ impl RunPanel {
         set: Option<SelectionSetId>,
     ) {
         let project = app.project();
-        let choices = app.strategy_choices();
         let from = from.and_then(|id| project.operation(id));
+        let setup = from
+            .map(|o| o.setup)
+            .or_else(|| project.setups().first().map(|s| s.id));
+        // A strategy the setup's part cannot take is listed but not chosen
+        // (decision record 0174).
+        let choices: Vec<StrategyChoice> = app
+            .strategy_choices_for(setup)
+            .into_iter()
+            .filter(|c| c.unavailable.is_none())
+            .collect();
         let tool = from.and_then(|o| o.tool).or_else(|| {
             project
                 .operations()
@@ -387,9 +404,7 @@ impl RunPanel {
         self.adding = Some(AddOperation {
             name: format!("Operation {}", project.operations().len() + 1),
             strategy,
-            setup: from
-                .map(|o| o.setup)
-                .or_else(|| project.setups().first().map(|s| s.id)),
+            setup,
             tool,
             cut_on,
         });
@@ -405,7 +420,7 @@ impl RunPanel {
         let Some(form) = &mut self.adding else {
             return (None, None);
         };
-        let choices: Vec<StrategyChoice> = app.strategy_choices();
+        let choices: Vec<StrategyChoice> = app.strategy_choices_for(form.setup);
         let setups: Vec<(SetupId, String)> = app
             .project()
             .setups()
@@ -439,6 +454,20 @@ impl RunPanel {
                         .selected_text(shown)
                         .show_ui(ui, |ui| {
                             for c in &choices {
+                                // Disabled with the reason, not hidden: a
+                                // strategy that needs a STEP part on a mesh
+                                // part (decision record 0174).
+                                if let Some(why) = &c.unavailable {
+                                    ui.add_enabled(
+                                        false,
+                                        egui::Button::selectable(
+                                            false,
+                                            format!("{} \u{b7} needs a STEP model", c.label),
+                                        ),
+                                    )
+                                    .on_disabled_hover_text(why);
+                                    continue;
+                                }
                                 let label = if c.takes_selections {
                                     c.label.clone()
                                 } else {
@@ -497,10 +526,28 @@ impl RunPanel {
                         ));
                     }
                 }
+                // The setup chosen after the strategy may not take it.
+                let unavailable = choices
+                    .iter()
+                    .find(|c| c.name == form.strategy)
+                    .and_then(|c| c.unavailable.clone());
+                if let Some(why) = &unavailable {
+                    ui.horizontal_wrapped(|ui| {
+                        crate::shell::mark(
+                            ui,
+                            openchuck_app::overview::ItemState::Warning,
+                            why,
+                        );
+                        ui.label(format!("{why}."));
+                    });
+                }
                 ui.weak("Everything else starts at the strategy's defaults; set them in the operation's panel.");
                 ui.horizontal(|ui| {
                     if ui
-                        .add_enabled(form.setup.is_some(), egui::Button::new("Add"))
+                        .add_enabled(
+                            form.setup.is_some() && unavailable.is_none(),
+                            egui::Button::new("Add"),
+                        )
                         .clicked()
                     {
                         add = true;

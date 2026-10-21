@@ -108,6 +108,15 @@ jobs:
         with:
           key: step-kernel
           cache-on-failure: true
+      # The build script marks the build dirty when a tracked file differs from the commit (NFR-16,
+      # decision 0191). Printed here so a "yes" in a nightly build can be traced to the file.
+      - name: Show the state of the working tree
+        run: |
+          git config --get core.autocrlf || echo "core.autocrlf is not set"
+          echo "--- git status --porcelain"
+          git status --porcelain
+          echo "--- git diff --stat"
+          git diff --stat
       - name: Build the binaries (release)
         run: cargo build --release --locked --target ${{ matrix.target }} -p openchuck-cli -p openchuck-ui
       # The STEP reader runs as its own program so that a crash on a damaged file cannot take the

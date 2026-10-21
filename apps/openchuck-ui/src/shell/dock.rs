@@ -10,7 +10,7 @@ use eframe::egui::{self, RichText};
 use openchuck_app::JobOutcome;
 use openchuck_app::overview::{Severity, Step};
 
-use super::{Dialog, Selection, Shell, marks};
+use super::{Command, Dialog, Selection, Shell, marks};
 use crate::theme::DARK;
 
 /// A tab of the dock.
@@ -108,7 +108,7 @@ impl Shell {
             self.dock_tabs(ui);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .small_button("﹀")
+                    .small_button("\u{23f7}")
                     .on_hover_text("Collapse the dock (Ctrl 3)")
                     .clicked()
                 {
@@ -333,15 +333,29 @@ impl Shell {
     /// Playback: the transport and timeline (SIM-04; its rework is lane
     /// X6's).
     fn playback_tab(&mut self, ui: &mut egui::Ui) {
-        match &self.app {
+        // The project's stock simulation choice (issue 214; decision record
+        // 0168) is in the tab with or without a run, as one undoable step.
+        let skip = match &self.app {
             Some(app) if self.play.has_run() => {
                 egui::ScrollArea::vertical()
                     .id_salt("playback")
-                    .show(ui, |ui| self.play.show(ui, app));
+                    .show(ui, |ui| self.play.show(ui, app))
+                    .inner
             }
-            _ => {
+            Some(app) => {
+                let skip = crate::playback_panel::skip_box(ui, app);
                 ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
+                skip
             }
+            None => {
+                ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
+                None
+            }
+        };
+        if let Some(skip) = skip {
+            self.tree_action(super::TreeAction::Command(Box::new(
+                Command::SetSkipStockSimulation(skip),
+            )));
         }
     }
 }

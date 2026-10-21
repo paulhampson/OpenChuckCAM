@@ -16,14 +16,15 @@ use openchuck_app::settings::SettingsFile;
 use super::frame::Region;
 use super::*;
 use crate::testing::cube_project;
+use crate::theme::width;
 
 /// A shell drawn frame by frame at a window size.
 pub(super) struct Rig {
     pub(super) shell: Shell,
-    ctx: egui::Context,
+    pub(super) ctx: egui::Context,
     pub(super) size: egui::Vec2,
     shapes: Vec<egui::epaint::ClippedShape>,
-    dirs: Vec<PathBuf>,
+    pub(super) dirs: Vec<PathBuf>,
 }
 
 impl Rig {
@@ -110,6 +111,38 @@ impl Rig {
         out
     }
 
+    /// The rectangles of every entry box painted (the field fill), left to
+    /// right as drawn.
+    pub(super) fn entry_rects(&self) -> Vec<egui::Rect> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
+            match shape {
+                egui::Shape::Rect(r) if r.fill == crate::theme::DARK.field => out.push(r.rect),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
+    /// The rectangles of every narrow, tall shape painted (a scroll bar's
+    /// handle or track).
+    pub(super) fn bar_rects(&self) -> Vec<egui::Rect> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
+            match shape {
+                egui::Shape::Rect(r) if r.rect.width() < 12.0 && r.rect.height() > 40.0 => {
+                    out.push(r.rect)
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
     /// Every text painted with the rectangle it covers.
     pub(super) fn text_rects(&self) -> Vec<(String, egui::Rect)> {
         fn walk(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
@@ -147,7 +180,7 @@ impl Drop for Rig {
     }
 }
 
-fn temp(name: &str) -> PathBuf {
+pub(super) fn temp(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("openchuck-ui-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir
@@ -249,7 +282,8 @@ fn req_ui_10_req_ui_11_the_steps_marks_and_primary_follow_the_project() {
     assert!(rig.shows("Continue to simulate"));
     rig.press(Key::Num4, Modifiers::ALT);
     assert_eq!(rig.shell.step, Step::Simulate);
-    assert!(rig.shows("Run simulation"));
+    // Generating simulated the stock too (issue 214), so Simulate goes on.
+    assert!(rig.shows("Continue to post and export"));
     rig.press(Key::Num1, Modifiers::ALT);
     assert_eq!(rig.shell.step, Step::Model);
     assert!(rig.shows("Continue to setup"));
@@ -308,7 +342,7 @@ fn req_ui_15_a_dock_splitter_reset_is_kept_for_the_next_start() {
     rig.shell.settings_changed = None;
     rig.shell.reset = Some(Region::Dock);
     rig.frame(Vec::new());
-    assert!((rig.shell.settings.dock.size - 196.0).abs() < 0.01);
+    assert!((rig.shell.settings.dock.size - 260.0).abs() < 0.01);
     assert!(rig.shell.settings_changed.is_some());
 }
 
@@ -580,6 +614,70 @@ fn req_ui_11_an_operation_in_error_shows_the_banner_and_its_actions() {
     assert!(rig.shows("GEOMETRY"));
     assert!(rig.shows("Cut on"));
     assert!(rig.shows("Lettering"));
+}
+
+/// A swarf operation's Geometry section shows its sets' options beside them
+/// (decision record 0176 item 3): the boundary's two limits and each avoid
+/// or check set's choice, and a set whose options leave it limiting nothing
+/// says so. A strategy without such options shows none.
+#[test]
+fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() {
+    use openchuck_app::project::{BoundaryOptions, Item, OnBreak, SelectionTarget};
+    use openchuck_app::selection::SelectionRole;
+    let mut rig = Rig::cube("inspector-set-options", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let op = app.project().operations()[0].clone();
+    let model = app.project().models()[0].id;
+    let fence = app
+        .save_selection("Fence", model, SelectionTarget::Triangles([0].into()))
+        .unwrap();
+    let rib = app
+        .save_selection("Rib", model, SelectionTarget::Triangles([1].into()))
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Boundary, fence, true)
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Avoid, rib, true)
+        .unwrap();
+    // Not swarf: no options.
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Contain within"));
+    assert!(!rig.shows("Limits the pass"));
+    assert!(!rig.shows("Cut short"));
+    // As swarf: the options, with the boundary's limits both off and the
+    // rib ignored, each saying it limits nothing.
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut swarf = app.project().operation(op.id).unwrap().clone();
+    swarf.strategy = "swarf".into();
+    app.execute(Command::Replace(Item::Operation(swarf)))
+        .unwrap();
+    app.set_boundary_options(
+        op.id,
+        BoundaryOptions {
+            limits_pass: false,
+            limits_tip: false,
+        },
+    )
+    .unwrap();
+    app.set_on_break(op.id, SelectionRole::Avoid, rib, OnBreak::Ignore)
+        .unwrap();
+    rig.settle();
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for needle in [
+        "Limits the pass",
+        "Limits the tip",
+        "Cut short",
+        "Warn only",
+        "Ignore",
+        "The set 'Fence' limits nothing.",
+        "The set 'Rib' limits nothing.",
+    ] {
+        assert!(rig.shows(needle), "{needle} is not shown");
+    }
 }
 
 /// The header's name is an editable field: a name is applied as one
@@ -1115,5 +1213,272 @@ fn req_ui_01_the_window_title_follows_the_open_project() {
     assert!(
         title.ends_with(&crate::window_title::shorten_middle(&folder, 70)),
         "{title}"
+    );
+}
+
+/// Draws the Setup inspector at `window` physical pixels, UI `scale` and an
+/// inspector `pane` width (points) and returns the entry boxes in it with the
+/// pane's left and right edges.
+fn setup_entries(window: (f32, f32), scale: f32, pane: f32) -> (Vec<egui::Rect>, f32, f32, f32) {
+    let mut rig = Rig::cube("inspector-width", None);
+    // The application's own style, as the layout depends on its spacing.
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.ctx.set_zoom_factor(scale);
+    rig.size = egui::vec2(window.0 / scale, window.1 / scale);
+    rig.shell.settings.inspector.size = pane;
+    let setup = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(setup, None);
+    for _ in 0..6 {
+        rig.frame(Vec::new());
+    }
+    let right = rig.size.x;
+    let left = right - rig.shell.settings.inspector.size;
+    let entries = rig
+        .entry_rects()
+        .into_iter()
+        .filter(|r| r.left() > left)
+        .collect();
+    let scroll = egui::style::ScrollStyle::solid();
+    let bar = scroll.bar_width + scroll.bar_inner_margin + scroll.bar_outer_margin;
+    (entries, left, right, bar)
+}
+
+/// Field-row layout (specification section 8, UI-16, finding F-19 of issue
+/// 174): the entry boxes use the width the pane leaves after the 120-pixel
+/// label column, and the scroll bar never covers them, at the window sizes
+/// and UI scales of the trial.
+#[test]
+fn req_ui_16_req_ui_07_entry_boxes_fill_the_pane_and_the_scroll_bar_never_covers_them() {
+    for window in [(1366.0, 768.0), (1920.0, 700.0), (1100.0, 700.0)] {
+        for scale in [1.0, 1.2] {
+            for pane in [280.0, 388.0, 520.0] {
+                let (entries, left, right, bar) = setup_entries(window, scale, pane);
+                let texts: Vec<_> = entries
+                    .iter()
+                    .filter(|r| r.width() > 60.0 && r.height() < 30.0)
+                    .collect();
+                if texts.is_empty() {
+                    // The inspector collapsed to its rail (UI-16).
+                    assert!(window.0 / scale < 1200.0, "{window:?} x{scale} {pane}");
+                    continue;
+                }
+                let width = right - left;
+                for r in &texts {
+                    let at = format!("{r:?} at {window:?} x{scale}, pane {pane}");
+                    assert!(r.right() <= right - bar, "covered by the scroll bar: {at}");
+                    assert!(
+                        r.left() <= left + 48.0 + width::LABEL_COLUMN + 12.0,
+                        "pushed right of the label column: {at}"
+                    );
+                }
+                let widest = texts.iter().map(|r| r.width()).fold(0.0, f32::max);
+                assert!(
+                    widest >= 0.4 * width,
+                    "entries {widest} wide in a pane {width} wide at {window:?} x{scale}"
+                );
+            }
+        }
+    }
+}
+
+/// Whether two widths are the same to a hundredth of a point.
+fn near(a: f32, b: f32) -> bool {
+    (a - b).abs() < 0.01
+}
+
+/// Whether an entry rectangle is a text box that runs to the pane's right
+/// edge (the segmented controls and buttons do not).
+fn is_text_box(r: &egui::Rect, window_width: f32) -> bool {
+    r.width() > 60.0 && r.height() < 24.0 && r.right() >= window_width - 30.0
+}
+
+impl Rig {
+    /// A click at `at`, over three frames.
+    pub(super) fn click(&mut self, at: egui::Pos2) {
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        self.frame(vec![Event::PointerMoved(at)]);
+        self.frame(vec![button(true)]);
+        self.frame(vec![button(false)]);
+    }
+
+    /// Draws until the inspector's layout has not changed for three frames
+    /// (the scroll bar's strip animates in over a few frames).
+    fn settle_layout(&mut self) {
+        let mut same = 0;
+        let mut last = self.inspector_layout();
+        for _ in 0..120 {
+            self.frame(Vec::new());
+            let now = self.inspector_layout();
+            same = if now == last { same + 1 } else { 0 };
+            if same >= 3 {
+                return;
+            }
+            last = now;
+        }
+        panic!("the inspector's layout does not settle");
+    }
+
+    /// The inspector's width as drawn and the entry boxes in it.
+    fn inspector_layout(&self) -> (f32, Vec<egui::Rect>) {
+        let left = self.size.x - self.shell.settings.inspector.size;
+        let entries = self
+            .entry_rects()
+            .into_iter()
+            .filter(|r| r.left() > left)
+            .collect();
+        (self.shell.settings.inspector.size, entries)
+    }
+}
+
+/// Typing in an entry box, confirming it and leaving it never changes the
+/// size or position of any box or of the pane (issue 198, F-42; the shared
+/// layout cause of issues 174, 178, 179, 190 and 215: a row that grows with
+/// its content makes the pane widen). Checked in the operation inspector and
+/// the Setup inspector, at 100% and 120%.
+#[test]
+fn req_ui_16_req_ui_07_typing_in_an_entry_box_moves_nothing() {
+    for scale in [1.0, 1.2] {
+        for setup in [false, true] {
+            let mut rig = Rig::cube("typing-stable", None);
+            crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+            rig.ctx.set_zoom_factor(scale);
+            rig.size = egui::vec2(1920.0 / scale, 1080.0 / scale);
+            if setup {
+                let id = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+                rig.shell.choose_setup(id, None);
+            } else {
+                let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+                rig.shell.select(Selection::Operation(op));
+            }
+            rig.settle_layout();
+            let (width, before) = rig.inspector_layout();
+            let at = format!("scale {scale}, setup step {setup}");
+            // Content never widens the pane beyond the width it was set to
+            // (issues 178 and 179: it crept wider each frame).
+            assert!(near(width, width::INSPECTOR.0), "the pane's width: {at}");
+            let target = before
+                .iter()
+                .filter(|r| is_text_box(r, rig.size.x))
+                .nth(1)
+                .copied()
+                .unwrap_or_else(|| panic!("no second text box: {at}: {before:?}"));
+            // All the wide boxes share one left and one right edge.
+            let wide: Vec<_> = before
+                .iter()
+                .filter(|r| is_text_box(r, rig.size.x))
+                .collect();
+            for r in &wide {
+                assert!((r.left() - wide[0].left()).abs() < 0.6, "left edges: {at}");
+                assert!(
+                    (r.right() - wide[0].right()).abs() < 0.6,
+                    "right edges: {at}"
+                );
+            }
+            // Nothing in the pane is drawn past its right edge (issue 178:
+            // chips and text were cut off at the right).
+            let pane_left = rig.size.x - width;
+            for (text, r) in rig.text_rects() {
+                if r.left() > pane_left && r.top() > 90.0 && r.bottom() < rig.size.y - 50.0 {
+                    assert!(r.right() <= rig.size.x, "{text:?} runs past the pane: {at}");
+                }
+            }
+            rig.click(target.center());
+            rig.settle_layout();
+            let (width, before) = rig.inspector_layout();
+            rig.frame(vec![Event::Text("123456789012345678901234567890".into())]);
+            rig.frame(Vec::new());
+            let (typing, during) = rig.inspector_layout();
+            assert!(
+                near(typing, width) && during == before,
+                "while typing: {at}"
+            );
+            rig.press(Key::Enter, Modifiers::NONE);
+            rig.frame(Vec::new());
+            let (after, confirmed) = rig.inspector_layout();
+            assert!(near(after, width), "after Enter: {at}");
+            assert_eq!(confirmed.len(), before.len(), "after Enter: {at}");
+        }
+    }
+}
+
+impl Rig {
+    /// Drags from `from` to `to` in small steps and lets go.
+    fn drag(&mut self, from: egui::Pos2, to: egui::Pos2) {
+        let button = |pos, pressed| Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        self.frame(vec![Event::PointerMoved(from)]);
+        self.frame(vec![button(from, true)]);
+        for i in 1..=10 {
+            let pos = from + (to - from) * (i as f32 / 10.0);
+            self.frame(vec![Event::PointerMoved(pos)]);
+        }
+        self.frame(vec![button(to, false)]);
+    }
+}
+
+/// The inspector's width follows its splitter between the specification's
+/// limits (section 3: 340 wide, 280 to 520), stays where it is dropped, and
+/// its content stays aligned at the widest (issues 178 and 179, F-23 and
+/// F-24: at 1920 × 1080 maximised the pane sprang back and its contents
+/// were misaligned).
+#[test]
+fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_aligned() {
+    let mut rig = Rig::cube("inspector-drag", None);
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.size = egui::vec2(1920.0, 1080.0);
+    let id = rig.shell.app.as_ref().unwrap().project().setups()[0].id;
+    rig.shell.choose_setup(id, None);
+    rig.settle_layout();
+    let y = 400.0;
+    let (default, min, max) = width::INSPECTOR;
+    assert!(near(rig.inspector_layout().0, default));
+    let edge = |rig: &Rig| egui::pos2(rig.size.x - rig.inspector_layout().0, y);
+    // Far to the left: the widest the specification allows.
+    let from = edge(&rig);
+    rig.drag(from, egui::pos2(from.x - 600.0, y));
+    rig.settle_layout();
+    assert!(near(rig.inspector_layout().0, max), "dragged to the widest");
+    let (_, entries) = rig.inspector_layout();
+    let boxes: Vec<_> = entries
+        .iter()
+        .filter(|r| is_text_box(r, rig.size.x))
+        .collect();
+    assert!(!boxes.is_empty());
+    for r in &boxes {
+        assert!(
+            (r.left() - boxes[0].left()).abs() < 0.6,
+            "left edges at the widest"
+        );
+        assert!(
+            (r.right() - boxes[0].right()).abs() < 0.6,
+            "right edges at the widest"
+        );
+    }
+    let pane_left = rig.size.x - max;
+    for (text, r) in rig.text_rects() {
+        if r.left() > pane_left && r.top() > 90.0 && r.bottom() < rig.size.y - 50.0 {
+            assert!(r.right() <= rig.size.x, "{text:?} runs past the pane");
+        }
+    }
+    // It stays where it was dropped, and follows the splitter back.
+    for _ in 0..10 {
+        rig.frame(Vec::new());
+    }
+    assert!(near(rig.inspector_layout().0, max), "stays at the widest");
+    let from = edge(&rig) + egui::vec2(3.0, 0.0);
+    rig.drag(from, egui::pos2(from.x + 300.0, y));
+    rig.settle_layout();
+    assert!(
+        near(rig.inspector_layout().0, min),
+        "dragged to the narrowest"
     );
 }

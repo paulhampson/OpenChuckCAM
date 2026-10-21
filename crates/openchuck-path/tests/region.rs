@@ -14,7 +14,9 @@ mod support;
 use std::collections::BTreeMap;
 
 use openchuck_path::params::names;
-use openchuck_path::region::{RegionConstraint, Window};
+use openchuck_path::region::{
+    BoundaryLimits, Protection, RegionConstraint, WatchedSurface, Window,
+};
 use openchuck_path::{
     GeneratedPath, HelicalFinishing, MeshSurface, ParameterValue, PathError, generate,
     generate_in_region,
@@ -112,6 +114,55 @@ fn req_op_02_an_empty_constraint_changes_nothing() {
     let whole = run(|ctx| generate(&HelicalFinishing, &f.input(), &values(), ctx)).unwrap();
     let limited = run_with(&f, &RegionConstraint::default()).unwrap();
     assert_eq!(whole.group, limited.group);
+}
+
+#[test]
+fn req_op_02_a_strategy_without_restriction_options_refuses_them() {
+    // A boundary limit turned off, or a set that only warns, is built for
+    // swarf only (decision 0176; OI-637): another strategy refuses it,
+    // naming itself, rather than ignoring it.
+    let mesh = cylinder();
+    let f = fixture(&mesh);
+    let strip =
+        MeshSurface::new(&pick(&mesh, |c| (18.0 - 1e-9..22.0 + 1e-9).contains(&c.x))).unwrap();
+    let watch = [WatchedSurface {
+        name: "Strip",
+        protection: Protection::Avoid,
+        surface: &strip,
+    }];
+    let window = Window {
+        x_min: 0.0,
+        x_max: 20.0,
+        arc: None,
+    };
+    for region in [
+        RegionConstraint {
+            watch: &watch,
+            ..Default::default()
+        },
+        RegionConstraint {
+            boundary: Some(window),
+            boundary_limits: BoundaryLimits {
+                pass: true,
+                tip: false,
+            },
+            ..Default::default()
+        },
+    ] {
+        assert!(region.has_restriction_options());
+        let err = run_with(&f, &region).unwrap_err().to_string();
+        assert!(
+            err.contains("takes no options on its boundary, avoid or check sets"),
+            "{err}"
+        );
+    }
+    // The default options are no options.
+    let plain = RegionConstraint {
+        boundary: Some(window),
+        ..Default::default()
+    };
+    assert!(!plain.has_restriction_options());
+    assert!(run_with(&f, &plain).is_ok());
 }
 
 #[test]

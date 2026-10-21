@@ -197,6 +197,7 @@ fn build_with_mesh(
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: parameters
                 .into_iter()
                 .map(|(k, v)| (k.to_owned(), v))

@@ -34,8 +34,8 @@ use crate::error::ProjectError;
 use crate::hash::ContentHash;
 use crate::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use crate::model::{
-    Descriptor, ModelRef, Operation, ParameterValue, Project, SelectionSet, SelectionTarget, Setup,
-    ToolSnapshot,
+    BoundaryOptions, Descriptor, ModelRef, Operation, ParameterValue, Project, RestrictionOptions,
+    SelectionSet, SelectionTarget, SetOptions, Setup, ToolSnapshot,
 };
 use crate::order::OrderKey;
 use openchuck_types::machine::{Clearance, MachineProfile};
@@ -82,7 +82,14 @@ use openchuck_types::workholding::Workholding;
 /// - 13: the machine copy's feed limits gain the optional `rotary_in_feed`,
 ///   written only when A counts in the feed word; a copy of the built-in
 ///   Makera Z1 gains `"makera"` (decision record 0076).
-pub const SCHEMA: i64 = 13;
+/// - 14: an operation gains the optional `boundary_options`, `avoid_options`
+///   and `check_options` tables, each written only when it differs from the
+///   default (decision record 0176 item 3).
+/// - 15: `project.toml` gains `skip_stock_simulation`, written only when
+///   true (decision record 0168), and `hidden_paths`, the operations whose
+///   toolpath is hidden in the view, written only when one is (decision
+///   record 0169). Neither is an input to a toolpath or the G-code.
+pub const SCHEMA: i64 = 15;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -109,6 +116,8 @@ const MIGRATIONS: &[Migration] = &[
     schema_10_to_11,
     schema_11_to_12,
     schema_12_to_13,
+    schema_13_to_14,
+    schema_14_to_15,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -259,6 +268,42 @@ fn schema_12_to_13(kind: FileKind, table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
+/// Schema 14 adds an operation's optional `boundary_options`, `avoid_options`
+/// and `check_options` (decision record 0176 item 3), which a schema 13 file
+/// does not have, so its sets take the defaults and it needs no change but its
+/// number. A schema 13 file that already holds one was not written by any
+/// version that knew it, so it is refused rather than guessed at.
+fn schema_13_to_14(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let premature = ["boundary_options", "avoid_options", "check_options"]
+        .into_iter()
+        .find(|key| kind == FileKind::Operation && table.contains_key(*key));
+    match premature {
+        Some(key) => Err(format!(
+            "this schema 13 file has `{key}`, a table schema 14 introduced; remove it, or set \
+             `schema = 14` if the file was written for schema 14"
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Schema 15 adds the optional `skip_stock_simulation` and `hidden_paths` to
+/// `project.toml`, which a schema 14 file does not have, so it needs no
+/// change but its number: the stock is simulated and every path is shown. A
+/// schema 14 file that already holds one was not written by any version
+/// that knew it, so it is refused rather than guessed at.
+fn schema_14_to_15(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    let premature = ["skip_stock_simulation", "hidden_paths"]
+        .into_iter()
+        .find(|field| kind == FileKind::Project && table.contains_key(*field));
+    match premature {
+        Some(field) => Err(format!(
+            "this schema 14 file has `{field}`, a field schema 15 introduced; remove it, or set \
+             `schema = 15` if the file was written for schema 15"
+        )),
+        None => Ok(()),
+    }
+}
+
 /// The kinds of file in a project folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FileKind {
@@ -298,6 +343,10 @@ struct ProjectFile {
     keep_tangent_edges: bool,
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     warn_on_selection_reset: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    skip_stock_simulation: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hidden_paths: Vec<OperationId>,
     #[serde(default, skip_serializing_if = "SimulationSettings::is_default")]
     simulation: SimulationSettings,
     #[serde(default)]
@@ -404,6 +453,12 @@ struct OperationFile {
     avoid: Vec<SelectionSetId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     check: Vec<SelectionSetId>,
+    #[serde(default, skip_serializing_if = "BoundaryOptions::is_default")]
+    boundary_options: BoundaryOptions,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    avoid_options: BTreeMap<SelectionSetId, SetOptions>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    check_options: BTreeMap<SelectionSetId, SetOptions>,
     #[serde(default)]
     parameters: BTreeMap<String, ParameterValue>,
     #[serde(default = "enabled_default", skip_serializing_if = "is_enabled")]
@@ -417,6 +472,18 @@ const fn enabled_default() -> bool {
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
 const fn is_enabled(enabled: &bool) -> bool {
     *enabled
+}
+
+/// The entries of `options` that differ from the defaults, which are the only
+/// ones written or kept (decision record 0176).
+fn non_default(
+    options: &BTreeMap<SelectionSetId, SetOptions>,
+) -> BTreeMap<SelectionSetId, SetOptions> {
+    options
+        .iter()
+        .filter(|(_, o)| !o.is_default())
+        .map(|(s, o)| (*s, *o))
+        .collect()
 }
 
 /// A hash of everything an operation takes from selections: the sets it uses
@@ -448,6 +515,10 @@ pub fn selection_inputs_hash(
         boundary: Option<SelectionSetId>,
         avoid: &'a [SelectionSetId],
         check: &'a [SelectionSetId],
+        /// The sets' options, absent while they are the defaults, so the
+        /// hashes of older operations are unchanged (decision record 0176).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        options: Option<&'a RestrictionOptions>,
         sets: BTreeMap<String, Used<'a>>,
     }
     let o = project
@@ -478,6 +549,7 @@ pub fn selection_inputs_hash(
         boundary: o.boundary,
         avoid: &o.avoid,
         check: &o.check,
+        options: Some(&o.restriction_options).filter(|r| **r != RestrictionOptions::default()),
         sets,
     };
     Ok(ContentHash::of_bytes(to_text(&inputs)?.as_bytes()))
@@ -493,6 +565,15 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
         name: project.name().to_owned(),
         keep_tangent_edges: project.keep_tangent_edges(),
         warn_on_selection_reset: project.warn_on_selection_reset(),
+        skip_stock_simulation: project.skip_stock_simulation(),
+        // In machining order, and only the operations the project has, so
+        // the file is the same however the choice was reached.
+        hidden_paths: project
+            .operations()
+            .iter()
+            .map(|o| o.id)
+            .filter(|id| !project.path_shown(*id))
+            .collect(),
         simulation: project.simulation(),
         models: project.models().to_vec(),
     };
@@ -562,6 +643,9 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             boundary: o.boundary,
             avoid: o.avoid.clone(),
             check: o.check.clone(),
+            boundary_options: o.restriction_options.boundary,
+            avoid_options: non_default(&o.restriction_options.avoid),
+            check_options: non_default(&o.restriction_options.check),
             parameters: o.parameters.clone(),
             enabled: o.enabled,
         };
@@ -870,6 +954,11 @@ fn assemble(texts: Texts, migrations: &[Migration], schema: i64) -> Result<Proje
                     boundary: f.boundary,
                     avoid: f.avoid,
                     check: f.check,
+                    restriction_options: RestrictionOptions {
+                        boundary: f.boundary_options,
+                        avoid: non_default(&f.avoid_options),
+                        check: non_default(&f.check_options),
+                    },
                     parameters: f.parameters,
                     enabled: f.enabled,
                 })
@@ -892,6 +981,8 @@ fn assemble(texts: Texts, migrations: &[Migration], schema: i64) -> Result<Proje
     project.machine_id = machine_id;
     project.set_keep_tangent_edges(file.keep_tangent_edges);
     project.set_warn_on_selection_reset(file.warn_on_selection_reset);
+    project.set_skip_stock_simulation(file.skip_stock_simulation);
+    project.set_paths_shown(&file.hidden_paths, false);
     project
         .set_simulation(file.simulation)
         .map_err(|e| ProjectError::BadFile {

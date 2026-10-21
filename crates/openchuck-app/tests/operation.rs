@@ -157,6 +157,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -1010,6 +1011,159 @@ fn req_op_09_req_sim_06_rest_machining_after_an_operation_is_generated_on_its_st
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// The project of [`project`] with a rest machining operation after the
+/// ring: the rest operation is made against the stock the ring leaves
+/// (SIM-06). Returns the two IDs in order.
+fn ring_then_rest(name: &str) -> (PathBuf, Application, Vec<OperationId>) {
+    let (dir, mut app, op) = project(name);
+    app.register_strategy(Arc::new(OneRing)).unwrap();
+    let mut rest = app.project().operation(op).unwrap().clone();
+    rest.id = OperationId::new();
+    rest.name = "Rest".into();
+    rest.strategy = "rest_machining".into();
+    app.execute(Command::Add {
+        item: Item::Operation(rest),
+        placement: Placement::End,
+    })
+    .unwrap();
+    let ids = app.project().operations().iter().map(|o| o.id).collect();
+    (dir, app, ids)
+}
+
+#[test]
+fn req_nfr_04_req_sim_06_editing_a_later_operation_reuses_the_earlier_one_and_its_stock() {
+    // Issue 239: the operation before the edited one is upstream of it. Its
+    // path and the stock it leaves come from the cache: it is neither made
+    // again nor run through the stock simulation again.
+    let (dir, mut app, ids) = ring_then_rest("reuse-stock");
+    let first = app.regenerate().unwrap();
+    assert_eq!(first.generated, ids);
+    // The ring's stock is needed by the rest operation; the rest operation's
+    // stock is needed by nothing, so it is not simulated.
+    assert_eq!(first.simulated, [ids[0]]);
+
+    // Nothing changed: nothing is made or simulated.
+    let again = app.regenerate().unwrap();
+    assert_eq!(again.reused, ids);
+    assert!(again.simulated.is_empty(), "{:?}", again.simulated);
+    assert_eq!(again.toolpath, first.toolpath);
+
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.2)),
+    })
+    .unwrap();
+    let edited = app.regenerate().unwrap();
+    assert_eq!(edited.reused, [ids[0]]);
+    assert_eq!(edited.generated, [ids[1]]);
+    assert!(edited.simulated.is_empty(), "{:?}", edited.simulated);
+
+    // A simulation runs only the edited operation through the stock; the
+    // ring's stock is taken from the cache.
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.25)),
+    })
+    .unwrap();
+    let simulated = app.simulate().unwrap();
+    assert_eq!(simulated.reused, [ids[0]]);
+    assert_eq!(simulated.simulated, [ids[1]]);
+    let report = simulated.simulation.unwrap();
+    assert_eq!(report.setups.len(), 1);
+    assert_eq!(report.setups[0].operations.len(), 2);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_req_sim_06_editing_an_earlier_operation_makes_and_simulates_the_later_one_again() {
+    // The rest operation reads the stock the ring leaves, so a change to the
+    // ring makes it again on the new stock, and both are simulated again.
+    let (dir, mut app, ids) = ring_then_rest("upstream-change");
+    let first = app.simulate().unwrap();
+    assert_eq!(first.simulated, ids);
+    app.execute(Command::SetParameter {
+        operation: ids[0],
+        name: names::STOCK_TO_LEAVE.into(),
+        value: Some(ParameterValue::Number(0.3)),
+    })
+    .unwrap();
+    let after = app.simulate().unwrap();
+    assert_eq!(after.generated, ids);
+    assert!(after.reused.is_empty());
+    assert_eq!(after.simulated, ids);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_nfr_04_a_cached_operation_whose_stock_was_not_kept_is_simulated_once_then_reused() {
+    // A run that does not need an operation's stock leaves none in the
+    // cache: generating up to the ring alone, then the whole project, runs
+    // the ring through the stock once and keeps it from then on.
+    let (dir, app, ids) = ring_then_rest("stock-later");
+    let until = app.regenerate_until(ids[0]).unwrap();
+    assert_eq!(until.generated, [ids[0]]);
+    assert!(until.simulated.is_empty());
+    let all = app.regenerate().unwrap();
+    assert_eq!(all.reused, [ids[0]]);
+    assert_eq!(all.generated, [ids[1]]);
+    assert_eq!(all.simulated, [ids[0]]);
+    let again = app.simulate().unwrap();
+    assert_eq!(again.reused, ids);
+    assert_eq!(again.simulated, [ids[1]]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_reused_paths_and_stock_give_byte_identical_output() {
+    // Reusing the ring's cached path and the stock it leaves gives the same
+    // G-code, notes and simulation as making everything again with the cache
+    // off.
+    let (dir, mut app, ids) = ring_then_rest("reuse-identical");
+    app.set_post(Some(openchuck_app::PostSelection::Builtin(
+        "makera-z1".into(),
+    )));
+    app.simulate().unwrap();
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.2)),
+    })
+    .unwrap();
+    let reused = app.simulate().unwrap();
+    assert_eq!(reused.reused, [ids[0]]);
+    assert_eq!(reused.simulated, [ids[1]]);
+    assert!(!reused.gcode.is_empty());
+
+    app.set_cache_versions(0);
+    let fresh = app.simulate().unwrap();
+    assert_eq!(fresh.generated, ids);
+    assert_eq!(fresh.simulated, ids);
+    assert_eq!(reused.gcode, fresh.gcode);
+    assert_eq!(reused.notes, fresh.notes);
+    assert_eq!(reused.toolpath, fresh.toolpath);
+    assert_eq!(reused.simulation, fresh.simulation);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_a_rename_after_reuse_names_the_operations_as_they_are_now() {
+    // Names are not cache inputs (issue 209): a reused operation's stock
+    // is reported under its current name and its setup's current name.
+    let (dir, mut app, ids) = ring_then_rest("reuse-rename");
+    app.simulate().unwrap();
+    let mut renamed = app.project().operation(ids[0]).unwrap().clone();
+    renamed.name = "Renamed ring".into();
+    app.execute(Command::Replace(Item::Operation(renamed)))
+        .unwrap();
+    let after = app.simulate().unwrap();
+    assert_eq!(after.reused, ids);
+    let report = after.simulation.unwrap();
+    assert_eq!(report.setups[0].operations[0].operation, "Renamed ring");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn req_op_11_a_plunge_is_refused_for_a_tool_that_states_it_cannot_cut_straight_down() {
     let (dir, mut app, op) = project("centre-cutting");
@@ -1082,6 +1236,77 @@ fn req_op_07_req_nfr_07_swarf_on_a_mesh_part_says_it_is_b_rep_only() {
     assert!(
         e.contains("'Ring'") && e.contains("B-rep only") && e.contains("cube.stl"),
         "{e}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_with_the_reason_on_an_stl_part()
+ {
+    // Decision 0174 (issue #206): on a setup whose part is a mesh, every
+    // strategy whose registration says it needs a STEP part is listed
+    // disabled with the reason, not hidden, and cannot be added; the others
+    // stay available. The list without a setup marks none.
+    let (dir, mut app, op) = project("brep-only-list");
+    let setup = app.project().operation(op).unwrap().setup;
+    let choices = app.strategy_choices_for(Some(setup));
+    let unavailable: Vec<&str> = choices
+        .iter()
+        .filter(|c| c.unavailable.is_some())
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(unavailable, ["radial_drilling", "swarf"]);
+    for c in &choices {
+        if let Some(why) = &c.unavailable {
+            assert!(
+                why.starts_with("Needs a STEP model") && why.contains("cube.stl"),
+                "{}: {why}",
+                c.name
+            );
+        }
+    }
+    assert!(
+        choices
+            .iter()
+            .any(|c| c.name == "edge_following" && c.unavailable.is_none())
+    );
+    assert_eq!(choices.len(), app.strategy_choices().len());
+    assert!(
+        app.strategy_choices()
+            .iter()
+            .all(|c| c.unavailable.is_none())
+    );
+    let count = app.project().operations().len();
+    let e = app
+        .add_operation("Walls", "swarf", setup, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("needs a STEP model") && e.contains("cube.stl"),
+        "{e}"
+    );
+    assert_eq!(app.project().operations().len(), count);
+    assert!(
+        app.add_operation("Edges", "edge_following", setup, None)
+            .is_ok()
+    );
+    // An operation that already uses one (made before the rule, or its part
+    // replaced since) is in error at once, before anything is generated.
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "radial_drilling".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let status = &overview.items[&openchuck_app::overview::ItemRef::Operation(op)];
+    assert_eq!(
+        status.state,
+        openchuck_app::overview::ItemState::Error,
+        "{status:?}"
+    );
+    assert!(
+        status.cause.contains("B-rep only") && status.cause.contains("cube.stl"),
+        "{}",
+        status.cause
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }

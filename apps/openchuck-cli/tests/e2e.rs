@@ -381,6 +381,7 @@ fn build(sample: &Sample, root: &Path) -> PathBuf {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters,
         }),
         placement: Placement::End,

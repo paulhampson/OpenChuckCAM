@@ -101,7 +101,7 @@ pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
-pub use assemble::{GeneratedPath, PathNote};
+pub use assemble::{GeneratedPath, PathNote, PathWarning};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use brep_edges::BrepEdges;
@@ -120,7 +120,7 @@ pub use params::{
     ParameterValue, Parameters, Unit,
 };
 pub use pencil::PencilFinishing;
-pub use region::{RegionConstraint, Window};
+pub use region::{BoundaryLimits, Protection, RegionConstraint, WatchedSurface, Window};
 pub use rest::{RemainingMap, RestMachining};
 pub use rotary::RotaryMapping;
 pub use roughing::RotaryRoughing;

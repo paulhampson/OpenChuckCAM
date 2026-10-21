@@ -144,6 +144,66 @@ pub struct RegionConstraint<'a> {
     pub avoid: Option<&'a dyn SurfaceSource>,
     /// Surfaces the tool must not touch.
     pub check: Option<&'a dyn SurfaceSource>,
+    /// How the boundary limits the cut, for a strategy that offers a choice
+    /// ([`Strategy::honours_restriction_options`](crate::strategy::Strategy::honours_restriction_options);
+    /// swarf, decision record 0176). Both on by default.
+    pub boundary_limits: BoundaryLimits,
+    /// Avoid and check surfaces the tool is measured against but not kept
+    /// clear of: where it breaks one, the path is kept and a warning names
+    /// the surface (decision record 0176). Only a strategy that honours
+    /// restriction options takes them.
+    pub watch: &'a [WatchedSurface<'a>],
+}
+
+/// How a boundary limits a strategy that offers a choice (decision record
+/// 0176): swarf limits the pass across the rulings and the cut length at the
+/// tool tip. With both off, the boundary limits nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoundaryLimits {
+    /// The boundary limits the pass (swarf's limit A).
+    pub pass: bool,
+    /// The boundary limits the cut at the tool tip (swarf's limit B).
+    pub tip: bool,
+}
+
+impl Default for BoundaryLimits {
+    fn default() -> Self {
+        Self {
+            pass: true,
+            tip: true,
+        }
+    }
+}
+
+/// Whether a surface is one the tool must never cut into (avoid) or must
+/// keep its stock to leave clear of (check), OP-02.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Protection {
+    /// Never cut into, beyond the tolerance.
+    Avoid,
+    /// Kept the stock to leave clear of, less the tolerance.
+    Check,
+}
+
+/// An avoid or check surface that is only measured (decision record 0176):
+/// the strategy warns, naming it, where the tool would break it.
+#[derive(Clone, Copy)]
+pub struct WatchedSurface<'a> {
+    /// The name the warning gives it, such as the selection set's.
+    pub name: &'a str,
+    /// Whether it is an avoid or a check surface.
+    pub protection: Protection,
+    /// The surface.
+    pub surface: &'a dyn SurfaceSource,
+}
+
+impl std::fmt::Debug for WatchedSurface<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WatchedSurface")
+            .field("name", &self.name)
+            .field("protection", &self.protection)
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for RegionConstraint<'_> {
@@ -153,11 +213,20 @@ impl std::fmt::Debug for RegionConstraint<'_> {
             .field("boundary", &self.boundary)
             .field("avoid", &self.avoid.is_some())
             .field("check", &self.check.is_some())
+            .field("boundary_limits", &self.boundary_limits)
+            .field("watch", &self.watch)
             .finish()
     }
 }
 
 impl RegionConstraint<'_> {
+    /// True when the constraint asks for anything a strategy must honour
+    /// restriction options to give: a boundary limit turned off, or a watched
+    /// surface (decision record 0176).
+    pub fn has_restriction_options(&self) -> bool {
+        self.boundary_limits != BoundaryLimits::default() || !self.watch.is_empty()
+    }
+
     /// True when nothing limits the cut.
     pub fn is_empty(&self) -> bool {
         self.region.is_none()
