@@ -709,7 +709,11 @@ impl Strategy for PencilFinishing {
             creases.len(),
             passes.len()
         )];
-        Ok(StrategyOutput { passes, notes })
+        Ok(StrategyOutput {
+            passes,
+            notes,
+            warnings: Vec::new(),
+        })
     }
 }
 

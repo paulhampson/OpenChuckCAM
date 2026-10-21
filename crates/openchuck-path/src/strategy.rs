@@ -20,7 +20,7 @@ use openchuck_types::machine::{Clearance, MaxFeeds};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
-use crate::assemble::{GeneratedPath, PathNote, assemble_with_entry};
+use crate::assemble::{GeneratedPath, PathNote, PathWarning, assemble_with_entry};
 use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
@@ -89,6 +89,9 @@ pub struct StrategyOutput {
     pub passes: Vec<Pass>,
     /// Notes about the whole toolpath.
     pub notes: Vec<String>,
+    /// Warnings about the whole toolpath: the path is made, but the user
+    /// must see these before using it (decision record 0175).
+    pub warnings: Vec<PathWarning>,
 }
 
 /// Everything a strategy is given, as plain data and ports (INT-02).
@@ -174,6 +177,16 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         Vec::new()
     }
 
+    /// Why the strategy needs a B-rep (STEP) part, when it does: it reads
+    /// what only exact faces have (rulings, round holes), so a mesh part
+    /// gives it nothing to cut. `None`, the default, for a strategy that
+    /// works on a mesh. A host disables the strategy for a mesh part with
+    /// this reason before an operation is added (decision record 0174); the
+    /// strategy still refuses a mesh itself.
+    fn needs_brep_part(&self) -> Option<&str> {
+        None
+    }
+
     /// Whether the strategy works on the material earlier operations left
     /// (rest machining, pencil clean-up; OP-09). The host says so in the
     /// operation's notes when no earlier operation of the setup has made the
@@ -223,6 +236,7 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         Ok(StrategyOutput {
             passes,
             notes: Vec::new(),
+            warnings: Vec::new(),
         })
     }
 
@@ -320,8 +334,10 @@ fn generate_with(
         )));
     }
     context.check_cancelled()?;
+    let mut warnings = Vec::new();
     let (passes, notes): (Vec<Pass>, Vec<String>) = if zones.is_empty() {
         let output = strategy.passes_with_notes(input, region, &parameters, context)?;
+        warnings = output.warnings;
         (output.passes, output.notes)
     } else {
         let most = zones
@@ -336,6 +352,14 @@ fn generate_with(
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
     let mut path = assemble_with_entry(&passes, input, &common, &entry, context)?;
     check_clear(&path, input.keep_out, mid)?;
+    // Each warning is a note too, first, so a host that shows only notes
+    // still says it (decision record 0175).
+    let notes: Vec<String> = warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .chain(notes)
+        .collect();
+    path.warnings = warnings;
     if !notes.is_empty() {
         let mut notes: Vec<PathNote> = notes
             .into_iter()
@@ -796,6 +820,7 @@ mod tests {
                     .collect(),
             },
             notes: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 

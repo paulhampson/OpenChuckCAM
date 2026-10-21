@@ -101,7 +101,7 @@ pub mod swarf;
 pub mod unroll;
 mod wrap_fit;
 
-pub use assemble::{GeneratedPath, PathNote};
+pub use assemble::{GeneratedPath, PathNote, PathWarning};
 pub use axial::AxialFinishing;
 pub use brep::{BrepSurface, ExactFace};
 pub use brep_edges::BrepEdges;

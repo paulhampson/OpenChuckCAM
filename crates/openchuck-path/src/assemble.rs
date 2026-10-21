@@ -60,6 +60,19 @@ pub struct PathNote {
     pub message: String,
 }
 
+/// Something the user must see before the program is used: the path is
+/// made, but it does not meet a limit the operation sets, such as a cut into
+/// the finished surface deeper than the tolerance (NFR-12; decision record
+/// 0175). A host shows it as a warning beside the operation, not as a note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathWarning {
+    /// What is wrong, where, and what the user can do, in plain words.
+    pub message: String,
+    /// The operation parameter that, changed, would accept or remove it
+    /// (`tolerance`), for the host to point at; `None` when no one does.
+    pub parameter: Option<String>,
+}
+
 /// A toolpath group with notes about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratedPath {
@@ -67,6 +80,10 @@ pub struct GeneratedPath {
     pub group: ToolpathGroup,
     /// Notes, in segment order.
     pub notes: Vec<PathNote>,
+    /// Warnings about the whole toolpath (decision record 0175). Each is
+    /// also one of `notes`, against the first segment, so a host that shows
+    /// only notes still says it.
+    pub warnings: Vec<PathWarning>,
 }
 
 const EPS: f64 = 1e-9;
@@ -471,6 +488,7 @@ pub fn assemble_with_entry(
             segments: b.segments,
         },
         notes: b.notes,
+        warnings: Vec::new(),
     })
 }
 
