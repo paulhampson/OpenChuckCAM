@@ -1338,7 +1338,7 @@ fn material_pick(
     ui.horizontal(|ui| {
         ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
         egui::ComboBox::from_id_salt(("setup material pick", setup.id))
-            .selected_text("Pick a known material\u{2026}")
+            .selected_text("Pick\u{2026}")
             .show_ui(ui, |ui| {
                 for name in known {
                     let current = setup.material.as_deref() == Some(name.as_str());
