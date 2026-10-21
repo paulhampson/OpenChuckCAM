@@ -115,6 +115,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {

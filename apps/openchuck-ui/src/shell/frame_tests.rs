@@ -616,6 +616,70 @@ fn req_ui_11_an_operation_in_error_shows_the_banner_and_its_actions() {
     assert!(rig.shows("Lettering"));
 }
 
+/// A swarf operation's Geometry section shows its sets' options beside them
+/// (decision record 0176 item 3): the boundary's two limits and each avoid
+/// or check set's choice, and a set whose options leave it limiting nothing
+/// says so. A strategy without such options shows none.
+#[test]
+fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() {
+    use openchuck_app::project::{BoundaryOptions, Item, OnBreak, SelectionTarget};
+    use openchuck_app::selection::SelectionRole;
+    let mut rig = Rig::cube("inspector-set-options", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let op = app.project().operations()[0].clone();
+    let model = app.project().models()[0].id;
+    let fence = app
+        .save_selection("Fence", model, SelectionTarget::Triangles([0].into()))
+        .unwrap();
+    let rib = app
+        .save_selection("Rib", model, SelectionTarget::Triangles([1].into()))
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Boundary, fence, true)
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Avoid, rib, true)
+        .unwrap();
+    // Not swarf: no options.
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Contain within"));
+    assert!(!rig.shows("Limits the pass"));
+    assert!(!rig.shows("Cut short"));
+    // As swarf: the options, with the boundary's limits both off and the
+    // rib ignored, each saying it limits nothing.
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut swarf = app.project().operation(op.id).unwrap().clone();
+    swarf.strategy = "swarf".into();
+    app.execute(Command::Replace(Item::Operation(swarf)))
+        .unwrap();
+    app.set_boundary_options(
+        op.id,
+        BoundaryOptions {
+            limits_pass: false,
+            limits_tip: false,
+        },
+    )
+    .unwrap();
+    app.set_on_break(op.id, SelectionRole::Avoid, rib, OnBreak::Ignore)
+        .unwrap();
+    rig.settle();
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for needle in [
+        "Limits the pass",
+        "Limits the tip",
+        "Cut short",
+        "Warn only",
+        "Ignore",
+        "The set 'Fence' limits nothing.",
+        "The set 'Rib' limits nothing.",
+    ] {
+        assert!(rig.shows(needle), "{needle} is not shown");
+    }
+}
+
 /// The header's name is an editable field: a name is applied as one
 /// undoable command, and an empty one is refused under it (section 8).
 #[test]

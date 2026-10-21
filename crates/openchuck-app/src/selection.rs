@@ -43,8 +43,8 @@ use openchuck_geom::select;
 use openchuck_path::{LeaveZone, MeshSurface, RegionConstraint, Window};
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, ModelRef, Operation, Placement, Project, SelectionSet,
-    SelectionTarget,
+    BoundaryOptions, ContentHash, Item, ItemId, ModelRef, OnBreak, Operation, Placement, Project,
+    SelectionSet, SelectionTarget, SetOptions,
 };
 use openchuck_types::geometry::Vec3;
 use openchuck_types::job::JobContext;
@@ -613,9 +613,18 @@ impl Application {
             SelectionRole::Avoid => &mut edited.avoid,
             SelectionRole::Check => &mut edited.check,
             SelectionRole::Boundary => {
+                // The boundary's options belong to the set: another set, or
+                // none, starts from the defaults (decision 0176).
                 match (included, edited.boundary == Some(set)) {
-                    (true, _) => edited.boundary = Some(set),
-                    (false, true) => edited.boundary = None,
+                    (true, true) => {}
+                    (true, false) => {
+                        edited.boundary = Some(set);
+                        edited.restriction_options.boundary = BoundaryOptions::default();
+                    }
+                    (false, true) => {
+                        edited.boundary = None;
+                        edited.restriction_options.boundary = BoundaryOptions::default();
+                    }
                     (false, false) => {}
                 }
                 return self.replace_operation(edited);
@@ -626,7 +635,86 @@ impl Application {
             (false, true) => list.retain(|s| *s != set),
             _ => return Ok(()),
         }
+        // A set taken out of a role takes its options with it.
+        if !included {
+            edited
+                .restriction_options
+                .avoid
+                .retain(|s, _| edited.avoid.contains(s));
+            edited
+                .restriction_options
+                .check
+                .retain(|s, _| edited.check.contains(s));
+        }
         self.replace_operation(edited)
+    }
+
+    /// Sets the options of the boundary set of `operation` (decision 0176
+    /// item 3): whether it limits the pass and the cut at the tool tip. One
+    /// undoable step. Fails if the operation does not exist or has no
+    /// boundary set.
+    pub fn set_boundary_options(
+        &mut self,
+        operation: OperationId,
+        options: BoundaryOptions,
+    ) -> Result<(), AppError> {
+        let mut edited = self.operation_to_edit(operation)?;
+        if edited.boundary.is_none() {
+            return Err(openchuck_types::Error::invalid(
+                format!("operation '{}' boundary options", edited.name),
+                "the operation has no boundary set for these options to apply to",
+            )
+            .into());
+        }
+        edited.restriction_options.boundary = options;
+        self.replace_operation(edited)
+    }
+
+    /// Sets what happens where the tool would break avoid or check set `set`
+    /// of `operation` (decision 0176 item 3). One undoable step. Fails if the
+    /// operation does not exist, `role` is not avoid or check, or the set is
+    /// not in that role.
+    pub fn set_on_break(
+        &mut self,
+        operation: OperationId,
+        role: SelectionRole,
+        set: SelectionSetId,
+        on_break: OnBreak,
+    ) -> Result<(), AppError> {
+        let mut edited = self.operation_to_edit(operation)?;
+        let options = SetOptions { on_break };
+        let (sets, name) = match role {
+            SelectionRole::Avoid => (&edited.avoid, "avoid"),
+            SelectionRole::Check => (&edited.check, "check"),
+            _ => {
+                return Err(openchuck_types::Error::invalid(
+                    format!("operation '{}' set options", edited.name),
+                    "only an avoid or check set has this option",
+                )
+                .into());
+            }
+        };
+        if !sets.contains(&set) {
+            return Err(openchuck_types::Error::invalid(
+                format!("operation '{}' {name} options", edited.name),
+                format!("selection set {set} is not one of the operation's {name} sets"),
+            )
+            .into());
+        }
+        if role == SelectionRole::Avoid {
+            edited.restriction_options.set_avoid(set, options);
+        } else {
+            edited.restriction_options.set_check(set, options);
+        }
+        self.replace_operation(edited)
+    }
+
+    fn operation_to_edit(&self, operation: OperationId) -> Result<Operation, AppError> {
+        self.document
+            .project
+            .operation(operation)
+            .cloned()
+            .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))
     }
 
     fn replace_operation(&mut self, edited: Operation) -> Result<(), AppError> {
@@ -1070,6 +1158,9 @@ impl ResolvedRegion {
             boundary: self.boundary,
             avoid: self.avoid.as_ref().map(|s| s as _),
             check: self.check.as_ref().map(|s| s as _),
+            // A mesh part's sets take no options yet: swarf, the only
+            // strategy that does, needs a STEP part (decision 0176; OI-637).
+            ..RegionConstraint::default()
         }
     }
 }

@@ -95,6 +95,7 @@ pub fn cube_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) 
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: BTreeMap::new(),
         }),
     ] {

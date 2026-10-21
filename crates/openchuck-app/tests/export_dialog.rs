@@ -85,6 +85,7 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         boundary: None,
         avoid: Vec::new(),
         check: Vec::new(),
+        restriction_options: Default::default(),
         parameters,
     }
 }

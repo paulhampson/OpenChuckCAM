@@ -477,6 +477,116 @@ pub enum ParameterValue {
     Text(String),
 }
 
+/// What a strategy does where the tool would break an avoid or check set
+/// (decision record 0176 item 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OnBreak {
+    /// The pass stops short of the set and starts again after it.
+    #[default]
+    CutShort,
+    /// The path is kept, with a warning saying how far the tool breaks the
+    /// set.
+    Warn,
+    /// The set limits nothing, with a warning saying so.
+    Ignore,
+}
+
+/// The options of an operation's boundary set (decision record 0176 item 3).
+/// Both are on by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct BoundaryOptions {
+    /// The boundary limits the pass across the rulings (limit A).
+    pub limits_pass: bool,
+    /// The boundary limits the cut length at the tool tip (limit B).
+    pub limits_tip: bool,
+}
+
+impl Default for BoundaryOptions {
+    fn default() -> Self {
+        Self {
+            limits_pass: true,
+            limits_tip: true,
+        }
+    }
+}
+
+impl BoundaryOptions {
+    /// True when the options are the defaults, so nothing is written.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// True when the boundary limits nothing.
+    pub fn limits_nothing(&self) -> bool {
+        !self.limits_pass && !self.limits_tip
+    }
+}
+
+/// The options of one avoid or check set of an operation (decision record
+/// 0176 item 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct SetOptions {
+    /// What happens where the tool would break the set.
+    pub on_break: OnBreak,
+}
+
+impl SetOptions {
+    /// True when the options are the defaults, so nothing is written.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The options of an operation's boundary, avoid and check sets, each
+/// attached to that set in that role (decision record 0176 item 3; schema
+/// 14). A set with no entry takes the defaults; an entry equal to the
+/// defaults is not written.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct RestrictionOptions {
+    /// The boundary set's options.
+    pub boundary: BoundaryOptions,
+    /// The options of avoid sets, by set.
+    pub avoid: BTreeMap<SelectionSetId, SetOptions>,
+    /// The options of check sets, by set.
+    pub check: BTreeMap<SelectionSetId, SetOptions>,
+}
+
+impl RestrictionOptions {
+    /// The options of avoid set `set`.
+    pub fn avoid(&self, set: SelectionSetId) -> SetOptions {
+        self.avoid.get(&set).copied().unwrap_or_default()
+    }
+
+    /// The options of check set `set`.
+    pub fn check(&self, set: SelectionSetId) -> SetOptions {
+        self.check.get(&set).copied().unwrap_or_default()
+    }
+
+    /// Sets the options of avoid set `set`, keeping no entry for the
+    /// defaults.
+    pub fn set_avoid(&mut self, set: SelectionSetId, options: SetOptions) {
+        put(&mut self.avoid, set, options);
+    }
+
+    /// Sets the options of check set `set`, keeping no entry for the
+    /// defaults.
+    pub fn set_check(&mut self, set: SelectionSetId, options: SetOptions) {
+        put(&mut self.check, set, options);
+    }
+}
+
+fn put(map: &mut BTreeMap<SelectionSetId, SetOptions>, set: SelectionSetId, options: SetOptions) {
+    if options.is_default() {
+        map.remove(&set);
+    } else {
+        map.insert(set, options);
+    }
+}
+
 /// One machining operation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -504,6 +614,9 @@ pub struct Operation {
     pub avoid: Vec<SelectionSetId>,
     /// Sets the tool must stop short of (OP-02, check surfaces).
     pub check: Vec<SelectionSetId>,
+    /// The options of the boundary, avoid and check sets (decision record
+    /// 0176 item 3).
+    pub restriction_options: RestrictionOptions,
     /// Parameter values by name, in name order.
     pub parameters: BTreeMap<String, ParameterValue>,
     /// False when the user has disabled it: it stays in the project and the
@@ -1499,6 +1612,29 @@ impl Project {
                 }
                 for set in o.selection_refs() {
                     require(ItemId::SelectionSet(set))?;
+                }
+                let options = &o.restriction_options;
+                if o.boundary.is_none() && !options.boundary.is_default() {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("operation {}.boundary_options", o.id),
+                        "the operation has no boundary set for these options to apply to",
+                    )
+                    .into());
+                }
+                for (role, map, sets) in [
+                    ("avoid", &options.avoid, &o.avoid),
+                    ("check", &options.check, &o.check),
+                ] {
+                    if let Some(set) = map.keys().find(|s| !sets.contains(s)) {
+                        return Err(openchuck_types::Error::invalid(
+                            format!("operation {}.{role}_options", o.id),
+                            format!(
+                                "selection set {set} has {role} options but is not one of the \
+                                 operation's {role} sets"
+                            ),
+                        )
+                        .into());
+                    }
                 }
                 for (name, value) in &o.parameters {
                     if let ParameterValue::Number(v) = value

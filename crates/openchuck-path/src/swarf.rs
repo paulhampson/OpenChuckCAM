@@ -73,10 +73,10 @@ use crate::assemble::PathWarning;
 use crate::error::{PathError, Result};
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
-use crate::region::RegionConstraint;
+use crate::region::{BoundaryLimits, Protection, RegionConstraint, Window};
 use crate::rotary::{AxisPosition, RotaryMapping, nearest_turn};
 use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
-use crate::surface::{FaceRef, ParametricFace, Uv};
+use crate::surface::{FaceRef, ParametricFace, SurfaceSource, Uv};
 
 pub use crate::wrap_fit::CHORD_FACTOR;
 
@@ -112,6 +112,13 @@ const EXTENT_SAMPLES: usize = 33;
 const CHECK_SAMPLES: usize = 17;
 /// Samples along a ruling in the gate.
 const GATE_SAMPLES: usize = 25;
+/// Samples along a ruling that find where it leaves a boundary.
+const BOUNDARY_SAMPLES: usize = 33;
+/// Samples across each parameter of an avoid or check face.
+const GUARD_GRID: usize = 33;
+/// Bisections that find where the tool comes too close to an avoid or check
+/// surface.
+const GUARD_STEPS: u32 = 16;
 /// Points of the machine's motion between two poses the gate looks at.
 const GATE_STEPS: usize = 4;
 /// Samples of the directrix that find where the face has rulings.
@@ -623,6 +630,120 @@ pub struct FacePath {
     /// One flank half angle, in degrees, that would remove the tilt on every
     /// pose, when there is one and the tilt is not already zero.
     pub suggested_taper: Option<f64>,
+    /// What the boundary and the avoid and check surfaces left uncut.
+    pub limits: Limits,
+}
+
+/// What the limits of an operation did to one face (decision record 0176),
+/// so its note can say which limit cut the pass short.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Limits {
+    /// When a boundary applies, which of its limits are on: the pass (limit
+    /// A) and the tip (limit B).
+    pub boundary: Option<(bool, bool)>,
+    /// The length along the face, in millimetres, whose rulings the
+    /// boundary leaves nothing of, or (with the pass limited) leave it.
+    pub outside_boundary: f64,
+    /// The most the boundary raised the tool tip along a ruling, in
+    /// millimetres.
+    pub tip_raised: f64,
+    /// The length along the face left uncut because the tool would cut into
+    /// an avoid surface there, in millimetres.
+    pub avoid_uncut: f64,
+    /// The length along the face left uncut because the tool would touch a
+    /// check surface there, in millimetres.
+    pub check_uncut: f64,
+    /// Each watched surface of the region (only measured, decision record
+    /// 0176) that the tool breaks on this face, in the region's order.
+    pub watched: Vec<WatchedBreak>,
+}
+
+/// What the tool does to a surface of this kind that it breaks, for notes
+/// and warnings.
+fn breaks(protection: Protection) -> &'static str {
+    match protection {
+        Protection::Avoid => "cuts into the avoid set",
+        Protection::Check => "comes closer than the stock to leave to the check set",
+    }
+}
+
+/// A watched avoid or check surface the tool breaks on a face (decision
+/// record 0176): the path is kept, and the operation warns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WatchedBreak {
+    /// The surface's place in the region's watched surfaces.
+    pub index: usize,
+    /// The surface's name, as the region gives it.
+    pub name: String,
+    /// Whether it is an avoid or a check surface.
+    pub protection: Protection,
+    /// The length along the face, in millimetres, over which the tool cuts
+    /// into it (avoid) or comes closer than the stock to leave (check).
+    pub length: f64,
+}
+
+impl Limits {
+    /// The sentences of a face's note that say what each limit did.
+    fn describe(&self) -> String {
+        let mut out = String::new();
+        if let Some((pass, tip)) = self.boundary {
+            if pass {
+                if self.outside_boundary > SAME_POINT {
+                    out.push_str(&format!(
+                        " The boundary limits the pass: about {:.3} mm along the face is not \
+                         cut because its rulings leave the boundary there.",
+                        self.outside_boundary
+                    ));
+                } else {
+                    out.push_str(" The boundary limits the pass, and every ruling lies inside it.");
+                }
+            } else if self.outside_boundary > SAME_POINT {
+                out.push_str(&format!(
+                    " About {:.3} mm along the face is not cut because no part of its rulings \
+                     lies inside the boundary.",
+                    self.outside_boundary
+                ));
+            }
+            if tip {
+                if self.tip_raised > SAME_POINT {
+                    out.push_str(&format!(
+                        " The boundary limits the cut at the tool tip: the tip is raised by up \
+                         to {:.3} mm along the rulings, on top of the tip extension, so the \
+                         bottom of the flank stops at the boundary.",
+                        self.tip_raised
+                    ));
+                }
+                out.push_str(
+                    " The far end of the rulings is not limited by the boundary: the side of \
+                     the tool cuts each ruling up to that end.",
+                );
+            }
+        }
+        if self.avoid_uncut > SAME_POINT {
+            out.push_str(&format!(
+                " About {:.3} mm along the face is left uncut where the tool would cut into an \
+                 avoid surface; the pass stops there and starts again after it.",
+                self.avoid_uncut
+            ));
+        }
+        if self.check_uncut > SAME_POINT {
+            out.push_str(&format!(
+                " About {:.3} mm along the face is left uncut where the tool would touch a \
+                 check surface; the pass stops there and starts again after it.",
+                self.check_uncut
+            ));
+        }
+        for w in &self.watched {
+            out.push_str(&format!(
+                " Along about {:.3} mm of the face the tool {} '{}', which only warns, so \
+                 the path is kept there.",
+                w.length,
+                breaks(w.protection),
+                w.name
+            ));
+        }
+        out
+    }
 }
 
 impl FacePath {
@@ -737,14 +858,15 @@ impl FacePath {
         format!(
             "swarf on face {}: rulings along {} (the straight-line fit misses by {:.4} mm, limit \
              {tolerance} mm), the normal twists {:.2} degrees along a ruling, {} poses, the tool \
-             cuts at most {:.4} mm beyond the stock to leave.{}{left}",
+             cuts at most {:.4} mm beyond the stock to leave.{}{left}{}",
             self.number,
             self.family.name(),
             fit.residual,
             self.twist,
             self.poses().count(),
             self.gouge,
-            self.describe_tilt()
+            self.describe_tilt(),
+            self.limits.describe()
         )
     }
 }
@@ -785,6 +907,18 @@ fn ruling_at(face: &dyn ParametricFace, family: Family, t: f64) -> Option<Ruling
     } else {
         refine(at(last), at(last + 1), on_face)
     };
+    ruling_over(face, family, t, lo, hi)
+}
+
+/// The ruling at `t` between the parameters `lo` and `hi` along it, or
+/// `None` when that is no length or its normal is undefined.
+fn ruling_over(
+    face: &dyn ParametricFace,
+    family: Family,
+    t: f64,
+    lo: f64,
+    hi: f64,
+) -> Option<Ruling> {
     if hi - lo <= 0.0 {
         return None;
     }
@@ -805,6 +939,69 @@ fn ruling_at(face: &dyn ParametricFace, family: Family, t: f64) -> Option<Ruling
         normal: p_mid.normal,
         twist,
     })
+}
+
+/// How a containment boundary limits the rulings of a face (decision record
+/// 0176). `pass` (limit A) keeps only the rulings that lie inside it, whole,
+/// so the pass stops or splits where they leave it; `tip` (limit B) moves
+/// the tip end of each ruling to where it enters the boundary, raising the
+/// tool. With both, a ruling is shortened at the tip end and then kept only
+/// when the rest lies inside. The far end of a ruling cannot be limited: the
+/// side of the tool covers the whole ruling up to it.
+#[derive(Debug, Clone, Copy)]
+struct Limiter {
+    boundary: Option<Window>,
+    pass: bool,
+    tip: bool,
+    /// Which end the tip sits at: the low end of the ruling's parameter for
+    /// +1, the high end for -1.
+    sign: f64,
+}
+
+impl Limiter {
+    /// The boundary, when it limits anything.
+    fn window(&self) -> Option<Window> {
+        self.boundary.filter(|_| self.pass || self.tip)
+    }
+
+    /// The ruling at `t` as the boundary leaves it, or `None` where the
+    /// boundary leaves nothing of it to cut.
+    fn ruling(&self, face: &dyn ParametricFace, family: Family, t: f64) -> Option<Ruling> {
+        let ruling = ruling_at(face, family, t)?;
+        let Some(window) = self.window() else {
+            return Some(ruling);
+        };
+        let inside = |s: f64| {
+            face.point_normal(family.uv(t, s))
+                .is_some_and(|p| window.contains(p.point))
+        };
+        // From the tip end towards the far end.
+        let (mut tip_s, far_s) = if self.sign > 0.0 {
+            (ruling.s.0, ruling.s.1)
+        } else {
+            (ruling.s.1, ruling.s.0)
+        };
+        let at =
+            |tip: f64, k: usize| tip + (far_s - tip) * k as f64 / (BOUNDARY_SAMPLES - 1) as f64;
+        if self.tip {
+            let first = (0..BOUNDARY_SAMPLES).position(|k| inside(at(tip_s, k)))?;
+            if let Some(before) = first.checked_sub(1) {
+                tip_s = refine(at(tip_s, first), at(tip_s, before), inside);
+            }
+        }
+        if self.pass && !(0..BOUNDARY_SAMPLES).all(|k| inside(at(tip_s, k))) {
+            return None;
+        }
+        if !self.tip {
+            return Some(ruling);
+        }
+        let (lo, hi) = if self.sign > 0.0 {
+            (tip_s, far_s)
+        } else {
+            (far_s, tip_s)
+        };
+        ruling_over(face, family, t, lo, hi)
+    }
 }
 
 /// Points along the extent of `ruling`, `count` of them, on the model surface.
@@ -1005,11 +1202,10 @@ fn check_length(flank: &Flank, settings: &Settings, pose: &Pose, number: u32) ->
     Ok(())
 }
 
-/// The directrix intervals, in parameter, over which the face has rulings,
-/// each refined to the trim.
-fn runs_of(face: &dyn ParametricFace, family: Family, t0: f64, t1: f64) -> Vec<(f64, f64)> {
+/// The directrix intervals, in parameter, over which `has` finds rulings,
+/// each refined to where it stops finding them.
+fn runs_of(t0: f64, t1: f64, has: impl Fn(f64) -> bool) -> Vec<(f64, f64)> {
     let at = |k: usize| t0 + (t1 - t0) * k as f64 / SCAN as f64;
-    let has = |t: f64| ruling_at(face, family, t).is_some();
     let present: Vec<bool> = (0..=SCAN).map(|k| has(at(k))).collect();
     let is_present = |k: usize| present.get(k).copied().unwrap_or(false);
     let mut runs = Vec::new();
@@ -1027,12 +1223,12 @@ fn runs_of(face: &dyn ParametricFace, family: Family, t0: f64, t1: f64) -> Vec<(
         let lo = if start == 0 {
             t0
         } else {
-            refine(at(start), at(start - 1), has)
+            refine(at(start), at(start - 1), &has)
         };
         let hi = if end == SCAN {
             t1
         } else {
-            refine(at(end), at(end + 1), has)
+            refine(at(end), at(end + 1), &has)
         };
         if hi > lo {
             runs.push((lo, hi));
@@ -1042,16 +1238,140 @@ fn runs_of(face: &dyn ParametricFace, family: Family, t0: f64, t1: f64) -> Vec<(
     runs
 }
 
-/// Plans the swarf of one face: detection, placement, spacing and the gate.
-/// Fails when the face is not ruled, its rulings cannot be reached on four
-/// axes, a ruling is longer than the flank, or the face has no rulings on
-/// it; a face the tool would cut into is returned with its measured gouge
-/// (see [`FacePath::refusal`]).
+/// The length along the face of the directrix `runs`, measured between the
+/// middles of the face's own rulings.
+fn directrix_length(face: &dyn ParametricFace, family: Family, runs: &[(f64, f64)]) -> f64 {
+    runs.iter()
+        .map(|(lo, hi)| {
+            let middles: Vec<Point3> = (0..=SCAN)
+                .filter_map(|k| {
+                    ruling_at(face, family, lo + (hi - lo) * k as f64 / SCAN as f64)
+                        .map(|r| r.middle())
+                })
+                .collect();
+            middles
+                .iter()
+                .zip(middles.iter().skip(1))
+                .map(|(a, b)| a.distance(*b))
+                .sum::<f64>()
+        })
+        .sum()
+}
+
+/// Which kind of surface a [`Guard`] keeps the tool from.
+/// An avoid or check surface as the tool must keep clear of it (decision
+/// record 0176): sampled points, and the least clearance the tool keeps from
+/// each, beyond which the tool position is not used.
+struct Guard {
+    kind: Protection,
+    points: Vec<Point3>,
+    least: f64,
+}
+
+impl Guard {
+    /// The guard of `surface`: an avoid surface may not be cut into deeper
+    /// than the tolerance; a check surface keeps the stock to leave, less
+    /// the tolerance, clear of the tool. The points are the exact faces
+    /// sampled no further apart than an eighth of the tool's cutting radius
+    /// (and at least [`GUARD_GRID`] each way), or a mesh's vertices.
+    fn new(
+        kind: Protection,
+        surface: &dyn SurfaceSource,
+        settings: &Settings,
+        radius: f64,
+    ) -> Self {
+        let least = match kind {
+            Protection::Avoid => -settings.tolerance,
+            Protection::Check => settings.stock_to_leave.max(0.0) - settings.tolerance,
+        };
+        let faces = surface.exact_faces();
+        let points = if faces.is_empty() {
+            surface.tessellation().vertices.clone()
+        } else {
+            let spacing = (radius / 8.0).max(0.05);
+            faces
+                .iter()
+                .flat_map(|f| face_samples(f.face, spacing))
+                .collect()
+        };
+        Self {
+            kind,
+            points,
+            least,
+        }
+    }
+
+    /// Whether the tool at `tip` along `axis`, cutting near `contact` on a
+    /// ruling of `length`, comes closer to the surface than it may.
+    fn breaks(
+        &self,
+        tool: &RevolvedProfile,
+        (tip, axis, contact, length): (Point3, UnitVec3, Point3, f64),
+        reach: f64,
+    ) -> bool {
+        self.points.iter().any(|p| {
+            p.distance(contact) <= 0.5 * length + reach
+                && clearance_at(tool, tip, axis, *p) < self.least
+        })
+    }
+}
+
+/// Points of `face`, on a grid of its parameters no coarser than `spacing`
+/// on the face (measured along its middle iso-lines) and no finer than 400
+/// each way.
+fn face_samples(face: &dyn ParametricFace, spacing: f64) -> Vec<Point3> {
+    let (lo, hi) = face.uv_bounds();
+    let uv = |a: f64, b: f64| Uv {
+        u: lo.u + (hi.u - lo.u) * a,
+        v: lo.v + (hi.v - lo.v) * b,
+    };
+    let length = |line: &dyn Fn(f64) -> Uv| {
+        let points: Vec<Point3> = (0..=16)
+            .filter_map(|k| face.point_normal(line(k as f64 / 16.0)).map(|p| p.point))
+            .collect();
+        points
+            .iter()
+            .zip(points.iter().skip(1))
+            .map(|(a, b)| a.distance(*b))
+            .sum::<f64>()
+    };
+    let count = |l: f64| ((l / spacing).ceil() as usize + 1).clamp(GUARD_GRID, 400);
+    let nu = count(length(&|a| uv(a, 0.5)));
+    let nv = count(length(&|b| uv(0.5, b)));
+    let mut points = Vec::new();
+    for i in 0..nu {
+        for j in 0..nv {
+            let at = uv(i as f64 / (nu - 1) as f64, j as f64 / (nv - 1) as f64);
+            if face.contains(at)
+                && let Some(p) = face.point_normal(at)
+            {
+                points.push(p.point);
+            }
+        }
+    }
+    points
+}
+
+/// Plans the swarf of one face: detection, placement, spacing, the limits
+/// of `region` and the gate. Fails when the face is not ruled, its rulings
+/// cannot be reached on four axes, a ruling is longer than the flank, the
+/// face has no rulings on it, or the limits leave nothing of it to cut; a
+/// face the tool would cut into is returned with its measured gouge (see
+/// [`FacePath::overcut_warning`]).
+///
+/// `region` limits the cut (OP-02; decision record 0176): its boundary as
+/// its [`BoundaryLimits`] say, and its avoid and check surfaces by leaving
+/// out every tool position that would come too close to them, so the pass
+/// stops or splits there. Its watched surfaces are only measured: the
+/// lengths along which the tool breaks them are in
+/// [`Limits::watched`]. A selected region is not used: swarf's faces are
+/// its selection.
 pub fn face_path(
     face: FaceRef<'_>,
     tool: &RevolvedProfile,
     rotary: RotaryMapping,
     settings: &Settings,
+    region: &RegionConstraint<'_>,
     context: &JobContext<'_>,
 ) -> Result<FacePath> {
     let number = face.number;
@@ -1065,16 +1385,16 @@ pub fn face_path(
     }
     let family = detection.chosen.unwrap_or(Family::AlongV);
     let ((t0, t1), (s0, s1)) = family.ranges(face);
-    let runs = runs_of(face, family, t0, t1);
-    if runs.is_empty() {
+    let whole = runs_of(t0, t1, |t| ruling_at(face, family, t).is_some());
+    if whole.is_empty() {
         return Err(fail(
             "none of its rulings lies on the trimmed face".to_owned(),
         ));
     }
     // A face whose directrix comes back to its start is cut as one closed
     // run.
-    let closed = runs.len() == 1
-        && runs.first().is_some_and(|r| r.0 <= t0 && r.1 >= t1)
+    let closed = whole.len() == 1
+        && whole.first().is_some_and(|r| r.0 <= t0 && r.1 >= t1)
         && [s0, 0.5 * (s0 + s1), s1].iter().all(|s| {
             match (
                 face.point_normal(family.uv(t0, *s)),
@@ -1084,14 +1404,17 @@ pub fn face_path(
                 _ => false,
             }
         });
-    let middle_t = runs
+    // The tip end is chosen on the whole face, before any limit, so a
+    // boundary never turns the tool over.
+    let middle_t = whole
         .iter()
         .map(|r| 0.5 * (r.0 + r.1))
         .fold(0.0, |acc, t| acc + t)
-        / runs.len() as f64;
+        / whole.len() as f64;
     let middle = ruling_at(face, family, middle_t)
         .or_else(|| {
-            runs.first()
+            whole
+                .first()
                 .and_then(|r| ruling_at(face, family, 0.5 * (r.0 + r.1)))
         })
         .ok_or_else(|| fail("its middle ruling has no extent".to_owned()))?;
@@ -1099,8 +1422,33 @@ pub fn face_path(
         PathError::Strategy(why) => fail(why),
         other => other,
     })?;
+    let limiter = Limiter {
+        boundary: region.boundary,
+        pass: region.boundary_limits.pass,
+        tip: region.boundary_limits.tip,
+        sign,
+    };
+    let rule = |t: f64| limiter.ruling(face, family, t);
+    let runs = if limiter.window().is_some() {
+        runs_of(t0, t1, |t| rule(t).is_some())
+    } else {
+        whole.clone()
+    };
+    if runs.is_empty() {
+        return Err(fail(
+            "none of its rulings lies inside the boundary set, so the boundary leaves nothing \
+             of it to cut"
+                .to_owned(),
+        ));
+    }
+    let outside_boundary = if limiter.window().is_some() {
+        (directrix_length(face, family, &whole) - directrix_length(face, family, &runs)).max(0.0)
+    } else {
+        0.0
+    };
+    let closed = closed && outside_boundary <= SAME_POINT && runs.len() == whole.len();
     let pose_at = |t: f64| -> Result<Option<Pose>> {
-        let Some(r) = ruling_at(face, family, t) else {
+        let Some(r) = rule(t) else {
             return Ok(None);
         };
         let pose = pose_of(&r, sign, &flank, settings, rotary).map_err(|e| match e {
@@ -1112,6 +1460,22 @@ pub fn face_path(
     };
     let chord = CHORD_FACTOR * settings.tolerance;
     let leave = settings.stock_to_leave;
+    let reach = tool.cutting_radius() + settings.tip_extension.abs() + leave.abs() + 1.0;
+    let radius = tool.cutting_radius();
+    let guards: Vec<Guard> = [
+        (Protection::Avoid, region.avoid),
+        (Protection::Check, region.check),
+    ]
+    .into_iter()
+    .filter_map(|(kind, surface)| surface.map(|s| Guard::new(kind, s, settings, radius)))
+    .collect();
+    let watched: Vec<Guard> = region
+        .watch
+        .iter()
+        .map(|w| Guard::new(w.protection, w.surface, settings, radius))
+        .collect();
+    let mut broken = vec![0.0f64; watched.len()];
+    let mut uncut = [0.0f64; 2];
     let mut out_runs = Vec::new();
     let mut total = 0usize;
     for (lo, hi) in &runs {
@@ -1146,7 +1510,7 @@ pub fn face_path(
             // turns too far in one move.
             let split = depth < MAX_DEPTH
                 && ((b.a.0 - a.a.0).abs() > MAX_ANGLE_STEP
-                    || match ruling_at(face, family, t) {
+                    || match rule(t) {
                         Some(r) => {
                             let samples = along_ruling(face, family, &r, CHECK_SAMPLES);
                             let (tip, axis) = between(&a, &b, 0.5, rotary);
@@ -1178,22 +1542,64 @@ pub fn face_path(
                 i += 1;
             }
         }
-        let mut run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
-        if settings.reverse_direction {
-            run.reverse();
-            let mut previous: Option<Degrees> = None;
-            for p in &mut run {
-                if let Some(prev) = previous {
-                    p.a = nearest_turn(p.a, prev);
-                }
-                previous = Some(p.a);
+        let run: Vec<Pose> = poses.into_iter().map(|(p, _)| p).collect();
+        let pieces = if guards.is_empty() {
+            vec![run]
+        } else {
+            context.check_cancelled()?;
+            guarded(&run, &guards, tool, rotary, reach, &mut uncut, &pose_at)?
+        };
+        // A watched surface is measured along what is cut, the length the
+        // guard would have left uncut, and the run is kept as it is.
+        for (guard, length) in watched.iter().zip(&mut broken) {
+            for piece in &pieces {
+                context.check_cancelled()?;
+                let mut along = [0.0f64; 2];
+                guarded(
+                    piece,
+                    std::slice::from_ref(guard),
+                    tool,
+                    rotary,
+                    reach,
+                    &mut along,
+                    &pose_at,
+                )?;
+                *length += along[0] + along[1];
             }
         }
-        out_runs.push(run);
+        for mut run in pieces {
+            if settings.reverse_direction {
+                run.reverse();
+                let mut previous: Option<Degrees> = None;
+                for p in &mut run {
+                    if let Some(prev) = previous {
+                        p.a = nearest_turn(p.a, prev);
+                    }
+                    previous = Some(p.a);
+                }
+            }
+            out_runs.push(run);
+        }
     }
     if out_runs.is_empty() {
-        return Err(fail("no run of rulings has two poses".to_owned()));
+        let blocked: Vec<&str> = guards
+            .iter()
+            .map(|g| match g.kind {
+                Protection::Avoid => "cut into the avoid surfaces",
+                Protection::Check => "touch the check surfaces",
+            })
+            .collect();
+        return Err(fail(if blocked.is_empty() {
+            "no run of rulings has two poses".to_owned()
+        } else {
+            format!(
+                "the tool would {} wherever it cuts it, so nothing of it is left to cut; take \
+                 the face out of the face set, or the surface out of the set",
+                blocked.join(" or ")
+            )
+        }));
     }
+    let closed = closed && out_runs.len() == 1 && uncut.iter().all(|u| *u <= SAME_POINT);
     context.check_cancelled()?;
 
     // The gate: every sample of the face against the union of the tool
@@ -1203,12 +1609,7 @@ pub fn face_path(
         for (i, p) in run.iter().enumerate() {
             positions.push((p.tip, p.axis, p.contact, p.ruling_length));
             if let Some(q) = run.get(i + 1) {
-                for k in 1..GATE_STEPS {
-                    let f = k as f64 / GATE_STEPS as f64;
-                    let (tip, axis) = between(p, q, f, rotary);
-                    let contact = p.contact + (q.contact - p.contact) * f;
-                    positions.push((tip, axis, contact, p.ruling_length.max(q.ruling_length)));
-                }
+                positions.extend(motion(p, q, rotary));
             }
         }
     }
@@ -1220,13 +1621,12 @@ pub fn face_path(
                 ts.push(0.5 * (p.t + q.t));
             }
             for t in ts {
-                if let Some(r) = ruling_at(face, family, t) {
+                if let Some(r) = rule(t) {
                     samples.extend(along_ruling(face, family, &r, GATE_SAMPLES));
                 }
             }
         }
     }
-    let reach = tool.cutting_radius() + settings.tip_extension.abs() + leave.abs() + 1.0;
     let deviations: Vec<f64> = parallel::map_in_order(&samples, |p| {
         let mut best = f64::INFINITY;
         for (tip, axis, contact, length) in &positions {
@@ -1257,8 +1657,22 @@ pub fn face_path(
     let twist = out_runs
         .iter()
         .flatten()
-        .filter_map(|p| ruling_at(face, family, p.t).map(|r| r.twist))
+        .filter_map(|p| rule(p.t).map(|r| r.twist))
         .fold(detection.fit(family).twist, f64::max);
+    // How far the boundary raised the tip: from the tip end of the whole
+    // ruling to the tip end of the limited one.
+    let tip_end = |r: &Ruling| if sign > 0.0 { r.lo } else { r.hi };
+    let tip_raised = if limiter.tip && limiter.window().is_some() {
+        out_runs
+            .iter()
+            .flatten()
+            .filter_map(|p| {
+                Some(tip_end(&ruling_at(face, family, p.t)?).distance(tip_end(&rule(p.t)?)))
+            })
+            .fold(0.0, f64::max)
+    } else {
+        0.0
+    };
     let max_tilt = out_runs
         .iter()
         .flatten()
@@ -1284,6 +1698,7 @@ pub fn face_path(
     } else {
         None
     };
+    let [avoid_uncut, check_uncut] = uncut;
     Ok(FacePath {
         number,
         detection,
@@ -1297,7 +1712,156 @@ pub fn face_path(
         twist,
         max_tilt,
         suggested_taper,
+        limits: Limits {
+            boundary: limiter.window().map(|_| (limiter.pass, limiter.tip)),
+            outside_boundary,
+            tip_raised,
+            avoid_uncut,
+            check_uncut,
+            watched: region
+                .watch
+                .iter()
+                .zip(broken)
+                .enumerate()
+                .filter(|(_, (_, length))| *length > SAME_POINT)
+                .map(|(index, (w, length))| WatchedBreak {
+                    index,
+                    name: w.name.to_owned(),
+                    protection: w.protection,
+                    length,
+                })
+                .collect(),
+        },
     })
+}
+
+/// The tool at the points of the machine's motion from `p` to `q` that the
+/// gate and the guards look at, as (tip, axis, contact, ruling length).
+fn motion(p: &Pose, q: &Pose, rotary: RotaryMapping) -> Vec<(Point3, UnitVec3, Point3, f64)> {
+    (1..GATE_STEPS)
+        .map(|k| {
+            let f = k as f64 / GATE_STEPS as f64;
+            let (tip, axis) = between(p, q, f, rotary);
+            let contact = p.contact + (q.contact - p.contact) * f;
+            (tip, axis, contact, p.ruling_length.max(q.ruling_length))
+        })
+        .collect()
+}
+
+/// The pieces of `run` the guards leave (decision record 0176): a pose at
+/// which the tool comes too close to an avoid or check surface is left out,
+/// and so is a move along which it does, so the pass stops there and starts
+/// again after it with a retract. Pieces of fewer than two poses are
+/// dropped. The length along the face left uncut is added to `uncut`, the
+/// avoid surfaces' first, by the first guard broken.
+fn guarded(
+    run: &[Pose],
+    guards: &[Guard],
+    tool: &RevolvedProfile,
+    rotary: RotaryMapping,
+    reach: f64,
+    uncut: &mut [f64; 2],
+    pose_at: &dyn Fn(f64) -> Result<Option<Pose>>,
+) -> Result<Vec<Vec<Pose>>> {
+    let first_broken = |position: (Point3, UnitVec3, Point3, f64)| {
+        guards
+            .iter()
+            .find(|g| g.breaks(tool, position, reach))
+            .map(|g| g.kind)
+    };
+    let clear = |p: &Pose| first_broken((p.tip, p.axis, p.contact, p.ruling_length)).is_none();
+    // Where the tool goes from clear to not, the last clear pose is found by
+    // bisection, so the pass stops close to the surface, not at the poses
+    // the spacing happened to place.
+    let mut run = run.to_vec();
+    let mut i = 0;
+    while let (Some(&a), Some(&b)) = (run.get(i), run.get(i + 1)) {
+        let (a_clear, b_clear) = (clear(&a), clear(&b));
+        if a_clear == b_clear {
+            i += 1;
+            continue;
+        }
+        let (mut good, mut bad) = if a_clear { (a.t, b.t) } else { (b.t, a.t) };
+        let mut found: Option<Pose> = None;
+        for _ in 0..GUARD_STEPS {
+            let t = 0.5 * (good + bad);
+            match pose_at(t)? {
+                Some(p) if clear(&p) => {
+                    good = t;
+                    found = Some(p);
+                }
+                _ => bad = t,
+            }
+        }
+        match found {
+            Some(mut p) => {
+                let (next, neighbour) = if a_clear { (i + 1, a) } else { (i + 1, b) };
+                p.a = nearest_turn(p.a, neighbour.a);
+                run.insert(next, p);
+                i += 2;
+            }
+            None => i += 1,
+        }
+    }
+    let run = run.as_slice();
+    let at_pose: Vec<Option<Protection>> = parallel::map_in_order(run, |p| {
+        first_broken((p.tip, p.axis, p.contact, p.ruling_length))
+    });
+    let moves: Vec<(&Pose, &Pose)> = run.iter().zip(run.iter().skip(1)).collect();
+    let on_move: Vec<Option<Protection>> = parallel::map_in_order(&moves, |(p, q)| {
+        motion(p, q, rotary).into_iter().find_map(first_broken)
+    });
+    // The pieces as indices into `run`.
+    let mut pieces: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for i in 0..run.len() {
+        if at_pose.get(i).copied().flatten().is_some() {
+            pieces.push(std::mem::take(&mut current));
+            continue;
+        }
+        current.push(i);
+        if on_move.get(i).copied().flatten().is_some() {
+            pieces.push(std::mem::take(&mut current));
+        }
+    }
+    pieces.push(current);
+    pieces.retain(|p| p.len() >= 2);
+    // Every move not cut counts as uncut, against the guard that stopped it.
+    let mut cut = vec![false; moves.len()];
+    for piece in &pieces {
+        for i in piece.iter().take(piece.len() - 1) {
+            if let Some(c) = cut.get_mut(*i) {
+                *c = true;
+            }
+        }
+    }
+    let fallback = guards.first().map(|g| g.kind);
+    for (i, (p, q)) in moves.iter().enumerate() {
+        if cut.get(i).copied().unwrap_or(true) {
+            continue;
+        }
+        let kind = on_move
+            .get(i)
+            .copied()
+            .flatten()
+            .or(at_pose.get(i).copied().flatten())
+            .or(at_pose.get(i + 1).copied().flatten())
+            .or(fallback);
+        let length = p.contact.distance(q.contact);
+        match kind {
+            Some(Protection::Check) => uncut[1] += length,
+            _ => uncut[0] += length,
+        }
+    }
+    Ok(pieces
+        .into_iter()
+        .map(|piece| {
+            piece
+                .into_iter()
+                .filter_map(|i| run.get(i).copied())
+                .collect()
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -1408,6 +1972,24 @@ impl Strategy for Swarf {
         schema
     }
 
+    fn honours_region(&self) -> bool {
+        true
+    }
+
+    fn honours_restriction_options(&self) -> bool {
+        true
+    }
+
+    fn passes_in_region(
+        &self,
+        input: &StrategyInput<'_>,
+        region: &RegionConstraint<'_>,
+        parameters: &Parameters,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        Ok(swarf(input, region, parameters, context)?.passes)
+    }
+
     fn passes_with_notes(
         &self,
         input: &StrategyInput<'_>,
@@ -1415,12 +1997,12 @@ impl Strategy for Swarf {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<StrategyOutput> {
-        if region.is_some() {
-            return Err(PathError::Strategy(
-                "swarf cuts the selected faces, not a region".to_owned(),
-            ));
-        }
-        swarf(input, parameters, context)
+        swarf(
+            input,
+            region.unwrap_or(&RegionConstraint::default()),
+            parameters,
+            context,
+        )
     }
 
     fn passes(
@@ -1429,15 +2011,23 @@ impl Strategy for Swarf {
         parameters: &Parameters,
         context: &JobContext<'_>,
     ) -> Result<Vec<Pass>> {
-        Ok(swarf(input, parameters, context)?.passes)
+        Ok(swarf(input, &RegionConstraint::default(), parameters, context)?.passes)
     }
 }
 
 fn swarf(
     input: &StrategyInput<'_>,
+    region: &RegionConstraint<'_>,
     parameters: &Parameters,
     context: &JobContext<'_>,
 ) -> Result<StrategyOutput> {
+    if region.region.is_some() {
+        return Err(PathError::Strategy(
+            "swarf cuts the selected faces, not a region: put the walls to cut in its face set, \
+             and use a boundary, avoid or check set to limit it"
+                .to_owned(),
+        ));
+    }
     let faces = input.surface.exact_faces();
     if faces.is_empty() {
         return Err(PathError::Strategy(
@@ -1457,10 +2047,30 @@ fn swarf(
     let mut passes = Vec::new();
     let mut notes = Vec::new();
     let mut warnings = Vec::new();
+    // A boundary with both its limits off limits nothing: the path is made
+    // as if there were none, and the user is told (decision record 0176).
+    if region.boundary.is_some()
+        && region.boundary_limits
+            == (BoundaryLimits {
+                pass: false,
+                tip: false,
+            })
+    {
+        warnings.push(PathWarning {
+            message: "The boundary of this swarf operation limits nothing, because both its \
+                      limits, the pass and the tip, are off: the faces are cut as if there were \
+                      no boundary."
+                .to_owned(),
+            parameter: None,
+        });
+    }
+    // Each watched surface the tool breaks, over every face, in the
+    // region's order.
+    let mut watched: Vec<(f64, Vec<u32>)> = vec![(0.0, Vec::new()); region.watch.len()];
     let total = faces.len() as u64;
     for (i, face) in faces.into_iter().enumerate() {
         context.report("swarf", i as u64, Some(total));
-        let path = face_path(face, input.tool, input.rotary, &settings, context)?;
+        let path = face_path(face, input.tool, input.rotary, &settings, region, context)?;
         let limit = settings.material_left_limit();
         if let Some(why) = path.refusal(limit) {
             return Err(PathError::Strategy(why));
@@ -1470,6 +2080,12 @@ fn swarf(
                 message,
                 parameter: Some(names::TOLERANCE.to_owned()),
             });
+        }
+        for broken in &path.limits.watched {
+            if let Some((length, faces)) = watched.get_mut(broken.index) {
+                *length += broken.length;
+                faces.push(path.number);
+            }
         }
         notes.push(path.note(settings.tolerance, limit));
         for run in &path.runs {
@@ -1486,6 +2102,23 @@ fn swarf(
                 rapids: Vec::new(),
             });
         }
+    }
+    for (w, (length, faces)) in region.watch.iter().zip(watched) {
+        if faces.is_empty() {
+            continue;
+        }
+        let faces: Vec<String> = faces.iter().map(u32::to_string).collect();
+        warnings.push(PathWarning {
+            message: format!(
+                "The tool {} '{}' along about {length:.3} mm of face {}. The set only warns, \
+                 so the path is kept: set it to cut the pass short, or check the cut in the \
+                 simulation before using the path.",
+                breaks(w.protection),
+                w.name,
+                faces.join(", ")
+            ),
+            parameter: None,
+        });
     }
     context.report("swarf", total, Some(total));
     Ok(StrategyOutput {

@@ -263,6 +263,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                     boundary: None,
                     avoid: Vec::new(),
                     check: Vec::new(),
+                    restriction_options: Default::default(),
                     parameters: BTreeMap::new(),
                 }),
                 placement: placement(index),

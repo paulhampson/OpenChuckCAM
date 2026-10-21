@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 
 use openchuck_project::id::{OperationId, SetupId, ToolId};
-use openchuck_project::{Item, ItemId, Operation, OrderKey, Placement};
+use openchuck_project::{Item, ItemId, Operation, OrderKey, Placement, RestrictionOptions};
 
 use crate::{AppError, Application, Command};
 
@@ -67,6 +67,16 @@ impl Application {
             .iter()
             .find(|s| s.name() == name)
             .map_or_else(|| name.to_owned(), |s| s.label().to_owned())
+    }
+
+    /// Whether strategy `name` takes options on its boundary, avoid and check
+    /// sets (decision 0176; swarf so far, OI-637), so the Geometry section
+    /// shows them.
+    pub fn strategy_takes_set_options(&self, name: &str) -> bool {
+        self.strategies
+            .iter()
+            .find(|s| s.name() == name)
+            .is_some_and(|s| s.honours_restriction_options())
     }
 
     /// Adds an operation at the end of the list, using `strategy` in `setup`,
@@ -179,6 +189,7 @@ impl Application {
                 boundary: None,
                 avoid: Vec::new(),
                 check: Vec::new(),
+                restriction_options: RestrictionOptions::default(),
                 parameters: BTreeMap::new(),
                 enabled: true,
             }),

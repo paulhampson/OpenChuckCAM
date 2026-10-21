@@ -203,6 +203,15 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
         false
     }
 
+    /// Whether the strategy takes a region's restriction options
+    /// ([`RegionConstraint::boundary_limits`] and
+    /// [`RegionConstraint::watch`]; decision record 0176). A region that
+    /// sets any is refused for a strategy that does not, rather than
+    /// ignored. Swarf does; the others not yet (OI-637).
+    fn honours_restriction_options(&self) -> bool {
+        false
+    }
+
     /// As [`passes`](Self::passes), cutting only where `region` allows
     /// (OP-02). The default refuses, so a strategy that has not been written
     /// for regions never cuts outside one.
@@ -331,6 +340,15 @@ fn generate_with(
         return Err(PathError::Strategy(format!(
             "a stock to leave of {} mm is not zero or more",
             bad.leave
+        )));
+    }
+    if region.is_some_and(RegionConstraint::has_restriction_options)
+        && !strategy.honours_restriction_options()
+    {
+        return Err(PathError::Strategy(format!(
+            "{} takes no options on its boundary, avoid or check sets: a boundary limit turned \
+             off, or a set that only warns, is built for swarf only so far",
+            strategy.label()
         )));
     }
     context.check_cancelled()?;

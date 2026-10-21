@@ -651,6 +651,7 @@ fn selection_project(
             boundary: None,
             avoid: Vec::new(),
             check: Vec::new(),
+            restriction_options: Default::default(),
             parameters: std::collections::BTreeMap::new(),
         }),
         placement: Placement::End,

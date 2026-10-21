@@ -17,9 +17,9 @@ use std::time::{Duration, SystemTime};
 
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_project::{
-    ContentHash, Item, ItemId, MeshEdge, ModelCheck, ModelRef, Operation, OrderKey, ParameterValue,
-    Placement, Project, ProjectError, RelativePath, SelectionSet, SelectionTarget, Setup,
-    ToolSnapshot, file,
+    BoundaryOptions, ContentHash, Item, ItemId, MeshEdge, ModelCheck, ModelRef, OnBreak, Operation,
+    OrderKey, ParameterValue, Placement, Project, ProjectError, RelativePath, SelectionSet,
+    SelectionTarget, SetOptions, Setup, ToolSnapshot, file,
 };
 use openchuck_types::brep::{EdgeId, FaceId};
 use openchuck_types::tool::{ControllerMapping, Tool, ToolShape};
@@ -60,6 +60,7 @@ fn operation(n: u128) -> Operation {
         boundary: None,
         avoid: Vec::new(),
         check: Vec::new(),
+        restriction_options: Default::default(),
         parameters: BTreeMap::from([
             ("stepover".into(), ParameterValue::Number(0.5)),
             ("passes".into(), ParameterValue::Integer(3)),
@@ -1507,6 +1508,183 @@ fn req_prj_04_req_nfr_07_the_selection_reset_warning_setting_needs_schema_12() {
         err.contains("warn_on_selection_reset") && err.contains("schema 12"),
         "{err}"
     );
+}
+
+/// The operation file of operation 101 of `sample()`.
+const OP_101_FILE: &str = "operations/00000000-0000-0000-0000-000000000065.toml";
+
+/// `sample()` with operation 101 holding set 30 as its boundary and sets 31
+/// and 32 as avoid and check sets, all on model 1.
+fn with_restrictions() -> Project {
+    let mut p = sample();
+    for (n, name) in [(31, "Rib"), (32, "Floor")] {
+        p.insert(
+            Item::SelectionSet(SelectionSet {
+                id: SelectionSetId::from_u128(n),
+                order: OrderKey::default(),
+                name: name.into(),
+                model: ModelId::from_u128(1),
+                model_hash: model(1).hash,
+                target: SelectionTarget::Faces(BTreeSet::from([FaceId(n as u32)])),
+                descriptors: Vec::new(),
+                stock_to_leave: None,
+                colour: None,
+                keep_tangent_edges: None,
+            }),
+            Placement::End,
+        )
+        .unwrap();
+    }
+    let mut o = p.operation(op_id(101)).unwrap().clone();
+    o.boundary = Some(SelectionSetId::from_u128(30));
+    o.avoid = vec![SelectionSetId::from_u128(31)];
+    o.check = vec![SelectionSetId::from_u128(32)];
+    p.replace(Item::Operation(o)).unwrap();
+    p
+}
+
+#[test]
+fn req_prj_04_req_op_02_restriction_set_options_round_trip_and_older_files_take_the_defaults() {
+    // Schema 14 (decision record 0176 item 3): each boundary, avoid and
+    // check set of an operation carries its own options, written only when
+    // they differ from the defaults.
+    let plain = with_restrictions();
+    let dir = temp_dir("restrict-plain");
+    file::save(&plain, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join(OP_101_FILE)).unwrap();
+    assert!(
+        !text.contains("_options"),
+        "defaults are not written: {text}"
+    );
+
+    let mut p = plain.clone();
+    let mut o = p.operation(op_id(101)).unwrap().clone();
+    o.restriction_options.boundary = BoundaryOptions {
+        limits_pass: true,
+        limits_tip: false,
+    };
+    o.restriction_options.set_avoid(
+        SelectionSetId::from_u128(31),
+        SetOptions {
+            on_break: OnBreak::Warn,
+        },
+    );
+    o.restriction_options.set_check(
+        SelectionSetId::from_u128(32),
+        SetOptions {
+            on_break: OnBreak::Ignore,
+        },
+    );
+    p.replace(Item::Operation(o)).unwrap();
+    let dir = temp_dir("restrict-set");
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join(OP_101_FILE)).unwrap();
+    for needle in [
+        "[boundary_options]\nlimits_pass = true\nlimits_tip = false\n",
+        "[avoid_options.00000000-0000-0000-0000-00000000001f]\non_break = \"warn\"\n",
+        "[check_options.00000000-0000-0000-0000-000000000020]\non_break = \"ignore\"\n",
+    ] {
+        assert!(text.contains(needle), "{needle} in {text}");
+    }
+    assert_eq!(file::load(&dir).unwrap(), p);
+    // A schema 14 file holding them opens through the later steps as the
+    // same project, and saves again at the current schema with them intact.
+    let at_14 = copy_tree_with(&read_tree(&dir), "restrict-set-14", |_, text| {
+        text.replacen(&current(), "schema = 14\n", 1)
+    });
+    let opened = file::load(&at_14).unwrap();
+    assert_eq!(opened, p);
+    let again = temp_dir_saved(&opened, "restrict-set-14-saved");
+    assert_eq!(read_tree(&again), read_tree(&dir));
+    // An entry equal to the defaults is not written, and reads back as none.
+    let mut q = p.clone();
+    let mut o = q.operation(op_id(101)).unwrap().clone();
+    o.restriction_options
+        .avoid
+        .insert(SelectionSetId::from_u128(31), SetOptions::default());
+    q.replace(Item::Operation(o)).unwrap();
+    let dir = temp_dir("restrict-default-entry");
+    file::save(&q, &dir).unwrap();
+    let back = file::load(&dir).unwrap();
+    assert!(
+        back.operation(op_id(101))
+            .unwrap()
+            .restriction_options
+            .avoid
+            .is_empty()
+    );
+
+    // A schema 13 file has none: its sets take the defaults, and it loads
+    // as the same project.
+    let base = read_tree(&temp_dir_saved(&plain, "restrict-base"));
+    let old = copy_tree_with(&base, "restrict-13", |_, text| {
+        text.replacen(&current(), "schema = 13\n", 1)
+    });
+    assert_eq!(file::load(&old).unwrap(), plain);
+}
+
+fn temp_dir_saved(p: &Project, name: &str) -> PathBuf {
+    let dir = temp_dir(name);
+    file::save(p, &dir).unwrap();
+    dir
+}
+
+#[test]
+fn req_prj_04_req_nfr_07_restriction_set_options_need_schema_14_and_their_set() {
+    let base = read_tree(&temp_dir_saved(&with_restrictions(), "restrict-bad-base"));
+    let edited = |name: &str, schema: i64, table: &str| {
+        let dir = copy_tree_with(&base, name, |path, text| {
+            let text = text.replacen(&current(), &format!("schema = {schema}\n"), 1);
+            if path == OP_101_FILE {
+                format!("{text}\n{table}")
+            } else {
+                text
+            }
+        });
+        file::load(&dir).unwrap_err().to_string()
+    };
+    // In a schema 13 file, any of the three is refused, naming it.
+    for key in ["boundary_options", "avoid_options", "check_options"] {
+        let table = if key == "boundary_options" {
+            "[boundary_options]\nlimits_pass = false\n".to_owned()
+        } else {
+            format!("[{key}.00000000-0000-0000-0000-00000000001f]\non_break = \"warn\"\n")
+        };
+        let err = edited(&format!("restrict-13-{key}"), 13, &table);
+        assert!(
+            err.contains(key) && err.contains("schema 14"),
+            "{key}: {err}"
+        );
+    }
+    // Options for a set that is not in that role, or an unknown choice or
+    // field, are refused naming what is wrong.
+    for (name, table, says) in [
+        (
+            "restrict-stray",
+            "[check_options.00000000-0000-0000-0000-00000000001f]\non_break = \"warn\"\n",
+            "is not one of the operation's check sets",
+        ),
+        (
+            "restrict-choice",
+            "[avoid_options.00000000-0000-0000-0000-00000000001f]\non_break = \"sometimes\"\n",
+            "sometimes",
+        ),
+        (
+            "restrict-field",
+            "[boundary_options]\nlimits_everything = true\n",
+            "limits_everything",
+        ),
+    ] {
+        let err = edited(name, file::SCHEMA, table);
+        assert!(err.contains(says), "{name}: {err}");
+    }
+    // Boundary options with no boundary set are refused.
+    let mut p = with_restrictions();
+    let mut o = p.operation(op_id(101)).unwrap().clone();
+    o.boundary = None;
+    o.restriction_options.boundary.limits_tip = false;
+    let err = p.replace(Item::Operation(o)).unwrap_err().to_string();
+    assert!(err.contains("no boundary set"), "{err}");
 }
 
 #[test]
