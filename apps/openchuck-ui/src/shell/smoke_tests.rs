@@ -268,8 +268,12 @@ fn req_ui_16_req_sim_04_the_whole_playback_tab_shows_in_the_default_dock_and_sta
         "Speed",
         "Whole program",
         "Go to move",
-        "Turn the part with A",
+        "Turn part with A",
         "Colour the part by deviation",
+        // Issues 205 and 214 (decision records 0168 and 0169).
+        "Window: moves",
+        "Hide path outside window",
+        "Skip stock simulation",
     ];
     for window in [WINDOW, egui::vec2(1920.0, 1080.0)] {
         let mut rig = rig("smoke-playback-tab");

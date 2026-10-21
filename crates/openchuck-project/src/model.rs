@@ -773,6 +773,14 @@ pub struct Project {
     /// working selection (schema 12, decision record 0066 item 3). On by
     /// default.
     warn_on_selection_reset: bool,
+    /// Whether generating leaves out the stock simulation (schema 15,
+    /// decision record 0168; issue 214). Off by default: the stock is
+    /// simulated whenever toolpaths are generated.
+    skip_stock_simulation: bool,
+    /// The operations whose toolpath is hidden in the view (schema 15,
+    /// decision record 0169; issue 213). View state only: it is no input to
+    /// any toolpath, simulation or G-code (GC-07, NFR-06).
+    hidden_paths: BTreeSet<OperationId>,
     models: Vec<ModelRef>,
     setups: Vec<Setup>,
     tools: Vec<ToolSnapshot>,
@@ -1012,6 +1020,8 @@ impl Default for Project {
             simulation: SimulationSettings::default(),
             keep_tangent_edges: false,
             warn_on_selection_reset: true,
+            skip_stock_simulation: false,
+            hidden_paths: BTreeSet::new(),
             models: Vec::new(),
             setups: Vec::new(),
             tools: Vec::new(),
@@ -1052,6 +1062,8 @@ impl Project {
             simulation: SimulationSettings::default(),
             keep_tangent_edges: false,
             warn_on_selection_reset: true,
+            skip_stock_simulation: false,
+            hidden_paths: BTreeSet::new(),
             models,
             setups,
             tools,
@@ -1099,6 +1111,54 @@ impl Project {
     /// (decision record 0066 item 3). On unless the user turned it off.
     pub fn warn_on_selection_reset(&self) -> bool {
         self.warn_on_selection_reset
+    }
+
+    /// Whether generating leaves out the stock simulation (issue 214,
+    /// decision record 0168). Off unless the user ticked "Skip stock
+    /// simulation" for this project.
+    pub fn skip_stock_simulation(&self) -> bool {
+        self.skip_stock_simulation
+    }
+
+    /// Whether `operation`'s toolpath is drawn in the view (issue 213,
+    /// decision record 0169). Shown unless the user hid it. The project keeps
+    /// the choice of an operation it no longer has, so an undone deletion
+    /// keeps it; the file holds only the operations it has.
+    pub fn path_shown(&self, operation: OperationId) -> bool {
+        !self.hidden_paths.contains(&operation)
+    }
+
+    /// Whether `self` and `other` are the same project apart from what only
+    /// the view uses (the hidden toolpaths) and whether the stock simulation
+    /// is skipped: neither reaches a toolpath or the G-code (GC-07), so a
+    /// result made from one is valid for the other.
+    pub fn same_output(&self, other: &Self) -> bool {
+        let Self {
+            name,
+            machine,
+            machine_id,
+            simulation,
+            keep_tangent_edges,
+            warn_on_selection_reset,
+            skip_stock_simulation: _,
+            hidden_paths: _,
+            models,
+            setups,
+            tools,
+            selection_sets,
+            operations,
+        } = self;
+        *name == other.name
+            && *machine == other.machine
+            && *machine_id == other.machine_id
+            && *simulation == other.simulation
+            && *keep_tangent_edges == other.keep_tangent_edges
+            && *warn_on_selection_reset == other.warn_on_selection_reset
+            && *models == other.models
+            && *setups == other.setups
+            && *tools == other.tools
+            && *selection_sets == other.selection_sets
+            && *operations == other.operations
     }
 
     /// Model references in order.
@@ -1244,6 +1304,29 @@ impl Project {
     /// the working selection, and returns the old value (decision record 0066).
     pub fn set_warn_on_selection_reset(&mut self, warn: bool) -> bool {
         std::mem::replace(&mut self.warn_on_selection_reset, warn)
+    }
+
+    /// Sets whether generating leaves out the stock simulation, and returns
+    /// the old value (decision record 0168).
+    pub fn set_skip_stock_simulation(&mut self, skip: bool) -> bool {
+        std::mem::replace(&mut self.skip_stock_simulation, skip)
+    }
+
+    /// Shows or hides the toolpaths of `operations` in the view, and returns
+    /// those whose state changed, so the change can be undone (decision
+    /// record 0169). An ID the project does not have is kept as asked.
+    pub fn set_paths_shown(&mut self, operations: &[OperationId], shown: bool) -> Vec<OperationId> {
+        operations
+            .iter()
+            .copied()
+            .filter(|id| {
+                if shown {
+                    self.hidden_paths.remove(id)
+                } else {
+                    self.hidden_paths.insert(*id)
+                }
+            })
+            .collect()
     }
 
     /// Sets the simulation settings and returns the old ones. Fails, leaving

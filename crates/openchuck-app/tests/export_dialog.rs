@@ -734,3 +734,33 @@ fn req_gc_12_req_gc_07_a_rename_is_posted_without_regenerating_and_is_determinis
     assert_eq!(app.regenerate().unwrap().gcode, after.gcode);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn req_nfr_12_req_gc_16_skipping_the_stock_simulation_is_acknowledged_apart_from_the_export() {
+    // OI-602 (the owner's option C; decision record 0168): its own
+    // acknowledgement, per project on each computer, never in the project and
+    // independent of the export's.
+    let (dir, app) = project("ack-skip", false);
+    let settings = folder("ack-skip-settings");
+    let here = Acknowledgements::in_folder(&settings);
+    assert!(!here.lookup_stock_skipped(app.location()).acknowledged);
+    here.acknowledge(app.location()).unwrap();
+    assert!(
+        !here.lookup_stock_skipped(app.location()).acknowledged,
+        "the export's acknowledgement does not cover the skip"
+    );
+    here.acknowledge_stock_skipped(app.location()).unwrap();
+    let again = Acknowledgements::in_folder(&settings);
+    assert!(again.lookup_stock_skipped(app.location()).acknowledged);
+    assert!(again.lookup(app.location()).acknowledged, "both are kept");
+    assert!(
+        !Acknowledgements::in_folder(&folder("ack-skip-fresh"))
+            .lookup_stock_skipped(app.location())
+            .acknowledged
+    );
+    let project_text = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(!project_text.contains("acknowledged"));
+    for d in [dir, settings] {
+        std::fs::remove_dir_all(d).unwrap();
+    }
+}

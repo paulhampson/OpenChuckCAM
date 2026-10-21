@@ -85,6 +85,9 @@ pub enum Layer {
     Scene,
     /// The simulated stock, usually translucent.
     Stock,
+    /// A faint trace of the toolpath behind [`Layer::Paths`], replaced only
+    /// when the path changes (the playback window, issue 205).
+    Trace,
     /// Toolpaths.
     Paths,
     /// The tool, which moves with the playback position.
@@ -99,9 +102,10 @@ pub enum Layer {
 
 impl Layer {
     /// Every layer, in drawing order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Scene,
         Self::Stock,
+        Self::Trace,
         Self::Paths,
         Self::Tool,
         Self::Overlay,
@@ -114,10 +118,11 @@ impl Layer {
         match self {
             Self::Scene => 0,
             Self::Stock => 1,
-            Self::Paths => 2,
-            Self::Tool => 3,
-            Self::Overlay => 4,
-            Self::Focus => 5,
+            Self::Trace => 2,
+            Self::Paths => 3,
+            Self::Tool => 4,
+            Self::Overlay => 5,
+            Self::Focus => 6,
         }
     }
 }
@@ -215,12 +220,12 @@ pub struct Renderer {
     glass_hatch: wgpu::RenderPipeline,
     highlight_hatch: wgpu::RenderPipeline,
     outline: wgpu::RenderPipeline,
-    layers: [GpuLayer; 6],
+    layers: [GpuLayer; Layer::ALL.len()],
     mode: DisplayMode,
     /// Uniform buffers written by the last [`Renderer::prepare`].
     uniform_writes: usize,
     /// Whether each layer is drawn, by [`Layer::index`].
-    shown: [bool; 6],
+    shown: [bool; Layer::ALL.len()],
 }
 
 #[derive(Debug, Default)]
@@ -446,7 +451,7 @@ impl Renderer {
             layers: Default::default(),
             mode: DisplayMode::default(),
             uniform_writes: 0,
-            shown: [true; 6],
+            shown: [true; Layer::ALL.len()],
         }
     }
 

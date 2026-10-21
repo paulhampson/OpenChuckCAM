@@ -145,7 +145,7 @@ Each group header shows a count and a "+" button (22 pixels):
 4. An icon or colour swatch.
 5. The name, cut with an ellipsis.
 6. A chip (tool number, triangle count, work offset).
-7. A row action: progress and cancel while running, or the visibility eye on Simulate.
+7. A row action: progress and cancel while running, or the visibility eye on operations (every step; open, or struck through when hidden; saved with the project; [decision 0169](../decisions/0169-playback-window-and-path-visibility.md)).
 
 The selected row is tinted, with a 2-pixel accent bar on its left edge.
 
@@ -156,6 +156,8 @@ The selected row is tinted, with a 2-pixel accent bar on its left edge.
 - duplicate (Ctrl D), and delete (Del), each one undoable step.
 
 A disabled operation's name is struck through and muted. It is skipped everywhere: no toolpath, no stock removal, no G-code, and its tool is not in the tool-number plan.
+
+**Group headers.** The Operations header also has Show all and Hide all toolpaths (an open and a struck eye), each disabled when there is nothing for it to do (decision 0169).
 
 **Context menu** (right click or the menu key): Rename, Duplicate, Enable or Disable, Delete, Show in view, and Generate (operations).
 
@@ -190,7 +192,7 @@ A 44-pixel strip above the view, never over it. Icon-only buttons have a tooltip
 | Section plane (S) | All | *(UI-21)* |
 | Measure (M): distance, angle, radius about the rotary axis | All | *(UI-21)* |
 | Turn part to A [angle] Turn: turns the part in the view only, never the program; a chip "View turned to A −53.20°" shows while it is turned, and Fit resets it | All | *(UI-21)* |
-| Show: Stock, Part + path, Both | Simulate | SIM-03, SIM-05 |
+| Show: Model, Cut part, Toolpath, tick boxes in any combination; Cut part only by default; the one ticked box is disabled with the reason, so the view is never empty; the part coloured by deviation shows with Cut part ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)) | Simulate | SIM-01, SIM-03, SIM-05 |
 | Show findings | Model | IMP-04 |
 
 ### 7.2 Overlays
@@ -202,7 +204,7 @@ At most five floating boxes, each in a fixed place, never overlapping. All are d
 | Top left, under the toolbar strip | Selection tools: a filter, "Pick" (a muted label) with Both, Faces, Edges as one framed segmented control, then a line naming the active mode and what the pointer is over (decision 0153) (Both, the default, picks an edge when the pointer is near one and the surface otherwise), then Select one, Flood fill, By angle, Same direction, Box *(Box is OI-201)*; on edges, Select one, Chain and Smooth chain *(decision 0066 items 3 and 4)* | Operations, while picking |
 | Left, below the tools | Path legend: Cut, Link, Rapid, Entry, Selected, Avoid; then Held region and Tab when the setup has them (7.5) | Operations |
 | Top right | View cube; clicking a face gives that standard view. Its labels lie flat on the faces and turn with them; a face within 15° of edge-on shows none (decision 0149) | All with a 3D view |
-| Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2; its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
+| Bottom right | Readout: X, Y, Z in mm to 3 places, A in degrees to 2 places, wrapped into 0 to 360 (360 reads 0), with a tooltip giving the continuous A of the G-code ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)); its frame (G54 work coordinates) and source (cursor on surface, or tool at move N) | Operations, Simulate |
 | Bottom left | Axes gadget: X red, Y green, Z blue, drawn without a box (decision 0149). On Simulate the colour scale (11.5) sits above it, 8 pixels clear | Gadget: all with a 3D view; colour scale: Simulate |
 
 - **Small windows.** When the view is under 480 pixels high, the path legend collapses to a button.
@@ -467,7 +469,7 @@ Boards 3 and 3b.
 
 Board 4 (SIM-01 to SIM-07).
 
-**Tree:** the same tree. Each operation has an eye button that shows or hides it in the view only. Simulation results do not change when something is hidden; a line under the tree says so.
+**Tree:** the same tree. Each operation has an eye button that shows or hides its toolpath in the view only, in every step (section 6). Simulation results and the G-code do not change when something is hidden; a line under the tree says so (decision 0169).
 
 **Workflow bar:** "Simulate from" (start of operation N).
 
@@ -504,6 +506,10 @@ Board 4 (SIM-01 to SIM-07).
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
+- **Window** ([decision 0169](../decisions/0169-playback-window-and-path-visibility.md)): a strip under the timeline with a band and two handles: drag an end to resize, the band to move, elsewhere to start one; "Window: moves [from] to [to]" and "Whole program" on the Go to move row. The play head runs only inside it. The rest of the path is a faint grey trace unless "Hide path outside window" is ticked (kept per user, section 13). Not remembered: leaving Simulate, a new run or opening a project lifts it.
+- **Skip stock simulation** (the project's choice, undoable; [decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)). Otherwise the stock simulation runs with every generation and the cut part is prepared without being asked for.
+- **Turn part with A,** on by default (SIM-02).
+- **The readout** gives A as in 7.2.
 - **G-code panel** (300 wide) *(SIM-12)*. The posted lines around the current move, with the current line highlighted. It uses the post the export will use.
 
 **Footer** primary: section 5.
@@ -526,7 +532,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
    - "Keep as saved", "Renumber in order of use" or "By hand". Duplicates are refused, and the choice is saved in the project.
 3. **Checks before writing** *(GC-15)*:
    - Writing is blocked while an enabled operation is stale or in error.
-   - Operations not simulated, and unconfirmed machine values, give warnings.
+   - Operations not simulated, and unconfirmed machine values, give warnings. A project that skips the stock simulation gives one warning saying so, in place of the per-operation "not simulated" warnings (decision 0168).
    - Disabled operations are listed as not posted.
    - A sentence states the rule.
 
@@ -541,8 +547,9 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - **The tick box** "I will verify this G-code before running it on a machine" must be ticked before the first export of a project on a computer.
 - **Where it is remembered.** In the user's settings on that computer (section 13), not in the project. Opening the project on another computer asks again, and a sentence under the box says so.
 - **Once ticked,** the box stays visible, ticked, with "Acknowledged for this project on this computer".
+- **While the project skips the stock simulation,** the band also says so, with the tick box "I know the cut has not been simulated for this project", which must be ticked before writing; it is remembered as the export's is, per project on each computer ([decision 0168](../decisions/0168-simulate-controls-and-stock-simulation.md)).
 
-**Footer:** Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the box is ticked, and its tooltip says which is missing. It writes the G-code files and, beside them, the setup sheet as HTML and PDF (GC-12), made from the same run; there is no separate setup sheet button ([decision 0189](../decisions/0189-setup-sheet-written-with-the-g-code.md)).
+**Footer:** Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the boxes are ticked, and its tooltip says which is missing. It writes the G-code files and, beside them, the setup sheet as HTML and PDF (GC-12), made from the same run; there is no separate setup sheet button ([decision 0189](../decisions/0189-setup-sheet-written-with-the-g-code.md)).
 
 ### 11.7 Workholding and retaining tabs
 
@@ -727,7 +734,8 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - display units;
   - recent projects;
   - remembered sections;
-  - the export acknowledgements of 11.6;
+  - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;
+  - the Simulate step's choices: Turn part with A, the view's tick boxes, Hide path outside window, and whether new projects skip the stock simulation (one tick box in Settings) (decisions 0168 and 0169);
   - whether the user's actions are recorded in the log (NFR-18, decision 0157): on by default, one checkbox "Record my actions in the log" in a small Settings dialog (File, Settings…, and the same item in Help; both open the same dialog) with a sentence saying what is recorded (names, never values), that the log stays on the computer, and the log's path.
 - **Where.** The platform configuration folder of decision 0029 item 15: `OpenChuckCAM/` beside `machines/` and `tools/`, under `$XDG_CONFIG_HOME` (else `~/.config`), `%APPDATA%` or `~/Library/Application Support`.
 - **Format.** One `settings.toml`, written with the `toml` crate already in the workspace. Not eframe persistence, which would bring the `directories` crate that decision 0029 declined.
