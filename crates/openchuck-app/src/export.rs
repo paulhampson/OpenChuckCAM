@@ -303,7 +303,11 @@ pub fn export_checks(
                         .map(|o| o.operation.as_str())
                         .collect()
                 });
-            if project.skip_stock_simulation() {
+            // The skip does not change the files, so a run made while it was
+            // ticked is still current after it is unticked, and still not
+            // simulated.
+            let skipped = project.skip_stock_simulation() || run.project.skip_stock_simulation();
+            if skipped {
                 // One line naming the cause, not one per operation telling
                 // the user to run what they chose to skip; writing then
                 // waits for its acknowledgement (decision record 0168,
@@ -326,7 +330,7 @@ pub fn export_checks(
                     }
                 }
             }
-            for operation in enabled.iter().filter(|_| !project.skip_stock_simulation()) {
+            for operation in enabled.iter().filter(|_| !skipped) {
                 // The simulation names an operation as it was called when the
                 // run was made; a rename since then is not a missing run
                 // (issue 209).

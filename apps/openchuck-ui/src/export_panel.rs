@@ -208,11 +208,20 @@ impl ExportPanel {
         );
     }
 
+    /// Whether the project skips the stock simulation, or the files were made
+    /// while it did: the skip does not change the files, so they stay current
+    /// when it is unticked, and still hold a cut that was not simulated.
+    fn skips(&self, app: &Application) -> bool {
+        app.project().skip_stock_simulation()
+            || self
+                .files_current(app)
+                .is_some_and(|f| f.key.project.skip_stock_simulation())
+    }
+
     /// Whether writing waits for the acknowledgement that the project skips
     /// the stock simulation (OI-602).
     fn skip_unacknowledged(&self, app: &Application) -> bool {
-        app.project().skip_stock_simulation()
-            && !(self.skip_lookup.acknowledged || self.skip_ticked)
+        self.skips(app) && !(self.skip_lookup.acknowledged || self.skip_ticked)
     }
 
     fn read_numbers(&mut self, app: &Application) {
@@ -487,7 +496,7 @@ impl ExportPanel {
                     self.refresh_acknowledgement(app);
                 }
                 // The skip's acknowledgement is kept the same way (OI-602).
-                if app.project().skip_stock_simulation()
+                if self.skips(app)
                     && !self.skip_lookup.acknowledged
                     && let Some(ack) = &self.ack
                 {
@@ -861,7 +870,7 @@ impl ExportPanel {
     /// box in the safety band, asked once per project on each computer like
     /// the export's (OI-602, the owner's option C; decision record 0168).
     fn skip_notice(&mut self, ui: &mut egui::Ui, app: &Application) {
-        if !app.project().skip_stock_simulation() {
+        if !self.skips(app) {
             return;
         }
         ui.add_space(6.0);
@@ -1237,6 +1246,43 @@ mod tests {
         )));
         fresh.open(&app);
         assert!(!fresh.skip_unacknowledged(&app));
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(settings_dir);
+    }
+
+    #[test]
+    fn req_nfr_12_files_made_while_skipping_still_ask_after_the_skip_is_unticked() {
+        // OI-602 (decision record 0168): the skip does not change the files,
+        // so files made while it was ticked stay current when it is unticked;
+        // they still hold a cut that was not simulated, so writing them still
+        // waits for the box.
+        let (dir, mut app, _, _) = cube_project("export-skip-unticked");
+        app.set_post(None);
+        app.execute(openchuck_app::Command::SetSkipStockSimulation(true))
+            .unwrap();
+        let (settings_dir, ack) = settings("export-skip-unticked-settings");
+        let mut panel = ExportPanel::new(Some(ack));
+        let ctx = egui::Context::default();
+        let run = Arc::new(app.regenerate().unwrap());
+        panel.open(&app);
+        settle(&mut panel, &ctx, &mut app, Some(&run));
+        panel.folder = dir.join("out").display().to_string();
+        app.execute(openchuck_app::Command::SetSkipStockSimulation(false))
+            .unwrap();
+        assert!(
+            panel.files_current(&app).is_some(),
+            "the files stay current"
+        );
+        assert!(panel.skip_unacknowledged(&app));
+        let checks = app.export_checks(Some(&run), panel.files.as_ref().map(|f| &*f.run), None);
+        assert!(
+            checks
+                .checks
+                .iter()
+                .any(|c| c.text == openchuck_app::EXPORT_STOCK_SKIPPED)
+        );
+        let reason = panel.write_blocker(&app, &checks, true).unwrap();
+        assert!(reason.contains("not been simulated"), "{reason}");
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_dir_all(settings_dir);
     }
