@@ -1,6 +1,6 @@
 # 0187: The default dock height fits the playback tab (lane BUG-INSP; issue 215; OI-570)
 
-- **Status:** proposed. The owner chose option A in answer to OI-570 (relayed by the coordinator, 20 Oct 2026); the owner accepts this record in the lane BUG-INSP session. It amends the dock row of the interface specification section 3 once accepted; the specification is not edited before then.
+- **Status:** accepted by the project owner (21 Oct 2026, in the lane BUG-INSP session). The owner chose option A in answer to OI-570 (relayed by the coordinator, 20 Oct 2026). It amends the dock row of the interface specification section 3, which is edited in the same change.
 - **Date:** 20 Oct 2026.
 - **Open items:** OI-570, closed by this change; OI-571 stays open.
 

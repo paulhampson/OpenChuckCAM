@@ -63,7 +63,7 @@ Sizes are logical pixels at 100% scale. The default scale is 100% (decision 0148
 | Viewport toolbar | 44 high | View controls (section 7.1). A strip, not an overlay |
 | Viewport | the rest | The 3D view and at most five overlays (section 7.2) |
 | Legend strip | 36 high, optional | A legend in a strip under the view on Model and Setup, where there are no paths |
-| Dock | 196 high (120 to half the window) | Tabs: Messages, Selection sets, Jobs; Setup checks on Setup; Playback on Simulate (section 9) |
+| Dock | 260 high (120 to half the window) | Tabs: Messages, Selection sets, Jobs; Setup checks on Setup; Playback on Simulate (section 9) |
 | Inspector | 340 wide (280 to 520) | The selected item (section 8) |
 | Footer | 48 high | Status on the left; display settings and the step's actions on the right, primary right-most (section 10) |
 
