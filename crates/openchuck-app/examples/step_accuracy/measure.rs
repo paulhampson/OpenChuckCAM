@@ -1,0 +1,372 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! The measuring functions of `step_accuracy` (decision record 0211), shared
+//! with `tests/step_accuracy.rs`, which checks them on closed forms.
+//!
+//! Nothing here uses the drop-cutter or the path fitter: the tessellation is
+//! judged against the exact faces by `ParametricFace::closest`, and a tool
+//! pose against points sampled on a surface by the independent checker's
+//! outline (`openchuck_testkit::gouge::Outline`), as decision 0056's
+//! *Verification* does.
+
+use std::collections::HashMap;
+
+use openchuck_path::surface::{ParametricFace, Uv};
+use openchuck_path::{ExactFace, RotaryMapping};
+use openchuck_testkit::gouge::Outline;
+use openchuck_types::brep::{BrepModel, SurfaceKind};
+use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
+use openchuck_types::ir::ToolPose;
+use openchuck_types::mesh::TriangleMesh;
+use openchuck_types::units::Degrees;
+use rayon::prelude::*;
+
+/// The name of a face's surface kind, as the report prints it.
+pub fn kind_name(kind: SurfaceKind) -> &'static str {
+    match kind {
+        SurfaceKind::Plane => "plane",
+        SurfaceKind::Cylinder => "cylinder",
+        SurfaceKind::Cone => "cone",
+        SurfaceKind::Sphere => "sphere",
+        SurfaceKind::Torus => "torus",
+        SurfaceKind::BSpline => "b-spline",
+        SurfaceKind::Other => "other",
+    }
+}
+
+/// M1 for one kind of face: how far the tessellation lies from the exact
+/// faces of that kind.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KindError {
+    /// The surface kind.
+    pub kind: &'static str,
+    /// Faces of that kind.
+    pub faces: usize,
+    /// Their triangles.
+    pub triangles: usize,
+    /// Points measured.
+    pub samples: usize,
+    /// The largest distance from a sample to its face, mm.
+    pub max: f64,
+    /// The 99th percentile of that distance, mm.
+    pub p99: f64,
+    /// The largest angle between a facet's normal and the exact normal at the
+    /// closest point to its centre, in degrees (OI-76).
+    pub normal_degrees: f64,
+}
+
+/// Points of triangle `(a, b, c)`: its corners, the middles of its edges and
+/// a barycentric grid of `n` steps a side (decision 0209 item 4.1, M1).
+fn triangle_points(a: Point3, b: Point3, c: Point3, n: usize) -> Vec<Point3> {
+    let mut out = vec![a, b, c, mid(a, b), mid(b, c), mid(c, a)];
+    let n = n.max(1);
+    for i in 0..=n {
+        for j in 0..=(n - i) {
+            let (u, v) = (i as f64 / n as f64, j as f64 / n as f64);
+            out.push(a + (b - a) * u + (c - a) * v);
+        }
+    }
+    out
+}
+
+fn mid(a: Point3, b: Point3) -> Point3 {
+    a + (b - a) * 0.5
+}
+
+/// M1: the distance from the tessellation of every face of `model` to the
+/// face itself, by kind, sampled at the corners, the edge middles and a grid
+/// of `grid` steps a side of each triangle. The face's own triangles are
+/// measured against it, so a triangle is never judged against a neighbour.
+pub fn tessellation_error(model: &BrepModel, grid: usize) -> Vec<KindError> {
+    // Per face: (kind, triangles, distances, worst normal angle).
+    let per_face: Vec<(SurfaceKind, usize, Vec<f64>, f64)> = model
+        .faces
+        .par_iter()
+        .map(|face| {
+            let Ok(exact) = ExactFace::new(face) else {
+                return (face.surface, 0, Vec::new(), 0.0);
+            };
+            let mesh = &face.tessellation;
+            let mut distances = Vec::new();
+            let mut normal: f64 = 0.0;
+            for t in &mesh.triangles {
+                let [a, b, c] = t.map(|i| {
+                    mesh.vertices
+                        .get(i as usize)
+                        .copied()
+                        .unwrap_or(Point3::ORIGIN)
+                });
+                for p in triangle_points(a, b, c, grid) {
+                    if let Some(closest) = exact.closest(p) {
+                        distances.push(closest.distance);
+                    }
+                }
+                let n = (b - a).cross(c - a);
+                let centre = Point3::new(
+                    (a.x + b.x + c.x) / 3.0,
+                    (a.y + b.y + c.y) / 3.0,
+                    (a.z + b.z + c.z) / 3.0,
+                );
+                if let (Some(unit), Some(closest)) = (UnitVec3::new(n), exact.closest(centre)) {
+                    let cos = unit.get().dot(closest.point.normal.get()).clamp(-1.0, 1.0);
+                    normal = normal.max(cos.acos().to_degrees());
+                }
+            }
+            (face.surface, mesh.triangles.len(), distances, normal)
+        })
+        .collect();
+    let mut kinds: Vec<&'static str> = per_face.iter().map(|f| kind_name(f.0)).collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    kinds
+        .into_iter()
+        .map(|kind| {
+            let of_kind: Vec<_> = per_face.iter().filter(|f| kind_name(f.0) == kind).collect();
+            let mut all: Vec<f64> = of_kind.iter().flat_map(|f| f.2.iter().copied()).collect();
+            all.sort_by(f64::total_cmp);
+            let at = |q: f64| {
+                all.get(((all.len().saturating_sub(1)) as f64 * q).round() as usize)
+                    .copied()
+                    .unwrap_or(0.0)
+            };
+            KindError {
+                kind,
+                faces: of_kind.len(),
+                triangles: of_kind.iter().map(|f| f.1).sum(),
+                samples: all.len(),
+                max: all.last().copied().unwrap_or(0.0),
+                p99: at(0.99),
+                normal_degrees: of_kind.iter().map(|f| f.3).fold(0.0, f64::max),
+            }
+        })
+        .collect()
+}
+
+/// Points on a surface, bucketed in cubes for the search round a tool.
+#[derive(Debug, Default)]
+pub struct Cloud {
+    cell: f64,
+    cells: HashMap<[i64; 3], Vec<Point3>>,
+    count: usize,
+}
+
+/// Side of the cubes the points are bucketed in, mm.
+const CELL: f64 = 0.5;
+
+impl Cloud {
+    fn key(&self, p: Point3) -> [i64; 3] {
+        [
+            (p.x / self.cell).floor() as i64,
+            (p.y / self.cell).floor() as i64,
+            (p.z / self.cell).floor() as i64,
+        ]
+    }
+
+    fn from_points(points: impl IntoIterator<Item = Point3>) -> Self {
+        let mut cloud = Self {
+            cell: CELL,
+            ..Self::default()
+        };
+        for p in points {
+            let key = cloud.key(p);
+            cloud.cells.entry(key).or_default().push(p);
+            cloud.count += 1;
+        }
+        cloud
+    }
+
+    /// Points measured.
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    /// True when there are none.
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    /// Points on the exact faces of `model`, inside their trims, about
+    /// `spacing` mm apart along each parameter direction.
+    pub fn of_faces(model: &BrepModel, spacing: f64) -> Self {
+        let per_face: Vec<Vec<Point3>> = model
+            .faces
+            .par_iter()
+            .map(|face| {
+                ExactFace::new(face)
+                    .map(|exact| face_points(&exact, spacing))
+                    .unwrap_or_default()
+            })
+            .collect();
+        Self::from_points(per_face.into_iter().flatten())
+    }
+
+    /// Points on the triangles of `mesh`, about `spacing` mm apart.
+    pub fn of_mesh(mesh: &TriangleMesh, spacing: f64) -> Self {
+        let per_triangle: Vec<Vec<Point3>> = mesh
+            .triangles
+            .par_iter()
+            .map(|t| {
+                let [a, b, c] = t.map(|i| {
+                    mesh.vertices
+                        .get(i as usize)
+                        .copied()
+                        .unwrap_or(Point3::ORIGIN)
+                });
+                let longest = (b - a).length().max((c - b).length()).max((a - c).length());
+                let n = ((longest / spacing).ceil() as usize).max(1);
+                triangle_points(a, b, c, n)
+            })
+            .collect();
+        Self::from_points(per_triangle.into_iter().flatten())
+    }
+
+    /// The smallest signed clearance between the tool of `outline`, its tip
+    /// at `tip` and its axis along `axis` (tip to spindle), and the points:
+    /// negative by the deepest a point lies inside the tool. Only the tool up
+    /// to `height` above its tip is checked, and only points within `margin`
+    /// of it are seen, so the answer is at most `margin`.
+    pub fn clearance(
+        &self,
+        outline: &Outline,
+        tip: Point3,
+        axis: Vec3,
+        height: f64,
+        margin: f64,
+    ) -> f64 {
+        let reach = outline.radius() + margin;
+        let top = tip + axis * height;
+        let lo = Point3::new(
+            tip.x.min(top.x) - reach,
+            tip.y.min(top.y) - reach,
+            tip.z.min(top.z) - reach,
+        );
+        let hi = Point3::new(
+            tip.x.max(top.x) + reach,
+            tip.y.max(top.y) + reach,
+            tip.z.max(top.z) + reach,
+        );
+        let (a, b) = (self.key(lo), self.key(hi));
+        // A cube is looked at when its centre is within reach of the axis
+        // segment, widened by the cube's half diagonal.
+        let half = self.cell * 0.5 * 3.0_f64.sqrt();
+        let mut best = margin;
+        for x in a[0]..=b[0] {
+            for y in a[1]..=b[1] {
+                for z in a[2]..=b[2] {
+                    let centre = Point3::new(
+                        (x as f64 + 0.5) * self.cell,
+                        (y as f64 + 0.5) * self.cell,
+                        (z as f64 + 0.5) * self.cell,
+                    );
+                    let w = centre - tip;
+                    let along = w.dot(axis).clamp(-margin, height + margin);
+                    if (w - axis * along).length() > reach + half {
+                        continue;
+                    }
+                    let Some(points) = self.cells.get(&[x, y, z]) else {
+                        continue;
+                    };
+                    for p in points {
+                        let w = *p - tip;
+                        let z = w.dot(axis);
+                        if z > height + margin {
+                            continue;
+                        }
+                        let r = (w - axis * z).length();
+                        best = best.min(outline.clearance(r, z));
+                    }
+                }
+            }
+        }
+        best
+    }
+}
+
+/// Points of one face, a grid in (u, v) as fine as `spacing` along the
+/// longest iso-line in each direction, kept where the trims hold them.
+fn face_points(face: &ExactFace, spacing: f64) -> Vec<Point3> {
+    let (lo, hi) = face.uv_bounds();
+    let at = |s: f64, t: f64| {
+        face.point_normal(Uv {
+            u: lo.u + (hi.u - lo.u) * s,
+            v: lo.v + (hi.v - lo.v) * t,
+        })
+        .map(|p| p.point)
+    };
+    // The longest iso-line each way, from a coarse grid.
+    const COARSE: usize = 16;
+    let mut long = [0.0_f64; 2];
+    for k in 0..=COARSE {
+        let fixed = k as f64 / COARSE as f64;
+        for (d, line) in long.iter_mut().enumerate() {
+            let mut length = 0.0;
+            let mut last: Option<Point3> = None;
+            for i in 0..=COARSE {
+                let free = i as f64 / COARSE as f64;
+                let p = if d == 0 { at(free, fixed) } else { at(fixed, free) };
+                if let (Some(a), Some(b)) = (last, p) {
+                    length += (b - a).length();
+                }
+                last = p.or(last);
+            }
+            *line = line.max(length);
+        }
+    }
+    let nu = ((long[0] / spacing).ceil() as usize).clamp(1, 40_000);
+    let nv = ((long[1] / spacing).ceil() as usize).clamp(1, 40_000);
+    (0..=nu)
+        .flat_map(|i| (0..=nv).map(move |j| (i, j)))
+        .filter_map(|(i, j)| {
+            let uv = Uv {
+                u: lo.u + (hi.u - lo.u) * i as f64 / nu as f64,
+                v: lo.v + (hi.v - lo.v) * j as f64 / nv as f64,
+            };
+            if face.contains(uv) {
+                face.point_normal(uv).map(|p| p.point)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// A tool position inside a move: where the machine's straight move puts
+/// the tool, in the model frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Station {
+    /// The tool tip.
+    pub tip: Point3,
+    /// The tool axis, tip to spindle.
+    pub axis: Vec3,
+}
+
+impl Station {
+    /// The tool at a pose.
+    pub fn at(pose: &ToolPose) -> Self {
+        Self {
+            tip: pose.tip,
+            axis: pose.axis.get(),
+        }
+    }
+
+    /// The quarter, middle and three-quarter points of the move from `start`
+    /// to `end`, linear in the machine's X, Y, Z and A as the controller
+    /// runs it (decisions 0025 item 3, 0115 and 0133).
+    pub fn along(rotary: &RotaryMapping, start: &ToolPose, end: &ToolPose) -> Vec<Self> {
+        let (p, q) = (rotary.to_axis(start.tip, start.a), rotary.to_axis(end.tip, end.a));
+        [0.25, 0.5, 0.75]
+            .into_iter()
+            .map(|t| {
+                let a = Degrees(start.a.0 + (end.a.0 - start.a.0) * t);
+                let position = openchuck_path::rotary::AxisPosition {
+                    along: p.along + (q.along - p.along) * t,
+                    across: p.across + (q.across - p.across) * t,
+                    height: p.height + (q.height - p.height) * t,
+                };
+                Self {
+                    tip: rotary.to_model(position, a),
+                    axis: rotary.tool_axis(a).get(),
+                }
+            })
+            .collect()
+    }
+}

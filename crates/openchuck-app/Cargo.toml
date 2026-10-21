@@ -16,6 +16,13 @@ authors.workspace = true
 # They need the C++ kernel, so they are off by default.
 kernel-tests = ["openchuck-import/kernel"]
 
+# The STEP accuracy measurement of lane STEPALL-M (decision 0211): it reads
+# STEP files, so it needs the kernel.
+[[example]]
+name = "step_accuracy"
+path = "examples/step_accuracy/main.rs"
+required-features = ["kernel-tests"]
+
 [dependencies]
 openchuck-types.workspace = true
 openchuck-path.workspace = true
