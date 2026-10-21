@@ -116,10 +116,8 @@ impl CuttingDraft {
     fn data(&self) -> Result<CuttingData, String> {
         let mut numbers = [0.0; 5];
         for ((n, text), (label, ..)) in numbers.iter_mut().zip(&self.values).zip(CUTTING) {
-            *n = text
-                .trim()
-                .parse::<f64>()
-                .map_err(|_| format!("{label}: type a number. Not applied."))?;
+            *n = crate::arith::number(text, None)
+                .map_err(|reason| format!("{label}: {reason} Not applied."))?;
         }
         let [rpm, fpt, plunge, over, down] = numbers;
         Ok(CuttingData {
@@ -744,6 +742,7 @@ impl ToolLibraryWindow {
                 applied: number.map(|n| n.to_string()).unwrap_or_default(),
                 hint: Some("not in the set".to_owned()),
                 enabled: true,
+                number: true,
                 ..TextRow::default()
             };
             if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &row) {
@@ -785,6 +784,7 @@ impl ToolLibraryWindow {
             range: Some("1 or more, not another project tool's number"),
             applied: row.number.to_string(),
             enabled: true,
+            number: true,
             ..TextRow::default()
         };
         if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &number) {

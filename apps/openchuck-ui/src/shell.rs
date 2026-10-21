@@ -2008,6 +2008,9 @@ mod keys_tests;
 mod frame_tests;
 
 #[cfg(test)]
+mod numbox_tests;
+
+#[cfg(test)]
 mod new_project_tests;
 
 #[cfg(test)]
