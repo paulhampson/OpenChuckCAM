@@ -580,3 +580,31 @@ fn req_tl_07_req_tl_11_add_update_save_and_the_operation_tool_section() {
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_tl_05_a_material_added_to_one_tool_is_known_to_every_tool_and_setup() {
+    use openchuck_app::materials::{canonical_material, known_materials};
+    let mut lib = ToolLibrary::open(&temp_dir("materials")).unwrap();
+    let mut a = new_draft(&lib, ToolType::FlatEnd).unwrap();
+    edit_cutting_data(&mut a, "Softwood", oak(), None).unwrap();
+    edit_name(&mut a, "Flat").unwrap();
+    save_draft(&mut lib, &a, &[]).unwrap();
+    let mut b = new_draft(&lib, ToolType::BallEnd).unwrap();
+    edit_cutting_data(&mut b, "aluminium", oak(), None).unwrap();
+    edit_name(&mut b, "Ball").unwrap();
+    save_draft(&mut lib, &b, &[]).unwrap();
+    let known = known_materials(None, Some(&lib));
+    assert_eq!(known, ["Softwood", "aluminium"]);
+    // Typing a known material in another spelling takes the known one, so
+    // a second tool cannot hold "softwood" beside "Softwood".
+    let typed = canonical_material(&known, "softwood");
+    assert_eq!(typed, "Softwood");
+    // The same tool refuses two spellings of one material (decision 0196).
+    let mut c = new_draft(&lib, ToolType::FlatEnd).unwrap();
+    edit_cutting_data(&mut c, "Softwood", oak(), None).unwrap();
+    let err = edit_cutting_data(&mut c, "softwood", oak(), None)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Softwood") && err.contains("softwood"), "{err}");
+    assert_eq!(cutting_rows(&c).len(), 1);
+}
