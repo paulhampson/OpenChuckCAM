@@ -54,6 +54,7 @@ mod hash;
 pub mod id;
 pub mod machines;
 mod model;
+pub mod new_folder;
 pub mod order;
 pub mod tools;
 

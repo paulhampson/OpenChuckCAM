@@ -545,7 +545,14 @@ impl Shell {
                     (a.project().name().to_owned(), a.is_modified())
                 });
             ui.add_space(24.0);
-            ui.label(RichText::new(name).strong());
+            let folder = self
+                .app
+                .as_ref()
+                .map(|a| a.location().display().to_string());
+            let label = ui.label(RichText::new(name).strong());
+            if let Some(folder) = folder {
+                label.on_hover_text(folder);
+            }
             if self.app.is_some() {
                 // A neutral dot and "Edited", or "· saved"; amber is kept
                 // for warnings (specification section 10).

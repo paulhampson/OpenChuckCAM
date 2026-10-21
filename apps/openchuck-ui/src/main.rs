@@ -54,6 +54,7 @@ mod toolbar;
 mod viewport;
 mod viewport_overlays;
 mod viewport_toolbar;
+mod window_title;
 mod workholding_panel;
 
 fn main() -> ExitCode {
