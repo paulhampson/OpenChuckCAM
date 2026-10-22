@@ -400,9 +400,26 @@ fn main() -> Result<(), Error> {
                     "operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s"
                 );
                 for &threads in &args.threads {
-                    let runs: Vec<Run> = (0..args.runs)
-                        .map(|_| job.run(form, threads))
-                        .collect::<Result<_, _>>()?;
+                    // Each run is printed as it ends, so a run cut short
+                    // loses only itself; the medians follow the last run.
+                    let mut runs: Vec<Run> = Vec::new();
+                    for k in 0..args.runs {
+                        let run = job.run(form, threads)?;
+                        for (op, t) in ops.iter().zip(&run.timings) {
+                            println!(
+                                "run {} | {} | {} | {:.2} | {} | {:.2} | {} | {:.2}",
+                                k + 1,
+                                op.label,
+                                threads_name(threads, cores),
+                                t.generate.as_secs_f64(),
+                                t.drops,
+                                t.drop_time.as_secs_f64(),
+                                t.exact_queries,
+                                t.simulate.as_secs_f64(),
+                            );
+                        }
+                        runs.push(run);
+                    }
                     for (i, op) in ops.iter().enumerate() {
                         let pick = |f: &dyn Fn(&Timing) -> f64| {
                             median(
