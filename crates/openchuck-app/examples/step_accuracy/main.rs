@@ -240,7 +240,7 @@ fn main() -> Result<(), Error> {
     // The project: the owner's tools and operations, on the STEP part.
     let ops = operations(&args);
     let dir = std::env::temp_dir().join(format!("openchuck-step-accuracy-{}", std::process::id()));
-    let (app, ids) = project(&dir, &blisk_path(), &placement, &bounds, &ops)?;
+    let (mut app, ids) = project(&dir, &blisk_path(), &placement, &bounds, &ops)?;
 
     let mut forms: Vec<(&str, Form)> = vec![
         ("b (STEP, import tessellation 0.01 mm)", Form::Brep(BrepSurface::new(&placed_b)?)),
@@ -266,18 +266,30 @@ fn main() -> Result<(), Error> {
     };
 
     let mut library_b = None;
+    // The operations each form's strategies refused, by the form's letter.
+    let mut refused: BTreeMap<char, Vec<bool>> = BTreeMap::new();
     for (name, form) in &forms {
         let tessellation = Cloud::of_mesh(form.surface().tessellation(), SPACING);
         println!("\n## form {name}: {} triangles", form.surface().tessellation().triangles.len());
         if wants("m2") || wants("m3") {
             let run = job.run(form, Threads::All)?;
             if name.starts_with('b') {
-                library_b = Some(run.groups.clone());
+                library_b = Some(run.groups.iter().filter_map(|g| g.clone().ok()).collect::<Vec<_>>());
+            }
+            if let Some(letter) = name.chars().next() {
+                refused.insert(letter, run.groups.iter().map(Result::is_err).collect());
             }
             if wants("m2") {
                 println!("### M2: the cut against the exact faces");
                 println!("operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses");
                 for (op, group) in ops.iter().zip(&run.groups) {
+                    let group = match group {
+                        Ok(g) => g,
+                        Err(e) => {
+                            println!("{} | {} | refused: {e}", op.label, op.leave);
+                            continue;
+                        }
+                    };
                     let m = m2(&job, op, group, &exact, &tessellation)?;
                     println!(
                         "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {}",
@@ -353,6 +365,9 @@ fn main() -> Result<(), Error> {
 
     if wants("m4") {
         println!("\n## M4: the application's G-code at 1, 2 and {cores} threads");
+        // The application stops at a refused operation, so those are turned
+        // off (UI-06): the rest is generated as the library made it.
+        disable(&mut app, &ids, refused.get(&'b'))?;
         app.save()?;
         let mut reference = None;
         for n in [1, 2, cores] {
@@ -384,7 +399,8 @@ fn main() -> Result<(), Error> {
         if let Some(path) = &args.stl {
             let mut reference = None;
             let stl_dir = dir.with_extension("stl");
-            let (stl_app, _) = project_stl(&stl_dir, path, &stl, &bounds, &ops)?;
+            let (mut stl_app, stl_ids) = project_stl(&stl_dir, path, &stl, &bounds, &ops)?;
+            disable(&mut stl_app, &stl_ids, refused.get(&'a'))?;
             stl_app.save()?;
             for n in [1, 2, cores] {
                 let mut again = Application::open(&stl_dir, Threads::Exactly(n))?;
@@ -404,6 +420,22 @@ fn main() -> Result<(), Error> {
         }
     }
     let _ = std::fs::remove_dir_all(dir);
+    Ok(())
+}
+
+/// Turns off the operations of `ids` that `refused` marks.
+fn disable(app: &mut Application, ids: &[OperationId], refused: Option<&Vec<bool>>) -> Result<(), Error> {
+    let Some(refused) = refused else {
+        return Ok(());
+    };
+    for (id, off) in ids.iter().zip(refused) {
+        if *off && let Some(op) = app.project().operation(*id) {
+            let mut op = op.clone();
+            op.enabled = false;
+            println!("operation '{}' is turned off: the strategy refused it", op.name);
+            app.execute(Command::Replace(Item::Operation(op)))?;
+        }
+    }
     Ok(())
 }
 
@@ -927,7 +959,9 @@ struct Timing {
 }
 
 struct Run {
-    groups: Vec<ToolpathGroup>,
+    /// Each operation's moves, or the strategy's refusal (NFR-07): a
+    /// refused operation cuts nothing and the next works on the same stock.
+    groups: Vec<Result<ToolpathGroup, String>>,
     timings: Vec<Timing>,
 }
 
@@ -999,10 +1033,12 @@ impl Job<'_> {
                 keep_out: &[],
             };
             let started = Instant::now();
-            let path = generate(strategy, &input, &values.values, &context)?;
+            let path = generate(strategy, &input, &values.values, &context);
             let generated = started.elapsed();
             let started = Instant::now();
-            simulator.run_group(&path.group, &profile, &context)?;
+            if let Ok(path) = &path {
+                simulator.run_group(&path.group, &profile, &context)?;
+            }
             let simulated = started.elapsed();
             let mut lines = timed.lines.into_inner().unwrap_or_default();
             lines.sort_by(|a, b| {
@@ -1017,7 +1053,7 @@ impl Job<'_> {
                 simulate: simulated,
                 lines,
             });
-            groups.push(path.group);
+            groups.push(path.map(|p| p.group).map_err(|e| e.to_string()));
         }
         Ok(Run { groups, timings })
     }
