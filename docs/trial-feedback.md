@@ -283,3 +283,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-97 | Strategy explanations, swarf | "walls that are made of straight lines" reads as if curved blades cannot be machined. | Say that the wall can curve along its length and that straight lines run across its height; mention STEP needed, the selected faces, and the twist warning (#226); no implication of safety (NFR-12). A draft wording is on the issue for the owner to review. Part of the #195 text review (lane OPCREATE). Issue [#290](https://github.com/paulhampson/OpenChuckCAM/issues/290). | Answered: the draft is close; use it as the swarf entry and put the final text to the owner with the rest of the #195 text review. |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #291 (F-98).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-98 | Ramp entry | When there is not enough material to ramp in one line, go back and forth until the depth is reached. | A zigzag at the user's ramp angle or less, inside the free material and clear of the part, tabs, held region and limits; a plain message and no path when there is no room (NFR-07); same for every strategy with a ramp, through the entry module (decision 0026, OP-11); belongs with #199 in lane OPCREATE; safety notes on slot engagement (NFR-12); tests per leg. Issue [#291](https://github.com/paulhampson/OpenChuckCAM/issues/291). | A choice or the fallback; the minimum line length. |
