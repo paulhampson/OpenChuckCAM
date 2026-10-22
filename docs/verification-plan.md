@@ -92,6 +92,7 @@ Every requirement ID in the requirements document is covered below, grouped wher
 | UI-22 | P2 | T | Integration | Returning to a history step gives the same project as the same number of undo or redo steps |
 | UI-23 | P2 | D | System | Demo of the recent project list and of importing a dropped file |
 | UI-24 | P2 | T | Integration | A set with missing triangles offers to select again; keeping the part that matches saves a set against the current model with only those triangles, as one undoable step |
+| UI-26 | P2 | T | Unit, Integration | Unit tests of the grammar, rounding and every fault; shell tests of the message under the box, the step bar mark and the kept value |
 | SET-01, SET-03, SET-05, SET-06 | P1 | T | Unit | Machine profile, stock, part placement with G54-style offset and clearance geometry validate and persist; invalid values rejected |
 | SET-02, SET-04, SET-07 | P2 | T | Integration | Y-axis rotary, custom stock and multiple setups produce correct coordinate systems and starting stock |
 | SET-08 | P2 | T | Unit | A rotary acceleration limit validates and persists; an unset value means no limit; time estimates use it once SIM-08 exists |

@@ -105,6 +105,7 @@ These requirements define the first usable release unless marked P2. Each has a 
 | UI-23 | A start page with recent projects, and import by dropping a file on the window. | P2 |
 | UI-24 | When a selection set no longer matches its model, offer to select again, to show what is missing, and to keep the part that still matches. | P2 |
 | UI-25 | View, add, edit and remove a setup's held regions and retaining tabs in the interface, with validation, the default tabs shown as defaults, and a warning when an operation's selection reaches one. | P1 |
+| UI-26 | Number boxes accept simple arithmetic (`+ - * /` and brackets), worked out when the entry is confirmed, shown as its result rounded to the field's precision, with an entry that cannot be read reported under the box and on the step bar, and the last good value kept. | P2 |
 
 ### 3.3 Machine, stock and setup
 
