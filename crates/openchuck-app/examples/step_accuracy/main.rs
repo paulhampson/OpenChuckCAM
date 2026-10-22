@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--fine MM]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -116,6 +116,9 @@ struct Args {
     only: Vec<String>,
     ops: Vec<String>,
     quick: bool,
+    parts: Vec<String>,
+    deflections: Vec<f64>,
+    fine: Option<f64>,
 }
 
 fn args() -> Result<Args, Error> {
@@ -125,6 +128,14 @@ fn args() -> Result<Args, Error> {
         only: vec!["m1".into(), "m2".into(), "m3".into(), "m4".into()],
         ops: Vec::new(),
         quick: false,
+        parts: [
+            "cylinder", "cone", "sphere", "torus", "bspline_face", "filleted_box",
+            "revolved_spline", "blisk",
+        ]
+        .map(str::to_owned)
+        .to_vec(),
+        deflections: DEFLECTIONS.to_vec(),
+        fine: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -138,6 +149,18 @@ fn args() -> Result<Args, Error> {
                 out.ops = it.next().ok_or("--ops LIST")?.split(',').map(str::to_owned).collect();
             }
             "--quick" => out.quick = true,
+            "--parts" => {
+                out.parts = it.next().ok_or("--parts LIST")?.split(',').map(str::to_owned).collect();
+            }
+            "--deflections" => {
+                out.deflections = it
+                    .next()
+                    .ok_or("--deflections LIST")?
+                    .split(',')
+                    .map(str::parse)
+                    .collect::<Result<_, _>>()?;
+            }
+            "--fine" => out.fine = Some(it.next().ok_or("--fine MM")?.parse()?),
             other => return Err(format!("unknown argument {other}").into()),
         }
     }
@@ -158,19 +181,13 @@ fn main() -> Result<(), Error> {
     if wants("m1") {
         println!("\n## M1: tessellation against the exact faces");
         println!("part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | import s");
-        for part in [
-            "cylinder", "cone", "sphere", "torus", "bspline_face", "filleted_box", "revolved_spline",
-        ] {
-            for d in DEFLECTIONS {
+        for part in &args.parts {
+            for &d in &args.deflections {
                 let (model, took) = import(&repo(&format!("testdata/step/valid/{part}.step")), d)?;
-                print_m1(part, d, &model, took);
-            }
-        }
-        for d in DEFLECTIONS {
-            let (model, took) = import(&blisk_path(), d)?;
-            let worst = print_m1("blisk", d, &model, took);
-            if worst <= SHARE && fine.is_none() {
-                fine = Some(d);
+                let worst = print_m1(part, d, &model, took);
+                if part == "blisk" && worst <= SHARE && fine.is_none() {
+                    fine = Some(d);
+                }
             }
         }
         println!(
@@ -180,7 +197,9 @@ fn main() -> Result<(), Error> {
             ))
         );
     }
-    let fine = fine.unwrap_or(0.0025);
+    // Form (c): the deflection given, else the coarsest M1 found within the
+    // share, else the finest of M1's.
+    let fine = args.fine.or(fine).unwrap_or(0.001);
 
     if !(wants("m2") || wants("m3") || wants("m4")) {
         return Ok(());
