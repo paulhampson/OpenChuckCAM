@@ -583,7 +583,8 @@ fn z1_library() -> PathBuf {
 /// 10 mm, 2 mm piece the tailstock centres on, X 98 to 100, is a held region
 /// at the end, so every cutting move keeps clear of it and of the tailstock
 /// beyond it (decision record 0161): as a tab, the program cut past X 100
-/// (OI-924, the owner's option A; the software has no tailstock).
+/// (OI-924, the owner's option A: a tailstock end is a held region at the
+/// end, SET-09).
 /// Tooling board with the "Plastic" presets; roughing with tool 104 (single
 /// flute) and finishing with tool 204 (two flutes).
 fn build_first_cut(root: &Path) -> PathBuf {

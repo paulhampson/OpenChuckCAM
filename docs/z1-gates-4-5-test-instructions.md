@@ -287,14 +287,14 @@ The library has no single-flute ball-nose tool at 3.175 mm: the ball-nose tools 
 | V5 | Playback | Play the program through. No fed move goes below X 70.1 or above X 95.9: the tool stays clear of the held regions at both ends (decision 0161, OI-924). |
 | V6 | Keep | A screenshot of the coloured part, the histogram and the worst values, for the comparison in 5.7. |
 
-The simulation is a check on the program, not a promise about the machine (NFR-12): it does not model the chuck, the jaws, the tailstock or the machine's own errors.
+The simulation is a check on the program, not a promise about the machine (NFR-12): it does not model the bodies of the chuck, the jaws and the tailstock (the held regions stand for them, SET-09), or the machine's own errors.
 
 ### 5.5 On the machine: stock and offsets
 
 | Step | Do | Pass when |
 | --- | --- | --- |
 | M1 | Measure the stock (35 x 35 x 100 mm) | It matches the project's stock within what you consider safe; never larger. |
-| M2 | Load the stock in the chuck with the gripped length the project says (W1), and bring up the tailstock; tighten both | It does not move when you try to turn or pull it by hand. Turn A by jog a full turn at low feed: it turns true by eye and nothing touches. **Tailstock clearance (OI-924): jog the tool, in the air, to X 95.9 at the radius of the cone's tail end and up to safe Z, and check that the tailstock's body clears the tool and the holder at both.** The software does not model the tailstock. |
+| M2 | Load the stock in the chuck with the gripped length the project says (W1), and bring up the tailstock; tighten both | It does not move when you try to turn or pull it by hand. Turn A by jog a full turn at low feed: it turns true by eye and nothing touches. **Tailstock clearance (OI-924): jog the tool, in the air, to X 95.9 at the radius of the cone's tail end and up to safe Z, and check that the tailstock's body clears the tool and the holder at both.** The held region at the end keeps every cutting move clear of the tailstock end (SET-09, decision 0161); the tailstock's body itself is checked here, by eye. |
 | M3 | Fit the tool (T1, T5) | The tool number in the controller is the program's `T<n>`. |
 | M4 | Set the work zero with **Makera's own routine** (OI-917): Y and Z on the A axis, X0, and A0 | G54 Y0 Z0 on the axis centreline, X0 where the setup sheet's work offset line says, A0 as the routine sets it. Record on the form: which face X0 was taken from, how A0 was set, and G54 X, Y, Z in machine coordinates. The machine Z of G54 is the axis height (OI-60): compare it with the profile. |
 | M5 | Check by hand that the first rapid position is clear: jog to the program's first `G0` position in G54 (X, Y0, safe Z, A0) at low feed | The tool is above the stock at the X the program starts at, and clears the jaws and the tailstock body. |
