@@ -125,6 +125,12 @@ pub const LEFT_MEDIUM: Colour = hex(0x4bb7fc);
 /// `#4e71ea`, the darkest that keeps 3:1 against the view (section 16).
 pub const LEFT_MORE: Colour = hex(0x4e71ea);
 
+/// A deviation band the user hid (SIM-15): solid dark slate `#5d6570`, a
+/// colour of its own, so a hidden band never reads as "within tolerance" or
+/// as the part's grey; solid, so it reads apart from "not measured", which
+/// is hatched (decision 0216 item 8; OI-882).
+pub const HIDDEN_BAND: Colour = hex(0x5d6570);
+
 /// A shown selection set's outline (decision 0216 item 4): 2 pixels in the
 /// set's colour inside 4 pixels of [`SET_FRAME`], round the edge of the set.
 /// The deviation scale never draws outlines, so a set reads apart from it
@@ -469,5 +475,19 @@ pub(crate) mod tests {
             let c = contrast(band_colour(band), view);
             assert!(c >= 3.0, "{band:?}: {c:.2}:1");
         }
+    }
+
+    #[test]
+    fn req_sim_15_req_nfr_15_a_hidden_band_reads_apart_from_every_band_and_the_part() {
+        // Decision 0216 item 8 (OI-882): at least 18 (CIEDE2000) from every
+        // band for every simulated colour vision type, and at least 20 from
+        // "within tolerance" and the part's grey in normal vision.
+        use measure::{difference, worst_difference};
+        for band in DeviationBand::ALL {
+            let w = worst_difference(HIDDEN_BAND, band_colour(band));
+            assert!(w >= 18.0, "{band:?}: {w:.1}");
+        }
+        assert!(difference(HIDDEN_BAND, WITHIN) >= 20.0);
+        assert!(difference(HIDDEN_BAND, PART) >= 20.0);
     }
 }
