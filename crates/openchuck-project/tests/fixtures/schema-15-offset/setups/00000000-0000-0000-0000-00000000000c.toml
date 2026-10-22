@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# No offset: nothing moves.
+schema = 15
+id = "00000000-0000-0000-0000-00000000000c"
+order = "X"
+name = "Still"
+
+[stock]
+type = "cylinder"
+diameter = 20.0
+length = 34.0
+x_start = -2.0

@@ -14,7 +14,8 @@ use openchuck_types::setup::{PartExtent, SetupWarningKind};
 use openchuck_types::stock::Stock;
 use openchuck_types::units::{Degrees, Millimetres};
 use openchuck_types::workholding::{
-    FRUSTUM_MIN_DIFFERENCE, HeldRegion, MAX_TAB_COUNT, Tab, TabLayout, TabShape, Workholding,
+    FRUSTUM_MIN_DIFFERENCE, HeldRegion, MAX_TAB_COUNT, Tab, TabEnd, TabLayout, TabShape,
+    Workholding, auto_tab_span,
 };
 
 use crate::AppError;
@@ -160,7 +161,11 @@ pub fn check_draft(draft: &Workholding, stock: Option<&Stock>) -> Option<FieldPr
             return Some(p);
         }
         let (lo, hi) = (tab.x_start.0, tab.x_start.0 + tab.length.0);
+        // An automatic tab's position is worked out from the part (decision
+        // record 0202); its stored one is not held against it.
+        let placed_by_hand = tab.auto.is_none();
         if let Some((a, b)) = stock_x
+            && placed_by_hand
             && (lo < a || hi > b)
         {
             return problem(
@@ -170,6 +175,7 @@ pub fn check_draft(draft: &Workholding, stock: Option<&Stock>) -> Option<FieldPr
         }
         for (name, span) in [("start", start_span), ("end", end_span)] {
             if let Some((a, b)) = span
+                && placed_by_hand
                 && lo < b
                 && hi > a
             {
@@ -201,7 +207,7 @@ pub fn check_draft(draft: &Workholding, stock: Option<&Stock>) -> Option<FieldPr
                 );
             }
         }
-        if tab.layout == TabLayout::OnAxis {
+        if tab.layout == TabLayout::OnAxis && placed_by_hand {
             if let Some((_, _, other)) = occupied.iter().find(|(a, b, _)| lo < *b && hi > *a) {
                 return problem(Field::TabStartX(i), format!("Overlaps tab {}.", other + 1));
             }
@@ -471,9 +477,17 @@ pub fn new_held_region() -> HeldRegion {
     }
 }
 
+/// `v` rounded to the 3 places the workholding section's fields show (14.3):
+/// a value worked out for the user, such as a new tab's diameter, is stored
+/// as the field shows it (issue #184).
+pub fn to_field_places(v: f64) -> f64 {
+    (v * 1000.0).round() / 1000.0
+}
+
 /// The tab "Add tab" adds: a cylinder on the axis, 5 mm long and a quarter of
-/// the stock's diameter across (at least 1 mm), at the inner edge of the held
-/// region at the start, or at the start of the stock.
+/// the stock's diameter across (at least 1 mm), rounded to the field's 3
+/// places (issue #184), at the inner edge of the held region at the start, or
+/// at the start of the stock.
 pub fn new_tab(draft: &Workholding, stock: Option<&Stock>) -> Tab {
     let bounds = stock.and_then(|s| s.bounds(None));
     let x_start = bounds.map_or(0.0, |b| {
@@ -484,14 +498,79 @@ pub fn new_tab(draft: &Workholding, stock: Option<&Stock>) -> Tab {
     });
     let diameter = stock
         .and_then(|s| s.radius(None))
-        .map_or(4.0, |r| (2.0 * r.0 / 4.0).max(1.0));
+        .map_or(4.0, |r| to_field_places((2.0 * r.0 / 4.0).max(1.0)));
     Tab {
+        auto: None,
         x_start: Millimetres(x_start),
         length: Millimetres(5.0),
         shape: TabShape::Cylinder {
             diameter: Millimetres(diameter),
         },
         layout: TabLayout::OnAxis,
+    }
+}
+
+/// The tab "Head tab" or "Tail tab" adds (issue #182; decision record
+/// 0202): the shape and diameter of [`new_tab`], placed automatically over
+/// the whole zone at that end of the part ([`auto_tab_span`]), and kept
+/// there as the part, the stock and the held regions change. Each press adds
+/// another. Fails with the reason for the button's tooltip when the setup has
+/// no part or stock, the part is not read yet, or there is no room at that
+/// end.
+pub fn end_tab(
+    draft: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+    has_part: bool,
+    end: TabEnd,
+) -> Result<Tab, String> {
+    if !has_part {
+        return Err("Import a model first".to_owned());
+    }
+    let stock = stock
+        .ok_or_else(|| "Set the stock first: held regions and tabs are placed on it.".to_owned())?;
+    let part = part.ok_or_else(|| "Working out where the part is\u{2026}".to_owned())?;
+    let (lo, hi) = auto_tab_span(draft, stock, part, end).ok_or_else(|| no_room(draft, end))?;
+    Ok(Tab {
+        x_start: Millimetres(lo),
+        length: Millimetres(hi - lo),
+        auto: Some(end),
+        ..new_tab(draft, Some(stock))
+    })
+}
+
+/// A hand edit of a tab's start or length (issue #186; decision record
+/// 0202): the tab is no longer placed automatically, and keeps the other
+/// value as it was `shown` (an automatic tab is shown where the part puts
+/// it, not where it was last stored).
+pub fn set_tab_span(tab: &mut Tab, shown: &Tab, x_start: Option<f64>, length: Option<f64>) {
+    tab.auto = None;
+    tab.x_start = Millimetres(x_start.unwrap_or(shown.x_start.0));
+    tab.length = Millimetres(length.unwrap_or(shown.length.0));
+}
+
+/// Ticks "Place automatically" at `end`, or unticks it with `None`, which
+/// keeps the position and length the tab is `shown` at (decision record
+/// 0202).
+pub fn set_tab_auto(tab: &mut Tab, shown: &Tab, end: Option<TabEnd>) {
+    tab.x_start = shown.x_start;
+    tab.length = shown.length;
+    tab.auto = end;
+}
+
+/// Why there is no room for a tab at `end` of the part, in words.
+pub fn no_room(draft: &Workholding, end: TabEnd) -> String {
+    let (held, stock_end) = match end {
+        TabEnd::Head => (draft.start.is_some(), "the stock starts"),
+        TabEnd::Tail => (draft.end.is_some(), "the stock ends"),
+    };
+    if held {
+        format!(
+            "No room at the {}: the held region reaches the part.",
+            end.name()
+        )
+    } else {
+        format!("No room at the {}: {stock_end} at the part.", end.name())
     }
 }
 

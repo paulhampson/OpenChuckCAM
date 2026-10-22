@@ -75,7 +75,7 @@ use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::{BoundaryLimits, Protection, RegionConstraint, Window};
 use crate::rotary::{AxisPosition, RotaryMapping, nearest_turn};
-use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
+use crate::strategy::{CutPoint, Pass, Strategy, StrategyGroup, StrategyInput, StrategyOutput};
 use crate::surface::{FaceRef, ParametricFace, SurfaceSource, Uv};
 
 pub use crate::wrap_fit::CHORD_FACTOR;
@@ -1907,6 +1907,14 @@ impl Strategy for Swarf {
 
     fn label(&self) -> &str {
         "Swarf (flank) machining"
+    }
+
+    fn description(&self) -> &str {
+        "Cuts with the side of the tool laid along straight lines in a curved wall of the part, so one pass finishes a tall surface. It needs a STEP model, not a mesh, and walls that are made of straight lines."
+    }
+
+    fn group(&self) -> StrategyGroup {
+        StrategyGroup::Specialist
     }
 
     fn needs_brep_part(&self) -> Option<&str> {

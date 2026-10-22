@@ -121,7 +121,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 
 **One tree in every step** (UI-06). Groups, in pipeline order:
 
-1. **Model.** One row per model, with child rows for its placement and mesh check.
+1. **Model.** One row per model, with child rows for its placement and mesh check: "Placement", with a chip for its steps ("as in file", "1 step", "2 steps") and a tooltip that says the placement is shared by every setup, and "Mesh check", with the model's mark. Choosing one selects the model and opens its inspector at that section ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md) item 6).
 2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, work offset and clearance, and workholding (11.7).
 3. **Selection sets.** Each set's colour swatch, name and size.
 4. **Operations.** In machining order, each with its tool's number as a chip.
@@ -321,7 +321,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 9. Dock
 
-**Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5).
+**Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
 
 **Messages** *(UI-12)*:
 
@@ -405,6 +405,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - file, format and triangle count, size;
   - unit (a segmented control, with a hint for where the unit came from);
   - placement steps (IMP-05):
+    - a muted line first: "The placement puts the model on the rotary axis and is shared by every setup. To move the part along the axis in one setup only, use that setup's Offset along X (Setup step, Part position)." ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md));
     - an ordered list with a drag handle, and a description and value on each row;
     - removing a step is one undoable command;
     - "Add step" offers centre, orient, translate, rotate, scale and mirror;
@@ -431,13 +432,15 @@ Board 2 (SET-01, SET-03, SET-05, SET-06; UI-03).
 
 Both panes also draw the held regions and tabs in section (7.5).
 
+**Zoom and pan** ([decision 0203](../decisions/0203-setup-panes-zoom-and-pan.md)). Each pane zooms with the wheel about the pointer, from its fitted view up to 20 times it, and moves with a drag that starts in it, never so far that its centre leaves the drawing. A double-click, or the pane's "Fit" button at its top right (shown while it is zoomed or moved), fits it again. Each setup keeps its panes' zoom and pan while the program runs, also when the user leaves the step and comes back; they are not saved in the project. A click without a drag still selects a held region or tab (7.5).
+
 A legend strip sits under the panes; it lists the held region and tab roles when the setup has them (7.5).
 
 **Inspector:**
 
 1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel.
 2. **Stock** (SET-03): shape (Cylinder, Box, Bounds, where Bounds is the model's bounding box plus an offset), diameter or sizes, length, material. Imported stock (SET-04) is P2.
-3. **Part position** (SET-05): offset along X; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
+3. **Part position** (SET-05; [decision 0201](../decisions/0201-setup-offset-moves-the-part.md)): **Offset along X**, which moves the part along the rotary axis in this setup only, from where the Model step's placement puts it, while the stock, the held regions and tabs and the work zero stay where they are, so the toolpaths and G-code move with the part (its tooltip says so in those words); **Position**, read-only, the part's X range in this setup ("X 12.500 to 42.500 mm"), with a muted line under it naming where it comes from ("Placement X 0.000 to 30.000 + offset 12.500 mm") and a tooltip that says it is the placement plus the offset, measured from the machine's rotary reference point; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
 5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
@@ -501,9 +504,11 @@ Board 4 (SIM-01 to SIM-07).
 - a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
-**Playback dock** (SIM-04):
+**A result out of date** *(NFR-12, UI-11; [decision 0192](../decisions/0192-simulate-result-out-of-date.md))*. While the latest run no longer matches the project (the export check's test: an operation in it changed, was turned off or removed, or an enabled operation is not in it), one banner says so over the top of the view, at the top of the Playback tab and at the top of the results inspector: the stale mark, "Simulation out of date", the reason in plain words ("Operation 'Roughing' was turned off.") and the Simulate primary action (section 5) as its button. The old numbers stay to compare, dimmed under "Results of the out-of-date simulation:", and so do the playback controls the tab still has. A run that holds an operation turned off or removed leaves the view (decision 0172 item 3), and the Playback tab shows the banner in place of the controls.
 
-- **Transport:** previous operation, step back, play or pause (Space), step forward, next operation.
+**Playback dock** (SIM-04). The transport row (with "Skip stock simulation"), the timeline and the window strip are a strip that does not scroll; the rest scrolls under it, its bar in a strip of its own so it never lies over a control. At the default dock height everything fits without scrolling (issue 262; [decision 0192](../decisions/0192-simulate-result-out-of-date.md) item 7).
+
+- **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
@@ -589,6 +594,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
    | Field | Kind | Unit | Notes |
    | --- | --- | --- | --- |
    | Shape | Segmented: Cylinder, Frustum | | Changing to a frustum keeps the diameter as the diameter at the start and makes the far end 1.5 times it; changing to a cylinder keeps the diameter at the start |
+   | Place automatically | Check box | | A tab at the head or the tail: ticked, its Start X and Length fill the gap at that end of the part and follow the part, the stock and the held regions; editing Start X or Length by hand unticks it, keeping the other as shown; unticking keeps the position shown. Disabled, with the reason in its tooltip, for a tab in neither zone ([decision 0202](../decisions/0202-head-and-tail-tabs-placed-automatically.md)) |
    | Start X | Number | mm | Model X of the tab's low-X end |
    | Length | Number | mm | Along X |
    | Diameter | Number | mm | Cylinder only |
@@ -600,7 +606,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
    | Offset from axis | Number | mm | Around the axis only; default 5.000; the distance from the rotary axis to each tab's centre line |
 
    The row's menu (right click, the menu key, or a "⋯" button) has Remove (Del when the row has focus) and Duplicate. Both change the draft only.
-5. **Add tab** and **Add default tabs**, side by side under the list. Add tab adds a cylinder on the axis, 5.000 mm long and a quarter of the stock's diameter across (at least 1.000 mm), starting at the inner edge of the held region at the start (or the start of the stock), expanded with its Start X focused.
+5. **Add tab** and **Add default tabs**, side by side under the list. Add tab adds a cylinder on the axis, 5.000 mm long and a quarter of the stock's diameter across (at least 1.000 mm), rounded to the field's 3 places, starting at the inner edge of the held region at the start (or the start of the stock), expanded with its Start X focused. Under them, **Head tab** and **Tail tab** ([decision 0202](../decisions/0202-head-and-tail-tabs-placed-automatically.md); the owner's option A on OI-780): each adds a tab with "Place automatically" ticked that fills the gap at that end of the part, from the part to the held region (or the end of the stock), as a cylinder on the axis of Add tab's diameter; each press adds another. A button is disabled with the reason in its tooltip without a part ("Import a model first") or stock, while the part is being read, or when there is no room ("No room at the head: the held region reaches the part.", "No room at the tail: the stock ends at the part."). A collapsed row of a tab placed automatically ends "· Automatic". When such a tab finds no room at its end it keeps its last position, and its row and the Setup checks carry a warning saying so; it is not removed.
 6. **Check against the part and tools**, a secondary button that runs the same checks as Apply without storing anything, then lists what it found under it, or "The tabs are in the head and tail zones and wide enough for the tools."
 7. **Apply** and **Revert**, right-aligned, Apply right-most.
 

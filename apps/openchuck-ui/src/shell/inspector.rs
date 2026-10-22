@@ -184,8 +184,17 @@ impl Shell {
     /// The results inspector of the Simulate step (specification 11.5).
     fn results_inspector(&mut self, ui: &mut egui::Ui) {
         let run = self.run.last().cloned();
+        // An out-of-date result says so first, with the way to simulate
+        // again, and its numbers are dimmed (issue 260).
+        if self.out_of_date_banner(ui) {
+            self.primary();
+        }
+        let stale = self
+            .out_of_date
+            .reason()
+            .map(|_| super::out_of_date::STALE_OPACITY);
         let Some(app) = &mut self.app else { return };
-        if self.results.show(ui, app, run.as_ref()) {
+        if self.results.show(ui, app, run.as_ref(), stale) {
             self.play
                 .set_colour_by(self.results.colour_by, &mut self.viewport);
         }
@@ -378,6 +387,23 @@ impl Shell {
                             ) {
                                 edited = Some(e);
                             }
+                            // The part as this setup places it, once the
+                            // checks have read it (decision record 0201).
+                            let extent = setup
+                                .part
+                                .and_then(|m| self.overview.model_extent(m))
+                                .map(|e| e.in_setup(&setup.frame));
+                            field_row::read_only_row(
+                                ui,
+                                "Position",
+                                setup_form::POSITION_EXPLAINED,
+                                setup_form::position_on_axis(extent.as_ref()),
+                            );
+                            field_row::note_line(
+                                ui,
+                                &setup_form::position_breakdown(&setup, extent.as_ref()),
+                                DARK.muted,
+                            );
                             field_row::read_only_row(
                                 ui,
                                 "Rotate about X",
@@ -750,6 +776,7 @@ impl Shell {
         };
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
+        let strategy_text = app.strategy_description(&operation.strategy);
         let set_options = app.strategy_takes_set_options(&operation.strategy);
         let mut delete = false;
         ui.horizontal(|ui| {
@@ -768,7 +795,17 @@ impl Shell {
         });
         field_row::name_problem(ui, &self.form, NAME);
         frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
-        ui.label(RichText::new(strategy).color(DARK.muted));
+        // The strategy under its own heading, apart from the operation's name
+        // the user can change: its plain name and the one-line description
+        // the New operation list shows. Shown only; it cannot be changed here
+        // (issue 242; decision record 0204).
+        ui.add_space(4.0);
+        ui.label(RichText::new("Strategy").small().color(DARK.muted));
+        ui.label(RichText::new(strategy).strong());
+        if !strategy_text.is_empty() {
+            ui.label(RichText::new(strategy_text).color(DARK.muted));
+        }
+        ui.add_space(4.0);
 
         // What is missing, as soon as the operation exists (issue 224): a
         // count and a jump to the first one, in the same words as under the
@@ -937,9 +974,10 @@ impl Shell {
         }
         match reach_action {
             Some(ReachAction::Show(set, item)) => {
-                // Selects the tab or held region (7.5) and shows the set.
-                self.selection.show_set(Some(set));
+                // Selects the tab or held region (7.5) and shows the set,
+                // after the selection changes, so it stays shown for it.
                 self.choose_setup(operation.setup, Some(SetupPart::Workholding));
+                self.selection.show_set(Some(set));
                 if let Some(item) = item {
                     if let Some(panel) = &mut self.workholding_panel {
                         panel.open_item(item);

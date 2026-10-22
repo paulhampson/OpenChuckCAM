@@ -15,6 +15,8 @@ use std::collections::BTreeMap;
 use openchuck_project::id::{OperationId, SetupId, ToolId};
 use openchuck_project::{Item, ItemId, Operation, OrderKey, Placement, RestrictionOptions};
 
+use openchuck_path::StrategyGroup;
+
 use crate::{AppError, Application, Command};
 
 /// A strategy a user can choose for an operation (OP-16).
@@ -24,6 +26,11 @@ pub struct StrategyChoice {
     pub name: String,
     /// The name shown to the user.
     pub label: String,
+    /// What the strategy does, in plain words (OP-16; decision record 0204).
+    /// The same text is shown in the list and in the operation's panel.
+    pub description: String,
+    /// Where it sits in the list: roughing, finishing or specialist.
+    pub group: StrategyGroup,
     /// Whether the strategy can cut in a selection (decision record 0032
     /// item 6); one that cannot is listed with "ignores selections" and takes
     /// none (interface specification 11.4).
@@ -36,8 +43,9 @@ pub struct StrategyChoice {
 }
 
 impl Application {
-    /// The strategies in the registry, in name order, for an "add operation"
-    /// list, with none marked unavailable.
+    /// The strategies in the registry, in the order the "add operation" list
+    /// shows them (roughing, then finishing, then the specialist strategies;
+    /// decision record 0204), with none marked unavailable.
     pub fn strategy_choices(&self) -> Vec<StrategyChoice> {
         self.strategy_choices_for(None)
     }
@@ -49,10 +57,12 @@ impl Application {
     pub fn strategy_choices_for(&self, setup: Option<SetupId>) -> Vec<StrategyChoice> {
         let project = &self.document.project;
         self.strategies
-            .iter()
+            .in_menu_order()
             .map(|s| StrategyChoice {
                 name: s.name().to_owned(),
                 label: s.label().to_owned(),
+                description: s.description().to_owned(),
+                group: s.group(),
                 takes_selections: s.honours_region(),
                 unavailable: setup
                     .and_then(|id| crate::operation::unavailable_on_setup(project, s, id)),
@@ -67,6 +77,17 @@ impl Application {
             .iter()
             .find(|s| s.name() == name)
             .map_or_else(|| name.to_owned(), |s| s.label().to_owned())
+    }
+
+    /// The plain-language description of strategy `name` (the one-line text
+    /// under its name in the New operation list and in the operation's panel;
+    /// issues 195 and 242), or an empty string when no such strategy is
+    /// registered.
+    pub fn strategy_description(&self, name: &str) -> String {
+        self.strategies
+            .iter()
+            .find(|s| s.name() == name)
+            .map_or_else(String::new, |s| s.description().to_owned())
     }
 
     /// Whether strategy `name` takes options on its boundary, avoid and check
@@ -176,6 +197,21 @@ impl Application {
                 )));
             }
         }
+        // Rotary roughing starts with a stock to leave for the finishing that
+        // follows, a tenth of the tool's diameter, written into the operation
+        // so the inspector shows it as set (decision record 0205).
+        let mut parameters = BTreeMap::new();
+        if strategy == openchuck_path::roughing::NAME
+            && let Some(snapshot) =
+                tool.and_then(|id| self.document.project.tools().iter().find(|t| t.id == id))
+        {
+            parameters.insert(
+                openchuck_path::params::names::STOCK_TO_LEAVE.to_owned(),
+                openchuck_project::ParameterValue::Number(default_roughing_stock_to_leave(
+                    snapshot.tool.diameter.0,
+                )),
+            );
+        }
         let id = OperationId::new();
         self.execute(Command::Add {
             item: Item::Operation(Operation {
@@ -191,7 +227,7 @@ impl Application {
                 check: Vec::new(),
                 restriction_options: RestrictionOptions::default(),
                 spindle_speed: None,
-                parameters: BTreeMap::new(),
+                parameters,
                 enabled: true,
             }),
             placement: Placement::End,
@@ -205,5 +241,31 @@ impl Application {
             return Err(AppError::UnknownOperation(id.to_string()));
         }
         self.execute(Command::Remove(ItemId::Operation(id)))
+    }
+}
+
+/// The stock to leave a new rotary roughing operation starts with: 10 percent
+/// of the tool's diameter, rounded to 0.05 mm, at least 0.1 mm and at most
+/// 1 mm (decision record 0205, option B; issue 223; OP-11).
+pub(crate) fn default_roughing_stock_to_leave(diameter: f64) -> f64 {
+    let twentieths = (diameter * 0.1 / 0.05).round();
+    (twentieths / 20.0).clamp(0.1, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::float_cmp)]
+
+    use super::default_roughing_stock_to_leave as leave;
+
+    /// OP-11, decision 0205: a tenth of the diameter on a 0.05 mm step, kept
+    /// between 0.1 and 1 mm.
+    #[test]
+    fn req_op_11_the_default_roughing_stock_to_leave_follows_the_tool_diameter() {
+        assert_eq!(leave(3.175), 0.3);
+        assert_eq!(leave(4.0), 0.4);
+        assert_eq!(leave(6.0), 0.6);
+        assert_eq!(leave(0.5), 0.1);
+        assert_eq!(leave(25.0), 1.0);
     }
 }

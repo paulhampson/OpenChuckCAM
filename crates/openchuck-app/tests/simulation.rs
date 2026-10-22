@@ -38,6 +38,10 @@ impl Strategy for FineRing {
     fn label(&self) -> &str {
         "Fine ring"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }

@@ -543,7 +543,7 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
         (
             "Part offset".to_string(),
             format!(
-                "{} mm along the rotary axis from the machine's reference point",
+                "part moved {} mm along the rotary axis from where its placement puts it",
                 mm(setup.frame.part_offset.0)
             ),
         ),
@@ -621,7 +621,7 @@ fn speed_source(
     source: crate::requirements::SpindleSource,
 ) -> String {
     match source {
-        crate::requirements::SpindleSource::Operation => "the operation".to_string(),
+        crate::requirements::SpindleSource::Operation => "operation".to_string(),
         crate::requirements::SpindleSource::ToolData => {
             let material = project
                 .setup(operation.setup)

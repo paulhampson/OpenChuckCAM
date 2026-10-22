@@ -46,6 +46,10 @@ impl Strategy for OneRing {
     fn label(&self) -> &str {
         "One ring"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -87,6 +91,10 @@ impl Strategy for UntilCancelled {
     }
     fn label(&self) -> &str {
         "Until cancelled"
+    }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
     }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
@@ -908,6 +916,7 @@ fn req_ui_11_req_ui_12_workholding_findings_and_reach_are_messages() {
         diameter: None,
     });
     setup.workholding.tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(4.0),
         length: Millimetres(2.0),
         shape: TabShape::Cylinder {
@@ -1068,6 +1077,7 @@ fn req_ui_11_setup_rows_say_what_each_part_holds() {
         assert_eq!(row(&f, SetupPart::Stock).label, label);
     }
     let tab = |x: f64| Tab {
+        auto: None,
         x_start: Millimetres(x),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1223,9 +1233,17 @@ fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
-    // Part offset far along the axis: the stock runs past the X travel.
+    // The stock far along the axis: it runs past the X travel. (The part
+    // offset moves only the part, decision record 0201.)
     let mut setup = f.app.project().setup(f.setup).unwrap().clone();
-    setup.frame.part_offset = Millimetres(195.0);
+    match setup.stock.as_mut().unwrap() {
+        Stock::Cylinder { x_start, .. } => x_start.0 += 195.0,
+        Stock::Box { bounds } => {
+            bounds.min.x += 195.0;
+            bounds.max.x += 195.0;
+        }
+        other => panic!("{other:?}"),
+    }
     f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
     let o = f.app.overview(Some(&checks), &JobLog::default());
@@ -1692,6 +1710,145 @@ fn req_ui_10_req_nfr_12_a_project_that_skips_the_stock_simulation_asks_only_for_
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
     assert_eq!(o.step(Step::Simulate).health, StepHealth::Good);
+}
+
+/// The overview gives each model's extent as its placement puts it, from the
+/// checks, for the Setup inspector's read-only position: the setup's part is
+/// that extent moved by the setup's offset (SET-05; decision record 0201).
+#[test]
+fn req_set_05_the_overview_gives_the_model_extent_for_the_position_row() {
+    let mut f = fixture("model-extent", "cube_ascii.stl");
+    let o = f.app.overview(None, &JobLog::default());
+    assert_eq!(o.model_extent(f.model), None, "not read yet");
+    let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let extent = o.model_extent(f.model).expect("read by the checks");
+    let inspected = f.app.inspect_model(f.model).unwrap().extent.unwrap();
+    assert_eq!(extent, inspected);
+    // The offset changes the setup, not the model's own extent.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.frame.part_offset = Millimetres(4.0);
+    f.app
+        .execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    let checks = Arc::new(f.app.start_checks(Some(checks)).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let placed = o.model_extent(f.model).unwrap().in_setup(&setup.frame);
+    assert!((placed.bounds.min.x - inspected.bounds.min.x - 4.0).abs() < 1e-12);
+}
+
+#[test]
+fn req_nfr_12_req_ui_11_a_simulation_out_of_date_says_why() {
+    // Issue 260: a simulation that no longer matches the project says so, in
+    // plain words, with the same stale set the export check uses.
+    use openchuck_app::simulation_out_of_date;
+    let (mut f, [one, two, three]) = three_operations("sim-why");
+    let run = f.app.simulate().unwrap();
+    assert_eq!(simulation_out_of_date(f.app.project(), &run), None);
+
+    // What changes only the view or the name does not make it out of date.
+    f.app
+        .execute(Command::SetPathsShown {
+            operations: vec![three],
+            shown: false,
+        })
+        .unwrap();
+    rename_operation(&mut f, three, "Third renamed");
+    assert_eq!(simulation_out_of_date(f.app.project(), &run), None);
+    f.app.undo().unwrap();
+    f.app.undo().unwrap();
+
+    f.set_stepover(three, 0.4);
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &run).as_deref(),
+        Some("Operation 'Third' has changed since this simulation.")
+    );
+    f.app.undo().unwrap();
+
+    let mut settings = f.app.project().simulation();
+    settings.cell.0 = 0.05;
+    f.app.execute(Command::SetSimulation(settings)).unwrap();
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &run).as_deref(),
+        Some("The simulation settings have changed since this simulation.")
+    );
+    f.app.undo().unwrap();
+
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &run).as_deref(),
+        Some("Operation 'Third' was turned off.")
+    );
+    f.app.undo().unwrap();
+    assert_eq!(simulation_out_of_date(f.app.project(), &run), None);
+
+    // Removing the second changes the third too: the removal is named first.
+    f.app.delete_operation(two).unwrap();
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &run).as_deref(),
+        Some("Operation 'Second' was removed. 1 more operation is out of date too.")
+    );
+    f.app.undo().unwrap();
+    f.app.delete_operation(one).unwrap();
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &run).as_deref(),
+        Some("Operation 'First' was removed. 2 more operations are out of date too.")
+    );
+    f.app.undo().unwrap();
+
+    // A run up to an operation does not hold the later ones.
+    let partial = f.app.regenerate_until(two).unwrap();
+    assert_eq!(
+        simulation_out_of_date(f.app.project(), &partial).as_deref(),
+        Some("Operation 'Third' is not in this simulation.")
+    );
+}
+
+#[test]
+fn req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again() {
+    // Issue 260: turning off the last operation changes no other key, but
+    // the simulation still holds its cut, so Simulate is not complete and its
+    // primary action runs the simulation again, from Simulate.
+    let (mut f, [_, _, three]) = three_operations("sim-off");
+    f.app.simulate().unwrap();
+    let o = f.overview();
+    assert_eq!(
+        o.primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    let o = f.overview();
+    assert!(!o.step(Step::Simulate).complete);
+    assert_eq!(health(&o, Step::Simulate), StepHealth::Attention);
+    assert_eq!(
+        o.step(Step::Simulate).reason.as_deref(),
+        Some("Out of date: an operation in the simulation was turned off or removed")
+    );
+    assert_eq!(o.primary(Step::Simulate).kind, PrimaryKind::RunSimulation);
+    // Simulating again leaves it out, and Simulate is complete again.
+    f.app.simulate().unwrap();
+    let o = f.overview();
+    assert!(o.step(Step::Simulate).complete);
+    assert_eq!(
+        o.primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
+    // Undoing the turn-off: the operation is back, and not simulated.
+    f.app.undo().unwrap();
+    assert_eq!(
+        f.overview().primary(Step::Simulate).kind,
+        PrimaryKind::RunSimulation
+    );
 }
 
 #[test]

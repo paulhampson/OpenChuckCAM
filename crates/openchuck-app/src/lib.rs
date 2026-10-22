@@ -84,7 +84,7 @@ pub use error::AppError;
 pub use export::{
     Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
     EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary, builtin_post_summaries, post_summary,
-    run_is_current, write_gcode_files,
+    run_is_current, simulation_out_of_date, write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,
@@ -94,6 +94,7 @@ pub use jobs::{
 /// crate of their own (architecture section 5.8).
 pub use openchuck_gcode as gcode;
 pub use openchuck_path as path;
+pub use openchuck_path::StrategyGroup;
 pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
@@ -677,7 +678,9 @@ impl Application {
                         parts.push((id, extent));
                     }
                     match parts.iter().find(|(m, _)| *m == id).map(|(_, e)| e) {
-                        Some(Ok(extent)) => *extent,
+                        // Where this setup's offset puts the part (decision
+                        // record 0201).
+                        Some(Ok(extent)) => extent.map(|e| e.in_setup(&s.frame)),
                         Some(Err(e)) => {
                             notes.push(format!(
                                 "the part cannot be read, so it is not checked: {e}"

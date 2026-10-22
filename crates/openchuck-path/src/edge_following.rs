@@ -46,7 +46,7 @@ use crate::params::{
     EntryParameters, EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit,
     names,
 };
-use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
+use crate::strategy::{CutPoint, Pass, Strategy, StrategyGroup, StrategyInput, StrategyOutput};
 
 /// The registry name of [`EdgeFollowing`].
 pub const NAME: &str = "edge_following";
@@ -171,6 +171,14 @@ impl Strategy for EdgeFollowing {
 
     fn label(&self) -> &str {
         "Edge and curve following"
+    }
+
+    fn description(&self) -> &str {
+        "Moves the tool along the sharp edges or chosen curves of the part, cutting a line into the surface for engraving or carving. It does not clear areas."
+    }
+
+    fn group(&self) -> StrategyGroup {
+        StrategyGroup::Specialist
     }
 
     fn schema(&self) -> ParameterSchema {

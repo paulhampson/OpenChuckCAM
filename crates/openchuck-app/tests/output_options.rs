@@ -550,12 +550,12 @@ fn req_gc_12_req_tl_05_the_sheet_says_where_each_spindle_speed_came_from() {
     let sheet = app.setup_sheet(None);
     let operations = cell_rows(&sheet, "Operations");
     assert_eq!(operations[0][5], "8000");
-    assert_eq!(operations[0][6], "the operation");
+    assert_eq!(operations[0][6], "operation");
     assert_eq!(operations[1][5], "10000");
     assert_eq!(operations[1][6], "tool data: oak");
     let html = sheet.to_html();
     assert!(html.contains("Speed from"));
-    assert!(html.contains("the operation"));
+    assert!(html.contains("operation"));
     assert!(html.contains("tool data: oak"));
     // The same project gives the same sheet (GC-07).
     assert_eq!(html, app.setup_sheet(None).to_html());
