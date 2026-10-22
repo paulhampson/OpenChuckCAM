@@ -343,8 +343,11 @@ impl<'a> AlongX<'a> {
         let fitted = parallel::map_each_in_order(&indexed, |&(i, a)| {
             quiet.check_cancelled()?;
             let pass = self.pass(Degrees(a), self.zigzag && i % 2 == 1, &quiet);
-            // Counted under the lock, so the count shown only goes up.
-            if let Ok(mut done) = done.lock() {
+            // Counted under the lock, so the count shown only goes up; a
+            // pass that fails is not counted as done (OI-843).
+            if pass.is_ok()
+                && let Ok(mut done) = done.lock()
+            {
                 *done += 1;
                 context.report(&stage, *done, Some(total));
             }
