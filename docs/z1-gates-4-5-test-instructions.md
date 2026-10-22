@@ -15,6 +15,8 @@ This document turns them into steps that someone who is not a machinist can foll
 
 The programs are the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post.
 
+**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S7, G4-0 to G4-7 for gate 4; F1 to F6, W1 to W5, T1 to T4, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
+
 | Rule ([verification plan section 6](verification-plan.md)) | Applies to |
 | --- | --- |
 | Attended for the whole run, emergency stop within reach | Gates 4 and 5 |
@@ -147,21 +149,21 @@ The setup sheet does not list the held regions or the tabs (OI-918). For gate 5 
 
 ### 4.4 Run order
 
-Follow the [air-cut procedure](z1-air-cut-procedure.md) steps 0 to 7 in order, with these additions:
+Follow the [air-cut procedure](z1-air-cut-procedure.md) steps 0 to 7 in order, with these additions (step G4-n here is the procedure's step n):
 
 | Step | Program | What to watch | Pass when |
 | --- | --- | --- | --- |
-| 0 | Read `sphere_makera-z1.nc` (section 4.2) | | Every R and S item ticked |
-| 1 | SP-12 conventions program (`spikes/sp12/AIR-CUT.md` on `spike/sp-12-z1-conventions`), only if the firmware is not 1.1.2 | Direction, wrap, feed rule as decision 0007 records | The results match decision 0007 |
-| 2 | `sphere_makera-z1.nc` at 10 % | The first rapid goes to safe Z before any other motion. X, Z and A move together during the pass. The tape turns the way the A words say (A+ turns the top toward the front). The end block: up to Z near the top, then `G28` (watch where it goes and write it down: not yet seen, OI-41) | No alarm, no line refused, the motion looks like the simulation's playback of the same program, the machine ends where the program says |
-| 3 | Timed move | **Owner decision pending (OI-910).** No single move in the reference programs is long enough to time by hand (section 4.5) | As decided on OI-910 |
-| 4 | `cone_makera-z1.nc` at 10 % | Z changes steadily with X | As step 2 |
-| 5 | `groove_makera-z1.nc` at 10 % | About 15 turns of A, then the unwind. **At `G92.4 A0 S0` A must not move**; the DRO's A reading changes to the remainder. Note the DRO before and after | As step 2, and A does not move at the unwind |
-| 6 | `G93` recheck (SP-12 test T5) only if the firmware is not 1.1.2 | | The result is recorded (verification plan section 6, feed mode) |
-| 6b | OI-267: an A-only fed move with an F above 1200 | **Owner decision pending (OI-910 covers the timing; the program for this test is not written).** The owner asked for it on a later air cut before the first release (17 Oct 2026) | The controller's behaviour (clamps, refuses or runs it) is recorded in OI-267 |
-| 7 | Raise the override (25 %, 50 %, 100 %) on the sphere only | Only if steps 2 to 5 had no surprise and you agree | As step 2 |
+| G4-0 | Read `sphere_makera-z1.nc` (section 4.2) | | Every R and S item ticked |
+| G4-1 | SP-12 conventions program (`spikes/sp12/AIR-CUT.md` on `spike/sp-12-z1-conventions`), only if the firmware is not 1.1.2 | Direction, wrap, feed rule as decision 0007 records | The results match decision 0007 |
+| G4-2 | `sphere_makera-z1.nc` at 10 % | The first rapid goes to safe Z before any other motion. X, Z and A move together during the pass. The tape turns the way the A words say (A+ turns the top toward the front). The end block: up to Z near the top, then `G28` (watch where it goes and write it down: not yet seen, OI-41) | No alarm, no line refused, the motion looks like the simulation's playback of the same program, the machine ends where the program says |
+| G4-3 | Timed move | **Owner decision pending (OI-910).** No single move in the reference programs is long enough to time by hand (section 4.5) | As decided on OI-910 |
+| G4-4 | `cone_makera-z1.nc` at 10 % | Z changes steadily with X | As G4-2 |
+| G4-5 | `groove_makera-z1.nc` at 10 % | About 15 turns of A, then the unwind. **At `G92.4 A0 S0` A must not move**; the DRO's A reading changes to the remainder. Note the DRO before and after | As G4-2, and A does not move at the unwind |
+| G4-6 | `G93` recheck (SP-12 test T5) only if the firmware is not 1.1.2 | | The result is recorded (verification plan section 6, feed mode) |
+| G4-6b | OI-267: an A-only fed move with an F above 1200 | **Owner decision pending (OI-910 covers the timing; the program for this test is not written).** The owner asked for it on a later air cut before the first release (17 Oct 2026) | The controller's behaviour (clamps, refuses or runs it) is recorded in OI-267 |
+| G4-7 | Raise the override (25 %, 50 %, 100 %) on the sphere only | Only if steps 2 to 5 had no surprise and you agree | As G4-2 |
 
-The other reference programs (`lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead`, `cone_held_tabs`, `drilling`, `swarf`) are run the same way as step 2 once steps 2 to 5 have passed. `lobed` is the one program that moves X, Y, Z and A together; `drilling` turns A to -30 and has no unwind; `swarf` turns to three A positions.
+The other reference programs (`lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead`, `cone_held_tabs`, `drilling`, `swarf`) are run the same way as G4-2 once G4-2 to G4-5 have passed. `lobed` is the one program that moves X, Y, Z and A together; `drilling` turns A to -30 and has no unwind; `swarf` turns to three A positions.
 
 ### 4.5 The timed move (OI-910)
 
@@ -170,11 +172,11 @@ The verification plan asks for one simultaneous XYZA move whose measured time is
 - **The moves are too short to time by hand.** The reference programs are made of many short moves. Computed from the golden programs with decision 0007's rule, the longest move that turns A while X, Y or Z also move takes about 0.13 s at 100 % feed (`groove`), 1.3 s at 10 %; a stopwatch cannot time that to the 10 % the SP-12 run reached.
 - **The predicted time is not where step 3 says.** The program header does not state a predicted total; each operation's comment does ("about N s", the programmed time of its fed moves). `openchuck-cli gcode-sim` compares a LinuxCNC simulator report with a LinuxCNC program and gives no time per Z1 move.
 
-Until OI-910 is answered, do not count step 3 as passed. The recommended method (for the owner to decide) is to time a whole operation: start the stopwatch when the first fed move of the operation starts (the plunge) and stop it when the last fed move ends (the rapid up to safe Z starts), and compare it with "about N s" multiplied by 100 divided by the override (for 10 %, ten times). For the sphere that is about 76 s at 100 %, about 12.5 minutes at 10 %. Agree the band at the first run (verification plan section 6).
+Until OI-910 is answered, do not count G4-3 as passed. The recommended method (for the owner to decide) is to time a whole operation: start the stopwatch when the first fed move of the operation starts (the plunge) and stop it when the last fed move ends (the rapid up to safe Z starts), and compare it with "about N s" multiplied by 100 divided by the override (for 10 %, ten times). For the sphere that is about 76 s at 100 %, about 12.5 minutes at 10 %. Agree the band at the first run (verification plan section 6).
 
 ### 4.6 Gate 4 pass and fail
 
-- **Pass** for a program: every preparation step passed; every R and S item ticked; no alarm; no line refused; the motion matched the simulation; A did not move at the unwind; the end position matched the program; the timed operation was within the agreed band (step 3, once OI-910 is decided).
+- **Pass** for a program: every preparation step passed; every R and S item ticked; no alarm; no line refused; the motion matched the simulation; A did not move at the unwind; the end position matched the program; the timed operation was within the agreed band (G4-3, once OI-910 is decided).
 - **Gate 4 passes** when every program of the reference job set chosen for the release has passed, and the `G93` result on the installed firmware is recorded.
 - **Fail**: any unexpected motion, alarm, refused line, or a step that does not pass. Follow section 7. Do not go on to gate 5 with that program. A change to the profile, the post or the kinematics sends the affected programs back to gate 1.
 
@@ -251,13 +253,13 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 
 ### 5.6 The first cut
 
-1. Reread the program (section 4.2) one more time. It must be the file you air-cut in gate 4, regenerated only if you changed the tool, speeds or stock, in which case read it again from the start.
-2. Feed override at 10 %. Hand near feed hold and emergency stop.
-3. Start. Watch the tool change and spindle start (OI-41, OI-911).
-4. Watch the first plunge: the tool comes down at the plunge feed to the first cut, no faster.
-5. Raise the override slowly, only while the cut sounds and looks steady.
-6. Stop at any unexpected sound, vibration, smell, smoke, or motion (section 7). For wax: melting or smearing; for foam: tearing or the stock moving.
-7. At the end, wait until everything has stopped before opening the enclosure.
+- **C1.** Reread the program (section 4.2) one more time. It must be the file you air-cut in gate 4, regenerated only if you changed the tool, speeds or stock, in which case read it again from the start.
+- **C2.** Feed override at 10 %. Hand near feed hold and emergency stop.
+- **C3.** Start. Watch the tool change and spindle start (OI-41, OI-911).
+- **C4.** Watch the first plunge: the tool comes down at the plunge feed to the first cut, no faster.
+- **C5.** Raise the override slowly, only while the cut sounds and looks steady.
+- **C6.** Stop at any unexpected sound, vibration, smell, smoke, or motion (section 7). For wax: melting or smearing; for foam: tearing or the stock moving.
+- **C7.** At the end, wait until everything has stopped before opening the enclosure.
 
 ### 5.7 Inspect against the model and the simulation
 
@@ -434,7 +436,7 @@ Each is an open item in [open-items.md](open-items.md). The ones marked *decisio
 
 | OI | Question | Blocks |
 | --- | --- | --- |
-| OI-910 | How the timed XYZA move is measured, since no single generated move is long enough to time by hand and the predicted time is not where the air-cut procedure's step 3 says (*decision*) | Gate 4 step 3 |
+| OI-910 | How the timed XYZA move is measured, since no single generated move is long enough to time by hand and the predicted time is not where the air-cut procedure's step 3 says (*decision*) | Gate 4 G4-3 |
 | OI-911 | Whether the spindle runs during the air cut (the programs start it with `S... M3`) (*decision*) | Gate 4 P7 |
 | OI-912 | How `T1 M6` is handled with no tool fitted (*decision*) | Gate 4 P7 |
 | OI-913 | Where the owner gets the reference jobs to open in the release build, regenerate and read with their setup sheets (*decision*) | Gate 4 P2 |
@@ -444,6 +446,22 @@ Each is an open item in [open-items.md](open-items.md). The ones marked *decisio
 | OI-917 | How the axis height and work zero are found on the Z1: which tool or probe, which face X0 is taken from, and where A is zero (*decision*) | Gate 4 P8, P9; gate 5 M4 |
 | OI-918 | The setup sheet does not show the held regions and tabs, so the printed sheet is not enough to set up gate 5 | Gate 5 5.2 (worked around by reading the application) |
 | OI-919 | Whether the Z1 controller can run one line at a time (single block) for the first moves (*decision*) | Gate 4 4.3 |
+
+## 10. Results
+
+Empty until the owner submits the results of gates 4 and 5. They are then added here, one row per step ID, by the lane that folds them in, with the issue that holds the evidence; a step that did not pass names its defect issue. A surprise that changes an instruction is fixed in the step above in the same change, and the row says so.
+
+### 10.1 Gate 4
+
+| Run (date, firmware, build) | Program | Step ID | Result (pass / fail / not run) | Notes and measurements | Issue |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
+
+### 10.2 Gate 5
+
+| Run (date, firmware, build) | Program | Step ID | Result (pass / fail / not run) | Notes and measurements | Issue |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
 
 ## Review record
 
