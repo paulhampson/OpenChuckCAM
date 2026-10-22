@@ -117,10 +117,8 @@ impl CuttingDraft {
     fn data(&self) -> Result<CuttingData, String> {
         let mut numbers = [0.0; 5];
         for ((n, text), (label, ..)) in numbers.iter_mut().zip(&self.values).zip(CUTTING) {
-            *n = text
-                .trim()
-                .parse::<f64>()
-                .map_err(|_| format!("{label}: type a number. Not applied."))?;
+            *n = crate::arith::number(text, None)
+                .map_err(|reason| format!("{label}: {reason} Not applied."))?;
         }
         let [rpm, fpt, plunge, over, down] = numbers;
         Ok(CuttingData {

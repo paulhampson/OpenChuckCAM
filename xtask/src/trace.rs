@@ -264,15 +264,20 @@ pub fn parse_test_list(text: &str) -> Vec<String> {
     names
 }
 
+/// Whether `line` is a file-level feature gate, in any spacing rustfmt or a
+/// person might write: `#![cfg(feature = "x")]`, `#![cfg( feature="x" )]`
+/// (OI-691).
+fn is_feature_gate_line(line: &str) -> bool {
+    let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+    compact.starts_with("#![cfg(feature=\"")
+}
+
 /// Names of the `#[test]` functions in a file that a file-level feature gate
 /// (`#![cfg(feature = "...")]`) hides from `cargo test -- --list` in a default
 /// build, sorted. A file with no such gate gives none, because cargo lists its
 /// tests already.
 pub fn feature_gated_tests(text: &str) -> Vec<String> {
-    if !text
-        .lines()
-        .any(|l| l.trim_start().starts_with("#![cfg(feature = "))
-    {
+    if !text.lines().any(is_feature_gate_line) {
         return Vec::new();
     }
     let mut names = Vec::new();
@@ -468,6 +473,27 @@ mod tests {
             feature_gated_tests(gated),
             vec!["req_imp_06_slow", "req_nfr_13_exits"]
         );
+    }
+
+    #[test]
+    fn req_nfr_13_a_gate_in_any_spacing_still_counts_its_tests() {
+        for gate in [
+            "#![cfg(feature=\"kernel\")]",
+            "#![cfg( feature = \"kernel\" )]",
+            "  #![cfg(feature =\"kernel\")]",
+            "#![ cfg(feature\t=\t\"kernel\")]",
+        ] {
+            let text = format!("{gate}\n#[test]\nfn req_nfr_13_exits() {{}}\n");
+            assert_eq!(
+                feature_gated_tests(&text),
+                vec!["req_nfr_13_exits"],
+                "{gate}"
+            );
+        }
+        // A gate on something other than a feature, or a commented-out gate,
+        // is not a feature gate.
+        let other = "#![cfg(unix)]\n#[test]\nfn a() {}\n// #![cfg(feature = \"x\")]\n";
+        assert!(feature_gated_tests(other).is_empty());
     }
 
     #[test]

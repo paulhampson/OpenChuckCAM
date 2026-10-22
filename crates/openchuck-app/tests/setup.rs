@@ -292,3 +292,37 @@ fn req_set_01_machine_copy_is_compared_with_its_source() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_set_09_the_setup_report_warns_of_a_grip_that_reaches_into_the_part() {
+    let (dir, mut app, _) = project("grip-reach");
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    // The cube spans X 0 to 10 and the stock X -2 to 12: a 4 mm grip at the
+    // start reaches X 2, so 2 mm of the cube lies in it.
+    let mut setup = app.find_setup("Setup 1").unwrap().clone();
+    setup.workholding.start = Some(openchuck_app::setup::HeldRegion {
+        length: Millimetres(4.0),
+        diameter: None,
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let covered: Vec<_> = app.check_setups().unwrap()[0]
+        .warnings
+        .iter()
+        .filter(|w| {
+            matches!(
+                w.kind,
+                SetupWarningKind::HeldRegionCoversPart { at_end: false, .. }
+            )
+        })
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(covered.len(), 1);
+    assert!(
+        covered[0].contains("covers 2.000 mm of the part"),
+        "{covered:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
