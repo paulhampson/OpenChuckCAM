@@ -82,7 +82,7 @@ pub struct MaterialPreset {
     pub differs: Option<String>,
 }
 
-fn snapshot<'a>(project: &'a Project, tool: Option<ToolId>) -> Option<&'a ToolSnapshot> {
+fn snapshot(project: &Project, tool: Option<ToolId>) -> Option<&ToolSnapshot> {
     tool.and_then(|id| project.tools().iter().find(|t| t.id == id))
 }
 

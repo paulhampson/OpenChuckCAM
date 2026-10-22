@@ -1420,11 +1420,17 @@ fn preset_row(
         Some(label) => *label,
         None => "No preset",
     };
+    // "No preset" is said in the box, with why in its tooltip, so an edit
+    // that drops the preset moves no row (UI-16).
+    let help = match (&preset.message, dropped) {
+        (Some(message), true) => format!("{message}\n\n{}", crate::run_panel::PRESET_HELP),
+        _ => crate::run_panel::PRESET_HELP.to_owned(),
+    };
     let chosen = field_row::list_row(
         ui,
         "operation preset",
         "Material preset",
-        crate::run_panel::PRESET_HELP,
+        &help,
         (&labels, current),
         shown,
     )
@@ -1433,9 +1439,8 @@ fn preset_row(
     if let Some(why) = &preset.differs {
         field_row::warning_line(ui, why);
     }
-    if let Some(message) = &preset.message {
-        let colour = if dropped { DARK.muted } else { DARK.warning };
-        field_row::note_line(ui, message, colour);
+    if let Some(message) = preset.message.as_ref().filter(|_| !dropped) {
+        field_row::note_line(ui, message, DARK.warning);
     }
     chosen
 }

@@ -618,6 +618,7 @@ pub fn list_row(
         egui::ComboBox::from_id_salt(("list", key))
             .selected_text(shown)
             .width(ui.available_width().max(80.0))
+            .truncate()
             .show_ui(ui, |ui| {
                 for (i, option) in options.iter().enumerate() {
                     if ui.selectable_label(current == Some(i), *option).clicked()

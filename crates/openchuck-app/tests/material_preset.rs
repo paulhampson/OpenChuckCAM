@@ -433,3 +433,45 @@ fn req_gc_07_an_operation_with_the_setups_preset_regenerates_as_before() {
     assert_eq!(app.regenerate().unwrap().toolpath, before);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// A tool changed to one without the chosen material keeps the choice in
+/// the list and applies no preset, and a tool with no cutting data at all
+/// says what to add (answer 2).
+#[test]
+fn req_tl_05_a_new_tool_without_the_chosen_material_applies_no_preset() {
+    let (dir, mut app, op) = project("tool-change");
+    choose(&mut app, op, Some("Steel"));
+    let mut bare = app.project().tools()[0].clone();
+    bare.id = ToolId::new();
+    bare.name = "Bare".into();
+    bare.controller.number = 2;
+    bare.cutting_data.clear();
+    let bare_id = bare.id;
+    app.execute(Command::Add {
+        item: Item::Tool(bare),
+        placement: Placement::End,
+    })
+    .unwrap();
+    let c = openchuck_app::tool_library::set_operation_tool(app.project(), op, bare_id).unwrap();
+    app.execute(c).unwrap();
+    let p = preset(&app, op);
+    assert_eq!(p.state, PresetState::NoData);
+    assert!(
+        p.choices
+            .iter()
+            .any(|c| c.material.as_deref() == Some("Steel")),
+        "the choice is still listed"
+    );
+    let message = p.message.unwrap();
+    assert!(
+        message.contains("\"Bare\" has no cutting data for \"Steel\"")
+            && message.contains("Add cutting data"),
+        "{message}"
+    );
+    choose(&mut app, op, None);
+    set_setup_material(&mut app, None);
+    let p = preset(&app, op);
+    assert_eq!(p.state, PresetState::NoMaterial);
+    assert!(p.message.unwrap().contains("\"Bare\" has no cutting data"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
