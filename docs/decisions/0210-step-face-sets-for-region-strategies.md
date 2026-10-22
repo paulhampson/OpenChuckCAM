@@ -1,6 +1,6 @@
 # 0210: Face sets on a STEP part for roughing, helical, axial, indexed and simultaneous finishing, and one check for the sets a strategy cannot use (lane STEPALL-F; issue #257)
 
-- **Status:** proposed (21 Oct 2026, lane STEPALL-F). It builds items 3, 4.4 and 10 of [decision 0209](0209-step-geometry-for-every-strategy.md) (accepted) and records the choices the build made that 0209 does not. Only the owner accepts this record (decision 0049).
+- **Status:** accepted by the project owner (22 Oct 2026, directly in the lane STEPALL-F session: "Accept 0210"). Proposed 21 Oct 2026 by lane STEPALL-F. It builds items 3, 4.4 and 10 of [decision 0209](0209-step-geometry-for-every-strategy.md) (accepted) and records the choices the build made that 0209 does not.
   - **OP-23, agreed by the owner (21 Oct 2026, relayed by the coordinator):** option A. Lane STEPALL-F adds requirement OP-23 (P1) to `docs/requirements.md` as worded in 0209 item 9, with the verification plan's section 4 row, the two section 4.1 rows and the addition to IMP-06's row, in this change with its first tests, which carry the OP-23 name. The other options were P2, or a wider IMP-02 with no new ID.
 - **Date:** 21 Oct 2026.
 - **Requirements:** OP-23 (added here), OP-02, OP-03 to OP-05, OP-11, IMP-02, IMP-06, NFR-07, NFR-12, UI-07, GC-07, NFR-06.
