@@ -434,6 +434,44 @@ pub fn interact(ui: &egui::Ui, viewport: &mut Viewport, rect: Rect) -> bool {
     over
 }
 
+/// Draws a legend row's label right of its swatch, on one line ending
+/// before `right`; a longer one, such as a long set name, ends in "…"
+/// rather than running over the scene.
+fn fitted_label(
+    painter: &egui::Painter,
+    swatch: Rect,
+    text: &str,
+    font: &egui::FontId,
+    right: f32,
+) {
+    let galley = fit_row(painter, text, font, right - (swatch.right() + 8.0));
+    let at = pos2(
+        swatch.right() + 8.0,
+        swatch.center().y - galley.size().y / 2.0,
+    );
+    painter.galley(at, galley, roles::OVERLAY_TEXT);
+}
+
+/// Lays `text` out as one row at most `width` wide.
+fn fit_row(
+    painter: &egui::Painter,
+    text: &str,
+    font: &egui::FontId,
+    width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::TextFormat::simple(font.clone(), roles::OVERLAY_TEXT),
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width: width.max(0.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    painter.layout_job(job)
+}
+
 fn frame(painter: &egui::Painter, r: Rect) {
     painter.rect(
         r,
@@ -624,13 +662,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             let y = r.top() + 6.0 + ROW * path_legend(viewport.view()).len() as f32;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
             set_swatch(&painter, swatch, *rgb);
-            painter.text(
-                pos2(swatch.right() + 8.0, swatch.center().y),
-                egui::Align2::LEFT_CENTER,
-                name,
-                font.clone(),
-                roles::OVERLAY_TEXT,
-            );
+            fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
         }
     }
     if let (Some(r), Some(bands)) = (b.scale, viewport.bands()) {
@@ -657,13 +689,8 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
             let y = r.top() + 74.0 + ROW * i - 4.0;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
             set_swatch(&painter, swatch, *rgb);
-            painter.text(
-                pos2(swatch.right() + 8.0, swatch.center().y),
-                egui::Align2::LEFT_CENTER,
-                format!("Selection set “{name}”"),
-                font.clone(),
-                roles::OVERLAY_TEXT,
-            );
+            let label = format!("Selection set “{name}”");
+            fitted_label(&painter, swatch, &label, &font, r.right() - 8.0);
         }
     }
     if viewport.shows_unapplied() {
@@ -898,6 +925,35 @@ pub fn arrowhead(painter: &egui::Painter, from: Pos2, tip: Pos2, colour: Color32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_05_a_long_set_name_stays_inside_its_legend_row() {
+        // Decision 0216 item 5: the shown set's legend row; a long name ends
+        // in "…" within the box (CodeRabbit review of pull request 282).
+        let ctx = egui::Context::default();
+        let input = || egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 200.0))),
+            ..Default::default()
+        };
+        ctx.run_ui(input(), |_| {}).textures_delta.clear();
+        let mut output = ctx.run_ui(input(), |ui| {
+            let font = egui::FontId::proportional(12.0);
+            let long = "Selection set “The pocket floor and both of its side walls”";
+            let galley = fit_row(ui.painter(), long, &font, 90.0);
+            assert!(galley.size().x <= 90.0, "{}", galley.size().x);
+            assert_eq!(galley.rows.len(), 1);
+            let drawn = |g: &egui::Galley| -> String {
+                g.rows
+                    .iter()
+                    .flat_map(|r| r.glyphs.iter().map(|c| c.chr))
+                    .collect()
+            };
+            assert!(drawn(&galley).ends_with('…'), "{}", drawn(&galley));
+            let short = fit_row(ui.painter(), "Pocket", &font, 90.0);
+            assert_eq!(drawn(&short), "Pocket");
+        });
+        output.textures_delta.clear();
+    }
 
     /// Issue 176 (F-21): in axis-aligned views and near them nothing of the
     /// cube is drawn outside its box (a nearly edge-on face made a long

@@ -728,13 +728,13 @@ impl Viewport {
         self.bands.as_ref().map(|(_, b)| b)
     }
 
-    /// Replaces the highlights drawn over the scene.
     /// Names the selection set drawn in its own colour, or none, for the
     /// legends (decision 0216 item 5).
     pub fn set_legend_set(&mut self, set: Option<(String, [u8; 3])>) {
         self.legend_set = set;
     }
 
+    /// Replaces the highlights drawn over the scene.
     pub fn set_overlay(&mut self, overlay: Scene) {
         self.set_layer(Layer::Overlay, overlay);
     }
