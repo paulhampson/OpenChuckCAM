@@ -33,6 +33,10 @@ impl Strategy for Rings {
         "Rings (test)"
     }
 
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+
     fn schema(&self) -> ParameterSchema {
         let num = |name: &str, default: Option<f64>| ParameterSpec {
             name: name.to_owned(),

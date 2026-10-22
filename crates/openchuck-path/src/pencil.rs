@@ -518,6 +518,10 @@ impl Strategy for PencilFinishing {
         "Pencil clean-up"
     }
 
+    fn description(&self) -> &str {
+        "Follows each sharp inside corner of the part with one pass to clear the ridge of material that other finishing leaves there. Use it as a final clean-up, not to cut large areas."
+    }
+
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(vec![
             rest::min_remaining_spec(),

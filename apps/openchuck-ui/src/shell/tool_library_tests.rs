@@ -317,7 +317,7 @@ fn req_ui_16_req_tl_01_the_library_panes_do_not_move_with_the_mouse() {
         // Frames run only while the mouse moves in the application, so a
         // pane that creeps a little each frame must be caught from the
         // first frames on, not after it has settled.
-        let headings = ["CUTTING DATA BY MATERIAL", "FLAT END MILLS"];
+        let headings = ["CUTTING DATA BY MATERIAL", "\u{23f7} FLAT END MILLS (1)"];
         for _ in 0..3 {
             rig.frame(Vec::new());
         }
@@ -387,10 +387,13 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
             .into_iter()
             .find(|r| r.contains_rect(hint))
             .expect("the search box");
+        // The right-most bar near the list: the project tree behind the
+        // window may have a bar of its own further left.
         let bar = rig
             .bar_rects()
             .into_iter()
-            .find(|r| r.left() < search.right() + 20.0)
+            .filter(|r| r.left() < search.right() + 20.0)
+            .max_by(|a, b| a.right().total_cmp(&b.right()))
             .expect("the list's scroll bar");
         assert!(
             search.right() - bar.right() < 8.0 && bar.right() <= search.right() + 1.0,
@@ -412,4 +415,398 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
         }
         std::fs::remove_dir_all(&folder).ok();
     }
+}
+
+/// The cutting data boxes show the largest value in full, with the box's
+/// padding, at 100% and 120% and at every width the pane can have (issue 250,
+/// F-80); a box is never narrower than its minimum.
+#[test]
+fn req_ui_16_req_tl_05_the_spindle_speed_box_shows_a_five_digit_speed_in_full() {
+    use crate::tool_library_window::cutting_box_width;
+    for scale in [1.0_f32, 1.2] {
+        let rig = Rig::cube("toollib-box", None);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.ctx.set_zoom_factor(scale);
+        let mut needed = 0.0_f32;
+        let mut output = rig.ctx.run_ui(egui::RawInput::default(), |ui| {
+            let font = egui::TextStyle::Monospace.resolve(ui.style());
+            // The widest speed the library accepts in practice, and a long
+            // feed, with the box's padding each side.
+            needed = ui
+                .painter()
+                .layout_no_wrap("99999.99".to_owned(), font, egui::Color32::WHITE)
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x;
+        });
+        output.textures_delta.clear();
+        for available in [0.0, 50.0, 120.0, 300.0, 700.0] {
+            let width = cutting_box_width(available);
+            assert!(
+                width >= needed,
+                "available {available}, scale {scale}: box {width} < {needed}"
+            );
+        }
+        assert!(
+            cutting_box_width(2000.0) > cutting_box_width(300.0),
+            "it uses the room"
+        );
+    }
+}
+
+/// Every entry of the tool library has a tooltip in plain words that gives
+/// its unit and does not say a value is safe to run (issue 250, F-80;
+/// decision 0114; NFR-12).
+#[test]
+fn req_tl_04_req_tl_05_every_tool_library_entry_has_a_plain_tooltip() {
+    for (label, unit, help) in crate::tool_library_window::cutting_help() {
+        assert!(help.len() > 40, "{label}: {help}");
+        assert!(!help.to_lowercase().contains("safe to run"), "{label}");
+        assert!(!unit.is_empty(), "{label}");
+    }
+    let spindle = crate::tool_library_window::cutting_help()[0];
+    assert!(
+        spindle.2.contains("rpm") && spindle.2.contains("S value"),
+        "{}",
+        spindle.2
+    );
+    let tool = openchuck_app::tools::Tool {
+        shape: openchuck_app::tools::ToolShape::BullNose {
+            corner_radius: openchuck_app::tools::Millimetres(1.0),
+        },
+        diameter: openchuck_app::tools::Millimetres(6.0),
+        flute_length: openchuck_app::tools::Millimetres(12.0),
+        overall_length: openchuck_app::tools::Millimetres(50.0),
+        shank_diameter: openchuck_app::tools::Millimetres(6.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    };
+    for field in openchuck_app::tool_edit::tool_form(&tool) {
+        assert!(
+            field.description.len() > 25,
+            "{}: {}",
+            field.label,
+            field.description
+        );
+        assert!(!field.description.to_lowercase().contains("safe to run"));
+    }
+}
+
+/// The operation's Tool section has a spindle speed row (issue 249, F-79;
+/// decision 0196): the tool's cutting data fills it as a default, a missing
+/// one is marked with what to do, and a value set there is one undoable step.
+#[test]
+fn req_tl_05_req_nfr_12_the_operation_has_a_spindle_speed_row() {
+    use super::inspector::ToolAct;
+    let folder = library_folder("spindle");
+    let mut rig = Rig::cube("toollib-spindle", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Spindle speed"), "the row is there");
+    assert!(rig.shows("rpm"), "with its unit");
+    let spindle = |rig: &Rig| {
+        rig.shell.app.as_ref().unwrap().project().operations()[0]
+            .spindle_speed
+            .map(|s| s.0)
+    };
+    assert_eq!(spindle(&rig), None);
+    rig.shell.tool_act(op, ToolAct::Spindle("9000".into()));
+    assert_eq!(spindle(&rig), Some(9000.0));
+    rig.frame(Vec::new());
+    rig.shell.undo();
+    assert_eq!(spindle(&rig), None);
+    // A bad value is refused and leaves the operation alone.
+    rig.shell.tool_act(op, ToolAct::Spindle("fast".into()));
+    assert_eq!(spindle(&rig), None);
+    rig.shell.tool_act(op, ToolAct::Spindle("12000".into()));
+    rig.shell.tool_act(op, ToolAct::SpindleReset);
+    assert_eq!(spindle(&rig), None);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Applying a cutting data edit that leaves the material name alone keeps its
+/// spelling, even when another tool spells the same material differently
+/// (decision 0197).
+#[test]
+fn req_tl_05_applying_a_speed_edit_keeps_the_materials_spelling() {
+    let folder = library_folder("keep-spelling");
+    let id = library_with_cutting_data(&folder, &["oak"]);
+    library_with_cutting_data(&folder, &["Oak"]);
+    let mut rig = Rig::cube("toollib-spelling", None);
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.size = egui::vec2(1366.0, 768.0);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Add, Some(Chosen::Library(id)));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let row = centre_of(&rig, "oak");
+    rig.click(row);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let apply = centre_of(&rig, "Apply");
+    rig.click(apply);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    let materials: Vec<_> = reread
+        .get(id)
+        .unwrap()
+        .cutting_data
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(materials, vec!["oak".to_owned()]);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// The centre of the first text that contains `needle`.
+fn centre_of(rig: &Rig, needle: &str) -> egui::Pos2 {
+    rig.text_rects()
+        .into_iter()
+        .find(|(t, _)| t.contains(needle))
+        .unwrap_or_else(|| panic!("no text {needle:?}"))
+        .1
+        .center()
+}
+
+/// A library with a Makera Z1 tool set holding one ball end mill, and one
+/// flat end mill that no machine holds.
+fn library_with_machine(folder: &std::path::Path) -> (ToolId, ToolId) {
+    use openchuck_app::tools::{ControllerMapping, ToolSet, ToolSetEntry};
+    let ball = library_with(folder, ToolType::BallEnd, "Z1 ball");
+    let flat = library_with(folder, ToolType::FlatEnd, "Loose flat");
+    let mut library = ToolLibrary::open(folder).unwrap();
+    library
+        .save_tool_set(ToolSet {
+            machine: "Makera Z1".into(),
+            entries: vec![ToolSetEntry {
+                tool: ball,
+                controller: ControllerMapping::numbered(1),
+            }],
+        })
+        .unwrap();
+    (ball, flat)
+}
+
+#[test]
+fn req_tl_11_req_ui_15_the_list_has_foldable_machine_and_standard_sections_that_are_remembered() {
+    let folder = library_folder("sections");
+    let (ball, _) = library_with_machine(&folder);
+    let mut rig = Rig::cube("toollib-sections", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(ball)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for text in [
+        "MAKERA Z1 (1)",
+        "STANDARD TOOLS (1)",
+        "BALL END MILLS (1)",
+        "FLAT END MILLS (1)",
+        "Loose flat",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // Folding the type group hides its tools; the section stays.
+    rig.click(centre_of(&rig, "FLAT END MILLS (1)"));
+    rig.frame(Vec::new());
+    assert!(rig.shows("FLAT END MILLS (1)"));
+    assert!(!rig.shows("Loose flat"), "a folded group shows no tools");
+    assert!(rig.shows("STANDARD TOOLS (1)"));
+    // Folding the machine section hides its groups.
+    rig.click(centre_of(&rig, "MAKERA Z1 (1)"));
+    rig.frame(Vec::new());
+    assert!(!rig.shows("BALL END MILLS (1)"));
+    // Both folds are in the settings, per user (UI-15).
+    let view = rig.shell.settings.tool_library.clone();
+    assert!(view.is_folded("machine:makera z1"));
+    assert!(view.is_folded("standard/flat-end"));
+    // Closing and opening the window again keeps them.
+    rig.shell.tool_library.click(Chosen::Library(ball));
+    rig.shell.tool_library.close_for_test();
+    rig.frame(Vec::new());
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("MAKERA Z1 (1)") && !rig.shows("BALL END MILLS (1)"));
+    assert!(!rig.shows("Loose flat"));
+    // Unfolding shows them again.
+    rig.click(centre_of(&rig, "MAKERA Z1 (1)"));
+    rig.frame(Vec::new());
+    assert!(rig.shows("BALL END MILLS (1)"));
+    assert!(
+        !rig.shell
+            .settings
+            .tool_library
+            .is_folded("machine:makera z1")
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_04_the_size_filter_hides_tools_keeps_its_state_and_is_cleared_by_hand() {
+    use openchuck_app::tool_library::{SizeFilter, ToolFilter};
+    let folder = library_folder("filter");
+    let (ball, _) = library_with_machine(&folder);
+    // The new tools are 6 mm ball and 6 mm flat: make the flat one 10 mm.
+    {
+        let mut library = ToolLibrary::open(&folder).unwrap();
+        let mut flat = library
+            .tools()
+            .find(|t| t.name == "Loose flat")
+            .unwrap()
+            .clone();
+        flat.tool.diameter = openchuck_app::tools::Millimetres(10.0);
+        flat.tool.shank_diameter = openchuck_app::tools::Millimetres(10.0);
+        tool_library::save_draft(&mut library, &flat, &[]).unwrap();
+        let mut ball = library.get(ball).unwrap().clone();
+        ball.tool.diameter = openchuck_app::tools::Millimetres(6.0);
+        ball.tool.shank_diameter = openchuck_app::tools::Millimetres(6.0);
+        tool_library::save_draft(&mut library, &ball, &[]).unwrap();
+    }
+    let mut rig = Rig::cube("toollib-filter", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.settings.tool_library.filter = ToolFilter {
+        diameter: SizeFilter {
+            exact: "10".into(),
+            ..SizeFilter::default()
+        },
+        ..ToolFilter::default()
+    };
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(ball)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Loose flat"));
+    // The machine section had only the 6 mm ball: gone with its group.
+    assert!(!rig.shows("MAKERA Z1 ("), "a filter hides empty sections");
+    assert!(rig.shows("Clear filter"));
+    // Closed and opened again, the filter is still on (no reset).
+    rig.shell.tool_library.close_for_test();
+    rig.frame(Vec::new());
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Loose flat") && !rig.shows("MAKERA Z1 ("));
+    // Clear filter empties it by hand and the machine section is back.
+    rig.click(centre_of(&rig, "Clear filter"));
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.tool_library.filter.is_empty());
+    assert!(rig.shows("MAKERA Z1 (1)"));
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_12_a_default_tool_shows_its_dimensions_read_only_and_copies_to_edit() {
+    let folder = library_folder("default");
+    let mut library = ToolLibrary::open(&folder).unwrap();
+    library.install_defaults().unwrap();
+    let default = library
+        .tools()
+        .find(|t| ToolType::of(&t.tool.shape) == ToolType::BullNose)
+        .unwrap()
+        .clone();
+    let mut rig = Rig::cube("toollib-default", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(default.id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for text in [
+        "A default tool: it cannot be edited",
+        "Copy to edit",
+        "Diameter",
+        "Flute length",
+        "Overall length",
+        "Shank diameter",
+        "Corner radius",
+        "copy it to edit",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // Nothing to save or change in a default.
+    assert!(!rig.shows("Saved in the library"));
+    assert!(!rig.shows("Add material"));
+    assert!(!rig.shows("Edit the profile"));
+    // The copy is a new library draft; the default is unchanged.
+    rig.click(centre_of(&rig, "Copy to edit"));
+    let Some(Chosen::Library(copy)) = rig.shell.tool_library.chosen() else {
+        panic!("{:?}", rig.shell.tool_library.chosen())
+    };
+    assert_ne!(copy, default.id);
+    rig.frame(Vec::new());
+    assert!(rig.shows("New: not saved yet"));
+    assert!(!rig.shows("A default tool: it cannot be edited"));
+    assert!(rig.shows(&format!("{} copy", default.name)));
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    assert_eq!(reread.get(default.id), Some(&default));
+    assert!(reread.get(copy).is_some());
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_01_esc_in_a_text_field_ends_the_edit_and_a_second_esc_closes_the_window() {
+    // OI-536: Esc in a text field ended the edit and acted on the window too.
+    let folder = library_folder("esc-field");
+    let id = library_with(&folder, ToolType::FlatEnd, "6 mm flat");
+    let mut rig = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    // The search box has the keyboard: Esc ends the edit, the window stays.
+    rig.click(centre_of(&rig, "Search tools"));
+    rig.frame(Vec::new());
+    assert!(rig.ctx.egui_wants_keyboard_input());
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(rig.shell.tool_library.is_open(), "the first Esc closed it");
+    assert!(!rig.ctx.egui_wants_keyboard_input());
+    // With no field editing, Esc closes the window.
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(!rig.shell.tool_library.is_open());
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_11_req_tl_12_a_changed_tool_set_number_of_a_default_tool_can_be_saved_or_cancelled() {
+    // The default tool is read-only, but its machine tool set number is the
+    // machine's (decision 0199 item 6): a change must offer Save and Cancel.
+    let folder = library_folder("default-number");
+    let mut library = ToolLibrary::open(&folder).unwrap();
+    library.install_defaults().unwrap();
+    let id = ToolId::from_u128(0xc0de_0001_0000_4000_8000_0000_0000_0101);
+    let tool = library.get(id).expect("the first Z1 default tool").clone();
+    let mut rig = Rig::cube("toollib-default-number", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("A default tool: it cannot be edited"));
+    assert!(!rig.shows("Changed: not saved yet"));
+    rig.shell.tool_library.set_set_number("Makera Z1", "777");
+    rig.frame(Vec::new());
+    assert!(rig.shows("Changed: not saved yet"), "no way to commit it");
+    assert!(rig.shows("Save") && rig.shows("Cancel"));
+    // Save writes the number; the tool itself is unchanged.
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    assert_eq!(reread.get(id), Some(&tool));
+    let set = reread.tool_set("Makera Z1").unwrap();
+    assert_eq!(set.mapping_for(id).unwrap().number, 777);
+    std::fs::remove_dir_all(&folder).ok();
 }

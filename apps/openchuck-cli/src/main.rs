@@ -254,14 +254,16 @@ enum Action {
         /// The stock material's name, or `none`.
         #[arg(long)]
         material: Option<String>,
-        /// Distance along the rotary axis from the machine's rotary reference
-        /// point to the model origin, in mm.
+        /// How far this setup moves the part along the rotary axis from where
+        /// its placement puts it, in mm; the stock, tabs and work zero stay
+        /// (decision record 0201).
         #[arg(long, allow_hyphen_values = true)]
         part_offset: Option<f64>,
         /// The work offset register (G54 to G59).
         #[arg(long)]
         work_offset: Option<String>,
-        /// Model X of the work zero, which is on the rotary axis, in mm.
+        /// Model X of the work zero, which is on the rotary axis, measured
+        /// from the machine's rotary reference point, in mm.
         #[arg(long, allow_hyphen_values = true)]
         work_x: Option<f64>,
         /// `RADIUS,SAFE_Z` in mm from the rotary axis, or `machine` to use
@@ -1573,6 +1575,7 @@ fn parse_tab(text: &str) -> Result<Tab> {
         },
     };
     Ok(Tab {
+        auto: None,
         x_start: Millimetres(x_start),
         length: Millimetres(length),
         shape,
@@ -1742,7 +1745,7 @@ fn print_setup(app: &Application, report: &SetupReport) {
         setup.material.as_deref().unwrap_or("not set")
     );
     println!(
-        "position:   part origin {} mm along the rotary axis from the machine's reference point",
+        "position:   part moved {} mm along the rotary axis from where its placement puts it",
         setup.frame.part_offset.0
     );
     let w = setup.frame.work_offset;
@@ -2066,6 +2069,7 @@ mod tests {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: leave
                 .map(|v| ("stock_to_leave".to_owned(), ParameterValue::Number(v)))
                 .into_iter()

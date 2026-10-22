@@ -35,6 +35,7 @@ pub mod form;
 mod jobs;
 pub mod library;
 pub mod machine_view;
+pub mod materials;
 pub mod model;
 pub mod operation;
 pub mod opflow;
@@ -83,7 +84,7 @@ pub use error::AppError;
 pub use export::{
     Check, CheckLevel, EXPORT_ACKNOWLEDGE_LABEL, EXPORT_NOTICE, EXPORT_RULE, EXPORT_STOCK_SKIPPED,
     EXPORT_STOCK_SKIPPED_LABEL, ExportChecks, PostSummary, builtin_post_summaries, post_summary,
-    run_is_current, write_gcode_files,
+    run_is_current, simulation_out_of_date, write_gcode_files,
 };
 pub use jobs::{
     FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,
@@ -93,6 +94,7 @@ pub use jobs::{
 /// crate of their own (architecture section 5.8).
 pub use openchuck_gcode as gcode;
 pub use openchuck_path as path;
+pub use openchuck_path::StrategyGroup;
 pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).
@@ -107,7 +109,9 @@ pub use selection::{
     CheckedSet, EditStart, RegionRequest, SelectionEdit, SelectionRole, SelectionSummary,
     SelectionUse, TriangleSet,
 };
-pub use setup_sheet::{SetupSheet, SheetBody, SheetSection};
+pub use setup_sheet::{
+    Clock, FixedClock, SetupSheet, SheetBody, SheetSection, SystemClock, Traceability, iso8601_utc,
+};
 pub use simulation::{OperationSimulation, SetupSimulation, SimulationReport};
 
 // The application layer maps project data to every engine crate (architecture
@@ -201,6 +205,8 @@ pub struct Application {
     record: std::sync::Arc<overview::GenerationRecord>,
     /// The lines for the user-action log not yet drained (NFR-18).
     actions: Vec<String>,
+    /// Where a setup sheet reads its generation time (decision 0110).
+    clock: Box<dyn Clock>,
 }
 
 /// What a new project starts with, from the user's settings
@@ -209,6 +215,28 @@ pub struct Application {
 pub struct NewProject {
     /// Whether it skips the stock simulation (issue 214).
     pub skip_stock_simulation: bool,
+}
+
+/// The newest modification time and a fingerprint of the files `project`
+/// was saved as in `folder`, read from disk, or `None` when any of them is
+/// missing or unreadable (the project is not saved there). The fingerprint is
+/// the hash of each file's path, length and bytes in path order.
+fn saved_files_trace(folder: &Path, project: &Project) -> Option<(std::time::SystemTime, String)> {
+    let files = openchuck_project::file::render(project).ok()?;
+    let mut newest = std::time::UNIX_EPOCH;
+    let mut bytes = Vec::new();
+    for relative in files.keys() {
+        let path = folder.join(relative);
+        let content = std::fs::read(&path).ok()?;
+        newest = newest.max(std::fs::metadata(&path).ok()?.modified().ok()?);
+        bytes.extend_from_slice(relative.as_bytes());
+        bytes.extend_from_slice(&(content.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&content);
+    }
+    Some((
+        newest,
+        openchuck_project::ContentHash::of_bytes(&bytes).to_string(),
+    ))
 }
 
 impl Application {
@@ -271,6 +299,7 @@ impl Application {
             revision: 0,
             record: std::sync::Arc::default(),
             actions: Vec::new(),
+            clock: Box::new(SystemClock),
         })
     }
 
@@ -649,7 +678,9 @@ impl Application {
                         parts.push((id, extent));
                     }
                     match parts.iter().find(|(m, _)| *m == id).map(|(_, e)| e) {
-                        Some(Ok(extent)) => *extent,
+                        // Where this setup's offset puts the part (decision
+                        // record 0201).
+                        Some(Ok(extent)) => extent.map(|e| e.in_setup(&s.frame)),
                         Some(Err(e)) => {
                             notes.push(format!(
                                 "the part cannot be read, so it is not checked: {e}"
@@ -682,6 +713,18 @@ impl Application {
             let mut warnings = warnings;
             warnings.extend(
                 openchuck_types::workholding::check_tab_zones(
+                    &s.workholding,
+                    s.stock.as_ref(),
+                    part.as_ref(),
+                )
+                .into_iter()
+                .map(|kind| setup::SetupWarning {
+                    kind,
+                    unconfirmed: Vec::new(),
+                }),
+            );
+            warnings.extend(
+                openchuck_types::workholding::check_held_regions(
                     &s.workholding,
                     s.stock.as_ref(),
                     part.as_ref(),
@@ -1115,10 +1158,59 @@ impl Application {
         self.post.as_ref()
     }
 
-    /// The project's setup sheet (GC-12). Pass a regeneration's toolpath to
-    /// include each operation's programmed time.
+    /// The project's setup sheet with its traceability block (GC-12,
+    /// decision 0110). Pass a regeneration's toolpath to include each
+    /// operation's programmed time.
     pub fn setup_sheet(&self, toolpath: Option<&openchuck_types::ir::Toolpath>) -> SetupSheet {
         SetupSheet::new(&self.document.project, &self.strategies, toolpath)
+            .with_traceability(&self.traceability())
+    }
+
+    /// Replaces the clock a setup sheet reads its generation time from, so a
+    /// test gets the same sheet every run (decision 0110 item 2).
+    pub fn set_clock(&mut self, clock: Box<dyn Clock>) {
+        self.clock = clock;
+    }
+
+    /// What ties a setup sheet to the files it came from (GC-12, decision
+    /// 0110): the time now, when the project files were last written, this
+    /// software's version, a fingerprint of those files and the version
+    /// control line. Nothing is stored in the project, so the project files
+    /// stay byte-stable (PRJ-01).
+    ///
+    /// The files read are the ones the project was last opened or saved with,
+    /// so the fingerprint names the saved project even when the project has
+    /// changed since; the saved line says so.
+    pub fn traceability(&self) -> Traceability {
+        let saved_project = self
+            .saved
+            .lock()
+            .map_or_else(|e| e.into_inner().clone(), |saved| saved.clone());
+        let (saved, fingerprint) = saved_files_trace(&self.document.location, &saved_project)
+            .map_or_else(
+                || {
+                    (
+                        Traceability::NOT_SAVED.to_owned(),
+                        Traceability::NOT_SAVED.to_owned(),
+                    )
+                },
+                |(time, hash)| {
+                    let time = setup_sheet::iso8601_utc(time);
+                    let saved = if self.is_modified() {
+                        format!("{time} (changes made since are not saved)")
+                    } else {
+                        time
+                    };
+                    (saved, hash)
+                },
+            );
+        Traceability {
+            generated: setup_sheet::iso8601_utc(self.clock.now()),
+            saved,
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            fingerprint,
+            version_control: Traceability::NOT_TRACKED.to_owned(),
+        }
     }
 
     /// The strategies operations can use (OP-16).

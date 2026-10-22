@@ -104,6 +104,12 @@ impl Shell {
 
     /// The dock's contents.
     pub(super) fn dock(&mut self, ui: &mut egui::Ui) {
+        // The panel's frame is drawn as tall as what is in it: a tab with
+        // little in it would leave the rest of the dock undrawn (the black
+        // area of issue 259) and its size would change from frame to frame
+        // (the playback box moving, issue 215). The contents take the whole
+        // panel.
+        ui.set_min_size(ui.available_size());
         ui.horizontal(|ui| {
             self.dock_tabs(ui);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -335,16 +341,41 @@ impl Shell {
     fn playback_tab(&mut self, ui: &mut egui::Ui) {
         // The project's stock simulation choice (issue 214; decision record
         // 0168) is in the tab with or without a run, as one undoable step.
+        // A result out of date says so here, with the way to simulate again,
+        // above the controls it still has or in place of the ones it lost
+        // (issues 259 and 260).
+        let stale = self.out_of_date.reason().is_some();
+        let again = self.app.is_some() && self.out_of_date_banner(ui);
         let skip = match &self.app {
             Some(app) if self.play.has_run() => {
-                egui::ScrollArea::vertical()
-                    .id_salt("playback")
-                    .show(ui, |ui| self.play.show(ui, app))
-                    .inner
+                // The transport and the timeline stay in a strip that does
+                // not scroll; the rest scrolls under it, with a bar in a strip
+                // of its own so it never lies over a control (issue 262).
+                ui.scope(|ui| {
+                    if stale {
+                        ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
+                    }
+                    let skip = self.play.show_strip(ui, app);
+                    crate::theme::solid_scroll_bar(ui);
+                    egui::ScrollArea::vertical()
+                        .id_salt("playback")
+                        .auto_shrink([false, true])
+                        // However little room the strip and the banner
+                        // leave, the rest scrolls in it: the dock does not
+                        // grow past its height (issue 262).
+                        .min_scrolled_height(0.0)
+                        .show(ui, |ui| self.play.show_rest(ui, app));
+                    skip
+                })
+                .inner
             }
             Some(app) => {
-                let skip = crate::playback_panel::skip_box(ui, app);
-                ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
+                let skip = crate::playback_panel::waiting_row(ui, app);
+                if !stale {
+                    ui.label(
+                        RichText::new("Run the simulation to play the cut.").color(DARK.muted),
+                    );
+                }
                 skip
             }
             None => {
@@ -352,6 +383,9 @@ impl Shell {
                 None
             }
         };
+        if again {
+            self.primary();
+        }
         if let Some(skip) = skip {
             self.tree_action(super::TreeAction::Command(Box::new(
                 Command::SetSkipStockSimulation(skip),

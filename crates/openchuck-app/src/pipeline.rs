@@ -364,7 +364,7 @@ pub(crate) fn regenerate(
             let mesh = match (part, setup) {
                 (Some(model), Some(setup)) => Some(crate::workholding::setup_deviation_target(
                     setup,
-                    crate::model::placed_mesh(location, model, &within)?,
+                    crate::model::setup_mesh(location, model, setup, &within)?,
                 )?),
                 _ => None,
             };
@@ -420,6 +420,10 @@ mod tests {
         }
         fn label(&self) -> &str {
             "One ring"
+        }
+
+        fn description(&self) -> &str {
+            "A strategy for tests."
         }
         fn schema(&self) -> ParameterSchema {
             ParameterSchema::with_common(Vec::new())

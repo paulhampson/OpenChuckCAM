@@ -351,6 +351,15 @@ pub struct SelectionPanel {
     dont_warn: bool,
     hover: Option<Hover>,
     shown: Option<SelectionSetId>,
+    /// The set the working selection was loaded from, while it is unchanged:
+    /// deselecting that set takes the copy away with it (issue 261).
+    loaded_from: Option<SelectionSetId>,
+    /// Whether selection mode is on: the working selection is drawn only
+    /// then (issue 261).
+    picking: bool,
+    /// How many times a set was shown, so the shell can tell which
+    /// selection a show belongs to (issue 261).
+    show_count: u64,
     /// The operation whose avoid and check sets are drawn, hatched red
     /// (specification 7.4).
     roles_of: Option<OperationId>,
@@ -388,6 +397,9 @@ impl Default for SelectionPanel {
             dont_warn: false,
             hover: None,
             shown: None,
+            loaded_from: None,
+            picking: false,
+            show_count: 0,
             roles_of: None,
             roles_sets: None,
             message: None,
@@ -449,6 +461,7 @@ impl SelectionPanel {
             filter: self.filter,
             smooth_angle: self.smooth_angle,
             direction_angle: self.direction_angle,
+            show_count: self.show_count,
             ..Self::default()
         };
     }
@@ -485,12 +498,61 @@ impl SelectionPanel {
         }
     }
 
-    /// Chooses the set whose triangles are shown in its swatch.
+    /// Chooses the set whose triangles are shown in its swatch. A working
+    /// selection that is an unchanged copy of the set shown before goes with
+    /// it, so nothing of a deselected set stays highlighted (issue 261).
     pub fn show_set(&mut self, set: Option<SelectionSetId>) {
         if self.shown != set {
+            if self.loaded_from.is_some() && self.loaded_from == self.shown {
+                self.working = nothing();
+                self.working_model = None;
+                self.working_hash = None;
+                self.loaded_from = None;
+            }
             self.shown = set;
+            if set.is_some() {
+                self.show_count += 1;
+            }
             self.dirty = true;
         }
+    }
+
+    /// How many times a set was shown (see [`SelectionPanel::show_set`]).
+    pub fn show_count(&self) -> u64 {
+        self.show_count
+    }
+
+    /// Says whether selection mode is on (issue 261). The highlights show
+    /// only what is current: the working selection while picking, and a set
+    /// while it is shown. Picking ending takes the shown set away too; the
+    /// working selection is kept, undrawn, for the next time picking starts.
+    pub fn set_picking(&mut self, picking: bool) {
+        if self.picking != picking {
+            self.picking = picking;
+            if !picking {
+                if let Some(pending) = self.pending.take() {
+                    pending.handle.cancel();
+                }
+                self.show_set(None);
+                self.hover = None;
+            }
+            self.dirty = true;
+        }
+    }
+
+    /// Test hook: makes `triangles` of `model` the working selection.
+    #[cfg(test)]
+    pub(crate) fn set_working_for_test(
+        &mut self,
+        app: &Application,
+        model: ModelId,
+        triangles: &[u32],
+    ) {
+        self.working = SelectionTarget::Triangles(triangles.iter().copied().collect());
+        self.working_model = Some(model);
+        self.working_hash = recorded_hash(app, model);
+        self.loaded_from = None;
+        self.dirty = true;
     }
 
     /// The notice under the toolbar, if any.
@@ -729,6 +791,7 @@ impl SelectionPanel {
             self.working_hash = hash;
         }
         combine.apply(&mut self.working, picked);
+        self.loaded_from = None;
         if self.working.is_empty() {
             self.working_model = None;
             self.working_hash = None;
@@ -867,7 +930,7 @@ impl SelectionPanel {
                 );
             }
         }
-        if let Some(model) = self.working_model
+        if let Some(model) = self.working_model.filter(|_| self.picking)
             && let Some((index, part)) = part_of(model)
         {
             // Edges have colours of their own, so they read apart from
@@ -1613,6 +1676,7 @@ impl SelectionPanel {
         self.working = target;
         self.working_model = Some(summary.model);
         self.working_hash = recorded_hash(app, summary.model);
+        self.loaded_from = Some(summary.id);
         self.rename = summary.name.clone();
         self.dirty = true;
     }
@@ -2121,6 +2185,8 @@ mod tests {
         let (dir, app, model) = cube_project("hover-outline");
         let view = app.start_scene(None).wait().unwrap();
         let mut panel = SelectionPanel::default();
+        // The shell turns selection mode on (issue 261).
+        panel.set_picking(true);
         panel.join(model, Combine::Replace, set(&[0, 1]), None);
         panel.hover = Some(Hover::Surface(ScenePick {
             face: None,
@@ -2775,6 +2841,7 @@ mod tests {
         };
         let (dir, app, _) = cube_project("face-overlay");
         let mut panel = SelectionPanel::default();
+        panel.set_picking(true);
         panel.join(
             model,
             Combine::Replace,
@@ -2830,6 +2897,7 @@ mod tests {
         // No switch is needed: by default an edge near the pointer is picked.
         let mut panel = SelectionPanel {
             choice: Choice::Connected,
+            picking: true,
             ..SelectionPanel::default()
         };
         assert_eq!(panel.pick_filter(), PickFilter::Both);

@@ -4,10 +4,16 @@
 //!
 //! A setup's frames follow from two values ([`SetupFrame`]):
 //!
-//! - the **part offset**: where the model origin lies along the rotary axis,
-//!   measured from the machine profile's rotary reference point (the chuck
-//!   face, say). Across the axis the part is placed by its own placement
-//!   steps (IMP-05), which put the rotary axis on the model X axis;
+//! - the **part offset**: how far this setup moves the part along the rotary
+//!   axis (SET-05; decision record 0201). The model frame of a setup has its
+//!   origin on the rotary axis at the machine profile's rotary reference
+//!   point (the chuck face, say), and the stock, the workholding, the work
+//!   zero and the toolpaths are written in it. The part is put in it by its
+//!   placement steps (IMP-05), which are shared by every setup and put the
+//!   rotary axis on the model X axis, and then moved along X by the part
+//!   offset ([`SetupFrame::place_part`]). So the offset moves the part
+//!   against the stock and the work zero, and the toolpaths and G-code follow;
+//!   a zero offset leaves them as the placement steps alone give them;
 //! - the **work offset**: the controller register the program uses (G54 to
 //!   G59) and where its zero lies. The work zero is always on the rotary
 //!   axis, at model X = `x`, so a program's Y0 Z0 is the axis (the Makera Z1
@@ -96,8 +102,11 @@ pub struct WorkOffset {
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetupFrame {
-    /// Distance along the rotary axis from the machine's rotary reference
-    /// point to the model origin.
+    /// How far this setup moves the part along the rotary axis, after its
+    /// placement steps: with a zero offset the model origin of the part is at
+    /// the rotary reference point. The stock, workholding and work zero stay
+    /// where they are, so the toolpaths and G-code follow (decision record
+    /// 0201).
     pub part_offset: Millimetres,
     /// The work coordinate system.
     pub work_offset: WorkOffset,
@@ -109,12 +118,31 @@ impl SetupFrame {
         require_finite(&format!("{field}.part_offset"), self.part_offset.0)?;
         require_finite(&format!("{field}.work_offset.x"), self.work_offset.x.0)
     }
+
+    /// Where the part point `p`, placed by its placement steps, lies in this
+    /// setup: moved along X by the part offset.
+    pub fn place_part(&self, p: Point3) -> Point3 {
+        if self.moves_part() {
+            Point3::new(p.x + self.part_offset.0, p.y, p.z)
+        } else {
+            p
+        }
+    }
+
+    /// True when the part offset moves the part. A zero offset (of either
+    /// sign) moves nothing, so every coordinate stays bit for bit as the
+    /// placement steps gave it (GC-07).
+    pub fn moves_part(&self) -> bool {
+        self.part_offset.0 != 0.0
+    }
 }
 
 /// The machine coordinates the work offset register should hold for `setup`
-/// at A = 0: the machine position of the work zero.
+/// at A = 0: the machine position of the work zero. The work zero is fixed
+/// in the model frame of the setup, so the part offset does not move it
+/// (decision record 0201).
 pub fn expected_work_offset(profile: &MachineProfile, setup: &SetupFrame) -> Point3 {
-    RotaryFrame::machine(profile, setup).on_axis(setup.work_offset.x)
+    RotaryFrame::of_profile(profile).on_axis(setup.work_offset.x)
 }
 
 /// The extent of a placed part in the model frame.
@@ -124,6 +152,20 @@ pub struct PartExtent {
     pub bounds: Aabb,
     /// The largest distance of any point of the part from the rotary axis.
     pub radius: Millimetres,
+}
+
+impl PartExtent {
+    /// The extent of the same part in the setup of `frame`: moved along X by
+    /// its part offset ([`SetupFrame::place_part`]); the radius is unchanged.
+    pub fn in_setup(self, frame: &SetupFrame) -> Self {
+        Self {
+            bounds: Aabb {
+                min: frame.place_part(self.bounds.min),
+                max: frame.place_part(self.bounds.max),
+            },
+            radius: self.radius,
+        }
+    }
 }
 
 impl Stock {
@@ -236,6 +278,24 @@ pub enum SetupWarningKind {
         /// The tab's X extent.
         x: (f64, f64),
     },
+    /// A tab placed automatically at one end of the part finds no room
+    /// there: the held region (or the end of the stock) reaches the part. It
+    /// keeps the position it had (decision record 0202).
+    AutoTabNoRoom {
+        /// Position of the tab in the setup's list, from 1.
+        tab: usize,
+        /// The end of the part it is placed at.
+        end: crate::workholding::TabEnd,
+    },
+    /// A held region reaches into the part, so the length of the part inside
+    /// it is never machined (SET-09, OI-554). Generation is still allowed;
+    /// the user verifies the G-code (NFR-12).
+    HeldRegionCoversPart {
+        /// True for the held region at the high-X end of the stock.
+        at_end: bool,
+        /// The X extent of the part inside the held region.
+        x: (f64, f64),
+    },
 }
 
 impl std::fmt::Display for SetupWarning {
@@ -265,9 +325,33 @@ impl std::fmt::Display for SetupWarning {
                  end of the stock",
                 x.0, x.1
             )?,
+            SetupWarningKind::AutoTabNoRoom { tab, end } => write!(
+                f,
+                "tab {tab} is placed automatically at the {} of the part, but there is no room \
+                 there: the {} reaches the part. It keeps its last position; move the part or \
+                 shorten the held region, or untick \"Place automatically\" and place it by hand",
+                end.name(),
+                match end {
+                    crate::workholding::TabEnd::Head => {
+                        "held region at the start (or the start of the stock)"
+                    }
+                    crate::workholding::TabEnd::Tail => {
+                        "held region at the end (or the end of the stock)"
+                    }
+                }
+            )?,
             SetupWarningKind::PartOutsideStock => {
                 f.write_str("some of the part lies outside the stock")?
             }
+            SetupWarningKind::HeldRegionCoversPart { at_end, x } => write!(
+                f,
+                "the grip at the {} of the stock covers {:.3} mm of the part (X {:.3} to {:.3}), \
+                 which is never machined; shorten the grip if that length should be cut",
+                if *at_end { "end" } else { "start" },
+                x.1 - x.0,
+                x.0,
+                x.1
+            )?,
             SetupWarningKind::OutsideTravel {
                 what,
                 axis,
@@ -302,7 +386,8 @@ pub struct SetupCheck<'a> {
     pub stock: Option<&'a Stock>,
     /// The setup's own clearance; `None` uses the profile's.
     pub clearance: Option<&'a Clearance>,
-    /// The placed part, if the setup has one and it could be read.
+    /// The part as this setup places it (moved by the part offset,
+    /// [`PartExtent::in_setup`]), if the setup has one and it could be read.
     pub part: Option<&'a PartExtent>,
 }
 
@@ -402,7 +487,7 @@ pub fn check_setup(check: &SetupCheck<'_>) -> Vec<SetupWarning> {
 
     // Travel: along the rotary axis, the stock (or the part) and the work
     // zero; across it, the axis itself and the safe Z.
-    let machine = RotaryFrame::machine(profile, check.frame);
+    let machine = RotaryFrame::of_profile(profile);
     let travel = &profile.travel;
     let (along, along_min, along_max) = match profile.rotary_axis {
         RotaryAxis::Y => ("Y", travel.min.y, travel.max.y),
@@ -748,14 +833,17 @@ mod tests {
     #[test]
     fn req_set_05_travel_is_checked_along_and_across_the_axis() {
         let profile = MachineProfile::example_x_rotary();
-        let frame = SetupFrame {
-            part_offset: Millimetres(180.0),
-            ..SetupFrame::default()
+        // The stock is fixed in the setup's model frame, whose origin is the
+        // rotary reference point (decision record 0201).
+        let far = Stock::Cylinder {
+            diameter: Millimetres(30.0),
+            length: Millimetres(60.0),
+            x_start: Millimetres(175.0),
         };
         let w = check_setup(&SetupCheck {
             profile: &profile,
-            frame: &frame,
-            stock: Some(&cylinder(30.0)),
+            frame: &SetupFrame::default(),
+            stock: Some(&far),
             clearance: None,
             part: None,
         });
@@ -780,6 +868,47 @@ mod tests {
         }));
     }
 
+    /// The part offset moves the part along the axis and nothing else
+    /// (SET-05; decision record 0201): the part leaves stock that stays put,
+    /// and a zero offset leaves every coordinate bit for bit.
+    #[test]
+    fn req_set_05_the_part_offset_moves_the_part_not_the_stock() {
+        let profile = MachineProfile::example_x_rotary();
+        let part = cylinder_part(5.0, 40.0);
+        let check = |frame: &SetupFrame| {
+            let placed = part.in_setup(frame);
+            check_setup(&SetupCheck {
+                profile: &profile,
+                frame,
+                stock: Some(&cylinder(30.0)),
+                clearance: None,
+                part: Some(&placed),
+            })
+        };
+        assert!(check(&SetupFrame::default()).is_empty());
+        let moved = SetupFrame {
+            part_offset: Millimetres(30.0),
+            ..SetupFrame::default()
+        };
+        let placed = part.in_setup(&moved);
+        assert_eq!(placed.bounds.min, Point3::new(30.0, -5.0, -5.0));
+        assert_eq!(placed.bounds.max, Point3::new(70.0, 5.0, 5.0));
+        assert_eq!(placed.radius, part.radius);
+        let kinds: Vec<_> = check(&moved).into_iter().map(|w| w.kind).collect();
+        assert_eq!(kinds, vec![SetupWarningKind::PartOutsideStock]);
+        // A zero offset of either sign moves nothing, even a -0.0 coordinate.
+        let p = Point3::new(-0.0, 1.0, 2.0);
+        for zero in [0.0, -0.0] {
+            let frame = SetupFrame {
+                part_offset: Millimetres(zero),
+                ..SetupFrame::default()
+            };
+            assert!(!frame.moves_part());
+            assert_eq!(frame.place_part(p).x.to_bits(), p.x.to_bits());
+            assert_eq!(part.in_setup(&frame), part);
+        }
+    }
+
     #[test]
     fn req_set_05_expected_work_offset_is_the_work_zero_on_the_axis() {
         let profile = MachineProfile::example_x_rotary();
@@ -790,8 +919,15 @@ mod tests {
                 x: Millimetres(-3.0),
             },
         };
+        // The work zero stays where it is in the setup when the part moves
+        // (decision record 0201): the part offset does not change it.
         let g55 = expected_work_offset(&profile, &frame);
-        assert_eq!(g55, Point3::new(17.0, 12.5, -40.0));
+        assert_eq!(g55, Point3::new(-3.0, 12.5, -40.0));
+        let still = SetupFrame {
+            part_offset: Millimetres(0.0),
+            ..frame
+        };
+        assert_eq!(expected_work_offset(&profile, &still), g55);
         assert_eq!(
             WorkOffsetRegister::parse("g55"),
             Some(WorkOffsetRegister::G55)

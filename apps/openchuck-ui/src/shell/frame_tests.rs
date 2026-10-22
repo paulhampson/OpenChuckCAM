@@ -160,6 +160,67 @@ impl Rig {
         out
     }
 
+    /// Every text and filled rectangle painted, as much of it as its clip
+    /// lets show: the text (none for a rectangle) and the visible rectangle.
+    /// A text's rectangle covers its glyphs, not the indent a wrapped row
+    /// starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect)> {
+        fn walk(
+            shape: &egui::Shape,
+            clip: egui::Rect,
+            out: &mut Vec<(Option<String>, egui::Rect)>,
+        ) {
+            let (text, rect) = match shape {
+                egui::Shape::Text(t) => (
+                    Some(t.galley.text().to_string()),
+                    t.galley
+                        .rows
+                        .iter()
+                        .map(|r| r.rect_without_leading_space().translate(t.pos.to_vec2()))
+                        .reduce(|a, b| a.union(b))
+                        .unwrap_or(egui::Rect::NOTHING),
+                ),
+                egui::Shape::Rect(r) => (None, r.rect),
+                egui::Shape::Vec(shapes) => {
+                    shapes.iter().for_each(|s| walk(s, clip, out));
+                    return;
+                }
+                _ => return,
+            };
+            let seen = rect.intersect(clip);
+            if seen.is_positive() {
+                out.push((text, seen));
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
+    /// Every text painted with the part of its rectangle that is not clipped away, in paint
+    /// order; texts wholly clipped away are left out.
+    pub(super) fn visible_text_rects(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) => {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clip);
+                    if rect.is_positive() {
+                        out.push((t.galley.text().to_string(), rect));
+                    }
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, clip, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
     pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {
@@ -800,6 +861,7 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
         .unwrap()
         .draft_mut()
         .tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(-7.0),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1481,4 +1543,95 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
         near(rig.inspector_layout().0, min),
         "dragged to the narrowest"
     );
+}
+
+/// Each model has its Placement and Mesh check rows in the tree (section 6;
+/// issue #181, decision record 0201): a click on one selects the model and
+/// opens that section of its inspector, and the Placement section says it
+/// is shared by every setup.
+#[test]
+fn req_ui_06_the_model_has_placement_and_mesh_check_rows() {
+    let mut rig = Rig::cube("model-rows", None);
+    let defaults = ["check", "file", "placement", "units"];
+    rig.shell
+        .settings
+        .set_section_open("model", "check", false, &defaults);
+    rig.settle();
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    let row = |rig: &Rig, text: &str| {
+        rig.text_rects()
+            .into_iter()
+            .find(|(t, r)| t == text && r.left() < 300.0)
+            .unwrap_or_else(|| panic!("no tree row '{text}'"))
+            .1
+    };
+    let placement = row(&rig, "Placement");
+    let check = row(&rig, "Mesh check");
+    assert!(check.top() > placement.top());
+    assert!(rig.shows("1 step"), "the placement chip");
+    rig.click(placement.center());
+    rig.settle();
+    assert_eq!(rig.shell.selected, Some(Selection::Model(model)));
+    assert_eq!(rig.shell.model_section, Some(crate::model_panel::PLACEMENT));
+    assert!(rig.shows("shared by every setup"), "the Placement line");
+    rig.click(row(&rig, "Mesh check").center());
+    rig.settle();
+    assert_eq!(
+        rig.shell.model_section,
+        Some(crate::model_panel::MESH_CHECK)
+    );
+    // A section opened to show it is not kept open in the settings.
+    assert!(!rig.shell.settings.section_open("model", "check", true));
+    // Choosing the model another way chooses no section of it.
+    rig.shell.show_item(ItemRef::Model(model));
+    assert_eq!(rig.shell.model_section, None);
+}
+
+/// The operation inspector names the strategy under its own heading with the
+/// same plain description the New operation list shows, apart from the
+/// operation's own name; a rename leaves the strategy as it was (issue 242;
+/// decision record 0204; OP-16, UI-07, GC-07).
+#[test]
+fn req_op_16_req_ui_07_the_inspector_shows_the_strategy_apart_from_the_name() {
+    let mut rig = Rig::cube("inspector-strategy", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    op.name = "Operation 3".to_owned();
+    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
+        op.clone(),
+    )))
+    .unwrap();
+    let label = app.strategy_label(&op.strategy);
+    let text = app.strategy_description(&op.strategy);
+    assert!(!text.is_empty());
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Operation 3"));
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows(&label), "{label}");
+    assert!(rig.shows(&text[..40]), "{text}");
+}
+
+/// New operation is one list of strategies, roughing first and the specialist
+/// strategies last, each with its description under it (issue 195; decision
+/// record 0204; OP-16, UI-06).
+#[test]
+fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descriptions() {
+    let mut rig = Rig::cube("new-operation-list", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_ref().unwrap();
+    let choices = app.strategy_choices();
+    rig.shell.run.begin_add(app, None, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows("Roughing"));
+    assert!(rig.shows("Finishing"));
+    assert!(rig.shows("Rotary roughing"));
+    // The list scrolls, so only the first entries are drawn; the first
+    // entry's description is under its name.
+    assert!(rig.shows(&choices[0].description[..40]));
 }

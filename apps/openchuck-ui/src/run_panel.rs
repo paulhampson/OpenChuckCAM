@@ -450,30 +450,39 @@ impl RunPanel {
                     ui.label("Name");
                     ui.text_edit_singleline(&mut form.name);
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Strategy");
-                    let shown = choices
-                        .iter()
-                        .find(|c| c.name == form.strategy)
-                        .map_or("choose…", |c| c.label.as_str());
-                    egui::ComboBox::from_id_salt("add op strategy")
-                        .selected_text(shown)
-                        .show_ui(ui, |ui| {
-                            for c in &choices {
-                                // Disabled with the reason, not hidden: a
-                                // strategy that needs a STEP part on a mesh
-                                // part (decision record 0174).
-                                if let Some(why) = &c.unavailable {
-                                    ui.add_enabled(
+                // One list: roughing first, finishing next, the specialist
+                // strategies last, each with a short description under its
+                // name (issue 195; decision record 0204).
+                ui.label("Strategy");
+                egui::ScrollArea::vertical()
+                    .id_salt("add op strategy list")
+                    .max_height(300.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        let mut group = None;
+                        for c in &choices {
+                            if group != Some(c.group) {
+                                group = Some(c.group);
+                                ui.add_space(2.0);
+                                ui.label(
+                                    egui::RichText::new(group_heading(c.group))
+                                        .small()
+                                        .strong(),
+                                );
+                            }
+                            // Disabled with the reason, not hidden: a
+                            // strategy that needs a STEP part on a mesh part
+                            // (decision record 0174).
+                            if let Some(why) = &c.unavailable {
+                                ui.add_enabled(
+                                    false,
+                                    egui::Button::selectable(
                                         false,
-                                        egui::Button::selectable(
-                                            false,
-                                            format!("{} \u{b7} needs a STEP model", c.label),
-                                        ),
-                                    )
-                                    .on_disabled_hover_text(why);
-                                    continue;
-                                }
+                                        format!("{} \u{b7} needs a STEP model", c.label),
+                                    ),
+                                )
+                                .on_disabled_hover_text(why);
+                            } else {
                                 let label = if c.takes_selections {
                                     c.label.clone()
                                 } else {
@@ -481,8 +490,12 @@ impl RunPanel {
                                 };
                                 ui.selectable_value(&mut form.strategy, c.name.clone(), label);
                             }
-                        });
-                });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.add_space(18.0);
+                                ui.weak(&c.description);
+                            });
+                        }
+                    });
                 ui.horizontal(|ui| {
                     ui.label("Setup");
                     let shown = setups
@@ -639,6 +652,16 @@ impl RunPanel {
                 }
             });
         self.show_results = open;
+    }
+}
+
+/// The heading over a group of the strategy list.
+fn group_heading(group: openchuck_app::StrategyGroup) -> &'static str {
+    use openchuck_app::StrategyGroup;
+    match group {
+        StrategyGroup::Roughing => "Roughing",
+        StrategyGroup::Finishing => "Finishing",
+        StrategyGroup::Specialist => "Specialist",
     }
 }
 

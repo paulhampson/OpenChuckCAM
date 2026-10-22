@@ -38,6 +38,10 @@ impl Strategy for FineRing {
     fn label(&self) -> &str {
         "Fine ring"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -149,6 +153,7 @@ fn project(name: &str, ops: usize, threads: usize) -> (PathBuf, Application) {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: BTreeMap::new(),
         }));
     }

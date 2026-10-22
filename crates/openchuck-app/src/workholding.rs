@@ -78,6 +78,10 @@ pub fn labelled_solids(
     if workholding.is_empty() {
         return Ok(Vec::new());
     }
+    // Automatic tabs where the part, the stock and the held regions put them
+    // (decision record 0202).
+    let resolved = workholding.resolved(stock, Some(part));
+    let workholding = &resolved;
     let stock = stock.ok_or_else(|| refuse("the setup has held regions or tabs but no stock"))?;
     let bounds = stock.bounds(Some(part)).ok_or_else(|| {
         refuse("the stock's extent is not known, so held regions and tabs cannot be placed")
@@ -339,7 +343,7 @@ pub(crate) fn findings_of(
         .and_then(|id| project.models().iter().find(|m| m.id == id))
     {
         Some(model) => {
-            let mesh = crate::model::placed_mesh(root, model, context)?;
+            let mesh = crate::model::setup_mesh(root, model, setup, context)?;
             openchuck_geom::part_extent(&mesh)
         }
         None => return Ok(Vec::new()),
@@ -394,7 +398,7 @@ pub(crate) fn reach_warnings_of(
     else {
         return Ok(Vec::new());
     };
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let mesh = crate::model::setup_mesh(root, model, setup, context)?;
     let part = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     let solids = labelled_solids(&setup.workholding, setup.stock.as_ref(), &part)?;
@@ -424,10 +428,13 @@ pub fn check_for_tool(
     tool_diameter: f64,
     tool_name: &str,
 ) -> Result<(), AppError> {
-    if let Some(SetupWarningKind::TabOutsideEndZones { tab, x }) =
-        check_tab_zones(workholding, stock, Some(part))
-            .into_iter()
-            .next()
+    // An automatic tab with no room is only a warning: look past it.
+    if let Some((tab, x)) = check_tab_zones(workholding, stock, Some(part))
+        .into_iter()
+        .find_map(|kind| match kind {
+            SetupWarningKind::TabOutsideEndZones { tab, x } => Some((tab, x)),
+            _ => None,
+        })
     {
         return Err(refuse(format!(
             "tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail zone; tabs \
@@ -548,6 +555,7 @@ pub fn zone_defaults(
             (small, large)
         };
         ZoneDefault::Tab(Tab {
+            auto: None,
             x_start: Millimetres(lo),
             length: Millimetres(hi - lo),
             shape: TabShape::Frustum {
@@ -634,7 +642,7 @@ pub(crate) fn part_facts_of(
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
         .ok_or_else(|| refuse("the setup has no part"))?;
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let mesh = crate::model::setup_mesh(root, model, setup, context)?;
     let extent = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     let defaults = setup
@@ -662,7 +670,7 @@ pub(crate) fn default_tabs_of(
         .part
         .and_then(|id| project.models().iter().find(|m| m.id == id))
         .ok_or_else(|| refuse("the setup has no part"))?;
-    let mesh = crate::model::placed_mesh(root, model, context)?;
+    let mesh = crate::model::setup_mesh(root, model, setup, context)?;
     let part = openchuck_geom::part_extent(&mesh)
         .ok_or_else(|| refuse("the setup's part has no extent"))?;
     default_tabs(&setup.workholding, stock, &mesh, &part)
@@ -856,7 +864,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;
     use openchuck_types::geometry::Aabb;
-    use openchuck_types::workholding::HeldRegion;
+    use openchuck_types::workholding::{HeldRegion, TabEnd};
 
     fn part(lo: f64, hi: f64) -> PartExtent {
         PartExtent {
@@ -886,6 +894,7 @@ mod tests {
             end: None,
             tabs: vec![
                 Tab {
+                    auto: None,
                     x_start: Millimetres(80.0),
                     length: Millimetres(6.0),
                     shape: TabShape::Cylinder {
@@ -894,6 +903,7 @@ mod tests {
                     layout: TabLayout::OnAxis,
                 },
                 Tab {
+                    auto: None,
                     x_start: Millimetres(90.0),
                     length: Millimetres(5.0),
                     shape: TabShape::Frustum {
@@ -978,10 +988,16 @@ mod tests {
     const OWNERS_MODEL: usize = 96;
 
     /// The owner's layout in blisk_glitchy_generating (issue 248): box
-    /// stock held 5 mm at its start by its own section, a 10 mm tab from X
-    /// 5 to 10, and a part of radius 20 from X 10, whose end faces are fans
-    /// of large triangles.
+    /// stock held 5 mm at its start by its own section, a tab of diameter
+    /// 10 from X 5 to 10, and a part of radius 20 from X 10, whose end faces
+    /// are fans of large triangles.
     fn owners_layout() -> DeviationTarget {
+        layout_with_tab(5.0, 5.0, None)
+    }
+
+    /// [`owners_layout`] with the tab stored at `x_start` and `length`, and
+    /// `auto` set or not.
+    fn layout_with_tab(x_start: f64, length: f64, auto: Option<TabEnd>) -> DeviationTarget {
         let mesh = openchuck_testkit::parts::revolve(&[(10.0, 20.0), (60.0, 20.0)], 24);
         let boxed = Stock::Box {
             bounds: Aabb {
@@ -996,12 +1012,13 @@ mod tests {
             }),
             end: None,
             tabs: vec![Tab {
-                x_start: Millimetres(5.0),
-                length: Millimetres(5.0),
+                x_start: Millimetres(x_start),
+                length: Millimetres(length),
                 shape: TabShape::Cylinder {
                     diameter: Millimetres(10.0),
                 },
                 layout: TabLayout::OnAxis,
+                auto,
             }],
         };
         let extent = openchuck_geom::part_extent(&mesh).unwrap();
@@ -1072,6 +1089,35 @@ mod tests {
     }
 
     #[test]
+    fn req_sim_05_req_op_21_an_automatic_tab_is_compared_where_it_is_resolved() {
+        // Decision 0202: an automatic tab's stored place is not where it is;
+        // the target holds the tab where the part, the stock and the held
+        // region put it, X 5 to 10 at the head, as in the owner's layout.
+        let target = layout_with_tab(40.0, 2.0, Some(TabEnd::Head));
+        let face = triangle_at(&target, |c| (c.x - 10.0).abs() < 1e-9);
+        assert_eq!(
+            target.classify(face, Point3::new(10.0, 1.0, 0.5), Vec3::new(-1.0, 0.0, 0.0)),
+            SampleOn::Inside,
+            "under the resolved tab"
+        );
+        let wall = triangle_at(&target, |c| {
+            c.x > 5.5 && c.x < 9.5 && (c.y.hypot(c.z) - 5.0).abs() < 0.1
+        });
+        assert_eq!(
+            target.classify(wall, Point3::new(7.5, 0.0, 5.0), Vec3::new(0.0, 0.0, 1.0)),
+            SampleOn::Workholding
+        );
+        // Nothing is left at the stored place, X 40 to 42, inside the part.
+        assert!(
+            (0..target.mesh.triangles.len())
+                .filter_map(|t| target.mesh.triangle(t))
+                .all(|[a, b, c]| [a, b, c]
+                    .iter()
+                    .all(|p| p.x < 39.0 || p.x > 43.0 || p.y.hypot(p.z) > 19.0)),
+        );
+    }
+
+    #[test]
     fn req_sim_05_req_op_21_a_tab_after_a_box_held_region_is_tested_against_it() {
         // A held region of a box section has 12 triangles, not the 384 of a
         // round solid; the tab after it was taken as part of the box, never
@@ -1102,6 +1148,7 @@ mod tests {
     fn req_op_21_a_tab_narrower_than_the_tool_is_refused() {
         let w = Workholding {
             tabs: vec![Tab {
+                auto: None,
                 x_start: Millimetres(80.0),
                 length: Millimetres(10.0),
                 shape: TabShape::Frustum {
@@ -1125,6 +1172,7 @@ mod tests {
     fn req_op_21_a_tab_across_the_part_is_refused() {
         let w = Workholding {
             tabs: vec![Tab {
+                auto: None,
                 x_start: Millimetres(40.0),
                 length: Millimetres(5.0),
                 shape: TabShape::Cylinder {
@@ -1139,5 +1187,49 @@ mod tests {
             error.to_string().contains("head or the tail zone"),
             "{error}"
         );
+    }
+
+    /// An automatic tab with no room is a warning, not a refusal; a tab after
+    /// it across the part is still refused (decision record 0202; OP-21).
+    #[test]
+    fn req_op_21_a_tab_across_the_part_after_an_automatic_tab_is_refused() {
+        let cylinder = TabShape::Cylinder {
+            diameter: Millimetres(6.0),
+        };
+        let w = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(25.0),
+                diameter: None,
+            }),
+            tabs: vec![
+                Tab {
+                    auto: Some(openchuck_types::workholding::TabEnd::Head),
+                    x_start: Millimetres(10.0),
+                    length: Millimetres(5.0),
+                    shape: cylinder,
+                    layout: TabLayout::OnAxis,
+                },
+                Tab {
+                    auto: None,
+                    x_start: Millimetres(40.0),
+                    length: Millimetres(5.0),
+                    shape: cylinder,
+                    layout: TabLayout::OnAxis,
+                },
+            ],
+            ..Workholding::default()
+        };
+        let after = part(20.0, 78.0);
+        assert!(matches!(
+            check_tab_zones(&w, Some(&stock()), Some(&after))[0],
+            SetupWarningKind::AutoTabNoRoom { tab: 1, .. }
+        ));
+        let error = check_for_tool(&w, Some(&stock()), &after, 1.0, "a").unwrap_err();
+        assert!(error.to_string().contains("tab 2"), "{error}");
+        // The automatic tab itself is refused when the part has moved over
+        // the position it keeps.
+        let over = part(12.0, 78.0);
+        let error = check_for_tool(&w, Some(&stock()), &over, 1.0, "a").unwrap_err();
+        assert!(error.to_string().contains("tab 1"), "{error}");
     }
 }
