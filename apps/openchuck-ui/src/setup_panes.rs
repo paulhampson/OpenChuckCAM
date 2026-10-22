@@ -1068,17 +1068,19 @@ pub fn show(
     // The hover outline is drawn from the outlines of the last frame, so
     // each pane is drawn once; what is hovered and clicked is then decided
     // from this frame's, so a solid that has just gone is never reported
-    // (OI-353).
+    // (OI-353). Each outline is kept with its pane: a zoomed pane draws past
+    // its edge, clipped, and only the pane under the pointer may be hovered.
     let key = ui.id().with("setup panes hits");
-    let under = |hits: &[Hit]| {
+    let under = |hits: &[(Pane, Hit)]| {
         response.hover_pos().and_then(|p| {
+            let at = pane_at(p).map(|(pane, _)| pane);
             hits.iter()
                 .rev()
-                .find(|(_, poly, _)| inside(poly, p))
-                .cloned()
+                .find(|(pane, (_, poly, _))| Some(*pane) == at && inside(poly, p))
+                .map(|(_, hit)| hit.clone())
         })
     };
-    let previous: Vec<Hit> = ui.data(|d| d.get_temp(key)).unwrap_or_default();
+    let previous: Vec<(Pane, Hit)> = ui.data(|d| d.get_temp(key)).unwrap_or_default();
     let drawn = under(&previous).map(|(i, _, _)| i);
     let chip = draft.then(|| {
         let galley = painter.layout_no_wrap(DRAFT_CHIP.to_owned(), font(), roles::OVERLAY_TEXT);
@@ -1087,7 +1089,7 @@ pub fn show(
             galley.size() + vec2(16.0, 8.0),
         )
     });
-    let mut hits = front(
+    let mut hits: Vec<(Pane, Hit)> = front(
         &painter,
         front_rect,
         chip,
@@ -1095,8 +1097,15 @@ pub fn show(
         marks,
         drawn,
         front_view,
+    )
+    .into_iter()
+    .map(|hit| (Pane::Front, hit))
+    .collect();
+    hits.extend(
+        end(&painter, end_rect, &panes.end, marks, drawn, end_view)
+            .into_iter()
+            .map(|hit| (Pane::End, hit)),
     );
-    hits.extend(end(&painter, end_rect, &panes.end, marks, drawn, end_view));
     let hovered = under(&hits);
     let item = hovered.as_ref().map(|(i, _, _)| *i);
     ui.data_mut(|d| d.insert_temp(key, hits));
@@ -1712,6 +1721,31 @@ mod tests {
         view.zoom_about(f32::NAN, pointer, size);
         view.zoom_about(-1.0, pointer, size);
         assert_eq!(view, kept);
+    }
+
+    /// A pane zoomed in draws past its edge, clipped: what it draws there
+    /// cannot be hovered or clicked from the other pane (decision record
+    /// 0203).
+    #[test]
+    fn req_ui_25_a_zoomed_tab_is_not_picked_from_the_other_pane() {
+        let panes = tab_panes();
+        let ctx = egui::Context::default();
+        let front = Rect::from_min_max(pos2(0.0, 0.0), pos2(630.0, 600.0));
+        let (h, v) = front_bounds(&panes.front);
+        let tab = Map::fit(front, h, v).at(0.0, 0.0);
+        let mut view = PaneView::default();
+        view.zoom_about(MAX_ZOOM, tab - front.center(), front.size());
+        set_pane_view(&ctx, egui::Id::new("test panes"), Pane::Front, view);
+        // The tab now covers the front pane's right edge and runs past it.
+        let near_edge = pos2(front.max.x - 4.0, tab.y);
+        let _ = frame(&ctx, &panes, Marks::default(), None, false);
+        let (seen, _) = frame(&ctx, &panes, Marks::default(), Some(near_edge), false);
+        assert_eq!(seen.hovered, Some(WorkholdingItem::Tab(0)));
+        let beyond = pos2(front.max.x + 12.0, tab.y);
+        let _ = frame(&ctx, &panes, Marks::default(), Some(beyond), false);
+        let (seen, _) = frame(&ctx, &panes, Marks::default(), Some(beyond), true);
+        assert_ne!(seen.hovered, Some(WorkholdingItem::Tab(0)));
+        assert_ne!(seen.clicked, Some(WorkholdingItem::Tab(0)));
     }
 
     /// A drag moves the drawing, never so far that the pane's centre leaves

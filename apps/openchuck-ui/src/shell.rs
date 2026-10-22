@@ -1114,6 +1114,9 @@ impl Shell {
     }
 
     fn select(&mut self, selection: Selection) {
+        // A model's Placement or Mesh check row is chosen only by its own
+        // tree row, which sets it again after this.
+        self.model_section = None;
         if self.selected != Some(selection) {
             self.selected = Some(selection);
             self.form.clear();

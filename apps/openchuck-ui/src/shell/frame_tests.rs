@@ -1552,6 +1552,10 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
 #[test]
 fn req_ui_06_the_model_has_placement_and_mesh_check_rows() {
     let mut rig = Rig::cube("model-rows", None);
+    let defaults = ["check", "file", "placement", "units"];
+    rig.shell
+        .settings
+        .set_section_open("model", "check", false, &defaults);
     rig.settle();
     let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
     let row = |rig: &Rig, text: &str| {
@@ -1576,6 +1580,11 @@ fn req_ui_06_the_model_has_placement_and_mesh_check_rows() {
         rig.shell.model_section,
         Some(crate::model_panel::MESH_CHECK)
     );
+    // A section opened to show it is not kept open in the settings.
+    assert!(!rig.shell.settings.section_open("model", "check", true));
+    // Choosing the model another way chooses no section of it.
+    rig.shell.show_item(ItemRef::Model(model));
+    assert_eq!(rig.shell.model_section, None);
 }
 
 /// The operation inspector names the strategy under its own heading with the

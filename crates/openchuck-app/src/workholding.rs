@@ -427,10 +427,13 @@ pub fn check_for_tool(
     tool_diameter: f64,
     tool_name: &str,
 ) -> Result<(), AppError> {
-    if let Some(SetupWarningKind::TabOutsideEndZones { tab, x }) =
-        check_tab_zones(workholding, stock, Some(part))
-            .into_iter()
-            .next()
+    // An automatic tab with no room is only a warning: look past it.
+    if let Some((tab, x)) = check_tab_zones(workholding, stock, Some(part))
+        .into_iter()
+        .find_map(|kind| match kind {
+            SetupWarningKind::TabOutsideEndZones { tab, x } => Some((tab, x)),
+            _ => None,
+        })
     {
         return Err(refuse(format!(
             "tab {tab} (X {:.3} to {:.3} mm) is not wholly in the head or the tail zone; tabs \
@@ -948,5 +951,44 @@ mod tests {
             error.to_string().contains("head or the tail zone"),
             "{error}"
         );
+    }
+
+    /// An automatic tab with no room is a warning, not a refusal; a tab after
+    /// it across the part is still refused (decision record 0202; OP-21).
+    #[test]
+    fn req_op_21_a_tab_across_the_part_after_an_automatic_tab_is_refused() {
+        let cylinder = TabShape::Cylinder {
+            diameter: Millimetres(6.0),
+        };
+        let w = Workholding {
+            start: Some(HeldRegion {
+                length: Millimetres(25.0),
+                diameter: None,
+            }),
+            tabs: vec![
+                Tab {
+                    auto: Some(openchuck_types::workholding::TabEnd::Head),
+                    x_start: Millimetres(10.0),
+                    length: Millimetres(5.0),
+                    shape: cylinder,
+                    layout: TabLayout::OnAxis,
+                },
+                Tab {
+                    auto: None,
+                    x_start: Millimetres(40.0),
+                    length: Millimetres(5.0),
+                    shape: cylinder,
+                    layout: TabLayout::OnAxis,
+                },
+            ],
+            ..Workholding::default()
+        };
+        let part = part(20.0, 78.0);
+        assert!(matches!(
+            check_tab_zones(&w, Some(&stock()), Some(&part))[0],
+            SetupWarningKind::AutoTabNoRoom { tab: 1, .. }
+        ));
+        let error = check_for_tool(&w, Some(&stock()), &part, 1.0, "a").unwrap_err();
+        assert!(error.to_string().contains("tab 2"), "{error}");
     }
 }

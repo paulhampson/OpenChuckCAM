@@ -97,6 +97,9 @@ pub struct ModelPanel {
     /// A section to open and scroll to on the next frame, chosen by its row
     /// in the project tree (issue #181).
     focus: Option<&'static str>,
+    /// Sections closed in the settings that were opened only to show them:
+    /// they stay closed in the settings until the user closes one.
+    shown: Vec<&'static str>,
 }
 
 /// The key of the Placement section, which the model's "Placement" row in
@@ -205,6 +208,7 @@ impl ModelPanel {
             report_open: false,
             folder_error: None,
             focus: None,
+            shown: Vec::new(),
         }
     }
 
@@ -306,7 +310,14 @@ impl ModelPanel {
             if focused {
                 section.header.scroll_to_me(Some(egui::Align::TOP));
             }
-            if section.open != open {
+            // A section opened to show it is not the user's choice to keep.
+            if focused && !open && !self.shown.contains(&key) {
+                self.shown.push(key);
+            }
+            if !section.open {
+                self.shown.retain(|k| *k != key);
+            }
+            if section.open != open && !self.shown.contains(&key) {
                 settings.set_section_open("model", key, section.open, &DEFAULT_OPEN);
                 outcome.settings_changed = true;
             }

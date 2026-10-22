@@ -1159,6 +1159,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         | SetupWarningKind::ClearanceInsidePart { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
         SetupWarningKind::TabOutsideEndZones { .. }
+        | SetupWarningKind::AutoTabNoRoom { .. }
         | SetupWarningKind::HeldRegionCoversPart { .. } => Some(SetupPart::Workholding),
         _ => None,
     }
@@ -2158,6 +2159,18 @@ fn file_warnings(project: &Project, checks: Option<&Checks>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tab placed automatically with no room is a finding of the setup's
+    /// workholding: its message opens that section, where "Place
+    /// automatically" is unticked (decision record 0202; UI-25).
+    #[test]
+    fn req_ui_25_an_automatic_tab_with_no_room_is_on_the_workholding_row() {
+        let kind = SetupWarningKind::AutoTabNoRoom {
+            tab: 1,
+            end: openchuck_types::workholding::TabEnd::Head,
+        };
+        assert_eq!(part_of(&kind), Some(SetupPart::Workholding));
+    }
 
     #[test]
     fn req_ui_11_lengths_on_rows_have_no_trailing_zeros() {

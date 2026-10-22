@@ -130,8 +130,8 @@ struct Checking {
 }
 
 /// What a check of `setup`'s workholding depends on besides the draft: its
-/// part and stock, and the tools of its operations. A check made on other
-/// inputs is stale.
+/// part, the part offset (decision record 0201) and stock, and the tools of
+/// its operations. A check made on other inputs is stale.
 fn check_inputs(app: &Application, setup: &Setup) -> String {
     let project = app.project();
     let tools: Vec<_> = project
@@ -145,7 +145,10 @@ fn check_inputs(app: &Application, setup: &Setup) -> String {
             (o.id, tool.map(|t| &t.tool))
         })
         .collect();
-    format!("{:?} {:?} {:?}", setup.part, setup.stock, tools)
+    format!(
+        "{:?} {:?} {:?} {:?}",
+        setup.part, setup.frame.part_offset, setup.stock, tools
+    )
 }
 
 /// What the part's facts depend on: the part as placed, the setup's part
@@ -1628,6 +1631,11 @@ mod tests {
         assert_ne!(before, check_inputs(&app, &after_setup));
         app.undo().unwrap();
         assert_eq!(before, check_inputs(&app, &setup));
+        // So is a change to the part offset, which moves the part (decision
+        // record 0201).
+        let mut offset = setup.clone();
+        offset.frame.part_offset = Millimetres(2.0);
+        assert_ne!(before, check_inputs(&app, &offset));
         // A draft edited or reverted while a clean check ran is not stored.
         let checked = Workholding::default();
         assert!(
