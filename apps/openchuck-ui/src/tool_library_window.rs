@@ -577,7 +577,7 @@ impl ToolLibraryWindow {
     /// editor for a custom profile (12.1, centre).
     fn tool_form(&mut self, ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>) {
         if self.read_only() {
-            default_tool_view(ui, tool, acts);
+            default_tool_view(ui, tool, self.is_dirty(), acts);
             return;
         }
         ui.horizontal(|ui| {
@@ -1747,7 +1747,7 @@ fn buttons(ui: &mut egui::Ui, acts: &mut Vec<Act>, yes: (&str, Act), no: (&str, 
 /// as for a custom profile, with the dimensions that make it up, and nothing
 /// to edit. "Copy to edit" makes an editable library tool and leaves this one
 /// as it is (issue 194; decision record 0199).
-fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>) {
+fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, dirty: bool, acts: &mut Vec<Act>) {
     ui.horizontal(|ui| {
         heading(ui, "Tool");
         if crate::shell::primary_button(ui, "Copy to edit", true)
@@ -1758,6 +1758,19 @@ fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, acts: &mut Vec<Act>)
         }
         ui.label(RichText::new("A default tool: it cannot be edited").color(DARK.muted));
     });
+    // Only the machine tool set numbers can change (decision 0199 item 6): a
+    // changed number needs Save or Cancel here, as for any library tool.
+    if dirty {
+        ui.horizontal(|ui| {
+            if crate::shell::primary_button(ui, "Save", true).clicked() {
+                acts.push(Act::Save);
+            }
+            if ui.button("Cancel").clicked() {
+                acts.push(Act::CancelEdits);
+            }
+            ui.label(RichText::new("Changed: not saved yet").color(DARK.warning));
+        });
+    }
     field_row::read_only_row(
         ui,
         "Name",
@@ -1939,6 +1952,11 @@ impl ToolLibraryWindow {
     /// Makes a new library draft of `kind`.
     pub fn new_tool(&mut self, kind: ToolType) {
         self.act(Act::New(kind), None);
+    }
+
+    /// Types `typed` as the tool's number in `machine`'s tool set.
+    pub fn set_set_number(&mut self, machine: &str, typed: &str) {
+        self.act(Act::SetNumber(machine.to_owned(), typed.to_owned()), None);
     }
 
     /// Renames the tool shown, as the Name field does.

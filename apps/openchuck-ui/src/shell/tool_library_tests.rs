@@ -625,3 +625,33 @@ fn req_tl_01_esc_in_a_text_field_ends_the_edit_and_a_second_esc_closes_the_windo
     assert!(!rig.shell.tool_library.is_open());
     std::fs::remove_dir_all(&folder).ok();
 }
+
+#[test]
+fn req_tl_11_req_tl_12_a_changed_tool_set_number_of_a_default_tool_can_be_saved_or_cancelled() {
+    // The default tool is read-only, but its machine tool set number is the
+    // machine's (decision 0199 item 6): a change must offer Save and Cancel.
+    let folder = library_folder("default-number");
+    let mut library = ToolLibrary::open(&folder).unwrap();
+    library.install_defaults().unwrap();
+    let id = ToolId::from_u128(0xc0de_0001_0000_4000_8000_0000_0000_0101);
+    let tool = library.get(id).expect("the first Z1 default tool").clone();
+    let mut rig = Rig::cube("toollib-default-number", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("A default tool: it cannot be edited"));
+    assert!(!rig.shows("Changed: not saved yet"));
+    rig.shell.tool_library.set_set_number("Makera Z1", "777");
+    rig.frame(Vec::new());
+    assert!(rig.shows("Changed: not saved yet"), "no way to commit it");
+    assert!(rig.shows("Save") && rig.shows("Cancel"));
+    // Save writes the number; the tool itself is unchanged.
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    assert_eq!(reread.get(id), Some(&tool));
+    let set = reread.tool_set("Makera Z1").unwrap();
+    assert_eq!(set.mapping_for(id).unwrap().number, 777);
+    std::fs::remove_dir_all(&folder).ok();
+}
