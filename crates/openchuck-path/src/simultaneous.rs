@@ -161,6 +161,10 @@ impl Strategy for SimultaneousFinishing {
         "Simultaneous 4-axis finishing"
     }
 
+    fn description(&self) -> &str {
+        "Moves the tool and turns the part at the same time so the tool leans to follow the surface. It suits curved shapes such as blades, but its movements are the hardest to follow by eye, so check it in the simulation."
+    }
+
     fn schema(&self) -> ParameterSchema {
         let mut step = degrees_spec(
             parameter::MAX_ANGLE_STEP,

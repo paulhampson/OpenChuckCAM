@@ -43,6 +43,10 @@ impl Strategy for OneRing {
     fn label(&self) -> &str {
         "One ring"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -815,6 +819,10 @@ impl Strategy for Rewriter {
     fn label(&self) -> &str {
         "Rewriter"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -1263,7 +1271,7 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
         .filter(|c| c.unavailable.is_some())
         .map(|c| c.name.as_str())
         .collect();
-    assert_eq!(unavailable, ["radial_drilling", "swarf"]);
+    assert_eq!(unavailable, ["swarf", "radial_drilling"]);
     for c in &choices {
         if let Some(why) = &c.unavailable {
             assert!(
@@ -1316,5 +1324,65 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
         "{}",
         status.cause
     );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself() {
+    // Decision 0204 (issue #195): one list, roughing first, finishing next,
+    // the specialist strategies last, each with its description; the same
+    // text is what the operation panel shows (issue #242).
+    let (dir, app, _op) = project("strategy-list");
+    let choices = app.strategy_choices();
+    let groups: Vec<_> = choices.iter().map(|c| c.group).collect();
+    let mut sorted = groups.clone();
+    sorted.sort();
+    assert_eq!(groups, sorted);
+    assert_eq!(choices[0].name, "rotary_roughing");
+    assert_eq!(choices.last().unwrap().name, "radial_drilling");
+    for c in &choices {
+        assert!(!c.description.is_empty(), "{}", c.name);
+        assert_eq!(app.strategy_description(&c.name), c.description);
+    }
+    assert_eq!(app.strategy_description("no_such_strategy"), "");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
+    // Decision 0205, option B (the owner's choice, issue 223): rotary
+    // roughing added with a tool starts with 10 percent of the tool's
+    // diameter, stored on the operation like any value the user set. The
+    // 4 mm tool gives 0.4 mm; other strategies, and an operation with no
+    // tool yet, start with nothing set.
+    let (dir, mut app, op) = project("roughing-default");
+    let setup = app.project().operation(op).unwrap().setup;
+    let tool = app.project().operation(op).unwrap().tool;
+    let leave = |app: &Application, id| {
+        app.project()
+            .operation(id)
+            .unwrap()
+            .parameters
+            .get("stock_to_leave")
+            .cloned()
+    };
+    let rough = app
+        .add_operation("Rough", "rotary_roughing", setup, tool)
+        .unwrap();
+    assert_eq!(
+        leave(&app, rough),
+        Some(openchuck_app::project::ParameterValue::Number(0.4))
+    );
+    let finish = app
+        .add_operation("Finish", "helical_finishing", setup, tool)
+        .unwrap();
+    assert_eq!(leave(&app, finish), None);
+    let no_tool = app
+        .add_operation("Rough 2", "rotary_roughing", setup, None)
+        .unwrap();
+    assert_eq!(leave(&app, no_tool), None);
+    // One undoable step: undoing removes the operation, value and all.
+    app.undo().unwrap();
+    assert!(app.project().operation(no_tool).is_none());
     std::fs::remove_dir_all(&dir).unwrap();
 }

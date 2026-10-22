@@ -38,6 +38,10 @@ impl Strategy for OneRing {
         "One ring"
     }
 
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
+
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }

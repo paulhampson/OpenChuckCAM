@@ -4,6 +4,7 @@ All notable changes to `openchuck-viewport` are recorded here.
 
 ## Unreleased
 
+- Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
 - Version 0.15.0 with the library family.
 - Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
 - Lane BUG-PERF (issue 200, decision 0166): lines of one look in a layer are drawn as one buffer and one draw, each keeping its own dash pattern; a hidden layer stays uploaded (`Renderer::set_layer_shown`, `is_layer_shown`); `LayerStats`, `Renderer::layer_stats` and `Renderer::uniform_writes`; the `path_frames` long-toolpath benchmark example. Additive.

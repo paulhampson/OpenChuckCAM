@@ -94,6 +94,7 @@ pub use jobs::{
 /// crate of their own (architecture section 5.8).
 pub use openchuck_gcode as gcode;
 pub use openchuck_path as path;
+pub use openchuck_path::StrategyGroup;
 pub use openchuck_path::{Registry, Strategy};
 /// The project model that commands carry, re-exported so front ends need no
 /// engine crate of their own (architecture section 5.8).

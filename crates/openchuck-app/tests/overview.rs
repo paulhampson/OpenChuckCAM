@@ -46,6 +46,10 @@ impl Strategy for OneRing {
     fn label(&self) -> &str {
         "One ring"
     }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
+    }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
     }
@@ -87,6 +91,10 @@ impl Strategy for UntilCancelled {
     }
     fn label(&self) -> &str {
         "Until cancelled"
+    }
+
+    fn description(&self) -> &str {
+        "A strategy for tests."
     }
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(Vec::new())
