@@ -231,6 +231,7 @@ impl Fixture {
                     avoid: Vec::new(),
                     check: Vec::new(),
                     restriction_options: Default::default(),
+                    spindle_speed: None,
                     parameters: BTreeMap::new(),
                 }),
                 placement: Placement::End,
@@ -341,6 +342,7 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: BTreeMap::new(),
         }),
         placement: Placement::End,
@@ -1803,5 +1805,50 @@ fn req_nfr_12_req_ui_10_turning_off_a_simulated_operation_asks_to_simulate_again
     assert_eq!(
         f.overview().primary(Step::Simulate).kind,
         PrimaryKind::RunSimulation
+    );
+}
+
+#[test]
+fn req_set_09_a_grip_that_reaches_into_the_part_is_a_setup_warning() {
+    let mut f = fixture("grip-covers-part", "cube_ascii.stl");
+    // The cube spans X 0 to 10 and the stock X -7 to 7: 8 mm at the start
+    // reaches X 1, so 1 mm of the cube lies in the grip.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.workholding.start = Some(HeldRegion {
+        length: Millimetres(8.0),
+        diameter: None,
+    });
+    f.app
+        .execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    let o = f.overview();
+    let workholding = ItemRef::SetupPart(f.setup, SetupPart::Workholding);
+    assert_eq!(o.status(workholding).unwrap().state, ItemState::Warning);
+    let message = o
+        .messages
+        .iter()
+        .find(|m| m.source == Some(workholding) && m.text.contains("covers 1.000 mm of the part"))
+        .unwrap_or_else(|| panic!("{:?}", o.messages));
+    assert_eq!(message.severity, Severity::Warning);
+    assert_eq!(
+        message.action,
+        Some(MessageAction::EditWorkholding(f.setup))
+    );
+    assert!(
+        o.setup_checks
+            .iter()
+            .any(|c| !c.passed && c.text.contains("covers 1.000 mm of the part"))
+    );
+    // A shorter grip is clear of the part: the warning goes.
+    setup.workholding.start = Some(HeldRegion {
+        length: Millimetres(6.0),
+        diameter: None,
+    });
+    f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let o = f.overview();
+    assert!(
+        !o.messages
+            .iter()
+            .any(|m| m.text.contains("The grip at the"))
     );
 }

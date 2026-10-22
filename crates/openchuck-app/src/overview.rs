@@ -1020,6 +1020,18 @@ pub(crate) fn run_checks(
                 unconfirmed: Vec::new(),
             }),
         );
+        warnings.extend(
+            openchuck_types::workholding::check_held_regions(
+                &s.workholding,
+                s.stock.as_ref(),
+                part.as_ref(),
+            )
+            .into_iter()
+            .map(|kind| SetupWarning {
+                kind,
+                unconfirmed: Vec::new(),
+            }),
+        );
         notes.extend(crate::workholding::narrow_tab_notes(project, s));
         let unbuildable = match (&part, s.workholding.is_empty()) {
             (Some(part), false) => {
@@ -1133,7 +1145,8 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         SetupWarningKind::ClearanceInsideStock { .. }
         | SetupWarningKind::ClearanceInsidePart { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
-        SetupWarningKind::TabOutsideEndZones { .. } => Some(SetupPart::Workholding),
+        SetupWarningKind::TabOutsideEndZones { .. }
+        | SetupWarningKind::HeldRegionCoversPart { .. } => Some(SetupPart::Workholding),
         _ => None,
     }
 }
@@ -2249,6 +2262,7 @@ mod tests {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: Default::default(),
+                spindle_speed: None,
                 parameters: BTreeMap::new(),
             }),
             placement: Placement::End,

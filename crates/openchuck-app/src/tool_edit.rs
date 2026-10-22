@@ -102,32 +102,32 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
         out.push(mm(
             DIAMETER,
             "Diameter",
-            "Cutting diameter.",
+            "How wide the cut is, in millimetres: the diameter of the cutting part. It sets how far apart the passes can be and how much of the part the tool can reach.",
             tool.diameter.0,
         ));
     }
     out.push(mm(
         FLUTE_LENGTH,
         "Flute length",
-        "Length of the cutting part, from the tip.",
+        "How long the cutting part is, in millimetres, measured from the tip. The tool cannot cut deeper than this in one pass, and the stepdown cannot be more.",
         tool.flute_length.0,
     ));
     out.push(mm(
         OVERALL_LENGTH,
         "Overall length",
-        "Length from the tip to the end of the shank.",
+        "How long the whole tool is, in millimetres, from the tip to the end of the shank. It is used to check that the tool reaches the part.",
         tool.overall_length.0,
     ));
     out.push(mm(
         SHANK_DIAMETER,
         "Shank diameter",
-        "Diameter of the shank.",
+        "How wide the shank is, in millimetres: the plain part the machine holds. It is used to check that the shank does not touch the part.",
         tool.shank_diameter.0,
     ));
     out.push(Field {
         name: FLUTE_COUNT.to_owned(),
         label: "Flutes".to_owned(),
-        description: "Number of flutes, for the feed per tooth.".to_owned(),
+        description: "How many cutting edges (flutes) the tool has, a whole number. The cutting feed is the spindle speed times this number times the feed per tooth.".to_owned(),
         kind: FieldKind::Integer { min: 1, max: 99 },
         set: Some(ParameterValue::Integer(i64::from(tool.flute_count))),
         value: Some(ParameterValue::Integer(i64::from(tool.flute_count))),
@@ -138,7 +138,7 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
         ToolShape::BullNose { corner_radius } => out.push(mm(
             CORNER_RADIUS,
             "Corner radius",
-            "Radius of the rounded corner, at most the tool radius.",
+            "How round the corners of the tool tip are, in millimetres. It cannot be more than the tool's radius; a ball end mill has the full radius.",
             corner_radius.0,
         )),
         ToolShape::TaperedBall {
@@ -148,13 +148,13 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
             out.push(mm(
                 TIP_RADIUS,
                 "Tip radius",
-                "Radius of the ball at the tip.",
+                "How round the very tip is, in millimetres: the radius of the ball at the end of the tool.",
                 tip_radius.0,
             ));
             out.push(degrees(
                 TAPER_HALF_ANGLE,
                 "Taper half angle",
-                "Angle of the taper from the tool axis.",
+                "How steeply the tool narrows towards the tip, in degrees, measured from the tool's centre line.",
                 90.0,
                 taper_half_angle.0,
             ));
@@ -170,14 +170,14 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
             out.push(degrees(
                 INCLUDED_ANGLE,
                 "Included angle",
-                "Angle between the two cutting edges.",
+                "The angle between the two sides of the cutting edge, in degrees. A smaller angle makes a narrower, deeper groove.",
                 180.0,
                 included_angle.0,
             ));
             let mut tip = mm(
                 TIP_DIAMETER,
                 "Tip diameter",
-                "Flat at the tip; zero for a sharp point.",
+                "How wide the flat at the very tip is, in millimetres. Zero means a sharp point.",
                 tip_diameter.0,
             );
             tip.kind = FieldKind::Number {
@@ -191,7 +191,7 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
         ToolShape::Drill { point_angle } => out.push(degrees(
             POINT_ANGLE,
             "Point angle",
-            "Included angle of the drill point.",
+            "The angle of the drill's point, in degrees, measured across the point (118 and 135 are common).",
             180.0,
             point_angle.0,
         )),

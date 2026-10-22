@@ -109,6 +109,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -225,6 +226,7 @@ fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (T
         avoid: Vec::new(),
         check: Vec::new(),
         restriction_options: Default::default(),
+        spindle_speed: None,
         parameters: BTreeMap::new(),
     };
     app.execute(Command::Add {
@@ -472,4 +474,113 @@ fn req_gc_11_two_operations_with_a_turn_between_them_pass_gate_2() {
         assert!(report.is_clean(), "{post}: {report:?}");
     }
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The project with its setup's material changed to `material` and the
+/// operation given every value cutting data would have given, so only the
+/// spindle speed can be missing.
+fn without_cutting_data(
+    app: &mut Application,
+    material: &str,
+    spindle: Option<f64>,
+) -> OperationId {
+    let mut setup = app.project().setups()[0].clone();
+    setup.material = Some(material.into());
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let mut op = app.project().operations()[0].clone();
+    for (name, value) in [("feed", 240.0), ("plunge_feed", 150.0), ("stepover", 0.8)] {
+        op.parameters
+            .insert(name.into(), ParameterValue::Number(value));
+    }
+    op.spindle_speed = spindle.map(SpindleSpeed);
+    let id = op.id;
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    id
+}
+
+#[test]
+fn req_tl_05_req_gc_14_an_operations_spindle_speed_posts_when_the_tool_has_no_cutting_data() {
+    let (dir, mut app, _) = project("post-op-spindle");
+    with_post(&mut app, "linuxcnc");
+    without_cutting_data(&mut app, "Softwood", Some(9000.0));
+    let result = app.regenerate().unwrap();
+    let text = &result.gcode[0].1;
+    assert!(text.contains("S9000 M3"), "the operation's own speed");
+    assert!(!text.contains("S10000"), "not the tool's");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_nfr_12_a_missing_spindle_speed_is_refused_with_what_to_do_and_never_written_without_s() {
+    let (dir, mut app, op) = project("post-no-spindle");
+    with_post(&mut app, "linuxcnc");
+    without_cutting_data(&mut app, "Softwood", None);
+    let needs = app.operation_requirements(op);
+    assert!(
+        needs
+            .iter()
+            .any(|r| r.field == openchuck_app::requirements::RequirementField::SpindleSpeed),
+        "{needs:?}"
+    );
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("Finish")
+            && e.contains("no spindle speed")
+            && e.contains("Enter a spindle speed for this operation")
+            && e.contains("\"Softwood\"")
+            && e.contains("\"4 mm ball\"")
+            && e.contains("tool library"),
+        "{e}"
+    );
+    assert!(!e.contains("names must match exactly"), "{e}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_tl_05_a_material_name_differing_in_case_or_spacing_still_finds_the_cutting_data() {
+    let (dir, mut app, op) = project("post-case");
+    with_post(&mut app, "linuxcnc");
+    let mut setup = app.project().setups()[0].clone();
+    setup.material = Some("OAK".into());
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    assert!(app.operation_requirements(op).is_empty());
+    let result = app.regenerate().unwrap();
+    assert!(result.gcode[0].1.contains("S10000 M3"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_tl_05_the_cutting_feed_follows_the_operations_spindle_speed() {
+    let (dir, mut app, _) = project("post-feed-follows");
+    with_post(&mut app, "linuxcnc");
+    let at_tool_speed = app.regenerate().unwrap().gcode[0].1.clone();
+    let mut op = app.project().operations()[0].clone();
+    op.spindle_speed = Some(SpindleSpeed(5000.0));
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let text = app.regenerate().unwrap().gcode[0].1.clone();
+    assert!(text.contains("S5000 M3"));
+    // The cutting moves (those that move X) halve; the plunge feed does not.
+    let cutting_feeds = |gcode: &str| -> Vec<f64> {
+        gcode
+            .lines()
+            .filter(|l| l.starts_with('X'))
+            .filter_map(|l| l.rsplit_once('F'))
+            .filter_map(|(_, f)| f.trim().parse().ok())
+            .collect()
+    };
+    let (before, after) = (cutting_feeds(&at_tool_speed), cutting_feeds(&text));
+    assert!(!before.is_empty() && before.len() == after.len());
+    // A feed the machine's limit holds down stays; the rest halve.
+    let mut halved = 0;
+    for (b, a) in before.iter().zip(&after) {
+        assert!(
+            *a <= *b + 0.06,
+            "a slower spindle never feeds faster: {b} -> {a}"
+        );
+        if (a - b / 2.0).abs() <= 0.06 {
+            halved += 1;
+        }
+    }
+    assert!(halved > 0, "half the speed, half the feed");
+    std::fs::remove_dir_all(dir).unwrap();
 }

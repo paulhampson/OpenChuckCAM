@@ -372,11 +372,129 @@ pub fn check_tab_zones(
         .collect()
 }
 
+/// A held region that reaches into the part (SET-09, OI-554): the part's
+/// length inside it is never machined. One warning per held region that
+/// covers part, start first, with the X extent of the part inside it. Needs
+/// the stock and the part, so it is a check of the setup, like
+/// [`check_tab_zones`]; the project still generates (NFR-12).
+pub fn check_held_regions(
+    workholding: &Workholding,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+) -> Vec<SetupWarningKind> {
+    let (Some(stock), Some(part)) = (stock, part) else {
+        return Vec::new();
+    };
+    let Some(bounds) = stock.bounds(Some(part)) else {
+        return Vec::new();
+    };
+    // Under a micrometre is rounding in the part's extent, not a cover.
+    const EPS: f64 = 1e-6;
+    let (start, end) = workholding.held_intervals((bounds.min.x, bounds.max.x));
+    [(false, start), (true, end)]
+        .into_iter()
+        .filter_map(|(at_end, held)| {
+            let (lo, hi) = held?;
+            let from = lo.max(part.bounds.min.x);
+            let to = hi.min(part.bounds.max.x);
+            (to - from > EPS).then_some(SetupWarningKind::HeldRegionCoversPart {
+                at_end,
+                x: (from, to),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;
     use crate::geometry::{Aabb, Point3};
+
+    fn grip_case(start: Option<f64>, end: Option<f64>) -> Vec<SetupWarningKind> {
+        // The owner's blisk: stock X 0 to 60, part X 5 to 59.175.
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(40.0),
+            length: Millimetres(60.0),
+            x_start: Millimetres(0.0),
+        };
+        let part = PartExtent {
+            bounds: Aabb {
+                min: Point3::new(5.0, -10.0, -10.0),
+                max: Point3::new(59.175, 10.0, 10.0),
+            },
+            radius: Millimetres(10.0),
+        };
+        let held = |l: Option<f64>| {
+            l.map(|l| HeldRegion {
+                length: Millimetres(l),
+                diameter: None,
+            })
+        };
+        let w = Workholding {
+            start: held(start),
+            end: held(end),
+            tabs: Vec::new(),
+        };
+        check_held_regions(&w, Some(&stock), Some(&part))
+    }
+
+    #[test]
+    fn req_set_09_a_grip_that_reaches_into_the_part_is_warned_about() {
+        // 5 mm at the end covers X 55 to 59.175 of the part: 4.175 mm.
+        let found = grip_case(None, Some(5.0));
+        assert_eq!(found.len(), 1);
+        match found[0] {
+            SetupWarningKind::HeldRegionCoversPart { at_end, x } => {
+                assert!(at_end);
+                assert!((x.0 - 55.0).abs() < 1e-9 && (x.1 - 59.175).abs() < 1e-9);
+            }
+            ref other => panic!("unexpected {other:?}"),
+        }
+        // At the start, 10 mm covers X 5 to 10 of the part.
+        let found = grip_case(Some(10.0), None);
+        assert!(matches!(
+            found[0],
+            SetupWarningKind::HeldRegionCoversPart { at_end: false, .. }
+        ));
+    }
+
+    #[test]
+    fn req_set_09_a_grip_clear_of_the_part_is_not_warned_about() {
+        // Ends exactly at the part's start, or clear of it: nothing.
+        assert!(grip_case(Some(5.0), None).is_empty());
+        assert!(grip_case(Some(3.0), Some(0.5)).is_empty());
+        assert!(grip_case(None, None).is_empty());
+        // No stock or no part: nothing to compare.
+        let w = Workholding::default();
+        assert!(check_held_regions(&w, None, None).is_empty());
+    }
+
+    #[test]
+    fn req_set_09_both_grips_are_reported_start_first() {
+        let found = grip_case(Some(10.0), Some(5.0));
+        assert_eq!(found.len(), 2);
+        assert!(matches!(
+            found[0],
+            SetupWarningKind::HeldRegionCoversPart { at_end: false, .. }
+        ));
+        assert!(matches!(
+            found[1],
+            SetupWarningKind::HeldRegionCoversPart { at_end: true, .. }
+        ));
+    }
+
+    #[test]
+    fn req_set_09_the_warning_names_how_much_of_the_part_is_covered() {
+        let found = grip_case(None, Some(5.0));
+        let text = crate::setup::SetupWarning {
+            kind: found[0].clone(),
+            unconfirmed: Vec::new(),
+        }
+        .to_string();
+        assert!(text.contains("4.175 mm of the part"), "{text}");
+        assert!(text.contains("end"), "{text}");
+    }
 
     fn tab(x_start: f64, length: f64) -> Tab {
         Tab {

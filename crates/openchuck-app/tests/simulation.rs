@@ -149,6 +149,7 @@ fn project(name: &str, ops: usize, threads: usize) -> (PathBuf, Application) {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: BTreeMap::new(),
         }));
     }

@@ -74,6 +74,7 @@ fn job() -> PostJob {
         )]),
         title: "Fuzz".into(),
         operation_names: BTreeMap::new(),
+        operation_spindle: BTreeMap::new(),
         revision: Some("abc1234".into()),
         generator: Some("OpenChuckCAM 0.0.0".into()),
         work_offset: None,

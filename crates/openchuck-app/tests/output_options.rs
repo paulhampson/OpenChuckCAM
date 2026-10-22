@@ -20,7 +20,9 @@ use openchuck_app::project::{
     Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{MachineProfile, Millimetres, Stock};
-use openchuck_app::{Application, Command, OutputGrouping, PostSelection, Threads};
+use openchuck_app::{
+    Application, Command, OutputGrouping, PostSelection, SetupSheet, Threads, Traceability,
+};
 use openchuck_types::tool::{ControllerMapping, CuttingData, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
 
@@ -81,6 +83,7 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         avoid: Vec::new(),
         check: Vec::new(),
         restriction_options: Default::default(),
+        spindle_speed: None,
         parameters,
     }
 }
@@ -535,6 +538,17 @@ fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
 }
 
 #[test]
+fn req_gc_12_the_sheet_shows_a_fractional_spindle_speed_as_set() {
+    let (dir, mut app) = sheet_project();
+    let mut op = app.project().operations()[0].clone();
+    op.spindle_speed = Some(SpindleSpeed(0.4));
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let operations = cell_rows(&app.setup_sheet(None), "Operations");
+    assert_eq!(operations[0][5], "0.4");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_gc_12_req_nfr_12_the_sheet_records_the_tolerance_each_operation_is_generated_with() {
     // Decision 0175 (issue #226): a path may be made with a known overcut
     // above its tolerance, so the sheet records the tolerance each operation
@@ -729,11 +743,13 @@ fn req_gc_12_non_ascii_is_written_as_a_question_mark_in_the_pdf_and_kept_in_the_
 fn req_gc_12_req_gc_07_the_sheet_is_the_same_bytes_each_time() {
     let (dir, mut app) = sheet_project();
     app.save().unwrap();
+    app.set_clock(at(1_792_575_005));
     app.set_post(None);
     let result = app.regenerate().unwrap();
     let first = app.setup_sheet(Some(&result.toolpath));
     for threads in [1, 4] {
         let mut again = Application::open(&dir, Threads::Exactly(threads)).unwrap();
+        again.set_clock(at(1_792_575_005));
         again.set_post(None);
         let regenerated = again.regenerate().unwrap();
         let sheet = again.setup_sheet(Some(&regenerated.toolpath));
@@ -755,7 +771,16 @@ fn req_gc_12_req_nfr_08_the_sheet_content_matches_its_snapshot() {
     let (dir, mut app) = sheet_project();
     app.set_post(None);
     let result = app.regenerate().unwrap();
-    let sheet = app.setup_sheet(Some(&result.toolpath));
+    // The block is fixed text here: a real one carries the project's random
+    // item IDs in its fingerprint and the files' modification time.
+    let sheet = SetupSheet::new(app.project(), app.strategies(), Some(&result.toolpath))
+        .with_traceability(&Traceability {
+            generated: "2026-10-21T09:30:05Z".into(),
+            saved: "2026-10-21T09:12:00Z".into(),
+            version: "0.0.0".into(),
+            fingerprint: format!("blake3:{}", "ab".repeat(32)),
+            version_control: Traceability::NOT_TRACKED.into(),
+        });
     sheet_golden("small_project.html", &sheet.to_html());
     let pdf = String::from_utf8(sheet.to_pdf()).unwrap();
     sheet_golden("small_project.pdf", &pdf);
@@ -906,5 +931,141 @@ fn req_gc_12_the_pdf_text_fits_inside_the_page_and_the_html_has_print_rules() {
     ] {
         assert!(html.contains(rule), "{rule}");
     }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+// Traceability block (GC-12, decision 0110, slice 19 item 6).
+
+fn trace_facts(sheet: &openchuck_app::SetupSheet) -> BTreeMap<String, String> {
+    let section = sheet
+        .sections
+        .iter()
+        .find(|s| s.heading == "Traceability")
+        .expect("the sheet has a Traceability section");
+    match &section.body {
+        openchuck_app::SheetBody::Facts(facts) => facts.iter().cloned().collect(),
+        other => panic!("Traceability is not facts: {other:?}"),
+    }
+}
+
+fn at(seconds: u64) -> Box<dyn openchuck_app::Clock> {
+    Box::new(openchuck_app::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds),
+    ))
+}
+
+#[test]
+fn req_gc_12_the_sheet_ends_with_a_traceability_block_of_five_labelled_lines() {
+    let (dir, mut app) = sheet_project();
+    app.set_clock(at(1_792_575_005));
+    app.save().unwrap();
+    let sheet = app.setup_sheet(None);
+    assert_eq!(sheet.sections.last().unwrap().heading, "Traceability");
+    let facts = trace_facts(&sheet);
+    let labels: Vec<&str> = facts.keys().map(String::as_str).collect();
+    assert_eq!(
+        labels,
+        [
+            "Generated",
+            "Project fingerprint",
+            "Project last saved",
+            "Software version",
+            "Version control"
+        ]
+    );
+    assert_eq!(facts["Generated"], "2026-10-21T09:30:05Z");
+    assert_eq!(facts["Software version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(facts["Version control"], "not tracked");
+    for text in [sheet.to_html(), check_pdf(&sheet.to_pdf())] {
+        for line in ["Traceability", "2026-10-21T09:30:05Z", "not tracked"] {
+            assert!(text.contains(line), "{line}");
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_nfr_08_the_traceability_block_is_the_same_every_run_with_a_fixed_clock() {
+    let (dir, mut app) = sheet_project();
+    app.set_clock(at(1_792_575_005));
+    app.save().unwrap();
+    let first = app.setup_sheet(None);
+    let second = app.setup_sheet(None);
+    assert_eq!(first, second);
+    assert_eq!(first.to_html(), second.to_html());
+    assert_eq!(first.to_pdf(), second.to_pdf());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_the_last_saved_time_is_the_project_files_modification_time() {
+    let (dir, mut app) = sheet_project();
+    app.set_clock(at(1_792_575_005));
+    app.save().unwrap();
+    let newest = std::fs::read_dir(&dir)
+        .unwrap()
+        .chain(std::fs::read_dir(dir.join("operations")).unwrap())
+        .map(|e| e.unwrap())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".toml"))
+        .map(|e| e.metadata().unwrap().modified().unwrap())
+        .max()
+        .unwrap();
+    let want = openchuck_app::iso8601_utc(newest);
+    assert_eq!(
+        trace_facts(&app.setup_sheet(None))["Project last saved"],
+        want
+    );
+    // Nothing about the time is stored in the project (PRJ-01).
+    let project_file = std::fs::read_to_string(dir.join("project.toml")).unwrap();
+    assert!(!project_file.contains(&want) && !project_file.contains("fingerprint"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_the_fingerprint_follows_the_saved_files() {
+    let (dir, mut app) = sheet_project();
+    app.save().unwrap();
+    let saved = trace_facts(&app.setup_sheet(None))["Project fingerprint"].clone();
+    assert!(saved.starts_with("blake3:") && saved.len() == 71, "{saved}");
+    assert_eq!(
+        trace_facts(&app.setup_sheet(None))["Project fingerprint"],
+        saved
+    );
+    // An edit that is not saved leaves the fingerprint of the saved files and
+    // says the project has moved on.
+    let mut setup = app.project().setups()[0].clone();
+    setup.name = "Renamed".into();
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let edited = trace_facts(&app.setup_sheet(None));
+    assert_eq!(edited["Project fingerprint"], saved);
+    assert!(edited["Project last saved"].ends_with("(changes made since are not saved)"));
+    // Saving it gives the new files' fingerprint.
+    app.save().unwrap();
+    let after = trace_facts(&app.setup_sheet(None));
+    assert_ne!(after["Project fingerprint"], saved);
+    assert!(!after["Project last saved"].contains("not saved"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_a_project_with_no_saved_file_reads_not_saved_yet() {
+    let (dir, app) = sheet_project();
+    std::fs::remove_file(dir.join("project.toml")).unwrap();
+    let facts = trace_facts(&app.setup_sheet(None));
+    assert_eq!(facts["Project last saved"], "not saved yet");
+    assert_eq!(facts["Project fingerprint"], "not saved yet");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_req_gc_07_the_traceability_block_does_not_change_the_g_code() {
+    let (dir, mut app) = sheet_project();
+    app.set_post(None);
+    let before = app.regenerate().unwrap();
+    app.set_clock(at(1_792_575_005));
+    app.save().unwrap();
+    let _ = app.setup_sheet(Some(&before.toolpath));
+    let after = app.regenerate().unwrap();
+    assert_eq!(before.gcode, after.gcode);
     std::fs::remove_dir_all(dir).unwrap();
 }

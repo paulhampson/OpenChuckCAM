@@ -360,6 +360,10 @@ impl Shell {
                     egui::ScrollArea::vertical()
                         .id_salt("playback")
                         .auto_shrink([false, true])
+                        // However little room the strip and the banner
+                        // leave, the rest scrolls in it: the dock does not
+                        // grow past its height (issue 262).
+                        .min_scrolled_height(0.0)
                         .show(ui, |ui| self.play.show_rest(ui, app));
                     skip
                 })

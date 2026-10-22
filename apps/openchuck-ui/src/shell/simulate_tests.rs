@@ -630,11 +630,17 @@ fn req_ui_16_req_sim_04_the_playback_tab_keeps_its_place_while_the_simulation_ru
 /// scroll (the transport row, "Skip stock simulation" and the timeline) is
 /// wholly in the dock, and so is every row in `rows`; no two texts overlap;
 /// and a scroll bar, where there is one, lies over neither a text nor the
-/// timeline. `what` names the case in a failure.
+/// timeline; and the dock keeps the height it was given. `what` names the
+/// case in a failure.
 fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
     let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
         .expect("the dock was drawn")
         .outer_rect;
+    let (drawn, asked) = dock_heights(rig);
+    assert!(
+        (drawn - asked).abs() < 0.5,
+        "{what}: the dock grew to {drawn} of {asked}"
+    );
     let painted: Vec<_> = rig
         .painted()
         .into_iter()
@@ -742,7 +748,7 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
         );
 
         rig.shell.undo();
-        rig.shell.settings.dock.size = 170.0;
+        rig.shell.settings.dock.size = 200.0;
         rig.settle();
         assert!(!rig.shows(super::out_of_date::TITLE));
         check_dock(&rig, &[], &format!("{zoom}: short dock"));
