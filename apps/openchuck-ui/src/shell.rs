@@ -2018,3 +2018,6 @@ mod smoke_tests;
 
 #[cfg(test)]
 mod tool_library_tests;
+
+#[cfg(test)]
+mod import_layout_tests;
