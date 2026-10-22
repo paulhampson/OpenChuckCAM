@@ -528,6 +528,11 @@ impl ExportPanel {
     ) {
         egui::Panel::bottom("export footer").show(ui, |ui| {
             ui.add_space(4.0);
+            // Its own wrapped line: beside the buttons it ran out of the dialog and over
+            // the primary button (issue 222).
+            if let Some(reason) = blocker {
+                ui.add(egui::Label::new(RichText::new(reason).weak()).wrap());
+            }
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // The primary styling shows the action that can be taken now; a
@@ -553,9 +558,6 @@ impl ExportPanel {
                     }
                     if ui.button("Cancel").clicked() {
                         acts.push(Act::Close);
-                    }
-                    if let Some(reason) = blocker {
-                        ui.weak(reason);
                     }
                 });
             });
