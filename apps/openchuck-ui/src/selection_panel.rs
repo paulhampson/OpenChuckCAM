@@ -3474,4 +3474,149 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    /// The text drawn in the last of three frames of `add`: a window is laid
+    /// out in its first frame and shown in a later one.
+    fn painted_frames(mut add: impl FnMut(&mut egui::Ui)) -> String {
+        let ctx = egui::Context::default();
+        let mut text = String::new();
+        for _ in 0..3 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| add(ui));
+            output.textures_delta.clear();
+            text.clear();
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    text.push_str(t.galley.text());
+                    text.push('\n');
+                }
+            }
+        }
+        text
+    }
+
+    #[test]
+    fn req_ui_04_req_ui_05_the_questions_name_the_set_and_the_counts() {
+        // Decision 0215 items 5 and 6: the plain-click question names the set
+        // that stays; the Replace question gives the counts.
+        let (dir, mut app, model, id, mut panel) = chosen_set("questions");
+        let hash = recorded_hash(&app, model);
+        panel.warn_reset = true;
+        panel.join(&app, model, Combine::Replace, set(&[7]), hash);
+        let text = painted_frames(|ui| {
+            assert_eq!(panel.reset_dialog(ui.ctx(), &mut app), None);
+        });
+        for label in [
+            "Start a new selection?",
+            "“Pocket” stays as it is.",
+            "Start new selection",
+            "Don't show me this warning again",
+        ] {
+            assert!(text.contains(label), "{label}: {text}");
+        }
+        assert_eq!(panel.answer_reset(&mut app, false), None);
+        panel.pick_again(id);
+        panel.join(&app, model, Combine::Replace, set(&[1, 5]), hash);
+        panel.ask_replace(&app, id);
+        let text = painted_frames(|ui| {
+            assert_eq!(panel.reset_dialog(ui.ctx(), &mut app), None);
+        });
+        for label in [
+            "Replace “Pocket”?",
+            "It holds 2 triangles. The new selection has 2: 1 is dropped and 1 is added.",
+            "Replace",
+            "Cancel",
+        ] {
+            assert!(text.contains(label), "{label}: {text}");
+        }
+        // While it is open, a click changes nothing.
+        panel.join(&app, model, Combine::Add, set(&[9]), hash);
+        assert_eq!(panel.working, tri(&[1, 5]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_a_click_already_in_the_set_changes_nothing() {
+        let (dir, mut app, model, id, mut panel) = chosen_set("direct-same");
+        let hash = recorded_hash(&app, model);
+        let undo_before = app.can_undo();
+        panel.join(&app, model, Combine::Add, set(&[0]), hash);
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        assert_eq!(app.can_undo(), undo_before);
+        // A Shift click on another model is refused: a set is on one model.
+        panel.join(&app, ModelId::new(), Combine::Add, set(&[0]), None);
+        assert!(
+            panel
+                .message
+                .as_deref()
+                .is_some_and(|m| m.contains("is on another model"))
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_14_esc_ends_pick_again_before_it_ends_picking() {
+        // Decision 0215 item 5: during Pick again, Esc first ends the pick
+        // and keeps the set chosen; the next Esc leaves picking.
+        let (dir, app, model, id, mut panel) = chosen_set("pick-again-esc");
+        panel.pick_again(id);
+        panel.join(
+            &app,
+            model,
+            Combine::Replace,
+            set(&[4]),
+            recorded_hash(&app, model),
+        );
+        let ctx = egui::Context::default();
+        let esc = |panel: &mut SelectionPanel| {
+            let event = |pressed| egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            };
+            let input = egui::RawInput {
+                events: vec![event(true), event(false)],
+                ..Default::default()
+            };
+            let mut leaves = false;
+            let mut output = ctx.run_ui(input, |ui| leaves = panel.keys(ui.ctx(), false));
+            output.textures_delta.clear();
+            leaves
+        };
+        assert!(!esc(&mut panel));
+        assert!(!panel.repick && panel.working.is_empty());
+        assert_eq!(panel.shown, Some(id));
+        assert!(esc(&mut panel));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_nfr_04_req_ui_05_a_change_being_checked_says_so_with_cancel() {
+        // Decision 0112 item 1: the check runs as a job, with Cancel.
+        let (dir, mut app, model, id, mut panel) = chosen_set("checking-line");
+        panel.join(
+            &app,
+            model,
+            Combine::Add,
+            set(&[2]),
+            recorded_hash(&app, model),
+        );
+        assert_eq!(panel.edits_waiting(), (0, true));
+        // Drawn without finishing the job: the line shows while it runs.
+        let mut held = panel.writing.take();
+        let text = painted(|ui| {
+            panel.writing = held.take();
+            panel.checking(ui);
+        });
+        assert!(
+            text.contains("Checking the selection against the model…"),
+            "{text}"
+        );
+        assert!(text.contains("Cancel"), "{text}");
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1, 2]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
