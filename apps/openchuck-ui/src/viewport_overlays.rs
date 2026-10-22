@@ -13,6 +13,7 @@ use openchuck_app::pathview::DeviationBand;
 use openchuck_app::scene::{SceneRole, SceneView};
 use openchuck_viewport::{Camera, StandardView};
 
+use crate::results_panel::{BandFilter, SOME_HIDDEN, Shown};
 use crate::roles::{self, to_color32};
 use crate::viewport::{ViewStep, Viewport};
 
@@ -582,7 +583,7 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
     }
     if let (Some(r), Some(bands)) = (b.scale, viewport.bands()) {
         frame(&painter, r);
-        colour_scale(&painter, r, bands.tolerance);
+        colour_scale(&painter, r, bands.tolerance, &viewport.band_filter);
         for (i, entry) in workholding_entries(viewport.view()).into_iter().enumerate() {
             let y = r.top() + 74.0 + ROW * i as f32 - 4.0;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
@@ -632,8 +633,10 @@ fn on_target_cell() -> usize {
 }
 
 /// Draws the colour scale: a bar of the bands, its labelled ends, the hatched
-/// "not measured" swatch and the band of "on the surface".
-fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
+/// "not measured" swatch and the band of "on the surface". A band the band
+/// filter hides is dimmed, one it shows in part is dimmed in its lower half,
+/// and while anything is hidden the box says so (SIM-15; decision 0163).
+fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandFilter) {
     let bar = Rect::from_min_size(r.left_top() + vec2(8.0, 8.0), vec2(r.width() - 16.0, 10.0));
     let step = bar.width() / SCALE.len() as f32;
     for (i, band) in SCALE.iter().enumerate() {
@@ -641,7 +644,20 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
             bar.left_top() + vec2(step * i as f32, 0.0),
             vec2(step, bar.height()),
         );
-        painter.rect_filled(cell, 0.0, to_color32(roles::band_colour(*band)));
+        let colour = to_color32(roles::band_colour(*band));
+        match filter.band_shown(*band, tolerance) {
+            Shown::All => {
+                painter.rect_filled(cell, 0.0, colour);
+            }
+            Shown::Part => {
+                let (top, bottom) = cell.split_top_bottom_at_fraction(0.5);
+                painter.rect_filled(top, 0.0, colour);
+                painter.rect_filled(bottom, 0.0, colour.gamma_multiply(HIDDEN_OPACITY));
+            }
+            Shown::Hidden => {
+                painter.rect_filled(cell, 0.0, colour.gamma_multiply(HIDDEN_OPACITY));
+            }
+        }
     }
     let font = egui::FontId::proportional(11.0);
     painter.text(
@@ -684,10 +700,23 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
         r.left_top() + vec2(8.0, 52.0),
         egui::Align2::LEFT_TOP,
         format!("On the surface: within {tolerance:.3} mm"),
-        font,
+        font.clone(),
         roles::OVERLAY_MUTED,
     );
+    if filter.hides_any() {
+        // On the "Not measured" row, clear of the labels under the bar.
+        painter.text(
+            pos2(r.right() - 8.0, unmeasured.center().y),
+            egui::Align2::RIGHT_CENTER,
+            SOME_HIDDEN,
+            font,
+            roles::OVERLAY_TEXT,
+        );
+    }
 }
+
+/// How strongly a band the filter hides is drawn on the colour scale.
+const HIDDEN_OPACITY: f32 = 0.25;
 
 /// Diagonal lines 6 pixels apart across `r`, clipped to it: one direction,
 /// or both.
