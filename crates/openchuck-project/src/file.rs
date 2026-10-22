@@ -89,7 +89,9 @@ use openchuck_types::workholding::Workholding;
 ///   true (decision record 0168), and `hidden_paths`, the operations whose
 ///   toolpath is hidden in the view, written only when one is (decision
 ///   record 0169). Neither is an input to a toolpath or the G-code.
-pub const SCHEMA: i64 = 15;
+/// - 16: an operation gains the optional `spindle_speed`, written only when
+///   the user set one (decision record 0196).
+pub const SCHEMA: i64 = 16;
 
 /// Name of the machine profile file in the project folder.
 pub const MACHINE_FILE: &str = "machine.toml";
@@ -118,6 +120,7 @@ const MIGRATIONS: &[Migration] = &[
     schema_12_to_13,
     schema_13_to_14,
     schema_14_to_15,
+    schema_15_to_16,
 ];
 
 /// Schema 2 only adds optional fields to model references, which a schema 1
@@ -304,6 +307,22 @@ fn schema_14_to_15(kind: FileKind, table: &mut toml::Table) -> Result<(), String
     }
 }
 
+/// Schema 16 adds the optional `spindle_speed` to operation files, which a
+/// schema 15 file does not have, so it needs no change but its number: the
+/// operation takes the tool's cutting data as before. A schema 15 operation
+/// file that already holds one was not written by any version that knew it,
+/// so it is refused rather than guessed at.
+fn schema_15_to_16(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Operation && table.contains_key("spindle_speed") {
+        return Err(
+            "this schema 15 file has `spindle_speed`, a field schema 16 introduced; \
+             remove it, or set `schema = 16` if the file was written for schema 16"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
 /// The kinds of file in a project folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FileKind {
@@ -461,6 +480,8 @@ struct OperationFile {
     check_options: BTreeMap<SelectionSetId, SetOptions>,
     #[serde(default)]
     parameters: BTreeMap<String, ParameterValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spindle_speed: Option<f64>,
     #[serde(default = "enabled_default", skip_serializing_if = "is_enabled")]
     enabled: bool,
 }
@@ -647,6 +668,7 @@ pub fn render(project: &Project) -> Result<BTreeMap<String, String>, ProjectErro
             avoid_options: non_default(&o.restriction_options.avoid),
             check_options: non_default(&o.restriction_options.check),
             parameters: o.parameters.clone(),
+            spindle_speed: o.spindle_speed.map(|s| s.0),
             enabled: o.enabled,
         };
         files.insert(item_path(FileKind::Operation, &o.id), to_text(&file)?);
@@ -960,6 +982,7 @@ fn assemble(texts: Texts, migrations: &[Migration], schema: i64) -> Result<Proje
                         check: non_default(&f.check_options),
                     },
                     parameters: f.parameters,
+                    spindle_speed: f.spindle_speed.map(openchuck_types::units::SpindleSpeed),
                     enabled: f.enabled,
                 })
             })

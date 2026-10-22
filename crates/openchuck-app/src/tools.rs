@@ -87,7 +87,7 @@ pub fn check_tools(project: &Project, library: Option<&ToolLibrary>) -> Vec<Tool
                     .find(|s| s.id == op.setup)
                     .and_then(|s| s.material.as_deref());
                 if let Some(material) = material
-                    && !t.cutting_data.contains_key(material)
+                    && openchuck_types::tool::find_cutting_data(&t.cutting_data, material).is_none()
                 {
                     missing.insert(material.to_owned());
                 }
@@ -308,6 +308,7 @@ mod tests {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: Default::default(),
+                spindle_speed: None,
                 parameters: Default::default(),
             }),
             Placement::End,

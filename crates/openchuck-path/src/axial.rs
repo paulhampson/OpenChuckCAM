@@ -57,6 +57,10 @@ impl Strategy for AxialFinishing {
         "Axial finishing"
     }
 
+    fn description(&self) -> &str {
+        "Cuts the surface in straight passes along the length of the part, turning the part a small step between passes. Use it where marks running along the part suit the job better than a spiral."
+    }
+
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(vec![
             ParameterSpec {

@@ -653,6 +653,7 @@ fn selection_project(
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: std::collections::BTreeMap::new(),
         }),
         placement: Placement::End,

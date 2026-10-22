@@ -508,3 +508,134 @@ fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_
     );
     rig.cleanup();
 }
+
+/// Whether anything is drawn in the highlight layer over the part.
+fn highlighted(rig: &Rig) -> bool {
+    rig.shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Overlay)
+        .is_some_and(|s| !s.meshes.is_empty() || !s.lines.is_empty())
+}
+
+/// Saves a set of two triangles, selects it in the tree and draws a frame.
+fn select_a_set(rig: &mut Rig) -> SelectionSetId {
+    let model = rig.model();
+    let id = rig
+        .shell
+        .app
+        .as_mut()
+        .unwrap()
+        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
+        .unwrap();
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.frame(Vec::new());
+    id
+}
+
+#[test]
+fn req_ui_04_req_ui_05_leaving_selection_mode_leaves_no_highlight() {
+    // Issue 261: the pending selection is drawn only while selection mode is
+    // on. It is kept for the next time picking starts.
+    let mut rig = Rig::picking("highlight-leave");
+    let model = rig.model();
+    rig.shell
+        .selection
+        .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[0, 1]);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    rig.press(Key::Escape);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.selected, None);
+    assert!(!highlighted(&rig), "Esc leaves no highlight");
+    rig.shell.selected = Some(Selection::Picking);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig), "picking again shows it again");
+    // Leaving a selected set by Esc takes its highlight away too.
+    let id = select_a_set(&mut rig);
+    assert_eq!(rig.shell.selected, Some(Selection::Set(id)));
+    rig.press(Key::Escape);
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig));
+    assert_eq!(rig.shell.selection.shown_set(), None);
+    rig.cleanup();
+}
+
+#[test]
+fn req_ui_05_deselecting_a_set_leaves_no_highlight() {
+    let mut rig = Rig::picking("highlight-deselect");
+    let id = select_a_set(&mut rig);
+    assert!(highlighted(&rig));
+    // The list's click on the chosen set deselects it.
+    rig.shell.selection.show_set(None);
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig), "deselected in the list");
+    // Loaded as the working selection ("Select in view"), then deselected:
+    // the unchanged copy goes with it.
+    let app = rig.shell.app.as_ref().unwrap();
+    rig.shell.selection.select_set_in_view_for_test(app, id);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    rig.shell.selection.show_set(None);
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig), "the loaded copy goes too");
+    assert!(rig.shell.selection.working_triangles().is_empty());
+    // Selecting another item deselects the set.
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.tree_action(super::TreeAction::Select(op));
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig), "another item selected");
+    rig.cleanup();
+}
+
+#[test]
+fn req_ui_05_changing_step_leaves_no_highlight_in_any_view() {
+    // Model, Operations and Simulate share the highlight layer; leaving the
+    // step ends selection mode, from a pending selection or a selected set.
+    let mut rig = Rig::picking("highlight-step");
+    rig.shell.generate(false);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.run.last().is_none() {
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(Instant::now() < deadline, "timed out");
+    }
+    let model = rig.model();
+    rig.shell.step = Step::Operations;
+    for (from, to) in [
+        (Step::Operations, Step::Model),
+        (Step::Model, Step::Simulate),
+        (Step::Simulate, Step::Operations),
+    ] {
+        rig.shell.step = from;
+        rig.shell.selected = Some(Selection::Picking);
+        rig.shell
+            .selection
+            .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[0, 1]);
+        rig.frame(Vec::new());
+        assert!(highlighted(&rig), "{from:?}");
+        rig.shell.open_step(to);
+        rig.frame(Vec::new());
+        assert_eq!(rig.shell.step, to);
+        assert_eq!(rig.shell.selected, None);
+        assert!(!highlighted(&rig), "{from:?} to {to:?}, pending selection");
+
+        rig.shell.step = from;
+        let id = select_a_set(&mut rig);
+        assert!(highlighted(&rig), "{from:?}, set");
+        rig.shell.open_step(to);
+        rig.frame(Vec::new());
+        assert!(!highlighted(&rig), "{from:?} to {to:?}, set");
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .execute(Command::Remove(
+                openchuck_app::project::ItemId::SelectionSet(id),
+            ))
+            .unwrap();
+    }
+    rig.cleanup();
+}

@@ -68,6 +68,7 @@ fn options(rule: FeedRule) -> ConvertOptions<MachineProfile> {
         tools,
         decimals: None,
         operation_names: BTreeMap::new(),
+        operation_spindle: BTreeMap::new(),
     }
 }
 
@@ -224,4 +225,27 @@ fn req_gc_07_converting_twice_gives_the_same_program() {
     let a = to_machine_program(&toolpath, &options(FeedRule::Makera)).unwrap();
     let b = to_machine_program(&toolpath, &options(FeedRule::Makera)).unwrap();
     assert_eq!(a, b);
+}
+
+#[test]
+fn req_gc_14_an_operation_spindle_speed_overrides_the_tools() {
+    let toolpath = path(vec![seg(
+        MoveKind::Cutting,
+        pose(15.0, 0.0, 12.0, 0.0),
+        2.0,
+    )]);
+    let mut o = options(FeedRule::Linuxcnc);
+    o.operation_spindle.insert("op1".into(), 7500.0);
+    let program = to_machine_program(&toolpath, &o).unwrap();
+    assert!(matches!(program.steps[2], Step::SpindleOn { rpm } if (rpm - 7500.0).abs() < 1e-9));
+    // Another operation's entry does not apply.
+    let mut o = options(FeedRule::Linuxcnc);
+    o.operation_spindle.insert("other".into(), 7500.0);
+    let program = to_machine_program(&toolpath, &o).unwrap();
+    assert!(matches!(program.steps[2], Step::SpindleOn { rpm } if (rpm - 10000.0).abs() < 1e-9));
+    // A bad override is a clear error, never a spindle command.
+    let mut o = options(FeedRule::Linuxcnc);
+    o.operation_spindle.insert("op1".into(), 0.0);
+    let err = to_machine_program(&toolpath, &o).unwrap_err().to_string();
+    assert!(err.contains("op1") && err.contains("spindle"), "{err}");
 }

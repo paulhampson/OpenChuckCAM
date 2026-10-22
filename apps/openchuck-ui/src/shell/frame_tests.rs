@@ -160,6 +160,45 @@ impl Rig {
         out
     }
 
+    /// Every text and filled rectangle painted, as much of it as its clip
+    /// lets show: the text (none for a rectangle) and the visible rectangle.
+    /// A text's rectangle covers its glyphs, not the indent a wrapped row
+    /// starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect)> {
+        fn walk(
+            shape: &egui::Shape,
+            clip: egui::Rect,
+            out: &mut Vec<(Option<String>, egui::Rect)>,
+        ) {
+            let (text, rect) = match shape {
+                egui::Shape::Text(t) => (
+                    Some(t.galley.text().to_string()),
+                    t.galley
+                        .rows
+                        .iter()
+                        .map(|r| r.rect_without_leading_space().translate(t.pos.to_vec2()))
+                        .reduce(|a, b| a.union(b))
+                        .unwrap_or(egui::Rect::NOTHING),
+                ),
+                egui::Shape::Rect(r) => (None, r.rect),
+                egui::Shape::Vec(shapes) => {
+                    shapes.iter().for_each(|s| walk(s, clip, out));
+                    return;
+                }
+                _ => return,
+            };
+            let seen = rect.intersect(clip);
+            if seen.is_positive() {
+                out.push((text, seen));
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
     /// Every text painted with the part of its rectangle that is not clipped away, in paint
     /// order; texts wholly clipped away are left out.
     pub(super) fn visible_text_rects(&self) -> Vec<(String, egui::Rect)> {
@@ -1554,4 +1593,53 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
         near(rig.inspector_layout().0, min),
         "dragged to the narrowest"
     );
+}
+
+/// The operation inspector names the strategy under its own heading with the
+/// same plain description the New operation list shows, apart from the
+/// operation's own name; a rename leaves the strategy as it was (issue 242;
+/// decision record 0204; OP-16, UI-07, GC-07).
+#[test]
+fn req_op_16_req_ui_07_the_inspector_shows_the_strategy_apart_from_the_name() {
+    let mut rig = Rig::cube("inspector-strategy", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    op.name = "Operation 3".to_owned();
+    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
+        op.clone(),
+    )))
+    .unwrap();
+    let label = app.strategy_label(&op.strategy);
+    let text = app.strategy_description(&op.strategy);
+    assert!(!text.is_empty());
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Operation 3"));
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows(&label), "{label}");
+    assert!(rig.shows(&text[..40]), "{text}");
+}
+
+/// New operation is one list of strategies, roughing first and the specialist
+/// strategies last, each with its description under it (issue 195; decision
+/// record 0204; OP-16, UI-06).
+#[test]
+fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descriptions() {
+    let mut rig = Rig::cube("new-operation-list", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_ref().unwrap();
+    let choices = app.strategy_choices();
+    rig.shell.run.begin_add(app, None, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows("Roughing"));
+    assert!(rig.shows("Finishing"));
+    assert!(rig.shows("Rotary roughing"));
+    // The list scrolls, so only the first entries are drawn; the first
+    // entry's description is under its name.
+    assert!(rig.shows(&choices[0].description[..40]));
 }

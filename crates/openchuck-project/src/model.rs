@@ -29,7 +29,7 @@ use openchuck_types::simulation::SimulationSettings;
 use openchuck_types::stock::Stock;
 use openchuck_types::tool::{ControllerMapping, CuttingTable, Tool};
 use openchuck_types::transform::TransformStep;
-use openchuck_types::units::LengthUnit;
+use openchuck_types::units::{LengthUnit, SpindleSpeed};
 use openchuck_types::workholding::{Workholding, validate_workholding};
 use serde::{Deserialize, Serialize};
 
@@ -619,6 +619,10 @@ pub struct Operation {
     pub restriction_options: RestrictionOptions,
     /// Parameter values by name, in name order.
     pub parameters: BTreeMap<String, ParameterValue>,
+    /// The spindle speed the user gave this operation. `None` takes the
+    /// tool's cutting data for the setup's material, and without that the
+    /// operation has no spindle speed and cannot be posted (decision 0196).
+    pub spindle_speed: Option<SpindleSpeed>,
     /// False when the user has disabled it: it stays in the project and the
     /// tree but is left out of regeneration, simulation and posting, as if it
     /// were absent (UI-06; decision record 0029 item 10).
@@ -1635,6 +1639,15 @@ impl Project {
                         )
                         .into());
                     }
+                }
+                if let Some(speed) = o.spindle_speed
+                    && !(speed.0.is_finite() && speed.0 > 0.0)
+                {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("operation {}.spindle_speed", o.id),
+                        format!("{} must be a number greater than 0", speed),
+                    )
+                    .into());
                 }
                 for (name, value) in &o.parameters {
                     if let ParameterValue::Number(v) = value

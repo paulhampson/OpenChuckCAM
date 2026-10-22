@@ -50,7 +50,7 @@ use crate::params::{
     EntryStyle, ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names,
 };
 use crate::rotary::TURN;
-use crate::strategy::{CutPoint, Pass, Strategy, StrategyInput, StrategyOutput};
+use crate::strategy::{CutPoint, Pass, Strategy, StrategyGroup, StrategyInput, StrategyOutput};
 
 /// Radial drilling of the holes of the model.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -132,6 +132,14 @@ impl Strategy for RadialDrilling {
 
     fn label(&self) -> &str {
         "Radial drilling"
+    }
+
+    fn description(&self) -> &str {
+        "Drills holes straight into the part from the side, turning the part so each hole faces the tool. It needs a STEP model so it can find the round holes."
+    }
+
+    fn group(&self) -> StrategyGroup {
+        StrategyGroup::Specialist
     }
 
     fn needs_brep_part(&self) -> Option<&str> {

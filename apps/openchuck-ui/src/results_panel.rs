@@ -362,13 +362,16 @@ fn tint(band: DeviationBand) -> Color32 {
 }
 
 impl ResultsPanel {
-    /// Draws the inspector for the latest run. Returns true when the colour
+    /// Draws the inspector for the latest run. `stale` is true while the run
+    /// no longer matches the project: its numbers are then dimmed, under the
+    /// shell's out-of-date banner (issue 260). Returns true when the colour
     /// choice changed this frame.
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
         app: &mut Application,
         run: Option<&Arc<Regeneration>>,
+        stale: Option<f32>,
     ) -> bool {
         let before = self.colour_by;
         ui.label(
@@ -399,15 +402,18 @@ impl ResultsPanel {
         let results = self.summary.as_ref().map(|(_, r)| r.clone());
         match results {
             Some(results) if !results.is_empty() => {
-                if run.is_some_and(|r| *r.project != *app.project()) {
-                    ui.colored_label(
-                        DARK.warning,
-                        "The project has changed since this simulation. Simulate again.",
-                    );
-                }
-                for result in &results {
-                    result_block(ui, result, results.len() > 1);
-                }
+                ui.scope(|ui| {
+                    if let Some(opacity) = stale {
+                        ui.label(
+                            RichText::new("Results of the out-of-date simulation:")
+                                .color(DARK.warning),
+                        );
+                        ui.multiply_opacity(opacity);
+                    }
+                    for result in &results {
+                        result_block(ui, result, results.len() > 1);
+                    }
+                });
             }
             Some(_) => {
                 ui.label("This run was not simulated. Choose Simulate to see the results.");
@@ -451,9 +457,7 @@ impl ResultsPanel {
                 let wanted = if reset {
                     Ok(DEFAULT_CELL)
                 } else {
-                    text.trim()
-                        .parse::<f64>()
-                        .map_err(|_| format!("“{}” is not a number of millimetres.", text.trim()))
+                    crate::arith::number(text, Some(3))
                 };
                 match wanted {
                     Ok(cell) if (cell - current).abs() > 1e-12 => {
