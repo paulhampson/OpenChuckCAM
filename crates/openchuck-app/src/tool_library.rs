@@ -804,6 +804,22 @@ pub fn edit_cutting_data(
         )));
     }
     edited(tool, |t| {
+        // A rename never lands on another entry; adding a material that is
+        // there under the same name replaces it, as it always has.
+        let key = openchuck_types::tool::material_key(material);
+        let taken = t.cutting_data.keys().find(|k| {
+            Some(k.as_str()) != replacing
+                && openchuck_types::tool::material_key(k) == key
+                && (replacing.is_some() || k.as_str() != material)
+        });
+        if let Some(other) = taken {
+            return Err(AppError::Engine(openchuck_types::Error::invalid(
+                "cutting_data",
+                format!(
+                    "the tool already has cutting data for {other:?}, which {material:?} would match too"
+                ),
+            )));
+        }
         if let Some(old) = replacing {
             t.cutting_data.remove(old);
         }

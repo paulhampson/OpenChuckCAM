@@ -284,6 +284,16 @@ fn req_tl_05_cutting_data_by_material_is_added_checked_renamed_and_removed() {
     // Renamed: the old material goes.
     edit_cutting_data(&mut tool, "Medium density fibreboard", mdf, Some("MDF")).unwrap();
     assert!(!tool.cutting_data.contains_key("MDF"));
+    // A rename onto another entry, in any spelling, is refused and changes
+    // neither entry (decision 0197).
+    let kept = tool.clone();
+    for target in ["Oak", "oak"] {
+        let err = edit_cutting_data(&mut tool, target, mdf, Some("Medium density fibreboard"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already has"), "{target}: {err}");
+        assert_eq!(tool, kept);
+    }
     remove_cutting_data(&mut tool, "Oak");
     assert_eq!(cutting_rows(&tool).len(), 1);
 }

@@ -538,6 +538,17 @@ fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
 }
 
 #[test]
+fn req_gc_12_the_sheet_shows_a_fractional_spindle_speed_as_set() {
+    let (dir, mut app) = sheet_project();
+    let mut op = app.project().operations()[0].clone();
+    op.spindle_speed = Some(SpindleSpeed(0.4));
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let operations = cell_rows(&app.setup_sheet(None), "Operations");
+    assert_eq!(operations[0][5], "0.4");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn req_gc_12_req_nfr_12_the_sheet_records_the_tolerance_each_operation_is_generated_with() {
     // Decision 0175 (issue #226): a path may be made with a known overcut
     // above its tolerance, so the sheet records the tolerance each operation
