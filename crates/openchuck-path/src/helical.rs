@@ -78,6 +78,10 @@ impl Strategy for HelicalFinishing {
         "Helical finishing"
     }
 
+    fn description(&self) -> &str {
+        "Cuts the whole surface in one continuous spiral around the part, like a thread winding round a bolt, with the part turning steadily as the tool moves along it. A general-purpose finish for round shapes. It cannot reach into tight inside corners."
+    }
+
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(vec![
             ParameterSpec {

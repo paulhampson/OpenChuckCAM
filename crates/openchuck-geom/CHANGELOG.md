@@ -4,6 +4,9 @@ All notable changes to `openchuck-geom` are recorded here.
 
 ## Unreleased
 
+- Version 0.17.0 with the library family (decisions 0201 and 0202); no change to this crate's items.
+- Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
+- Version 0.15.0 with the library family.
 - Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
 - Version 0.10.0 with the library family (`assemble::smoothed_contacts` in `openchuck-path` takes the rotary mapping, a breaking change; decision 0115).
 - `check::weld_vertices`: a mesh's triangles moved onto the first vertex within a tolerance, with vertex and triangle indices kept, so a STEP model's separately tessellated faces are checked as one mesh (OI-259).

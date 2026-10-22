@@ -166,6 +166,20 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// The name shown to the user.
     fn label(&self) -> &str;
 
+    /// What the strategy does, in a sentence or two a reader who is not a
+    /// machinist can follow, with each unavoidable term explained. It says
+    /// nothing that implies the output is safe to run (NFR-12). The host shows
+    /// it under the strategy's name when an operation is added and in the
+    /// operation's panel (OP-16; decision record 0204).
+    fn description(&self) -> &str;
+
+    /// Where the strategy sits in the list a host offers: roughing first,
+    /// finishing next, specialist strategies last. Finishing, the default,
+    /// covers the strategies that cut the surface of the part.
+    fn group(&self) -> StrategyGroup {
+        StrategyGroup::Finishing
+    }
+
     /// The parameters, including the common ones
     /// ([`ParameterSchema::with_common`]).
     fn schema(&self) -> ParameterSchema;
@@ -581,10 +595,25 @@ fn check_clear(path: &GeneratedPath, keep_out: &[(f64, f64)], mid: f64) -> Resul
     Ok(())
 }
 
+/// Where a strategy sits in the list a host offers (decision record 0204).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StrategyGroup {
+    /// Removes bulk material and leaves a layer for finishing.
+    Roughing,
+    /// Cuts the surface of the part to its final shape, including the
+    /// clean-up of what an earlier finish left.
+    Finishing,
+    /// Does one particular job: swarf, drilling, edge following.
+    Specialist,
+}
+
 /// The strategies a host offers, by name.
 #[derive(Debug, Clone, Default)]
 pub struct Registry {
     strategies: BTreeMap<String, Arc<dyn Strategy>>,
+    /// The names in the order they were registered, which is the order within
+    /// a [`StrategyGroup`] in [`in_menu_order`](Self::in_menu_order).
+    order: Vec<String>,
 }
 
 impl Registry {
@@ -601,16 +630,16 @@ impl Registry {
     pub fn builtin() -> Self {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
+        let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
         let _ = registry.register(Arc::new(crate::axial::AxialFinishing));
         let _ = registry.register(Arc::new(crate::indexed::IndexedFinishing));
-        let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
         let _ = registry.register(Arc::new(crate::simultaneous::SimultaneousFinishing));
         let _ = registry.register(Arc::new(crate::rest::RestMachining));
         let _ = registry.register(Arc::new(crate::pencil::PencilFinishing));
-        let _ = registry.register(Arc::new(crate::drill::RadialDrilling));
         let _ = registry.register(Arc::new(crate::edge_following::EdgeFollowing::default()));
         let _ = registry.register(Arc::new(crate::swarf::Swarf));
+        let _ = registry.register(Arc::new(crate::drill::RadialDrilling));
         registry
     }
 
@@ -625,6 +654,7 @@ impl Registry {
                 "a strategy named \"{name}\" is already registered"
             )));
         }
+        self.order.push(name.clone());
         self.strategies.insert(name, strategy);
         Ok(())
     }
@@ -640,6 +670,19 @@ impl Registry {
     /// Every registered strategy, in name order.
     pub fn iter(&self) -> impl Iterator<Item = &dyn Strategy> {
         self.strategies.values().map(|s| s.as_ref())
+    }
+
+    /// Every registered strategy in the order a host lists them: roughing,
+    /// then finishing, then the specialist strategies, each group in
+    /// registration order.
+    pub fn in_menu_order(&self) -> impl Iterator<Item = &dyn Strategy> {
+        let mut all: Vec<&dyn Strategy> = self
+            .order
+            .iter()
+            .filter_map(|n| self.strategies.get(n).map(|s| s.as_ref()))
+            .collect();
+        all.sort_by_key(|s| s.group());
+        all.into_iter()
     }
 }
 

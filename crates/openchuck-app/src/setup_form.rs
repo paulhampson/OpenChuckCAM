@@ -205,7 +205,7 @@ pub fn stock_rows(setup: &Setup) -> Vec<SetupRow> {
     rows.push(SetupRow {
         field: SetupField::Material,
         label: "Material",
-        description: "The stock material, which chooses the tools' cutting data.",
+        description: "The stock material, such as Softwood. It chooses the tools' cutting data, matched by name ignoring capital letters and extra spaces. Pick one the tools already know, or type a new one.",
         unit: "",
         value: setup.material.clone().unwrap_or_default(),
         hint: Some("Not set".to_owned()),

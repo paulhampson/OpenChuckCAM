@@ -595,6 +595,7 @@ impl ModelPanel {
                 unit,
                 applied: field_row::number(value, field_row::places(unit)),
                 enabled: true,
+                number: true,
                 ..TextRow::default()
             },
         );

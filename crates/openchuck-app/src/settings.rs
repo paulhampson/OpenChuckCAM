@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::acknowledgement::SETTINGS_FILE;
 use crate::error::AppError;
+use crate::tool_library::ToolLibraryView;
 
 /// The table of `settings.toml` this module owns.
 const TABLE: &str = "interface";
@@ -175,6 +176,10 @@ pub struct UserSettings {
     pub record_actions: bool,
     /// The Simulate step's choices.
     pub simulate: SimulateSettings,
+    /// The tool library's folded groups and size filter (decision record
+    /// 0199; issues 192 and 193). A file written before the field existed
+    /// reads it as unfolded with no filter.
+    pub tool_library: ToolLibraryView,
 }
 
 impl Default for UserSettings {
@@ -191,6 +196,7 @@ impl Default for UserSettings {
             open_sections: BTreeMap::new(),
             record_actions: true,
             simulate: SimulateSettings::default(),
+            tool_library: ToolLibraryView::default(),
         }
     }
 }

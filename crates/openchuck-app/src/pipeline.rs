@@ -381,6 +381,10 @@ mod tests {
         fn label(&self) -> &str {
             "One ring"
         }
+
+        fn description(&self) -> &str {
+            "A strategy for tests."
+        }
         fn schema(&self) -> ParameterSchema {
             ParameterSchema::with_common(Vec::new())
         }

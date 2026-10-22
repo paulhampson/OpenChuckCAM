@@ -2065,6 +2065,7 @@ mod tests {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: leave
                 .map(|v| ("stock_to_leave".to_owned(), ParameterValue::Number(v)))
                 .into_iter()

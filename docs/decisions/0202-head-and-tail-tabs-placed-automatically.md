@@ -28,7 +28,7 @@ These rest on the part's position being right, which [decision 0201](0201-setup-
 
 ## Consequences
 
-- `openchuck-types` (breaking with 0201's change): `Tab` gains the public field `auto`; `TabEnd`, `MIN_TAB_ROOM`, `auto_tab_span`, `Workholding::resolved`, `Workholding::auto_tabs_without_room` and `SetupWarningKind::AutoTabNoRoom` are new. Library family 0.15.0.
+- `openchuck-types` (breaking with 0201's change): `Tab` gains the public field `auto`; `TabEnd`, `MIN_TAB_ROOM`, `auto_tab_span`, `Workholding::resolved`, `Workholding::auto_tabs_without_room` and `SetupWarningKind::AutoTabNoRoom` are new. Library family 0.17.0.
 - `openchuck-project`: project schema 17 (shared with 0201); a schema 16 file with a tab holding `auto` is refused, with what to do.
 - `openchuck-app`: `workholding_view::end_tab`, `no_room`, `to_field_places`, `set_tab_span`, `set_tab_auto`; `labelled_solids` resolves; the draft checks skip an automatic tab's stored position.
 - `openchuck-ui`: the two buttons, the check box, the header mark, the warning on the row.

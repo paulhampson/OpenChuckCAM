@@ -18,7 +18,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
 endobj
 7 0 obj
-<< /Length 3362 >>
+<< /Length 3821 >>
 stream
 BT /F2 14 Tf 40 793.50 Td (Setup sheet: sheet) Tj ET
 BT /F2 11 Tf 40 771.50 Td (Job) Tj ET
@@ -57,6 +57,12 @@ BT /F1 8.5 Tf 40 364.50 Td (Time is the sum of the toolpath's move durations at 
 BT /F1 8.5 Tf 40 353.50 Td (acceleration, tool changes and fixturing, and is not the simulated estimate. Generated G-code must) Tj ET
 BT /F1 8.5 Tf 40 342.50 Td (be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a) Tj ET
 BT /F1 8.5 Tf 40 331.50 Td (program is safe or correct for any machine, tool or setup.) Tj ET
+BT /F2 11 Tf 40 309.50 Td (Traceability) Tj ET
+BT /F1 8.5 Tf 40 298.50 Td (Generated            2026-10-21T09:30:05Z) Tj ET
+BT /F1 8.5 Tf 40 287.50 Td (Project last saved   2026-10-21T09:12:00Z) Tj ET
+BT /F1 8.5 Tf 40 276.50 Td (Software version     0.0.0) Tj ET
+BT /F1 8.5 Tf 40 265.50 Td (Project fingerprint  blake3:abababababababababababababababababababababababababababababababab) Tj ET
+BT /F1 8.5 Tf 40 254.50 Td (Version control      not tracked) Tj ET
 BT /F1 8.5 Tf 40 20.00 Td (Page 1 of 1) Tj ET
 endstream
 endobj
@@ -73,5 +79,5 @@ xref
 trailer
 << /Size 8 /Root 1 0 R /Info 5 0 R >>
 startxref
-3933
+4392
 %%EOF

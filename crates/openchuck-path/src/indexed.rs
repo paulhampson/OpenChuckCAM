@@ -47,6 +47,10 @@ impl Strategy for IndexedFinishing {
         "Indexed finishing"
     }
 
+    fn description(&self) -> &str {
+        "Turns the part to each angle you choose, holds it still and cuts one straight pass along its length there. Use it for features that are cut from a few set directions."
+    }
+
     fn schema(&self) -> ParameterSchema {
         let mut schema = ParameterSchema::with_common(vec![
             ParameterSpec {

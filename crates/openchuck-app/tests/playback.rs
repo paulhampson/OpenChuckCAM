@@ -116,6 +116,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: BTreeMap::new(),
         }),
     ] {

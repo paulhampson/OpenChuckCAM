@@ -30,6 +30,9 @@ pub struct PostJob {
     /// comments that name each operation (GC-06). A tag with no name is
     /// written as it is.
     pub operation_names: BTreeMap<String, String>,
+    /// Spindle speeds by the IR's operation tag; an operation with an entry
+    /// runs at it, any other at its tool's speed (decision 0196).
+    pub operation_spindle: BTreeMap<String, f64>,
     /// A revision identifier for the header, when supplied (VC-06).
     pub revision: Option<String>,
     /// The tool and its version, written as a comment after the title, such as
@@ -176,6 +179,7 @@ impl PostProcessor for TemplatePost {
             tools: job.tools.clone(),
             decimals: Some((d.options.decimals.pos, d.options.decimals.a)),
             operation_names: job.operation_names.clone(),
+            operation_spindle: job.operation_spindle.clone(),
         };
         let mut program = to_machine_program(toolpath, &convert)?;
         for step in &mut program.steps {

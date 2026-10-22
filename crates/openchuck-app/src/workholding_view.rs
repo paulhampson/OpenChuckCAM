@@ -10,7 +10,7 @@
 //! outlines and legend of the display.
 
 use openchuck_types::geometry::Point3;
-use openchuck_types::setup::PartExtent;
+use openchuck_types::setup::{PartExtent, SetupWarningKind};
 use openchuck_types::stock::Stock;
 use openchuck_types::units::{Degrees, Millimetres};
 use openchuck_types::workholding::{
@@ -439,6 +439,33 @@ pub fn narrowest_line(tab: &Tab, tools: &[crate::workholding::SetupTool]) -> (St
             false,
         ),
     }
+}
+
+/// The warning for a held region's grip length when it reaches into the part
+/// (SET-09, OI-554): how much of the part the grip covers, in plain words.
+/// `None` when the grip is clear of the part, or the stock or part is not
+/// known. A warning, not a refusal: generation is still allowed (NFR-12).
+pub fn grip_warning(
+    draft: &Workholding,
+    end: End,
+    stock: Option<&Stock>,
+    part: Option<&PartExtent>,
+) -> Option<String> {
+    openchuck_types::workholding::check_held_regions(draft, stock, part)
+        .into_iter()
+        .find_map(|kind| match kind {
+            SetupWarningKind::HeldRegionCoversPart { at_end, x: span }
+                if at_end == matches!(end, End::End) =>
+            {
+                Some(format!(
+                    "Covers {:.3} mm of the part (X {} to {} mm), which is never machined.",
+                    span.1 - span.0,
+                    x(span.0),
+                    x(span.1)
+                ))
+            }
+            _ => None,
+        })
 }
 
 /// A new held region as the check box turns it on: 10 mm, at the stock's own
