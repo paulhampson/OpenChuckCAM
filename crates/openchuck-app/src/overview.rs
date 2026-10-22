@@ -1160,6 +1160,7 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
         SetupWarningKind::TabOutsideEndZones { .. }
         | SetupWarningKind::AutoTabNoRoom { .. }
+        | SetupWarningKind::TabsOverlap { .. }
         | SetupWarningKind::HeldRegionCoversPart { .. } => Some(SetupPart::Workholding),
         _ => None,
     }
