@@ -83,6 +83,7 @@ fn operation(name: &str, setup: SetupId, tool: ToolId, step: f64) -> Operation {
         avoid: Vec::new(),
         check: Vec::new(),
         restriction_options: Default::default(),
+        spindle_speed: None,
         parameters,
     }
 }
@@ -533,6 +534,17 @@ fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
             "-"
         ]
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_12_the_sheet_shows_a_fractional_spindle_speed_as_set() {
+    let (dir, mut app) = sheet_project();
+    let mut op = app.project().operations()[0].clone();
+    op.spindle_speed = Some(SpindleSpeed(0.4));
+    app.execute(Command::Replace(Item::Operation(op))).unwrap();
+    let operations = cell_rows(&app.setup_sheet(None), "Operations");
+    assert_eq!(operations[0][5], "0.4");
     std::fs::remove_dir_all(dir).unwrap();
 }
 

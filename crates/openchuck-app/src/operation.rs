@@ -60,7 +60,7 @@ pub struct ResolvedValues {
 /// when the two differ. When a value is required, the operation does not set
 /// it and the cutting data cannot give it, the error names the material and
 /// the tool, so the user knows whether to set the value or to add cutting
-/// data for the material (names match exactly; OI-61).
+/// data for the material (names match ignoring case and extra spaces, decision 0196).
 pub fn parameter_values(
     project: &Project,
     operation: &Operation,
@@ -88,16 +88,23 @@ pub fn parameter_values(
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
     let data = match (material, snapshot) {
-        (Some(material), Some(snapshot)) => snapshot
-            .cutting_data
-            .get(material)
-            .map(|data| (material, snapshot, data)),
+        (Some(material), Some(snapshot)) => {
+            openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)
+                .map(|(_, data)| (material, snapshot, data))
+        }
         _ => None,
     };
     let mut notes = Vec::new();
     if let Some((material, snapshot, data)) = data {
         let from_data = [
-            (names::FEED, data.cutting_feed(&snapshot.tool).0),
+            (
+                names::FEED,
+                data.cutting_feed_at(
+                    &snapshot.tool,
+                    operation.spindle_speed.unwrap_or(data.spindle_speed),
+                )
+                .0,
+            ),
             (names::PLUNGE_FEED, data.plunge_feed.0),
             (names::STEPOVER, data.stepover.0),
             (STEPDOWN, data.stepdown.0),
@@ -147,7 +154,7 @@ pub fn parameter_values(
             (None, _) => "its setup has no stock material, so no cutting data applies".to_owned(),
             (Some(material), Some(snapshot)) => format!(
                 "tool '{}' has no cutting data for the material '{material}' \
-                 (names must match exactly)",
+                 (names match ignoring case and extra spaces)",
                 snapshot.name
             ),
             (Some(_), None) => "it has no tool, so no cutting data applies".to_owned(),
@@ -1376,6 +1383,7 @@ mod tests {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: Default::default(),
+                spindle_speed: None,
                 parameters: values,
             }),
         ] {

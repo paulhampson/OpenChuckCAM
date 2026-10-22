@@ -61,6 +61,7 @@ fn operation(n: u128) -> Operation {
         avoid: Vec::new(),
         check: Vec::new(),
         restriction_options: Default::default(),
+        spindle_speed: None,
         parameters: BTreeMap::from([
             ("stepover".into(), ParameterValue::Number(0.5)),
             ("passes".into(), ParameterValue::Integer(3)),
@@ -1797,4 +1798,52 @@ fn req_prj_04_req_nfr_07_the_schema_15_fields_need_schema_15() {
     let loaded = file::load(&old).unwrap();
     assert_eq!(loaded, q);
     assert!(!loaded.skip_stock_simulation());
+}
+
+#[test]
+fn req_tl_05_req_prj_04_an_operation_spindle_speed_round_trips_and_needs_schema_16() {
+    let mut p = sample();
+    let id = p.operations()[0].id;
+    let mut edited = p.operation(id).unwrap().clone();
+    edited.spindle_speed = Some(openchuck_types::units::SpindleSpeed(12000.0));
+    p.replace(Item::Operation(edited)).unwrap();
+    let dir = temp_dir("schema-16");
+    file::save(&p, &dir).unwrap();
+    let tree = read_tree(&dir);
+    assert!(tree.values().any(|t| t.contains("spindle_speed = 12000")));
+    assert_eq!(file::load(&dir).unwrap(), p);
+    // Written only when set: the plain sample has no such line.
+    let plain = temp_dir("schema-16-plain");
+    file::save(&sample(), &plain).unwrap();
+    assert!(
+        !read_tree(&plain)
+            .values()
+            .any(|t| t.contains("spindle_speed"))
+    );
+    // A file that says schema 15 cannot hold it.
+    let old = copy_tree_with(&tree, "schema-16-as-15", |_, text| {
+        text.replacen(&current(), "schema = 15\n", 1)
+    });
+    let err = file::load(&old).unwrap_err().to_string();
+    assert!(
+        err.contains("spindle_speed") && err.contains("schema 16"),
+        "{err}"
+    );
+    // An older file without it loads with none.
+    let older = copy_tree_with(&read_tree(&plain), "schema-16-plain-as-15", |_, text| {
+        text.replacen(&current(), "schema = 15\n", 1)
+    });
+    assert_eq!(file::load(&older).unwrap(), sample());
+}
+
+#[test]
+fn req_nfr_07_a_bad_operation_spindle_speed_is_refused() {
+    let mut p = sample();
+    let id = p.operations()[0].id;
+    for bad in [0.0, -5.0, f64::NAN, f64::INFINITY] {
+        let mut edited = p.operation(id).unwrap().clone();
+        edited.spindle_speed = Some(openchuck_types::units::SpindleSpeed(bad));
+        let err = p.replace(Item::Operation(edited)).unwrap_err().to_string();
+        assert!(err.contains("spindle_speed"), "{err}");
+    }
 }

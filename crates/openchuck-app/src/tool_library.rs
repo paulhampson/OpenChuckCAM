@@ -804,6 +804,22 @@ pub fn edit_cutting_data(
         )));
     }
     edited(tool, |t| {
+        // A rename never lands on another entry; adding a material that is
+        // there under the same name replaces it, as it always has.
+        let key = openchuck_types::tool::material_key(material);
+        let taken = t.cutting_data.keys().find(|k| {
+            Some(k.as_str()) != replacing
+                && openchuck_types::tool::material_key(k) == key
+                && (replacing.is_some() || k.as_str() != material)
+        });
+        if let Some(other) = taken {
+            return Err(AppError::Engine(openchuck_types::Error::invalid(
+                "cutting_data",
+                format!(
+                    "the tool already has cutting data for {other:?}, which {material:?} would match too"
+                ),
+            )));
+        }
         if let Some(old) = replacing {
             t.cutting_data.remove(old);
         }
@@ -882,6 +898,13 @@ pub fn set_tool_set_number(
 fn refuse(reason: &str) -> AppError {
     AppError::Engine(openchuck_types::Error::invalid(
         "tool number",
+        reason.to_owned(),
+    ))
+}
+
+fn refuse_spindle(reason: &str) -> AppError {
+    AppError::Engine(openchuck_types::Error::invalid(
+        "spindle speed",
         reason.to_owned(),
     ))
 }
@@ -1301,6 +1324,71 @@ pub fn operation_tool(
         tool_set_number,
         copy,
     })
+}
+
+/// An operation's spindle speed as its inspector's Tool section shows it
+/// (decision record 0196).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationSpindle {
+    /// The speed the user gave the operation, in rpm.
+    pub set: Option<f64>,
+    /// The speed the tool's cutting data gives for the setup's material, in
+    /// rpm, with the material's name as the tool holds it. Applies while
+    /// `set` is empty.
+    pub from_tool: Option<(f64, String)>,
+    /// What to do about it when neither gives a speed, in plain words.
+    pub missing: Option<String>,
+}
+
+/// Operation `operation`'s spindle speed, where it comes from, or what is
+/// missing. `None` when the project has no such operation.
+pub fn operation_spindle(project: &Project, operation: OperationId) -> Option<OperationSpindle> {
+    let op = project.operation(operation)?;
+    let from_tool =
+        crate::requirements::cutting_data(project, op).and_then(|(material, snapshot, data)| {
+            openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)
+                .map(|(name, _)| (data.spindle_speed.0, name.to_owned()))
+        });
+    let missing = (op.spindle_speed.is_none() && from_tool.is_none())
+        .then(|| crate::requirements::missing_spindle_message(project, op));
+    Some(OperationSpindle {
+        set: op.spindle_speed.map(|s| s.0),
+        from_tool,
+        missing,
+    })
+}
+
+/// The command that gives operation `operation` the spindle speed in the
+/// typed `text` (revolutions per minute), or takes its own speed away when
+/// `text` is `None`, so the tool's cutting data applies again. Text that is
+/// not a number above 0 is refused in plain words (NFR-07).
+pub fn set_operation_spindle(
+    project: &Project,
+    operation: OperationId,
+    text: Option<&str>,
+) -> Result<Command, AppError> {
+    let speed = match text {
+        None => None,
+        Some(text) => {
+            let text = text.trim();
+            let number = text.strip_suffix("rpm").unwrap_or(text).trim();
+            let value: f64 = number
+                .parse()
+                .map_err(|_| refuse_spindle("type the spindle speed as a number in rpm"))?;
+            if !(value.is_finite() && value > 0.0) {
+                return Err(refuse_spindle(
+                    "the spindle speed must be a number above 0 rpm",
+                ));
+            }
+            Some(openchuck_types::units::SpindleSpeed(value))
+        }
+    };
+    let mut changed = project
+        .operation(operation)
+        .cloned()
+        .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+    changed.spindle_speed = speed;
+    Ok(Command::Replace(Item::Operation(changed)))
 }
 
 /// The command that gives operation `operation` the project tool `tool`.

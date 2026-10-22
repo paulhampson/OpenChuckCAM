@@ -126,7 +126,7 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 3. **Selection sets.** Each set's colour swatch, name and size.
 4. **Operations.** In machining order, each with its tool's number as a chip.
 
-**Tools are not in the tree** (UI-06 as amended; decision 0127). An operation's tool is in the operation's inspector (section 8), and the tool library window (12.1) lists and manages tools: it opens from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, and from an operation's Tool section.
+**Tools are not in the tree** (UI-06 as amended; decision 0127). An operation's tool is in the operation's inspector (section 8), and the tool library window (12.1) lists and manages tools: it opens from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, and from an operation's Tool section. The Tool section also holds the operation's **Spindle speed** (rpm; decision 0196): empty, it shows the tool's cutting data for the setup's material as the default ("from the tool's cutting data"), ↺ takes the operation's own value away, and a missing one is marked with what to enter and where.
 
 Each group header shows a count and a "+" button (22 pixels):
 

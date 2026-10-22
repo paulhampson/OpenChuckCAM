@@ -69,14 +69,59 @@ pub enum Chosen {
 /// is offered too.
 const MATERIALS: [&str; 3] = ["carbide", "HSS", "cobalt HSS"];
 
-/// The labels, units and ranges of the cutting data fields, in table order.
-const CUTTING: [(&str, &str, &str); 5] = [
-    ("Spindle speed", "rpm", "above 0"),
-    ("Feed per tooth", "mm", "above 0"),
-    ("Plunge feed", "mm/min", "above 0"),
-    ("Stepover", "mm", "above 0, at most the diameter"),
-    ("Stepdown", "mm", "above 0, at most the flute length"),
+/// The labels, units, ranges and plain-words help of the cutting data
+/// fields, in table order (TL-05; issue 250). The help says what the entry
+/// is, its unit and what it changes, and none of it says a value is safe to
+/// run (NFR-12).
+const CUTTING: [(&str, &str, &str, &str); 5] = [
+    (
+        "Spindle speed",
+        "rpm",
+        "above 0",
+        "How fast the tool turns, in revolutions per minute (rpm). It sets the S value in \
+         the G-code. Check it against your tool, material and machine before you run the \
+         program.",
+    ),
+    (
+        "Feed per tooth",
+        "mm",
+        "above 0",
+        "How far the tool moves into the material for each tooth, in millimetres. The \
+         cutting feed is the spindle speed times the number of flutes times this value. \
+         It sets the F value of cutting moves.",
+    ),
+    (
+        "Plunge feed",
+        "mm/min",
+        "above 0",
+        "How fast the tool moves straight down into the material, in millimetres per \
+         minute. It sets the F value of plunging moves.",
+    ),
+    (
+        "Stepover",
+        "mm",
+        "above 0, at most the diameter",
+        "How far the tool moves sideways between neighbouring passes, in millimetres. \
+         A smaller stepover leaves a smoother surface and takes longer. It cannot be \
+         more than the tool's diameter.",
+    ),
+    (
+        "Stepdown",
+        "mm",
+        "above 0, at most the flute length",
+        "How deep each layer is, in millimetres. A smaller stepdown puts less load on \
+         the tool and takes longer. It cannot be more than the flute length.",
+    ),
 ];
+
+/// What the stock material entry of the cutting data is.
+const MATERIAL_HELP: &str = "The stock material these values are for, such as Softwood. A \
+    setup's material is matched to this name ignoring capital letters and extra spaces. Pick \
+    one already used by another tool, or type a new one.";
+
+/// The widest the boxes of the cutting data editor need: five digits of the
+/// monospace font and the box's own padding at the base size.
+const CUTTING_BOX_MIN: f32 = 110.0;
 
 /// A library tool being edited: nothing is written until Save.
 #[derive(Debug, Clone, PartialEq)]
@@ -771,7 +816,8 @@ impl ToolLibraryWindow {
             self.cutting = Some(CuttingDraft::default());
         }
         if let Some(draft) = &mut self.cutting {
-            cutting_editor(ui, draft, acts);
+            let known = openchuck_app::materials::known_materials(project, self.library.as_ref());
+            cutting_editor(ui, draft, &known, acts);
         }
         ui.label(
             RichText::new(
@@ -1210,14 +1256,18 @@ impl ToolLibraryWindow {
                 let Some(draft) = self.cutting.clone() else {
                     return Ok(None);
                 };
+                let known = openchuck_app::materials::known_materials(
+                    app.as_deref().map(Application::project),
+                    self.library.as_ref(),
+                );
+                let material = openchuck_app::materials::edited_material(
+                    &known,
+                    &draft.material,
+                    draft.editing.as_deref(),
+                );
                 let saved = draft.data().and_then(|data| {
                     self.edit(app, |t| {
-                        library::edit_cutting_data(
-                            t,
-                            &draft.material,
-                            data,
-                            draft.editing.as_deref(),
-                        )
+                        library::edit_cutting_data(t, &material, data, draft.editing.as_deref())
                     })
                 });
                 match saved {
@@ -1688,24 +1738,75 @@ fn list(
         });
 }
 
-/// The editor of one material's cutting data.
-fn cutting_editor(ui: &mut egui::Ui, draft: &mut CuttingDraft, acts: &mut Vec<Act>) {
+/// The width of a cutting data box when the pane leaves `available` after
+/// the label: what is left less the unit, never less than
+/// [`CUTTING_BOX_MIN`].
+pub(crate) fn cutting_box_width(available: f32) -> f32 {
+    (available - 56.0).max(CUTTING_BOX_MIN)
+}
+
+/// The label and the help of each cutting data entry, in table order.
+#[cfg(test)]
+pub(crate) fn cutting_help() -> Vec<(&'static str, &'static str, &'static str)> {
+    CUTTING.iter().map(|c| (c.0, c.1, c.3)).collect()
+}
+
+/// The editor of one material's cutting data. `known` is every material name
+/// the project and the library use, offered as a pick (decision 0196).
+fn cutting_editor(
+    ui: &mut egui::Ui,
+    draft: &mut CuttingDraft,
+    known: &[String],
+    acts: &mut Vec<Act>,
+) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label("Stock material");
-            ui.text_edit_singleline(&mut draft.material);
+            field_row::tip(ui.label("Stock material"), MATERIAL_HELP);
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut draft.material)
+                    .desired_width(CUTTING_BOX_MIN * 1.5)
+                    .hint_text("Softwood"),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Stock material")
+            });
+            field_row::tip(response, MATERIAL_HELP);
+            if !known.is_empty() {
+                egui::ComboBox::from_id_salt("cutting material pick")
+                    .selected_text("Pick…")
+                    .show_ui(ui, |ui| {
+                        for name in known {
+                            if ui.selectable_label(&draft.material == name, name).clicked() {
+                                draft.material.clone_from(name);
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text("Materials the project and the library already use");
+            }
         });
         egui::Grid::new("cutting draft")
             .num_columns(3)
             .show(ui, |ui| {
-                for ((label, unit, range), text) in CUTTING.iter().zip(&mut draft.values) {
-                    ui.label(*label);
-                    ui.add(
+                for ((label, unit, range, help), text) in CUTTING.iter().zip(&mut draft.values) {
+                    let tip = format!("{help} Allowed: {range}.");
+                    field_row::tip(ui.label(*label), &tip);
+                    // Wide enough for the largest value in full, and for
+                    // what the pane leaves after the unit.
+                    let width = cutting_box_width(ui.available_width());
+                    let response = ui.add(
                         egui::TextEdit::singleline(text)
-                            .desired_width(80.0)
+                            .desired_width(width)
                             .font(egui::TextStyle::Monospace),
-                    )
-                    .on_hover_text(format!("Allowed: {range}."));
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::WidgetType::TextEdit,
+                            true,
+                            format!("{label} in {unit}"),
+                        )
+                    });
+                    field_row::tip(response, &tip);
                     ui.label(RichText::new(*unit).color(DARK.muted));
                     ui.end_row();
                 }

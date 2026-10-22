@@ -414,6 +414,158 @@ fn req_ui_16_req_tl_01_the_tool_list_scroll_bar_is_at_its_pane_edge() {
     }
 }
 
+/// The cutting data boxes show the largest value in full, with the box's
+/// padding, at 100% and 120% and at every width the pane can have (issue 250,
+/// F-80); a box is never narrower than its minimum.
+#[test]
+fn req_ui_16_req_tl_05_the_spindle_speed_box_shows_a_five_digit_speed_in_full() {
+    use crate::tool_library_window::cutting_box_width;
+    for scale in [1.0_f32, 1.2] {
+        let rig = Rig::cube("toollib-box", None);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.ctx.set_zoom_factor(scale);
+        let mut needed = 0.0_f32;
+        let mut output = rig.ctx.run_ui(egui::RawInput::default(), |ui| {
+            let font = egui::TextStyle::Monospace.resolve(ui.style());
+            // The widest speed the library accepts in practice, and a long
+            // feed, with the box's padding each side.
+            needed = ui
+                .painter()
+                .layout_no_wrap("99999.99".to_owned(), font, egui::Color32::WHITE)
+                .size()
+                .x
+                + 2.0 * ui.spacing().button_padding.x;
+        });
+        output.textures_delta.clear();
+        for available in [0.0, 50.0, 120.0, 300.0, 700.0] {
+            let width = cutting_box_width(available);
+            assert!(
+                width >= needed,
+                "available {available}, scale {scale}: box {width} < {needed}"
+            );
+        }
+        assert!(
+            cutting_box_width(2000.0) > cutting_box_width(300.0),
+            "it uses the room"
+        );
+    }
+}
+
+/// Every entry of the tool library has a tooltip in plain words that gives
+/// its unit and does not say a value is safe to run (issue 250, F-80;
+/// decision 0114; NFR-12).
+#[test]
+fn req_tl_04_req_tl_05_every_tool_library_entry_has_a_plain_tooltip() {
+    for (label, unit, help) in crate::tool_library_window::cutting_help() {
+        assert!(help.len() > 40, "{label}: {help}");
+        assert!(!help.to_lowercase().contains("safe to run"), "{label}");
+        assert!(!unit.is_empty(), "{label}");
+    }
+    let spindle = crate::tool_library_window::cutting_help()[0];
+    assert!(
+        spindle.2.contains("rpm") && spindle.2.contains("S value"),
+        "{}",
+        spindle.2
+    );
+    let tool = openchuck_app::tools::Tool {
+        shape: openchuck_app::tools::ToolShape::BullNose {
+            corner_radius: openchuck_app::tools::Millimetres(1.0),
+        },
+        diameter: openchuck_app::tools::Millimetres(6.0),
+        flute_length: openchuck_app::tools::Millimetres(12.0),
+        overall_length: openchuck_app::tools::Millimetres(50.0),
+        shank_diameter: openchuck_app::tools::Millimetres(6.0),
+        flute_count: 2,
+        material: None,
+        centre_cutting: None,
+    };
+    for field in openchuck_app::tool_edit::tool_form(&tool) {
+        assert!(
+            field.description.len() > 25,
+            "{}: {}",
+            field.label,
+            field.description
+        );
+        assert!(!field.description.to_lowercase().contains("safe to run"));
+    }
+}
+
+/// The operation's Tool section has a spindle speed row (issue 249, F-79;
+/// decision 0196): the tool's cutting data fills it as a default, a missing
+/// one is marked with what to do, and a value set there is one undoable step.
+#[test]
+fn req_tl_05_req_nfr_12_the_operation_has_a_spindle_speed_row() {
+    use super::inspector::ToolAct;
+    let folder = library_folder("spindle");
+    let mut rig = Rig::cube("toollib-spindle", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Spindle speed"), "the row is there");
+    assert!(rig.shows("rpm"), "with its unit");
+    let spindle = |rig: &Rig| {
+        rig.shell.app.as_ref().unwrap().project().operations()[0]
+            .spindle_speed
+            .map(|s| s.0)
+    };
+    assert_eq!(spindle(&rig), None);
+    rig.shell.tool_act(op, ToolAct::Spindle("9000".into()));
+    assert_eq!(spindle(&rig), Some(9000.0));
+    rig.frame(Vec::new());
+    rig.shell.undo();
+    assert_eq!(spindle(&rig), None);
+    // A bad value is refused and leaves the operation alone.
+    rig.shell.tool_act(op, ToolAct::Spindle("fast".into()));
+    assert_eq!(spindle(&rig), None);
+    rig.shell.tool_act(op, ToolAct::Spindle("12000".into()));
+    rig.shell.tool_act(op, ToolAct::SpindleReset);
+    assert_eq!(spindle(&rig), None);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Applying a cutting data edit that leaves the material name alone keeps its
+/// spelling, even when another tool spells the same material differently
+/// (decision 0197).
+#[test]
+fn req_tl_05_applying_a_speed_edit_keeps_the_materials_spelling() {
+    let folder = library_folder("keep-spelling");
+    let id = library_with_cutting_data(&folder, &["oak"]);
+    library_with_cutting_data(&folder, &["Oak"]);
+    let mut rig = Rig::cube("toollib-spelling", None);
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.size = egui::vec2(1366.0, 768.0);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Add, Some(Chosen::Library(id)));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let row = centre_of(&rig, "oak");
+    rig.click(row);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let apply = centre_of(&rig, "Apply");
+    rig.click(apply);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    let materials: Vec<_> = reread
+        .get(id)
+        .unwrap()
+        .cutting_data
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(materials, vec!["oak".to_owned()]);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
 /// The centre of the first text that contains `needle`.
 fn centre_of(rig: &Rig, needle: &str) -> egui::Pos2 {
     rig.text_rects()

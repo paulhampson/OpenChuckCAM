@@ -574,16 +574,8 @@ fn operation_row(
         || "none".to_string(),
         |t| format!("T{} {}", t.controller.number, t.name),
     );
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref());
-    let rpm = match (snapshot, material) {
-        (Some(t), Some(m)) => t
-            .cutting_data
-            .get(m)
-            .map_or_else(|| "-".to_string(), |d| plain(d.spindle_speed.0, 0)),
-        _ => "-".to_string(),
-    };
+    let rpm = crate::requirements::spindle_speed(project, operation)
+        .map_or_else(|| "-".to_string(), |(speed, _)| plain(speed.0, 3));
     let time = if with_times {
         times
             .get(&operation.id.to_string())

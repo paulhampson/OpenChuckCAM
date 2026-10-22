@@ -2235,6 +2235,7 @@ mod tests {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: Default::default(),
+                spindle_speed: None,
                 parameters: BTreeMap::new(),
             }),
             placement: Placement::End,

@@ -158,6 +158,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -345,9 +346,16 @@ fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_nam
         openchuck_path::ParameterValue::Number(0.3)
     );
 
-    // A material the tool has no data for is named, with the tool, and
-    // names must match exactly.
-    for material in ["pine", "Steel"] {
+    // A name that differs only by case or spacing finds the same data
+    // (decision 0196).
+    for material in ["Steel", " STEEL "] {
+        set_material(&mut app, Some(material));
+        assert_eq!(first_cut_feed(&app), 120.0, "{material}");
+    }
+
+    // A material the tool has no data for is named, with the tool, and the
+    // matching rule is said.
+    for material in ["pine", "Stee l"] {
         set_material(&mut app, Some(material));
         let e = app.regenerate().unwrap_err();
         assert!(matches!(e, AppError::Operation { .. }), "{e}");
@@ -359,7 +367,7 @@ fn req_op_11_req_tl_05_each_material_gives_its_own_feed_and_a_missing_one_is_nam
             "stepover",
             &format!("'{material}'"),
             "'4 mm ball'",
-            "exactly",
+            "ignoring case",
         ] {
             assert!(text.contains(part), "{part}: {text}");
         }

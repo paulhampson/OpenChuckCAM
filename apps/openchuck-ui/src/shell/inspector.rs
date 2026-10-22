@@ -34,6 +34,9 @@ const NAME: &str = "\u{0}name";
 /// The key of the Tool section's tool number in the form state.
 const TOOL_NUMBER: &str = "\u{0}tool number";
 
+/// The key of the Tool section's spindle speed in the form state.
+const SPINDLE_SPEED: &str = "\u{0}spindle speed";
+
 /// What the user asked of an operation's Tool section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ToolAct {
@@ -43,6 +46,11 @@ pub(super) enum ToolAct {
     Library,
     /// Set the project's tool number to the typed text.
     Number(ToolId, String),
+    /// Set the operation's spindle speed to the typed text (rpm).
+    Spindle(String),
+    /// Take the operation's own spindle speed away (↺), so the tool's
+    /// cutting data applies again.
+    SpindleReset,
     /// Replace the project's copy with the library tool (TL-07).
     Update(ToolId),
     /// Write the project's copy into the library, after the window's
@@ -344,12 +352,17 @@ impl Shell {
                                 .workholding_panel
                                 .as_ref()
                                 .and_then(|p| p.part_extent());
+                            let known = openchuck_app::materials::known_materials(
+                                Some(app.project()),
+                                self.tool_library.library(),
+                            );
                             if let Some(e) = stock_section(
                                 ui,
                                 &mut self.form,
                                 &setup,
                                 copy.as_ref(),
                                 part_extent,
+                                &known,
                             ) {
                                 edited = Some(e);
                             }
@@ -361,6 +374,7 @@ impl Shell {
                                 &setup,
                                 copy.as_ref(),
                                 &setup_form::part_position_rows(&setup),
+                                &[],
                             ) {
                                 edited = Some(e);
                             }
@@ -489,10 +503,13 @@ impl Shell {
     ) -> Option<ToolAct> {
         let jump_to_tool =
             self.requirement_jump == Some(openchuck_app::requirements::RequirementField::Tool);
+        let jump_to_spindle = self.requirement_jump
+            == Some(openchuck_app::requirements::RequirementField::SpindleSpeed);
         let app = self.app.as_ref()?;
         let project = app.project();
         let library = self.tool_library.library();
         let shown = tool_library::operation_tool(project, library, operation.id);
+        let spindle = tool_library::operation_spindle(project, operation.id);
         let others: Vec<(ToolId, String)> = project
             .tools()
             .iter()
@@ -534,6 +551,43 @@ impl Shell {
                         };
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
                             act = Some(ToolAct::Number(tool.id, typed));
+                        }
+                        if let Some(spindle) = &spindle {
+                            let row = TextRow {
+                                key: SPINDLE_SPEED,
+                                label: "Spindle speed",
+                                description: "How fast the tool turns, in revolutions per \
+                                              minute (rpm). It sets the S value in the G-code. \
+                                              Left empty, the tool's cutting data for the \
+                                              stock material gives it. Check it against your \
+                                              tool, material and machine before you run the \
+                                              program.",
+                                unit: "rpm",
+                                range: Some("above 0"),
+                                applied: spindle
+                                    .set
+                                    .map(|v| field_row::number(v, Some(0)))
+                                    .unwrap_or_default(),
+                                hint: spindle.from_tool.as_ref().map(|(v, material)| {
+                                    format!(
+                                        "{} \u{b7} from the tool's cutting data for {material}",
+                                        field_row::number(*v, Some(0))
+                                    )
+                                }),
+                                reset: spindle.set.is_some(),
+                                enabled: true,
+                                needs: spindle.missing.is_some().then_some("Enter spindle speed"),
+                                scroll_to: jump_to_spindle,
+                                ..TextRow::default()
+                            };
+                            match field_row::text_row(ui, form, &row) {
+                                Outcome::Commit(typed) => act = Some(ToolAct::Spindle(typed)),
+                                Outcome::Reset => act = Some(ToolAct::SpindleReset),
+                                Outcome::None => {}
+                            }
+                            if let Some(message) = &spindle.missing {
+                                field_row::note_line(ui, message, DARK.warning);
+                            }
                         }
                         if let Some((machine, number)) = &tool.tool_set_number {
                             field_row::note_line(
@@ -655,6 +709,14 @@ impl Shell {
                 self.form.result(TOOL_NUMBER, result);
                 return;
             }
+            ToolAct::Spindle(typed) => {
+                let result = tool_library::set_operation_spindle(project, operation, Some(&typed))
+                    .and_then(|c| app.execute(c))
+                    .map_err(|e| form_panel::refusal(&e.to_string()));
+                self.form.result(SPINDLE_SPEED, result);
+                return;
+            }
+            ToolAct::SpindleReset => tool_library::set_operation_spindle(project, operation, None),
             ToolAct::Update(tool) => match &library {
                 Some(lib) => match tool_library::update_from_library(project, lib, tool) {
                     Ok(Some(c)) => Ok(c),
@@ -1219,6 +1281,7 @@ fn rows(
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
     rows: &[SetupRow],
+    known_materials: &[String],
 ) -> Option<(Setup, Option<String>)> {
     let mut edited = None;
     for row in rows {
@@ -1245,6 +1308,14 @@ fn rows(
             },
         );
         if let Outcome::Commit(typed) = outcome {
+            // A material typed in another spelling of a known one takes the
+            // known spelling, so the tools' cutting data is found (decision
+            // 0196).
+            let typed = if row.field == setup_form::SetupField::Material {
+                openchuck_app::materials::canonical_material(known_materials, &typed)
+            } else {
+                typed
+            };
             match setup_form::apply(setup, machine, row.field, &typed) {
                 Ok(s) => edited = Some((s, Some(key))),
                 Err(reason) => state.refuse(&key, &typed, format!("{reason} Not applied.")),
@@ -1252,6 +1323,40 @@ fn rows(
         }
     }
     edited
+}
+
+/// The pick of a known material under the Material row: the names the tools
+/// of the project and the library have cutting data for (decision 0196).
+fn material_pick(
+    ui: &mut egui::Ui,
+    setup: &Setup,
+    known: &[String],
+) -> Option<(Setup, Option<String>)> {
+    if known.is_empty() {
+        return None;
+    }
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        egui::ComboBox::from_id_salt(("setup material pick", setup.id))
+            .selected_text("Pick\u{2026}")
+            .show_ui(ui, |ui| {
+                for name in known {
+                    let current = setup.material.as_deref() == Some(name.as_str());
+                    if ui.selectable_label(current, name).clicked() && !current {
+                        let mut edited = setup.clone();
+                        edited.material = Some(name.clone());
+                        picked = Some((edited, None));
+                    }
+                }
+            })
+            .response
+            .on_hover_text(
+                "Materials the project's and the library's tools have cutting data for. A \
+                 material that matches one of them gets that tool's speeds and feeds.",
+            );
+    });
+    picked
 }
 
 /// The Stock section (SET-03; 11.3): the shape as a segmented control, its
@@ -1262,6 +1367,7 @@ fn stock_section(
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
     part: Option<openchuck_app::setup::PartExtent>,
+    known_materials: &[String],
 ) -> Option<(Setup, Option<String>)> {
     let shapes: Vec<&str> = StockShape::ALL.iter().map(|s| s.name()).collect();
     let current = StockShape::of(setup.stock.as_ref())
@@ -1290,7 +1396,16 @@ fn stock_section(
             None,
         ));
     }
-    rows(ui, state, setup, machine, &setup_form::stock_rows(setup)).or(edited)
+    let typed = rows(
+        ui,
+        state,
+        setup,
+        machine,
+        &setup_form::stock_rows(setup),
+        known_materials,
+    );
+    let picked = material_pick(ui, setup, known_materials);
+    typed.or(picked).or(edited)
 }
 
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
@@ -1325,6 +1440,7 @@ fn clearance_section(
         setup,
         machine,
         &setup_form::clearance_rows(setup, machine),
+        &[],
     ) {
         edited = Some(e);
     }

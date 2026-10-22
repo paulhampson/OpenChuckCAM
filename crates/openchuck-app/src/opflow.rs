@@ -190,6 +190,7 @@ impl Application {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: RestrictionOptions::default(),
+                spindle_speed: None,
                 parameters: BTreeMap::new(),
                 enabled: true,
             }),

@@ -252,6 +252,7 @@ fn build(
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: parameters
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), v.clone()))

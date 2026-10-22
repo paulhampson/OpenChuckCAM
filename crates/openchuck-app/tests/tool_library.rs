@@ -79,6 +79,7 @@ fn project_with_operation(tool: Option<ToolId>) -> Project {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: Default::default(),
         }),
         Placement::End,
@@ -283,6 +284,16 @@ fn req_tl_05_cutting_data_by_material_is_added_checked_renamed_and_removed() {
     // Renamed: the old material goes.
     edit_cutting_data(&mut tool, "Medium density fibreboard", mdf, Some("MDF")).unwrap();
     assert!(!tool.cutting_data.contains_key("MDF"));
+    // A rename onto another entry, in any spelling, is refused and changes
+    // neither entry (decision 0197).
+    let kept = tool.clone();
+    for target in ["Oak", "oak"] {
+        let err = edit_cutting_data(&mut tool, target, mdf, Some("Medium density fibreboard"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already has"), "{target}: {err}");
+        assert_eq!(tool, kept);
+    }
     remove_cutting_data(&mut tool, "Oak");
     assert_eq!(cutting_rows(&tool).len(), 1);
 }
@@ -583,4 +594,85 @@ fn req_tl_07_req_tl_11_add_update_save_and_the_operation_tool_section() {
         Command::Remove(_)
     ));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn req_tl_05_a_material_added_to_one_tool_is_known_to_every_tool_and_setup() {
+    use openchuck_app::materials::{canonical_material, known_materials};
+    let mut lib = ToolLibrary::open(&temp_dir("materials")).unwrap();
+    let mut a = new_draft(&lib, ToolType::FlatEnd).unwrap();
+    edit_cutting_data(&mut a, "Softwood", oak(), None).unwrap();
+    edit_name(&mut a, "Flat").unwrap();
+    save_draft(&mut lib, &a, &[]).unwrap();
+    let mut b = new_draft(&lib, ToolType::BallEnd).unwrap();
+    edit_cutting_data(&mut b, "aluminium", oak(), None).unwrap();
+    edit_name(&mut b, "Ball").unwrap();
+    save_draft(&mut lib, &b, &[]).unwrap();
+    let known = known_materials(None, Some(&lib));
+    assert_eq!(known, ["Softwood", "aluminium"]);
+    // Typing a known material in another spelling takes the known one, so
+    // a second tool cannot hold "softwood" beside "Softwood".
+    let typed = canonical_material(&known, "softwood");
+    assert_eq!(typed, "Softwood");
+    // The same tool refuses two spellings of one material (decision 0196).
+    let mut c = new_draft(&lib, ToolType::FlatEnd).unwrap();
+    edit_cutting_data(&mut c, "Softwood", oak(), None).unwrap();
+    let err = edit_cutting_data(&mut c, "softwood", oak(), None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("Softwood") && err.contains("softwood"),
+        "{err}"
+    );
+    assert_eq!(cutting_rows(&c).len(), 1);
+}
+
+#[test]
+fn req_tl_05_the_operations_spindle_speed_comes_from_itself_then_the_tool_then_is_missing() {
+    use openchuck_app::tool_library::{operation_spindle, set_operation_spindle};
+    let mut lib = ToolLibrary::open(&temp_dir("spindle")).unwrap();
+    let mut draft = new_draft(&lib, ToolType::FlatEnd).unwrap();
+    edit_cutting_data(&mut draft, "Softwood", oak(), None).unwrap();
+    save_draft(&mut lib, &draft, &[]).unwrap();
+    let mut project = project_with_operation(None);
+    add(&mut project, &lib, draft.id);
+    let op = OperationId::from_u128(5);
+    apply(&mut project, |p| {
+        set_operation_tool(p, op, draft.id).unwrap()
+    });
+    // No material on the setup: nothing to take, so the speed is missing and
+    // the message says what to enter and where.
+    let s = operation_spindle(&project, op).unwrap();
+    assert_eq!((s.set, s.from_tool), (None, None));
+    let message = s.missing.unwrap();
+    assert!(
+        message.contains("Enter a spindle speed") && message.contains("stock material"),
+        "{message}"
+    );
+    // The setup's material in another spelling still finds the data.
+    let mut setup = project.setups()[0].clone();
+    setup.material = Some("softwood".into());
+    project.replace(Item::Setup(setup)).unwrap();
+    let s = operation_spindle(&project, op).unwrap();
+    assert_eq!(s.from_tool.map(|f| f.0), Some(12000.0));
+    assert!(s.missing.is_none());
+    // The user's own value wins and ↺ (None) takes it away again.
+    apply(&mut project, |p| {
+        set_operation_spindle(p, op, Some(" 9000 rpm ")).unwrap()
+    });
+    assert_eq!(operation_spindle(&project, op).unwrap().set, Some(9000.0));
+    apply(&mut project, |p| {
+        set_operation_spindle(p, op, None).unwrap()
+    });
+    assert_eq!(operation_spindle(&project, op).unwrap().set, None);
+    // A bad value is refused in plain words and nothing changes.
+    for bad in ["", "fast", "0", "-5", "NaN", "inf", "9000rpmrpm"] {
+        let e = set_operation_spindle(&project, op, Some(bad))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("spindle speed"), "{bad}: {e}");
+        assert!(!e.contains("tool number"), "{bad}: {e}");
+    }
+    assert!(set_operation_spindle(&project, OperationId::from_u128(99), None).is_err());
+    assert!(operation_spindle(&project, OperationId::from_u128(99)).is_none());
 }
