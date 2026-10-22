@@ -369,3 +369,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | F-117 | [#311](https://github.com/paulhampson/OpenChuckCAM/issues/311) | Export dialog | The scroll bar on the right clashes with the text; reserve its width; buttons in a fixed strip; same layout family as F-19, F-91. | Window size where seen. |
 | F-118 | [#312](https://github.com/paulhampson/OpenChuckCAM/issues/312) | Export | Scroll through the generated G-code: a read-only, lazy-loaded text view with line numbers, per file when split, jump to line and search; the same bytes as written (NFR-12, NFR-04). | In the export dialog or a separate pane; available before writing. |
 | F-119 | [#313](https://github.com/paulhampson/OpenChuckCAM/issues/313) | Tool library | Clean up unused tools in the project (not used by any operation, a disabled operation counts as used): a list with check boxes, confirm, undoable; project copy only (TL-07), never the library. | Manual only, or also a warning at export? |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator; build 0.17.0): #314 (F-120).
+
+| ID | Issue | Area | Summary | Open questions |
+| --- | --- | --- | --- | --- |
+| F-120 | [#314](https://github.com/paulhampson/OpenChuckCAM/issues/314) | Finishing | Optional stepdown for axial and helical finishing: off by default (G-code unchanged, GC-07); layers of at most the stepdown, the last pass at the surface plus the stock to leave; checked against the flute length; like roughing's stepdown; combines with F-109 (#303) and the stock to leave; cost shown in progress and time (#201). | Meaning for a part turning about its axis (radial, assumed, or along the tool axis); does indexed finishing get it too? |
