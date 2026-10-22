@@ -1970,7 +1970,10 @@ pub(crate) mod tests {
                     .shapes
                     .iter()
                     .filter_map(|s| match &s.shape {
-                        egui::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                        egui::Shape::Text(t) => Some((
+                            t.galley.text().to_owned(),
+                            t.galley.rect.translate(t.pos.to_vec2()),
+                        )),
                         _ => None,
                     })
                     .collect();
@@ -1978,13 +1981,25 @@ pub(crate) mod tests {
             texts
         };
         let texts = painted(&mut viewport);
-        assert!(texts.iter().any(|t| t == "Not measured"), "{texts:?}");
-        assert!(!texts.iter().any(|t| t == SOME_HIDDEN));
+        assert!(texts.iter().any(|(t, _)| t == "Not measured"), "{texts:?}");
+        assert!(!texts.iter().any(|(t, _)| t == SOME_HIDDEN));
         viewport.band_filter = BandFilter {
             to: Some(0.0),
             ..BandFilter::default()
         };
-        assert!(painted(&mut viewport).iter().any(|t| t == SOME_HIDDEN));
+        let texts = painted(&mut viewport);
+        let note = texts
+            .iter()
+            .find(|(t, _)| t == SOME_HIDDEN)
+            .expect("the scale says some bands are hidden")
+            .1;
+        // The note sits on the "Not measured" row, clear of the scale's labels.
+        for (text, rect) in texts.iter().filter(|(t, _)| t != SOME_HIDDEN) {
+            assert!(
+                !rect.intersects(note),
+                "the note {note:?} overlaps {text:?} at {rect:?}"
+            );
+        }
     }
 
     /// The colour the scene gives the cube part with no bands.

@@ -704,8 +704,9 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandF
         roles::OVERLAY_MUTED,
     );
     if filter.hides_any() {
+        // On the "Not measured" row, clear of the labels under the bar.
         painter.text(
-            r.left_top() + vec2(r.width() - 8.0, 38.0),
+            pos2(r.right() - 8.0, unmeasured.center().y),
             egui::Align2::RIGHT_CENTER,
             SOME_HIDDEN,
             font,
