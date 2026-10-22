@@ -26,6 +26,13 @@ pub trait StockModel: Send + Sync + std::fmt::Debug {
 
     /// The largest distance of any material from the rotary axis, if known.
     fn max_radius(&self) -> Option<f64>;
+
+    /// The ends of the material along the rotary axis, model X (low, high),
+    /// if known: where a path extended past the stock starts and ends
+    /// (OP-24; decision record 0212 part B). `None` by default.
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        None
+    }
 }
 
 /// Stock as a solid of simple shape: a cylinder on the rotary axis or a box
@@ -136,6 +143,13 @@ impl StockModel for AnalyticStock {
         }
         let entry = t0.max(0.0);
         (entry <= max_distance).then_some(entry)
+    }
+
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        match *self {
+            Self::Cylinder { x_start, x_end, .. } => Some((x_start, x_end)),
+            Self::Box(b) => Some((b.min.x, b.max.x)),
+        }
     }
 
     fn max_radius(&self) -> Option<f64> {

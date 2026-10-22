@@ -196,6 +196,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | BUG-SPINDLE | Trial feedback (issues #249 and #250; findings F-79 and F-80; TL-05, GC-07, NFR-12): the spindle speed belongs to the operation, filled by the tool's cutting data for the setup's material as a default, with no machine default; a missing speed is a required value and Post and Export says what to enter and where; materials are matched ignoring case and repeated spaces and picked from the known material names in the setup and in the tool library; the tool library's entry boxes are wide enough and every entry has a tooltip. Built 21 Oct 2026 on `claude/lane-bug-spindle` ([decision 0196](decisions/0196-spindle-speed-belongs-to-the-operation.md) and [decision 0197](decisions/0197-material-names-and-the-tool-library-entries.md), accepted by the owner in the lane session; OI-750 to OI-753 answered by the owner (relayed) and closed, OI-754 to OI-756 open; project schema 16; library family 0.15.0; no golden file changes); draft pull request | ██ | | | | |
 | TOOLLIB | Trial feedback issues #192, #193, #194 (findings F-36 to F-38; TL-02, TL-03, TL-04, TL-11, TL-12, UI-15) and OI-536: the tool library list has a section for each machine's tool set and "Standard tools", foldable type groups, and a diameter and flute length filter (a value or a range) that keep their state per user; a default tool shows its profile and dimensions read-only with "Copy to edit"; Esc in a text field only ends the edit. The shared material list the owner asked for is BUG-SPINDLE's (decision 0196). In progress 21 Oct 2026 on `claude/lane-toollib` ([decision 0199](decisions/0199-tool-library-sections-filter-and-default-tools.md), accepted 21 Oct 2026; OI-770 to OI-773 open, OI-536 closed; no project format change, no schema number) | ██ | | | | |
 | OPCREATE | Trial feedback, the New operation work package (issues 195, 242, 199, 197, 223; F-39, F-75, F-43, F-41, F-67; OP-16, OP-11, UI-06, UI-07, NFR-07): the New operation dialog is one list of strategies (Roughing, Finishing, Specialist) with a plain description under each, taken from the strategy's registration; the operation inspector shows the strategy under its own heading, show only; a ramp or lead entry on a one-point pass is made by a plunge (the blisk's 3 degree ramp, issue 199); a required integer parameter is listed as missing (OI-696). Built 21 Oct 2026 on `claude/lane-opcreate` ([decision 0204](decisions/0204-new-operation-strategy-list-and-inspector-heading.md), proposed; [decision 0205](decisions/0205-roughing-default-stock-to-leave.md), issue 223 built as the owner chose, proposed; OI-790 to OI-794; no project schema number; library family 0.15.0). Issue 197 waits for lane BUG-SPINDLE (OI-792) | | | | | ██ |
+| CUTOPTS | Trial feedback cutting options (issues 246, 211, 251; F-77, F-55, F-81; OP-03, NFR-07, NFR-12, GC-07): rotary roughing gains a cut direction, along the length of the part or around it, in both the continuous and the indexed form, with each form's own direction kept as the default so no project or G-code changes (issue 246, built); requirement OP-24 (P1), extending past the stock on roughing and helical, axial and indexed finishing, and a Facing strategy, agreed by the owner and built (issue 211); requirement OP-25 (P2), climb, conventional and meander cutting, agreed by the owner and not built (issue 251, OI-856). In progress 22 Oct 2026 on `claude/lane-cutopts` ([decision 0212](decisions/0212-roughing-direction-and-extend-past-the-stock.md), [decision 0213](decisions/0213-requirement-proposal-cutting-direction.md), both accepted by the owner 22 Oct 2026; OI-851 and OI-856 open); no project schema number | | | | | ██ |
 | XC | CI hygiene: `cargo xtask conflicts` fails on unresolved merge conflict markers in tracked files, wired into the CI fast checks and `all` (built 19 Oct 2026 on `claude/lane-xc-conflict-marker-check`; no requirement covers it directly, supports NFR-06; no decision record; no open items; merged, pull request 136) | ██ | | | | |
 | T | 20 hardening and first release (lane REL is its last step) | | | | | ██ |
 
@@ -268,6 +269,7 @@ Slices 0 to 7 and 13 are closed. The remaining work splits into the lanes below,
 | UIR | X8 and X9 |
 | REL | Everything, including TP, X8, X9 and UIR |
 | OPCREATE | Nothing (issue 197 inside it waits for lane BUG-SPINDLE, OI-792) |
+| CUTOPTS | Nothing (lanes OPCREATE and BUG-SPINDLE are merged); stays out of the areas of SETUPPOS, TABDEV, STEPALL-F and SHEETSRC |
 | XC | Nothing |
 | T | Everything, including W and X1 to X9, UIR and REL |
 
@@ -1071,7 +1073,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 | 11 | IMP-02, IMP-06, NFR-13 | SP-1, SP-9 |
 | 12 | OP-04 | SP-7 |
 | 13 | OP-05, OP-06, OP-12 | SP-4, SP-13 |
-| 14 | OP-03 | SP-6 |
+| 14 | OP-03, OP-24 | SP-6 |
 | 15 | OP-09 | – |
 | 16 | OP-08 | SP-7 |
 | 17 | OP-07 | SP-11 |
@@ -1081,5 +1083,7 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 | 21 | SET-09, OP-21, UI-25 | – |
 | 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-16, NFR-17, NFR-15 (with slice 8) | – |
 | 23 | TL-12 | – |
+
+OP-24 (extend past the stock and Facing, P1) was added after slice 14 closed and is built by lane CUTOPTS ([decision 0212](decisions/0212-roughing-direction-and-extend-past-the-stock.md)); it is listed with slice 14, so its tests are required now.
 
 **Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19), NFR-02 (0, 8), and UI-10 to UI-16 and NFR-15 (8, 22: slice 22's lanes build slice 8 items 8 to 12, OI-338). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.

@@ -1386,3 +1386,88 @@ fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     assert!(app.project().operation(no_tool).is_none());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// `op` turned into `strategy` with the given values.
+fn set_strategy(
+    app: &mut Application,
+    op: OperationId,
+    strategy: &str,
+    values: &[(&str, ParameterValue)],
+) {
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = strategy.into();
+    operation.parameters = values
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+}
+
+#[test]
+fn req_op_24_the_default_distance_past_the_stock_follows_the_tool() {
+    use openchuck_path::extend::parameter as extend;
+    let (dir, mut app, op) = project("extend-default");
+    set_strategy(&mut app, op, "helical_finishing", &[]);
+    // A tenth of the 4 mm ball's diameter (decision 0212 part B item 2),
+    // given to the strategy and shown in the inspector as the default.
+    let operation = app.project().operation(op).unwrap().clone();
+    let resolved = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    assert_eq!(
+        resolved.values.get(extend::EXTEND_DISTANCE),
+        Some(&openchuck_path::ParameterValue::Number(0.4))
+    );
+    let form = app.parameter_form(op).unwrap();
+    let field = form
+        .fields
+        .iter()
+        .find(|f| f.name == extend::EXTEND_DISTANCE)
+        .unwrap();
+    assert_eq!(field.value, Some(ParameterValue::Number(0.4)));
+    assert_eq!(field.source, openchuck_app::form::Source::Default);
+    // A value set on the operation wins.
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: extend::EXTEND_DISTANCE.into(),
+        value: Some(ParameterValue::Number(1.5)),
+    })
+    .unwrap();
+    let operation = app.project().operation(op).unwrap().clone();
+    let resolved = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    assert_eq!(
+        resolved.values.get(extend::EXTEND_DISTANCE),
+        Some(&openchuck_path::ParameterValue::Number(1.5))
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_nfr_12_a_path_past_the_machines_travel_is_refused() {
+    use openchuck_path::extend::parameter as extend;
+    use openchuck_types::kinematics::RotaryFrame;
+    let (dir, mut app, op) = project("extend-travel");
+    let far = [(extend::EXTEND, ParameterValue::Text(extend::FAR_END.into()))];
+    set_strategy(&mut app, op, "helical_finishing", &far);
+    let first = app.regenerate().unwrap();
+    // The furthest the extended path goes along the axis, in machine X.
+    let mut machine = app.project().machine().unwrap().clone();
+    let frame = RotaryFrame::of_profile(&machine);
+    let furthest = first.toolpath.groups[0]
+        .segments
+        .iter()
+        .map(|s| frame.on_axis(Millimetres(s.end.tip.x)).x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    // A machine whose travel stops half a millimetre short of it.
+    machine.travel.max.x = furthest - 0.5;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("beyond the machine's travel") && e.contains("0.500 mm"),
+        "{e}"
+    );
+    // Not extended, the same operation fits.
+    set_strategy(&mut app, op, "helical_finishing", &[]);
+    assert!(app.regenerate().is_ok());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
