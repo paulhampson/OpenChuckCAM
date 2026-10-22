@@ -18,7 +18,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
 endobj
 7 0 obj
-<< /Length 3821 >>
+<< /Length 4309 >>
 stream
 BT /F2 14 Tf 40 793.50 Td (Setup sheet: sheet) Tj ET
 BT /F2 11 Tf 40 771.50 Td (Job) Tj ET
@@ -46,23 +46,27 @@ BT /F1 8.5 Tf 40 507.50 Td (----------------------------------------------------
 BT /F1 8.5 Tf 40 496.50 Td (T1    4 mm ball  ball end  4       2       10        40          4         Setup 1, Flip / side 2) Tj ET
 BT /F1 8.5 Tf 40 485.50 Td (T2    6 mm ball  ball end  6       2       10        40          6         Setup 1) Tj ET
 BT /F2 11 Tf 40 463.50 Td (Operations) Tj ET
-BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy           Setup          Tool          Spindle rpm  Tolerance  Time) Tj ET
-BT /F1 8.5 Tf 40 441.50 Td (--------------------------------------------------------------------------------------------) Tj ET
-BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    helical_finishing  Setup 1        T1 4 mm ball  10000        0.01 mm    0:20) Tj ET
-BT /F1 8.5 Tf 40 419.50 Td (2   Finish B    helical_finishing  Setup 1        T2 6 mm ball  10000        0.01 mm    0:20) Tj ET
-BT /F1 8.5 Tf 40 408.50 Td (3   Touch up A  helical_finishing  Setup 1        T1 4 mm ball  10000        0.01 mm    0:18) Tj ET
-BT /F1 8.5 Tf 40 397.50 Td (4   Side two    helical_finishing  Flip / side 2  T1 4 mm ball  10000        0.01 mm    0:20) Tj ET
-BT /F2 11 Tf 40 375.50 Td (Notes) Tj ET
-BT /F1 8.5 Tf 40 364.50 Td (Time is the sum of the toolpath's move durations at their programmed feeds. It leaves out) Tj ET
-BT /F1 8.5 Tf 40 353.50 Td (acceleration, tool changes and fixturing, and is not the simulated estimate. Generated G-code must) Tj ET
-BT /F1 8.5 Tf 40 342.50 Td (be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a) Tj ET
-BT /F1 8.5 Tf 40 331.50 Td (program is safe or correct for any machine, tool or setup.) Tj ET
-BT /F2 11 Tf 40 309.50 Td (Traceability) Tj ET
-BT /F1 8.5 Tf 40 298.50 Td (Generated            2026-10-21T09:30:05Z) Tj ET
-BT /F1 8.5 Tf 40 287.50 Td (Project last saved   2026-10-21T09:12:00Z) Tj ET
-BT /F1 8.5 Tf 40 276.50 Td (Software version     0.0.0) Tj ET
-BT /F1 8.5 Tf 40 265.50 Td (Project fingerprint  blake3:abababababababababababababababababababababababababababababababab) Tj ET
-BT /F1 8.5 Tf 40 254.50 Td (Version control      not tracked) Tj ET
+BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy      Setup         Tool          Spindle rpm  Speed from    Tolerance  Time) Tj ET
+BT /F1 8.5 Tf 40 441.50 Td (----------------------------------------------------------------------------------------------------) Tj ET
+BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    helical_fini  Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 419.50 Td (                shing                                                  oak) Tj ET
+BT /F1 8.5 Tf 40 408.50 Td (2   Finish B    helical_fini  Setup 1       T2 6 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 397.50 Td (                shing                                                  oak) Tj ET
+BT /F1 8.5 Tf 40 386.50 Td (3   Touch up A  helical_fini  Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:18) Tj ET
+BT /F1 8.5 Tf 40 375.50 Td (                shing                                                  oak) Tj ET
+BT /F1 8.5 Tf 40 364.50 Td (4   Side two    helical_fini  Flip / side   T1 4 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 353.50 Td (                shing         2                                        oak) Tj ET
+BT /F2 11 Tf 40 331.50 Td (Notes) Tj ET
+BT /F1 8.5 Tf 40 320.50 Td (Time is the sum of the toolpath's move durations at their programmed feeds. It leaves out) Tj ET
+BT /F1 8.5 Tf 40 309.50 Td (acceleration, tool changes and fixturing, and is not the simulated estimate. Generated G-code must) Tj ET
+BT /F1 8.5 Tf 40 298.50 Td (be verified by the user before it is run on a machine. OpenChuckCAM does not guarantee that a) Tj ET
+BT /F1 8.5 Tf 40 287.50 Td (program is safe or correct for any machine, tool or setup.) Tj ET
+BT /F2 11 Tf 40 265.50 Td (Traceability) Tj ET
+BT /F1 8.5 Tf 40 254.50 Td (Generated            2026-10-21T09:30:05Z) Tj ET
+BT /F1 8.5 Tf 40 243.50 Td (Project last saved   2026-10-21T09:12:00Z) Tj ET
+BT /F1 8.5 Tf 40 232.50 Td (Software version     0.0.0) Tj ET
+BT /F1 8.5 Tf 40 221.50 Td (Project fingerprint  blake3:abababababababababababababababababababababababababababababababab) Tj ET
+BT /F1 8.5 Tf 40 210.50 Td (Version control      not tracked) Tj ET
 BT /F1 8.5 Tf 40 20.00 Td (Page 1 of 1) Tj ET
 endstream
 endobj
@@ -79,5 +83,5 @@ xref
 trailer
 << /Size 8 /Root 1 0 R /Info 5 0 R >>
 startxref
-4392
+4880
 %%EOF

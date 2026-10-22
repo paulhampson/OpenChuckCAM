@@ -371,6 +371,7 @@ impl SetupSheet {
                     "Setup",
                     "Tool",
                     "Spindle rpm",
+                    "Speed from",
                     "Tolerance",
                     "Time",
                 ]
@@ -574,8 +575,10 @@ fn operation_row(
         || "none".to_string(),
         |t| format!("T{} {}", t.controller.number, t.name),
     );
-    let rpm = crate::requirements::spindle_speed(project, operation)
-        .map_or_else(|| "-".to_string(), |(speed, _)| plain(speed.0, 3));
+    let (rpm, speed_from) = match crate::requirements::spindle_speed(project, operation) {
+        Some((speed, source)) => (plain(speed.0, 3), speed_source(project, operation, source)),
+        None => ("-".to_string(), "none".to_string()),
+    };
     let time = if with_times {
         times
             .get(&operation.id.to_string())
@@ -605,9 +608,28 @@ fn operation_row(
         setup,
         tool,
         rpm,
+        speed_from,
         tolerance,
         time,
     ]
+}
+
+/// Where a spindle speed came from, in plain words (decision 0196, OI-755).
+fn speed_source(
+    project: &Project,
+    operation: &Operation,
+    source: crate::requirements::SpindleSource,
+) -> String {
+    match source {
+        crate::requirements::SpindleSource::Operation => "operation".to_string(),
+        crate::requirements::SpindleSource::ToolData => {
+            let material = project
+                .setup(operation.setup)
+                .and_then(|s| s.material.as_deref())
+                .unwrap_or_default();
+            format!("tool data: {material}")
+        }
+    }
 }
 
 /// HTML text escaping for element content.
