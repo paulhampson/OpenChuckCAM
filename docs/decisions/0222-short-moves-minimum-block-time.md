@@ -1,10 +1,12 @@
 # 0222: Short moves: a minimum block time, reported first, then met by slowing down (lane SHORTMOVE; SP-14)
 
-- **Status:** proposed (22 Oct 2026). This is an investigation for the owner to agree or refine. Nothing is built. Only the owner accepts a record (decision 0049).
+- **Status:** proposed (22 Oct 2026). Nothing is built. Only the owner accepts a record (decision 0049).
+  - **Item 2 decided:** the owner chose option A (Report first, then Slow down; Merge deferred), relayed by the coordinator on 22 Oct 2026.
+  - **Item 3 still waits** on the owner (OI-931), as does the default value; the evidence for the value is in *The 5 ms figure* below, which the owner asked for.
 - **What it amends:** nothing yet. The requirement, the profile and post fields, and the verification rows below are proposals. `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` are not edited (CLAUDE.md).
 - **Date:** 22 Oct 2026.
 - **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
-- **Open items:** OI-930 to OI-936 are new. OI-68 (arcs are not replayed) is touched but unchanged.
+- **Open items:** OI-930 to OI-936 are new. OI-68 (arcs are not replayed) is touched but unchanged. OI-932 (the merge tolerance) stays open as deferred, with Merge.
 - **Number note:** the lane was given 0222 and 0223. This investigation needs one record, so 0223 stays free.
 
 ## Context
@@ -101,9 +103,9 @@ These were read from source, not measured on the machine:
 
 GC-17 is the next free GC number on `main` and on every unmerged branch, checked on 22 Oct 2026. The owner may prefer to extend GC-04 instead.
 
-### 2. Build order (this changes the provisional order)
+### 2. Build order (decided: the owner's option A, relayed 22 Oct 2026)
 
-**Report first, then Slow down. Merge is deferred**, to be built only for block-count reduction, with its own tolerance. The reasons are in the numbers:
+**Report first, then Slow down. Merge is deferred**, to be built only if wanted later for block-count reduction, with its own tolerance taken from the budget (OI-932). This changes the owner's provisional order (Report and Merge first). The reasons are in the numbers:
 
 - **Slow down** costs at most 1.4 % of an operation's time at 5 ms (7 % at 10 ms, pencil) and adds no geometric error. It needs no change to the tolerance budget. It is a deterministic pure function of the durations.
 - **Merge** within the existing budget removes only 6 to 20 % of the short blocks. A useful merge tolerance (0.01 mm) takes the whole NFR-05 budget. It needs the independent checker and its own gate-2 handling, so it costs more and does less.
@@ -116,6 +118,8 @@ The check is **a block time averaged over a window of N blocks**, not a test of 
 A queue absorbs short runs. The longest run measured is 11 blocks, but the worst 32-block mean is 5.6 ms. A strict per-block limit of 5 ms would flag 15,139 blocks on the axial file, where no 32-block window averages under 12 ms. Slow down then lowers the feed only where a window's mean is under the limit, lengthening the shortest blocks in that window first.
 
 This refines the owner's model, so it is put to the owner as a question (OI-931).
+
+On the Z1 there are two buffers in series, so two window sizes matter (see *The 5 ms figure*). The 224-line receive buffer absorbs a slow line supply for up to about 256 lines. The 32-block planner queue absorbs slow parsing and planning for up to 32 blocks. The proposal uses the smaller of the two, 32, which is the stricter check.
 
 ### 4. Fields
 
@@ -154,10 +158,13 @@ This refines the owner's model, so it is put to the owner as a question (OI-931)
   - `req_gc_17_deterministic_at_any_thread_count`.
   - `req_gc_17_post_overrides_profile`.
   - A gate-2 test in which a slowed program replays within 1 % of the adjusted durations.
-- **Golden.** The blisk pencil finish, or a small cut of it in `testdata/`, posted with the limit set to 5 ms. The owner's projects are not used directly (their README).
+- **Golden.** The blisk pencil finish, or a small cut of it in `testdata/`, posted with the limit set to 5 ms. Here 5 ms is a test value chosen because it slows some blocks, not a default. The owner's projects are not used directly (their README).
 - **Hardware check for the gate 4 procedure** (`docs/z1-gates-4-5-test-instructions.md` on #284; not edited here). This is an attended air cut, with no tool and no material, under the gate 4 rules:
   - **Program.** A program with six sections, each 100 mm of X travel at F1000, made of equal collinear blocks of 20, 10, 5, 3, 2 and 1 ms. The block lengths are 0.333, 0.167, 0.083, 0.050, 0.033 and 0.017 mm, and the 1 ms section has 6,000 lines.
+    - Every section is longer than the 224-line receive buffer plus the 32-block queue (about 256 lines; the 20 ms section has 300). So a section that runs at its nominal time shows that the supply keeps up over time, not just that the buffer covered it.
+    - Each line carries all four axis words and an F word, written as the post writes them (about 35 characters). The supply rate is a rate in bytes, so short test lines would flatter it.
   - **Variant.** The same blocks with a 0.2 degree A step in each, which exercises the firmware's A speed handling.
+  - **How it is run.** Upload the file and play it from the machine, the normal way, not streamed from a computer. Record the firmware version, the ESP32 (controller board) version and how the file was sent.
   - **Measurement.** Stopwatch each section, as SP-12's T3 tests did. The nominal time is 6 s per section. The block time at which the measured time first exceeds the nominal by more than 5 % is the Z1's effective minimum block time, together with the firmware and the ESP32 version.
   - **Listening.** Also listen for stutter in each section.
   - **Use of the result.** That figure sets the Z1 profile's `min_block_ms`, marked confirmed (OI-930). The test runs about 2 minutes.
@@ -167,6 +174,87 @@ This refines the owner's model, so it is put to the owner as a question (OI-931)
 - **No arc fitting.** The Z1 cannot move A in an arc, gate 2 does not replay arcs (OI-68), and decision 0016 rules out G2/G3 with A. G18 arcs on axial passes are a possible later step (OI-936).
 - **No change to the LinuxCNC verification post's G61** (decision 0020): blending belongs to a production LinuxCNC post (OI-934).
 - **No change to path fitting.** A minimum step length in the strategies would change toolpaths, so it would be a strategy decision in its own right.
+
+## The 5 ms figure: evidence for the limit value
+
+The owner asked whether 5 ms, and 1 ms or 10 ms, is a reasonable default or limit.
+
+**Short answer.**
+- **5 ms is not a Z1 figure.** It is one of the thresholds (1, 2, 5 and 10 ms) chosen to describe the measurements. No source gives the Z1's block rate, and no source names 5 ms.
+- **The evidence puts the Z1's floor somewhere around 1 to 3 ms per line.** That is inference, set out below. The supply side is closed source and the parse time is unpublished.
+- **Recommendation.** The default stays **off**. The Z1 profile's value comes from the air cut in item 7 (OI-930), marked confirmed. Until then, the Z1 profile ships off.
+- **If the owner wants a value before the air cut,** 3 ms with the 32-block window is the evidence-based choice: above the estimated 1.2 to 2 ms supply floor, with margin. It would slow nothing in any job measured, because the worst 32-block mean is 5.6 ms. 5 ms with the window would also slow nothing measured. 10 ms would slow pencil.
+
+Each point below is marked **fact** (read in a source), **inference** (worked out from facts) or **not found**.
+
+### The Makera Z1 controller (MakeraInc/MakeraZ1Firmware, HEAD 8ae81f3, 1.1.3; the files cited are unchanged since b3a2e26, 1.1.2)
+
+- **Fact: lines arrive in packets of at most 504 bytes, over a serial link at 230400 baud.**
+  - The motion processor (LPC1768) talks to the controller board (ESP32) on UART2 at 230400 baud with DMA (`src/libs/Kernel.cpp:147`, pins P2_8 and P2_9; `src/modules/communication/SerialConsole_DMA.cpp`).
+  - A program played from the machine is sent from the ESP32 in `PTYPE_PLAY_DATA` packets. Each packet has at most 513 data bytes (`SerialConsole.cpp:136`), of which 504 are G-code text (`SerialConsole.cpp:225-262`).
+- **Fact: the firmware asks for the next packet only when the previous one has arrived.**
+  - It requests more lines when its buffer holds fewer than 180, and only once the previous request has been answered (a new request also goes out after 5 s with no answer).
+  - The buffer holds 224 lines of 64 bytes (`Player.cpp:67, 75, 783-805`).
+  - It executes one line per pass of the main loop (`Player.cpp:766-781`).
+- **Inference: the link alone allows at most about 1.2 ms per line.**
+  - At 230400 baud and 10 bits a byte, the link carries 23,040 bytes a second.
+  - A packet of 504 bytes takes about 22 ms and holds about 14 lines of the post's 35-character lines (about 18 at 28 characters).
+  - So the link alone allows at most about 650 to 800 lines a second, roughly 1.2 to 1.5 ms per line. Each round trip's ESP32 time (reading the stored file, framing) adds to that.
+  - If the ESP32 takes 10 ms per packet, the rate falls to about 450 to 550 lines a second, roughly 1.8 to 2.2 ms per line.
+  - The ESP32 firmware is closed source (MakeraZ1Firmware issue #1), so its time per packet is **not found**.
+- **Fact: the planner plans every move to end at a stop.**
+  - The planner queue holds 32 blocks (`Conveyor.cpp:75`).
+  - With `minimum_planner_speed` 0 (`Planner.cpp:47`), the newest block in the queue is always planned to end at rest (`Planner.cpp:281, 325`).
+  - **Inference:** the machine keeps its speed only while new blocks arrive before it must start braking for the newest one. When lines arrive more slowly than the blocks run, the queue empties and the machine slows towards a stop at the end of each queued block. That is the stutter.
+  - The stepper waits up to 100 ms for a full queue before it starts (`queue_delay_time_ms`, `Conveyor.cpp:76, 185-189`). That affects the start of a program, not the run.
+- **Inference: stopping distance is not the limit on these programs.** The acceleration is 150 mm/s² (`configZ1.default:445`). With a full queue, the speed allowed by stopping within the queued length stays at least 1.72 times the programmed speed in every 32-block window measured (SP-14). So the risk is the supply and the parse rate, not the queue depth.
+- **Not found: the parse and plan time per line on the LPC1768.** Neither the firmware nor anything published gives it.
+  - As a scale only, Grbl's 2012 planner rewrite reports 1.9 ms per arc segment on a 16 MHz AVR (Grbl commit log, mirrored at gitea.psi.ch/motion/ecmc_plugin_grbl). The LPC1768 runs at 100 MHz, so this is an order of magnitude, not a figure for the Z1.
+- **Not found: anything from Makera.** No block-rate, stutter or segment guidance was found in Makera's sources:
+  - Makera's own Fusion post (`Carvera.cps` in CarveraProfiles at de08a65) sets `minimumChordLength` 0.25 mm and tolerance 0.002 mm, and has no minimum segment time. **Inference:** at 1,000 mm/min, a 0.25 mm chord is a 15 ms block.
+  - Makera's web documentation (wiki.makera.com) and forum (community.makera.com) were not reachable from this session (see below).
+- **Fact: a firmware issue doubts the source.** Issue #2 on MakeraZ1Firmware says the source may not match the shipped binary. Every Z1 figure above is therefore medium confidence until the air cut.
+
+### Other controllers, for comparison
+
+- **Marlin 2.1.2.5 — fact.** Its rule is the closest published equivalent of the owner's model.
+  - `DEFAULT_MINSEGMENTTIME 20000` µs, the "minimum time that a segment needs to take as the buffer gets emptied" (`Configuration_adv.h:1141`).
+  - It applies only while the queue is less than half full (`SLOWDOWN`, `SLOWDOWN_DIVISOR 2`). There it adds time in proportion to how empty the queue is (`src/module/planner.cpp:2376-2391`).
+  - **Inference:** Marlin's large value (20 ms) is safe because it applies only when the queue is draining. That supports item 3's window over the queue rather than a per-block test.
+- **LinuxCNC 2.9 — fact.**
+  - The servo period is 1 ms (`docs/src/config/ini-config.adoc:599`).
+  - The speed of a segment is capped at its length over 1.02 servo periods (`src/emc/tp/tp.c:1708-1709`, `tp_types.h:23-26`), so blocks shorter than about 1.02 ms run slower than programmed.
+  - The documentation's rule is `min_length = v x period`, and its Naive CAM tolerance advice is about half of that (`ini-config.adoc:798-808`).
+  - So 1 ms is LinuxCNC's hard floor, not a margin.
+- **Grbl — fact.** The 2012 development notes say short, fast segments can run faster than new blocks are added, so "the planner buffer will starve" with "hiccup-like jerky motion". They also say the segment length was tied to an arc tolerance for that reason. This states the mechanism; it gives no number for the Z1.
+
+### What 1, 5 and 10 ms would do on the jobs measured (32-block window)
+
+| Limit | Reference jobs | Blisk helical / rest (axial) / pencil | Fit with the evidence |
+| --- | --- | --- | --- |
+| 1 ms | Nothing slowed | Nothing slowed | LinuxCNC's hard floor. Below the Z1's estimated link floor of about 1.2 ms per line, so too low for the Z1. |
+| 3 ms | Nothing slowed | Nothing slowed (worst mean 5.6 ms) | Just above the estimated 1.2 to 2.2 ms Z1 floor. The candidate if a value is wanted before the air cut. |
+| 5 ms | Nothing slowed | Nothing slowed by the window. Per block it would slow 382 / 15,139 / 801 blocks. | About twice the estimated floor. Defensible as a cautious value, but nothing measured needs it. |
+| 10 ms | Nothing slowed | Pencil slowed (its worst mean is 5.6 ms) | Higher than any evidence supports. It costs up to 7 % on pencil per block, less with the window. |
+
+### What could not be reached
+
+The environment's network policy blocked these hosts:
+- wiki.makera.com and community.makera.com (Makera documentation and forum);
+- forum.makerforums.info (Smoothieware forum threads on planner starvation);
+- linuxcnc.org (LinuxCNC's rendered documentation; its source documentation on GitHub was read instead);
+- smoothieware.org and its documentation site.
+
+github.com pages answered 403 to direct requests; the firmware repositories were read from clones. The owner can allow these hosts under Network access in the cloud environment's settings (https://code.claude.com/docs/en/cloud-environments#network-access), or check Makera's pages by hand. No figure in this section stands in for those sources.
+
+### What the owner can measure instead
+
+The air cut in item 7 measures the Z1's minimum block time directly:
+- the six sections bracket the plausible 1 to 3 ms range, with 5, 10 and 20 ms as controls;
+- each section is longer than both buffers;
+- it takes about 2 minutes.
+
+The first section that runs more than 5 % over its nominal 6 s, or audibly stutters, gives the floor. The profile value would then be the next longer block time tested, recorded with the firmware and ESP32 versions (OI-930).
 
 ## Alternatives considered
 
