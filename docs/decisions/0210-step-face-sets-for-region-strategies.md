@@ -67,13 +67,13 @@ Records read: 0032, 0034, 0056, 0058, 0066, 0114, 0174, 0176, 0209. Open items r
 ## Verification
 
 OP-23's tests so far cover its face-selection and notes parts; its exact-surface parts are lanes STEPALL-M's and STEPALL-X's. Unit tests in `openchuck-app` (`operation.rs`), on a closed-form STEP part with no kernel (`openchuck_testkit::brep::banded_cylinder`: a round bar whose side is three cylinder faces):
-- `req_op_23_req_op_02_req_op_11_face_sets_limit_{helical,axial,indexed,rotary_roughing}_on_a_step_part_as_on_a_mesh`: Cut on, Contain within, Avoid, Check and a stock to leave per set, each on the STEP part and on the same triangles as an STL, each keeping to the same faces (item 2). Uninstrumented debug times on the lane's container: 10 to 25 s each run alone (all four together about 48 s run one after another).
+- `req_op_23_req_op_02_req_op_11_face_sets_limit_{helical,axial,indexed,rotary_roughing}_on_a_step_part_as_on_a_mesh`: Cut on, Contain within, Avoid, Check and a stock to leave per set, each on the STEP part and on the same triangles as an STL, each keeping to the same faces (item 2). Uninstrumented debug times on the lane's container, one test at a time: axial 27 s, helical 21 s, roughing 4 s, indexed 2 s; all are under the long-test line of a minute.
 - `req_op_23_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part`.
 - `req_op_23_req_nfr_07_a_face_set_that_does_not_fit_the_step_part_is_refused`, in all four roles.
 - `req_op_23_req_op_11_req_nfr_07_one_check_refuses_sets_before_and_at_generation`: every registered strategy, every case of item 5 that applies to it, the check's text equal to generation's, no internal name or requirement ID, the label first where the text names the strategy.
 - `req_op_23_req_nfr_12_an_operation_on_a_step_part_names_the_surface_it_dropped_on`, and in `openchuck-import` `req_op_23_req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation`.
 
-Integration tests: `tests/operation.rs` `req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating` (the overview's error state and Messages line before Generate, and the same words at generation), and in `openchuck-ui` `req_op_23_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use`.
+Integration tests: `tests/operation.rs` `req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating` (the overview's error state and Messages line before Generate, the same words at generation, and the line said once after that generation fails), and in `openchuck-ui` `req_op_23_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use`.
 
 Not run in the lane's container: the kernel tests (`--features kernel-tests`), which need OpenCASCADE. They do not test the changed refusals or the new note, but CI runs them. `blisk.step` is not used here: it reaches `testdata/step/` with lane STEPALL-M, and its blades as a face set are a test for that lane or a later one, on a part with real faces.
 

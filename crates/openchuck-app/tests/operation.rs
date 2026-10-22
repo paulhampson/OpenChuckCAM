@@ -1373,8 +1373,20 @@ fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_b
         Some(MessageAction::Show(ItemRef::Operation(op)))
     );
     // Generating refuses with the same words.
-    let e = app.regenerate().unwrap_err().to_string();
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
     assert!(e.contains(said), "{e}");
+    // After that generation, Messages says it once.
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    assert_eq!(
+        overview
+            .messages
+            .iter()
+            .filter(|m| m.text.contains(said))
+            .count(),
+        1,
+        "{:?}",
+        overview.messages
+    );
     // Taken out, nothing is refused.
     app.set_operation_selection(op, SelectionRole::Machine, set, false)
         .unwrap();

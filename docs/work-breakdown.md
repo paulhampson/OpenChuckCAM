@@ -4,7 +4,7 @@ Revision 5, 11 Oct 2026. Reconciled with the architecture as updated on 10 Oct 2
 
 ## P1 assessment
 
-97 of 155 requirements are P1: IMP 6, UI 17, SET 5, TL 9, OP 17, SIM 7, GC 14, PRJ 6, NFR 16 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 58 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-14), band visibility (SIM-15, decision 0163), and selection sets from a user-defined bounding volume (OP-22, decision 0188; no lane scheduled, OI-701).
+98 of 156 requirements are P1: IMP 6, UI 17, SET 5, TL 9, OP 18, SIM 7, GC 14, PRJ 6, NFR 16 (SUG-04, the setup sheet, repeats GC-12 and is not counted again). The other 58 (P2 and P3) are out of this phase: re-import, DXF and SVG, Y-axis, multiple setups, holders, material library, rotary acceleration limit, geodesic and spiral finishing patterns, collision detection, in-app version control (`openchuck-vcs` is not built), library packaging and bindings, scripting, time estimates, G-code simulation, feature recognition, the interface conveniences of decision 0038 (UI-17 to UI-24: command search, inch display, form aids, light theme, measure and section, undo history, start page, re-selecting a set) and its simulation review aids (SIM-11 to SIM-14), band visibility (SIM-15, decision 0163), and selection sets from a user-defined bounding volume (OP-22, decision 0188; no lane scheduled, OI-701).
 
 Findings, after reconciling with the architecture:
 
@@ -1061,9 +1061,9 @@ Today the workholding panel (`workholding_panel.rs`, edits a draft of the held r
 | 17 | OP-07 | SP-11 |
 | 18 | OP-10 | – |
 | 19 | GC-05, GC-06, GC-12, GC-15, GC-16 | – |
-| 20 | NFR-12 | – |
+| 20 | NFR-12, OP-23 | – |
 | 21 | SET-09, OP-21, UI-25 | – |
 | 22 | UI-10, UI-11, UI-12, UI-13, UI-14, UI-15, UI-16, NFR-16, NFR-17, NFR-15 (with slice 8) | – |
 | 23 | TL-12 | – |
 
-**Requirements that span slices.** A requirement closes when the last slice that touches it closes: TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19), NFR-02 (0, 8), and UI-10 to UI-16 and NFR-15 (8, 22: slice 22's lanes build slice 8 items 8 to 12, OI-338). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
+**Requirements that span slices.** A requirement closes when the last slice that touches it closes: OP-23 (added by [decision 0210](decisions/0210-step-face-sets-for-region-strategies.md)) is built by lane STEPALL's sub-lanes ([decision 0209](decisions/0209-step-geometry-for-every-strategy.md)), face selection and the notes by STEPALL-F, and closes with slice 20; TL-03 (slices 4, 8), UI-04 and PRJ-06 (10, 11), OP-02 (10, 12, 14), OP-11 (5, 12, 14), OP-13 and OP-15 (5, 13), OP-14 (5, 14), GC-14 (6, 19), NFR-02 (0, 8), and UI-10 to UI-16 and NFR-15 (8, 22: slice 22's lanes build slice 8 items 8 to 12, OI-338). UI-14 and NFR-15 are built in slice 8 and close at slice 20, where they are checked again. The cross-cutting NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10 and NFR-14 are tracked from slice 0 or their first slice but close at slice 20.
