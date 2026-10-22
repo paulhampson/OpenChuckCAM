@@ -61,7 +61,7 @@ The owner's blisk, `testdata/stl/blisk.stl`, is the first sample from a real par
 
 ## Air-cut plan (gate 4) for the operator
 
-The full procedure and record sheet are in [z1-air-cut-procedure.md](z1-air-cut-procedure.md) (reviewed 14 Oct 2026). For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
+The full procedure and record sheet are in [z1-air-cut-procedure.md](z1-air-cut-procedure.md) (reviewed 14 Oct 2026). Step-by-step instructions for gates 4 and 5, with checklists and results forms, are in [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md) (draft; OI-910 to OI-919). For the operator to review before the first trial; amend it after the review. Rules: verification plan section 6 (attended, emergency stop in reach, no tool, no material, reduced feed).
 
 1. Check the profile values the programs depend on: axis height (OI-60), travel (OI-39). The A direction is already confirmed. Regenerate the Z1 programs and compare with the golden files.
 2. Run SP-12's conventions program first (`spikes/sp12/AIR-CUT.md` on the SP-12 branch) and record the results in decision 0007's open items (wrap, feed rule, G93; the direction is confirmed).

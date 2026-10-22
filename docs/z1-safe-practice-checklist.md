@@ -4,6 +4,8 @@
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM has never run a generated program on a Z1 as of this draft. Passing the project's own gates reduces the risk; it does not remove it.
 
+**Step-by-step instructions** for gates 4 and 5, with one-page checklists and results forms, are in [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md) (lane GATES, draft for the owner's review).
+
 Use with the [air-cut procedure](z1-air-cut-procedure.md). Tick each box; stop at the first one you cannot tick.
 
 ## 1. Before every session

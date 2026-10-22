@@ -11,6 +11,7 @@ These documents are the source of truth for the project. They live in the reposi
 | [crate-selection.md](crate-selection.md) | The survey of Rust crates, with scores out of 100 as of 10 Oct 2026. The architecture's crate choices come from it. |
 | [dependencies.md](dependencies.md) | The NFR-14 record of every third-party dependency: pinned version, survey score, licence and justification, and the pin and upgrade policy. |
 | [fuzzing.md](fuzzing.md) | Every user-supplied file format with its fuzz target and corpus, and the running total of fuzz CPU hours per parser (NFR-07, decision 0107). |
+| [z1-gates-4-5-test-instructions.md](z1-gates-4-5-test-instructions.md) | Step-by-step instructions, checklists and results forms for G-code gates 4 (the Z1 air cut) and 5 (the first cut), with the [air-cut procedure](z1-air-cut-procedure.md) and the [safe-practice checklist](z1-safe-practice-checklist.md) they build on. Draft for the owner's review. |
 | [open-items.md](open-items.md) | The register of open items raised by decision records and slice reviews, with their state. |
 | [decisions/](decisions/) | Decision records for choices made after these documents were written. |
 | [ui-design/](ui-design/) | The user interface specification: layout, workflow, states, wording and visual tokens of the desktop application. Accepted with decision 0038; it ranks with the decision records (precedence 5). Rendered mockups are in `ui-design/mockups/`. |
