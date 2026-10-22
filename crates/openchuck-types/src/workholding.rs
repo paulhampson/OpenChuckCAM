@@ -465,23 +465,25 @@ pub fn check_tab_zones(
     // A small allowance for rounding in the part's extent.
     const EPS: f64 = 1e-9;
     let inside = |lo: f64, hi: f64, z: Interval| lo >= z.0 - EPS && hi <= z.1 + EPS;
-    resolved
-        .tabs
-        .iter()
-        .enumerate()
-        .filter_map(|(i, t)| {
-            if let Some(&(_, end)) = no_room.iter().find(|(k, _)| *k == i) {
-                return Some(SetupWarningKind::AutoTabNoRoom { tab: i + 1, end });
-            }
-            let (lo, hi) = (t.x_start.0, t.x_start.0 + t.length.0);
-            (!inside(lo, hi, head) && !inside(lo, hi, tail)).then_some(
-                SetupWarningKind::TabOutsideEndZones {
-                    tab: i + 1,
-                    x: (lo, hi),
-                },
-            )
-        })
-        .collect()
+    let (part_lo, part_hi) = (part.bounds.min.x, part.bounds.max.x);
+    let mut found = Vec::new();
+    for (i, t) in resolved.tabs.iter().enumerate() {
+        let (lo, hi) = (t.x_start.0, t.x_start.0 + t.length.0);
+        let mut outside = !inside(lo, hi, head) && !inside(lo, hi, tail);
+        if let Some(&(_, end)) = no_room.iter().find(|(k, _)| *k == i) {
+            found.push(SetupWarningKind::AutoTabNoRoom { tab: i + 1, end });
+            // The position it keeps is only refused once the part has moved
+            // over it: the tab would then hold material across the part.
+            outside = hi > part_lo + EPS && lo < part_hi - EPS;
+        }
+        if outside {
+            found.push(SetupWarningKind::TabOutsideEndZones {
+                tab: i + 1,
+                x: (lo, hi),
+            });
+        }
+    }
+    found
 }
 
 /// A held region that reaches into the part (SET-09, OI-554): the part's
@@ -804,6 +806,31 @@ mod tests {
         .to_string();
         assert!(text.contains("at the tail of the part"), "{text}");
         assert!(text.contains("the end of the stock"), "{text}");
+    }
+
+    /// An automatic tab with no room keeps its last position; when the part
+    /// has moved over that position, the tab would hold material across the
+    /// part, so the stored span is reported as outside the end zones too
+    /// (decision record 0202; OP-21).
+    #[test]
+    fn req_op_21_an_automatic_tab_with_no_room_across_the_part_is_outside_the_zones() {
+        let (stock, mut w) = auto_setup();
+        w.tabs.truncate(2);
+        // The tab is stored at X 0 to 1; the part now starts at X 0.5.
+        let part = part_at(0.5, 80.0);
+        assert_eq!(
+            check_tab_zones(&w, Some(&stock), Some(&part)),
+            vec![
+                SetupWarningKind::AutoTabNoRoom {
+                    tab: 1,
+                    end: TabEnd::Head
+                },
+                SetupWarningKind::TabOutsideEndZones {
+                    tab: 1,
+                    x: (0.0, 1.0)
+                },
+            ]
+        );
     }
 
     /// A stored automatic tab may lie anywhere: a change of stock leaves its

@@ -983,12 +983,17 @@ mod tests {
             ],
             ..Workholding::default()
         };
-        let part = part(20.0, 78.0);
+        let after = part(20.0, 78.0);
         assert!(matches!(
-            check_tab_zones(&w, Some(&stock()), Some(&part))[0],
+            check_tab_zones(&w, Some(&stock()), Some(&after))[0],
             SetupWarningKind::AutoTabNoRoom { tab: 1, .. }
         ));
-        let error = check_for_tool(&w, Some(&stock()), &part, 1.0, "a").unwrap_err();
+        let error = check_for_tool(&w, Some(&stock()), &after, 1.0, "a").unwrap_err();
         assert!(error.to_string().contains("tab 2"), "{error}");
+        // The automatic tab itself is refused when the part has moved over
+        // the position it keeps.
+        let over = part(12.0, 78.0);
+        let error = check_for_tool(&w, Some(&stock()), &over, 1.0, "a").unwrap_err();
+        assert!(error.to_string().contains("tab 1"), "{error}");
     }
 }
