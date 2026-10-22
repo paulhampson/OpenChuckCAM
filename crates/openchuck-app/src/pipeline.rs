@@ -390,7 +390,11 @@ pub(crate) fn regenerate(
         regeneration.notes.extend(notes);
     }
     progress.reach(
-        if simulate { STAGE_SIMULATE } else { STAGE_GENERATE },
+        if simulate {
+            STAGE_SIMULATE
+        } else {
+            STAGE_GENERATE
+        },
         1.0,
     );
     Ok(regeneration)
@@ -572,7 +576,11 @@ mod tests {
     }
 
     /// Runs the pipeline of `p` with a simulation, reporting to `sink`.
-    fn run_with(p: &TestProject, sink: &dyn ProgressSink, cancel: &CancelToken) -> Result<Regeneration, AppError> {
+    fn run_with(
+        p: &TestProject,
+        sink: &dyn ProgressSink,
+        cancel: &CancelToken,
+    ) -> Result<Regeneration, AppError> {
         let context = JobContext::new(cancel, sink);
         regenerate(
             p.app.location(),
@@ -608,7 +616,11 @@ mod tests {
         let mut done = 0;
         let mut seen_simulate = false;
         for r in &reports {
-            assert_eq!(r.total, Some(crate::jobs::RUN_PROGRESS_TOTAL), "{reports:?}");
+            assert_eq!(
+                r.total,
+                Some(crate::jobs::RUN_PROGRESS_TOTAL),
+                "{reports:?}"
+            );
             assert!(r.done >= done, "went back: {reports:?}");
             seen_simulate |= r.stage == STAGE_SIMULATE;
             if seen_simulate {
@@ -627,10 +639,7 @@ mod tests {
         assert!(values.len() > 4, "{values:?}");
         let third = crate::jobs::RUN_PROGRESS_TOTAL / 3;
         assert!(values.iter().any(|v| *v > 0 && *v < third), "{values:?}");
-        let comparison = reports
-            .iter()
-            .find(|r| r.stage == STAGE_SIMULATE)
-            .unwrap();
+        let comparison = reports.iter().find(|r| r.stage == STAGE_SIMULATE).unwrap();
         assert!(comparison.done >= 2 * third, "{reports:?}");
     }
 

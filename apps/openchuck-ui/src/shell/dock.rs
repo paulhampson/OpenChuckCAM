@@ -58,6 +58,15 @@ impl Shell {
         tabs
     }
 
+    /// Opens the Jobs tab, opening the dock if it was collapsed (the job in
+    /// the status bar, issue 201).
+    pub(super) fn show_jobs(&mut self) {
+        self.dock_tab = DockTab::Jobs;
+        if self.settings.dock.collapsed {
+            self.toggle_region(super::frame::Region::Dock);
+        }
+    }
+
     /// The tab strip, with the error and warning counts on Messages.
     pub(super) fn dock_tabs(&mut self, ui: &mut egui::Ui) {
         let tabs = self.tabs();
@@ -238,6 +247,12 @@ impl Shell {
     /// their outcome (UI-09; specification section 9).
     fn jobs_tab(&mut self, ui: &mut egui::Ui) {
         let mut cancel = None;
+        // The operation the pipeline works on, as the status bar says it
+        // (decision 0190 item 5).
+        let activity = self
+            .app
+            .as_ref()
+            .and_then(openchuck_app::Application::pipeline_activity);
         egui::ScrollArea::vertical()
             .id_salt("jobs")
             .auto_shrink([false, false])
@@ -248,7 +263,12 @@ impl Shell {
                 for entry in self.jobs.running() {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(&entry.label);
+                        match &activity {
+                            Some(a) if matches!(entry.name.as_str(), "regenerate" | "simulate") => {
+                                ui.label(format!("{}: {a}", entry.label))
+                            }
+                            _ => ui.label(&entry.label),
+                        };
                         if let Some(f) = entry.fraction() {
                             ui.add(
                                 egui::ProgressBar::new(f)

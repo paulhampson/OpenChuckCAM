@@ -87,8 +87,8 @@ pub use export::{
     run_is_current, simulation_out_of_date, write_gcode_files,
 };
 pub use jobs::{
-    FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome, Threads,
-    job_label,
+    FINISHED_JOBS_KEPT, JobEntry, JobHandle, JobId, JobLog, JobManager, JobOutcome,
+    RUN_PROGRESS_TOTAL, Threads, job_label,
 };
 /// The G-code reader and replay, re-exported so front ends need no engine
 /// crate of their own (architecture section 5.8).
@@ -534,9 +534,16 @@ impl Application {
         Ok(self
             .jobs
             .submit("import model", self.events_tx.clone(), move |context| {
+                // The reader's stages report as one share that never starts
+                // again (issue 201).
+                let progress = jobs::RunProgress::new(context);
+                progress.reach("import model", 0.0);
+                let share = progress.share("import model", 0.0, 1.0);
+                let within = openchuck_types::job::JobContext::new(context.cancel, &share);
                 let bytes = model::read(&path)?;
                 let hash = ContentHash::of_bytes(&bytes);
-                let inspection = model::inspect_bytes(&path, &bytes, units, &steps, context)?;
+                let inspection = model::inspect_bytes(&path, &bytes, units, &steps, &within)?;
+                share.finish();
                 let mut reference = ModelRef::new(ModelId::new(), relative, hash);
                 reference.units = units;
                 reference.transform = steps;

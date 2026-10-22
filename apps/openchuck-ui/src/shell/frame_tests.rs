@@ -1640,3 +1640,22 @@ fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descrip
     // entry's description is under its name.
     assert!(rig.shows(&choices[0].description[..40]));
 }
+
+/// Issue 201, the owner's option C: the status bar shows the current job,
+/// and choosing it opens the Jobs tab, with every job, its history and
+/// Cancel, even when the dock was collapsed.
+#[test]
+fn req_ui_09_the_job_in_the_status_bar_opens_the_jobs_tab() {
+    let mut rig = Rig::cube("frame-jobs-status", None);
+    rig.shell.toggle_region(super::frame::Region::Dock);
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.settings.dock.collapsed);
+}

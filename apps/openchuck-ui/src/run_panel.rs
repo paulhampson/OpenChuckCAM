@@ -285,13 +285,10 @@ impl RunPanel {
     ) -> Option<(Arc<Regeneration>, JobId)> {
         let job = self.job.as_ref()?;
         let id = job.handle.id();
-        if let Some(entry) = jobs.get(id)
-            && let Some(progress) = &entry.progress
-        {
-            self.progress = Some(match progress.total {
-                Some(total) => format!("{} of {total}", progress.done),
-                None => progress.stage.clone(),
-            });
+        // One share of the whole run, as a percentage that never starts
+        // again at a new stage (issue 201).
+        if let Some(percent) = jobs.get(id).and_then(openchuck_app::JobEntry::percent) {
+            self.progress = Some(format!("{percent} %"));
         }
         match job.handle.try_result() {
             None => {
@@ -326,8 +323,8 @@ impl RunPanel {
         }
     }
 
-    /// What the footer says while a job runs: "Generating… 2 of 4", or
-    /// `None` when nothing runs.
+    /// What the footer says while a job runs: "Generating… 42 %", then the
+    /// operation being worked on, or `None` when nothing runs.
     pub fn running_text(&self, app: Option<&Application>) -> Option<String> {
         let job = self.job.as_ref()?;
         let what = if job.simulate {

@@ -53,8 +53,7 @@ impl<'a> RunProgress<'a> {
             && reached.is_none_or(|r| count > r)
         {
             *reached = Some(count);
-            self.context
-                .report(stage, count, Some(RUN_PROGRESS_TOTAL));
+            self.context.report(stage, count, Some(RUN_PROGRESS_TOTAL));
         }
     }
 
@@ -349,6 +348,15 @@ impl JobEntry {
         Some(fraction.clamp(0.0, 1.0))
     }
 
+    /// The whole per cent done, when the job reported a total: rounded
+    /// down, so a job reads 100 % only when all its work is done (issue
+    /// 201).
+    pub fn percent(&self) -> Option<u64> {
+        let p = self.progress.as_ref()?;
+        let total = p.total.filter(|t| *t > 0)?;
+        Some(p.done.min(total) * 100 / total)
+    }
+
     /// Whether the job is still running.
     pub fn is_running(&self) -> bool {
         self.outcome.is_none()
@@ -623,6 +631,7 @@ mod tests {
         let entry = log.get(JobId(1)).unwrap();
         assert_eq!(entry.label, "Generating");
         assert_eq!(entry.fraction(), Some(0.25));
+        assert_eq!(entry.percent(), Some(25));
         assert!(entry.is_running());
         // The owner may see the result before the log reads the finish.
         log.set_summary(JobId(1), "Generated 2, reused 1".into());
@@ -758,7 +767,11 @@ mod tests {
         // half (500 to 750), the second the next quarter (750 to 875), and
         // so on, up to the end of the share only when it is done.
         assert_eq!(done, [0, 500, 750, 812, 937, 1000]);
-        assert!(counts.iter().all(|c| c.0 == "run" && c.2 == Some(RUN_PROGRESS_TOTAL)));
+        assert!(
+            counts
+                .iter()
+                .all(|c| c.0 == "run" && c.2 == Some(RUN_PROGRESS_TOTAL))
+        );
     }
 
     #[test]
@@ -782,5 +795,28 @@ mod tests {
         });
         let counts = counts.0.into_inner().unwrap();
         assert!(counts.windows(2).all(|w| w[0].1 < w[1].1), "{counts:?}");
+    }
+
+    #[test]
+    fn req_ui_09_a_job_reads_100_per_cent_only_when_done() {
+        // Issue 201: the percentage is rounded down, so 99.9 % is not shown
+        // as done while the last of the work runs.
+        let entry = |done, total| JobEntry {
+            id: JobId(1),
+            name: "regenerate".into(),
+            label: "Generating".into(),
+            started: Instant::now(),
+            took: None,
+            progress: Some(Progress {
+                stage: "regenerate".into(),
+                done,
+                total,
+            }),
+            outcome: None,
+        };
+        assert_eq!(entry(999, Some(RUN_PROGRESS_TOTAL)).percent(), Some(99));
+        assert_eq!(entry(1000, Some(RUN_PROGRESS_TOTAL)).percent(), Some(100));
+        assert_eq!(entry(5, Some(0)).percent(), None);
+        assert_eq!(entry(5, None).percent(), None);
     }
 }

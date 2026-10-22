@@ -715,7 +715,10 @@ impl openchuck_path::SurfaceSource for CancelInPass<'_> {
     fn bounds(&self) -> openchuck_types::geometry::Aabb {
         self.surface.bounds()
     }
-    fn project(&self, point: openchuck_types::geometry::Point3) -> Option<openchuck_path::SurfacePoint> {
+    fn project(
+        &self,
+        point: openchuck_types::geometry::Point3,
+    ) -> Option<openchuck_path::SurfacePoint> {
         self.surface.project(point)
     }
     fn cast_ray(
