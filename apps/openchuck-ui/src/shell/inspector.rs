@@ -164,15 +164,15 @@ impl Shell {
             Some(Selection::Setup(id)) => self.setup_properties(ui, id),
             Some(Selection::Set(id)) => self.set_properties(ui, id),
             Some(Selection::Picking) => {
-                ui.heading("Selecting on the part");
-                ui.label(
-                    "Click the part to select. The Selection sets tab of the dock saves and \
-                     edits sets; Esc stops picking.",
-                );
-                if let Some(app) = &mut self.app
-                    && let Some(error) = self.selection.options(ui, app)
-                {
-                    self.dialog = Some(Dialog::Error(error));
+                // New selection (12.2; decision 0215 item 3).
+                if let Some(app) = &mut self.app {
+                    let error = self
+                        .selection
+                        .new_selection(ui, app, self.viewport.view())
+                        .or_else(|| self.selection.options(ui, app));
+                    if let Some(error) = error {
+                        self.dialog = Some(Dialog::Error(error));
+                    }
                 }
             }
             None => {
@@ -215,7 +215,9 @@ impl Shell {
         frame::status_chip(ui, self.overview.status(item));
     }
 
-    /// A selection set: its size, its problem and where it is used.
+    /// A selection set (12.2; decision 0215 item 4): its size, its problem
+    /// and where it is used, then how to change it on the part, Pick again,
+    /// its colour and the options of picking.
     fn set_properties(&mut self, ui: &mut egui::Ui, id: SelectionSetId) {
         let Some(app) = &self.app else { return };
         let summaries = app.selection_summaries(&[]);
@@ -233,7 +235,7 @@ impl Shell {
                 ui,
                 "This set can't be used",
                 &form_panel::refusal(problem).replace(" Not applied.", ""),
-                &[("Reselect in the view", BannerAction::Reselect(id))],
+                &[("Pick again", BannerAction::Reselect(id))],
             )
         {
             self.message_action(MessageAction::Reselect(set));
@@ -242,15 +244,21 @@ impl Shell {
             ui.label(RichText::new("No operation uses it.").color(DARK.muted));
         } else {
             for u in &s.uses {
-                ui.label(format!("Used by {}", u.name));
+                let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
+                ui.label(format!("Used by {} ({})", u.name, roles.join(", ")));
             }
         }
-        // A set that is selected also turns picking on, so the angles and
-        // options stay in reach here (decision 0153).
-        if let Some(app) = &mut self.app
-            && let Some(error) = self.selection.options(ui, app)
-        {
-            self.dialog = Some(Dialog::Error(error));
+        ui.separator();
+        // A set that is selected also turns picking on: Shift and Ctrl change
+        // it, and the angles and options stay in reach here (decision 0215).
+        if let Some(app) = &mut self.app {
+            let error = self
+                .selection
+                .set_section(ui, app, &s)
+                .or_else(|| self.selection.options(ui, app));
+            if let Some(error) = error {
+                self.dialog = Some(Dialog::Error(error));
+            }
         }
     }
 
@@ -967,7 +975,6 @@ impl Shell {
             Some(BannerAction::Reselect(set)) => self.message_action(MessageAction::Reselect(set)),
             Some(BannerAction::ShowMissing(set)) => {
                 self.selection.show_set(Some(set));
-                self.dock_tab = super::dock::DockTab::SelectionSets;
                 self.viewport.fit();
             }
             None => {}

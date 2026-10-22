@@ -14,7 +14,7 @@
 //! so it can be undone; the highlights it asks the viewport to draw are plain
 //! meshes from [`triangles_mesh`] and the edges' polylines.
 
-use eframe::egui::{self, Color32, Modifiers, RichText};
+use eframe::egui::{self, Color32, Modifiers};
 use openchuck_app::pick::{EdgeRef, PickMode, SceneEdgePick, ScenePick};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_app::project::{ContentHash, SelectionTarget};
@@ -98,13 +98,6 @@ fn choice_for_key(key: egui::Key) -> Option<Choice> {
         egui::Key::R => Some(Choice::Direction),
         _ => None,
     }
-}
-
-fn capitalise(text: &str) -> String {
-    let mut chars = text.chars();
-    chars
-        .next()
-        .map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
 }
 
 /// What a click selects, as the panel's radio buttons name it.
@@ -285,6 +278,9 @@ enum Reset {
         model: ModelId,
         picked: SelectionTarget,
         hash: Option<ContentHash>,
+        /// The chosen set the click would leave, when one is being changed
+        /// on the part (decision 0215 item 5): it stays as it is.
+        leaves: Option<SelectionSetId>,
     },
     /// A switch to the filter.
     Filter(PickFilter),
@@ -307,8 +303,19 @@ struct Writing {
 enum Write {
     /// A new set; the tangent choice it takes if it is of STEP edges.
     Save { tangent: Option<bool> },
-    /// A change to what a set selects.
+    /// A Shift or Ctrl click's change to the chosen set (decision 0215
+    /// item 5).
     Edit,
+    /// "Replace" after "Pick again": the set takes the new pick (item 6).
+    Replace,
+}
+
+/// The question before "Replace" drops what a set holds (decision 0215
+/// item 6): "Replace 'Pocket'?" with the counts.
+struct ReplaceAsk {
+    set: SelectionSetId,
+    title: String,
+    text: String,
 }
 
 struct Pending {
@@ -334,12 +341,21 @@ pub struct SelectionPanel {
     /// Whether a new set of B-rep edges keeps tangent edges, or `None` for
     /// the project's default (decision record 0066).
     new_tangent: Option<bool>,
-    rename: String,
-    /// What the row menu of the table asked for, handled after the table.
-    row_action: Option<(SelectionSetId, RowAction)>,
-    /// Why the last delete was refused.
-    delete_note: Option<String>,
     pending: Option<Pending>,
+    /// Shift and Ctrl clicks on the chosen set waiting for the check of the
+    /// one before to end, in order (decision 0215 item 5).
+    queue: std::collections::VecDeque<(SelectionSetId, Combine, SelectionTarget)>,
+    /// "Pick again" is on for the shown set: clicks build the working
+    /// selection that "Replace" gives it (decision 0215 item 6).
+    repick: bool,
+    /// The question before "Replace", while it is open.
+    replace_ask: Option<ReplaceAsk>,
+    /// What the shell should select after the panel chose or left a set:
+    /// `Some(id)` the set, `None` a new selection.
+    chosen_change: Option<Option<SelectionSetId>>,
+    /// The shown set's selection as last drawn, so a change from an edit,
+    /// an undo or a redo draws it again.
+    drawn_shown: Option<SelectionTarget>,
     /// The save or edit of a set being checked against its model.
     writing: Option<Writing>,
     /// Whether a plain click of the other kind asks first, as the project
@@ -351,9 +367,6 @@ pub struct SelectionPanel {
     dont_warn: bool,
     hover: Option<Hover>,
     shown: Option<SelectionSetId>,
-    /// The set the working selection was loaded from, while it is unchanged:
-    /// deselecting that set takes the copy away with it (issue 261).
-    loaded_from: Option<SelectionSetId>,
     /// Whether selection mode is on: the working selection is drawn only
     /// then (issue 261).
     picking: bool,
@@ -387,17 +400,18 @@ impl Default for SelectionPanel {
             working_hash: None,
             name: String::new(),
             new_tangent: None,
-            rename: String::new(),
-            row_action: None,
-            delete_note: None,
             pending: None,
+            queue: std::collections::VecDeque::new(),
+            repick: false,
+            replace_ask: None,
+            chosen_change: None,
+            drawn_shown: None,
             writing: None,
             warn_reset: true,
             reset: None,
             dont_warn: false,
             hover: None,
             shown: None,
-            loaded_from: None,
             picking: false,
             show_count: 0,
             roles_of: None,
@@ -453,6 +467,9 @@ impl SelectionPanel {
 
     /// Forgets everything that belongs to the open project.
     pub fn clear(&mut self) {
+        if let Some(pending) = self.pending.take() {
+            pending.handle.cancel();
+        }
         if let Some(writing) = self.writing.take() {
             writing.handle.cancel();
         }
@@ -498,23 +515,74 @@ impl SelectionPanel {
         }
     }
 
-    /// Chooses the set whose triangles are shown in its swatch. A working
-    /// selection that is an unchanged copy of the set shown before goes with
-    /// it, so nothing of a deselected set stays highlighted (issue 261).
+    /// Chooses the set whose triangles are shown in its swatch; while
+    /// picking, Shift and Ctrl clicks change it (decision 0215 item 5). A
+    /// "Pick again" under way for the set shown before ends with it, and its
+    /// pick goes too.
     pub fn show_set(&mut self, set: Option<SelectionSetId>) {
         if self.shown != set {
-            if self.loaded_from.is_some() && self.loaded_from == self.shown {
+            if self.repick {
+                self.repick = false;
                 self.working = nothing();
                 self.working_model = None;
                 self.working_hash = None;
-                self.loaded_from = None;
+                self.message = None;
             }
+            self.replace_ask = None;
             self.shown = set;
             if set.is_some() {
                 self.show_count += 1;
             }
             self.dirty = true;
         }
+    }
+
+    /// The set being changed on the part by Shift and Ctrl clicks: the shown
+    /// set while picking, unless "Pick again" is building a new selection
+    /// for it (decision 0215 items 5 and 6).
+    fn editing(&self) -> Option<SelectionSetId> {
+        if self.picking && !self.repick {
+            self.shown
+        } else {
+            None
+        }
+    }
+
+    /// What the shell should select because the panel chose a set (a new
+    /// set was saved) or left one (a plain click started a new selection):
+    /// `Some(id)` that set, `None` a new selection. Taken once.
+    pub fn take_chosen_change(&mut self) -> Option<Option<SelectionSetId>> {
+        self.chosen_change.take()
+    }
+
+    /// "Pick again" on `set` (decision 0215 item 6; a set with a problem's
+    /// "Reselect", decision 0125): the set is shown as a ghost and an empty
+    /// pick starts for it, which "Replace" gives it.
+    pub fn pick_again(&mut self, set: SelectionSetId) {
+        if let Some(pending) = self.pending.take() {
+            pending.handle.cancel();
+        }
+        self.show_set(Some(set));
+        self.repick = true;
+        self.working = nothing();
+        self.working_model = None;
+        self.working_hash = None;
+        self.message = Some("Pick the new selection, then Replace.".to_owned());
+        self.dirty = true;
+    }
+
+    /// Ends "Pick again" and leaves the set as it was.
+    fn cancel_pick_again(&mut self) {
+        if let Some(pending) = self.pending.take() {
+            pending.handle.cancel();
+        }
+        self.repick = false;
+        self.replace_ask = None;
+        self.working = nothing();
+        self.working_model = None;
+        self.working_hash = None;
+        self.message = None;
+        self.dirty = true;
     }
 
     /// How many times a set was shown (see [`SelectionPanel::show_set`]).
@@ -551,7 +619,6 @@ impl SelectionPanel {
         self.working = SelectionTarget::Triangles(triangles.iter().copied().collect());
         self.working_model = Some(model);
         self.working_hash = recorded_hash(app, model);
-        self.loaded_from = None;
         self.dirty = true;
     }
 
@@ -567,16 +634,17 @@ impl SelectionPanel {
         self.dirty = true;
     }
 
-    /// "Select in view" or "Reselect" on set `id`, as a click on its link.
+    /// Test hook: a plain click the user confirmed leaves the chosen set.
     #[cfg(test)]
-    pub fn select_set_in_view_for_test(&mut self, app: &Application, id: SelectionSetId) {
-        let summary = app
-            .selection_summaries(&[])
-            .into_iter()
-            .find(|s| s.id == id)
-            .unwrap();
-        let target = set_target(app, id).unwrap();
-        self.select_set_in_view(app, &summary, target);
+    pub(crate) fn leave_set_for_test(&mut self) {
+        self.leave_set();
+    }
+
+    /// Test hook: the chosen set's Shift and Ctrl clicks waiting for a
+    /// check, and whether a check is running.
+    #[cfg(test)]
+    pub(crate) fn edits_waiting(&self) -> (usize, bool) {
+        (self.queue.len(), self.writing.is_some())
     }
 
     /// What a click may pick.
@@ -656,7 +724,7 @@ impl SelectionPanel {
                     return false;
                 };
                 match result {
-                    Ok(picked) => self.join(model, combine, picked, recorded_hash(app, model)),
+                    Ok(picked) => self.join(app, model, combine, picked, recorded_hash(app, model)),
                     Err(e) => self.message = Some(e.to_string()),
                 }
                 false
@@ -679,12 +747,13 @@ impl SelectionPanel {
                 .picker()
                 .and_then(|p| p.select_faces(pick, self.mode()))
             {
-                self.join(model, combine, faces, recorded_hash(app, model));
+                self.join(app, model, combine, faces, recorded_hash(app, model));
             }
             return;
         }
         match self.mode().request(pick) {
             None => self.join(
+                app,
                 model,
                 combine,
                 TriangleSet::from([pick.triangle]),
@@ -740,13 +809,16 @@ impl SelectionPanel {
                     .collect(),
             ),
         };
-        self.join(model, combine, target, recorded_hash(app, model));
+        self.join(app, model, combine, target, recorded_hash(app, model));
     }
 
     /// `hash` is what the project records for `model` now; the selection keeps
-    /// the one it began with.
+    /// the one it began with. While a set is chosen, Shift and Ctrl change it
+    /// and a plain click asks before it starts a new selection (decision
+    /// 0215 item 5).
     fn join(
         &mut self,
+        app: &Application,
         model: ModelId,
         combine: Combine,
         picked: impl Into<SelectionTarget>,
@@ -755,10 +827,27 @@ impl SelectionPanel {
         // The warning window does not disable the view: a click while the question is open
         // changes neither the selection nor the question. `answer_reset` takes the question
         // away before it joins.
-        if self.reset.is_some() {
+        if self.reset.is_some() || self.replace_ask.is_some() {
             return;
         }
         let picked = picked.into();
+        if let Some(set) = self.editing() {
+            if combine != Combine::Replace {
+                self.edit_chosen(app, set, model, combine, picked);
+                return;
+            }
+            if self.warn_reset {
+                self.reset = Some(Reset::Pick {
+                    model,
+                    picked,
+                    hash,
+                    leaves: Some(set),
+                });
+                self.dont_warn = false;
+                return;
+            }
+            self.leave_set();
+        }
         // A selection holds one kind (decision record 0066 item 3). Adding or
         // taking away a pick of another kind is refused with the way out, and
         // the selection stays as it was; a plain click starts a new one, after
@@ -780,6 +869,7 @@ impl SelectionPanel {
                 model,
                 picked,
                 hash,
+                leaves: None,
             });
             self.dont_warn = false;
             return;
@@ -791,12 +881,96 @@ impl SelectionPanel {
             self.working_hash = hash;
         }
         combine.apply(&mut self.working, picked);
-        self.loaded_from = None;
         if self.working.is_empty() {
             self.working_model = None;
             self.working_hash = None;
         }
         self.dirty = true;
+    }
+
+    /// Leaves the chosen set as it is for a new, empty selection (a plain
+    /// click the user confirmed): the shell shows New selection.
+    fn leave_set(&mut self) {
+        self.show_set(None);
+        self.working = nothing();
+        self.working_model = None;
+        self.working_hash = None;
+        self.chosen_change = Some(None);
+    }
+
+    /// A Shift (`Add`) or Ctrl (`Remove`) click's `picked` on the chosen
+    /// `set`: queued, and started as an edit when no check runs (decision
+    /// 0215 item 5). A pick on another model, of another kind, or on a set
+    /// with a problem is refused with the reason, and the set is unchanged.
+    fn edit_chosen(
+        &mut self,
+        app: &Application,
+        set: SelectionSetId,
+        model: ModelId,
+        combine: Combine,
+        picked: SelectionTarget,
+    ) {
+        let Some(stored) = app.project().selection_sets().iter().find(|s| s.id == set) else {
+            return;
+        };
+        if stored.model != model {
+            self.message = Some(format!(
+                "“{}” is on another model. Click without Shift or Ctrl to start a new selection \
+                 there.",
+                stored.name
+            ));
+            return;
+        }
+        if Some(stored.model_hash) != recorded_hash(app, model) {
+            self.message = Some(
+                "This set no longer matches the model. Use Pick again to make it match.".to_owned(),
+            );
+            return;
+        }
+        if std::mem::discriminant(&stored.target) != std::mem::discriminant(&picked) {
+            self.message = Some(refusal(&stored.target, &picked));
+            return;
+        }
+        self.message = None;
+        self.queue.push_back((set, combine, picked));
+        self.pump(app);
+    }
+
+    /// Starts the next queued change to a set when no check runs: the run of
+    /// queued clicks on the same set with the same key, joined into one
+    /// change (decision 0215 item 5).
+    fn pump(&mut self, app: &Application) {
+        if self.writing.is_some() {
+            return;
+        }
+        let Some((set, combine, mut target)) = self.queue.pop_front() else {
+            return;
+        };
+        while let Some((next, how, _)) = self.queue.front()
+            && *next == set
+            && *how == combine
+            && let Some((_, _, more)) = self.queue.pop_front()
+        {
+            Combine::Add.apply(&mut target, more);
+        }
+        let edit = match combine {
+            Combine::Remove => SelectionEdit::Remove(target),
+            _ => SelectionEdit::Add(target),
+        };
+        match app.start_edit_selection(set, edit) {
+            Ok(EditStart::Checking(handle)) => {
+                self.writing = Some(Writing {
+                    handle,
+                    what: Write::Edit,
+                });
+            }
+            // Nothing to change: the pick was already in (or not in) the set.
+            Ok(EditStart::Done(_)) => self.pump(app),
+            Err(e) => {
+                self.queue.clear();
+                self.message = Some(e.to_string());
+            }
+        }
     }
 
     /// Drops the working selection when the project no longer holds the model
@@ -826,6 +1000,13 @@ impl SelectionPanel {
     /// the pointer outlined in yellow: a triangle, a STEP part's face, or an
     /// edge.
     pub fn overlay(&mut self, app: &Application, view: &SceneView) -> Option<Scene> {
+        // A change to the shown set (a Shift or Ctrl click's edit, an undo)
+        // draws it again.
+        let shown_now = self.shown_target(app);
+        if shown_now != self.drawn_shown {
+            self.drawn_shown = shown_now;
+            self.dirty = true;
+        }
         if !std::mem::take(&mut self.dirty) {
             return None;
         }
@@ -882,11 +1063,13 @@ impl SelectionPanel {
             let rgb = set_rgb(chosen, place);
             // A set with a problem (made on an older version of the model,
             // say) is a ghost: dashed and hatched in grey, because its
-            // numbers may name other geometry on the model now (12.2).
-            let ghost = app
-                .selection_summaries(&[])
-                .iter()
-                .any(|s| Some(s.id) == self.shown && s.problem.is_some());
+            // numbers may name other geometry on the model now (12.2). So is
+            // a set being picked again, under its new pick (decision 0215).
+            let ghost = self.repick
+                || app
+                    .selection_summaries(&[])
+                    .iter()
+                    .any(|s| Some(s.id) == self.shown && s.problem.is_some());
             if ghost {
                 let first = scene.meshes.len();
                 draw_target(
@@ -930,7 +1113,11 @@ impl SelectionPanel {
                 );
             }
         }
-        if let Some(model) = self.working_model.filter(|_| self.picking)
+        // While a set is changed on the part, it is what is drawn; the
+        // working blue is not used (decision 0215 item 5).
+        if let Some(model) = self
+            .working_model
+            .filter(|_| self.picking && self.editing().is_none())
             && let Some((index, part)) = part_of(model)
         {
             // Edges have colours of their own, so they read apart from
@@ -1048,7 +1235,11 @@ impl SelectionPanel {
         if !pressed(egui::Key::Escape) {
             return false;
         }
-        if self.reset.take().is_some() {
+        if self.reset.take().is_some() || self.replace_ask.take().is_some() {
+            return false;
+        }
+        if self.repick && self.pending.is_none() {
+            self.cancel_pick_again();
             return false;
         }
         match self.pending.take() {
@@ -1159,88 +1350,56 @@ impl SelectionPanel {
     /// text of an error to show.
     pub fn poll(&mut self, app: &mut Application) -> Option<String> {
         let error = self.finish_writing(app);
+        self.pump(app);
         self.drop_stale_working(app);
         error
     }
 
-    /// Draws the panel. Returns the text of an error to show in a dialog.
-    pub fn show(
+    /// New selection, the inspector while picking with no set chosen
+    /// (specification 12.2; decision 0215 item 3): how to pick, the count
+    /// selected, a name, "Save as new set" and "Clear". Returns the text of
+    /// an error to show in a dialog.
+    pub fn new_selection(
         &mut self,
         ui: &mut egui::Ui,
         app: &mut Application,
-        summaries: &[SelectionSummary],
         view: &SceneView,
     ) -> Option<String> {
         let mut error = self.finish_writing(app);
         self.drop_stale_working(app);
-        ui.heading("Selection sets");
+        ui.heading("New selection");
         if view.picking.picker().is_none() {
             ui.label("There is no part to select on. Choose a setup with a part.");
         }
-        ui.weak("Meshes are selected by triangle or edge; STEP models by face and edge.");
-        ui.horizontal_wrapped(|ui| {
-            let name = if self.names_edges() {
-                self.choice.edge_name()
-            } else {
-                self.choice.name()
-            };
-            let what = match self.filter {
-                PickFilter::Both => "edges near the pointer, else surfaces",
-                PickFilter::Faces => "surfaces only",
-                PickFilter::Edges => "edges only",
-            };
-            ui.label(format!("Click: {}, {what}.", name.to_lowercase()));
-            ui.weak("Choose in the box on the view, or press Q, W, E or R.");
-        });
-        ui.weak("The angles and options are in the inspector on the right while picking.");
-        ui.weak("Click selects. Shift adds. Ctrl removes. Drag to orbit. Esc leaves.");
-        match self.hover {
-            Some(Hover::Surface(ScenePick {
-                face: Some(face), ..
-            })) => ui.label(format!("Pointing at face {}", face.0)),
-            Some(Hover::Surface(h)) => ui.label(format!("Pointing at triangle {}", h.triangle)),
-            Some(Hover::Edge(e)) => ui.label(match e.edge {
-                EdgeRef::Brep(id) => format!("Pointing at edge {}", id.0),
-                EdgeRef::Mesh(m) => format!("Pointing at an edge of triangle {}", m.triangle),
-            }),
-            None => ui.weak("Not pointing at the part"),
-        };
-        if self.pending.is_some() {
-            ui.label("Selecting…");
-        }
-        if let Some(message) = &self.message {
-            ui.colored_label(PROBLEM, message);
-        }
-
+        ui.label(
+            "Click the part to select. Shift-click adds. Ctrl-click takes away. Esc stops picking.",
+        );
+        ui.label("Choose the tool in the box on the view, or press Q, W, E or R.");
+        ui.weak("A mesh is picked by triangle or edge; a STEP model by face or edge.");
+        self.notes(ui);
         ui.separator();
-        ui.strong(format!(
-            "Working selection: {} {}",
-            self.working.len(),
-            self.working.kind_name()
-        ));
-        let chosen = summaries.iter().find(|s| Some(s.id) == self.shown);
-        let same_kind = chosen
-            .and_then(|s| set_target(app, s.id))
-            .is_some_and(|t| std::mem::discriminant(&t) == std::mem::discriminant(&self.working));
-        let can_edit = chosen.is_some_and(|s| {
-            !self.working.is_empty() && self.working_model == Some(s.model) && same_kind
+        ui.strong(if self.working.is_empty() {
+            "Nothing selected yet".to_owned()
+        } else {
+            format!("{} selected", counted(&self.working))
         });
-        ui.horizontal(|ui| {
+        let count = app.project().selection_sets().len();
+        ui.horizontal_wrapped(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.name)
-                    .hint_text(format!("Selection {}", summaries.len() + 1))
-                    .desired_width(120.0),
+                    .hint_text(format!("Selection {}", count + 1))
+                    .desired_width(140.0),
             );
             let ready =
                 !self.working.is_empty() && self.working_model.is_some() && self.writing.is_none();
             if ui
-                .add_enabled(ready, egui::Button::new("New set from selection"))
+                .add_enabled(ready, egui::Button::new("Save as new set"))
                 .on_hover_text("Name this selection so operations can use it")
                 .clicked()
                 && let Some(model) = self.working_model
             {
                 let name = if self.name.trim().is_empty() {
-                    format!("Selection {}", summaries.len() + 1)
+                    format!("Selection {}", count + 1)
                 } else {
                     self.name.trim().to_owned()
                 };
@@ -1257,112 +1416,117 @@ impl SelectionPanel {
             }
             if ui
                 .add_enabled(!self.working.is_empty(), egui::Button::new("Clear"))
+                .on_hover_text("Empty the selection")
                 .clicked()
             {
                 self.working = nothing();
                 self.working_model = None;
+                self.working_hash = None;
                 self.dirty = true;
             }
         });
-        ui.horizontal_wrapped(|ui| {
-            for (label, tip, kind) in [
-                (
-                    "Add selection to set",
-                    "Add the working selection to the chosen set",
-                    0,
-                ),
-                (
-                    "Remove from set",
-                    "Take the working selection out of the chosen set",
-                    1,
-                ),
-                (
-                    "Replace set",
-                    "Replace what the chosen set selects with the working selection",
-                    2,
-                ),
-            ] {
-                let enabled = can_edit && self.writing.is_none();
-                let button = ui.add_enabled(enabled, egui::Button::new(label));
-                if !enabled {
-                    button.clone().on_disabled_hover_text(
-                        "Choose a set of the same kind on the model you selected on",
-                    );
-                }
-                if button.on_hover_text(tip).clicked()
-                    && let Some(set) = chosen
-                {
-                    let target = self.working.clone();
-                    let which = match kind {
-                        0 => SelectionEdit::Add(target),
-                        1 => SelectionEdit::Remove(target),
-                        _ => SelectionEdit::Replace(target),
-                    };
-                    match app.start_edit_selection(set.id, which) {
-                        Ok(EditStart::Done(checked)) => match app.finish_edit_selection(*checked) {
-                            Ok(_) => self.dirty = true,
-                            Err(e) => error = Some(e.to_string()),
-                        },
-                        Ok(EditStart::Checking(handle)) => {
-                            self.writing = Some(Writing {
-                                handle,
-                                what: Write::Edit,
-                            });
-                        }
-                        Err(e) => error = Some(e.to_string()),
-                    }
-                }
+        self.checking(ui);
+        error
+    }
+
+    /// What picking is doing now, and the last notice or refusal.
+    fn notes(&self, ui: &mut egui::Ui) {
+        if self.pending.is_some() {
+            ui.label("Selecting…");
+        }
+        if let Some(message) = &self.message {
+            ui.colored_label(PROBLEM, message);
+        }
+    }
+
+    /// "Checking the selection against the model…" with Cancel, while a
+    /// save or a change is checked (decision 0112 item 1). Cancel also drops
+    /// the clicks waiting for it.
+    fn checking(&mut self, ui: &mut egui::Ui) {
+        if self.writing.is_none() {
+            return;
+        }
+        ui.horizontal(|ui| {
+            ui.label("Checking the selection against the model…");
+            if ui.button("Cancel").clicked()
+                && let Some(writing) = self.writing.take()
+            {
+                writing.handle.cancel();
+                self.queue.clear();
             }
         });
-        if self.writing.is_some() {
+        ui.ctx().request_repaint();
+    }
+
+    /// The part of a chosen set's inspector the panel draws (specification
+    /// 12.2; decision 0215 items 4 to 6): how to change it on the part,
+    /// "Pick again" and "Replace", the colour and the tangent edges choice.
+    /// Returns the text of an error to show in a dialog.
+    pub fn set_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        app: &mut Application,
+        summary: &SelectionSummary,
+    ) -> Option<String> {
+        let mut error = self.finish_writing(app);
+        if self.repick {
+            ui.strong("Pick again");
+            ui.label("Pick the new selection, then Replace.");
+            ui.label(if self.working.is_empty() {
+                "Nothing picked yet".to_owned()
+            } else {
+                format!("{} picked", counted(&self.working))
+            });
+            let same_kind = set_target(app, summary.id).is_some_and(|t| {
+                std::mem::discriminant(&t) == std::mem::discriminant(&self.working)
+            });
+            let ready = !self.working.is_empty()
+                && self.working_model == Some(summary.model)
+                && same_kind
+                && self.writing.is_none();
             ui.horizontal(|ui| {
-                ui.label("Checking the selection against the model…");
-                if ui.button("Cancel").clicked()
-                    && let Some(writing) = self.writing.take()
+                let replace = ui.add_enabled(ready, egui::Button::new("Replace"));
+                if !ready {
+                    replace.clone().on_disabled_hover_text(
+                        "Pick on the set's model, of the kind the set holds",
+                    );
+                }
+                if replace
+                    .on_hover_text("Give the set the new selection; asks first")
+                    .clicked()
                 {
-                    writing.handle.cancel();
+                    self.ask_replace(app, summary.id);
+                }
+                if ui
+                    .button("Cancel pick")
+                    .on_hover_text("Leave the set as it was (Esc)")
+                    .clicked()
+                {
+                    self.cancel_pick_again();
                 }
             });
-            ui.ctx().request_repaint();
-        }
-
-        ui.separator();
-        if summaries.is_empty() {
-            ui.weak("No sets yet. Select on the part and make a set from it.");
         } else {
-            self.table(ui, app, summaries);
-            if let Some((id, action)) = self.row_action.take()
-                && let Some(summary) = summaries.iter().find(|s| s.id == id)
-            {
-                match action {
-                    RowAction::Rename => {
-                        self.show_set(Some(id));
-                        self.rename = summary.name.clone();
-                    }
-                    RowAction::Delete => match delete_refusal(summary) {
-                        Some(note) => self.delete_note = Some(note),
-                        None => match app.delete_selection(id) {
-                            Ok(()) => {
-                                self.delete_note = None;
-                                if self.shown == Some(id) {
-                                    self.shown = None;
-                                }
-                                self.dirty = true;
-                            }
-                            Err(e) => error = Some(e.to_string()),
-                        },
-                    },
-                }
+            ui.strong("Change this set on the part");
+            if summary.problem.is_some() {
+                ui.label("This set no longer matches the model. Use Pick again to make it match.");
+            } else {
+                ui.label(
+                    "Shift-click adds to this set. Ctrl-click takes away from it. A click \
+                     without Shift or Ctrl asks before it starts a new selection.",
+                );
             }
-            if let Some(note) = &self.delete_note {
-                ui.colored_label(PROBLEM, note);
+            if ui
+                .add_enabled(self.writing.is_none(), egui::Button::new("Pick again"))
+                .on_hover_text("Pick this set's selection afresh, then replace it")
+                .clicked()
+            {
+                self.pick_again(summary.id);
             }
         }
-        if let Some(summary) = chosen {
-            ui.separator();
-            if let Some(e) = self.set_details(ui, app, summary) {
-                error = Some(e);
-            }
+        self.notes(ui);
+        self.checking(ui);
+        if let Some(e) = self.set_details(ui, app, summary) {
+            error = Some(e);
         }
         ui.weak("Editing a set marks every operation that uses it stale.");
         error
@@ -1430,16 +1594,36 @@ impl SelectionPanel {
     }
 
     /// The warning before a change clears the working selection (issue 152),
-    /// drawn while one waits: "Clear 1,240 triangles?" with Clear and Cancel.
-    /// Returns the text of an error to show in a dialog.
+    /// drawn while one waits: "Clear 1,240 triangles?" with Clear and Cancel,
+    /// or, on a chosen set, "Start a new selection?" (decision 0215 item 5);
+    /// and the question before "Replace" (item 6). Returns the text of an
+    /// error to show in a dialog.
     pub fn reset_dialog(&mut self, ctx: &egui::Context, app: &mut Application) -> Option<String> {
+        if self.replace_ask.is_some() {
+            return self.replace_dialog(ctx, app);
+        }
         let reset = self.reset.as_ref()?;
-        let text = match reset {
-            Reset::Pick { picked, .. } => reset_warning(&self.working, picked),
-            Reset::Filter(filter) => filter_warning(&self.working, *filter),
+        let (title, text, go) = match reset {
+            Reset::Pick {
+                leaves: Some(set), ..
+            } => (
+                "Start a new selection?".to_owned(),
+                leave_warning(&set_name(app, *set)),
+                "Start new selection",
+            ),
+            Reset::Pick { picked, .. } => (
+                clear_title(&self.working),
+                reset_warning(&self.working, picked),
+                "Clear",
+            ),
+            Reset::Filter(filter) => (
+                clear_title(&self.working),
+                filter_warning(&self.working, *filter),
+                "Clear",
+            ),
         };
         let mut answer = None;
-        egui::Window::new(clear_title(&self.working))
+        egui::Window::new(title)
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -1447,7 +1631,7 @@ impl SelectionPanel {
                 ui.label(text);
                 ui.checkbox(&mut self.dont_warn, "Don't show me this warning again");
                 ui.horizontal(|ui| {
-                    if ui.button("Clear").clicked() {
+                    if ui.button(go).clicked() {
                         answer = Some(true);
                     }
                     if ui.button("Cancel").clicked() {
@@ -1456,6 +1640,68 @@ impl SelectionPanel {
                 });
             });
         answer.and_then(|clear| self.answer_reset(app, clear))
+    }
+
+    /// The question before "Replace": the counts it keeps, drops and adds
+    /// (decision 0215 item 6). It cannot be turned off.
+    fn replace_dialog(&mut self, ctx: &egui::Context, app: &mut Application) -> Option<String> {
+        let ask = self.replace_ask.as_ref()?;
+        let mut answer = None;
+        egui::Window::new(ask.title.clone())
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(&ask.text);
+                ui.horizontal(|ui| {
+                    if ui.button("Replace").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        answer.and_then(|replace| self.answer_replace(app, replace))
+    }
+
+    /// Answers the question before "Replace": `replace` gives the set the
+    /// working selection, as a checked edit.
+    fn answer_replace(&mut self, app: &mut Application, replace: bool) -> Option<String> {
+        let ask = self.replace_ask.take()?;
+        if !replace || self.writing.is_some() {
+            return None;
+        }
+        match app.start_edit_selection(ask.set, SelectionEdit::Replace(self.working.clone())) {
+            Ok(EditStart::Checking(handle)) => {
+                self.writing = Some(Writing {
+                    handle,
+                    what: Write::Replace,
+                });
+                None
+            }
+            Ok(EditStart::Done(checked)) => match app.finish_edit_selection(*checked) {
+                Ok(_) => {
+                    self.cancel_pick_again();
+                    None
+                }
+                Err(e) => Some(e.to_string()),
+            },
+            Err(e) => Some(e.to_string()),
+        }
+    }
+
+    /// Opens the question before "Replace" for `set` (decision 0215 item 6).
+    fn ask_replace(&mut self, app: &Application, set: SelectionSetId) {
+        let Some(stored) = app.project().selection_sets().iter().find(|s| s.id == set) else {
+            return;
+        };
+        let (dropped, added) = differences(&stored.target, &self.working);
+        self.replace_ask = Some(ReplaceAsk {
+            set,
+            title: format!("Replace “{}”?", stored.name),
+            text: replace_text(&stored.target, &self.working, dropped, added),
+        });
     }
 
     /// Answers the warning: `clear` goes on with the change, storing "Don't
@@ -1476,10 +1722,14 @@ impl SelectionPanel {
                 model,
                 picked,
                 hash,
+                leaves,
             } => {
                 // The answer is given: this click resets without asking again.
+                if leaves.is_some() {
+                    self.leave_set();
+                }
                 self.warn_reset = false;
-                self.join(model, Combine::Replace, picked, hash);
+                self.join(app, model, Combine::Replace, picked, hash);
                 self.warn_reset = app.project().warn_on_selection_reset();
             }
             Reset::Filter(filter) => {
@@ -1530,9 +1780,6 @@ impl SelectionPanel {
         self.dirty = true;
     }
 
-    /// The table of sets (specification section 12.2): swatch, name, kind,
-    /// size, used by, status and the action. A set with a problem is marked
-    /// with a triangle as well as red.
     /// Stores the set of a finished save or edit job. Returns the text of an
     /// error to show: the check failed, or the project changed meanwhile.
     fn finish_writing(&mut self, app: &mut Application) -> Option<String> {
@@ -1547,11 +1794,19 @@ impl SelectionPanel {
                 self.name.clear();
                 self.working = nothing();
                 self.working_model = None;
+                self.working_hash = None;
                 self.new_tangent = None;
-                self.shown = Some(id);
+                // The new set is chosen, so its inspector shows.
+                self.show_set(Some(id));
+                self.chosen_change = Some(Some(id));
                 Ok(())
             }
             Write::Edit => app.finish_edit_selection(checked).map(|_| ()),
+            Write::Replace => {
+                app.finish_edit_selection(checked)?;
+                self.cancel_pick_again();
+                Ok(())
+            }
         });
         match stored {
             Ok(()) => {
@@ -1560,125 +1815,12 @@ impl SelectionPanel {
             }
             // Cancelling is the user's own choice, not a failure.
             Err(e) if e.is_cancelled() => None,
-            Err(e) => Some(e.to_string()),
+            Err(e) => {
+                // The clicks after a change that failed would build on it.
+                self.queue.clear();
+                Some(e.to_string())
+            }
         }
-    }
-
-    fn table(&mut self, ui: &mut egui::Ui, app: &Application, summaries: &[SelectionSummary]) {
-        egui::ScrollArea::horizontal().show(ui, |ui| {
-            egui::Grid::new("selection sets")
-                .striped(true)
-                .num_columns(7)
-                .show(ui, |ui| {
-                    for head in ["", "Name", "Kind", "Size", "Used by", "Status", ""] {
-                        ui.weak(head);
-                    }
-                    ui.end_row();
-                    for (index, summary) in summaries.iter().enumerate() {
-                        let chosen = self.shown == Some(summary.id);
-                        let [r, g, b] = set_rgb(summary.colour.as_deref(), index);
-                        let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-                        ui.painter()
-                            .rect_filled(rect, 2.0, Color32::from_rgb(r, g, b));
-                        let name = ui.selectable_label(chosen, &summary.name);
-                        if name.clicked() {
-                            self.show_set(if chosen { None } else { Some(summary.id) });
-                            self.rename = summary.name.clone();
-                        }
-                        ui.label(capitalise(summary.kind));
-                        ui.label(summary.count.to_string());
-                        let used: Vec<String> = summary
-                            .uses
-                            .iter()
-                            .map(|u| {
-                                let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
-                                format!("{} ({})", u.name, roles.join(", "))
-                            })
-                            .collect();
-                        ui.label(if used.is_empty() {
-                            "Not used".to_owned()
-                        } else {
-                            used.join("; ")
-                        });
-                        match &summary.problem {
-                            Some(problem) => {
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(format!("! {problem}")).color(PROBLEM),
-                                    )
-                                    .truncate(),
-                                )
-                                .on_hover_text(problem);
-                            }
-                            None => {
-                                ui.label("• Matches model");
-                            }
-                        }
-                        ui.horizontal(|ui| {
-                            let usable = summary.problem.is_none();
-                            let (text, tip) = if usable {
-                                ("Select in view", "Make the set the working selection, to edit it")
-                            } else {
-                                (
-                                    "Reselect",
-                                    "Load the set as the working selection, change it and press Replace set",
-                                )
-                            };
-                            if ui.link(text).on_hover_text(tip).clicked()
-                                && let Some(t) = set_target(app, summary.id)
-                            {
-                                self.select_set_in_view(app, summary, t);
-                            }
-                            ui.menu_button("…", |ui| {
-                                if ui.button("Rename").clicked() {
-                                    self.row_action = Some((summary.id, RowAction::Rename));
-                                    ui.close();
-                                }
-                                if ui.button("Delete").clicked() {
-                                    self.row_action = Some((summary.id, RowAction::Delete));
-                                    ui.close();
-                                }
-                            });
-                        });
-                        ui.end_row();
-                    }
-                });
-        });
-    }
-
-    /// Makes `target`, the contents of `summary`'s set, the working
-    /// selection and shows the set.
-    fn select_set_in_view(
-        &mut self,
-        app: &Application,
-        summary: &SelectionSummary,
-        target: SelectionTarget,
-    ) {
-        // A region pick still running would overwrite what is loaded.
-        if let Some(pending) = self.pending.take() {
-            pending.handle.cancel();
-        }
-        self.shown = Some(summary.id);
-        if summary.problem.is_some() {
-            // Its numbers may name other geometry on the model as it is now,
-            // so they are never loaded as the working selection: the old
-            // selection is drawn as a ghost, and the user picks again and
-            // presses Replace set (decision 0125).
-            self.working = nothing();
-            self.working_model = None;
-            self.working_hash = None;
-            self.message = Some("Pick the new selection, then Replace set.".to_owned());
-            self.rename = summary.name.clone();
-            self.dirty = true;
-            return;
-        }
-        self.working = target;
-        self.working_model = Some(summary.model);
-        self.working_hash = recorded_hash(app, summary.model);
-        self.loaded_from = Some(summary.id);
-        self.rename = summary.name.clone();
-        self.dirty = true;
     }
 
     fn set_details(
@@ -1688,45 +1830,6 @@ impl SelectionPanel {
         summary: &SelectionSummary,
     ) -> Option<String> {
         let mut error = None;
-        ui.strong(&summary.name);
-        ui.weak(format!(
-            "{} {} on {}",
-            summary.count,
-            summary.kind,
-            summary
-                .model_path
-                .as_deref()
-                .unwrap_or("a model that is gone")
-        ));
-        if let Some(problem) = &summary.problem {
-            ui.colored_label(PROBLEM, format!("! {problem}"));
-            ui.label(
-                RichText::new("– Old selection, may not match the new model").color(DARK.muted),
-            );
-        }
-        if summary.uses.is_empty() {
-            ui.weak("No operation uses this set.");
-        }
-        for u in &summary.uses {
-            let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
-            ui.label(format!("Used by {}: {}", u.name, roles.join(", ")));
-        }
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.rename).desired_width(140.0));
-            if ui
-                .add_enabled(
-                    !self.rename.trim().is_empty() && self.rename.trim() != summary.name,
-                    egui::Button::new("Rename"),
-                )
-                .clicked()
-                && let Err(e) = app.edit_selection(
-                    summary.id,
-                    SelectionEdit::Rename(self.rename.trim().to_owned()),
-                )
-            {
-                error = Some(e.to_string());
-            }
-        });
         ui.horizontal_wrapped(|ui| {
             ui.label("Colour");
             for rgb in SWATCHES {
@@ -1778,16 +1881,9 @@ impl SelectionPanel {
     }
 }
 
-/// What a row's menu asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RowAction {
-    Rename,
-    Delete,
-}
-
 /// Why a set cannot be deleted: the operations that use it, by name, or
 /// `None` when nothing does (specification 12.2).
-fn delete_refusal(summary: &SelectionSummary) -> Option<String> {
+pub(crate) fn delete_refusal(summary: &SelectionSummary) -> Option<String> {
     if summary.uses.is_empty() {
         return None;
     }
@@ -1914,6 +2010,67 @@ fn reset_warning(working: &SelectionTarget, picked: &SelectionTarget) -> String 
     format!(
         "{lead} Starting a new selection with it clears the {} selected now.",
         counted(working)
+    )
+}
+
+/// What the question before a plain click leaves a chosen set says
+/// (decision 0215 item 5; specification 15).
+fn leave_warning(name: &str) -> String {
+    format!(
+        "This click starts a new selection. “{name}” stays as it is. Hold Shift to add to the \
+         set, or Ctrl to take from it."
+    )
+}
+
+/// The name of set `id`, or a plain word when it is gone.
+fn set_name(app: &Application, id: SelectionSetId) -> String {
+    app.project()
+        .selection_sets()
+        .iter()
+        .find(|s| s.id == id)
+        .map_or_else(|| "The set".to_owned(), |s| s.name.clone())
+}
+
+/// How many items of `old` are not in `new` (dropped) and of `new` not in
+/// `old` (added). Targets of different kinds share nothing.
+fn differences(old: &SelectionTarget, new: &SelectionTarget) -> (usize, usize) {
+    fn count<T: Ord>(
+        a: &std::collections::BTreeSet<T>,
+        b: &std::collections::BTreeSet<T>,
+    ) -> (usize, usize) {
+        (a.difference(b).count(), b.difference(a).count())
+    }
+    match (old, new) {
+        (SelectionTarget::Triangles(a), SelectionTarget::Triangles(b)) => count(a, b),
+        (SelectionTarget::Faces(a), SelectionTarget::Faces(b)) => count(a, b),
+        (SelectionTarget::Edges(a), SelectionTarget::Edges(b)) => count(a, b),
+        (SelectionTarget::MeshEdges(a), SelectionTarget::MeshEdges(b)) => count(a, b),
+        (old, new) => (old.len(), new.len()),
+    }
+}
+
+/// What the question before "Replace" says: "It holds 40 faces. The new
+/// selection has 12: 31 are dropped and 3 are added." (decision 0215 item
+/// 6).
+fn replace_text(
+    old: &SelectionTarget,
+    new: &SelectionTarget,
+    dropped: usize,
+    added: usize,
+) -> String {
+    let verb = |n: usize, one: &str, many: &str| {
+        if n == 1 {
+            one.to_owned()
+        } else {
+            many.to_owned()
+        }
+    };
+    format!(
+        "It holds {}. The new selection has {}: {dropped} {} dropped and {added} {} added.",
+        counted(old),
+        new.len(),
+        verb(dropped, "is", "are"),
+        verb(added, "is", "are"),
     )
 }
 
@@ -2187,7 +2344,7 @@ mod tests {
         let mut panel = SelectionPanel::default();
         // The shell turns selection mode on (issue 261).
         panel.set_picking(true);
-        panel.join(model, Combine::Replace, set(&[0, 1]), None);
+        panel.join(&app, model, Combine::Replace, set(&[0, 1]), None);
         panel.hover = Some(Hover::Surface(ScenePick {
             face: None,
             mesh: view
@@ -2222,18 +2379,20 @@ mod tests {
 
     #[test]
     fn req_ui_04_picking_on_another_model_starts_a_new_selection() {
+        let (dir, app, _) = cube_project("another-model");
         let mut panel = SelectionPanel::default();
         let (a, b) = (ModelId::new(), ModelId::new());
-        panel.join(a, Combine::Replace, set(&[1, 2]), None);
-        panel.join(a, Combine::Add, set(&[3]), None);
+        panel.join(&app, a, Combine::Replace, set(&[1, 2]), None);
+        panel.join(&app, a, Combine::Add, set(&[3]), None);
         assert_eq!(panel.working, tri(&[1, 2, 3]));
-        panel.join(b, Combine::Add, set(&[9]), None);
+        panel.join(&app, b, Combine::Add, set(&[9]), None);
         assert_eq!(panel.working, tri(&[9]));
         assert_eq!(panel.working_model, Some(b));
         // Taking away everything leaves no model.
-        panel.join(b, Combine::Remove, set(&[9]), None);
+        panel.join(&app, b, Combine::Remove, set(&[9]), None);
         assert!(panel.working.is_empty());
         assert_eq!(panel.working_model, None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -2411,7 +2570,7 @@ mod tests {
             warn_reset: true,
             ..SelectionPanel::default()
         };
-        panel.join(model, Combine::Replace, tri(&[7]), hash);
+        panel.join(&app, model, Combine::Replace, tri(&[7]), hash);
         assert!(matches!(panel.reset, Some(Reset::Pick { .. })));
         assert_eq!(panel.working, tri(&[1, 2, 3]));
         let text = reset_warning(&panel.working, &tri(&[7]));
@@ -2425,24 +2584,24 @@ mod tests {
         assert!(panel.answer_reset(&mut app, false).is_none());
         assert_eq!(panel.working, tri(&[1, 2, 3]));
         // Shift and Ctrl never ask.
-        panel.join(model, Combine::Add, tri(&[7]), hash);
+        panel.join(&app, model, Combine::Add, tri(&[7]), hash);
         assert!(panel.reset.is_none());
         assert_eq!(panel.working, tri(&[1, 2, 3, 7]));
-        panel.join(model, Combine::Remove, tri(&[7]), hash);
+        panel.join(&app, model, Combine::Remove, tri(&[7]), hash);
         assert!(panel.reset.is_none());
         // Clear goes on with the click.
-        panel.join(model, Combine::Replace, tri(&[9]), hash);
+        panel.join(&app, model, Combine::Replace, tri(&[9]), hash);
         assert!(panel.answer_reset(&mut app, true).is_none());
         assert_eq!(panel.working, tri(&[9]));
         // An empty selection has nothing to lose: no question.
         panel.working = nothing();
         panel.working_model = None;
-        panel.join(model, Combine::Replace, tri(&[4]), hash);
+        panel.join(&app, model, Combine::Replace, tri(&[4]), hash);
         assert!(panel.reset.is_none());
         assert_eq!(panel.working, tri(&[4]));
         // With the warning off a plain click clears silently.
         panel.warn_reset = false;
-        panel.join(model, Combine::Replace, tri(&[5]), hash);
+        panel.join(&app, model, Combine::Replace, tri(&[5]), hash);
         assert!(panel.reset.is_none());
         assert_eq!(panel.working, tri(&[5]));
         let _ = std::fs::remove_dir_all(dir);
@@ -2551,10 +2710,10 @@ mod tests {
             warn_reset: true,
             ..SelectionPanel::default()
         };
-        panel.join(model, Combine::Replace, tri(&[7]), hash);
+        panel.join(&app, model, Combine::Replace, tri(&[7]), hash);
         assert!(matches!(panel.reset, Some(Reset::Pick { .. })));
         for combine in [Combine::Add, Combine::Remove, Combine::Replace] {
-            panel.join(model, combine, tri(&[9]), hash);
+            panel.join(&app, model, combine, tri(&[9]), hash);
             assert_eq!(panel.working, tri(&[1, 2, 3]), "{combine:?}");
         }
         // The question is still the first click's.
@@ -2624,8 +2783,10 @@ mod tests {
     }
 
     #[test]
-    fn req_ui_05_the_selection_options_are_in_the_inspector_and_not_the_dock_tab() {
-        // Decision 0153 item 5 (issue 153): the owner chose option B.
+    fn req_ui_05_the_selection_options_are_in_the_inspector_beside_new_selection() {
+        // Decision 0153 item 5 (issue 153): the owner chose option B. Decision
+        // 0215 item 3 moves the rest of the dock's tab to the inspector's New
+        // selection, which draws the options apart from its own controls.
         let (dir, mut app, _) = cube_project("options-inspector");
         let mut panel = SelectionPanel::default();
         let view = SceneView::default();
@@ -2642,10 +2803,16 @@ mod tests {
             assert!(inspector.contains(label), "{label}: {inspector}");
         }
         let dock = painted(|ui| {
-            let summaries = app.selection_summaries(&[]);
-            assert!(panel.show(ui, &mut app, &summaries, &view).is_none());
+            assert!(panel.new_selection(ui, &mut app, &view).is_none());
         });
-        assert!(dock.contains("New set from selection"), "{dock}");
+        for label in [
+            "New selection",
+            "Shift-click adds. Ctrl-click takes away.",
+            "Save as new set",
+            "Nothing selected yet",
+        ] {
+            assert!(dock.contains(label), "{label}: {dock}");
+        }
         for label in [
             "select by angle within",
             "same direction within",
@@ -2756,7 +2923,7 @@ mod tests {
         let mut panel = SelectionPanel::default();
         let hash = recorded_hash(&app, model);
         assert!(hash.is_some());
-        panel.join(model, Combine::Replace, set(&[1, 2]), hash);
+        panel.join(&app, model, Combine::Replace, set(&[1, 2]), hash);
         panel.drop_stale_working(&app);
         assert_eq!(panel.working, tri(&[1, 2]));
 
@@ -2791,14 +2958,20 @@ mod tests {
         // Starting again works on the new hash.
         let new_hash = recorded_hash(&app, model);
         assert_ne!(new_hash, hash);
-        panel.join(model, Combine::Replace, set(&[7]), new_hash);
+        panel.join(&app, model, Combine::Replace, set(&[7]), new_hash);
         panel.drop_stale_working(&app);
         assert_eq!(panel.working, tri(&[7]));
 
         // A model that is no longer in the project drops it too.
         let gone = ModelId::new();
         panel.warn_reset = false;
-        panel.join(gone, Combine::Replace, set(&[3]), Some(new_hash.unwrap()));
+        panel.join(
+            &app,
+            gone,
+            Combine::Replace,
+            set(&[3]),
+            Some(new_hash.unwrap()),
+        );
         panel.drop_stale_working(&app);
         assert!(panel.working.is_empty());
         let _ = std::fs::remove_dir_all(dir);
@@ -2843,6 +3016,7 @@ mod tests {
         let mut panel = SelectionPanel::default();
         panel.set_picking(true);
         panel.join(
+            &app,
             model,
             Combine::Replace,
             std::collections::BTreeSet::from([FaceId(1)]),
@@ -3036,10 +3210,11 @@ mod tests {
         panel.working_model = Some(model);
         let ctx = egui::Context::default();
         let summaries = app.selection_summaries(&[]);
-        assert_eq!(summaries.iter().find(|s| s.id == id).unwrap().kind, "edges");
+        let summary = summaries.iter().find(|s| s.id == id).unwrap();
+        assert_eq!(summary.kind, "edges");
         let mut error = Some("not drawn".to_owned());
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            error = panel.show(ui, &mut app, &summaries, &SceneView::default());
+            error = panel.set_section(ui, &mut app, summary);
         });
         output.textures_delta.clear();
         assert_eq!(error, None);
@@ -3063,6 +3238,240 @@ mod tests {
             .unwrap()
             .clone();
         assert!(app.project().keeps_tangent_edges(&set));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The triangles set `id` selects.
+    fn set_triangles(app: &Application, id: SelectionSetId) -> SelectionTarget {
+        set_target(app, id).unwrap()
+    }
+
+    /// Polls until no change to a set is checked or waiting, as the shell's
+    /// frames do, and returns the last error.
+    fn settle(panel: &mut SelectionPanel, app: &mut Application) -> Option<String> {
+        let mut error = None;
+        while panel.writing.is_some() || !panel.queue.is_empty() {
+            if let Some(e) = panel.poll(app) {
+                error = Some(e);
+            }
+            std::thread::yield_now();
+        }
+        error
+    }
+
+    /// A panel picking with set "Pocket" (triangles 0 and 1) chosen.
+    fn chosen_set(
+        name: &str,
+    ) -> (
+        std::path::PathBuf,
+        Application,
+        ModelId,
+        SelectionSetId,
+        SelectionPanel,
+    ) {
+        let (dir, mut app, model) = cube_project(name);
+        let id = app.save_selection("Pocket", model, set(&[0, 1])).unwrap();
+        let mut panel = SelectionPanel::default();
+        panel.set_picking(true);
+        panel.show_set(Some(id));
+        (dir, app, model, id, panel)
+    }
+
+    #[test]
+    fn req_ui_05_shift_click_adds_to_the_chosen_set() {
+        // Decision 0215 item 5 (issue 254): what is shown is what the set
+        // holds, each change one undoable step.
+        let (dir, mut app, model, id, mut panel) = chosen_set("direct-add");
+        let hash = recorded_hash(&app, model);
+        panel.join(&app, model, Combine::Add, set(&[2, 3]), hash);
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1, 2, 3]));
+        // The working selection is not used while a set is changed.
+        assert!(panel.working.is_empty());
+        assert_eq!(panel.shown, Some(id));
+        app.undo().unwrap();
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_ctrl_click_takes_from_the_chosen_set() {
+        let (dir, mut app, model, id, mut panel) = chosen_set("direct-remove");
+        let hash = recorded_hash(&app, model);
+        panel.join(&app, model, Combine::Remove, set(&[0]), hash);
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[1]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_clicks_during_a_check_are_joined_into_the_next_change() {
+        // Decision 0215 item 5: none is lost, and the set is never written
+        // twice at once.
+        let (dir, mut app, model, id, mut panel) = chosen_set("direct-queue");
+        let hash = recorded_hash(&app, model);
+        panel.join(&app, model, Combine::Add, set(&[2]), hash);
+        panel.join(&app, model, Combine::Add, set(&[3]), hash);
+        panel.join(&app, model, Combine::Add, set(&[4]), hash);
+        panel.join(&app, model, Combine::Remove, set(&[0]), hash);
+        // The first is checked; the rest wait.
+        assert_eq!(panel.edits_waiting(), (3, true));
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[1, 2, 3, 4]));
+        // Three changes: the first add, the two adds joined, the remove.
+        for _ in 0..3 {
+            assert!(app.undo().unwrap());
+        }
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        // Cancel drops the change being checked and those waiting.
+        panel.join(&app, model, Combine::Add, set(&[5]), hash);
+        panel.join(&app, model, Combine::Add, set(&[6]), hash);
+        if let Some(writing) = panel.writing.take() {
+            writing.handle.cancel();
+            panel.queue.clear();
+        }
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_a_click_the_chosen_set_cannot_take_is_refused() {
+        use openchuck_app::project::{ContentHash, Item};
+        let (dir, mut app, model, id, mut panel) = chosen_set("direct-refuse");
+        let hash = recorded_hash(&app, model);
+        // An edge on a set of triangles: a set holds one kind.
+        let edge = SelectionTarget::MeshEdges(
+            [openchuck_app::project::MeshEdge::new(0, 0).unwrap()].into(),
+        );
+        panel.join(&app, model, Combine::Add, edge, hash);
+        assert!(
+            panel
+                .message
+                .as_deref()
+                .is_some_and(|m| m.contains("one kind"))
+        );
+        assert_eq!(panel.edits_waiting(), (0, false));
+        // A set made on an older version of the model cannot be added to.
+        let mut old = app.project().selection_sets()[0].clone();
+        old.model_hash = ContentHash::of_bytes(b"an older version");
+        app.execute(openchuck_app::Command::Replace(Item::SelectionSet(old)))
+            .unwrap();
+        panel.join(&app, model, Combine::Add, set(&[5]), hash);
+        assert!(
+            panel
+                .message
+                .as_deref()
+                .is_some_and(|m| m.contains("Use Pick again"))
+        );
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_04_a_plain_click_on_a_chosen_set_asks_before_a_new_selection() {
+        // Decision 0215 item 5 (issues 152 and 254).
+        let (dir, mut app, model, id, mut panel) = chosen_set("direct-plain");
+        let hash = recorded_hash(&app, model);
+        panel.warn_reset = true;
+        panel.join(&app, model, Combine::Replace, set(&[7]), hash);
+        assert!(matches!(
+            panel.reset,
+            Some(Reset::Pick {
+                leaves: Some(set), ..
+            }) if set == id
+        ));
+        assert!(leave_warning("Pocket").contains("“Pocket” stays as it is"));
+        // Cancel: nothing changes.
+        assert_eq!(panel.answer_reset(&mut app, false), None);
+        assert_eq!(panel.shown, Some(id));
+        assert!(panel.working.is_empty());
+        // Start new selection: the set is left as it is, and the click
+        // starts the new selection, which the shell shows.
+        panel.join(&app, model, Combine::Replace, set(&[7]), hash);
+        assert_eq!(panel.answer_reset(&mut app, true), None);
+        assert_eq!(panel.shown, None);
+        assert_eq!(panel.working, tri(&[7]));
+        assert_eq!(panel.take_chosen_change(), Some(None));
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        // With the warning off, a plain click starts it at once.
+        panel.show_set(Some(id));
+        panel.warn_reset = false;
+        panel.join(&app, model, Combine::Replace, set(&[8]), hash);
+        assert!(panel.reset.is_none());
+        assert_eq!(panel.shown, None);
+        assert_eq!(panel.working, tri(&[8]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_replace_asks_with_the_counts_it_drops() {
+        // Decision 0215 item 6: Pick again, then Replace, which asks first.
+        let (dir, mut app, model, id, mut panel) = chosen_set("pick-again");
+        let hash = recorded_hash(&app, model);
+        panel.pick_again(id);
+        assert!(panel.repick && panel.working.is_empty());
+        // Clicks now build the new pick, not the set.
+        panel.join(&app, model, Combine::Replace, set(&[1, 5]), hash);
+        panel.join(&app, model, Combine::Add, set(&[6]), hash);
+        assert_eq!(panel.working, tri(&[1, 5, 6]));
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        panel.ask_replace(&app, id);
+        let ask = panel.replace_ask.as_ref().unwrap();
+        assert_eq!(ask.title, "Replace “Pocket”?");
+        assert_eq!(
+            ask.text,
+            "It holds 2 triangles. The new selection has 3: 1 is dropped and 2 are added."
+        );
+        // Cancel keeps both.
+        assert_eq!(panel.answer_replace(&mut app, false), None);
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        panel.ask_replace(&app, id);
+        assert_eq!(panel.answer_replace(&mut app, true), None);
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[1, 5, 6]));
+        assert!(!panel.repick && panel.working.is_empty());
+        assert_eq!(panel.shown, Some(id));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_cancel_pick_leaves_the_set_as_it_was() {
+        let (dir, app, model, id, mut panel) = chosen_set("pick-cancel");
+        let hash = recorded_hash(&app, model);
+        panel.pick_again(id);
+        panel.join(&app, model, Combine::Replace, set(&[9]), hash);
+        panel.cancel_pick_again();
+        assert!(!panel.repick && panel.working.is_empty());
+        assert_eq!(panel.editing(), Some(id));
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_the_chosen_sets_section_says_how_to_change_it() {
+        let (dir, mut app, _, id, mut panel) = chosen_set("set-section");
+        let summary = app
+            .selection_summaries(&[])
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap();
+        let text = painted(|ui| {
+            assert!(panel.set_section(ui, &mut app, &summary).is_none());
+        });
+        for label in [
+            "Change this set on the part",
+            "Shift-click adds to this set. Ctrl-click takes away from it.",
+            "Pick again",
+            "Colour",
+            "Editing a set marks every operation that uses it stale.",
+        ] {
+            assert!(text.contains(label), "{label}: {text}");
+        }
+        // The old buttons are gone (decision 0215 item 7).
+        for gone in ["Add selection to set", "Remove from set", "Replace set"] {
+            assert!(!text.contains(gone), "{gone}: {text}");
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 }
