@@ -1,9 +1,9 @@
 # 0215: Selection sets move from the dock to the inspector, and Shift and Ctrl clicks change a set directly (lane SELSET; issues 225, 254)
 
-- **Status:** proposed. The owner's answers on issue 225 (everything in the dock for selection sets moves to the inspector and the dock tab is removed) and issue 254 (Shift and Ctrl clicks add to and take from the set directly; a plain click asks first, as in issue 152) are recorded here as given. The specification wording under "Specification entries proposed" waits for the owner's agreement (route A, relayed by the coordinator): the specification is not edited, and nothing is built, until then (OI-870).
+- **Status:** proposed; the design and the specification wording were agreed by the owner as written (option A, 22 Oct 2026, relayed by the coordinator session), which closes OI-870. The specification is edited in the same change and the design is built. The owner accepts the record itself directly in the lane SELSET session. The owner's answers on issue 225 (everything in the dock for selection sets moves to the inspector and the dock tab is removed) and issue 254 (Shift and Ctrl clicks add to and take from the set directly; a plain click asks first, as in issue 152) are recorded here as given.
 - **What it amends:** the interface specification ([decision 0038](0038-ui-specification-and-requirements.md)), sections 1 (board table), 6, 8, 9, 11.4, 12.2 and 15; [decision 0153](0153-selection-usability.md) item 5 (the dock tab kept the sets table and buttons); [decision 0046](0046-slice-10-selection-ui-to-specification.md) item 3 (the table and its "Select in view" action); [decision 0125](0125-slice-22-simulate-and-import.md)'s "Reselect" flow (it becomes "Pick again" for every set). UI-04, UI-05, UI-06, UI-11, UI-14 and NFR-15 are unchanged.
 - **Date:** 22 Oct 2026.
-- **Open items:** OI-870 and OI-872 are new.
+- **Open items:** OI-870 (closed: the owner agreed, 22 Oct 2026) and OI-872 are new.
 
 ## Context
 
@@ -64,7 +64,7 @@ What the tab holds today (`selection_panel.rs`, `SelectionPanel::show`), and whe
 
 ## Specification entries proposed
 
-To be made in `docs/ui-design/ui-specification.md` when the owner agrees (OI-870), and not before.
+Made in `docs/ui-design/ui-specification.md` in the same change, after the owner agreed (OI-870, 22 Oct 2026).
 
 - **Section 1, board table:** "Selection sets (dock tab)" reads "Selection sets (now in the inspector, decision 0215; the board predates it)".
 - **Section 6, "+" table:** Selection sets: "Opens Operations with picking on and the inspector's New selection (12.2)." **Context menu:** "… Delete (operations and selection sets; a set is refused while an operation uses it, naming them) …".
