@@ -4,6 +4,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- `parallel::map_each_in_order` (decision 0195, issue #252): each item may go to its own thread, results in input order. Axial and indexed finishing fit their passes in parallel with it and report one count of passes; their output is unchanged.
 - Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
 - Version 0.16.0 with the library family (`Strategy` in `openchuck-path` gains the required method `description` and the provided `group`, a breaking change; decision 0204).
 - **Breaking (0.16.0):** every strategy supplies a plain-language `Strategy::description` (a sentence or two a reader who is not a machinist can follow; issues 195 and 242; OP-16) and may override `Strategy::group` (a new `StrategyGroup`: `Roughing`, `Finishing` the default, `Specialist`). `Registry::in_menu_order` lists the strategies roughing first, then finishing, then the specialist ones (edge following, swarf, radial drilling), each group in registration order; `Registry::iter` is unchanged. A host that implements `Strategy` adds `description`. Also (issue 199): an entry by ramp or lead on a pass that is a single cut point, which has no line to follow, is made by a plunge instead of being refused, and a lead-out on it is left out; the message "the ramp needs a direction to follow" is gone.

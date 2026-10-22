@@ -451,6 +451,40 @@ fn req_set_09_req_op_21_the_deviation_report_counts_them_as_part() {
 }
 
 #[test]
+fn req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left() {
+    // Issue 248: the part's end faces are fans of large triangles. Where a
+    // tab joins one, the triangles' centres lie outside the tab, so the
+    // triangles were kept whole, and their samples under the tab read the
+    // tab's own material as left on the part: up to the tab's radius, shown
+    // as the 3 mm bound of the search, the worst value of the whole run.
+    let b = build("under-tab", workholding(), 2, BALL);
+    let run = b.app.simulate().unwrap();
+    let report = run.simulation.unwrap();
+    let d = report.setups[0].deviation.as_ref().unwrap();
+    // The faces the tabs join, with the tab's radius there. At the rim the
+    // head tab overhangs the part (it widens towards the held region), and
+    // the ball cannot reach under it, so the rim itself is not judged.
+    let joins = [(0.0, 5.0), (30.0, 2.5)];
+    let under = |p: &openchuck_app::sim::DeviationPoint| {
+        joins
+            .iter()
+            .any(|(x, r)| (p.point.x - x).abs() < 1e-6 && p.point.y.hypot(p.point.z) < r - CELL)
+    };
+    let mut seen = 0;
+    for p in d.points.iter().filter(|p| under(p)) {
+        seen += 1;
+        assert!(
+            !p.counts() || p.value <= 2.0 * CELL,
+            "the tab's volume reads as material left on the part: {p:?}"
+        );
+    }
+    assert!(seen > 100, "{seen}");
+    let worst = d.worst_remaining.unwrap();
+    assert!(!under(&worst), "{worst:?}");
+    std::fs::remove_dir_all(&b.dir).unwrap();
+}
+
+#[test]
 fn req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count() {
     let mut first = None;
     for threads in [1, 2, 4] {
