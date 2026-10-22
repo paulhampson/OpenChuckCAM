@@ -302,7 +302,7 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
-| F-102 | Project, robustness | Save recovery checkpoints in case of a crash. | Automatic, non-blocking checkpoints; on the next start offer to recover, keep the saved project or discard; never overwrite the saved project; written safely; local only; a damaged checkpoint gives a message, not a crash (NFR-07); schema claim and a decision record; requirement entry proposed with the work; a fuzz target for the reader. Issue [#295](https://github.com/paulhampson/OpenChuckCAM/issues/295). | Interval and triggers; how many and where; project only or also a running generation. |
+| F-102 | Project, robustness | Save recovery checkpoints in case of a crash. | Automatic, non-blocking checkpoints; on the next start offer to recover, keep the saved project or discard; never overwrite the saved project; written safely; local only; a damaged checkpoint gives a message, not a crash (NFR-07); schema claim and a decision record; requirement entry proposed with the work; a fuzz target for the reader. Issue [#295](https://github.com/paulhampson/OpenChuckCAM/issues/295). | Answered: every few minutes, the interval configurable in settings (per user); the last 3 are kept, in the project folder; the project only, not a running generation. Open for the lane: after each change as well as the interval; excluding checkpoints from version control. |
 
 Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #296 (F-103).
 
