@@ -526,14 +526,53 @@ fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
         [
             "2",
             "Finish B",
-            "helical_finishing",
+            "Helical finishing",
             "Setup 1",
             "T2 6 mm ball",
             "10000",
+            "tool data: oak",
             "0.01 mm",
             "-"
         ]
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// GC-12, TL-05, decision 0196, OI-755 (owner decision, option A): the sheet says where each
+/// operation's spindle speed came from, so it can be checked before the program runs (NFR-12).
+#[test]
+fn req_gc_12_req_tl_05_the_sheet_says_where_each_spindle_speed_came_from() {
+    let (dir, mut app) = sheet_project();
+    let mut typed = app.project().operations()[0].clone();
+    typed.spindle_speed = Some(SpindleSpeed(8000.0));
+    app.execute(Command::Replace(Item::Operation(typed)))
+        .unwrap();
+    let sheet = app.setup_sheet(None);
+    let operations = cell_rows(&sheet, "Operations");
+    assert_eq!(operations[0][5], "8000");
+    assert_eq!(operations[0][6], "operation");
+    assert_eq!(operations[1][5], "10000");
+    assert_eq!(operations[1][6], "tool data: oak");
+    let html = sheet.to_html();
+    assert!(html.contains("Speed from"));
+    assert!(html.contains("operation"));
+    assert!(html.contains("tool data: oak"));
+    // The same project gives the same sheet (GC-07).
+    assert_eq!(html, app.setup_sheet(None).to_html());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// GC-12, NFR-12: an operation with no speed is shown as having none, never a guessed source.
+#[test]
+fn req_gc_12_req_nfr_12_the_sheet_shows_no_source_for_an_operation_without_a_speed() {
+    let (dir, mut app) = sheet_project();
+    let setup = app.project().setups()[0].clone();
+    let mut setup = setup;
+    setup.material = Some("pine".into());
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let operations = cell_rows(&app.setup_sheet(None), "Operations");
+    assert_eq!(operations[0][5], "-");
+    assert_eq!(operations[0][6], "none");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -573,10 +612,10 @@ fn req_gc_12_req_nfr_12_the_sheet_records_the_tolerance_each_operation_is_genera
     .unwrap();
     let sheet = app.setup_sheet(None);
     let operations = cell_rows(&sheet, "Operations");
-    assert_eq!(operations[0][6], "0.010049 mm");
-    assert_eq!(operations[1][6], "1 mm");
+    assert_eq!(operations[0][7], "0.010049 mm");
+    assert_eq!(operations[1][7], "1 mm");
     assert!(
-        operations[2..].iter().all(|r| r[6] == "0.01 mm"),
+        operations[2..].iter().all(|r| r[7] == "0.01 mm"),
         "{operations:?}"
     );
     std::fs::remove_dir_all(dir).unwrap();
@@ -613,7 +652,7 @@ fn req_gc_12_times_come_from_the_toolpath_and_are_labelled_as_programmed_time() 
     let sheet = app.setup_sheet(Some(&result.toolpath));
     let operations = cell_rows(&sheet, "Operations");
     for row in &operations {
-        assert!(row[7].contains(':'), "a time in m:ss: {row:?}");
+        assert!(row[8].contains(':'), "a time in m:ss: {row:?}");
     }
     let html = sheet.to_html();
     assert!(html.contains("Programmed time"));
@@ -714,11 +753,14 @@ fn req_gc_12_a_long_sheet_runs_onto_more_pages_and_keeps_every_row() {
     }
     let text = check_pdf(&app.setup_sheet(None).to_pdf());
     assert!(
-        text.contains("/Count 3") || text.contains("/Count 4"),
+        ["/Count 3", "/Count 4", "/Count 5"]
+            .iter()
+            .any(|c| text.contains(c)),
         "several pages"
     );
+    // A name too wide for its column wraps (the table fits 100 characters).
     for i in [0, 59, 119] {
-        assert!(text.contains(&format!("Extra pass {i:03}")), "{i}");
+        assert!(text.contains(&format!("{i:03}")), "{i}");
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -727,13 +769,13 @@ fn req_gc_12_a_long_sheet_runs_onto_more_pages_and_keeps_every_row() {
 fn req_gc_12_non_ascii_is_written_as_a_question_mark_in_the_pdf_and_kept_in_the_html() {
     let (dir, mut app) = sheet_project();
     let mut op = app.project().operations()[0].clone();
-    op.name = "Fräsen (a\\b)".into();
+    op.name = "Fräs (a\\b)".into();
     app.execute(Command::Replace(Item::Operation(op))).unwrap();
     let sheet = app.setup_sheet(None);
-    assert!(sheet.to_html().contains("Fräsen (a\\b)"));
+    assert!(sheet.to_html().contains("Fräs (a\\b)"));
     let text = check_pdf(&sheet.to_pdf());
     assert!(
-        text.contains("Fr?sen \\(a\\\\b\\)"),
+        text.contains("Fr?s \\(a\\\\b\\)"),
         "escaped for a PDF string"
     );
     std::fs::remove_dir_all(dir).unwrap();

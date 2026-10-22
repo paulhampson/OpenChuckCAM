@@ -29,7 +29,6 @@ use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, ToolpathGroup};
 use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
 use openchuck_types::machine::{ARange, ASense};
-use openchuck_types::setup::SetupFrame;
 use openchuck_types::units::{Degrees, Millimetres};
 use proptest::prelude::*;
 use support::{Fixture, Rings, ball, ring_values, run};
@@ -239,8 +238,7 @@ fn req_op_15_ir_poses_round_trip_through_the_independent_oracle() {
         fixture.machine.a_sense = sense;
         fixture.rotary = RotaryMapping::of_profile(&fixture.machine);
         let group = rings(&fixture, &ring_values(5.0, 7.0, 1.0, 2.5));
-        let setup = SetupFrame::default();
-        let frame = RotaryFrame::machine(&fixture.machine, &setup);
+        let frame = RotaryFrame::of_profile(&fixture.machine);
         let oracle = OracleMachine {
             origin_x: frame.origin.x,
             origin_y: frame.origin.y,

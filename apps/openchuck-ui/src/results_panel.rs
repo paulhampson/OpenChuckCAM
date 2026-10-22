@@ -27,9 +27,9 @@ pub enum ColourBy {
     /// Overcut and material left (the default).
     #[default]
     Deviation,
-    /// Material left only; overcut shows as on the surface.
+    /// Material left only; the overcut keeps the part's own colour.
     Remaining,
-    /// Overcut only; material left shows as on the surface.
+    /// Overcut only; material left keeps the part's own colour.
     Overcut,
 }
 
@@ -46,8 +46,8 @@ impl ColourBy {
         }
     }
 
-    /// Whether `band` keeps its own colour under this choice; the others are
-    /// drawn as on the surface.
+    /// Whether `band` keeps its own colour under this choice; the others keep
+    /// the part's own colour.
     pub const fn shows(self, band: DeviationBand) -> bool {
         match self {
             Self::Deviation => true,
@@ -114,7 +114,167 @@ pub struct Bin {
     pub count: usize,
     /// The colour band the bin is drawn in.
     pub band: DeviationBand,
+    /// Where the bin lies among the fixed edges ([`bin_slot`]), which names
+    /// it for its "Show" tick box whatever its ends in this run (SIM-15).
+    pub slot: usize,
 }
+
+/// How many bins the histogram can have: four below the surface band, the
+/// surface band, and four above it ([`HIST_EDGES`]).
+pub const SLOTS: usize = 9;
+
+/// The slot of the surface band, `±tolerance`.
+const SURFACE_SLOT: usize = 4;
+
+/// The bin a value lies in, numbered from the deepest overcut (0) through
+/// the surface band (4) to the most material left (8), with the ends of
+/// [`histogram`]: below the surface band a bin holds `low <= v < high`, the
+/// surface band `-tolerance <= v <= tolerance`, and above it `low < v <=
+/// high`. A slot is the same bin in every run and setup, so a bin hidden in
+/// one stays hidden in the next (SIM-15; decision record 0163). Where the
+/// tolerance passes a fixed edge, the slots beyond it inside the surface
+/// band are empty.
+pub fn bin_slot(value: f64, tolerance: f64) -> usize {
+    if value.abs() <= tolerance {
+        SURFACE_SLOT
+    } else if value < 0.0 {
+        HIST_EDGES
+            .iter()
+            .take(3)
+            .position(|edge| value < *edge)
+            .unwrap_or(3)
+    } else {
+        HIST_EDGES
+            .iter()
+            .skip(3)
+            .position(|edge| value <= *edge)
+            .map_or(SLOTS - 1, |i| SURFACE_SLOT + 1 + i)
+    }
+}
+
+/// The values a slot can hold for a tolerance, as (low, high) millimetres,
+/// clipped to the surface band; the outer slots reach to infinity. A slot
+/// inside the surface band has `low >= high`. For the colour scale's marks.
+fn slot_range(slot: usize, tolerance: f64) -> (f64, f64) {
+    let edge = |i: usize| HIST_EDGES.get(i).copied().unwrap_or(0.0);
+    match slot {
+        0 => (f64::NEG_INFINITY, edge(0).min(-tolerance)),
+        1..=3 => (edge(slot - 1), edge(slot).min(-tolerance)),
+        SURFACE_SLOT => (-tolerance, tolerance),
+        5 => (tolerance, edge(3)),
+        6..=7 => (edge(slot - 3).max(tolerance), edge(slot - 2)),
+        _ => (edge(5).max(tolerance), f64::INFINITY),
+    }
+}
+
+/// How much of a bin or a colour band the band filter shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shown {
+    /// All of it.
+    All,
+    /// Some of its values: the range set cuts across it.
+    Part,
+    /// None of it.
+    Hidden,
+}
+
+/// The deviation bands the result views show (SIM-15; decision record 0163):
+/// the histogram's bins the user unticked, and the range they set, which
+/// narrows the ticked bins further. It lasts for the session and is not
+/// saved with the project. The part shows the deviation only of the
+/// triangles it shows; the rest keep the part's own colour. The worst
+/// values and the counts are always those of the whole part.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct BandFilter {
+    /// The bins hidden, by [`bin_slot`].
+    pub hidden: [bool; SLOTS],
+    /// The low end of "Show only from … to … mm", millimetres, negative
+    /// below the surface; `None` for no limit.
+    pub from: Option<f64>,
+    /// The high end of the range, millimetres; `None` for no limit.
+    pub to: Option<f64>,
+}
+
+impl BandFilter {
+    /// Whether anything is hidden: a bin is unticked or a range is set.
+    pub fn hides_any(&self) -> bool {
+        self.hidden.iter().any(|h| *h) || self.from.is_some() || self.to.is_some()
+    }
+
+    /// Whether the value lies in the range set.
+    fn in_range(&self, value: f64) -> bool {
+        self.from.is_none_or(|f| value >= f) && self.to.is_none_or(|t| value <= t)
+    }
+
+    /// Whether a triangle with this value (as `deviation_bands` takes it,
+    /// positive for material left) keeps its deviation colour. A triangle
+    /// that was not measured has no deviation to filter, and stays hatched
+    /// so it is never read as on the surface (NFR-12).
+    pub fn shows(&self, value: Option<(f64, bool)>, tolerance: f64) -> bool {
+        match value {
+            None => true,
+            Some((v, _)) => {
+                !self
+                    .hidden
+                    .get(bin_slot(v, tolerance))
+                    .copied()
+                    .unwrap_or(false)
+                    && self.in_range(v)
+            }
+        }
+    }
+
+    /// How much of the values from `low` to `high` the range shows.
+    fn range_covers(&self, low: f64, high: f64) -> Shown {
+        let from = self.from.unwrap_or(f64::NEG_INFINITY);
+        let to = self.to.unwrap_or(f64::INFINITY);
+        if high < from || low > to {
+            Shown::Hidden
+        } else if from <= low && high <= to {
+            Shown::All
+        } else {
+            Shown::Part
+        }
+    }
+
+    /// How much of a histogram bin is shown, for its row.
+    pub fn bin_shown(&self, bin: &Bin) -> Shown {
+        if self.hidden.get(bin.slot).copied().unwrap_or(false) {
+            Shown::Hidden
+        } else {
+            self.range_covers(bin.low, bin.high)
+        }
+    }
+
+    /// How much of a colour band is shown, for the colour scale: all of it
+    /// when every slot of the band is shown whole, none when no slot is.
+    pub fn band_shown(&self, band: DeviationBand, tolerance: f64) -> Shown {
+        let mut all = true;
+        let mut any = false;
+        for slot in 0..SLOTS {
+            let (low, high) = slot_range(slot, tolerance);
+            if (slot != SURFACE_SLOT && low >= high) || band_between(low, high, tolerance) != band {
+                continue;
+            }
+            let shown = if self.hidden.get(slot).copied().unwrap_or(false) {
+                Shown::Hidden
+            } else {
+                self.range_covers(low, high)
+            };
+            all &= shown == Shown::All;
+            any |= shown != Shown::Hidden;
+        }
+        match (all, any) {
+            (true, _) => Shown::All,
+            (false, true) => Shown::Part,
+            (false, false) => Shown::Hidden,
+        }
+    }
+}
+
+/// The note the views show while the band filter hides anything, so a
+/// hidden overcut is never read as none (NFR-12; decision record 0163).
+pub const SOME_HIDDEN: &str = "Some bands are hidden";
 
 /// One operation's row of the table.
 #[derive(Debug, Clone, PartialEq)]
@@ -190,7 +350,14 @@ impl SetupResults {
         let Some(d) = deviation else {
             return r;
         };
-        let values: Vec<f64> = d.points.iter().map(|p| p.value).collect();
+        // The samples that count: none inside the finished part, and on a
+        // held region or tab only an overcut (decision 0194).
+        let values: Vec<f64> = d
+            .points
+            .iter()
+            .filter(|p| p.counts())
+            .map(|p| p.value)
+            .collect();
         r.samples = values.len();
         r.histogram = histogram(&values, tolerance);
         if r.samples > 0 {
@@ -265,6 +432,7 @@ pub fn histogram(values: &[f64], tolerance: f64) -> Vec<Bin> {
             high,
             count: 0,
             band: band_between(low, high, tolerance),
+            slot: bin_slot((low + high) / 2.0, tolerance),
         })
         .collect();
     for v in finite() {
@@ -349,6 +517,12 @@ pub fn cost_line(cell: f64) -> String {
 pub struct ResultsPanel {
     /// What the part is coloured by.
     pub colour_by: ColourBy,
+    /// The deviation bands the views show, for the session (SIM-15).
+    pub filter: BandFilter,
+    /// The text of the range's "from" and "to" fields.
+    range_text: (String, String),
+    /// Why the range was refused.
+    pub(crate) range_error: Option<String>,
     /// The text of the cell size field while it is being edited.
     cell_text: Option<String>,
     /// The latest run and its numbers.
@@ -365,7 +539,7 @@ impl ResultsPanel {
     /// Draws the inspector for the latest run. `stale` is true while the run
     /// no longer matches the project: its numbers are then dimmed, under the
     /// shell's out-of-date banner (issue 260). Returns true when the colour
-    /// choice changed this frame.
+    /// choice or the bands shown changed this frame.
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -373,7 +547,7 @@ impl ResultsPanel {
         run: Option<&Arc<Regeneration>>,
         stale: Option<f32>,
     ) -> bool {
-        let before = self.colour_by;
+        let before = (self.colour_by, self.filter.clone());
         ui.label(
             RichText::new("SIMULATION RESULTS")
                 .strong()
@@ -411,8 +585,9 @@ impl ResultsPanel {
                         ui.multiply_opacity(opacity);
                     }
                     for result in &results {
-                        result_block(ui, result, results.len() > 1);
+                        result_block(ui, result, results.len() > 1, &mut self.filter);
                     }
+                    self.range(ui);
                 });
             }
             Some(_) => {
@@ -424,7 +599,83 @@ impl ResultsPanel {
         }
         ui.add_space(8.0);
         self.resolution(ui, app);
-        before != self.colour_by
+        before != (self.colour_by, self.filter.clone())
+    }
+
+    /// "Show only from … to … mm", which narrows the bins ticked to the
+    /// values within it, "Show all", and the note while anything is hidden
+    /// (SIM-15; decision record 0163). An empty field has no limit.
+    fn range(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Show only from");
+            let from = ui.add(
+                egui::TextEdit::singleline(&mut self.range_text.0)
+                    .id_salt("band range from")
+                    .desired_width(56.0),
+            );
+            ui.label("to");
+            let to = ui.add(
+                egui::TextEdit::singleline(&mut self.range_text.1)
+                    .id_salt("band range to")
+                    .desired_width(56.0),
+            );
+            ui.label(RichText::new("mm").color(DARK.muted));
+            if from.lost_focus() || to.lost_focus() {
+                self.apply_range();
+            }
+            if ui
+                .add_enabled(self.filter.hides_any(), egui::Button::new("Show all"))
+                .on_hover_text("Tick every band and clear the range")
+                .clicked()
+            {
+                self.show_all();
+            }
+        });
+        if let Some(error) = &self.range_error {
+            ui.colored_label(DARK.error, error);
+        }
+        if self.filter.hides_any() {
+            ui.colored_label(DARK.warning, format!("{SOME_HIDDEN}."));
+        }
+    }
+
+    /// Takes the range from its fields: millimetres, negative below the
+    /// surface, empty for no limit. A value that is not a number, or a start
+    /// above the end, is refused and the range is left as it was.
+    pub(crate) fn apply_range(&mut self) {
+        let parse = |text: &str| -> Result<Option<f64>, String> {
+            if text.trim().is_empty() {
+                Ok(None)
+            } else {
+                crate::arith::number(text, Some(3)).map(Some)
+            }
+        };
+        match (parse(&self.range_text.0), parse(&self.range_text.1)) {
+            (Ok(Some(from)), Ok(Some(to))) if from > to => {
+                self.range_error =
+                    Some("The range starts above its end; swap the two values.".to_owned());
+            }
+            (Ok(from), Ok(to)) => {
+                self.filter.from = from;
+                self.filter.to = to;
+                self.range_error = None;
+            }
+            (Err(message), _) | (_, Err(message)) => self.range_error = Some(message),
+        }
+    }
+
+    /// Sets the range's fields, as typed.
+    #[cfg(test)]
+    pub(crate) fn set_range_text(&mut self, from: &str, to: &str) {
+        self.range_text = (from.to_owned(), to.to_owned());
+        self.apply_range();
+    }
+
+    /// Shows every band again: every bin ticked and no range.
+    pub(crate) fn show_all(&mut self) {
+        self.filter = BandFilter::default();
+        self.range_text = (String::new(), String::new());
+        self.range_error = None;
     }
 
     /// The resolution control: the cell size, default 0.1 mm and finest
@@ -541,7 +792,7 @@ pub fn overcut_spread(r: &SetupResults) -> String {
     format!("{} in {places}", r.overcut_samples)
 }
 
-fn result_block(ui: &mut egui::Ui, r: &SetupResults, titled: bool) {
+fn result_block(ui: &mut egui::Ui, r: &SetupResults, titled: bool, filter: &mut BandFilter) {
     if titled {
         ui.label(RichText::new(&r.setup).strong());
     }
@@ -586,7 +837,7 @@ fn result_block(ui: &mut egui::Ui, r: &SetupResults, titled: bool) {
             .small()
             .color(DARK.muted),
     );
-    histogram_rows(ui, r);
+    histogram_rows(ui, r, filter);
     ui.add_space(6.0);
     ui.label(RichText::new("BY OPERATION").small().color(DARK.muted));
     egui::Grid::new(("results by operation", &r.setup))
@@ -611,11 +862,18 @@ fn result_block(ui: &mut egui::Ui, r: &SetupResults, titled: bool) {
         });
 }
 
+/// The width of a histogram bar at its longest, pixels. With the "Show" tick
+/// box on the row and the share without brackets, the rows fit the
+/// narrowest inspector (SIM-15).
+const BAR_WIDTH: f32 = 20.0;
+
 /// The histogram as one labelled row per bin, in the colours of the view:
-/// the range in millimetres, a bar, and the count and share. The first row
-/// starts at the deepest overcut and the last ends at the most material
-/// left, so the extremes are on it (decision record 0162).
-fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults) {
+/// the "Show" tick box (SIM-15), the range in millimetres, a bar, and the
+/// count and share. The first row starts at the deepest overcut and the last
+/// ends at the most material left, so the extremes are on it (decision
+/// record 0162). A row the filter hides is dimmed, and one the range cuts
+/// across is half dimmed; the counts are always those of the whole part.
+fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults, filter: &mut BandFilter) {
     if r.histogram.is_empty() {
         ui.label("No samples.");
         return;
@@ -637,23 +895,46 @@ fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults) {
         .num_columns(3)
         .spacing([4.0, 2.0])
         .show(ui, |ui| {
-            for h in ["Range, mm", "", "Samples"] {
+            for h in ["Show  Range, mm", "", "Samples"] {
                 ui.label(RichText::new(h).small().color(DARK.muted));
             }
             ui.end_row();
             for (i, bin) in r.histogram.iter().enumerate() {
+                let shown = filter.bin_shown(bin);
+                let opacity = match shown {
+                    Shown::All => 1.0,
+                    Shown::Part => 0.6,
+                    Shown::Hidden => 0.3,
+                };
                 let low_bound = i == 0 && r.overcut_is_bound;
                 let high_bound = i == last && r.left_is_bound;
-                ui.label(
-                    RichText::new(bin_range(bin, low_bound, high_bound))
-                        .small()
-                        .monospace(),
-                );
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(28.0, 10.0), Sense::hover());
+                // The range is the tick box's label, so the row needs no
+                // column of its own for it.
+                let label = RichText::new(bin_range(bin, low_bound, high_bound))
+                    .small()
+                    .monospace()
+                    .color(DARK.text.gamma_multiply(opacity));
+                if let Some(hidden) = filter.hidden.get_mut(bin.slot) {
+                    let mut show = !*hidden;
+                    let tick = ui.spacing_mut().icon_spacing;
+                    ui.spacing_mut().icon_spacing = 2.0;
+                    let response = ui.checkbox(&mut show, label);
+                    ui.spacing_mut().icon_spacing = tick;
+                    let response = response.on_hover_text(match shown {
+                        Shown::All => "Shown on the part; untick to hide this band's deviation",
+                        Shown::Part => "Partly outside the range shown",
+                        Shown::Hidden => "Hidden on the part",
+                    });
+                    if response.changed() {
+                        *hidden = !show;
+                    }
+                }
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(BAR_WIDTH, 10.0), Sense::hover());
                 let w = rect.width() * bin.count as f32 / peak;
                 if bin.count > 0 {
                     let bar = egui::Rect::from_min_size(rect.min, Vec2::new(w.max(1.0), 10.0));
-                    ui.painter().rect_filled(bar, 0.0, tint(bin.band));
+                    ui.painter()
+                        .rect_filled(bar, 0.0, tint(bin.band).gamma_multiply(opacity));
                 }
                 ui.painter().line_segment(
                     [rect.left_top(), rect.left_bottom()],
@@ -661,7 +942,7 @@ fn histogram_rows(ui: &mut egui::Ui, r: &SetupResults) {
                 );
                 let share = bin.count as f64 / r.samples.max(1) as f64 * 100.0;
                 ui.label(
-                    RichText::new(format!("{} ({share:.1}%)", bin.count))
+                    RichText::new(format!("{} {share:.1}%", bin.count))
                         .small()
                         .monospace(),
                 );
@@ -699,6 +980,7 @@ mod tests {
             normal: Point3::new(0.0, 0.0, 1.0) - Point3::new(0.0, 0.0, 0.0),
             value,
             at_least,
+            on: openchuck_app::sim::SampleOn::Part,
         };
         let points: Vec<DeviationPoint> =
             values.iter().enumerate().map(|(i, v)| at(i, *v)).collect();
@@ -865,6 +1147,7 @@ mod tests {
             high: -1.0,
             count: 1,
             band: DeviationBand::Overcut,
+            slot: 0,
         };
         assert_eq!(bin_range(&bin, false, false), "-1.020 to -1.000");
         assert_eq!(bin_range(&bin, true, false), "≤-1.020 to -1.000");
@@ -873,6 +1156,7 @@ mod tests {
             high: 3.0,
             count: 1,
             band: DeviationBand::Thick,
+            slot: 8,
         };
         assert_eq!(bin_range(&top, false, true), "1.000 to ≥3.000");
         let tolerance = 0.1;
@@ -988,7 +1272,7 @@ mod tests {
         let mut output = ctx.run_ui(input, |ui| {
             egui::CentralPanel::default().show(ui, |ui| {
                 room = ui.max_rect().width();
-                result_block(ui, &r, true);
+                result_block(ui, &r, true, &mut BandFilter::default());
                 used = ui.min_rect().width();
             });
         });
@@ -1002,5 +1286,147 @@ mod tests {
         let fine = cost_line(FINEST_CELL);
         assert!(fine.contains("64.0 times the time"), "{fine}");
         assert!(fine.contains("16.0 times the memory"), "{fine}");
+    }
+
+    /// Values on and beside every edge of the histogram, for a tolerance.
+    fn edge_values(tolerance: f64) -> Vec<f64> {
+        let mut values = vec![-2.0, 0.0, 2.0, -tolerance, tolerance];
+        for edge in HIST_EDGES {
+            values.extend([edge - 0.01, edge, edge + 0.01]);
+        }
+        values
+    }
+
+    #[test]
+    fn req_sim_15_each_value_lies_in_the_slot_of_the_bin_that_counts_it() {
+        // The slot names a bin whatever its ends, and agrees with the bin
+        // that counts the value, for a fine and a coarse cell (the coarse
+        // tolerance passes the 0.25 mm edges, so their slots are empty).
+        for tolerance in [0.1, 0.3] {
+            let values = edge_values(tolerance);
+            let bins = histogram(&values, tolerance);
+            for v in &values {
+                let one = histogram(&[*v], tolerance);
+                let counted = one.iter().find(|b| b.count == 1).unwrap();
+                assert_eq!(counted.slot, bin_slot(*v, tolerance), "{v} at {tolerance}");
+                assert!(bins.iter().any(|b| b.slot == counted.slot));
+            }
+            // Each bin of a run has a slot of its own.
+            let mut slots: Vec<usize> = bins.iter().map(|b| b.slot).collect();
+            slots.dedup();
+            assert_eq!(slots.len(), bins.len());
+        }
+        assert_eq!(bin_slot(-1.5, 0.1), 0);
+        assert_eq!(bin_slot(-0.1, 0.1), SURFACE_SLOT);
+        assert_eq!(bin_slot(0.25, 0.1), 5);
+        assert_eq!(bin_slot(1.0, 0.1), 7);
+        assert_eq!(bin_slot(1.01, 0.1), 8);
+        assert_eq!(bin_slot(-0.26, 0.3), SURFACE_SLOT);
+    }
+
+    #[test]
+    fn req_sim_15_a_hidden_bin_or_a_set_range_shows_exactly_the_values_in_it() {
+        let tolerance = 0.1;
+        let values = edge_values(tolerance);
+        let mut filter = BandFilter::default();
+        assert!(!filter.hides_any());
+        assert!(
+            values
+                .iter()
+                .all(|v| filter.shows(Some((*v, false)), tolerance))
+        );
+        // The overcut deeper than 0.5 mm is two bins: hide the others.
+        for slot in 2..SLOTS {
+            filter.hidden[slot] = true;
+        }
+        assert!(filter.hides_any());
+        for v in &values {
+            assert_eq!(filter.shows(Some((*v, false)), tolerance), *v < -0.5, "{v}");
+        }
+        // A range narrows the ticked bins further.
+        filter.from = Some(-1.0);
+        for v in &values {
+            assert_eq!(
+                filter.shows(Some((*v, false)), tolerance),
+                (-1.0..-0.5).contains(v),
+                "{v}"
+            );
+        }
+        // A range alone shows exactly the values within it, ends included,
+        // for any limit (here only the overcut beyond 0.2 mm).
+        let range = BandFilter {
+            to: Some(-0.2),
+            ..BandFilter::default()
+        };
+        for v in &values {
+            assert_eq!(range.shows(Some((*v, false)), tolerance), *v <= -0.2, "{v}");
+        }
+        // A bound is filtered at its value; a triangle not measured has no
+        // deviation to filter and stays hatched.
+        assert!(!range.shows(Some((3.0, true)), tolerance));
+        assert!(range.shows(None, tolerance));
+    }
+
+    #[test]
+    fn req_sim_15_the_histogram_rows_and_the_colour_scale_mark_what_is_hidden() {
+        let tolerance = 0.1;
+        let bins = histogram(&edge_values(tolerance), tolerance);
+        let mut filter = BandFilter::default();
+        assert!(bins.iter().all(|b| filter.bin_shown(b) == Shown::All));
+        for band in DeviationBand::ALL {
+            assert_eq!(filter.band_shown(band, tolerance), Shown::All);
+        }
+        // Unticking the deepest overcut bin hides its row; the overcut band
+        // of the scale is then partly hidden.
+        filter.hidden[0] = true;
+        let deepest = bins.iter().find(|b| b.slot == 0).unwrap();
+        assert_eq!(filter.bin_shown(deepest), Shown::Hidden);
+        assert_eq!(
+            filter.band_shown(DeviationBand::Overcut, tolerance),
+            Shown::Part
+        );
+        assert_eq!(
+            filter.band_shown(DeviationBand::OnTarget, tolerance),
+            Shown::All
+        );
+        // Every overcut bin hidden: the band is hidden.
+        filter.hidden[1..4].fill(true);
+        assert_eq!(
+            filter.band_shown(DeviationBand::Overcut, tolerance),
+            Shown::Hidden
+        );
+        // A range across a bin shows part of it, and hides what is beyond.
+        let range = BandFilter {
+            from: Some(0.0),
+            to: Some(0.3),
+            ..BandFilter::default()
+        };
+        for bin in &bins {
+            let expected = if bin.high < 0.0 || bin.low > 0.3 {
+                Shown::Hidden
+            } else if bin.low >= 0.0 && bin.high <= 0.3 {
+                Shown::All
+            } else {
+                Shown::Part
+            };
+            assert_eq!(range.bin_shown(bin), expected, "{bin:?}");
+        }
+        assert_eq!(
+            range.band_shown(DeviationBand::Overcut, tolerance),
+            Shown::Hidden
+        );
+        assert_eq!(
+            range.band_shown(DeviationBand::OnTarget, tolerance),
+            Shown::Part
+        );
+        assert_eq!(range.band_shown(DeviationBand::Thin, tolerance), Shown::All);
+        assert_eq!(
+            range.band_shown(DeviationBand::Medium, tolerance),
+            Shown::Part
+        );
+        assert_eq!(
+            range.band_shown(DeviationBand::Thick, tolerance),
+            Shown::Hidden
+        );
     }
 }

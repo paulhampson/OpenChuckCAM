@@ -372,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-gcode"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "openchuck-types",
  "serde",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-geom"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "openchuck-types",
  "parry3d-f64",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-import"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "openchuck-geom",
  "openchuck-types",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-post"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "minijinja",
  "openchuck-types",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-project"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "blake3",
  "openchuck-types",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "openchuck-types"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "serde",
  "thiserror",

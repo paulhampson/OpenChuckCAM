@@ -15,6 +15,7 @@ use openchuck_app::overview::Step;
 use super::frame_tests::Rig;
 use super::*;
 use crate::import_panel::ImportSession;
+use crate::results_panel::bin_slot;
 
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
@@ -554,6 +555,31 @@ fn req_nfr_12_req_ui_11_turning_off_an_operation_in_simulate_offers_to_simulate_
     );
     let (drawn, asked) = dock_heights(&rig);
     assert!((drawn - asked).abs() < 0.5, "{drawn} of {asked}");
+    // Skipping the stock simulation, the banner offers only the toolpaths,
+    // and says so (OI-732).
+    let skip = |rig: &mut Rig, on: bool| {
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .execute(openchuck_app::Command::SetSkipStockSimulation(on))
+            .unwrap();
+        rig.settle();
+    };
+    skip(&mut rig, true);
+    assert_eq!(
+        rig.shell.overview.primary(Step::Simulate).kind,
+        PrimaryKind::Generate
+    );
+    assert!(rig.shows(&format!(
+        "Operation '{name}' was turned off. Generate the toolpaths again to see the effect."
+    )));
+    assert_eq!(
+        count(&rig, "Generate toolpaths"),
+        4,
+        "three banners and the footer"
+    );
+    skip(&mut rig, false);
 
     rig.shell.primary();
     until_simulated_again(&mut rig);
@@ -644,28 +670,49 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
     let painted: Vec<_> = rig
         .painted()
         .into_iter()
-        .filter(|(_, r)| dock.contains_rect(r.shrink(0.5)))
+        .filter(|(_, whole, _)| dock.contains_rect(whole.shrink(0.5)))
         .collect();
     let texts: Vec<_> = painted
         .iter()
-        .filter_map(|(t, r)| t.as_ref().map(|t| (t.as_str(), *r)))
+        .filter_map(|(t, _, r)| t.as_ref().map(|t| (t.as_str(), *r)))
         .filter(|(t, _)| !t.trim().is_empty())
         .collect();
+    // A required control is wholly shown: in the dock, and not clipped by a
+    // scroll area inside it.
+    let whole = |whole: &egui::Rect, seen: &egui::Rect| seen.contains_rect(whole.shrink(0.5));
     for row in ["⏮", "⏭", "Skip stock simulation"].iter().chain(rows) {
         assert!(
-            texts.iter().any(|(t, _)| t == row),
+            painted
+                .iter()
+                .any(|(t, w, r)| t.as_deref() == Some(*row) && whole(w, r)),
             "{what}: {row:?} is not wholly in the dock: {texts:?}"
         );
     }
     let timeline: Vec<egui::Rect> = painted
         .iter()
-        .filter(|(t, r)| t.is_none() && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0)
-        .map(|(_, r)| *r)
+        .filter(|(t, w, r)| {
+            t.is_none() && whole(w, r) && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0
+        })
+        .map(|(_, _, r)| *r)
         .collect();
     assert!(
         !timeline.is_empty(),
         "{what}: the timeline is not wholly in the dock"
     );
+    // The out-of-date banner comes under the controls, never over them.
+    if let Some((_, title)) = texts.iter().find(|(t, _)| *t == super::out_of_date::TITLE) {
+        let controls = texts
+            .iter()
+            .filter(|(t, _)| ["⏮", "⏭", "Skip stock simulation"].contains(t))
+            .map(|(_, r)| *r)
+            .chain(timeline.iter().copied());
+        for control in controls {
+            assert!(
+                title.top() >= control.bottom() - 0.5,
+                "{what}: the banner {title:?} is above a control {control:?}"
+            );
+        }
+    }
     for (i, (a, ra)) in texts.iter().enumerate() {
         for (b, rb) in texts.iter().skip(i + 1) {
             assert!(
@@ -676,8 +723,8 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
     }
     let bars: Vec<egui::Rect> = painted
         .iter()
-        .filter(|(t, r)| t.is_none() && r.width() < 12.0 && r.height() > 40.0)
-        .map(|(_, r)| *r)
+        .filter(|(t, _, r)| t.is_none() && r.width() < 12.0 && r.height() > 40.0)
+        .map(|(_, _, r)| *r)
         .collect();
     for bar in &bars {
         for (t, r) in &texts {
@@ -701,7 +748,9 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
     // at 100% and 120%, every playback control fits without scrolling; with
     // the out-of-date banner (issue 260) or in a shorter dock the transport
     // and the timeline stay in their strip and the rest scrolls, its bar in a
-    // strip of its own; a playback window (issue 205) changes nothing.
+    // strip of its own; a playback window (issue 205) changes nothing. The
+    // banner comes under the controls at every dock height, and the dock
+    // never grows past the height it was given.
     let all = [
         "Speed",
         "Go to move",
@@ -746,6 +795,26 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
             &[super::out_of_date::TITLE],
             &format!("{zoom}: out of date"),
         );
+        // The owner's feedback on issue 260: in a shorter dock the banner
+        // neither covers a control nor pushes one out of the dock; it
+        // scrolls under them. Down to the shortest dock, the dock keeps its
+        // height and its controls stay in it.
+        for dock in [200.0, 170.0] {
+            rig.shell.settings.dock.size = dock;
+            rig.settle();
+            check_dock(&rig, &[], &format!("{zoom}: out of date, dock {dock}"));
+        }
+        rig.shell.settings.dock.size = openchuck_app::settings::region::DOCK.1;
+        rig.settle();
+        let (drawn, asked) = dock_heights(&rig);
+        assert!(
+            (drawn - asked).abs() < 0.5,
+            "{zoom}: the shortest dock grew to {drawn} of {asked}"
+        );
+        assert!(
+            !rig.bar_rects().is_empty(),
+            "{zoom}: in the shortest dock everything scrolls, with a bar to say so"
+        );
 
         rig.shell.undo();
         rig.shell.settings.dock.size = 200.0;
@@ -757,4 +826,131 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
             "{zoom}: the rest scrolls, with a bar to say so"
         );
     }
+}
+
+#[test]
+fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
+    // Decision record 0163: a "Show" tick box on each histogram row and
+    // "Show only from … to … mm", for the session; the part, the colour scale
+    // and the histogram follow, the views say "Some bands are hidden", and
+    // the worst values and counts stay those of the whole part.
+    let mut rig = simulated("sim-bands");
+    scroll_dock_to(&mut rig, "Colour the part by deviation");
+    let colour = at(&rig, "Colour the part by deviation");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    let whole = rig.shell.viewport.bands().unwrap().clone();
+    let triangles = |b: &openchuck_app::pathview::DeviationBands| -> usize {
+        b.bands.iter().map(|(_, t)| t.len()).sum()
+    };
+    assert!(!rig.shows(crate::results_panel::SOME_HIDDEN));
+    let run = rig.shell.run.last().unwrap().clone();
+    let summary = crate::results_panel::summarise(&run);
+    let bins = &summary[0].histogram;
+    // Untick the row of the bin that holds the most triangles.
+    let tolerance = whole.tolerance;
+    let slot_of = |v: &Option<(f64, bool)>| v.map(|(v, _)| bin_slot(v, tolerance));
+    let slot = (0..crate::results_panel::SLOTS)
+        .max_by_key(|s| {
+            whole
+                .values
+                .iter()
+                .filter(|v| slot_of(v) == Some(*s))
+                .count()
+        })
+        .unwrap();
+    let in_slot = whole
+        .values
+        .iter()
+        .filter(|v| slot_of(v) == Some(slot))
+        .count();
+    assert!(in_slot > 0);
+    let (i, bin) = bins
+        .iter()
+        .enumerate()
+        .find(|(_, b)| b.slot == slot)
+        .unwrap();
+    let label = crate::results_panel::bin_range(
+        bin,
+        i == 0 && summary[0].overcut_is_bound,
+        i == bins.len() - 1 && summary[0].left_is_bound,
+    );
+    let row = at(&rig, &label);
+    rig.click(row);
+    rig.frame(Vec::new());
+    assert!(rig.shell.results.filter.hidden[slot]);
+    // Exactly the triangles in that bin keep the part's colour.
+    let shown = rig.shell.viewport.bands().unwrap().clone();
+    assert_eq!(triangles(&shown), triangles(&whole) - in_slot);
+    // The inspector and the colour scale say so; the numbers do not move.
+    rig.frame(Vec::new());
+    assert!(rig.shows("Some bands are hidden."), "the inspector says so");
+    assert_eq!(
+        rig.shell.viewport.band_filter, rig.shell.results.filter,
+        "the colour scale follows the choice"
+    );
+    assert_eq!(crate::results_panel::summarise(&run), summary);
+    // A range narrows it further: only material left from 0.2 mm, typed in
+    // the "from" field and taken when the field is left.
+    let label = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Show only from")
+        .expect("the range is shown")
+        .1;
+    rig.click(egui::pos2(label.right() + 30.0, label.center().y));
+    rig.frame(vec![Event::Text("0.2".into())]);
+    let away = at(&rig, "DEVIATION DISTRIBUTION");
+    rig.click(away);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.results.filter.from, Some(0.2));
+    let ranged = rig.shell.viewport.bands().unwrap().clone();
+    let expected = whole
+        .values
+        .iter()
+        .filter(|v| slot_of(v).is_some_and(|s| s != slot) && v.is_some_and(|(v, _)| v >= 0.2))
+        .count();
+    let unmeasured = whole.values.iter().filter(|v| v.is_none()).count();
+    assert_eq!(triangles(&ranged), expected + unmeasured);
+    // A start above the end is refused, and the range stays.
+    rig.shell.results.set_range_text("0.5", "0.1");
+    assert!(rig.shell.results.range_error.is_some());
+    assert_eq!(rig.shell.results.filter.from, Some(0.2));
+    // So is a value that is not a number.
+    rig.shell.results.set_range_text("two", "");
+    assert!(rig.shell.results.range_error.is_some());
+    assert_eq!(rig.shell.results.filter.from, Some(0.2));
+    // The choice lasts for the session: a new run keeps it.
+    rig.shell.generate(true);
+    rig.settle();
+    assert!(rig.shell.results.filter.hides_any());
+    // "Show all" shows every band again.
+    rig.frame(Vec::new());
+    // The inspector's button, on the range's row (the tree has one too).
+    let rects = rig.text_rects();
+    let row = rects
+        .iter()
+        .find(|(t, _)| t == "Show only from")
+        .expect("the range is shown")
+        .1;
+    let show_all = rects
+        .iter()
+        .find(|(t, r)| {
+            t == "Show all" && r.left() > row.left() && (r.center().y - row.center().y).abs() < 30.0
+        })
+        .expect("Show all beside the range")
+        .1
+        .center();
+    rig.click(show_all);
+    rig.frame(Vec::new());
+    assert!(!rig.shell.results.filter.hides_any());
+    assert!(rig.shell.results.range_error.is_none());
+    rig.frame(Vec::new());
+    assert!(!rig.shows("Some bands are hidden."));
 }

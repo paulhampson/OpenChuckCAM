@@ -216,3 +216,52 @@ fn req_nfr_06_scene_is_deterministic() {
     let first = scene(&app);
     assert_eq!(scene(&app), first);
 }
+
+/// The setup's part offset moves the part in the 3D view and in the Setup
+/// diagram, and leaves the stock and the work zero where they are (SET-05,
+/// UI-03; GitHub issue #175, decision record 0201).
+#[test]
+fn req_set_05_req_ui_03_the_part_offset_moves_the_part_in_the_view_and_the_diagram() {
+    let (_dir, mut app, id) = project("offset");
+    let still = scene(&app);
+    let mut setup = app.project().setup(id).unwrap().clone();
+    setup.frame.part_offset = Millimetres(4.5);
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let moved = scene(&app);
+
+    // The part's triangles, its extent and its silhouette move by 4.5 mm
+    // along X; nothing else about it changes.
+    let (a, b) = (&still.meshes[0].mesh, &moved.meshes[0].mesh);
+    assert_eq!(a.triangles, b.triangles);
+    for (p, q) in a.vertices.iter().zip(&b.vertices) {
+        assert_eq!((q.x - p.x, q.y, q.z), (4.5, p.y, p.z));
+    }
+    let (e0, e1) = (still.part_extent.unwrap(), moved.part_extent.unwrap());
+    assert_eq!(e1.bounds.min.x - e0.bounds.min.x, 4.5);
+    assert_eq!(e1.radius, e0.radius);
+    for (p, q) in still.part_silhouette.iter().zip(&moved.part_silhouette) {
+        assert!((q[0] - p[0] - 4.5).abs() < 1e-9 && q[1] == p[1] && q[2] == p[2]);
+    }
+    // The stock and the work zero stay.
+    assert_eq!(
+        lines(&still, SceneRole::Stock),
+        lines(&moved, SceneRole::Stock)
+    );
+    // (The work axes' length follows the scene's size, so only the zero.)
+    assert_eq!(
+        lines(&still, SceneRole::WorkX)[0][0],
+        lines(&moved, SceneRole::WorkX)[0][0]
+    );
+
+    // The Setup diagram draws the moved part against the same stock.
+    let panes = |view: &SceneView| {
+        openchuck_app::setup_panes::setup_panes(app.project(), view, &[], &[], &[]).unwrap()
+    };
+    let (f0, f1) = (panes(&still).front, panes(&moved).front);
+    assert_eq!(f0.stock, f1.stock);
+    assert_eq!(f0.work_zero, f1.work_zero);
+    assert_eq!(f1.part.len(), f0.part.len());
+    for (p, q) in f0.part.iter().zip(&f1.part) {
+        assert!((q[0] - p[0] - 4.5).abs() < 1e-9);
+    }
+}

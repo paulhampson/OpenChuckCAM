@@ -371,6 +371,7 @@ impl SetupSheet {
                     "Setup",
                     "Tool",
                     "Spindle rpm",
+                    "Speed from",
                     "Tolerance",
                     "Time",
                 ]
@@ -542,7 +543,7 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
         (
             "Part offset".to_string(),
             format!(
-                "{} mm along the rotary axis from the machine's reference point",
+                "part moved {} mm along the rotary axis from where its placement puts it",
                 mm(setup.frame.part_offset.0)
             ),
         ),
@@ -574,8 +575,10 @@ fn operation_row(
         || "none".to_string(),
         |t| format!("T{} {}", t.controller.number, t.name),
     );
-    let rpm = crate::requirements::spindle_speed(project, operation)
-        .map_or_else(|| "-".to_string(), |(speed, _)| plain(speed.0, 3));
+    let (rpm, speed_from) = match crate::requirements::spindle_speed(project, operation) {
+        Some((speed, source)) => (plain(speed.0, 3), speed_source(project, operation, source)),
+        None => ("-".to_string(), "none".to_string()),
+    };
     let time = if with_times {
         times
             .get(&operation.id.to_string())
@@ -601,13 +604,34 @@ fn operation_row(
     vec![
         (index + 1).to_string(),
         operation.name.clone(),
-        operation.strategy.clone(),
+        registry
+            .get(&operation.strategy)
+            .map_or_else(|_| operation.strategy.clone(), |s| s.label().to_string()),
         setup,
         tool,
         rpm,
+        speed_from,
         tolerance,
         time,
     ]
+}
+
+/// Where a spindle speed came from, in plain words (decision 0196, OI-755).
+fn speed_source(
+    project: &Project,
+    operation: &Operation,
+    source: crate::requirements::SpindleSource,
+) -> String {
+    match source {
+        crate::requirements::SpindleSource::Operation => "operation".to_string(),
+        crate::requirements::SpindleSource::ToolData => {
+            let material = project
+                .setup(operation.setup)
+                .and_then(|s| s.material.as_deref())
+                .unwrap_or_default();
+            format!("tool data: {material}")
+        }
+    }
 }
 
 /// HTML text escaping for element content.
@@ -670,6 +694,10 @@ mod pdf {
     impl Line {
         pub fn blank() -> Self {
             Self::body("")
+        }
+        #[cfg(test)]
+        pub fn text(&self) -> &str {
+            &self.text
         }
         pub fn body(text: &str) -> Self {
             Self {
@@ -746,17 +774,39 @@ mod pdf {
             })
             .collect();
         let total = |w: &[usize]| w.iter().sum::<usize>() + GAP * columns.saturating_sub(1);
-        while total(&widths) > COLUMNS {
-            let Some((widest, _)) = widths
-                .iter()
-                .enumerate()
-                .filter(|(_, w)| **w > 6)
-                .max_by_key(|(i, w)| (**w, std::cmp::Reverse(*i)))
-            else {
-                break;
-            };
-            if let Some(w) = widths.get_mut(widest) {
-                *w -= 1;
+        // Shrink the widest column first. A column keeps the width of its
+        // longest word while any other can still shrink, so a cell breaks
+        // between words, not inside one (OI-842); only a table that cannot
+        // otherwise fit cuts words, down to a few characters.
+        let longest_word = |c: usize| {
+            std::iter::once(headers.get(c))
+                .chain(rows.iter().map(|r| r.get(c)))
+                .flatten()
+                .flat_map(|t| t.split_whitespace())
+                .map(|w| w.chars().count())
+                .max()
+                .unwrap_or(1)
+        };
+        let floors: Vec<usize> = (0..columns).map(longest_word).collect();
+        for use_words in [true, false] {
+            while total(&widths) > COLUMNS {
+                let Some((widest, _)) = widths
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, w)| {
+                        **w > if use_words {
+                            floors.get(*i).copied().unwrap_or(6)
+                        } else {
+                            6
+                        }
+                    })
+                    .max_by_key(|(i, w)| (**w, std::cmp::Reverse(*i)))
+                else {
+                    break;
+                };
+                if let Some(w) = widths.get_mut(widest) {
+                    *w -= 1;
+                }
             }
         }
         let render = |cells: &[String]| -> Vec<Line> {
@@ -913,6 +963,33 @@ mod tests {
             iso8601_utc(UNIX_EPOCH - Duration::from_secs(5)),
             "1970-01-01T00:00:00Z"
         );
+    }
+
+    /// A narrow table wraps a cell at its spaces only: no column shrinks below
+    /// its longest word, so a strategy name is never cut inside a word
+    /// (OI-842; GC-12).
+    #[test]
+    fn req_gc_12_a_table_breaks_lines_only_between_words() {
+        let mut headers: Vec<String> = vec!["Operation".into(), "Strategy".into()];
+        let mut row: Vec<String> = vec![
+            "Finish the blade surfaces".into(),
+            "Helical finishing".into(),
+        ];
+        // Many wide cells, so the table is over the line width.
+        for i in 0..8 {
+            headers.push(format!("Column {i}"));
+            row.push("a b c d e f g h".into());
+        }
+        let rows = vec![row];
+        let lines = pdf::table(&headers, &rows);
+        let text: Vec<&str> = lines.iter().map(pdf::Line::text).collect();
+        let all = text.join("\n");
+        for word in ["Helical", "finishing", "Operation", "surfaces"] {
+            assert!(all.contains(word), "{word} was cut:\n{all}");
+        }
+        assert!(text.iter().all(|l| l.chars().count() <= pdf::COLUMNS));
+        // The same table gives the same lines (GC-07).
+        assert_eq!(lines, pdf::table(&headers, &rows));
     }
 
     #[test]

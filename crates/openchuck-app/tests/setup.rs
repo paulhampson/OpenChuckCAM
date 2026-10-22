@@ -117,9 +117,17 @@ fn req_set_01_z1_warnings_name_unconfirmed_values() {
     let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
     app.execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
-    // Part offset far along the axis: the stock runs past the X travel.
+    // The stock far along the axis: it runs past the X travel. (The part
+    // offset moves only the part, decision record 0201.)
     let mut setup = app.find_setup("Setup 1").unwrap().clone();
-    setup.frame.part_offset = Millimetres(195.0);
+    match setup.stock.as_mut().unwrap() {
+        Stock::Cylinder { x_start, .. } => x_start.0 += 195.0,
+        Stock::Box { bounds } => {
+            bounds.min.x += 195.0;
+            bounds.max.x += 195.0;
+        }
+        other => panic!("{other:?}"),
+    }
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let report = &app.check_setups().unwrap()[0];
     let text: Vec<String> = report.warnings.iter().map(ToString::to_string).collect();

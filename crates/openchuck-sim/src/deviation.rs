@@ -53,6 +53,21 @@ impl DeviationOptions {
     }
 }
 
+/// What a sample of the target lies on (decision record 0194).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SampleOn {
+    /// The part's own surface: always counted.
+    #[default]
+    Part,
+    /// An exposed face of a held region or a retaining tab (SET-09, OP-21):
+    /// only an overcut there is counted (a cut into the workholding); the
+    /// material left beside it is where the tools keep clear of it.
+    Workholding,
+    /// A face inside the finished part (the part's end face under a tab, a
+    /// held region's face under a tab): not a surface of it, never counted.
+    Inside,
+}
+
 /// One surface sample and its deviation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DeviationPoint {
@@ -64,12 +79,31 @@ pub struct DeviationPoint {
     pub value: f64,
     /// True when the search reached `max_distance`: the value is a bound.
     pub at_least: bool,
+    /// What the sample lies on, which decides whether it is counted.
+    pub on: SampleOn,
+}
+
+impl DeviationPoint {
+    /// Whether the sample counts in the results: the worst values, the
+    /// overcut places, the histogram and the share within tolerance, and the
+    /// colours of its triangle. A sample inside the finished part never
+    /// does, and one on a held region or tab only where it is overcut
+    /// (decision record 0194).
+    #[must_use]
+    pub fn counts(&self) -> bool {
+        match self.on {
+            SampleOn::Part => true,
+            SampleOn::Workholding => self.value < 0.0,
+            SampleOn::Inside => false,
+        }
+    }
 }
 
 /// The result of a comparison, as plain data for reports and the viewport.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Deviation {
-    /// Every sample, in triangle order.
+    /// Every sample, in triangle order, counted or not
+    /// ([`DeviationPoint::counts`]); the figures below are of the counted.
     pub points: Vec<DeviationPoint>,
     /// The sample with the most material left, if any is left.
     pub worst_remaining: Option<DeviationPoint>,
@@ -107,6 +141,24 @@ pub fn compare_cancellable(
     options: &DeviationOptions,
     context: &JobContext<'_>,
 ) -> Result<Deviation> {
+    compare_classified(stock, target, options, &|_, _, _| SampleOn::Part, context)
+}
+
+/// What a sample lies on, from its triangle's index in the target, its
+/// position and the triangle's outward unit normal.
+pub type Classify<'a> = dyn Fn(usize, Point3, Vec3) -> SampleOn + Sync + 'a;
+
+/// [`compare_cancellable`] with each sample's [`SampleOn`] from `classify`:
+/// a target made of the part and its held regions and tabs is sampled whole,
+/// in triangle order, and only the samples that count make the figures
+/// (decision record 0194).
+pub fn compare_classified(
+    stock: &DexelStock,
+    target: &TriangleMesh,
+    options: &DeviationOptions,
+    classify: &Classify<'_>,
+    context: &JobContext<'_>,
+) -> Result<Deviation> {
     target.validate()?;
     for (name, v) in [
         ("spacing", options.spacing),
@@ -120,19 +172,19 @@ pub fn compare_cancellable(
         }
     }
     context.check_cancelled()?;
-    let mut points = surface_samples(target, options.spacing, context)?;
+    let mut points = surface_samples(target, options.spacing, classify, context)?;
     context.check_cancelled()?;
     // Measured in place, in fixed chunks, so each sample is held once.
     points.par_chunks_mut(CHUNK).try_for_each(|chunk| {
         context.check_cancelled()?;
         for d in chunk {
-            *d = measure(stock, d.point, d.normal, options);
+            *d = measure(stock, d.point, d.normal, d.on, options);
         }
         Ok::<(), Error>(())
     })?;
     let mut worst_remaining: Option<DeviationPoint> = None;
     let mut worst_overcut: Option<DeviationPoint> = None;
-    for p in &points {
+    for p in points.iter().filter(|p| p.counts()) {
         if p.value > 0.0 && worst_remaining.is_none_or(|w| p.value > w.value) {
             worst_remaining = Some(*p);
         }
@@ -143,7 +195,7 @@ pub fn compare_cancellable(
     let mut over: Vec<DeviationPoint> = points
         .iter()
         .copied()
-        .filter(|p| -p.value > options.overcut_limit)
+        .filter(|p| p.counts() && -p.value > options.overcut_limit)
         .collect();
     let overcut_count = over.len();
     // Deepest first; ties in surface order, so the list is deterministic.
@@ -216,10 +268,11 @@ impl Deviation {
     /// A sample whose search reached its limit counts as above.
     #[must_use]
     pub fn leftover(&self, leave: f64, tolerance: f64) -> Leftover {
+        let counted = || self.points.iter().filter(|p| p.counts());
         let mut out = Leftover {
             leave,
             tolerance,
-            samples: self.points.len(),
+            samples: counted().count(),
             mean: 0.0,
             least: f64::INFINITY,
             most: f64::NEG_INFINITY,
@@ -228,7 +281,7 @@ impl Deviation {
             worst_above: None,
         };
         let mut sum = 0.0;
-        for p in &self.points {
+        for p in counted() {
             sum += p.value;
             out.least = out.least.min(p.value);
             out.most = out.most.max(p.value);
@@ -251,11 +304,12 @@ impl Deviation {
     }
 }
 
-/// The deviation on each triangle of `mesh`: of the samples taken on it, the
-/// one furthest from the surface, with the sign of [`DeviationPoint::value`]
-/// (positive for material left, negative for overcut), and whether that
-/// sample's value is only a bound. `None` for a triangle that has no samples
-/// (a degenerate one). `deviation` must be the comparison of `mesh` made with
+/// The deviation on each triangle of `mesh`: of the samples taken on it that
+/// count ([`DeviationPoint::counts`]), the one furthest from the surface,
+/// with the sign of [`DeviationPoint::value`] (positive for material left,
+/// negative for overcut), and whether that sample's value is only a bound.
+/// `None` for a triangle that has no such sample (a degenerate one, or one
+/// wholly inside the finished part). `deviation` must be the comparison of `mesh` made with
 /// samples no further apart than `spacing` ([`DeviationOptions::spacing`]),
 /// since the samples are in triangle order and a triangle's share follows
 /// from its shape. Fails if the counts do not add up.
@@ -279,15 +333,17 @@ pub fn triangle_values(
             )
         })?;
         next += count;
-        let worst = samples
-            .iter()
-            .fold(None, |best: Option<&DeviationPoint>, p| {
-                if best.is_none_or(|b| p.value.abs() > b.value.abs()) {
-                    Some(p)
-                } else {
-                    best
-                }
-            });
+        let worst =
+            samples
+                .iter()
+                .filter(|p| p.counts())
+                .fold(None, |best: Option<&DeviationPoint>, p| {
+                    if best.is_none_or(|b| p.value.abs() > b.value.abs()) {
+                        Some(p)
+                    } else {
+                        best
+                    }
+                });
         out.push(worst.map(|p| (p.value, p.at_least)));
     }
     if next != deviation.points.len() {
@@ -522,6 +578,7 @@ pub const MAX_DEVIATION_SAMPLES: usize = 64_000_000;
 fn surface_samples(
     mesh: &TriangleMesh,
     spacing: f64,
+    classify: &Classify<'_>,
     context: &JobContext<'_>,
 ) -> Result<Vec<DeviationPoint>> {
     let mut counts = Vec::with_capacity(mesh.triangles.len());
@@ -547,6 +604,7 @@ fn surface_samples(
         normal: Vec3::new(0.0, 0.0, 0.0),
         value: 0.0,
         at_least: false,
+        on: SampleOn::Part,
     };
     let mut points = vec![blank; total];
     // Each triangle fills its own share, so the order is the triangles'.
@@ -567,6 +625,7 @@ fn surface_samples(
                 if let Some(slot) = slots.next() {
                     slot.point = point;
                     slot.normal = normal;
+                    slot.on = classify(t, point, normal);
                 }
             });
         }
@@ -575,7 +634,13 @@ fn surface_samples(
     Ok(points)
 }
 
-fn measure(stock: &DexelStock, p: Point3, n: Vec3, options: &DeviationOptions) -> DeviationPoint {
+fn measure(
+    stock: &DexelStock,
+    p: Point3,
+    n: Vec3,
+    on: SampleOn,
+    options: &DeviationOptions,
+) -> DeviationPoint {
     let inside = stock.contains_point(p);
     let max = options.max_distance;
     let (distance, at_least) = stock
@@ -586,5 +651,6 @@ fn measure(stock: &DexelStock, p: Point3, n: Vec3, options: &DeviationOptions) -
         normal: n,
         value: if inside { distance } else { -distance },
         at_least,
+        on,
     }
 }

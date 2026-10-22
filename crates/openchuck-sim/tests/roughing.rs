@@ -252,6 +252,41 @@ fn req_op_03_indexed_and_continuous_forms_reach_the_same_envelope() {
     assert!((ranges[0].1 - ranges[1].1).abs() < 0.2, "{ranges:?}");
 }
 
+/// A cut direction issue 246 added (decision record 0212 part A) leaves the
+/// stock to leave and no more than the scallop of the stepover, as the forms'
+/// own directions do (the test above), with no rapid move through material.
+fn reaches_the_envelope(form: &str, direction: &str) {
+    let rig = Rig::new(&short(10.0, 24.0), 15.0, &tool(ToolShape::BallEnd, 3.0));
+    let v = values(&[
+        (parameter::FORM, text(form)),
+        (parameter::DIRECTION, text(direction)),
+        (names::STEPOVER, num(1.0)),
+        (parameter::STEPDOWN, num(3.0)),
+    ]);
+    let path = rig.generate(&rig.stock(), &v).unwrap();
+    let (stock, faults) = rig.simulate(rig.stock(), &path);
+    assert!(
+        faults.is_empty(),
+        "{form} {direction}: rapid moves cut: {faults:?}"
+    );
+    let (least, most) = leftover(&rig, &stock, 4.0, 20.0);
+    assert!(
+        least > 0.5 - 2.0 * CELL,
+        "{form} {direction} overcut: {least}"
+    );
+    assert!(most < 0.5 + 0.2, "{form} {direction} left too much: {most}");
+}
+
+#[test]
+fn req_op_03_continuous_roughing_along_the_length_reaches_the_same_envelope() {
+    reaches_the_envelope("continuous", "along the length of the part");
+}
+
+#[test]
+fn req_op_03_indexed_roughing_around_the_part_reaches_the_same_envelope() {
+    reaches_the_envelope("indexed", "around the part");
+}
+
 #[test]
 fn req_op_03_roughing_follows_a_cone_and_leaves_the_stock_to_leave() {
     let part = Cone {
@@ -326,6 +361,7 @@ fn req_sim_05_leftover_counts_samples_against_a_stock_to_leave() {
         normal: Vec3::new(0.0, 0.0, 1.0),
         value,
         at_least,
+        on: openchuck_sim::SampleOn::Part,
     };
     let points = vec![
         point(0.50, false),

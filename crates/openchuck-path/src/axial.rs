@@ -10,14 +10,18 @@
 //! close the circle exactly. Each pass is fitted by the same bisection as
 //! helical finishing ([`crate::wrap_fit`]).
 
-use openchuck_types::job::JobContext;
+use std::sync::Mutex;
+
+use openchuck_types::job::{JobContext, NoProgress};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
 use crate::candidates::DevIndex;
 use crate::cutter;
 use crate::error::{PathError, Result};
+use crate::extend::Extension;
 use crate::helical::CONSTRAINED_SPACING;
+use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
@@ -62,60 +66,65 @@ impl Strategy for AxialFinishing {
     }
 
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(vec![
-            ParameterSpec {
-                name: parameter::DIRECTION.to_owned(),
-                label: "Direction".to_owned(),
-                description: "Zig-zag alternates the direction of each pass along X; climb \
+        ParameterSchema::with_common(
+            vec![
+                ParameterSpec {
+                    name: parameter::DIRECTION.to_owned(),
+                    label: "Direction".to_owned(),
+                    description: "Zig-zag alternates the direction of each pass along X; climb \
                               cuts every pass the same way."
-                    .to_owned(),
-                kind: ParameterKind::Choice {
-                    options: vec!["zigzag".to_owned(), "climb".to_owned()],
-                    default: "zigzag".to_owned(),
+                        .to_owned(),
+                    kind: ParameterKind::Choice {
+                        options: vec!["zigzag".to_owned(), "climb".to_owned()],
+                        default: "zigzag".to_owned(),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::START_ANGLE.to_owned(),
-                label: "Start angle".to_owned(),
-                description: "A of the first pass.".to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: None,
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                ParameterSpec {
+                    name: parameter::START_ANGLE.to_owned(),
+                    label: "Start angle".to_owned(),
+                    description: "A of the first pass.".to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: None,
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::SCALLOP.to_owned(),
-                label: "Scallop height".to_owned(),
-                description: "The largest cusp between passes, for ball-end and bull-nose \
+                ParameterSpec {
+                    name: parameter::SCALLOP.to_owned(),
+                    label: "Scallop height".to_owned(),
+                    description: "The largest cusp between passes, for ball-end and bull-nose \
                               tools. The passes are as close as the smaller of this and the \
                               stepover needs. 0 turns it off."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Millimetres,
-                    min: Some(0.0),
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Millimetres,
+                        min: Some(0.0),
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::MAX_X_STEP.to_owned(),
-                label: "Largest step along X".to_owned(),
-                description: "The most X may advance between two points of a pass; points \
+                ParameterSpec {
+                    name: parameter::MAX_X_STEP.to_owned(),
+                    label: "Largest step along X".to_owned(),
+                    description: "The most X may advance between two points of a pass; points \
                               are added where the surface needs them."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Millimetres,
-                    min: Some(0.0),
-                    min_exclusive: true,
-                    max: None,
-                    default: Some(1.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Millimetres,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: None,
+                        default: Some(1.0),
+                    },
                 },
-            },
-        ])
+            ]
+            .into_iter()
+            .chain(crate::extend::specs(false))
+            .collect(),
+        )
     }
 
     fn honours_region(&self) -> bool {
@@ -204,6 +213,8 @@ pub(crate) struct AlongX<'a> {
     pub(crate) radius: f64,
     /// Alternate the direction of each pass.
     pub(crate) zigzag: bool,
+    /// Past the stock's ends, when the operation asks (OP-24).
+    extension: Option<Extension>,
 }
 
 impl<'a> AlongX<'a> {
@@ -219,6 +230,12 @@ impl<'a> AlongX<'a> {
         let leave = parameters.number(names::STOCK_TO_LEAVE)?;
         let mut x_step = parameters.number(parameter::MAX_X_STEP)?;
         let zigzag = parameters.text(parameter::DIRECTION)? == "zigzag";
+        let label = if parameters.get(crate::indexed::parameter::ANGLES).is_some() {
+            "indexed finishing"
+        } else {
+            "axial finishing"
+        };
+        let extension = Extension::read(input, parameters, label)?;
 
         let bounds = input.surface.bounds();
         let (x0, x1) = (bounds.min.x, bounds.max.x);
@@ -269,6 +286,7 @@ impl<'a> AlongX<'a> {
             spacing: region_spacing(tolerance, CONSTRAINED_SPACING),
             radius,
             zigzag,
+            extension,
         })
     }
 
@@ -314,7 +332,59 @@ impl<'a> AlongX<'a> {
             max_dt: 1.0 / self.seeds as f64,
             wanted: None,
         };
-        fit_region(&fit, self.seeds, "axial finishing", context)
+        let passes = fit_region(&fit, self.seeds, "axial finishing", context)?;
+        Ok(match self.extension {
+            Some(e) => e.run_out(
+                passes,
+                self.input,
+                &self.grown,
+                self.leave,
+                (self.x0, self.x1),
+            ),
+            None => passes,
+        })
+    }
+
+    /// The passes at each of `angles` in order, every other one backwards
+    /// when zig-zagging. The passes are fitted in parallel, one to a thread
+    /// (issue #252): a pass has too few points to spread over the threads by
+    /// itself. Each pass is fitted alone and they are joined in order, so the
+    /// path never depends on the thread count (NFR-06). `label` names the
+    /// strategy in the one progress count it reports, of passes.
+    pub(crate) fn passes_at(
+        &self,
+        angles: &[f64],
+        label: &str,
+        context: &JobContext<'_>,
+    ) -> Result<Vec<Pass>> {
+        let stage = format!("{label}: fitting the passes");
+        let total = angles.len() as u64;
+        context.report(&stage, 0, Some(total));
+        // The passes report nothing of their own: their counts, from many
+        // threads at once, would replace each other in the progress shown.
+        let quiet = JobContext::new(context.cancel, &NoProgress);
+        let done = Mutex::new(0_u64);
+        let indexed: Vec<(usize, f64)> = angles.iter().copied().enumerate().collect();
+        let fitted = parallel::map_each_in_order(&indexed, |&(i, a)| {
+            quiet.check_cancelled()?;
+            let pass = self.pass(Degrees(a), self.zigzag && i % 2 == 1, &quiet);
+            // Counted under the lock, so the count shown only goes up; a
+            // pass that fails is not counted as done (OI-843).
+            if pass.is_ok()
+                && let Ok(mut done) = done.lock()
+            {
+                *done += 1;
+                context.report(&stage, *done, Some(total));
+            }
+            pass
+        });
+        let mut out = Vec::new();
+        // The first error in pass order, so a failure is the same at any
+        // thread count.
+        for pass in fitted {
+            out.extend(pass?);
+        }
+        Ok(out)
     }
 }
 
@@ -339,12 +409,6 @@ fn passes(
     let count = pass_count(along.radius, stepover, scallop)?;
     along.check_passes(count)?;
     let step = 360.0 / count as f64;
-
-    let mut out = Vec::new();
-    for i in 0..count {
-        context.check_cancelled()?;
-        let a = Degrees(start + step * i as f64);
-        out.extend(along.pass(a, along.zigzag && i % 2 == 1, context)?);
-    }
-    Ok(out)
+    let angles: Vec<f64> = (0..count).map(|i| start + step * i as f64).collect();
+    along.passes_at(&angles, "axial finishing", context)
 }

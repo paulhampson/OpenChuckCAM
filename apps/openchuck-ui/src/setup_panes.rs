@@ -90,6 +90,90 @@ impl Map {
     }
 }
 
+/// The least a pane zooms: its fitted view (decision record 0203).
+pub const MIN_ZOOM: f32 = 1.0;
+/// The most a pane zooms in from its fitted view (decision record 0203).
+pub const MAX_ZOOM: f32 = 20.0;
+/// How much one pixel of wheel scroll zooms.
+const ZOOM_PER_PIXEL: f32 = 0.004;
+
+/// Which of the two panes (11.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Pane {
+    /// The front view from −Y.
+    Front,
+    /// The end view from +X.
+    End,
+}
+
+/// A pane's zoom and pan over its fitted view (issue #185; decision record
+/// 0203): the zoom from [`MIN_ZOOM`] (fitted) to [`MAX_ZOOM`], and the pan in
+/// pixels, kept so the pane's centre stays on the drawing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PaneView {
+    /// The zoom over the fitted view.
+    pub zoom: f32,
+    /// How far the drawing is moved, in pixels.
+    pub pan: egui::Vec2,
+}
+
+impl Default for PaneView {
+    fn default() -> Self {
+        Self {
+            zoom: MIN_ZOOM,
+            pan: egui::Vec2::ZERO,
+        }
+    }
+}
+
+impl PaneView {
+    /// True when the pane shows its fitted view.
+    pub fn is_fitted(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Zooms by `factor` about the point `about` (pixels from the pane's
+    /// centre), which stays where it is on screen, within the limits.
+    pub fn zoom_about(&mut self, factor: f32, about: egui::Vec2, size: egui::Vec2) {
+        if !factor.is_finite() || factor <= 0.0 {
+            return;
+        }
+        let zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        let k = zoom / self.zoom;
+        self.pan = about - (about - self.pan) * k;
+        self.zoom = zoom;
+        self.clamp(size);
+    }
+
+    /// Moves the drawing by `delta` pixels, within the limits.
+    pub fn drag(&mut self, delta: egui::Vec2, size: egui::Vec2) {
+        self.pan += delta;
+        self.clamp(size);
+    }
+
+    /// Keeps the pane's centre on the drawing: the pan is at most half the
+    /// zoomed pane's size each way. At the fitted zoom that still lets the
+    /// drawing be moved, but never off the pane.
+    fn clamp(&mut self, size: egui::Vec2) {
+        let limit = size * 0.5 * self.zoom;
+        self.pan = egui::Vec2::new(
+            self.pan.x.clamp(-limit.x, limit.x),
+            self.pan.y.clamp(-limit.y, limit.y),
+        );
+        if self.zoom <= MIN_ZOOM && self.pan.length() < 0.5 {
+            self.pan = egui::Vec2::ZERO;
+        }
+    }
+
+    /// `map` as this view shows it, about the pane's `centre`.
+    fn apply(self, map: Map, centre: Pos2) -> Map {
+        Map {
+            origin: centre + self.pan + (map.origin - centre) * self.zoom,
+            scale: map.scale * self.zoom,
+        }
+    }
+}
+
 fn font() -> FontId {
     FontId::new(theme::size::TEXT - 1.0, FontFamily::Monospace)
 }
@@ -463,6 +547,7 @@ fn front_solid(
 /// clearance, safe Z, travel limit, dimensions, and the held regions and
 /// tabs in section (11.3, 7.5). Returns the solids' screen outlines, for
 /// hover.
+#[allow(clippy::too_many_arguments)]
 fn front(
     painter: &Painter,
     rect: Rect,
@@ -470,12 +555,13 @@ fn front(
     f: &FrontPane,
     marks: Marks,
     hovered: Option<WorkholdingItem>,
+    view: PaneView,
 ) -> Vec<Hit> {
     let painter = painter.with_clip_rect(rect);
     let mut labels = Labels::default();
     labels.reserved.extend(chip);
     let (h, v) = front_bounds(f);
-    let map = Map::fit(rect, h, v);
+    let map = view.apply(Map::fit(rect, h, v), rect.center());
     let (left, right) = (map.at(h.0, 0.0).x, map.at(h.1, 0.0).x);
     if let Some(z) = f.travel_z {
         let y = map.at(0.0, z).y;
@@ -668,6 +754,7 @@ fn end(
     e: &EndPane,
     marks: Marks,
     hovered: Option<WorkholdingItem>,
+    view: PaneView,
 ) -> Vec<Hit> {
     let painter = painter.with_clip_rect(rect);
     let mut labels = Labels::default();
@@ -688,7 +775,10 @@ fn end(
     // Room at each side for the −Y and +Y labels, so none touches the pane's edge or the
     // front pane (OI-528).
     let body = Rect::from_min_max(rect.min + vec2(52.0, 28.0), rect.max - vec2(52.0, 28.0));
-    let map = Map::fit(body, (-reach, reach), (-reach, reach));
+    let map = view.apply(
+        Map::fit(body, (-reach, reach), (-reach, reach)),
+        body.center(),
+    );
     let centre = map.at(0.0, 0.0);
     labels.fixed(
         &painter,
@@ -874,14 +964,58 @@ fn end(
     shapes
 }
 
+/// The zoom and pan of `pane` for the setup `view_key` names, as kept for
+/// the session (decision record 0203).
+pub fn pane_view(ctx: &egui::Context, view_key: egui::Id, pane: Pane) -> PaneView {
+    ctx.data(|d| d.get_temp(view_key.with(pane)))
+        .unwrap_or_default()
+}
+
+fn set_pane_view(ctx: &egui::Context, view_key: egui::Id, pane: Pane, view: PaneView) {
+    ctx.data_mut(|d| d.insert_temp(view_key.with(pane), view));
+}
+
+/// The size a pane's view is clamped to: its drawing area.
+fn pane_size(pane: Pane, rect: Rect) -> egui::Vec2 {
+    match pane {
+        Pane::Front => rect.size(),
+        Pane::End => (rect.size() - vec2(104.0, 56.0)).max(vec2(1.0, 1.0)),
+    }
+}
+
+/// The pane's "Fit" button, at its top right, shown while it is zoomed or
+/// moved. True when pressed.
+fn fit_button(ui: &mut egui::Ui, rect: Rect, pane: Pane) -> bool {
+    let button = Rect::from_min_size(rect.right_top() + vec2(-48.0, 8.0), vec2(40.0, 20.0));
+    let name = match pane {
+        Pane::Front => "front",
+        Pane::End => "end",
+    };
+    ui.put(button, egui::Button::new("Fit").small())
+        .on_hover_text(format!(
+            "Fit the {name} view to its pane again (double-click does the same). Scroll to \
+             zoom, drag to move."
+        ))
+        .clicked()
+}
+
 /// Draws both panes in `ui`'s space: the front view, then the end view 270
 /// pixels wide, side by side (11.3). Hovering a held region or a tab opens
 /// its tooltip and outlines it (7.5); clicking one is reported. While the
 /// workholding section has unapplied changes (`draft`), the panes draw the
-/// draft and a chip at the top left says so (11.7).
-pub fn show(ui: &mut egui::Ui, panes: &SetupPanes, marks: Marks, draft: bool) -> Interaction {
+/// draft and a chip at the top left says so (11.7). Each pane zooms with the
+/// wheel about the pointer and moves with a drag, within limits, and keeps
+/// its view for the setup `view_key` names for the session; double-click or
+/// "Fit" fits it again (issue #185; decision record 0203).
+pub fn show(
+    ui: &mut egui::Ui,
+    panes: &SetupPanes,
+    marks: Marks,
+    draft: bool,
+    view_key: egui::Id,
+) -> Interaction {
     let full = ui.available_rect_before_wrap();
-    let response = ui.allocate_rect(full, Sense::click());
+    let response = ui.allocate_rect(full, Sense::click_and_drag());
     let painter = ui.painter_at(full);
     painter.rect_filled(full, 0.0, roles::VIEW_BOTTOM);
     painter.rect_filled(
@@ -894,20 +1028,59 @@ pub fn show(ui: &mut egui::Ui, panes: &SetupPanes, marks: Marks, draft: bool) ->
         Rect::from_min_max(full.min, pos2(split, full.max.y)),
         Rect::from_min_max(pos2(split, full.min.y), full.max),
     );
+    // Zoom and pan (decision record 0203): the wheel over a pane, a drag
+    // that started in it, a double-click in it.
+    let ctx = ui.ctx().clone();
+    let pane_at = |p: Pos2| {
+        if front_rect.contains(p) {
+            Some((Pane::Front, front_rect))
+        } else if end_rect.contains(p) {
+            Some((Pane::End, end_rect))
+        } else {
+            None
+        }
+    };
+    if let Some((pane, rect)) = response.hover_pos().and_then(pane_at) {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0
+            && let Some(p) = response.hover_pos()
+        {
+            let mut view = pane_view(&ctx, view_key, pane);
+            let size = pane_size(pane, rect);
+            view.zoom_about((scroll * ZOOM_PER_PIXEL).exp(), p - rect.center(), size);
+            set_pane_view(&ctx, view_key, pane, view);
+        }
+        if response.double_clicked() {
+            set_pane_view(&ctx, view_key, pane, PaneView::default());
+        }
+    }
+    if response.dragged()
+        && let Some((pane, rect)) = ui.input(|i| i.pointer.press_origin()).and_then(pane_at)
+    {
+        let mut view = pane_view(&ctx, view_key, pane);
+        view.drag(response.drag_delta(), pane_size(pane, rect));
+        set_pane_view(&ctx, view_key, pane, view);
+    }
+    let (front_view, end_view) = (
+        pane_view(&ctx, view_key, Pane::Front),
+        pane_view(&ctx, view_key, Pane::End),
+    );
     // The hover outline is drawn from the outlines of the last frame, so
     // each pane is drawn once; what is hovered and clicked is then decided
     // from this frame's, so a solid that has just gone is never reported
-    // (OI-353).
+    // (OI-353). Each outline is kept with its pane: a zoomed pane draws past
+    // its edge, clipped, and only the pane under the pointer may be hovered.
     let key = ui.id().with("setup panes hits");
-    let under = |hits: &[Hit]| {
+    let under = |hits: &[(Pane, Hit)]| {
         response.hover_pos().and_then(|p| {
+            let at = pane_at(p).map(|(pane, _)| pane);
             hits.iter()
                 .rev()
-                .find(|(_, poly, _)| inside(poly, p))
-                .cloned()
+                .find(|(pane, (_, poly, _))| Some(*pane) == at && inside(poly, p))
+                .map(|(_, hit)| hit.clone())
         })
     };
-    let previous: Vec<Hit> = ui.data(|d| d.get_temp(key)).unwrap_or_default();
+    let previous: Vec<(Pane, Hit)> = ui.data(|d| d.get_temp(key)).unwrap_or_default();
     let drawn = under(&previous).map(|(i, _, _)| i);
     let chip = draft.then(|| {
         let galley = painter.layout_no_wrap(DRAFT_CHIP.to_owned(), font(), roles::OVERLAY_TEXT);
@@ -916,8 +1089,23 @@ pub fn show(ui: &mut egui::Ui, panes: &SetupPanes, marks: Marks, draft: bool) ->
             galley.size() + vec2(16.0, 8.0),
         )
     });
-    let mut hits = front(&painter, front_rect, chip, &panes.front, marks, drawn);
-    hits.extend(end(&painter, end_rect, &panes.end, marks, drawn));
+    let mut hits: Vec<(Pane, Hit)> = front(
+        &painter,
+        front_rect,
+        chip,
+        &panes.front,
+        marks,
+        drawn,
+        front_view,
+    )
+    .into_iter()
+    .map(|hit| (Pane::Front, hit))
+    .collect();
+    hits.extend(
+        end(&painter, end_rect, &panes.end, marks, drawn, end_view)
+            .into_iter()
+            .map(|hit| (Pane::End, hit)),
+    );
     let hovered = under(&hits);
     let item = hovered.as_ref().map(|(i, _, _)| *i);
     ui.data_mut(|d| d.insert_temp(key, hits));
@@ -936,6 +1124,14 @@ pub fn show(ui: &mut egui::Ui, panes: &SetupPanes, marks: Marks, draft: bool) ->
         [pos2(split, full.min.y), pos2(split, full.max.y)],
         Stroke::new(roles::LINE_WIDTH, roles::OVERLAY_BORDER),
     );
+    for (pane, rect, view) in [
+        (Pane::Front, front_rect, front_view),
+        (Pane::End, end_rect, end_view),
+    ] {
+        if !view.is_fitted() && fit_button(ui, rect, pane) {
+            set_pane_view(&ctx, view_key, pane, PaneView::default());
+        }
+    }
     if let Some((_, _, text)) = hovered {
         response.clone().on_hover_text(text);
     }
@@ -1081,7 +1277,9 @@ mod tests {
             ..Default::default()
         };
         let mut seen = Interaction::default();
-        let mut output = ctx.run_ui(input, |ui| seen = show(ui, panes, marks, false));
+        let mut output = ctx.run_ui(input, |ui| {
+            seen = show(ui, panes, marks, false, egui::Id::new("test panes"));
+        });
         output.textures_delta.clear();
         (seen, output.shapes)
     }
@@ -1130,7 +1328,13 @@ mod tests {
             ..Default::default()
         };
         let mut output = ctx.run_ui(input, |ui| {
-            show(ui, panes, Marks::default(), draft);
+            show(
+                ui,
+                panes,
+                Marks::default(),
+                draft,
+                egui::Id::new("test panes"),
+            );
         });
         output.textures_delta.clear();
         output
@@ -1472,7 +1676,13 @@ mod tests {
             ..Default::default()
         };
         let mut output = ctx.run_ui(input, |ui| {
-            show(ui, &panes, Marks::default(), true);
+            show(
+                ui,
+                &panes,
+                Marks::default(),
+                true,
+                egui::Id::new("test panes"),
+            );
         });
         output.textures_delta.clear();
         assert!(
@@ -1480,5 +1690,135 @@ mod tests {
                 .iter()
                 .any(|s| s == "Showing unapplied workholding")
         );
+    }
+
+    /// Zooming keeps the point under the pointer still, within the limits
+    /// (issue #185; decision record 0203).
+    #[test]
+    fn req_ui_03_a_pane_zooms_about_the_pointer_within_limits() {
+        let size = vec2(600.0, 400.0);
+        let map = Map {
+            origin: pos2(300.0, 200.0),
+            scale: 4.0,
+        };
+        let centre = pos2(300.0, 200.0);
+        let mut view = PaneView::default();
+        assert!(view.is_fitted());
+        let pointer = vec2(80.0, -30.0);
+        let before = map.at(20.0, 7.5);
+        assert_eq!(before, centre + pointer);
+        view.zoom_about(2.5, pointer, size);
+        let after = view.apply(map, centre).at(20.0, 7.5);
+        assert!((after - before).length() < 1e-3, "{before:?} {after:?}");
+        assert_eq!(view.zoom, 2.5);
+        // No further in than the most, no further out than fitted.
+        view.zoom_about(1000.0, pointer, size);
+        assert_eq!(view.zoom, MAX_ZOOM);
+        view.zoom_about(1e-6, pointer, size);
+        assert_eq!(view.zoom, MIN_ZOOM);
+        // A bad factor changes nothing.
+        let kept = view;
+        view.zoom_about(f32::NAN, pointer, size);
+        view.zoom_about(-1.0, pointer, size);
+        assert_eq!(view, kept);
+    }
+
+    /// A pane zoomed in draws past its edge, clipped: what it draws there
+    /// cannot be hovered or clicked from the other pane (decision record
+    /// 0203).
+    #[test]
+    fn req_ui_25_a_zoomed_tab_is_not_picked_from_the_other_pane() {
+        let panes = tab_panes();
+        let ctx = egui::Context::default();
+        let front = Rect::from_min_max(pos2(0.0, 0.0), pos2(630.0, 600.0));
+        let (h, v) = front_bounds(&panes.front);
+        let tab = Map::fit(front, h, v).at(0.0, 0.0);
+        let mut view = PaneView::default();
+        view.zoom_about(MAX_ZOOM, tab - front.center(), front.size());
+        set_pane_view(&ctx, egui::Id::new("test panes"), Pane::Front, view);
+        // The tab now covers the front pane's right edge and runs past it.
+        let near_edge = pos2(front.max.x - 4.0, tab.y);
+        let _ = frame(&ctx, &panes, Marks::default(), None, false);
+        let (seen, _) = frame(&ctx, &panes, Marks::default(), Some(near_edge), false);
+        assert_eq!(seen.hovered, Some(WorkholdingItem::Tab(0)));
+        let beyond = pos2(front.max.x + 12.0, tab.y);
+        let _ = frame(&ctx, &panes, Marks::default(), Some(beyond), false);
+        let (seen, _) = frame(&ctx, &panes, Marks::default(), Some(beyond), true);
+        assert_ne!(seen.hovered, Some(WorkholdingItem::Tab(0)));
+        assert_ne!(seen.clicked, Some(WorkholdingItem::Tab(0)));
+    }
+
+    /// A drag moves the drawing, never so far that the pane's centre leaves
+    /// it (decision record 0203).
+    #[test]
+    fn req_ui_03_a_pane_pans_within_limits() {
+        let size = vec2(600.0, 400.0);
+        let mut view = PaneView::default();
+        view.drag(vec2(50.0, -20.0), size);
+        assert_eq!(view.pan, vec2(50.0, -20.0));
+        view.drag(vec2(10_000.0, 10_000.0), size);
+        assert_eq!(view.pan, vec2(300.0, 200.0));
+        view.zoom_about(4.0, egui::Vec2::ZERO, size);
+        view.drag(vec2(-100_000.0, 0.0), size);
+        assert_eq!(view.pan.x, -1200.0);
+    }
+
+    /// The wheel over a pane zooms that pane only; its view is kept for the
+    /// setup and not for another; a double-click fits it again (decision
+    /// record 0203).
+    #[test]
+    fn req_ui_03_each_pane_keeps_its_view_per_setup_and_a_double_click_fits() {
+        let panes = tab_panes();
+        let ctx = egui::Context::default();
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 600.0));
+        let run = |key: &str, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                show(ui, &panes, Marks::default(), false, egui::Id::new(key));
+            });
+            output.textures_delta.clear();
+        };
+        let over_front = pos2(200.0, 300.0);
+        run("a", vec![egui::Event::PointerMoved(over_front)]);
+        run(
+            "a",
+            vec![
+                egui::Event::PointerMoved(over_front),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: vec2(0.0, 120.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        // The wheel is smoothed over a few frames; let it settle.
+        for _ in 0..60 {
+            run("a", Vec::new());
+        }
+        let zoomed = pane_view(&ctx, egui::Id::new("a"), Pane::Front);
+        assert!(zoomed.zoom > 1.0, "{zoomed:?}");
+        assert!(pane_view(&ctx, egui::Id::new("a"), Pane::End).is_fitted());
+        assert!(pane_view(&ctx, egui::Id::new("b"), Pane::Front).is_fitted());
+        // Kept across frames for the same setup.
+        run("a", Vec::new());
+        assert_eq!(pane_view(&ctx, egui::Id::new("a"), Pane::Front), zoomed);
+        // A double-click in the pane fits it again.
+        let click = |pressed| egui::Event::PointerButton {
+            pos: over_front,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(
+            "a",
+            vec![click(true), click(false), click(true), click(false)],
+        );
+        run("a", Vec::new());
+        assert!(pane_view(&ctx, egui::Id::new("a"), Pane::Front).is_fitted());
     }
 }

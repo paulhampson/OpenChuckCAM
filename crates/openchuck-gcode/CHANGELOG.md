@@ -4,6 +4,7 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
+- Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
 - Version 0.15.0 with the library family (`PostJob` and `ConvertOptions` in `openchuck-post` gain `operation_spindle`, a breaking change; decision 0196).
 - Version 0.14.0 with the library family (`RegionConstraint` in `openchuck-path` gains `boundary_limits` and `watch`, a breaking change; decision 0176).

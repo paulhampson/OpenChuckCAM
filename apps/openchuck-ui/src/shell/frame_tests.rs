@@ -51,7 +51,11 @@ impl Rig {
         rig
     }
 
-    /// Draws until the scene, the checks and any run are done.
+    /// Draws until the scene, the checks and any run are done, and the run
+    /// is prepared for playback. A run that lands is handed to the playback
+    /// panel in the same frame, which then prepares it in a job; until that
+    /// job is done the dock draws only the transport row, so a test that
+    /// read the rows under it straight after a run raced the job (OI-840).
     pub(super) fn settle(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
@@ -60,6 +64,7 @@ impl Rig {
             if s.scene_job.is_none()
                 && s.checks_job.is_none()
                 && !s.run.is_running()
+                && !s.play.is_preparing()
                 && s.overview.checks_current
             {
                 break;
@@ -160,16 +165,13 @@ impl Rig {
         out
     }
 
-    /// Every text and filled rectangle painted, as much of it as its clip
-    /// lets show: the text (none for a rectangle) and the visible rectangle.
-    /// A text's rectangle covers its glyphs, not the indent a wrapped row
-    /// starts with. What a scroll area clips away entirely is left out.
-    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect)> {
-        fn walk(
-            shape: &egui::Shape,
-            clip: egui::Rect,
-            out: &mut Vec<(Option<String>, egui::Rect)>,
-        ) {
+    /// Every text and filled rectangle painted: the text (none for a
+    /// rectangle), its whole rectangle and as much of it as its clip lets
+    /// show. A text's rectangle covers its glyphs, not the indent a wrapped
+    /// row starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect, egui::Rect)> {
+        type Painted = Vec<(Option<String>, egui::Rect, egui::Rect)>;
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Painted) {
             let (text, rect) = match shape {
                 egui::Shape::Text(t) => (
                     Some(t.galley.text().to_string()),
@@ -189,7 +191,7 @@ impl Rig {
             };
             let seen = rect.intersect(clip);
             if seen.is_positive() {
-                out.push((text, seen));
+                out.push((text, rect, seen));
             }
         }
         let mut out = Vec::new();
@@ -912,6 +914,7 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
         .unwrap()
         .draft_mut()
         .tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(-7.0),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1595,6 +1598,48 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
     );
 }
 
+/// Each model has its Placement and Mesh check rows in the tree (section 6;
+/// issue #181, decision record 0201): a click on one selects the model and
+/// opens that section of its inspector, and the Placement section says it
+/// is shared by every setup.
+#[test]
+fn req_ui_06_the_model_has_placement_and_mesh_check_rows() {
+    let mut rig = Rig::cube("model-rows", None);
+    let defaults = ["check", "file", "placement", "units"];
+    rig.shell
+        .settings
+        .set_section_open("model", "check", false, &defaults);
+    rig.settle();
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    let row = |rig: &Rig, text: &str| {
+        rig.text_rects()
+            .into_iter()
+            .find(|(t, r)| t == text && r.left() < 300.0)
+            .unwrap_or_else(|| panic!("no tree row '{text}'"))
+            .1
+    };
+    let placement = row(&rig, "Placement");
+    let check = row(&rig, "Mesh check");
+    assert!(check.top() > placement.top());
+    assert!(rig.shows("1 step"), "the placement chip");
+    rig.click(placement.center());
+    rig.settle();
+    assert_eq!(rig.shell.selected, Some(Selection::Model(model)));
+    assert_eq!(rig.shell.model_section, Some(crate::model_panel::PLACEMENT));
+    assert!(rig.shows("shared by every setup"), "the Placement line");
+    rig.click(row(&rig, "Mesh check").center());
+    rig.settle();
+    assert_eq!(
+        rig.shell.model_section,
+        Some(crate::model_panel::MESH_CHECK)
+    );
+    // A section opened to show it is not kept open in the settings.
+    assert!(!rig.shell.settings.section_open("model", "check", true));
+    // Choosing the model another way chooses no section of it.
+    rig.shell.show_item(ItemRef::Model(model));
+    assert_eq!(rig.shell.model_section, None);
+}
+
 /// The operation inspector names the strategy under its own heading with the
 /// same plain description the New operation list shows, apart from the
 /// operation's own name; a rename leaves the strategy as it was (issue 242;
@@ -1642,4 +1687,42 @@ fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descrip
     // The list scrolls, so only the first entries are drawn; the first
     // entry's description is under its name.
     assert!(rig.shows(&choices[0].description[..40]));
+}
+
+/// Issue 201, the owner's option C: the status bar shows the current job,
+/// and choosing it opens the Jobs tab, with every job, its history and
+/// Cancel, even when the dock was collapsed.
+#[test]
+fn req_ui_09_the_job_in_the_status_bar_opens_the_jobs_tab() {
+    let mut rig = Rig::cube("frame-jobs-status", None);
+    rig.shell.toggle_region(super::frame::Region::Dock);
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.settings.dock.collapsed);
+}
+
+#[test]
+fn req_ui_09_req_ui_16_the_job_in_the_status_bar_opens_a_dock_the_small_window_closed() {
+    // CodeRabbit on pull request 281: the small-window rule closes the dock
+    // without the user's setting, and the status bar left it closed.
+    let mut rig = Rig::cube("frame-jobs-small", None);
+    rig.size = egui::vec2(1300.0, 700.0);
+    rig.frame(Vec::new());
+    assert!(rig.shell.collapsed(Region::Dock));
+    assert!(!rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.collapsed(Region::Dock));
 }

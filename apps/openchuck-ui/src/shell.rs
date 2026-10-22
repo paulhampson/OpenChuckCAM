@@ -152,6 +152,9 @@ pub struct Shell {
     selected: Option<Selection>,
     /// The section of the setup inspector a setup's child row chose.
     setup_section: Option<SetupPart>,
+    /// The model's child row chosen in the tree, for its highlight
+    /// (issue #181).
+    model_section: Option<&'static str>,
     /// The missing value the "Show first" jump is taking the user to, until
     /// the inspector has scrolled to it.
     requirement_jump: Option<openchuck_app::requirements::RequirementField>,
@@ -255,6 +258,7 @@ impl Shell {
             bench: None,
             selected: None,
             setup_section: None,
+            model_section: None,
             requirement_jump: None,
             tool_library: ToolLibraryWindow::default(),
             import: None,
@@ -689,8 +693,8 @@ impl Shell {
                 self.step = Step::Operations;
             }
             self.selection.show_set(None);
-            self.dock_tab = DockTab::SelectionSets;
-            self.settings.dock.collapsed = false;
+            // New selection is in the inspector (12.2; decision 0215).
+            self.settings.inspector.collapsed = false;
             self.select(Selection::Picking);
         }
     }
@@ -734,7 +738,7 @@ impl Shell {
         match action.kind {
             PrimaryKind::ImportModel => self.import_model(),
             PrimaryKind::Continue(step) => self.open_step(step),
-            PrimaryKind::GenerateStale(_) => self.generate(false),
+            PrimaryKind::GenerateStale(_) | PrimaryKind::Generate => self.generate(false),
             PrimaryKind::RunSimulation | PrimaryKind::GenerateAndSimulate(_) => {
                 self.generate(true);
             }
@@ -839,6 +843,12 @@ impl Shell {
                 self.tree_action(action);
             }
         }
+        if delete
+            && let Some(Selection::Set(id)) = self.selected
+            && !self.tool_library.is_open()
+        {
+            self.tree_action(TreeAction::DeleteSet(id));
+        }
         if rename && let Some(item) = self.selected_item() {
             self.begin_rename(item);
         }
@@ -931,7 +941,7 @@ impl Shell {
             MessageAction::Show(item) => self.show_item(item),
             MessageAction::Reselect(set) => {
                 self.start_picking();
-                self.selection.show_set(Some(set));
+                self.selection.pick_again(set);
                 self.select(Selection::Set(set));
             }
             MessageAction::ReviewSetup(setup) => {
@@ -1030,14 +1040,29 @@ impl Shell {
                 self.select(Selection::Operation(id));
                 return;
             }
-            TreeAction::SelectModel(id) => {
+            TreeAction::SelectModel(id, section) => {
                 self.select(Selection::Model(id));
+                self.model_section = section;
+                if let Some(key) = section {
+                    self.model_panel
+                        .get_or_insert_with(|| ModelPanel::new(id))
+                        .open_section(key);
+                    if let Some(panel) = &mut self.model_panel
+                        && panel.model() != id
+                    {
+                        *panel = ModelPanel::new(id);
+                        panel.open_section(key);
+                    }
+                }
                 return;
             }
             TreeAction::SelectSet(id) => {
                 self.selection.show_set(Some(id));
-                self.dock_tab = DockTab::SelectionSets;
                 self.select(Selection::Set(id));
+                return;
+            }
+            TreeAction::DeleteSet(id) => {
+                self.delete_set(id);
                 return;
             }
             TreeAction::SelectSetup(id, section) => {
@@ -1098,6 +1123,9 @@ impl Shell {
     }
 
     fn select(&mut self, selection: Selection) {
+        // A model's Placement or Mesh check row is chosen only by its own
+        // tree row, which sets it again after this.
+        self.model_section = None;
         if self.selected != Some(selection) {
             self.selected = Some(selection);
             self.form.clear();
@@ -1226,6 +1254,8 @@ impl Shell {
                 _ => None,
             },
         );
+        // The set drawn in its own colour joins the legends (decision 0216).
+        self.viewport.set_legend_set(self.selection.shown_look(app));
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
@@ -1239,6 +1269,45 @@ impl Shell {
             // selection.
             if let Some(e) = self.selection.reset_dialog(ctx, app) {
                 self.dialog = Some(Dialog::Error(e));
+            }
+        }
+        self.follow_selection_panel();
+    }
+
+    /// Selects what the selection panel chose or left (decision 0215): a new
+    /// set once it is saved, or New selection after a plain click left the
+    /// chosen set.
+    fn follow_selection_panel(&mut self) {
+        if let Some(chosen) = self.selection.take_chosen_change() {
+            self.select(chosen.map_or(Selection::Picking, Selection::Set));
+            self.shown_for = (self.selection.show_count(), self.selected);
+        }
+    }
+
+    /// Deletes selection set `id`, refused with the operations that use it
+    /// (12.2; decision 0215 item 2).
+    fn delete_set(&mut self, id: SelectionSetId) {
+        let Some(app) = &mut self.app else { return };
+        let Some(summary) = app
+            .selection_summaries(&[])
+            .into_iter()
+            .find(|s| s.id == id)
+        else {
+            return;
+        };
+        if let Some(note) = crate::selection_panel::delete_refusal(&summary) {
+            self.dialog = Some(Dialog::Error(note));
+            return;
+        }
+        match app.delete_selection(id) {
+            Ok(()) => {
+                if self.selected == Some(Selection::Set(id)) {
+                    self.selection.show_set(None);
+                    self.selected = Some(Selection::Picking);
+                }
+            }
+            Err(e) => {
+                self.dialog = Some(Dialog::Error(format!("The set was not deleted: {e}")));
             }
         }
     }
@@ -1764,10 +1833,14 @@ enum TreeAction {
     Duplicate(OperationId),
     /// Delete this operation.
     Delete(OperationId),
+    /// Delete this selection set; refused while an operation uses it
+    /// (12.2; decision 0215 item 2).
+    DeleteSet(SelectionSetId),
     /// Show this operation's parameters.
     Select(OperationId),
-    /// Show this model's units, placement and checks.
-    SelectModel(ModelId),
+    /// Show this model's units, placement and checks, at a section (the
+    /// model panel's section key; issue #181).
+    SelectModel(ModelId, Option<&'static str>),
     /// Show this selection set.
     SelectSet(SelectionSetId),
     /// Show this setup, at a section.

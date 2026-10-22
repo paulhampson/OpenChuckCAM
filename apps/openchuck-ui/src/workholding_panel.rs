@@ -17,16 +17,16 @@ use eframe::egui::{self, Color32, RichText, Stroke};
 use openchuck_app::project::id::SetupId;
 use openchuck_app::project::{Item, Setup};
 use openchuck_app::setup::{
-    HeldRegion, Millimetres, PartExtent, Tab, TabLayout, TabShape, Workholding,
+    HeldRegion, Millimetres, PartExtent, Tab, TabEnd, TabLayout, TabShape, Workholding,
 };
 use openchuck_app::workholding::{
     PartFacts, SetupTool, WorkholdingFinding, ZoneDefault, setup_tools,
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, FieldProblem, NO_TABS_WARNING, Zone, check_draft,
-    default_chips, default_tabs_state, display_items, grip_warning, held_span, holding_hint,
-    narrowest_line, new_held_region, new_tab, no_default_line, part_facing, set_layout, set_shape,
-    tab_zone, zone_lines,
+    default_chips, default_tabs_state, display_items, end_tab, grip_warning, held_span,
+    holding_hint, narrowest_line, new_held_region, new_tab, no_default_line, no_room, part_facing,
+    set_layout, set_shape, set_tab_auto, set_tab_span, tab_zone, zone_lines,
 };
 use openchuck_app::{Application, Command, JobHandle};
 
@@ -130,8 +130,8 @@ struct Checking {
 }
 
 /// What a check of `setup`'s workholding depends on besides the draft: its
-/// part and stock, and the tools of its operations. A check made on other
-/// inputs is stale.
+/// part, the part offset (decision record 0201) and stock, and the tools of
+/// its operations. A check made on other inputs is stale.
 fn check_inputs(app: &Application, setup: &Setup) -> String {
     let project = app.project();
     let tools: Vec<_> = project
@@ -145,18 +145,21 @@ fn check_inputs(app: &Application, setup: &Setup) -> String {
             (o.id, tool.map(|t| &t.tool))
         })
         .collect();
-    format!("{:?} {:?} {:?}", setup.part, setup.stock, tools)
+    format!(
+        "{:?} {:?} {:?} {:?}",
+        setup.part, setup.frame.part_offset, setup.stock, tools
+    )
 }
 
-/// What the part's facts depend on: the part as placed, the stock and the
-/// stored held regions.
+/// What the part's facts depend on: the part as placed, the setup's part
+/// offset (decision record 0201), the stock and the stored held regions.
 fn facts_key(app: &Application, setup: &Setup) -> String {
     let model = setup
         .part
         .and_then(|id| app.project().models().iter().find(|m| m.id == id));
     format!(
-        "{model:?} {:?} {:?} {:?}",
-        setup.stock, setup.workholding.start, setup.workholding.end
+        "{model:?} {:?} {:?} {:?} {:?}",
+        setup.frame.part_offset, setup.stock, setup.workholding.start, setup.workholding.end
     )
 }
 
@@ -740,10 +743,16 @@ impl WorkholdingPanel {
         let last = self.draft.workholding().tabs.len().saturating_sub(1);
         let mut remove = None;
         let mut duplicate = None;
-        let tabs = self.draft.workholding().tabs.clone();
+        // Automatic tabs are shown where the part, the stock and the held
+        // regions put them, and say when there is no room (decision record
+        // 0202).
+        let part = self.part_extent();
+        let draft = self.draft.workholding().clone();
+        let tabs = draft.resolved(setup.stock.as_ref(), part.as_ref()).tabs;
+        let without_room = draft.auto_tabs_without_room(setup.stock.as_ref(), part.as_ref());
         for (i, tab) in tabs.iter().enumerate() {
             let marked = problem.is_some_and(|p| field_item(p.field) == HeldItem::Tab(i));
-            let finding: Vec<String> = self
+            let mut finding: Vec<String> = self
                 .findings
                 .iter()
                 .filter(|f| f.tab == Some(i))
@@ -754,7 +763,7 @@ impl WorkholdingPanel {
                 _ => None,
             };
             let header = format!(
-                "Tab {} \u{b7} {} \u{b7} X {} to {}{}",
+                "Tab {} \u{b7} {} \u{b7} X {} to {}{}{}",
                 i + 1,
                 if matches!(tab.shape, TabShape::Cylinder { .. }) {
                     "Cylinder"
@@ -764,7 +773,19 @@ impl WorkholdingPanel {
                 mm(tab.x_start.0).replacen('-', "\u{2212}", 1),
                 mm(tab.x_start.0 + tab.length.0).replacen('-', "\u{2212}", 1),
                 zone.map_or(String::new(), |z| format!(" \u{b7} {}", z.name())),
+                if tab.auto.is_some() {
+                    " \u{b7} Automatic"
+                } else {
+                    ""
+                },
             );
+            let room = without_room.iter().find(|(k, _)| *k == i).map(|(_, end)| {
+                format!(
+                    "{} It keeps its last position: move the part or shorten the held \
+                         region, or untick \"Place automatically\" and place it by hand.",
+                    no_room(&draft, *end)
+                )
+            });
             let id = ui.make_persistent_id(("tab", self.setup, i));
             let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
                 ui.ctx(),
@@ -785,6 +806,11 @@ impl WorkholdingPanel {
                     k.key_pressed(egui::Key::Delete),
                 )
             });
+            if let Some(line) = &room
+                && !finding.contains(line)
+            {
+                finding.push(line.clone());
+            }
             let mut title_response = None;
             let mut header_row = state.show_header(ui, |ui| {
                 if !finding.is_empty() {
@@ -872,7 +898,15 @@ impl WorkholdingPanel {
                 for text in &finding {
                     ui.label(RichText::new(text).color(if self.refused { ERROR } else { NOTE }));
                 }
-                self.tab_editor(ui, i, *tab, problem, tools, focus && i == last || opened);
+                self.tab_editor(
+                    ui,
+                    i,
+                    *tab,
+                    zone,
+                    problem,
+                    tools,
+                    focus && i == last || opened,
+                );
                 reached_line(ui, &context.reach, HeldItem::Tab(i));
             });
             match menu {
@@ -910,6 +944,39 @@ impl WorkholdingPanel {
             };
             if response.clicked() {
                 self.edit(|w| w.tabs.extend(offered.iter().copied()));
+            }
+        });
+        ui.horizontal(|ui| {
+            // A tab at each end of the part, placed automatically; each press
+            // adds another (issue #182; decision record 0202). On a row of
+            // their own, so the section is no wider than before.
+            for (end, label) in [(TabEnd::Head, "Head tab"), (TabEnd::Tail, "Tail tab")] {
+                let made = end_tab(
+                    self.draft.workholding(),
+                    setup.stock.as_ref(),
+                    part.as_ref(),
+                    setup.part.is_some(),
+                    end,
+                );
+                let response = ui.add_enabled(made.is_ok(), egui::Button::new(label));
+                let response = match &made {
+                    Err(why) => response.on_disabled_hover_text(why),
+                    Ok(_) => response.on_hover_text(format!(
+                        "Adds a tab that fills the gap at the {} of the part, from the part to \
+                         the held region (or the end of the stock), and follows the part, the \
+                         stock and the held regions when they change. It is a cylinder a quarter \
+                         of the stock's diameter across: where the part narrows to a small end, \
+                         check it is not wider than the part there, and change its diameter if \
+                         it is",
+                        end.name()
+                    )),
+                };
+                if response.clicked()
+                    && let Ok(tab) = made
+                {
+                    self.edit(|w| w.tabs.push(tab));
+                    self.focus_new_tab = true;
+                }
             }
         });
         if let Some(i) = duplicate
@@ -989,6 +1056,7 @@ impl WorkholdingPanel {
         ui: &mut egui::Ui,
         i: usize,
         tab: Tab,
+        zone: Option<Zone>,
         problem: Option<&FieldProblem>,
         tools: &[SetupTool],
         focus: bool,
@@ -1014,6 +1082,38 @@ impl WorkholdingPanel {
             set(self, &|t| set_shape(t, choice == 0));
         }
         let key = |name: &str| format!("tab {i} {name}");
+        // "Place automatically" (issue #186; decision record 0202): ticked,
+        // the position and length follow the part; a tab in neither zone has
+        // no end to follow.
+        let end = tab.auto.or(zone.map(|z| match z {
+            Zone::Head => TabEnd::Head,
+            Zone::Tail => TabEnd::Tail,
+        }));
+        let description = match end {
+            Some(end) => format!(
+                "Keeps this tab over the whole gap at the {} of the part, from the part to the \
+                 held region (or the end of the stock), and moves it when the part, the stock \
+                 or the held regions change. Editing Start X or Length by hand unticks it.",
+                end.name()
+            ),
+            None => "Only a tab at the head or the tail of the part can be placed \
+                     automatically."
+                .to_owned(),
+        };
+        if let Some(on) = field_row::flag_row(
+            ui,
+            "Place automatically",
+            &description,
+            tab.auto.is_some(),
+            end.is_some(),
+        ) {
+            // Unticked, the tab keeps the position it is shown at.
+            set(self, &|t| {
+                set_tab_auto(t, &tab, if on { end } else { None })
+            });
+        }
+        // A hand edit of the position or length unticks it, keeping the other
+        // value as shown.
         if let Some(Some(v)) = self.number_row(
             ui,
             &key("start"),
@@ -1025,7 +1125,7 @@ impl WorkholdingPanel {
             None,
             focus,
         ) {
-            set(self, &|t| t.x_start = Millimetres(v));
+            set(self, &|t| set_tab_span(t, &tab, Some(v), None));
         }
         if let Some(Some(v)) = self.number_row(
             ui,
@@ -1038,7 +1138,7 @@ impl WorkholdingPanel {
             None,
             false,
         ) {
-            set(self, &|t| t.length = Millimetres(v));
+            set(self, &|t| set_tab_span(t, &tab, None, Some(v)));
         }
         match tab.shape {
             TabShape::Cylinder { diameter } => {
@@ -1342,7 +1442,15 @@ impl WorkholdingPanel {
                     return None;
                 }
                 let mut edited = setup.clone();
-                edited.workholding = draft;
+                // Automatic tabs are stored where they are now (decision
+                // record 0202); they are worked out again wherever used. The
+                // draft takes the same values, so the stored workholding is
+                // what it holds.
+                let resolved = draft.resolved(setup.stock.as_ref(), self.part_extent().as_ref());
+                if resolved != draft {
+                    *self.draft.edit() = resolved.clone();
+                }
+                edited.workholding = resolved;
                 self.message = None;
                 self.findings.clear();
                 self.refused = false;
@@ -1438,6 +1546,7 @@ mod tests {
 
     fn tab(x_start: f64, length: f64, diameter: f64) -> Tab {
         Tab {
+            auto: None,
             x_start: Millimetres(x_start),
             length: Millimetres(length),
             shape: TabShape::Cylinder {
@@ -1522,6 +1631,11 @@ mod tests {
         assert_ne!(before, check_inputs(&app, &after_setup));
         app.undo().unwrap();
         assert_eq!(before, check_inputs(&app, &setup));
+        // So is a change to the part offset, which moves the part (decision
+        // record 0201).
+        let mut offset = setup.clone();
+        offset.frame.part_offset = Millimetres(2.0);
+        assert_ne!(before, check_inputs(&app, &offset));
         // A draft edited or reverted while a clean check ran is not stored.
         let checked = Workholding::default();
         assert!(
@@ -1727,6 +1841,7 @@ mod tests {
         // A 3 mm tab in the head zone, narrower than the 4 mm tool, as a
         // frustum with its large end on the part.
         panel.draft.edit().tabs = vec![Tab {
+            auto: None,
             shape: TabShape::Frustum {
                 start_diameter: Millimetres(3.0),
                 end_diameter: Millimetres(5.0),
@@ -1824,5 +1939,132 @@ mod tests {
             Some(HeldItem::End)
         );
         assert_eq!(reached_item("Something else."), None);
+    }
+
+    /// One frame of the section with `events`, giving each text painted with
+    /// its rectangle.
+    fn frame_with(
+        panel: &mut WorkholdingPanel,
+        ctx: &egui::Context,
+        app: &Application,
+        setup: &Setup,
+        events: Vec<egui::Event>,
+    ) -> Vec<(String, egui::Rect)> {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(900.0, 4000.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            panel.show(ui, app, setup, &Context::default());
+        });
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::epaint::Shape::Text(t) => Some((
+                    t.galley.text().to_owned(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn click_text(
+        panel: &mut WorkholdingPanel,
+        ctx: &egui::Context,
+        app: &Application,
+        setup: &Setup,
+        text: &str,
+    ) {
+        // Let a section that opened finish its animation first.
+        for _ in 0..30 {
+            frame_with(panel, ctx, app, setup, Vec::new());
+        }
+        let at = frame_with(panel, ctx, app, setup, Vec::new())
+            .into_iter()
+            .find(|(t, _)| t == text)
+            .unwrap_or_else(|| panic!("no '{text}'"))
+            .1
+            .center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame_with(panel, ctx, app, setup, vec![egui::Event::PointerMoved(at)]);
+        frame_with(panel, ctx, app, setup, vec![button(true)]);
+        frame_with(panel, ctx, app, setup, vec![button(false)]);
+    }
+
+    /// "Head tab" adds a ticked tab over the gap at the head, and a second
+    /// press adds another; "Tail tab" is disabled where there is no room; the
+    /// tab says it is automatic, and unticking keeps its position (issues
+    /// #182 and #186; decision record 0202).
+    #[test]
+    fn req_ui_25_head_and_tail_buttons_add_ticked_tabs_and_the_box_unticks() {
+        let (dir, app, _, setup_id) = cube_project("workholding-ends");
+        let setup = app.project().setup(setup_id).unwrap().clone();
+        let mut panel = WorkholdingPanel::new(&setup);
+        let ctx = egui::Context::default();
+        settle(&mut panel, &ctx, &app, &setup);
+        let part = panel.part_extent().unwrap();
+        // The cube runs from X 0 to 10 in stock from X -7 to 7: there is
+        // room at the head and none at the tail, whose button is disabled.
+        click_text(&mut panel, &ctx, &app, &setup, "Head tab");
+        click_text(&mut panel, &ctx, &app, &setup, "Tail tab");
+        click_text(&mut panel, &ctx, &app, &setup, "Head tab");
+        let tabs = panel.draft.workholding().tabs.clone();
+        assert_eq!(tabs.len(), 2);
+        assert_eq!(tabs[0].auto, Some(TabEnd::Head));
+        assert_eq!(tabs[1], tabs[0]);
+        assert_eq!(
+            (tabs[0].x_start, tabs[0].length),
+            (Millimetres(-7.0), Millimetres(7.0))
+        );
+        assert!((tabs[0].x_start.0 + tabs[0].length.0 - part.bounds.min.x).abs() < 1e-12);
+        let text = painted(&mut panel, &ctx, &app, &setup);
+        assert!(text.contains("Automatic"), "{text}");
+        // Untick the first (open since it was added): it keeps where it is
+        // and is a manual tab.
+        // The check box sits just after the label column.
+        for _ in 0..30 {
+            frame_with(&mut panel, &ctx, &app, &setup, Vec::new());
+        }
+        let label = frame_with(&mut panel, &ctx, &app, &setup, Vec::new())
+            .into_iter()
+            .find(|(t, _)| t == "Place automatically")
+            .unwrap()
+            .1;
+        let at = egui::pos2(
+            label.left() + crate::theme::width::LABEL_COLUMN + 9.0,
+            label.center().y,
+        );
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        for events in [
+            vec![egui::Event::PointerMoved(at)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            frame_with(&mut panel, &ctx, &app, &setup, events);
+        }
+        let first = panel.draft.workholding().tabs[0];
+        assert_eq!(first.auto, None);
+        assert_eq!(
+            (first.x_start, first.length),
+            (tabs[0].x_start, tabs[0].length)
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
