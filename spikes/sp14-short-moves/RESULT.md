@@ -163,18 +163,19 @@ Each option's error, cost and fit:
 
 ## Air-cut program for the Z1 block rate (added 22 Oct 2026; decision 0222 item 7)
 
-The owner decided to add this test to the gate 4 procedure (#284). `air-cut/gen_block_rate.py` writes `air-cut/block_rate_z1.nc`: 26,246 lines, the longest 50 characters.
+The owner decided to add this test to the gate 4 procedure (#284). `air-cut/gen_block_rate.py` writes `air-cut/block_rate_z1.nc`: 27,966 lines, the longest 50 characters.
 
-- **Part A:** six sections of 100 mm of X at F1000, made of 20, 10, 5, 3, 2 and 1 ms blocks (300 to 6,000 lines each).
-- **Part B:** the same six sections, with A advancing in every block.
+- **Part A:** seven sections of 100 mm of X at F1000, made of 20, 10, 7, 5, 3, 2 and 1 ms blocks (300 to 6,000 lines each). The 7 ms section was added after the published Smoothieboard rates below, which put a possible floor between 5 and 10 ms.
+- **Part B:** the same seven sections, with A advancing in every block.
 - **The A step in part B.** Each block's A step is 60 % of its X length's worth under the Z1 rule (0.628 degrees per mm of X at Z50), so X still sets the block's time. The owner's first idea was a 0.2 degree step, but that cannot hold the short block times. The Z1's A axis is limited to 3600 degrees per minute, so a 0.2 degree step needs at least 3.3 ms. The rule's A term would also dominate: 0.19 mm at r = 50.
-- **Check.** `gstat` on the file confirms the block times: 79 s of fed motion, 72 s of sections plus 12 markers.
+- **Check.** `gstat` on the file confirms the block times: 92 s of fed motion, 84 s of sections plus 14 markers.
 - **Stopping-distance prediction.** Smoothie plans the newest block to end at rest. A 32-block queue at acceleration 150 mm/s² therefore allows at most `sqrt(2 a 32 L)`, where L is the block length:
 
   | Block | Length, mm | Stopping limit, mm/min | Predicted section time |
   | --- | --- | --- | --- |
   | 20 ms | 0.333 | 3,394 | 6.0 s |
   | 10 ms | 0.167 | 2,400 | 6.0 s |
+  | 7 ms | 0.117 | 2,008 | 6.0 s |
   | 5 ms | 0.083 | 1,697 | 6.0 s |
   | 3 ms | 0.050 | 1,315 | 6.0 s |
   | 2 ms | 0.033 | 1,073 | 6.0 s |
@@ -183,3 +184,37 @@ The owner decided to add this test to the gate 4 procedure (#284). `air-cut/gen_
   This is inference from the firmware source, not a measurement.
   - It means the 1 ms section runs at about 7.9 s even if lines arrive fast enough.
   - The same arithmetic gives a planner-depth floor of `t >= v / (2 a 32)` for any program: 1.74 ms per block at 1,000 mm/min, and 2.08 ms at the Z1's 1,200 mm/min.
+
+## Published sources (read 22 Oct 2026, after the owner added network access)
+
+Downloads are kept outside the repository; quotes are exact. community.makera.com still fails (proxy 502) and smoothieware.github.io is denied (403).
+
+- **Makera wiki** (wiki.makera.com, 100 English pages searched, including the Z1 pages updated 16 Oct 2026):
+  - `/en/supported-codes` (updated 4 Feb 2026, written for the Carvera): "The Carvera firmware is based on Smoothieware". It lists G2/G3 and "G4 Dwell P<seconds>". Smoothie's own page gives P in milliseconds outside grbl mode (below), so the two disagree (OI-937; no post writes G4 today).
+  - Carvera software manual: "The current task cannot be stopped immediately when the task is paused or held. It has to wait for the buffer zone finish." It gives no size.
+  - **Not found:** line length, block rate, look-ahead, stutter, segment or tolerance advice, streaming against playing from the machine.
+- **smoothieware.org:**
+  - `/configuration-options`, `planner_queue_size`: "32 is optimal for most machines… Must be at least 8 for proper operation".
+  - `minimum_planner_speed`: "A value of 0.0 (default) allows the planner to decelerate to a complete stop at corners when needed".
+  - `junction_deviation`: "0.01 - Maximum precision for critical work".
+  - `/supported-g-codes`: "G4 → Dwell S or P , In grbl mode P is float seconds".
+  - **Not found:** a block rate in lines a second, a line-length limit, any stutter page.
+- **forum.makerforums.info** (Smoothieboard, LPC1769, 2016 to 2021):
+  - Topic 76554, wolfmanjm, 11 Jun 2016: "if you have lots of very small segments, then yes USB is too slow to keep the buffer full… This can even happen when printing from SD card with very small segments".
+  - Same topic, spe3Dy:
+    - 13 Jun 2016: over USB "up to 60 lines per second, movement was smooth. At 70… hickups"; from SD "400 lines per second totally smooth".
+    - 24 Jun 2016: "Smoothie onboard SD starts choking at slightly over 900 lines per second."
+  - Topic 76277, 30 Apr 2017:
+    - mayhem2408: "about 160 lines of gcode per second processed from the card… over serial… still got 160 lines per second".
+    - Arthur Wolf: "Smoothie is known to go over 1k lines/seconds".
+  - Topic 8795, Todd Fleming, 10 Dec 2016: laser CAM segment length ".5 mm default" to avoid stalls, which he found by recording the motor waveforms and looking for "spots where both axis go quiet". Arthur Wolf, the same day: "It's going to be different based on the machine's config".
+- **linuxcnc.org 2.9** (pages updated 17 Oct 2026):
+  - `gcode/overview`: "a maximum (currently 256) to the number of characters allowed on a line".
+  - `config/ini-config`: "min_length ~= v_req * t_c… any segments shorter than min_length will slow the path down", and "the trajectory planner has to touch each segment at least once… very tiny segments will slow things down significantly".
+  - `gcode/g-code`: the G61 and G64 P Q text agrees with the source quoted above.
+
+**What this changes.**
+- **The rate range.** The published Smoothieboard rates span 60 lines a second (USB, 2016) to about 1,000 (from its own SD), so the floor runs from 1 ms to 17 ms a line, depending on board and transport. The Z1 is fed over a serial link by its controller board, a transport no source measures.
+- **The provisional 3 ms figure** is not supported: a Smoothie board at 160 lines a second would starve at 6.25 ms. This backs the owner's decision to keep the check off until the air cut has run.
+- **The air cut** gains a 7 ms section, so a floor between 5 and 10 ms is resolved.
+- **The 63-character truncation** (OI-933) is neither confirmed nor contradicted by any published source.

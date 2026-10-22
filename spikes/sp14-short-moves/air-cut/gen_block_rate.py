@@ -13,7 +13,7 @@ limit. Sections alternate direction to stay inside X 0..100.
 import math
 
 F = 1000.0                     # mm/min
-TIMES_MS = [20, 10, 5, 3, 2, 1]
+TIMES_MS = [20, 10, 7, 5, 3, 2, 1]
 LENGTH = 100.0                 # mm of X per section
 Z = 50.0                       # tip 50 mm above the A axis (r = 50)
 P = 2 * math.pi * Z + 30.0     # Z1 rule perimeter, mm
