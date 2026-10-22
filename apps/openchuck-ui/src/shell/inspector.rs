@@ -197,6 +197,8 @@ impl Shell {
         if self.results.show(ui, app, run.as_ref(), stale) {
             self.play
                 .set_colour_by(self.results.colour_by, &mut self.viewport);
+            self.play
+                .set_band_filter(&self.results.filter, &mut self.viewport);
         }
     }
 

@@ -1181,6 +1181,63 @@ fn req_gc_07_a_rename_after_reuse_names_the_operations_as_they_are_now() {
 }
 
 #[test]
+fn req_nfr_04_req_sim_05_simulating_again_with_nothing_changed_does_not_compare_again() {
+    // OI-627: the comparison of a setup's final stock with the part is kept
+    // with the cached stock it was made from, under the same key, so a run
+    // whose final stock comes from the cache does not compare it again.
+    let (dir, mut app, ids) = ring_then_rest("reuse-compare");
+    let setup = app.project().operation(ids[0]).unwrap().setup;
+    let first = app.simulate().unwrap();
+    assert_eq!(first.compared, [setup]);
+    let deviation = first.simulation.as_ref().unwrap().setups[0]
+        .deviation
+        .clone();
+    assert!(deviation.is_some(), "the cube is compared with its part");
+
+    // Nothing changed: the same numbers, without comparing again.
+    let again = app.simulate().unwrap();
+    assert_eq!(again.reused, ids);
+    assert!(again.simulated.is_empty(), "{:?}", again.simulated);
+    assert!(again.compared.is_empty(), "{:?}", again.compared);
+    assert_eq!(again.simulation, first.simulation);
+
+    // A rename is not an input: still not compared, and named as it is now.
+    let mut renamed = app.project().operation(ids[1]).unwrap().clone();
+    renamed.name = "Renamed rest".into();
+    app.execute(Command::Replace(Item::Operation(renamed)))
+        .unwrap();
+    let after_rename = app.simulate().unwrap();
+    assert!(after_rename.compared.is_empty());
+    let report = after_rename.simulation.unwrap();
+    assert_eq!(report.setups[0].operations[1].operation, "Renamed rest");
+    assert_eq!(report.setups[0].deviation, deviation);
+
+    // A change to the last operation leaves a new stock, which is compared.
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.2)),
+    })
+    .unwrap();
+    let edited = app.simulate().unwrap();
+    assert_eq!(edited.simulated, [ids[1]]);
+    assert_eq!(edited.compared, [setup]);
+
+    // Generating without a simulation compares nothing.
+    assert!(app.regenerate().unwrap().compared.is_empty());
+
+    // With the cache off every simulation compares, and gives the same
+    // numbers as the kept comparison (NFR-06).
+    let kept = app.simulate().unwrap();
+    assert!(kept.compared.is_empty());
+    app.set_cache_versions(0);
+    let fresh = app.simulate().unwrap();
+    assert_eq!(fresh.compared, [setup]);
+    assert_eq!(fresh.simulation, kept.simulation);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_11_a_plunge_is_refused_for_a_tool_that_states_it_cannot_cut_straight_down() {
     let (dir, mut app, op) = project("centre-cutting");
     let mut operation = app.project().operation(op).unwrap().clone();
