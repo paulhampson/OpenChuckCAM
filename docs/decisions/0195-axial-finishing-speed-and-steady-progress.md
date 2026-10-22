@@ -1,6 +1,6 @@
 # 0195: Axial finishing fits its passes in parallel, entry moves stop rescanning the stock, and the progress of a run counts operations (lane BUG-TABDEV; issues 252 and 248)
 
-- **Status:** proposed (21 Oct 2026).
+- **Status:** accepted (22 Oct 2026) by the project owner, in the lane's own session.
 - **What it amends:** nothing in the documents. It refines how decisions 0012 and 0015 item 4 (deterministic parallel work: each item computed alone, results in input order) are applied to the passes of axial and indexed finishing, and how the pipeline of [decision 0190](0190-cached-stock-per-operation.md) reports progress. The progress across all stages as one percentage stays with lane BUG-PROG (issue 201). No requirement changes.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-741 (the owner re-measures on the reference laptop) is new.

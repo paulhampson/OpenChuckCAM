@@ -1,6 +1,6 @@
 # 0194: Each deviation sample says what it lies on: the volume of a tab is never material left (lane BUG-TABDEV; issue 248)
 
-- **Status:** proposed (21 Oct 2026). Item 3 is the owner's choice on OI-740, option A, relayed by the coordinator on 21 Oct 2026.
+- **Status:** accepted (22 Oct 2026) by the project owner, in the lane's own session. Item 3 is the owner's choice on OI-740, option A, relayed by the coordinator on 21 Oct 2026.
 - **What it amends:** [decision 0045](0045-slice-21c-wiring.md) item 6 (the deviation target decides the faces inside the union at each triangle's centroid) and the alternative it rejected ("filter deviation samples inside the union instead of degenerate triangles"). The target is still the part with its held regions and tabs as one surface ([decision 0042](0042-slice-21b-composite-target.md), [decision 0160](0160-held-region-is-the-stock-section.md)); no requirement changes.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-740 (how the faces of held regions and tabs count) is new and closed by the owner's answer (item 3). OI-196 is progressed (the centroid approximation for a face partly covered is gone).
