@@ -350,3 +350,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-110 | Inspectors, stale state | A value left uncommitted in the operation inspector, then Continue to simulate, is set but does not mark the operation stale; warn and confirm on any uncommitted edit. | A value is committed (and marks the operation stale) or not set; in every leaving scenario warn "uncommitted modification" and offer keep, discard or cancel; one navigation guard; applies to every input box; a possible mismatch between a parameter and its output (NFR-12); relates to F-53 (#209), F-73 (#239), F-89 (#260), F-108 (#302), F-27 (#183). Issue [#304](https://github.com/paulhampson/OpenChuckCAM/issues/304). Build 0.17.0. | Does the value stay changed; did the simulation use the old or new value; which operation and parameter. |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator; build 0.17.0): #305 (F-111).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-111 | Simulate dock | A progress bar under the playback position bar while the simulation loads; group "Turn part with A" with "Skip stock simulation" in a separate group. | Mind the dock height: reserve the bar's room so the dock does not grow or scroll (F-91, #262); one progress percentage (#201); do it in the same layout pass and test as BUG-SIMSTALE; display only. Issue [#305](https://github.com/paulhampson/OpenChuckCAM/issues/305). Build 0.17.0. | Also while regenerating after a change; the group names. |
