@@ -1,0 +1,17 @@
+# SP-14 short moves: throwaway measurement harness (never merged; AGENTS.md spike rule).
+[package]
+name = "sp14-short-moves"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+openchuck-gcode = { path = "../../crates/openchuck-gcode" }
+openchuck-app = { path = "../../crates/openchuck-app" }
+openchuck-types = { path = "../../crates/openchuck-types" }
+
+[profile.release]
+debug = "line-tables-only"
