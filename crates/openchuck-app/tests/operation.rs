@@ -1181,6 +1181,63 @@ fn req_gc_07_a_rename_after_reuse_names_the_operations_as_they_are_now() {
 }
 
 #[test]
+fn req_nfr_04_req_sim_05_simulating_again_with_nothing_changed_does_not_compare_again() {
+    // OI-627: the comparison of a setup's final stock with the part is kept
+    // with the cached stock it was made from, under the same key, so a run
+    // whose final stock comes from the cache does not compare it again.
+    let (dir, mut app, ids) = ring_then_rest("reuse-compare");
+    let setup = app.project().operation(ids[0]).unwrap().setup;
+    let first = app.simulate().unwrap();
+    assert_eq!(first.compared, [setup]);
+    let deviation = first.simulation.as_ref().unwrap().setups[0]
+        .deviation
+        .clone();
+    assert!(deviation.is_some(), "the cube is compared with its part");
+
+    // Nothing changed: the same numbers, without comparing again.
+    let again = app.simulate().unwrap();
+    assert_eq!(again.reused, ids);
+    assert!(again.simulated.is_empty(), "{:?}", again.simulated);
+    assert!(again.compared.is_empty(), "{:?}", again.compared);
+    assert_eq!(again.simulation, first.simulation);
+
+    // A rename is not an input: still not compared, and named as it is now.
+    let mut renamed = app.project().operation(ids[1]).unwrap().clone();
+    renamed.name = "Renamed rest".into();
+    app.execute(Command::Replace(Item::Operation(renamed)))
+        .unwrap();
+    let after_rename = app.simulate().unwrap();
+    assert!(after_rename.compared.is_empty());
+    let report = after_rename.simulation.unwrap();
+    assert_eq!(report.setups[0].operations[1].operation, "Renamed rest");
+    assert_eq!(report.setups[0].deviation, deviation);
+
+    // A change to the last operation leaves a new stock, which is compared.
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.2)),
+    })
+    .unwrap();
+    let edited = app.simulate().unwrap();
+    assert_eq!(edited.simulated, [ids[1]]);
+    assert_eq!(edited.compared, [setup]);
+
+    // Generating without a simulation compares nothing.
+    assert!(app.regenerate().unwrap().compared.is_empty());
+
+    // With the cache off every simulation compares, and gives the same
+    // numbers as the kept comparison (NFR-06).
+    let kept = app.simulate().unwrap();
+    assert!(kept.compared.is_empty());
+    app.set_cache_versions(0);
+    let fresh = app.simulate().unwrap();
+    assert_eq!(fresh.compared, [setup]);
+    assert_eq!(fresh.simulation, kept.simulation);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_11_a_plunge_is_refused_for_a_tool_that_states_it_cannot_cut_straight_down() {
     let (dir, mut app, op) = project("centre-cutting");
     let mut operation = app.project().operation(op).unwrap().clone();
@@ -1384,5 +1441,90 @@ fn req_op_11_req_op_03_a_new_roughing_operation_starts_with_a_stock_to_leave() {
     // One undoable step: undoing removes the operation, value and all.
     app.undo().unwrap();
     assert!(app.project().operation(no_tool).is_none());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// `op` turned into `strategy` with the given values.
+fn set_strategy(
+    app: &mut Application,
+    op: OperationId,
+    strategy: &str,
+    values: &[(&str, ParameterValue)],
+) {
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = strategy.into();
+    operation.parameters = values
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+}
+
+#[test]
+fn req_op_24_the_default_distance_past_the_stock_follows_the_tool() {
+    use openchuck_path::extend::parameter as extend;
+    let (dir, mut app, op) = project("extend-default");
+    set_strategy(&mut app, op, "helical_finishing", &[]);
+    // A tenth of the 4 mm ball's diameter (decision 0212 part B item 2),
+    // given to the strategy and shown in the inspector as the default.
+    let operation = app.project().operation(op).unwrap().clone();
+    let resolved = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    assert_eq!(
+        resolved.values.get(extend::EXTEND_DISTANCE),
+        Some(&openchuck_path::ParameterValue::Number(0.4))
+    );
+    let form = app.parameter_form(op).unwrap();
+    let field = form
+        .fields
+        .iter()
+        .find(|f| f.name == extend::EXTEND_DISTANCE)
+        .unwrap();
+    assert_eq!(field.value, Some(ParameterValue::Number(0.4)));
+    assert_eq!(field.source, openchuck_app::form::Source::Default);
+    // A value set on the operation wins.
+    app.execute(Command::SetParameter {
+        operation: op,
+        name: extend::EXTEND_DISTANCE.into(),
+        value: Some(ParameterValue::Number(1.5)),
+    })
+    .unwrap();
+    let operation = app.project().operation(op).unwrap().clone();
+    let resolved = parameter_values(app.project(), &operation, app.strategies()).unwrap();
+    assert_eq!(
+        resolved.values.get(extend::EXTEND_DISTANCE),
+        Some(&openchuck_path::ParameterValue::Number(1.5))
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_24_req_nfr_12_a_path_past_the_machines_travel_is_refused() {
+    use openchuck_path::extend::parameter as extend;
+    use openchuck_types::kinematics::RotaryFrame;
+    let (dir, mut app, op) = project("extend-travel");
+    let far = [(extend::EXTEND, ParameterValue::Text(extend::FAR_END.into()))];
+    set_strategy(&mut app, op, "helical_finishing", &far);
+    let first = app.regenerate().unwrap();
+    // The furthest the extended path goes along the axis, in machine X.
+    let mut machine = app.project().machine().unwrap().clone();
+    let frame = RotaryFrame::of_profile(&machine);
+    let furthest = first.toolpath.groups[0]
+        .segments
+        .iter()
+        .map(|s| frame.on_axis(Millimetres(s.end.tip.x)).x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    // A machine whose travel stops half a millimetre short of it.
+    machine.travel.max.x = furthest - 0.5;
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("beyond the machine's travel") && e.contains("0.500 mm"),
+        "{e}"
+    );
+    // Not extended, the same operation fits.
+    set_strategy(&mut app, op, "helical_finishing", &[]);
+    assert!(app.regenerate().is_ok());
     std::fs::remove_dir_all(&dir).unwrap();
 }

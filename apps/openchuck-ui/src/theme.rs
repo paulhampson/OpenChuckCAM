@@ -117,7 +117,7 @@ pub const DARK: Tokens = Tokens {
     ok: rgb(0x4cc38a),
     warning: rgb(0xf2b84b),
     error: rgb(0xff7b72),
-    overcut: rgb(0xe27ad2),
+    overcut: rgb(0xff8a66),
     warning_box: boxed(0x2a2316, 0x6b5420, 0xf2d28a),
     error_box: boxed(0x2e1a1a, 0x7a3330, 0xffb4ae),
 };
@@ -142,7 +142,7 @@ pub const LIGHT: Tokens = Tokens {
     ok: rgb(0x1b7f53),
     warning: rgb(0x8a5d00),
     error: rgb(0xc22b2b),
-    overcut: rgb(0x9c1f86),
+    overcut: rgb(0xa8321a),
     warning_box: boxed(0xfff4d6, 0xe0b44c, 0x5c4300),
     error_box: boxed(0xfde8e7, 0xe59a95, 0x7a1d18),
 };
@@ -420,7 +420,9 @@ mod tests {
             LIGHT.warning_box.border,
             Color32::from_rgb(0xe0, 0xb4, 0x4c)
         );
-        assert_eq!(LIGHT.overcut, Color32::from_rgb(0x9c, 0x1f, 0x86));
+        // The overcut text follows the vermilion of the scale (decision 0216).
+        assert_eq!(DARK.overcut, Color32::from_rgb(0xff, 0x8a, 0x66));
+        assert_eq!(LIGHT.overcut, Color32::from_rgb(0xa8, 0x32, 0x1a));
         for theme in THEMES {
             let t = Tokens::of(theme);
             assert_eq!(t.primary, Color32::from_rgb(0x2f, 0x6f, 0xbd));

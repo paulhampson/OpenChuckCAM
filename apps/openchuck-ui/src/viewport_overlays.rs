@@ -13,6 +13,7 @@ use openchuck_app::pathview::DeviationBand;
 use openchuck_app::scene::{SceneRole, SceneView};
 use openchuck_viewport::{Camera, StandardView};
 
+use crate::results_panel::{BandFilter, SOME_HIDDEN, Shown};
 use crate::roles::{self, to_color32};
 use crate::viewport::{ViewStep, Viewport};
 
@@ -126,6 +127,45 @@ pub fn path_legend(view: &SceneView) -> Vec<LegendEntry> {
     ];
     out.extend(workholding_entries(view));
     out
+}
+
+/// The path legend's rows: its entries, and the shown set when there is one.
+fn legend_rows(viewport: &Viewport) -> f32 {
+    path_legend(viewport.view()).len() as f32 + f32::from(u8::from(viewport.legend_set.is_some()))
+}
+
+/// A shown selection set's legend swatch, drawn the way the set is drawn
+/// (decision 0216 items 4 and 5): its colour at 40% over the part grey,
+/// framed by its outline, dark outside and in its colour inside.
+pub fn set_swatch(painter: &egui::Painter, r: Rect, [red, green, blue]: [u8; 3]) {
+    let colour = Color32::from_rgb(red, green, blue);
+    let part = to_color32(roles::PART);
+    let mix = |a: u8, b: u8| {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let v = (f32::from(a) * 0.4 + f32::from(b) * 0.6).round() as u8;
+        v
+    };
+    painter.rect_filled(
+        r,
+        0.0,
+        Color32::from_rgb(
+            mix(red, part.r()),
+            mix(green, part.g()),
+            mix(blue, part.b()),
+        ),
+    );
+    painter.rect_stroke(
+        r,
+        0.0,
+        Stroke::new(2.0, to_color32(roles::SET_FRAME)),
+        egui::StrokeKind::Outside,
+    );
+    painter.rect_stroke(
+        r,
+        0.0,
+        Stroke::new(roles::SET_OUTLINE_WIDTH / 2.0, colour),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// Whether the path legend collapses to a button: the view is under 480
@@ -341,21 +381,22 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         if legend_collapsed(rect.height()) {
             b.legend_button = Some(Rect::from_min_size(pos2(left, top), vec2(84.0, 26.0)));
             if viewport.legend_open {
-                let rows = path_legend(viewport.view()).len() as f32;
+                let rows = legend_rows(viewport);
                 b.legend = Some(Rect::from_min_size(
                     pos2(left, top + 30.0),
                     vec2(124.0, rows * ROW + 12.0),
                 ));
             }
         } else {
-            let rows = path_legend(viewport.view()).len() as f32;
+            let rows = legend_rows(viewport);
             b.legend = Some(Rect::from_min_size(
                 pos2(left, top),
                 vec2(124.0, rows * ROW + 12.0),
             ));
         }
     }
-    let held = workholding_entries(viewport.view()).len() as f32;
+    let held = workholding_entries(viewport.view()).len() as f32
+        + f32::from(u8::from(viewport.legend_set.is_some()));
     if step == ViewStep::Simulate && viewport.bands().is_some() {
         let height = 74.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
@@ -391,6 +432,44 @@ pub fn interact(ui: &egui::Ui, viewport: &mut Viewport, rect: Rect) -> bool {
         }
     }
     over
+}
+
+/// Draws a legend row's label right of its swatch, on one line ending
+/// before `right`; a longer one, such as a long set name, ends in "…"
+/// rather than running over the scene.
+fn fitted_label(
+    painter: &egui::Painter,
+    swatch: Rect,
+    text: &str,
+    font: &egui::FontId,
+    right: f32,
+) {
+    let galley = fit_row(painter, text, font, right - (swatch.right() + 8.0));
+    let at = pos2(
+        swatch.right() + 8.0,
+        swatch.center().y - galley.size().y / 2.0,
+    );
+    painter.galley(at, galley, roles::OVERLAY_TEXT);
+}
+
+/// Lays `text` out as one row at most `width` wide.
+fn fit_row(
+    painter: &egui::Painter,
+    text: &str,
+    font: &egui::FontId,
+    width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::TextFormat::simple(font.clone(), roles::OVERLAY_TEXT),
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width: width.max(0.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    painter.layout_job(job)
 }
 
 fn frame(painter: &egui::Painter, r: Rect) {
@@ -579,10 +658,16 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 roles::OVERLAY_TEXT,
             );
         }
+        if let Some((name, rgb)) = &viewport.legend_set {
+            let y = r.top() + 6.0 + ROW * path_legend(viewport.view()).len() as f32;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
+            set_swatch(&painter, swatch, *rgb);
+            fitted_label(&painter, swatch, name, &font, r.right() - 8.0);
+        }
     }
     if let (Some(r), Some(bands)) = (b.scale, viewport.bands()) {
         frame(&painter, r);
-        colour_scale(&painter, r, bands.tolerance);
+        colour_scale(&painter, r, bands.tolerance, &viewport.band_filter);
         for (i, entry) in workholding_entries(viewport.view()).into_iter().enumerate() {
             let y = r.top() + 74.0 + ROW * i as f32 - 4.0;
             let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
@@ -598,6 +683,14 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 font.clone(),
                 roles::OVERLAY_TEXT,
             );
+        }
+        if let Some((name, rgb)) = &viewport.legend_set {
+            let i = workholding_entries(viewport.view()).len() as f32;
+            let y = r.top() + 74.0 + ROW * i - 4.0;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
+            set_swatch(&painter, swatch, *rgb);
+            let label = format!("Selection set “{name}”");
+            fitted_label(&painter, swatch, &label, &font, r.right() - 8.0);
         }
     }
     if viewport.shows_unapplied() {
@@ -632,8 +725,10 @@ fn on_target_cell() -> usize {
 }
 
 /// Draws the colour scale: a bar of the bands, its labelled ends, the hatched
-/// "not measured" swatch and the band of "on the surface".
-fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
+/// "not measured" swatch and the band of "on the surface". A band the band
+/// filter hides is dimmed, one it shows in part is dimmed in its lower half,
+/// and while anything is hidden the box says so (SIM-15; decision 0163).
+fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64, filter: &BandFilter) {
     let bar = Rect::from_min_size(r.left_top() + vec2(8.0, 8.0), vec2(r.width() - 16.0, 10.0));
     let step = bar.width() / SCALE.len() as f32;
     for (i, band) in SCALE.iter().enumerate() {
@@ -641,7 +736,20 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
             bar.left_top() + vec2(step * i as f32, 0.0),
             vec2(step, bar.height()),
         );
-        painter.rect_filled(cell, 0.0, to_color32(roles::band_colour(*band)));
+        let colour = to_color32(roles::band_colour(*band));
+        match filter.band_shown(*band, tolerance) {
+            Shown::All => {
+                painter.rect_filled(cell, 0.0, colour);
+            }
+            Shown::Part => {
+                let (top, bottom) = cell.split_top_bottom_at_fraction(0.5);
+                painter.rect_filled(top, 0.0, colour);
+                painter.rect_filled(bottom, 0.0, colour.gamma_multiply(HIDDEN_OPACITY));
+            }
+            Shown::Hidden => {
+                painter.rect_filled(cell, 0.0, colour.gamma_multiply(HIDDEN_OPACITY));
+            }
+        }
     }
     let font = egui::FontId::proportional(11.0);
     painter.text(
@@ -684,10 +792,23 @@ fn colour_scale(painter: &egui::Painter, r: Rect, tolerance: f64) {
         r.left_top() + vec2(8.0, 52.0),
         egui::Align2::LEFT_TOP,
         format!("On the surface: within {tolerance:.3} mm"),
-        font,
+        font.clone(),
         roles::OVERLAY_MUTED,
     );
+    if filter.hides_any() {
+        // On the "Not measured" row, clear of the labels under the bar.
+        painter.text(
+            pos2(r.right() - 8.0, unmeasured.center().y),
+            egui::Align2::RIGHT_CENTER,
+            SOME_HIDDEN,
+            font,
+            roles::OVERLAY_TEXT,
+        );
+    }
 }
+
+/// How strongly a band the filter hides is drawn on the colour scale.
+const HIDDEN_OPACITY: f32 = 0.25;
 
 /// Diagonal lines 6 pixels apart across `r`, clipped to it: one direction,
 /// or both.
@@ -804,6 +925,35 @@ pub fn arrowhead(painter: &egui::Painter, from: Pos2, tip: Pos2, colour: Color32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_05_a_long_set_name_stays_inside_its_legend_row() {
+        // Decision 0216 item 5: the shown set's legend row; a long name ends
+        // in "…" within the box (CodeRabbit review of pull request 282).
+        let ctx = egui::Context::default();
+        let input = || egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 200.0))),
+            ..Default::default()
+        };
+        ctx.run_ui(input(), |_| {}).textures_delta.clear();
+        let mut output = ctx.run_ui(input(), |ui| {
+            let font = egui::FontId::proportional(12.0);
+            let long = "Selection set “The pocket floor and both of its side walls”";
+            let galley = fit_row(ui.painter(), long, &font, 90.0);
+            assert!(galley.size().x <= 90.0, "{}", galley.size().x);
+            assert_eq!(galley.rows.len(), 1);
+            let drawn = |g: &egui::Galley| -> String {
+                g.rows
+                    .iter()
+                    .flat_map(|r| r.glyphs.iter().map(|c| c.chr))
+                    .collect()
+            };
+            assert!(drawn(&galley).ends_with('…'), "{}", drawn(&galley));
+            let short = fit_row(ui.painter(), "Pocket", &font, 90.0);
+            assert_eq!(drawn(&short), "Pocket");
+        });
+        output.textures_delta.clear();
+    }
 
     /// Issue 176 (F-21): in axis-aligned views and near them nothing of the
     /// cube is drawn outside its box (a nearly edge-on face made a long
@@ -965,6 +1115,47 @@ mod tests {
         // Below 480 pixels high it collapses to a button (7.2).
         assert!(legend_collapsed(479.0));
         assert!(!legend_collapsed(480.0));
+    }
+
+    #[test]
+    fn req_ui_05_req_nfr_15_a_shown_set_joins_the_path_legend_framed() {
+        // Decision 0216 item 5: the legend shows the set the way it is drawn.
+        let mut viewport = Viewport::new(false);
+        viewport.set_step(Some(ViewStep::Operations));
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0));
+        let mut heights = Vec::new();
+        let mut shapes = Vec::new();
+        for set in [None, Some(("Pocket".to_owned(), [0x23, 0x96, 0x88]))] {
+            viewport.set_legend_set(set);
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                heights.push(boxes(ui, &viewport, rect).legend.unwrap().height());
+                set_swatch(
+                    ui.painter(),
+                    Rect::from_min_size(pos2(10.0, 10.0), vec2(18.0, 10.0)),
+                    [0x23, 0x96, 0x88],
+                );
+            });
+            output.textures_delta.clear();
+            shapes = output.shapes;
+        }
+        assert!((heights[1] - heights[0] - ROW).abs() < 1e-3, "{heights:?}");
+        // The fill and two strokes: the dark frame and the set's colour.
+        let strokes: Vec<Color32> = shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Rect(r) if r.stroke.width > 0.0 => Some(r.stroke.color),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            strokes.contains(&to_color32(roles::SET_FRAME)),
+            "{strokes:?}"
+        );
+        assert!(
+            strokes.contains(&Color32::from_rgb(0x23, 0x96, 0x88)),
+            "{strokes:?}"
+        );
     }
 
     #[test]

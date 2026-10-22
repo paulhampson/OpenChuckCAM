@@ -10,24 +10,22 @@ use eframe::egui::{self, RichText};
 use openchuck_app::JobOutcome;
 use openchuck_app::overview::{Severity, Step};
 
-use super::{Command, Dialog, Selection, Shell, marks};
+use super::{Command, Shell, marks};
 use crate::theme::DARK;
 
 /// A tab of the dock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DockTab {
     Messages,
-    SelectionSets,
     Jobs,
     SetupChecks,
     Playback,
 }
 
 impl DockTab {
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Messages => "Messages",
-            Self::SelectionSets => "Selection sets",
             Self::Jobs => "Jobs",
             Self::SetupChecks => "Setup checks",
             Self::Playback => "Playback",
@@ -48,8 +46,8 @@ fn duration(d: Duration) -> String {
 
 impl Shell {
     /// The tabs this step offers.
-    fn tabs(&self) -> Vec<DockTab> {
-        let mut tabs = vec![DockTab::Messages, DockTab::SelectionSets, DockTab::Jobs];
+    pub(super) fn tabs(&self) -> Vec<DockTab> {
+        let mut tabs = vec![DockTab::Messages, DockTab::Jobs];
         match self.step {
             Step::Setup => tabs.insert(0, DockTab::SetupChecks),
             Step::Simulate => tabs.push(DockTab::Playback),
@@ -134,7 +132,6 @@ impl Shell {
         ui.separator();
         match self.dock_tab {
             DockTab::Messages => self.messages_tab(ui),
-            DockTab::SelectionSets => self.sets_tab(ui),
             DockTab::Jobs => self.jobs_tab(ui),
             DockTab::SetupChecks => self.checks_tab(ui),
             DockTab::Playback => self.playback_tab(ui),
@@ -215,31 +212,6 @@ impl Shell {
         }
         if let Some(action) = act {
             self.message_action(action);
-        }
-    }
-
-    /// Selection sets: the table, the save and edit controls (section 12.2;
-    /// its rework is lane X6's).
-    fn sets_tab(&mut self, ui: &mut egui::Ui) {
-        let Some(app) = &mut self.app else {
-            ui.label(RichText::new("No project open.").color(DARK.muted));
-            return;
-        };
-        let summaries = app.selection_summaries(&[]);
-        if let Some(Selection::Set(id)) = self.selected
-            && !summaries.iter().any(|s| s.id == id)
-        {
-            self.selected = Some(Selection::Picking);
-        }
-        let error = egui::ScrollArea::vertical()
-            .id_salt("selection sets")
-            .show(ui, |ui| {
-                self.selection
-                    .show(ui, app, &summaries, self.viewport.view())
-            })
-            .inner;
-        if let Some(error) = error {
-            self.dialog = Some(Dialog::Error(error));
         }
     }
 

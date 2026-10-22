@@ -624,6 +624,15 @@ fn item_menu(
                 ui.close();
             }
         }
+        if let ItemRef::SelectionSet(id) = item
+            && ui
+                .button("Delete")
+                .on_hover_text("Delete this set; refused while an operation uses it (Del)")
+                .clicked()
+        {
+            actions.push(TreeAction::DeleteSet(id));
+            ui.close();
+        }
         if ui.button("Show in view").clicked() {
             actions.push(TreeAction::ShowInView(item));
             ui.close();
