@@ -309,3 +309,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-103 | Swarf tolerance | Raising the tolerance after a warning changes the path so the warning grows (0.01 gives 0.0131; 0.0132 gives 0.0182). | The reported deviation should not depend on the chosen tolerance (or the tolerance must bound it, or the operation says the best it can reach); hypotheses: the tolerance drives both the fitting and the check, too few check points, flank placement; same lane as F-70 (#226, BUG-SWARF); false assurance risk (NFR-12); tests at several tolerances. Issue [#296](https://github.com/paulhampson/OpenChuckCAM/issues/296). | Answered: not checked whether the worst place moves; the owner used the Blisk (STEP) with an avoid set and the blades selected as the swarf faces. The lane tests with and without the avoid set at several tolerances (blisk.step is committed) and asks for the saved project if needed. |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #297 (F-104).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-104 | Simulate stale message | The out-of-date message is in three places (viewport, playback controls, inspector); one place only; the button should not show the operation number. | Consolidates the #260 rule (lane BUG-SIMSTALE); plain button label ("Run simulation again"); name the operation by name; the step bar mark stays a mark (F-54); the stale result must still not read as current (NFR-12). The playback controls part is already being handled (#260, #262, #293 feedback). Issue [#297](https://github.com/paulhampson/OpenChuckCAM/issues/297). | Which one place: viewport, dock or inspector? |
