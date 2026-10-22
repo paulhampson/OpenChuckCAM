@@ -15,7 +15,7 @@ This document turns them into steps that someone who is not a machinist can foll
 
 Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post, and the first-cut project's program. Gate 5 cuts the first-cut project of section 5.2 (OI-914), not the reference job set (decision 0221, proposed).
 
-**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S7, G4-0 to G4-7 for gate 4; F1 to F6, G0, W1 to W5, T0 to T5, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
+**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S8, G4-0 to G4-7 for gate 4; F1 to F6, G0, W1 to W5, T0 to T5, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
 
 | Rule ([verification plan section 6](verification-plan.md)) | Applies to |
 | --- | --- |
@@ -135,8 +135,7 @@ Then read the **setup sheet** for the same run (decision 0189 writes it with the
 | S5 | Tools | Each tool's number, type, diameter, flute and overall length |
 | S6 | Operations | Spindle rpm and Speed from (R6); Time per operation matches the "about N s" comments (R4) |
 | S7 | Notes | The statement that generated G-code must be verified by the user before it is run |
-
-The setup sheet does not list the held regions or the tabs (OI-918). For gate 5 read them in the application (section 5.2).
+| S8 | Setup: Held at the start, Held at the end, Tabs, and the table "Tabs: <setup>" | The held regions (length, X range, section or holding diameter) and each tab (X from and to, shape, diameter, layout, placed by hand or automatically) as you expect (OI-918) |
 
 ### 4.3 Safeguards for every run
 
@@ -236,7 +235,7 @@ The owner's specification (22 Oct 2026, OI-914):
 
 The project folder is made by the owner or by the follow-up lane of OI-913 (the coordinator decides which); this document does not fix the geometry.
 
-In the application, select the setup and open **Workholding and tabs** (specification section 11.7). The setup sheet does not show these (OI-918), so read them here and write them on the form.
+Read them on the setup sheet (its Setup section's "Held at the start", "Held at the end" and "Tabs" lines and the "Tabs: <setup>" table, OI-918) and check them against the application's **Workholding and tabs** section (specification section 11.7). Write them on the form.
 
 | Step | Check | Pass when |
 | --- | --- | --- |
@@ -343,7 +342,7 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 - [ ] P8 axis height measured (Makera's routine, G53 Z of G54 Z0) and in the profile.
 - [ ] P9 G54 by Makera's routine: Y0 Z0 on the axis, X0 as the setup sheet says; X0 face and A0 recorded.
 - [ ] P10 safe Z and X range clear by jogging.
-- [ ] Program read: R1 to R12 and S1 to S7 ticked.
+- [ ] Program read: R1 to R12 and S1 to S8 ticked.
 - [ ] Override 10 %, hand on feed hold and the stop (no single block), enclosure closed, tape on the jaw.
 - [ ] Sphere, cone, groove, the other reference programs and the first-cut program run: no alarm, no refused line, motion as simulated.
 - [ ] Groove unwind: A did not move.
@@ -425,7 +424,7 @@ What the controller did on T1 M6 with no tool:
 X0 taken from:                            A0 set by:
 ```
 
-| Program | Read (R1-R12, S1-S7) | Override % | Alarms or refused lines (line) | Motion as simulated | Unwind: DRO A before / after, moved? | End position as program | Timed: predicted s x 100/override, measured s, ratio | Pass / fail | Issue |
+| Program | Read (R1-R12, S1-S8) | Override % | Alarms or refused lines (line) | Motion as simulated | Unwind: DRO A before / after, moved? | End position as program | Timed: predicted s x 100/override, measured s, ratio | Pass / fail | Issue |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | sphere | | | | | | | | | |
 | cone | | | | | | | | | |
@@ -494,7 +493,7 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-915 | Material and cutting data for gate 5 | Tooling board with the "Plastic" presets; Softwood copied where Plastic is missing; ask the owner before using a similar tool's data | 5.3 | No |
 | OI-916 | The 3-axis test part | B: skip it; the first-cut limit stays ±0.1 mm | F4, 5.7 | Until [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) is accepted |
 | OI-917 | How the axis height and work zero are found | Makera's own routine for Y and Z on the axis, X0 and A0; the form records the X0 face and A0 | P8, P9, M4 | No |
-| OI-918 | The setup sheet does not show held regions or tabs | A follow-up for scheduling (the coordinator assigns it) | 5.2 | Yes |
+| OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 
 ## 10. Results
