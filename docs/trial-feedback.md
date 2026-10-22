@@ -261,3 +261,11 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 F-92 update (22 Oct 2026): the owner reports it was the owner's mistake: the facing operation's "round" option had not been selected, so the diameter-versus-radius defect claimed in #285 is not confirmed. A possible residual clarity item (the size label and the message do not say which shape they measure) is for the owner to decide. #285 stays open with `awaiting-planning` until the owner decides; nothing is dispatched.
 
 F-92 closed (22 Oct 2026): the owner asked for #285 to be closed as not a defect (not planned); the optional label and message clarity idea is dropped.
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #286 (F-93), #287 (F-94), #288 (F-95).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-93 | Facing | Face the unheld end of a part. | The held end cannot be chosen (SET-09); leaves the held region and tabs uncut (OP-21); follows the setup's workholding. Requirement entry and verification row proposed with the work. Issue [#286](https://github.com/paulhampson/OpenChuckCAM/issues/286). | What happens to a tab at the unheld end; which end when both or neither are held. |
+| F-94 | Facing | Face the sides of a part. | Round bar and box; all round or on chosen sides; depends on the extend-beyond-the-stock option (#211); keeps clear of the held region, tabs and limits (NFR-12). Issue [#287](https://github.com/paulhampson/OpenChuckCAM/issues/287). | Which sides and shapes first; one pass or several. |
+| F-95 | Facing | Restrict facing to the part, or the part plus tabs, instead of the whole stock. | Three extents (whole stock stays the default); the composite target of decision 0042; the deviation views must show the rest of the stock as left by design (#248, #217). Issue [#288](https://github.com/paulhampson/OpenChuckCAM/issues/288). | What "part" means for a complicated outline; the margin beyond the part. |
