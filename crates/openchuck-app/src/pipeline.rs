@@ -11,7 +11,7 @@ use std::sync::Arc;
 use openchuck_path::{Registry, StockModel};
 use openchuck_project::Project;
 use openchuck_types::ir::Toolpath;
-use openchuck_types::job::JobContext;
+use openchuck_types::job::{JobContext, Progress, ProgressSink};
 
 use openchuck_project::id::OperationId;
 
@@ -27,6 +27,32 @@ pub const STAGE_GENERATE: &str = "regenerate";
 /// [`STAGE_GENERATE`]. One percentage across the stages is lane BUG-PROG's
 /// (issue 201).
 pub const STAGE_SIMULATE: &str = "simulate the stock";
+
+/// Where the progress of one step of a run goes: an operation's (the
+/// strategy's stages and the stock simulation's moves) or a setup's
+/// comparison with the part (reading the model, comparing), each with its
+/// own count. Shown as they came, they replaced the run's count, so the text
+/// jumped between totals in the middle of a run (issue 248). Each is passed
+/// on as the run's count instead, at the step still being worked on, so the
+/// run is seen to be alive and its count never changes total or goes back
+/// within a stage. One percentage across the stages, with the step's own
+/// share in it, is lane BUG-PROG's (issue 201): it is made here, from the
+/// report this drops.
+struct OperationProgress<'a> {
+    run: &'a JobContext<'a>,
+    /// The run's stage: [`STAGE_GENERATE`] or [`STAGE_SIMULATE`].
+    stage: &'static str,
+    /// Steps of the stage done before this one.
+    done: u64,
+    /// Steps in the stage.
+    total: u64,
+}
+
+impl ProgressSink for OperationProgress<'_> {
+    fn report(&self, _own: Progress) {
+        self.run.report(self.stage, self.done, Some(self.total));
+    }
+}
 
 /// The setup, stock and machine an operation's simulation needs.
 pub(crate) fn setup_parts<'a>(
@@ -105,6 +131,10 @@ pub struct Regeneration {
     /// operation of its setup is made on it (SIM-06) or a simulation is asked
     /// for, unless the cache holds the stock it leaves (decision record 0190).
     pub simulated: Vec<OperationId>,
+    /// Setups whose final stock was compared with the part in this run. A
+    /// setup whose final stock came from the cache keeps the comparison made
+    /// with it and is not compared again (OI-627).
+    pub compared: Vec<openchuck_project::id::SetupId>,
     /// The operation the run stopped after, when it was asked to generate up
     /// to and including one operation ("generate selected", specification
     /// section 16; decision record 0117, OI-351). The enabled operations after
@@ -186,6 +216,13 @@ pub(crate) fn regenerate(
         context.check_cancelled()?;
         // A failure from here to the next operation is this operation's.
         record.working_on(Some(operation.id));
+        let own = OperationProgress {
+            run: context,
+            stage: STAGE_GENERATE,
+            done: i as u64,
+            total,
+        };
+        let within = JobContext::new(context.cancel, &own);
         // The key chains from the operations before, which fixes the stock
         // they leave (SIM-06), so a hit is valid on carried stock too.
         let key = if caching {
@@ -213,7 +250,7 @@ pub(crate) fn regenerate(
                 operation.id,
                 registry,
                 carried,
-                context,
+                &within,
             )?);
             if let Some(key) = key
                 && files.unchanged(location, project, operation)
@@ -274,7 +311,7 @@ pub(crate) fn regenerate(
                         &operation.name,
                         &path.group,
                         &path.tool,
-                        context,
+                        &within,
                     )?;
                     regeneration.simulated.push(operation.id);
                     if let Some(key) = key {
@@ -304,6 +341,9 @@ pub(crate) fn regenerate(
         context.report(STAGE_GENERATE, i as u64 + 1, Some(total));
     }
     record.working_on(None);
+    // The comparisons made in this run, to keep with their stocks once the
+    // run is known to be sound.
+    let mut comparisons = Vec::new();
     if simulate {
         let mut report = SimulationReport {
             settings,
@@ -313,24 +353,46 @@ pub(crate) fn regenerate(
         for (done, state) in (0_u64..).zip(setups) {
             context.report(STAGE_SIMULATE, done, Some(count));
             context.check_cancelled()?;
-            let mut state = Arc::unwrap_or_clone(state);
-            state.rename(project);
+            let own = OperationProgress {
+                run: context,
+                stage: STAGE_SIMULATE,
+                done,
+                total: count,
+            };
+            let within = JobContext::new(context.cancel, &own);
             let setup = project.setup(state.id);
             let part = setup
                 .and_then(|s| s.part)
                 .and_then(|id| project.models().iter().find(|m| m.id == id));
             // The held regions and tabs are part of what the stock is
-            // compared with (SET-09, OP-21).
-            let mesh = match (part, setup) {
-                (Some(model), Some(setup)) => Some(crate::workholding::setup_deviation_target(
-                    setup,
-                    crate::model::setup_mesh(location, model, setup, context)?,
-                )?),
-                _ => None,
-            };
-            report
-                .setups
-                .push(state.finish(mesh.as_ref(), settings, context)?);
+            // compared with (SET-09, OP-21). A final stock taken from the
+            // cache keeps its comparison, so the part is read and compared
+            // only for a stock this run left (OI-627).
+            let (deviation, compared) = state.compare(
+                || match (part, setup) {
+                    (Some(model), Some(setup)) => {
+                        Ok(Some(crate::workholding::setup_deviation_target(
+                            setup,
+                            crate::model::setup_mesh(location, model, setup, &within)?,
+                        )?))
+                    }
+                    _ => Ok(None),
+                },
+                settings,
+                &within,
+            )?;
+            if compared {
+                regeneration.compared.push(state.id);
+                // Kept with the stock only after the part files are checked
+                // below, so a comparison made from a file that changed during
+                // the run is never kept under a key made from the old one.
+                if let (true, Some(deviation)) = (caching, &deviation) {
+                    comparisons.push((Arc::clone(&state), deviation.clone()));
+                }
+            }
+            let mut state = Arc::unwrap_or_clone(state);
+            state.rename(project);
+            report.setups.push(state.finish(deviation));
         }
         context.report(STAGE_SIMULATE, count, Some(count));
         regeneration.simulation = Some(report);
@@ -342,6 +404,9 @@ pub(crate) fn regenerate(
         return Err(AppError::Cache(
             "a model file changed while regenerating; regenerate again".to_owned(),
         ));
+    }
+    for (state, deviation) in comparisons {
+        state.keep_comparison(deviation);
     }
     regeneration.toolpath.validate()?;
     if let Some((selection, grouping)) = post {
@@ -362,7 +427,7 @@ mod tests {
     use std::sync::Mutex;
 
     use openchuck_path::{CutPoint, ParameterSchema, Parameters, Pass, Strategy, StrategyInput};
-    use openchuck_types::job::{CancelToken, Progress, ProgressSink};
+    use openchuck_types::job::CancelToken;
     use openchuck_types::units::{Degrees, Millimetres};
 
     use super::*;
@@ -392,8 +457,12 @@ mod tests {
             &self,
             input: &StrategyInput<'_>,
             _: &Parameters,
-            _: &JobContext<'_>,
+            context: &JobContext<'_>,
         ) -> openchuck_path::Result<Vec<Pass>> {
+            // Its own stages with their own counts, as the strategies report
+            // them (issue 248).
+            context.report("one ring: dropping the tool", 0, Some(37));
+            context.report("one ring: fitting the path", 0, Some(1));
             let points = (0..=36)
                 .filter_map(|i| {
                     let a = Degrees(10.0 * f64::from(i));
@@ -416,8 +485,8 @@ mod tests {
         }
     }
 
-    /// Notes what the record says the run is doing each time the stock
-    /// simulation reports progress.
+    /// Notes what the record says the run is doing each time the run
+    /// reports progress while it makes the toolpaths.
     struct Spy {
         record: Arc<GenerationRecord>,
         seen: Mutex<Vec<(OperationId, PipelineActivity)>>,
@@ -425,7 +494,7 @@ mod tests {
 
     impl ProgressSink for Spy {
         fn report(&self, progress: Progress) {
-            if progress.stage == "simulate"
+            if progress.stage == STAGE_GENERATE
                 && let Some(activity) = self.record.activity()
             {
                 self.seen.lock().unwrap().push(activity);
@@ -514,5 +583,66 @@ mod tests {
         );
         // Between runs, nothing is being done.
         assert_eq!(p.app.pipeline_activity(), None);
+    }
+
+    /// Keeps every progress report.
+    #[derive(Default)]
+    struct Reports(Mutex<Vec<Progress>>);
+
+    impl ProgressSink for Reports {
+        fn report(&self, progress: Progress) {
+            self.0.lock().unwrap().push(progress);
+        }
+    }
+
+    #[test]
+    fn req_ui_09_the_progress_counts_operations_with_one_total_that_only_goes_up() {
+        // Issue 248: the strategies and the stock simulation report their
+        // own stages, each with its own count, and those reports replaced
+        // the run's count of operations, so the text shown jumped between
+        // totals ("0 of 1", "0 of 10") in the middle of a run. The run shows
+        // one count, of operations, then one of setups for the comparison
+        // with the part.
+        let mut p = TestProject::new("progress");
+        p.app.register_strategy(Arc::new(OneRing)).unwrap();
+        p.add_operation("Ring", "one_ring");
+        p.add_operation("Ring again", "one_ring");
+        let reports = Reports::default();
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &reports);
+        regenerate(
+            p.app.location(),
+            p.app.project(),
+            &p.app.strategies,
+            None,
+            true,
+            &p.app.cache,
+            &p.app.record,
+            None,
+            &context,
+        )
+        .unwrap();
+        let reports = reports.0.into_inner().unwrap();
+        let generate: Vec<&Progress> = reports
+            .iter()
+            .take_while(|r| r.stage != STAGE_SIMULATE)
+            .collect();
+        assert!(generate.len() > 3, "{reports:?}");
+        let mut done = 0;
+        for r in &generate {
+            assert_eq!(r.stage, STAGE_GENERATE, "{reports:?}");
+            assert_eq!(r.total, Some(2), "{reports:?}");
+            assert!(r.done >= done, "{reports:?}");
+            done = r.done;
+        }
+        assert_eq!(done, 2);
+        let mut done = 0;
+        for r in reports.iter().skip(generate.len()) {
+            assert_eq!(r.stage, STAGE_SIMULATE, "{reports:?}");
+            assert_eq!(r.total, Some(1), "{reports:?}");
+            assert!(r.done >= done, "{reports:?}");
+            done = r.done;
+        }
+        assert_eq!(done, 1);
     }
 }

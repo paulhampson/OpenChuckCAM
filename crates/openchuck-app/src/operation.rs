@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use openchuck_path::extend;
 use openchuck_path::params::{EntryParameters, ParameterKind, names};
 use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
@@ -140,6 +141,17 @@ pub fn parameter_values(
                 }
             }
         }
+    }
+    // The distance past the stock follows the tool (OP-24; decision 0212
+    // part B item 2): a tenth of its diameter where the operation sets none.
+    if schema.get(extend::parameter::EXTEND_DISTANCE).is_some()
+        && !values.contains_key(extend::parameter::EXTEND_DISTANCE)
+        && let Some(snapshot) = snapshot
+    {
+        values.insert(
+            extend::parameter::EXTEND_DISTANCE.to_owned(),
+            ParameterValue::Number(extend::default_distance(snapshot.tool.diameter.0)),
+        );
     }
     // A required value that neither the operation nor the cutting data gives:
     // the same list the interface marks (`requirements`), narrowed to the
@@ -555,6 +567,15 @@ pub(crate) fn generate_with_part(
             context,
         )?
     };
+    // A path carried past the stock is checked against the machine's travel
+    // along the rotary axis before it is accepted (OP-24; decision 0212
+    // part B item 5).
+    if matches!(
+        parameters.get(extend::parameter::EXTEND),
+        Some(ParameterValue::Text(t)) if t != extend::parameter::NO
+    ) {
+        check_travel_along(operation, machine, &path.group)?;
+    }
     // A set the operation's options leave limiting nothing is a warning,
     // said first in the notes as well (decision 0176), as the library does
     // for its own warnings.
@@ -748,6 +769,52 @@ fn swarf_compatibility(
 /// to run along it: the cosine of 0.01 degrees.
 const AXIAL_RULING: f64 = 0.999_999_984_769_129;
 
+/// Refuses `group` where a fed move's tip goes beyond the machine's travel
+/// along the rotary axis (the X travel of an X rotary), naming the end and by
+/// how much (OP-24, NFR-12; decision 0212 part B item 5).
+fn check_travel_along(
+    operation: &Operation,
+    machine: &openchuck_types::machine::MachineProfile,
+    group: &openchuck_types::ir::ToolpathGroup,
+) -> Result<(), AppError> {
+    use openchuck_types::kinematics::RotaryFrame;
+    use openchuck_types::machine::RotaryAxis;
+    use openchuck_types::units::Millimetres;
+    // Toolpaths are fixed in the machine frame (decision 0201).
+    let frame = RotaryFrame::of_profile(machine);
+    let (min, max) = match machine.rotary_axis {
+        RotaryAxis::Y => (machine.travel.min.y, machine.travel.max.y),
+        _ => (machine.travel.min.x, machine.travel.max.x),
+    };
+    let along = |x: f64| {
+        let p = frame.on_axis(Millimetres(x));
+        match machine.rotary_axis {
+            RotaryAxis::Y => p.y,
+            _ => p.x,
+        }
+    };
+    // The furthest the path goes past each end of the travel.
+    let (mut before, mut after) = (0.0_f64, 0.0_f64);
+    for s in group.segments.iter().filter(|s| s.kind.is_fed()) {
+        let value = along(s.end.tip.x);
+        before = before.max(min - value);
+        after = after.max(value - max);
+    }
+    for (end, by) in [("start", before), ("end", after)] {
+        if by > 0.0 {
+            return Err(missing(
+                operation,
+                &format!(
+                    "extended past the stock, its path goes {by:.3} mm beyond the machine's \
+                     travel at the {end} of the rotary axis; shorten the distance past the \
+                     stock or extend past the other end only"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// The default of parameter `name` of `operation` where the application's
 /// differs from the strategy's schema: edge following on a STEP part takes
 /// the B-rep crease angle (decision 0056).
@@ -756,6 +823,11 @@ pub(crate) fn default_override(
     operation: &Operation,
     name: &str,
 ) -> Option<f64> {
+    if name == extend::parameter::EXTEND_DISTANCE {
+        let tool = operation.tool?;
+        let snapshot = project.tools().iter().find(|t| t.id == tool)?;
+        return Some(extend::default_distance(snapshot.tool.diameter.0));
+    }
     (operation.strategy == edge_following::NAME
         && name == edge_following::parameter::CREASE_ANGLE
         && on_step_part(project, operation))

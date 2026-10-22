@@ -51,7 +51,11 @@ impl Rig {
         rig
     }
 
-    /// Draws until the scene, the checks and any run are done.
+    /// Draws until the scene, the checks and any run are done, and the run
+    /// is prepared for playback. A run that lands is handed to the playback
+    /// panel in the same frame, which then prepares it in a job; until that
+    /// job is done the dock draws only the transport row, so a test that
+    /// read the rows under it straight after a run raced the job (OI-840).
     pub(super) fn settle(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
@@ -60,6 +64,7 @@ impl Rig {
             if s.scene_job.is_none()
                 && s.checks_job.is_none()
                 && !s.run.is_running()
+                && !s.play.is_preparing()
                 && s.overview.checks_current
             {
                 break;

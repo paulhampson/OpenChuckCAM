@@ -27,7 +27,7 @@ use openchuck_app::{Application, JobHandle, Regeneration};
 use openchuck_viewport::camera::place;
 use openchuck_viewport::{Colour, Layer, LineStyle, Scene, Slot};
 
-use crate::results_panel::ColourBy;
+use crate::results_panel::{BandFilter, ColourBy};
 use crate::roles;
 use crate::theme::DARK;
 use crate::viewport::{ToolReadout, Viewport};
@@ -253,6 +253,8 @@ pub struct PlaybackPanel {
     bands_model: Option<ModelId>,
     /// What the part is coloured by (the results inspector's choice).
     colour_by: ColourBy,
+    /// The deviation bands shown (the results inspector's choice, SIM-15).
+    band_filter: BandFilter,
     /// The setup the bands on screen (or being made) belong to.
     bands_setup: Option<SetupId>,
     jump_move: usize,
@@ -300,6 +302,7 @@ impl Default for PlaybackPanel {
             bands: None,
             bands_model: None,
             colour_by: ColourBy::default(),
+            band_filter: BandFilter::default(),
             bands_setup: None,
             jump_move: 1,
             window_drag: None,
@@ -343,6 +346,7 @@ impl PlaybackPanel {
             view: self.view,
             hide_outside: self.hide_outside,
             colour_by: self.colour_by,
+            band_filter: self.band_filter.clone(),
             reset_layers: true,
             ..Self::default()
         };
@@ -358,6 +362,7 @@ impl PlaybackPanel {
             hide_outside: self.hide_outside,
             budget: self.budget,
             colour_by: self.colour_by,
+            band_filter: self.band_filter.clone(),
             reset_layers: true,
             run: Some(Arc::clone(&run)),
             data_job: Some(app.start_playback_data(run)),
@@ -780,16 +785,27 @@ impl PlaybackPanel {
         }
     }
 
-    /// Hands the viewport the bands that `colour_by` shows: the others are
-    /// left out, so those triangles keep the part's own colour.
+    /// Sets the deviation bands shown (SIM-15), and redraws the colours.
+    pub fn set_band_filter(&mut self, filter: &BandFilter, viewport: &mut Viewport) {
+        if self.band_filter != *filter {
+            self.band_filter = filter.clone();
+            self.show_bands(viewport);
+        }
+    }
+
+    /// Hands the viewport the triangles that `colour_by` and the band filter
+    /// show, in their bands: the others are left out, so those triangles keep
+    /// the part's own colour (SIM-15).
     fn show_bands(&self, viewport: &mut Viewport) {
         let (Some(bands), Some(model)) = (&self.bands, self.bands_model) else {
             return;
         };
-        let mut shown = bands.clone();
-        shown.bands.retain(|(band, _)| self.colour_by.shows(*band));
         viewport.colour_by = self.colour_by;
-        viewport.set_bands(Some((model, shown)));
+        viewport.band_filter = self.band_filter.clone();
+        viewport.set_bands(Some((
+            model,
+            shown_bands(bands, self.colour_by, &self.band_filter),
+        )));
     }
 
     fn update_bands(&mut self, app: &Application, viewport: &mut Viewport) -> bool {
@@ -849,6 +865,14 @@ impl PlaybackPanel {
             return true;
         }
         false
+    }
+
+    /// Whether a run is being prepared for display. The controls under the
+    /// transport row, the cut part's note among them, are drawn only once it
+    /// is ready (OI-840).
+    #[cfg(test)]
+    pub fn is_preparing(&self) -> bool {
+        self.data_job.is_some()
     }
 
     /// Whether the playback is running.
@@ -1386,6 +1410,26 @@ impl PlaybackPanel {
             });
         }
     }
+}
+
+/// The triangles of `bands` that keep their deviation colour: those of the
+/// bands `by` shows, whose values `filter` shows (SIM-05, SIM-15). Each
+/// triangle's value is kept whole, for the probe.
+pub fn shown_bands(bands: &DeviationBands, by: ColourBy, filter: &BandFilter) -> DeviationBands {
+    let mut shown = bands.clone();
+    shown.bands.retain(|(band, _)| by.shows(*band));
+    if filter.hides_any() {
+        for (_, triangles) in &mut shown.bands {
+            triangles.retain(|t| {
+                filter.shows(
+                    bands.values.get(*t as usize).copied().flatten(),
+                    bands.tolerance,
+                )
+            });
+        }
+        shown.bands.retain(|(_, triangles)| !triangles.is_empty());
+    }
+    shown
 }
 
 /// The transport row with nothing to play: the buttons in their places but

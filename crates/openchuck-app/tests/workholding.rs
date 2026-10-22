@@ -391,6 +391,62 @@ fn req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab() {
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 
+/// Roughing in the cut directions issue 246 added, continuous along the
+/// length and indexed around the part, leaves the held regions and the tabs
+/// as the forms' own directions do (decision record 0212 part A item 4): the
+/// independent checker finds no roughing pose in them.
+#[test]
+fn req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab() {
+    let outline = Outline::new(
+        &Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(BALL),
+            flute_length: Millimetres(8.0),
+            overall_length: Millimetres(40.0),
+            shank_diameter: Millimetres(BALL),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap(),
+    );
+    let part = Held {
+        workholding: workholding(),
+    };
+    for (form, direction) in [
+        ("continuous", "along the length of the part"),
+        ("indexed", "around the part"),
+    ] {
+        let mut b = build(&format!("tabs-{form}"), workholding(), 2, BALL);
+        let rough = b.app.project().operations()[0].id;
+        for (name, value) in [("form", form), ("direction", direction)] {
+            b.app
+                .execute(Command::SetParameter {
+                    operation: rough,
+                    name: name.into(),
+                    value: Some(ParameterValue::Text(value.into())),
+                })
+                .unwrap();
+        }
+        let run = b.app.simulate().unwrap();
+        let poses = fed_poses(&run.toolpath, 0);
+        assert!(
+            poses.len() > 100,
+            "{form} {direction}: {} poses",
+            poses.len()
+        );
+        let gouge = max_gouge(&outline, &part, &poses, 0.25);
+        assert!(
+            gouge.depth <= 0.02,
+            "{form} {direction}: gouge {:.4} mm at {:?}",
+            gouge.depth,
+            gouge.at
+        );
+        std::fs::remove_dir_all(&b.dir).unwrap();
+    }
+}
+
 /// True when `(x, r)` is at least 0.5 mm inside the held regions and tabs
 /// along X, away from the faces where the solids end.
 fn near_solid_interior(x: f64, _r: f64) -> bool {
@@ -447,6 +503,40 @@ fn req_set_09_req_op_21_the_deviation_report_counts_them_as_part() {
     let worst = shown[0].value.abs();
     // The scallop of a 3 mm ball at a 2 mm stepover is 0.38 mm at most.
     assert!(worst <= 0.4, "{worst}");
+    std::fs::remove_dir_all(&b.dir).unwrap();
+}
+
+#[test]
+fn req_sim_05_req_op_21_req_set_09_the_volume_of_a_tab_is_never_material_left() {
+    // Issue 248: the part's end faces are fans of large triangles. Where a
+    // tab joins one, the triangles' centres lie outside the tab, so the
+    // triangles were kept whole, and their samples under the tab read the
+    // tab's own material as left on the part: up to the tab's radius, shown
+    // as the 3 mm bound of the search, the worst value of the whole run.
+    let b = build("under-tab", workholding(), 2, BALL);
+    let run = b.app.simulate().unwrap();
+    let report = run.simulation.unwrap();
+    let d = report.setups[0].deviation.as_ref().unwrap();
+    // The faces the tabs join, with the tab's radius there. At the rim the
+    // head tab overhangs the part (it widens towards the held region), and
+    // the ball cannot reach under it, so the rim itself is not judged.
+    let joins = [(0.0, 5.0), (30.0, 2.5)];
+    let under = |p: &openchuck_app::sim::DeviationPoint| {
+        joins
+            .iter()
+            .any(|(x, r)| (p.point.x - x).abs() < 1e-6 && p.point.y.hypot(p.point.z) < r - CELL)
+    };
+    let mut seen = 0;
+    for p in d.points.iter().filter(|p| under(p)) {
+        seen += 1;
+        assert!(
+            !p.counts() || p.value <= 2.0 * CELL,
+            "the tab's volume reads as material left on the part: {p:?}"
+        );
+    }
+    assert!(seen > 100, "{seen}");
+    let worst = d.worst_remaining.unwrap();
+    assert!(!under(&worst), "{worst:?}");
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 
