@@ -677,3 +677,28 @@ fn req_ui_05_changing_step_leaves_no_highlight_in_any_view() {
     }
     rig.cleanup();
 }
+
+/// "Pick again" from a set's banner or a message waits while a change of a
+/// set is checked, as the inspector's button does, and leaves the shell as it
+/// was (decision 0215 item 6; OI-874).
+#[test]
+fn req_ui_05_reselect_waits_while_a_change_is_checked() {
+    let mut rig = Rig::picking("reselect-while-checking");
+    let model = rig.model();
+    let app = rig.shell.app.as_mut().unwrap();
+    let a = app
+        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
+        .unwrap();
+    let b = app
+        .save_selection("Set B", model, BTreeSet::from([5u32]))
+        .unwrap();
+    rig.shell.selection.show_set(Some(a));
+    rig.shell.selected = Some(Selection::Set(a));
+    let app = rig.shell.app.as_ref().unwrap();
+    rig.shell.selection.add_to_chosen_for_test(app, model, &[2]);
+    assert!(rig.shell.selection.is_writing());
+    rig.shell.message_action(MessageAction::Reselect(b));
+    assert_eq!(rig.shell.selected, Some(Selection::Set(a)));
+    assert_eq!(rig.shell.selection.shown_set(), Some(a));
+    rig.cleanup();
+}

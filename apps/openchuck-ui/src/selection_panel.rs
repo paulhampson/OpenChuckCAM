@@ -609,6 +609,11 @@ impl SelectionPanel {
     /// "Reselect", decision 0125): the set is shown as a ghost and an empty
     /// pick starts for it, which "Replace" gives it.
     pub fn pick_again(&mut self, set: SelectionSetId) {
+        // As the Pick again button, refused while a change is checked: a
+        // Replace finishing would end the new pick (OI-874).
+        if self.is_writing() {
+            return;
+        }
         if let Some(pending) = self.pending.take() {
             pending.handle.cancel();
         }
@@ -720,6 +725,24 @@ impl SelectionPanel {
     #[cfg(test)]
     pub(crate) fn leave_set_for_test(&mut self) {
         self.leave_set();
+    }
+
+    /// Whether a save or change of a set is being checked against its model.
+    pub fn is_writing(&self) -> bool {
+        self.writing.is_some()
+    }
+
+    /// Test hook: a Shift click adding `triangles` to the chosen set, whose
+    /// check then runs.
+    #[cfg(test)]
+    pub(crate) fn add_to_chosen_for_test(
+        &mut self,
+        app: &Application,
+        model: ModelId,
+        triangles: &[u32],
+    ) {
+        let picked: std::collections::BTreeSet<u32> = triangles.iter().copied().collect();
+        self.join(app, model, Combine::Add, picked, recorded_hash(app, model));
     }
 
     /// Test hook: the chosen set's Shift and Ctrl clicks waiting for a
@@ -3824,6 +3847,32 @@ mod tests {
             panel.shown_look(&app),
             Some(("Floor".to_owned(), swatch(0)))
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_pick_again_waits_while_a_replace_is_checked() {
+        // Decision 0215 item 6 (OI-874): Pick again is refused while a change
+        // is checked, from the banner as from the button; otherwise the
+        // Replace finishing would end the new pick.
+        let (dir, mut app, model, id, mut panel) = chosen_set("pick-while-replacing");
+        let other = app.save_selection("Other", model, set(&[9])).unwrap();
+        panel.show_set(Some(id));
+        let hash = recorded_hash(&app, model);
+        panel.pick_again(id);
+        panel.join(&app, model, Combine::Replace, set(&[4, 5]), hash);
+        panel.ask_replace(&app, id);
+        assert_eq!(panel.answer_replace(&mut app, true), None);
+        assert!(panel.is_writing());
+        panel.pick_again(other);
+        assert_eq!(panel.shown, Some(id));
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(set_triangles(&app, id), tri(&[4, 5]));
+        assert_eq!(set_triangles(&app, other), tri(&[9]));
+        // Once it is done, Pick again starts.
+        panel.pick_again(other);
+        assert!(panel.repick);
+        assert_eq!(panel.shown, Some(other));
         let _ = std::fs::remove_dir_all(dir);
     }
 }
