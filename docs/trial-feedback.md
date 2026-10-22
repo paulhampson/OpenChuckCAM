@@ -303,3 +303,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-102 | Project, robustness | Save recovery checkpoints in case of a crash. | Automatic, non-blocking checkpoints; on the next start offer to recover, keep the saved project or discard; never overwrite the saved project; written safely; local only; a damaged checkpoint gives a message, not a crash (NFR-07); schema claim and a decision record; requirement entry proposed with the work; a fuzz target for the reader. Issue [#295](https://github.com/paulhampson/OpenChuckCAM/issues/295). | Interval and triggers; how many and where; project only or also a running generation. |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #296 (F-103).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-103 | Swarf tolerance | Raising the tolerance after a warning changes the path so the warning grows (0.01 gives 0.0131; 0.0132 gives 0.0182). | The reported deviation should not depend on the chosen tolerance (or the tolerance must bound it, or the operation says the best it can reach); hypotheses: the tolerance drives both the fitting and the check, too few check points, flank placement; same lane as F-70 (#226, BUG-SWARF); false assurance risk (NFR-12); tests at several tolerances. Issue [#296](https://github.com/paulhampson/OpenChuckCAM/issues/296). | The operation's other settings; does the worst place move? |
