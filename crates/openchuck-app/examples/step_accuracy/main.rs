@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--fine MM]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -119,6 +119,7 @@ struct Args {
     parts: Vec<String>,
     deflections: Vec<f64>,
     fine: Option<f64>,
+    angular: f64,
 }
 
 fn args() -> Result<Args, Error> {
@@ -136,6 +137,7 @@ fn args() -> Result<Args, Error> {
         .to_vec(),
         deflections: DEFLECTIONS.to_vec(),
         fine: None,
+        angular: TessellationSettings::default().angular,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -160,6 +162,7 @@ fn args() -> Result<Args, Error> {
                     .map(str::parse)
                     .collect::<Result<_, _>>()?;
             }
+            "--angular" => out.angular = it.next().ok_or("--angular RAD")?.parse()?,
             "--fine" => out.fine = Some(it.next().ok_or("--fine MM")?.parse()?),
             other => return Err(format!("unknown argument {other}").into()),
         }
@@ -181,9 +184,11 @@ fn main() -> Result<(), Error> {
     if wants("m1") {
         println!("\n## M1: tessellation against the exact faces");
         println!("part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | import s");
+        println!("angular deflection: {} rad", args.angular);
         for part in &args.parts {
             for &d in &args.deflections {
-                let (model, took) = import(&repo(&format!("testdata/step/valid/{part}.step")), d)?;
+                let file = repo(&format!("testdata/step/valid/{part}.step"));
+                let (model, took) = import_at(&file, d, args.angular)?;
                 let worst = print_m1(part, d, &model, took);
                 if part == "blisk" && worst <= SHARE && fine.is_none() {
                     fine = Some(d);
@@ -433,16 +438,18 @@ fn blisk_path() -> PathBuf {
 /// The STEP file at `path`, imported by the kernel at `linear` mm and the
 /// default angular deflection, and how long the import took.
 fn import(path: &Path, linear: f64) -> Result<(BrepModel, Duration), Error> {
+    import_at(path, linear, TessellationSettings::default().angular)
+}
+
+/// [`import`] at an angular deflection of `angular` radians.
+fn import_at(path: &Path, linear: f64, angular: f64) -> Result<(BrepModel, Duration), Error> {
     let bytes = std::fs::read(path)?;
     let cancel = CancelToken::new();
     let started = Instant::now();
     let imported = StepImporter::new().import(
         &bytes,
         &ImportOptions {
-            tessellation: Some(TessellationSettings {
-                linear,
-                ..TessellationSettings::default()
-            }),
+            tessellation: Some(TessellationSettings { linear, angular }),
             ..ImportOptions::default()
         },
         &JobContext::new(&cancel, &NoProgress),
