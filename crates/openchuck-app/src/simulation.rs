@@ -14,7 +14,7 @@ use std::sync::{Arc, OnceLock};
 use openchuck_project::Project;
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
-    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_cancellable,
+    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_classified,
 };
 use openchuck_types::geometry::Aabb;
 use openchuck_types::ir::ToolpathGroup;
@@ -188,20 +188,21 @@ impl SetupState {
     /// to have read the part files it was keyed on.
     pub(crate) fn compare(
         &self,
-        part: impl FnOnce() -> Result<Option<openchuck_types::mesh::TriangleMesh>, AppError>,
+        part: impl FnOnce() -> Result<Option<crate::workholding::DeviationTarget>, AppError>,
         settings: SimulationSettings,
         context: &JobContext<'_>,
     ) -> Result<(Option<Deviation>, bool), AppError> {
         if let Some(deviation) = self.compared.get() {
             return Ok((Some(deviation.clone()), false));
         }
-        let Some(mesh) = part()? else {
+        let Some(target) = part()? else {
             return Ok((None, false));
         };
-        let deviation = compare_cancellable(
+        let deviation = compare_classified(
             self.stock(),
-            &mesh,
+            &target.mesh,
             &DeviationOptions::for_cell(settings.cell.0),
+            &|t, p, n| target.classify(t, p, n),
             context,
         )?;
         Ok((Some(deviation), true))

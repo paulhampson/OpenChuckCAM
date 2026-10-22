@@ -153,3 +153,19 @@ fn req_op_04_indexed_refuses_a_bad_angle_list() {
         assert!(err.to_string().contains("angles"), "{bad}: {err}");
     }
 }
+
+#[test]
+fn req_nfr_06_indexed_finishing_is_identical_at_1_2_and_n_threads() {
+    // The positions are fitted in parallel and joined in order (decision
+    // record 0195).
+    let f = fixture();
+    let v = values(&[
+        (parameter::ANGLES, text("90, 0 270; 45.5 180")),
+        (openchuck_path::axial::parameter::DIRECTION, text("zigzag")),
+    ]);
+    let runs = openchuck_testkit::determinism::check(|| {
+        format!("{:?}", indexed(&f, &v).group).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
+}
