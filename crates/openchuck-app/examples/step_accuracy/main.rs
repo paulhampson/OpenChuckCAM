@@ -445,7 +445,7 @@ fn main() -> Result<(), Error> {
                 if let Form::Brep(surface) = form {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");
                     println!(
-                        "operation | drops sampled | refined | drop on tessellation us | exact ball drop us | exact above (mm, max) | exact below (mm, max) | estimated exact-surface generate s (all threads) | ratio"
+                        "operation | drops kept | refined | not bracketed | drop on tessellation us | distance query us | exact ball drop us | offset p50 mm | p99 | exact above, max | below, max | estimated exact-surface generate s (all threads) | ratio"
                     );
                     for (i, op) in ops.iter().enumerate() {
                         if !op.ball {
@@ -462,12 +462,16 @@ fn main() -> Result<(), Error> {
                         let estimate =
                             wall - share + share * probe.exact_us / (per_drop * 1e6).max(1e-9);
                         println!(
-                            "{} | {} | {} | {:.1} | {:.1} | {:.4} | {:.4} | {:.2} | {:.2}",
+                            "{} | {} | {} | {} | {:.1} | {:.1} | {:.1} | {:.4} | {:.4} | {:.4} | {:.4} | {:.2} | {:.2}",
                             op.label,
                             t.lines.len(),
                             probe.refined,
+                            probe.at_band,
                             per_drop * 1e6,
+                            probe.distance_us,
                             probe.exact_us,
+                            probe.p50,
+                            probe.p99,
                             probe.above,
                             probe.below,
                             estimate,
@@ -1275,54 +1279,91 @@ fn m2(
 }
 
 struct Probe {
+    /// Drop lines refined.
     refined: usize,
+    /// Of those, how many ended at the edge of the band (no contact found
+    /// inside it).
+    at_band: usize,
+    /// Time of one exact ball drop, single thread, microseconds (median).
     exact_us: f64,
+    /// Time of one `distance` query, microseconds (median).
+    distance_us: f64,
+    /// How far the exact contact lies above the tessellation's along the
+    /// tool line, mm: positive where the tessellation drop goes too deep.
+    p50: f64,
+    p99: f64,
     above: f64,
     below: f64,
 }
 
-/// For a ball end: each sampled drop refined against the exact faces by
+/// At most this many drop lines are refined per operation, a fixed stride of
+/// those kept, one thread: the probe prices one drop; it does not redo the job.
+const PROBE_LINES: usize = 200;
+
+/// For a ball end: sampled drops refined against the exact faces by
 /// bisection on the distance from the ball's centre to them, in a band
 /// round the tessellation's answer (decision 0209 item 4.2, seed and refine;
 /// decision 0015). Not the exact drop of lane STEPALL-X: a measuring probe
-/// of what one costs per drop and how far the seed lies from it.
+/// of what one costs per drop with today's exact queries
+/// (`BrepSurface::distance`), and how far the seed lies from it.
 fn probe_exact_ball(surface: &BrepSurface, profile: &RevolvedProfile, lines: &[Line]) -> Probe {
-    use rayon::prelude::*;
     let radius = profile.cutting_radius();
     const BAND: f64 = 0.05;
-    const STEPS: usize = 30;
-    let started = Instant::now();
-    let answers: Vec<Option<f64>> = lines
-        .par_iter()
-        .map(|l| {
-            let axis = l.line.axis.get();
-            let gap = |offset: f64| {
-                let centre = l.line.origin + axis * (offset + radius);
-                surface.distance(centre).map(|d| d - radius)
-            };
-            let (mut lo, mut hi) = (l.contact.offset - BAND, l.contact.offset + BAND);
-            // Above the band the ball is clear; below, it is in.
-            if gap(hi)? <= 0.0 || gap(lo)? > 0.0 {
-                return None;
-            }
+    const STEPS: usize = 20;
+    let stride = lines.len().div_ceil(PROBE_LINES).max(1);
+    let mut drop_us = Vec::new();
+    let mut query_us = Vec::new();
+    let mut offsets = Vec::new();
+    let mut at_band = 0;
+    for l in lines.iter().step_by(stride) {
+        let axis = l.line.axis.get();
+        let started = Instant::now();
+        let mut queries = 0_u32;
+        let mut gap = |offset: f64| {
+            queries += 1;
+            let centre = l.line.origin + axis * (offset + radius);
+            surface.distance(centre).map(|d| d - radius)
+        };
+        let (mut lo, mut hi) = (l.contact.offset - BAND, l.contact.offset + BAND);
+        let (Some(top), Some(bottom)) = (gap(hi), gap(lo)) else {
+            continue;
+        };
+        // Above the band the ball must be clear and below it in the part.
+        let bracketed = top > 0.0 && bottom <= 0.0;
+        if bracketed {
             for _ in 0..STEPS {
                 let mid = 0.5 * (lo + hi);
-                if gap(mid)? > 0.0 {
-                    hi = mid;
-                } else {
-                    lo = mid;
+                match gap(mid) {
+                    Some(g) if g > 0.0 => hi = mid,
+                    Some(_) => lo = mid,
+                    None => break,
                 }
             }
-            Some(hi - l.contact.offset)
-        })
-        .collect();
-    let took = started.elapsed();
-    let threads = rayon::current_num_threads().max(1);
-    let refined: Vec<f64> = answers.into_iter().flatten().collect();
+        }
+        let took = started.elapsed().as_secs_f64() * 1e6;
+        drop_us.push(took);
+        query_us.push(took / f64::from(queries.max(1)));
+        if bracketed {
+            offsets.push(hi - l.contact.offset);
+        } else {
+            at_band += 1;
+        }
+    }
+    let mut abs: Vec<f64> = offsets.iter().map(|d| d.abs()).collect();
+    abs.sort_by(f64::total_cmp);
+    let q = |v: &[f64], f: f64| {
+        v.get(((v.len().saturating_sub(1)) as f64 * f).round() as usize)
+            .copied()
+            .unwrap_or(0.0)
+    };
     Probe {
-        refined: refined.len(),
-        exact_us: took.as_secs_f64() * threads as f64 * 1e6 / lines.len().max(1) as f64,
-        above: refined.iter().copied().fold(0.0, f64::max),
-        below: refined.iter().map(|d| -d).fold(0.0, f64::max),
+        refined: offsets.len(),
+        at_band,
+        exact_us: median(drop_us),
+        distance_us: median(query_us),
+        p50: q(&abs, 0.5),
+        p99: q(&abs, 0.99),
+        above: offsets.iter().copied().fold(0.0, f64::max),
+        below: offsets.iter().map(|d| -d).fold(0.0, f64::max),
     }
 }
