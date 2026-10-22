@@ -336,3 +336,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-108 | Simulate, tree | Clicking an operation in Simulate should take the user to the Operations step with that operation's inspector. | Only a click on the row navigates (not its enable, visibility, reorder or duplicate controls); the result is kept or marked out of date; keyboard Enter; lane X2; related to F-89, F-104, F-54, F-57, F-75. Issue [#302](https://github.com/paulhampson/OpenChuckCAM/issues/302). | Single or double click; are the playback position and view kept on return? |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator; build 0.17.0): #303 (F-109).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-109 | Finishing, stepover | Option to reduce the stepover automatically where it would miss material (for example a vertical face) in helical and axial finishing, on by default; check which other strategies need it. | More passes locally within an allowed leftover, a minimum stepover; says what it did; the default changes existing results on purpose (decision record, minor version bump and changelog, decision 0048; GC-07); an investigation of indexed, simultaneous, rest, pencil, edge following and roughing; cost on generation time (F-82). Issue [#303](https://github.com/paulhampson/OpenChuckCAM/issues/303). | How "miss material" is measured; defaults for the allowed leftover and minimum stepover; per operation or also a default. |
