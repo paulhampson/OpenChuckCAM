@@ -37,6 +37,7 @@ pub mod library;
 pub mod machine_view;
 pub mod materials;
 pub mod model;
+pub mod note_groups;
 pub mod operation;
 pub mod opflow;
 pub mod overview;

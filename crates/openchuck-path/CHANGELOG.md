@@ -4,6 +4,7 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Axial and indexed finishing count a pass in their progress only when it was fitted, so a run that fails never reads "n of n" first (OI-843, decision 0218). Progress only; no API or output change.
 - `parallel::map_each_in_order` (decision 0195, issue #252): each item may go to its own thread, results in input order. Axial and indexed finishing fit their passes in parallel with it and report one count of passes; their output is unchanged.
 - Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
 - Version 0.16.0 with the library family (`Strategy` in `openchuck-path` gains the required method `description` and the provided `group`, a breaking change; decision 0204).

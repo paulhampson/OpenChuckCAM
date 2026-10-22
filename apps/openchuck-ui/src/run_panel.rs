@@ -24,6 +24,10 @@ use crate::theme::DARK;
 const RUNNING_REPAINT: std::time::Duration = std::time::Duration::from_millis(100);
 
 const PROBLEM: Color32 = DARK.error;
+
+/// What a group of results says when pointed at (issue 255).
+const GROUP_HINT: &str = "The same note for consecutive moves, with values within 1 % of each \
+     other. Open it to see each move.";
 const NOTE: Color32 = DARK.warning;
 
 /// How serious a line of the results is.
@@ -44,6 +48,9 @@ pub struct ResultLine {
     pub severity: Severity,
     /// The sentence.
     pub text: String,
+    /// The notes a grouped line holds, one per move, shown when it is
+    /// opened (issue 255); empty for a line of its own.
+    pub moves: Vec<String>,
 }
 
 /// The lines of the results window for `run`, in order: what was generated
@@ -55,7 +62,11 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             .operation(id)
             .map_or_else(|| "(removed operation)".to_owned(), |o| o.name.clone())
     };
-    let line = |severity, text: String| ResultLine { severity, text };
+    let line = |severity, text: String| ResultLine {
+        severity,
+        text,
+        moves: Vec::new(),
+    };
     let mut out = Vec::new();
     let names = |ids: &[OperationId]| {
         ids.iter()
@@ -78,8 +89,18 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             ),
         ));
     }
-    for note in &run.notes {
-        out.push(line(Severity::Warning, note.clone()));
+    // Repeated notes about consecutive moves are one line each (issue 255;
+    // decision record 0218).
+    for group in openchuck_app::note_groups::group_notes(&run.notes) {
+        out.push(ResultLine {
+            severity: Severity::Warning,
+            text: group.text,
+            moves: if group.notes.len() > 1 {
+                group.notes
+            } else {
+                Vec::new()
+            },
+        });
     }
     for report in &run.reports {
         match &report.comparison {
@@ -634,13 +655,30 @@ impl RunPanel {
                         egui::ScrollArea::vertical()
                             .max_height(360.0)
                             .show(ui, |ui| {
-                                for line in result_lines(run, app.project()) {
-                                    let text = RichText::new(&line.text);
-                                    ui.label(match line.severity {
+                                for (index, line) in
+                                    result_lines(run, app.project()).into_iter().enumerate()
+                                {
+                                    let colour = |text: RichText| match line.severity {
                                         Severity::Info => text,
                                         Severity::Warning => text.color(NOTE),
                                         Severity::Problem => text.color(PROBLEM),
-                                    });
+                                    };
+                                    if line.moves.is_empty() {
+                                        ui.label(colour(RichText::new(&line.text)));
+                                        continue;
+                                    }
+                                    // A group opens on its moves, one line
+                                    // each; it starts closed (issue 255).
+                                    egui::CollapsingHeader::new(colour(RichText::new(&line.text)))
+                                        .id_salt(("result group", index))
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            for note in &line.moves {
+                                                ui.label(colour(RichText::new(note)));
+                                            }
+                                        })
+                                        .header_response
+                                        .on_hover_text(GROUP_HINT);
                                 }
                             });
                         ui.separator();
@@ -667,6 +705,29 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn req_nfr_12_repeated_notes_are_one_line_that_opens_on_each_move() {
+        // Issue 255: the results group repeated notes about consecutive moves
+        // and keep each move's note for when the line is opened.
+        let notes: Vec<String> = (2..=4)
+            .map(|m| {
+                format!(
+                    "operation 'Roughing': move {m}: the machine's feed limits slow this move: \
+                     the contact feed is 972.9 mm/min, not 1000.0"
+                )
+            })
+            .collect();
+        let run = Regeneration {
+            notes: notes.clone(),
+            ..Regeneration::default()
+        };
+        let lines = result_lines(&run, &Project::new("notes"));
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].text.contains("moves 2 to 4 (3 moves)"));
+        assert_eq!(lines[0].moves, notes);
+        assert_eq!(lines[0].severity, Severity::Warning);
+    }
 
     #[test]
     fn req_ui_09_an_empty_run_has_no_lines_and_a_new_panel_is_not_stale_for_nothing() {

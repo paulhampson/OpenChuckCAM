@@ -355,7 +355,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 10. Footer
 
-- **Left:** the current job with its spinner and percentage, or "Ready", then a short note about the step ("edits are applied when you leave a field; undo with Ctrl Z"). After it comes the G-code notice in short form: "Verify G-code before running it" (NFR-12; decision 0029 item 8 shows it in the status bar).
+- **Left:** the current job with its spinner and percentage, or "Ready". The percentage is one figure for all the job's work that never goes back, followed by the operation being worked on ("Generating… 42 %: Generating 'Roughing'"), and "(and 1 more job)" when others run too. Choosing it opens the Jobs tab, with every job, its history and Cancel ([decision 0218](../decisions/0218-one-progress-figure-and-the-job-in-the-status-bar.md)). After the job comes a short note about the step ("edits are applied when you leave a field; undo with Ctrl Z"). After it comes the G-code notice in short form: "Verify G-code before running it" (NFR-12; decision 0029 item 8 shows it in the status bar).
 - **Right**, left to right:
   - the display units switch, "mm | in" *(UI-18)*; with P1 only it reads "mm · deg" and cannot be changed;
   - the tolerance of the selected operation or setup;
