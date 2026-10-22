@@ -74,6 +74,7 @@ What M1 shows:
 4. **Facet normals** are off by up to 7.5 degrees on the blisk's cones and 7 degrees on the corpus fillets at the import's setting, and up to 4.3 degrees on the blisk's blades, which does not fall as the deflection is made finer (2.6 degrees at 0.01 mm, 4.2 at 0.001 mm; OI-76).
 5. **Planes read 0.04 mm against their trimmed faces** while lying in their planes: a point of a rim triangle can fall outside the face's trim polyline, which is coarser there than the tessellation. Anything that judges a contact by `contains` near a face's edge inherits that (the region test of OI-833).
 6. **A defect in `ExactFace::closest`** (OI-839, new). On the corpus cone, 13 of the 1,112 vertices of its large rim are answered with a point on the seam, up to 4.2 mm away (1.5 mm with the trims removed), where the closed-form distance is under 0.01 mm. The projection of a point on the face's own boundary lands just outside the parameter box, and the boundary search then picks the wrong edge. `BrepSurface::project` and `distance` use it: simultaneous finishing's drive points today, and the exact drop of lane STEPALL-X. It is in `openchuck-path` `brep.rs`, X's file, and is left to that lane.
+7. **What one exact query costs.** The mean time of one `ExactFace::closest` on the trimmed face, one thread, at 0.01 mm: on the blisk, 1,762 µs on a blade (B-spline), 703 µs on a plane, 675 µs on a cylinder and 90 µs on a cone; on the corpus, 519 µs on `bspline_face`, about 210 µs on a plane, 5.9 µs on `cylinder`'s side and 1.5 µs on `cone`'s. The trims dominate the analytic faces: the same kind of face costs a hundred times more where its trim loops are long (the blisk's planes and cylinders carry the blades' outlines). A `BrepSurface::distance` visits every face whose box is nearer than the best answer so far, and on the blisk that is several blades, so one query costs 50 to 60 ms (M3).
 
 ### M2: each strategy's cut against the exact faces
 
@@ -99,9 +100,22 @@ The deepest any exact-face point lies inside the tool at any station ("deepest c
 | Indexed | 0 | a | 2,344 | 0.0702 | 0.0702 | 0.0600 | 0.0704 | 0.0602 |
 | | | b | 2,328 | 0.0316 | 0.0316 | 0.0073 | 0.0319 | 0.0074 |
 | | | c | 2,260 | 0.0051 | 0.0035 | 0.0031 | 0.0038 | 0.0044 |
-| Simultaneous | 0 | a, b, c | | refused by the strategy (SIMULTANEOUS) | | | | |
+| Simultaneous | 0 | a, b, c | | refused by the strategy | | | | |
 
-SIMULTANEOUS_NOTE
+Simultaneous finishing refuses the blisk on every form, at its 10 degree tilt and 2 degree step and at every setting tried (tilt 0 and 5 degrees, steps of 1 and 2 degrees): "cannot keep the move to X 20.0 to 20.8, A ... within the tolerance: it would cut 0.018 to 0.357 mm into the surface; reduce the largest tilt or the largest angle step", always at the blades' roots (X 20). It refuses the owner's STL the same way, so the refusal is the strategy's on this part, not the STEP part's (NFR-07: a clear error, not a gouge). It was measured instead on the two corpus parts it finishes in decision 0056's kernel tests, with helical finishing beside it (same tool and stepover, quick-run options otherwise as above):
+
+| Part | Operation | Form | Stations | Deepest cut | Largest gap |
+| --- | --- | --- | --- | --- | --- |
+| `revolved_spline` | helical | b | 96,064 | 0.0196 | 0.0097 |
+| | | c | 96,012 | 0.0030 | 0.0009 |
+| | simultaneous | b | 96,084 | 0.0189 | 0.0097 |
+| | | c | 96,004 | 0.0030 | 0.0051 |
+| `cone` | helical | b | 80,152 | 0.0090 | 0.0240 |
+| | | c | 76,360 | 0.0006 | 0.0248 |
+| | simultaneous | b | 75,792 | 0.0090 | 0.0009 |
+| | | c | 72,004 | 0.0006 | 0.0013 |
+
+Simultaneous finishing gains what helical finishing gains: the deepest cut falls by the tessellation's error (0.019 to 0.003 mm on the revolved spline, whose import tessellation lies 0.021 mm off; 0.009 to 0.0006 mm on the cone). The cone's 0.024 mm helical gap is the same on both forms, so it is not the tessellation's; it is left for the strategy's own tests.
 
 What M2 shows:
 
