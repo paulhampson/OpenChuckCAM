@@ -1,0 +1,17 @@
+schema = 17
+id = "ccc31392-189d-4f15-ac01-85ad826bcaec"
+order = "V"
+name = "Setup 1"
+part = "a1c34e1c-1720-4150-bf1e-bba748b2d72e"
+material = "oak"
+part_offset = 0.0
+
+[work_offset]
+register = "g54"
+x = 0.0
+
+[stock]
+type = "cylinder"
+diameter = 22.0
+length = 32.0
+x_start = -1.0

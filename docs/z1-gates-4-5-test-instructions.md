@@ -50,7 +50,7 @@ Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on t
 ## 3. What you need
 
 - The release build of OpenChuckCAM (or the build named for the trial) on the computer you use to make the programs.
-- The project folders for the reference jobs (OI-913: a follow-up lane commits them; until then, their golden programs in `testdata/golden/reference/`), and the first-cut project (5.2).
+- A source checkout at the trial's commit, to write the reference job projects (P2), and the first-cut project (5.2).
 - The setup sheet (HTML or PDF) written with each program (decision 0189), printed or on screen beside the machine.
 - The Makera Z1 with its rotary module and chuck, and its controller software. Know where its emergency stop, feed hold and feed override are before you start.
 - A stopwatch (a phone is fine), a camera (a phone is fine), masking tape and a marker.
@@ -68,7 +68,7 @@ Do these at the computer and at the machine before anything moves. Each step has
 | Step | Do | Pass when | Record |
 | --- | --- | --- | --- |
 | P1 Software build | Open OpenChuckCAM, choose **Help > About OpenChuckCAM** and press **Copy build information**. Paste it into the results form (section 8.1). From a terminal, `openchuck-cli --version` gives the same text. | The version is the one named for the trial, the commit is shown, and **Uncommitted changes: no** (NFR-16). The About window also shows the notice that generated G-code must be verified by the user. | The pasted build information |
-| P2 Project and programs | Open each reference job's project folder in the build of P1 and write its G-code and setup sheet with the Makera Z1 post (the owner's answer to OI-913: a follow-up lane commits the reference jobs as project folders). Compare each program with its golden file in `testdata/golden/reference/`: only the version and operation comment lines may differ. Until that lane has merged, use the golden Z1 programs from the commit in P1 and note that they were written by the test suite, not by the build in P1. | You have the `.nc` file and setup sheet of each job you will run, from the build or commit in P1. | File names, the build or commit, the comparison |
+| P2 Project and programs | From a checkout at the commit in P1, write the reference job projects to an empty folder: `cargo run -p openchuck-cli --example sample_projects -- <folder>` (OI-913, OI-920: the project files are committed in `testdata/projects/`, and the generator writes each generated part beside them). Open each folder in the build of P1 and write its G-code and setup sheet with the Makera Z1 post. Compare each program with its golden file in `testdata/golden/reference/`: only the version and operation comment lines may differ. `drilling` and `swarf` have no committed folder yet (OI-922): run their golden programs and note that they were written by the test suite. | You have the `.nc` file and setup sheet of each job you will run, from the build or commit in P1. | File names, the build or commit, the comparison |
 | P3 Machine profile | In the application, open the project's setup and its machine values (or `openchuck-cli machine <project>`). Each value is marked confirmed, vendor-supplied or unconfirmed (UI-13). | The profile is **Makera Z1**. Travel 200 x 200 x 100 mm, feeds 1200 mm/min X and Y, 600 Z, 3600 deg/min A, A continuous and right-handed about +X. The axis height is the measured value from P8, not the placeholder (OI-60). | Each value, and which are unconfirmed |
 | P4 Post | Check the post chosen for export. | **Makera Z1** (files end `.nc`), not the LinuxCNC verification post (`.ngc`). Feed mode: units per minute; the Z1 post never writes `G93`. | Post name |
 | P5 Firmware | On the Z1 controller, find the firmware version. | Noted. If it is not 1.1.2, the SP-12 conventions (decision 0007) must be rechecked first: step 1 of section 4.4. | Firmware version |
@@ -257,11 +257,13 @@ The Z1 tool library (built-in defaults, `crates/openchuck-project/defaults/z1/`)
 | 201 | Z1 ball metal 3.175x10 | Ball end, 2 flutes | 10 mm | 12000, 0.0208 (500 mm/min), 200 mm/min, 0.4536 mm, 1.0 mm |
 | 204 | Z1 ball 3.175x22 | Ball end, 2 flutes | 22 mm | 12000, 0.0208 (500 mm/min), 200 mm/min, 0.4536 mm, 1.0 mm |
 
-The library has no single-flute ball-nose tool at 3.175 mm: the ball-nose tools are two-flute. The "Softwood" presets of these tools differ from "Plastic" only in the stepdown (2.0 mm).
+The library has no single-flute ball-nose tool at 3.175 mm: the ball-nose tools are two-flute.
+
+**The owner's choice (OI-921, 22 Oct 2026): rough with 104 (Z1 O-flute 3.175x25, single flute) and finish with 204 (Z1 ball 3.175x22, two flutes), both with the "Plastic" presets.** Write on the form that the finishing tool is two-flute. The "Softwood" presets of these tools differ from "Plastic" only in the stepdown (2.0 mm).
 
 | Step | Check | Pass when |
 | --- | --- | --- |
-| T0 | **Confirm the tools with the owner** (the owner's instruction). When the project is generated, show the owner the setup sheet's Tools and Operations tables (number, name, type, diameter, flute length, spindle rpm, Speed from) | The owner has agreed every tool and its use. Record who agreed and when. |
+| T0 | **Confirm the tools with the owner** (the owner's instruction). When the project is generated, show the owner the setup sheet's Tools and Operations tables (number, name, type, diameter, flute length, spindle rpm, Speed from) | Roughing uses 104 and finishing 204, as the owner chose (OI-921), and the owner has agreed the generated project. Record who agreed and when. |
 | T1 | Each operation's tool | One of the five tools above, and the tool number matches the program's `T<n>` (GC-14). |
 | T2 | Material | The setup's material is **Plastic**, so the operations take the Plastic presets: the setup sheet's **Speed from** reads "tool data: Plastic" (decision 0196, OI-755). If an operation sets its own speed, Speed from reads "operation": check the value with the owner. |
 | T3 | A tool with no Plastic data | None of the five lacks it. If a tool without Plastic data is ever used: copy its Softwood data to a new Plastic entry in the tool library; if it has no Softwood data either, **ask the owner before** using settings from a similar tool (OI-915). |
@@ -355,7 +357,7 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 - [ ] Gate 4 passed for the first-cut program, same commit, profile and post.
 - [ ] Safe-practice checklist section 3 complete.
 - [ ] First-cut project's geometry agreed with the owner (G0, OI-914); first-cut limit ±0.1 mm (decision 0221).
-- [ ] Tools agreed with the owner (T0): only the 3.175 mm O-flute (101, 104, 105) or ball (201, 204) tools; material Plastic, Speed from "tool data: Plastic".
+- [ ] Tools agreed with the owner (T0): rough with 104 (single flute), finish with 204 (two flutes) (OI-921); material Plastic, Speed from "tool data: Plastic".
 - [ ] Tool change tested attended with a real tool (OI-41).
 - [ ] Workholding: grip length matches the chuck; no grip warning; the 5 mm tab and the 2 mm, 10 mm tailstock tab as agreed.
 - [ ] Stick-out, spindle speed and feeds checked against the Plastic presets.
@@ -457,7 +459,7 @@ Geometry agreed with the owner (G0), by and date:
 Tools agreed with the owner (T0), by and date:
 Grip length at the chuck:                 Tabs (5 mm; 2 mm x 10 mm tailstock tab):
 X0 taken from:                            A0 set by:
-Tool (number, type, diameter, stick-out):
+Tools: roughing 104 (single flute), finishing 204 (TWO flutes); stick-out of each:
 Spindle rpm and Speed from:               Cutting feed / plunge feed:
 First-cut limit: ±0.1 mm (decision 0221)
 Simulation: cell (mm), worst material left (mm, where), overcut:
@@ -488,11 +490,13 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-910 | How the timed XYZA move is measured | A: time a whole operation against "about N s" x 100 / override; band agreed at the first run; the air-cut procedure's step 3 corrected | 4.5, G4-3 | No |
 | OI-911 | Whether the spindle runs in the air cut | A: it runs as generated, with no tool; the program is tested exactly as generated | P7 | No |
 | OI-912 | How `T1 M6` is handled with no tool | B: run as generated and watch, ready on the stop; the tool change with a real tool is still tested before gate 5 (OI-41) | P7, F3 | No (OI-41 stays open) |
-| OI-913 | Where the reference jobs come from | A: a follow-up lane commits them as project folders | P2 | Yes, until that lane merges |
+| OI-913 | Where the reference jobs come from | A: committed as project folders (built in lane GATES); OI-920 A: without their generated meshes, which a generator example writes | P2 | No (OI-922: `drilling` and `swarf`) |
 | OI-914 | Which job gate 5 cuts | C: a new first-cut project to the owner's specification (5.2) | 5.2, F5 | Yes: the exact geometry (G0) and who builds the project |
 | OI-915 | Material and cutting data for gate 5 | Tooling board with the "Plastic" presets; Softwood copied where Plastic is missing; ask the owner before using a similar tool's data | 5.3 | No |
 | OI-916 | The 3-axis test part | B: skip it; the first-cut limit stays ±0.1 mm | F4, 5.7 | Until [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) is accepted |
 | OI-917 | How the axis height and work zero are found | Makera's own routine for Y and Z on the axis, X0 and A0; the form records the X0 face and A0 | P8, P9, M4 | No |
+| OI-920 | The meshes are too large to commit | A: commit the project files, generate the parts (`sample_projects` example) | P2 | No |
+| OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
 | OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 

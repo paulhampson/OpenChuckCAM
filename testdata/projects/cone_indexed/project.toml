@@ -1,0 +1,7 @@
+schema = 17
+name = "cone_indexed"
+
+[[models]]
+id = "dc2cd907-90f1-4079-842e-326794d822df"
+path = "models/part.stl"
+hash = "blake3:e4b0938ec03f4801423bee32b270dc4e01eefaffa0d14be95fb99c3e00b52db1"

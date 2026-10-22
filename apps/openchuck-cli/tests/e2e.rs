@@ -35,7 +35,11 @@ use openchuck_app::project::id::OperationId;
 use openchuck_app::project::{Item, Operation, OrderKey, ParameterValue, Placement};
 use openchuck_app::{Application, Command, Event, PostSelection, Threads};
 use openchuck_testkit::determinism::thread_counts;
-use openchuck_testkit::parts::{Cone, HelicalGroove, LobedVase, RadialPart, Sphere};
+use openchuck_testkit::parts::{RadialPart, Sphere};
+
+#[path = "common/sample_projects.rs"]
+mod sample_projects;
+use sample_projects::{PART_FILE, generated_part, projects_dir, write_projects, write_stl};
 
 /// The two shipped posts and the extension of their golden programs.
 const POSTS: [(&str, &str); 2] = [("makera-z1", "nc"), ("linuxcnc", "ngc")];
@@ -61,7 +65,7 @@ impl Model {
     /// Writes the part as the STL file at `path`.
     fn write(&self, path: &Path) {
         match self {
-            Self::Generated(part, mesh) => write_stl(part.as_ref(), *mesh, path),
+            Self::Generated(part, mesh) => write_stl(part.as_ref(), *mesh, path).unwrap(),
             Self::File(file, _) => {
                 let source = Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../testdata")
@@ -93,11 +97,7 @@ struct Sample {
 }
 
 fn cone() -> Box<dyn RadialPart> {
-    Box::new(Cone {
-        start_radius: 10.0,
-        end_radius: 5.0,
-        length: 30.0,
-    })
+    Box::new(sample_projects::cone())
 }
 
 fn angle_step(degrees: f64) -> Vec<(&'static str, ParameterValue)> {
@@ -135,20 +135,8 @@ fn blisk(
 }
 
 fn samples() -> Vec<Sample> {
-    let groove = HelicalGroove {
-        radius: 12.0,
-        length: 30.0,
-        pitch: 12.0,
-        depth: 1.5,
-    };
-    let lobed = LobedVase {
-        base: 10.0,
-        wave: 1.5,
-        wave_length: 40.0,
-        lobe: 1.0,
-        lobes: 3,
-        length: 20.0,
-    };
+    let groove = sample_projects::groove();
+    let lobed = sample_projects::lobed();
     vec![
         sample("groove", Box::new(groove), 12.0),
         sample("cone", cone(), 10.0),
@@ -253,32 +241,6 @@ fn scratch(tag: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
-}
-
-/// The part as ASCII STL. Shortest round-trip formatting keeps every vertex
-/// exact, so the imported mesh is the generated one.
-fn write_stl(part: &dyn RadialPart, mesh: (u32, u32), path: &Path) {
-    use std::fmt::Write as _;
-    let mesh = part.mesh(mesh.0, mesh.1);
-    let mut text = String::from("solid part\n");
-    for t in &mesh.triangles {
-        let v: Vec<_> = t.iter().map(|i| mesh.vertices[*i as usize]).collect();
-        let c = (v[1] - v[0]).cross(v[2] - v[0]);
-        let len = c.length();
-        let n = if len > 0.0 { c * (1.0 / len) } else { c };
-        writeln!(
-            text,
-            "facet normal {:e} {:e} {:e}\n outer loop",
-            n.x, n.y, n.z
-        )
-        .unwrap();
-        for p in v {
-            writeln!(text, "  vertex {:e} {:e} {:e}", p.x, p.y, p.z).unwrap();
-        }
-        text.push_str(" endloop\nendfacet\n");
-    }
-    text.push_str("endsolid part\n");
-    std::fs::write(path, text).unwrap();
 }
 
 /// The reference tool as a library file (the 3 mm ball of the reference job set).
@@ -533,6 +495,67 @@ fn simulates(name: &str) {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// The committed project folder of reference job `name` (OI-913, OI-920):
+/// copied out with its generated part written beside it, it validates (the
+/// recorded model hash matches) and writes the golden programs with both
+/// posts. `OPENCHUCK_BLESS_PROJECTS=1` first rewrites the committed folder
+/// from the command-line build (new item IDs, so the diff is large; review
+/// that only the IDs changed).
+fn committed(name: &str) {
+    if std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some() {
+        bless_project(name);
+    }
+    let root = scratch(&format!("committed-{name}"));
+    let projects = write_projects(&root, &[name.to_owned()]).unwrap();
+    let project = &projects[0];
+    cli_ok(&["validate".as_ref(), project.as_os_str()]);
+    for (post, ext) in POSTS {
+        let out = root.join(format!("{post}-out"));
+        let program = regenerate(project, post, 2, &out);
+        openchuck_testkit::golden::check(&golden_path(name, post, ext), &stable(&program))
+            .unwrap_or_else(|m| panic!("{name} / {post}, committed project (NFR-08): {m}"));
+    }
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// Rewrites `testdata/projects/<name>` from the command-line build, without
+/// the generated part, which is too large to commit (decision record 0004).
+fn bless_project(name: &str) {
+    let root = scratch(&format!("bless-{name}"));
+    let built = build(&named(name), &root);
+    let target = projects_dir().join(name);
+    let _ = std::fs::remove_dir_all(&target);
+    for (file, bytes) in files(&built) {
+        if file == PART_FILE {
+            continue;
+        }
+        let path = target.join(&file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// Every reference job with a generated part has a committed project folder,
+/// and every committed folder is a reference job (OI-913).
+#[test]
+fn req_gc_07_every_generated_reference_job_has_a_committed_project() {
+    let mut generated: Vec<String> = samples()
+        .iter()
+        .filter(|s| matches!(s.model, Model::Generated(..)))
+        .map(|s| s.name.to_owned())
+        .collect();
+    generated.sort();
+    assert_eq!(sample_projects::committed_jobs().unwrap(), generated);
+    for job in &generated {
+        assert!(generated_part(job).is_some(), "{job}");
+        assert!(
+            !projects_dir().join(job).join(PART_FILE).exists(),
+            "{job}: the generated part is written by the generator, not committed"
+        );
+    }
+}
+
 /// One end-to-end test and one simulation test per sample project, so the
 /// test runner spreads them over cores and CI shares. The samples after
 /// `no_simulation` are the owner's blisk: no simulation test yet (its memory
@@ -550,6 +573,10 @@ macro_rules! sample_tests {
             #[test]
             fn req_sim_03_req_sim_05_simulates_without_overcut() {
                 super::simulates(stringify!($name));
+            }
+            #[test]
+            fn req_gc_07_req_nfr_08_the_committed_project_writes_the_golden_programs() {
+                super::committed(stringify!($name));
             }
         })*
         $(mod $bare {
