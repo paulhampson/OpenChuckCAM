@@ -387,9 +387,12 @@ pub struct SelectionPanel {
     /// What the shell should select after the panel chose or left a set:
     /// `Some(id)` the set, `None` a new selection.
     chosen_change: Option<Option<SelectionSetId>>,
-    /// The shown set's selection as last drawn, so a change from an edit,
-    /// an undo or a redo draws it again.
-    drawn_shown: Option<SelectionTarget>,
+    /// The shown set and the project's revision when it was last drawn, so a
+    /// change from an edit, an undo or a redo draws it again.
+    drawn_shown: Option<(SelectionSetId, u64)>,
+    /// The legends' look of the shown set, and what it was worked out for:
+    /// the set, the project's revision, picking and "Pick again".
+    look: Option<((SelectionSetId, u64, bool, bool), Option<(String, [u8; 3])>)>,
     /// The save or edit of a set being checked against its model.
     writing: Option<Writing>,
     /// Whether a plain click of the other kind asks first, as the project
@@ -440,6 +443,7 @@ impl Default for SelectionPanel {
             replace_ask: None,
             chosen_change: None,
             drawn_shown: None,
+            look: None,
             writing: None,
             warn_reset: true,
             reset: None,
@@ -555,6 +559,11 @@ impl SelectionPanel {
     /// pick goes too.
     pub fn show_set(&mut self, set: Option<SelectionSetId>) {
         if self.shown != set {
+            // A region pick started for the set shown before must not land
+            // on the next one.
+            if let Some(pending) = self.pending.take() {
+                pending.handle.cancel();
+            }
             if self.repick {
                 self.repick = false;
                 self.working = nothing();
@@ -622,11 +631,24 @@ impl SelectionPanel {
     /// The name and colour of the set drawn in its own colour now, for the
     /// legends (decision 0216 item 5): none while it is a ghost (a set with
     /// a problem, or one being picked again) or picking is off.
-    pub fn shown_look(&self, app: &Application) -> Option<(String, [u8; 3])> {
+    pub fn shown_look(&mut self, app: &Application) -> Option<(String, [u8; 3])> {
+        let id = self.shown?;
+        let key = (id, app.revision(), self.picking, self.repick);
+        if let Some((seen, look)) = &self.look
+            && *seen == key
+        {
+            return look.clone();
+        }
+        let look = self.work_out_look(app, id);
+        self.look = Some((key, look.clone()));
+        look
+    }
+
+    /// The legends' look of set `id`, worked out from the project.
+    fn work_out_look(&self, app: &Application, id: SelectionSetId) -> Option<(String, [u8; 3])> {
         if !self.picking || self.repick {
             return None;
         }
-        let id = self.shown?;
         let summaries = app.selection_summaries(&[]);
         let (place, summary) = summaries.iter().enumerate().find(|(_, s)| s.id == id)?;
         if summary.problem.is_some() {
@@ -1055,7 +1077,7 @@ impl SelectionPanel {
     pub fn overlay(&mut self, app: &Application, view: &SceneView) -> Option<Scene> {
         // A change to the shown set (a Shift or Ctrl click's edit, an undo)
         // draws it again.
-        let shown_now = self.shown_target(app);
+        let shown_now = self.shown.map(|id| (id, app.revision()));
         if shown_now != self.drawn_shown {
             self.drawn_shown = shown_now;
             self.dirty = true;
@@ -3752,6 +3774,49 @@ mod tests {
         assert!(text.contains("Cancel"), "{text}");
         assert_eq!(settle(&mut panel, &mut app), None);
         assert_eq!(set_triangles(&app, id), tri(&[0, 1, 2]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_a_region_pick_ends_when_another_set_is_shown() {
+        // A flood fill started on one set must not land on the next one
+        // (decision 0215 item 5; CodeRabbit review of pull request 282).
+        let (dir, mut app, model, id, mut panel) = chosen_set("pick-other-set");
+        let other = app.save_selection("Other", model, set(&[9])).unwrap();
+        panel.hold_region_pick(&app, model);
+        assert!(panel.has_region_pick());
+        panel.show_set(Some(other));
+        assert!(!panel.has_region_pick());
+        assert_eq!(set_triangles(&app, id), tri(&[0, 1]));
+        assert_eq!(set_triangles(&app, other), tri(&[9]));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_ui_05_the_shown_set_is_drawn_again_when_the_project_changes() {
+        // An undo of a set's change draws it again (the overlay follows the
+        // project's revision).
+        let (dir, mut app, model, id, mut panel) = chosen_set("redraw-on-undo");
+        let view = app.start_scene(None).wait().unwrap();
+        assert!(panel.overlay(&app, &view).is_some());
+        assert!(panel.overlay(&app, &view).is_none());
+        let hash = recorded_hash(&app, model);
+        panel.join(&app, model, Combine::Add, set(&[2]), hash);
+        assert_eq!(settle(&mut panel, &mut app), None);
+        assert_eq!(overlay_triangles(&panel.overlay(&app, &view).unwrap()), 3);
+        app.undo().unwrap();
+        assert_eq!(overlay_triangles(&panel.overlay(&app, &view).unwrap()), 2);
+        // The legends' look follows it too.
+        assert_eq!(
+            panel.shown_look(&app),
+            Some(("Pocket".to_owned(), swatch(0)))
+        );
+        app.edit_selection(id, SelectionEdit::Rename("Floor".into()))
+            .unwrap();
+        assert_eq!(
+            panel.shown_look(&app),
+            Some(("Floor".to_owned(), swatch(0)))
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }
