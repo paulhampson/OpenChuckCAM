@@ -828,9 +828,20 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
         "the colour scale follows the choice"
     );
     assert_eq!(crate::results_panel::summarise(&run), summary);
-    // A range narrows it further: only material left from 0.2 mm.
-    rig.shell.results.set_range_text("0.2", "");
+    // A range narrows it further: only material left from 0.2 mm, typed in
+    // the "from" field and taken when the field is left.
+    let label = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Show only from")
+        .expect("the range is shown")
+        .1;
+    rig.click(egui::pos2(label.right() + 30.0, label.center().y));
+    rig.frame(vec![Event::Text("0.2".into())]);
+    let away = at(&rig, "DEVIATION DISTRIBUTION");
+    rig.click(away);
     rig.frame(Vec::new());
+    assert_eq!(rig.shell.results.filter.from, Some(0.2));
     let ranged = rig.shell.viewport.bands().unwrap().clone();
     let expected = whole
         .values
@@ -843,13 +854,35 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     rig.shell.results.set_range_text("0.5", "0.1");
     assert!(rig.shell.results.range_error.is_some());
     assert_eq!(rig.shell.results.filter.from, Some(0.2));
+    // So is a value that is not a number.
+    rig.shell.results.set_range_text("two", "");
+    assert!(rig.shell.results.range_error.is_some());
+    assert_eq!(rig.shell.results.filter.from, Some(0.2));
     // The choice lasts for the session: a new run keeps it.
     rig.shell.generate(true);
     rig.settle();
     assert!(rig.shell.results.filter.hides_any());
     // "Show all" shows every band again.
-    rig.shell.results.show_all();
     rig.frame(Vec::new());
+    // The inspector's button, on the range's row (the tree has one too).
+    let rects = rig.text_rects();
+    let row = rects
+        .iter()
+        .find(|(t, _)| t == "Show only from")
+        .expect("the range is shown")
+        .1;
+    let show_all = rects
+        .iter()
+        .find(|(t, r)| {
+            t == "Show all" && r.left() > row.left() && (r.center().y - row.center().y).abs() < 30.0
+        })
+        .expect("Show all beside the range")
+        .1
+        .center();
+    rig.click(show_all);
+    rig.frame(Vec::new());
+    assert!(!rig.shell.results.filter.hides_any());
+    assert!(rig.shell.results.range_error.is_none());
     rig.frame(Vec::new());
     assert!(!rig.shows("Some bands are hidden."));
 }
