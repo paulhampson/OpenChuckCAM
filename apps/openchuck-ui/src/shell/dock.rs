@@ -60,7 +60,7 @@ impl Shell {
     /// the status bar, issue 201).
     pub(super) fn show_jobs(&mut self) {
         self.dock_tab = DockTab::Jobs;
-        if self.settings.dock.collapsed {
+        if self.collapsed(super::frame::Region::Dock) {
             self.toggle_region(super::frame::Region::Dock);
         }
     }

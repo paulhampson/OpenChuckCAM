@@ -28,6 +28,11 @@ pub const STAGE_GENERATE: &str = "regenerate";
 /// (issue 201; [`RUN_PROGRESS_TOTAL`](crate::jobs::RUN_PROGRESS_TOTAL)).
 pub const STAGE_SIMULATE: &str = "simulate the stock";
 
+/// The part of the run its shares fill; the rest is the toolpath's check,
+/// the model-file check and posting, after the last share, so the figure
+/// reads the whole total only when the run is done (decision 0218).
+const WORK_END: f64 = 0.99;
+
 /// The part of an operation's share of the run its toolpath takes, when the
 /// operation is also run through the stock simulation; the simulation takes
 /// the rest. A rough estimate (issue 201): the figure moves with the work
@@ -185,7 +190,11 @@ pub(crate) fn regenerate(
     #[allow(clippy::cast_precision_loss)]
     let share = |stage, at: usize, from: f64, to: f64| {
         let at = at as f64;
-        progress.share(stage, (at + from) / shares, (at + to) / shares)
+        progress.share(
+            stage,
+            (at + from) / shares * WORK_END,
+            (at + to) / shares * WORK_END,
+        )
     };
     let settings = project.simulation();
     let mut regeneration = Regeneration {
@@ -354,7 +363,10 @@ pub(crate) fn regenerate(
         for (k, state) in setups.into_iter().enumerate() {
             let own = share(STAGE_SIMULATE, operations.len() + k, 0.0, 1.0);
             #[allow(clippy::cast_precision_loss)]
-            progress.reach(STAGE_SIMULATE, (operations.len() + k) as f64 / shares);
+            progress.reach(
+                STAGE_SIMULATE,
+                (operations.len() + k) as f64 / shares * WORK_END,
+            );
             context.check_cancelled()?;
             let within = JobContext::new(context.cancel, &own);
             let setup = project.setup(state.id);
@@ -666,6 +678,52 @@ mod tests {
         assert!(values.iter().any(|v| *v > 0 && *v < third), "{values:?}");
         let comparison = reports.iter().find(|r| r.stage == STAGE_SIMULATE).unwrap();
         assert!(comparison.done >= 2 * third, "{reports:?}");
+    }
+
+    /// Cancels the run when the figure first reads the whole total.
+    struct CancelAtTheEnd(CancelToken);
+
+    impl ProgressSink for CancelAtTheEnd {
+        fn report(&self, progress: Progress) {
+            if progress.done == crate::jobs::RUN_PROGRESS_TOTAL {
+                self.0.cancel();
+            }
+        }
+    }
+
+    #[test]
+    fn req_ui_09_the_figure_reaches_the_total_only_when_the_run_is_done() {
+        // CodeRabbit on pull request 281: the last share ended at the total,
+        // so the run read 100 % while the toolpath was still checked and
+        // posted. Decision 0218: 100 % means done. A run cancelled the moment
+        // it reads the total has nothing left to cancel.
+        let mut p = TestProject::new("progress-end");
+        p.app.register_strategy(Arc::new(OneRing)).unwrap();
+        p.add_operation("Ring", "one_ring");
+        let post = crate::posting::PostSelection::Builtin("linuxcnc".to_owned());
+        for simulate in [false, true] {
+            p.app.cache.retain_only(&[]);
+            let cancel = CancelToken::new();
+            let sink = CancelAtTheEnd(cancel.clone());
+            let context = JobContext::new(&cancel, &sink);
+            let result = regenerate(
+                p.app.location(),
+                p.app.project(),
+                &p.app.strategies,
+                Some((&post, crate::posting::OutputGrouping::default())),
+                simulate,
+                &p.app.cache,
+                &p.app.record,
+                None,
+                &context,
+            );
+            let regeneration = result.unwrap_or_else(|e| panic!("simulate {simulate}: {e}"));
+            assert!(!regeneration.gcode.is_empty(), "simulate {simulate}");
+            assert!(
+                cancel.is_cancelled(),
+                "simulate {simulate}: never read 100 %"
+            );
+        }
     }
 
     /// Cancels the run at the first report of `stage`.

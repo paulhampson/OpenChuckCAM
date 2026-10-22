@@ -1659,3 +1659,22 @@ fn req_ui_09_the_job_in_the_status_bar_opens_the_jobs_tab() {
     assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
     assert!(!rig.shell.settings.dock.collapsed);
 }
+
+#[test]
+fn req_ui_09_req_ui_16_the_job_in_the_status_bar_opens_a_dock_the_small_window_closed() {
+    // CodeRabbit on pull request 281: the small-window rule closes the dock
+    // without the user's setting, and the status bar left it closed.
+    let mut rig = Rig::cube("frame-jobs-small", None);
+    rig.size = egui::vec2(1300.0, 700.0);
+    rig.frame(Vec::new());
+    assert!(rig.shell.collapsed(Region::Dock));
+    assert!(!rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.collapsed(Region::Dock));
+}
