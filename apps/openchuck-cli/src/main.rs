@@ -2070,6 +2070,7 @@ mod tests {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: leave
                 .map(|v| ("stock_to_leave".to_owned(), ParameterValue::Number(v)))
                 .into_iter()

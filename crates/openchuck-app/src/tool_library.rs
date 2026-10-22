@@ -1361,9 +1361,11 @@ pub fn operation_spindle(project: &Project, operation: OperationId) -> Option<Op
 /// The command that gives operation `operation` the spindle speed in the
 /// typed `text` (revolutions per minute), or takes its own speed away when
 /// `text` is `None`, so the tool's cutting data applies again. Text that is
-/// not a number above 0 is refused in plain words (NFR-07).
+/// not a number above 0 is refused in plain words (NFR-07). A speed the user
+/// sets drops the operation's material preset (decision record 0230).
 pub fn set_operation_spindle(
     project: &Project,
+    registry: &openchuck_path::Registry,
     operation: OperationId,
     text: Option<&str>,
 ) -> Result<Command, AppError> {
@@ -1388,6 +1390,9 @@ pub fn set_operation_spindle(
         .cloned()
         .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
     changed.spindle_speed = speed;
+    if speed.is_some() {
+        crate::preset::drop_preset(project, registry, &mut changed);
+    }
     Ok(Command::Replace(Item::Operation(changed)))
 }
 

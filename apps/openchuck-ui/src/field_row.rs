@@ -601,6 +601,39 @@ pub fn choice_row(
     .inner
 }
 
+/// A row of a drop-down list whose closed box shows `shown`, which may be
+/// none of the options (a material preset that was dropped shows "No
+/// preset"). Returns the index chosen this frame, unless it is `current`.
+pub fn list_row(
+    ui: &mut egui::Ui,
+    key: &str,
+    label: &str,
+    description: &str,
+    (options, current): (&[&str], Option<usize>),
+    shown: &str,
+) -> Option<usize> {
+    ui.horizontal(|ui| {
+        label_cell(ui, label, description, false);
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt(("list", key))
+            .selected_text(shown)
+            .width(ui.available_width().max(80.0))
+            .show_ui(ui, |ui| {
+                for (i, option) in options.iter().enumerate() {
+                    if ui.selectable_label(current == Some(i), *option).clicked()
+                        && current != Some(i)
+                    {
+                        chosen = Some(i);
+                    }
+                }
+            })
+            .response
+            .on_hover_text(description);
+        chosen
+    })
+    .inner
+}
+
 /// The decimal places a quantity is shown with (14.3): positions and lengths
 /// in mm to 3, degrees to 2, feeds whole; a plain number as it is.
 pub fn places(unit: &str) -> Option<usize> {

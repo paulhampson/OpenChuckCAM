@@ -110,6 +110,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId) {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -227,6 +228,7 @@ fn two_tools(app: &mut Application, first_number: u32, second_number: u32) -> (T
         check: Vec::new(),
         restriction_options: Default::default(),
         spindle_speed: None,
+        material: None,
         parameters: BTreeMap::new(),
     };
     app.execute(Command::Add {

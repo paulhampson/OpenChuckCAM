@@ -35,6 +35,7 @@
 //!         check: Vec::new(),
 //!         restriction_options: Default::default(),
 //!         spindle_speed: None,
+//!         material: None,
 //!         parameters: Default::default(),
 //!     }),
 //!     Placement::End,

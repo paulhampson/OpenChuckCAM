@@ -200,6 +200,7 @@ fn build_with_mesh(
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: parameters
                 .into_iter()
                 .map(|(k, v)| (k.to_owned(), v))

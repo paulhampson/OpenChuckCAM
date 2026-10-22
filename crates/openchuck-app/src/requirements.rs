@@ -57,19 +57,18 @@ impl Requirement {
     }
 }
 
-/// The cutting data of the operation's tool for its setup's stock material,
-/// with the tool and the material, when there is one.
+/// The cutting data of the operation's tool for its preset's material (the
+/// one chosen for the operation, else the setup's; decision 0230), with the
+/// tool and the material, when there is one.
 pub(crate) fn cutting_data<'a>(
     project: &'a Project,
-    operation: &Operation,
+    operation: &'a Operation,
 ) -> Option<(
     &'a str,
     &'a openchuck_project::ToolSnapshot,
     &'a openchuck_types::tool::CuttingData,
 )> {
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref())?;
+    let material = crate::preset::material_of(project, operation)?;
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id))?;
@@ -106,9 +105,7 @@ pub(crate) fn missing_spindle_message(project: &Project, operation: &Operation) 
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id))
         .map(|t| t.name.as_str());
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref());
+    let material = crate::preset::material_of(project, operation);
     let fix = match (tool, material) {
         (Some(tool), Some(material)) => format!(
             "Enter a spindle speed for this operation, or add cutting data for \"{material}\" to the tool \"{tool}\" in the tool library"

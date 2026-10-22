@@ -62,6 +62,7 @@ fn operation(n: u128) -> Operation {
         check: Vec::new(),
         restriction_options: Default::default(),
         spindle_speed: None,
+        material: None,
         parameters: BTreeMap::from([
             ("stepover".into(), ParameterValue::Number(0.5)),
             ("passes".into(), ParameterValue::Integer(3)),
@@ -1834,6 +1835,55 @@ fn req_tl_05_req_prj_04_an_operation_spindle_speed_round_trips_and_needs_schema_
         text.replacen(&current(), "schema = 15\n", 1)
     });
     assert_eq!(file::load(&older).unwrap(), sample());
+}
+
+/// An operation's preset material (issue 197; decision 0230) is written
+/// only when chosen, survives save and load, and needs schema 18.
+#[test]
+fn req_tl_05_req_prj_04_an_operation_material_round_trips_and_needs_schema_18() {
+    let mut p = sample();
+    let id = p.operations()[0].id;
+    let mut edited = p.operation(id).unwrap().clone();
+    edited.material = Some("Hard maple".to_owned());
+    p.replace(Item::Operation(edited)).unwrap();
+    let dir = temp_dir("schema-18");
+    file::save(&p, &dir).unwrap();
+    let tree = read_tree(&dir);
+    assert!(
+        tree.values()
+            .any(|t| t.contains("material = \"Hard maple\""))
+    );
+    assert_eq!(file::load(&dir).unwrap(), p);
+    // A file that says schema 17 cannot hold it.
+    let old = copy_tree_with(&tree, "schema-18-as-17", |_, text| {
+        text.replacen(&current(), "schema = 17\n", 1)
+    });
+    let err = file::load(&old).unwrap_err().to_string();
+    assert!(
+        err.contains("material") && err.contains("schema 18"),
+        "{err}"
+    );
+    // An older operation without it loads with none: the setup's material.
+    let plain = temp_dir("schema-18-plain");
+    file::save(&sample(), &plain).unwrap();
+    let older = copy_tree_with(&read_tree(&plain), "schema-18-plain-as-17", |_, text| {
+        text.replacen(&current(), "schema = 17\n", 1)
+    });
+    let back = file::load(&older).unwrap();
+    assert_eq!(back, sample());
+    assert!(back.operations().iter().all(|o| o.material.is_none()));
+}
+
+#[test]
+fn req_nfr_07_an_empty_operation_material_is_refused() {
+    let mut p = sample();
+    let id = p.operations()[0].id;
+    for bad in ["", "   "] {
+        let mut edited = p.operation(id).unwrap().clone();
+        edited.material = Some(bad.to_owned());
+        let err = p.replace(Item::Operation(edited)).unwrap_err().to_string();
+        assert!(err.contains("material"), "{err}");
+    }
 }
 
 #[test]
