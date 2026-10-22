@@ -667,6 +667,20 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
         !timeline.is_empty(),
         "{what}: the timeline is not wholly in the dock"
     );
+    // The out-of-date banner comes under the controls, never over them.
+    if let Some((_, title)) = texts.iter().find(|(t, _)| *t == super::out_of_date::TITLE) {
+        let controls = texts
+            .iter()
+            .filter(|(t, _)| ["⏮", "⏭", "Skip stock simulation"].contains(t))
+            .map(|(_, r)| *r)
+            .chain(timeline.iter().copied());
+        for control in controls {
+            assert!(
+                title.top() >= control.bottom() - 0.5,
+                "{what}: the banner {title:?} is above a control {control:?}"
+            );
+        }
+    }
     for (i, (a, ra)) in texts.iter().enumerate() {
         for (b, rb) in texts.iter().skip(i + 1) {
             assert!(
@@ -702,7 +716,9 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
     // at 100% and 120%, every playback control fits without scrolling; with
     // the out-of-date banner (issue 260) or in a shorter dock the transport
     // and the timeline stay in their strip and the rest scrolls, its bar in a
-    // strip of its own; a playback window (issue 205) changes nothing.
+    // strip of its own; a playback window (issue 205) changes nothing. The
+    // banner comes under the controls at every dock height, and the dock
+    // never grows past the height it was given.
     let all = [
         "Speed",
         "Go to move",
@@ -746,6 +762,26 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
             &rig,
             &[super::out_of_date::TITLE],
             &format!("{zoom}: out of date"),
+        );
+        // The owner's feedback on issue 260: in a shorter dock the banner
+        // neither covers a control nor pushes one out of the dock; it
+        // scrolls under them. Down to the shortest dock, the dock keeps its
+        // height and its controls stay in it.
+        for dock in [200.0, 170.0] {
+            rig.shell.settings.dock.size = dock;
+            rig.settle();
+            check_dock(&rig, &[], &format!("{zoom}: out of date, dock {dock}"));
+        }
+        rig.shell.settings.dock.size = openchuck_app::settings::region::DOCK.1;
+        rig.settle();
+        let (drawn, asked) = dock_heights(&rig);
+        assert!(
+            (drawn - asked).abs() < 0.5,
+            "{zoom}: the shortest dock grew to {drawn} of {asked}"
+        );
+        assert!(
+            !rig.bar_rects().is_empty(),
+            "{zoom}: in the shortest dock everything scrolls, with a bar to say so"
         );
 
         rig.shell.undo();
