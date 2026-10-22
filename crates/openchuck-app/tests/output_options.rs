@@ -526,7 +526,7 @@ fn req_gc_12_the_sheet_lists_every_tool_used_with_its_controller_number() {
         [
             "2",
             "Finish B",
-            "helical_finishing",
+            "Helical finishing",
             "Setup 1",
             "T2 6 mm ball",
             "10000",
