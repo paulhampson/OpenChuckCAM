@@ -9,7 +9,7 @@
 - **What it amends:** nothing yet. The requirement, the profile and post fields, and the verification rows below are proposals. `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` are not edited (CLAUDE.md).
 - **Date:** 22 Oct 2026.
 - **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
-- **Open items:** OI-930 to OI-936 are new. OI-68 (arcs are not replayed) is touched but unchanged. OI-932 (the merge tolerance) stays open as deferred, with Merge.
+- **Open items:** OI-930 to OI-937 are new (OI-937 added after the published sources were read). OI-68 (arcs are not replayed) is touched but unchanged. OI-932 (the merge tolerance) stays open as deferred, with Merge.
 - **Number note:** the lane was given 0222 and 0223. This investigation needs one record, so 0223 stays free.
 
 ## Context
@@ -165,20 +165,22 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
 - **Hardware check for the gate 4 procedure: the Z1 block-rate air cut.** The owner decided to add it to the gate 4 procedure now, in lane GATES' draft pull request #284 (`docs/z1-gates-4-5-test-instructions.md` on that branch; this record does not edit it). The specification below is complete enough to copy.
   - **Program.**
     - `spikes/sp14-short-moves/air-cut/block_rate_z1.nc` on `spike/sp-14-short-moves`, written by `gen_block_rate.py` beside it. Copy it into the gates lane's test files, or write it again from this specification.
-    - It has 26,246 lines; the longest is 50 characters, under the 63-character limit of OI-933.
+    - It has 27,966 lines; the longest is 50 characters, under the 63-character limit of OI-933.
     - Header `G90 G21 G17`, `G54`, then `G0 X0 Y0 Z50 A0`.
     - Footer `G0 Z50`, `G92.4 A0 S0`, `G53 G0 Z-3`, `G28`, `M2`, as the Z1 post writes it (decision 0007).
     - No tool change and no spindle.
   - **Sections.**
-    - Twelve sections. Each is 100 mm of X at F1000, with a nominal time of 6.0 s.
-    - Each is made of equal collinear `G1` blocks of one block time: 20, 10, 5, 3, 2 and 1 ms. The block lengths are 0.333, 0.167, 0.083, 0.050, 0.033 and 0.017 mm, so a section has 300, 600, 1,200, 2,000, 3,000 or 6,000 lines.
+    - Fourteen sections. Each is 100 mm of X at F1000, with a nominal time of 6.0 s.
+    - Each is made of equal collinear `G1` blocks of one block time: 20, 10, 7, 5, 3, 2 and 1 ms. The block lengths are 0.333, 0.167, 0.117, 0.083, 0.050, 0.033 and 0.017 mm, so a section has 300, 600, 857, 1,200, 2,000, 3,000 or 6,000 lines.
+    - The 7 ms section was added after the published Smoothieboard line rates (*The 5 ms figure*), which allow a floor between 5 and 10 ms.
+    - The sections are separated by a Z marker rather than a `G4` dwell, because Makera's and Smoothie's pages disagree on the units of `G4 P` (OI-937).
     - Every section is longer than the 224-line receive buffer plus the 32-block queue (about 256 lines). A section at its predicted time therefore shows that the supply keeps up over time, not that the buffer covered it.
     - Sections alternate direction (X 0 to 100, then 100 to 0) to stay inside 100 mm of X travel.
     - Each section starts after a marker: `G1 Z55 F1000`, then `G1 Z50 F1000`, a visible 5 mm bob of 0.6 s. Start the stopwatch as Z comes back down to 50, and stop it as the next bob starts.
     - Each `G1` line carries X, Y, Z, A and F, written with three decimals as the post writes them (about 43 characters). The link limit is in bytes, so short test lines would flatter the supply rate.
   - **Parts A and B.**
-    - **Part A** (sections 1 to 6): X only.
-    - **Part B** (sections 7 to 12): the same, with A advancing in every block.
+    - **Part A** (sections 1 to 7): X only.
+    - **Part B** (sections 8 to 14): the same, with A advancing in every block.
     - **The A step in part B.** Each block moves A by 60 % of its X length's worth under the Z1 rule: 0.628 degrees per mm of X at Z50, where P = 2π·50 + 30 mm. So X still sets each block's time, and A stays far below its limit.
     - **Why not the 0.2 degree step first proposed.** It cannot hold the short block times. The Z1's A axis is limited to 3600 degrees per minute (decision 0013), so a 0.2 degree step needs at least 3.3 ms. The rule's A term (0.19 mm at r = 50) would also outweigh the X length below 10 ms.
     - Part B exercises the firmware's mixed X and A path (`Robot.cpp:1640-1704`).
@@ -186,7 +188,7 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
 
     | Block time | Stopping limit, mm/min | Predicted section time |
     | --- | --- | --- |
-    | 20, 10, 5, 3, 2 ms | 3,394, 2,400, 1,697, 1,315, 1,073 | 6.0 s |
+    | 20, 10, 7, 5, 3, 2 ms | 3,394, 2,400, 2,008, 1,697, 1,315, 1,073 | 6.0 s |
     | 1 ms | 759 | 7.9 s |
 
     Starting and stopping add about 0.1 s to each section.
@@ -194,7 +196,7 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
   - **What to record.**
     - The firmware version and the controller (ESP32) version.
     - How the file reached the machine (WiFi upload, USB), and that it was played from the machine.
-    - For each of the 12 sections: the stopwatch time, and whether there was audible stutter or a visible pause (yes or no).
+    - For each of the 14 sections: the stopwatch time, and whether there was audible stutter or a visible pause (yes or no).
     - A phone video with sound is a good second record.
   - **Pass and fail, per section.**
     - A section **passes** when its time is within 5 % of its predicted time (6.0 s, or 7.9 s for 1 ms) and it has no audible stutter or pause.
@@ -203,7 +205,7 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
     - The Z1's measured minimum block time is the shortest block time at which both parts pass and every longer block time passes. Record it in the Z1 profile's `min_block_ms`, marked confirmed with the firmware and controller versions (OI-930).
     - If every section passes, record 1 ms, because the planner-depth limit already covers shorter blocks.
     - A 1 ms section near 7.9 s confirms the stopping-distance prediction. One near 6.0 s means the firmware plans differently from its source (issue #2 on the firmware repository). Either way, record it in the decision that sets the value.
-  - **Duration.** About 2 minutes of motion, 79 s fed.
+  - **Duration.** About 2 minutes of motion, 92 s fed.
 
 ### 8. What this does not do
 
@@ -217,9 +219,12 @@ The owner asked whether 5 ms, and 1 ms or 10 ms, is a reasonable default or limi
 
 **Short answer.**
 - **5 ms is not a measured Z1 value.** It is a placeholder: one of the thresholds (1, 2, 5 and 10 ms) chosen to describe the measurements, and the test value of the slow-down golden. No source gives the Z1's block rate, and no source names 5 ms. The check is off on the Z1 until the air cut measures a value (the owner's decision).
-- **The evidence puts the Z1's floor somewhere around 1 to 3 ms per line.** That is inference, set out below. The supply side is closed source and the parse time is unpublished.
+- **The evidence puts the Z1's floor somewhere between about 1 ms and 6 ms per line.** That is inference, set out below.
+  - The firmware source alone suggests 1.2 to 2.2 ms.
+  - Published Smoothieboard rates, read once the owner added network access, span 160 to over 1,000 lines a second from the board's own storage or serial (1 to 6 ms), and as few as 60 lines a second over USB in 2016.
+  - The Z1's supply side is closed source, and no published rate is for a Carvera or a Z1.
 - **Decided.** The default is **off**, and the Z1 profile's value comes from the air cut in item 7 (OI-930), marked confirmed. Until then the Z1 profile ships with the check off (the owner's decision, relayed 22 Oct 2026).
-- **For reference only, not adopted:** a provisional 3 ms with the 32-block window would sit above both estimated floors below (the line supply, and the planner depth at the Z1's maximum feed). It would slow nothing in any job measured. 5 ms with the window would also slow nothing measured; 10 ms would slow pencil.
+- **Not adopted, and no longer supported:** a provisional 3 ms. It sits above the floors worked out from the firmware source, but one published Smoothieboard ran at 160 lines a second, about 6.25 ms a line. So 3 ms could be too short, and the published range backs the owner's decision to keep the check off until it is measured. 5 ms with the window would slow nothing measured; 10 ms would slow pencil.
 
 Each point below is marked **fact** (read in a source), **inference** (worked out from facts) or **not found**.
 
@@ -270,24 +275,55 @@ Each point below is marked **fact** (read in a source), **inference** (worked ou
 | Limit | Reference jobs | Blisk helical / rest (axial) / pencil | Fit with the evidence |
 | --- | --- | --- | --- |
 | 1 ms | Nothing slowed | Nothing slowed | LinuxCNC's hard floor. Below the Z1's estimated link floor of about 1.2 ms per line, so too low for the Z1. |
-| 3 ms | Nothing slowed | Nothing slowed (worst mean 5.6 ms) | Just above the estimated 1.2 to 2.2 ms Z1 floor. The candidate if a value is wanted before the air cut. |
-| 5 ms | Nothing slowed | Nothing slowed by the window. Per block it would slow 382 / 15,139 / 801 blocks. | About twice the estimated floor. Defensible as a cautious value, but nothing measured needs it. |
+| 3 ms | Nothing slowed | Nothing slowed (worst mean 5.6 ms) | Above the 1.2 to 2.2 ms floors from the firmware source, but below the 6.25 ms of a published Smoothieboard at 160 lines a second. Not safe as a provisional value. |
+| 5 ms | Nothing slowed | Nothing slowed by the window. Per block it would slow 382 / 15,139 / 801 blocks. | Inside the published range. Nothing measured needs it. |
 | 10 ms | Nothing slowed | Pencil slowed (its worst mean is 5.6 ms) | Higher than any evidence supports. It costs up to 7 % on pencil per block, less with the window. |
 
-### What could not be reached
+### Published sources (read 22 Oct 2026, after the owner added network access)
 
-The environment's network policy blocked these hosts:
-- wiki.makera.com and community.makera.com (Makera documentation and forum);
-- forum.makerforums.info (Smoothieware forum threads on planner starvation);
-- linuxcnc.org (LinuxCNC's rendered documentation; its source documentation on GitHub was read instead);
-- smoothieware.org and its documentation site.
+The quotes are exact. The downloads stay outside the repository.
 
-github.com pages answered 403 to direct requests; the firmware repositories were read from clones. The owner can allow these hosts under Network access in the cloud environment's settings (https://code.claude.com/docs/en/cloud-environments#network-access), or check Makera's pages by hand. No figure in this section stands in for those sources.
+- **Makera wiki** (wiki.makera.com; all 100 English pages searched, including the Z1 manual, quick start and 4-axis pages, last updated 16 Oct 2026):
+  - **Fact.** https://wiki.makera.com/en/supported-codes (updated 4 Feb 2026, written for the Carvera): "The Carvera firmware is based on Smoothieware". It lists G2/G3 and "G4 Dwell P<seconds>".
+  - **Fact.** The Carvera software manual: "The current task cannot be stopped immediately when the task is paused or held. It has to wait for the buffer zone finish." It gives no buffer size.
+  - **Not found.** Any line-length or comment limit, block rate, look-ahead, segment or tolerance advice, or stutter troubleshooting. Nothing on streaming against playing from the machine.
+- **Smoothieware** (smoothieware.org; the pages show no dates):
+  - **Fact.** https://smoothieware.org/configuration-options:
+    - `planner_queue_size`: "32 is optimal for most machines… Must be at least 8 for proper operation".
+    - `minimum_planner_speed`: "A value of 0.0 (default) allows the planner to decelerate to a complete stop at corners when needed".
+    - `junction_deviation`: "0.01 - Maximum precision for critical work".
+
+    These agree with the Z1 source: 32 blocks, 0 and 0.01.
+  - **Fact.** https://smoothieware.org/supported-g-codes: "G4 → Dwell S or P , In grbl mode P is float seconds". This disagrees with Makera's "P<seconds>" (OI-937). No post writes `G4` today.
+  - **Not found.** A block rate, a line-length limit, a stutter page.
+- **Smoothie users' measurements** (forum.makerforums.info; Smoothieboard LPC1769, not the Z1):
+  - **Fact.** Topic 76554:
+    - wolfmanjm, 11 Jun 2016: "if you have lots of very small segments, then yes USB is too slow to keep the buffer full… This can even happen when printing from SD card with very small segments. Buffering will not help if the movements complete faster than the planner can be filled."
+    - spe3Dy, 13 Jun 2016: over USB "up to 60 lines per second, movement was smooth. At 70… hickups"; from SD "400 lines per second totally smooth".
+    - spe3Dy, 24 Jun 2016: "Smoothie onboard SD starts choking at slightly over 900 lines per second."
+  - **Fact.** Topic 76277, 30 Apr 2017:
+    - mayhem2408: "about 160 lines of gcode per second processed from the card… over serial… still got 160 lines per second".
+    - Arthur Wolf (Smoothieware): "Smoothie is known to go over 1k lines/seconds".
+  - **Fact.** Topic 8795, 10 Dec 2016:
+    - Todd Fleming (LaserWeb): his CAM limits segments to ".5 mm default" to avoid stalls, which he found in recorded waveforms as "spots where both axis go quiet".
+    - Arthur Wolf: "It's going to be different based on the machine's config".
+  - **Inference.** These rates are 1 to 17 ms a line, depending on board, firmware build and transport. The Z1's transport is its own serial link from the controller board, which none of them measured. This is why the value must be measured on the Z1.
+- **LinuxCNC 2.9** (linuxcnc.org, pages updated 17 Oct 2026):
+  - **Fact.** `gcode/overview`: "a maximum (currently 256) to the number of characters allowed on a line".
+  - **Fact.** `config/ini-config`: "min_length ~= v_req * t_c… any segments shorter than min_length will slow the path down", and "very tiny segments will slow things down significantly".
+  - **Fact.** `gcode/g-code`: G61 "Moves will slow or stop as needed to reach every programmed point", and G64 P with the Naive CAM Detector Q, as quoted above.
+- **Line length (OI-933).** No Makera or Smoothie page gives a line-length limit, so the 63 characters found in the Z1 source is neither confirmed nor contradicted. LinuxCNC allows 256.
+
+### What still could not be reached
+
+- community.makera.com: the proxy gateway answers 502 to the connection (an upstream failure, or still outside the policy).
+- smoothieware.github.io: the policy denies it (403).
+- forum.makerforums.info rate-limited the reader after seven topics. Topics 8508, 82833 and 16383 were seen only as search snippets and are not cited.
 
 ### What the owner will measure instead (decided)
 
 The air cut in item 7, added to the gate 4 procedure in #284, measures the Z1's minimum block time directly:
-- its sections bracket the estimated 1.2 to 2.2 ms floors, with 3, 5, 10 and 20 ms as controls;
+- its sections cover the whole range above, at 1, 2, 3, 5, 7, 10 and 20 ms;
 - each section is longer than both buffers;
 - it takes about 2 minutes.
 
@@ -313,3 +349,4 @@ Its result sets the Z1 profile's value (OI-930); its pass rule is in item 7.
   - OI-934: G61 in the LinuxCNC post.
   - OI-935: the schema claim.
   - OI-936: arc fitting on A-free passes.
+  - OI-937: the units of `G4 P` on the Z1 (Makera and Smoothie disagree).
