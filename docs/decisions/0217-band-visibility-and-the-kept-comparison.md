@@ -1,6 +1,6 @@
 # 0217: Band visibility built, the comparison kept with the cached stock, and the rig waits for playback (lane SIMPOLISH; issue 216; OI-567, OI-627, OI-840)
 
-- **Status:** proposed (lane SIMPOLISH, 22 Oct 2026). Awaits the owner's acceptance.
+- **Status:** accepted (22 Oct 2026, by the owner directly in the lane SIMPOLISH session: "Accept 0217"). Proposed by lane SIMPOLISH the same day.
 - **What it amends:** nothing in the requirements or the architecture. It builds SIM-15 as [decision 0163](0163-band-visibility-requirement-proposal.md) (accepted) agreed it, and adds the choices below to the interface specification, section 11.5, edited in the same change. Item 2 follows [decision 0190](0190-cached-stock-per-operation.md) (accepted): its consequence "a Simulate run with nothing changed still compares the final stock with the part again" no longer holds. Item 1's histogram row keeps [decision 0162](0162-simulation-results-histogram-and-probe.md)'s content; only the share loses its brackets so the row fits.
 - **Date:** 22 Oct 2026.
 - **Requirements:** SIM-15 (built), SIM-05, SIM-11 (the probe), SIM-14, NFR-04, NFR-06, NFR-12, UI-16.
