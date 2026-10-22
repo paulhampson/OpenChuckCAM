@@ -453,6 +453,8 @@ fn req_prj_04_req_nfr_07_an_older_tab_with_auto_or_a_bad_offset_is_refused() {
     let setup =
         std::fs::read_to_string(fixture.join("setups/00000000-0000-0000-0000-00000000000a.toml"))
             .unwrap()
+            // A Windows checkout may give the fixture CRLF line endings.
+            .replace("\r\n", "\n")
             .replace("schema = 15", "schema = 16")
             .replace("x_start = 3.0\n", "x_start = 3.0\nauto = \"head\"\n");
     std::fs::write(
@@ -469,6 +471,8 @@ fn req_prj_04_req_nfr_07_an_older_tab_with_auto_or_a_bad_offset_is_refused() {
     let setup =
         std::fs::read_to_string(fixture.join("setups/00000000-0000-0000-0000-00000000000a.toml"))
             .unwrap()
+            // A Windows checkout may give the fixture CRLF line endings.
+            .replace("\r\n", "\n")
             .replace("schema = 15", "schema = 16");
     for (from, to, what) in [
         (
