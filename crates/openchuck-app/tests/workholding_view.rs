@@ -19,7 +19,8 @@ use openchuck_app::setup::{
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, PartFacing, check_draft, default_chips,
-    default_tabs_state, held_span, holding_hint, new_tab, part_facing, set_layout, set_shape,
+    default_tabs_state, grip_warning, held_span, holding_hint, new_tab, part_facing, set_layout,
+    set_shape,
 };
 use openchuck_app::{Application, Command, Threads};
 use openchuck_types::units::Degrees;
@@ -846,4 +847,38 @@ fn req_ui_25_a_tab_names_its_zone_and_its_narrowest_against_the_tools() {
     let (line, warning) = narrowest_line(&cylinder_tab(-12.0, 3.0, 8.0), &tools);
     assert!(!warning, "{line}");
     assert_eq!(narrowest_line(&head, &[]).0, "4.000 mm");
+}
+
+#[test]
+fn req_set_09_the_grip_field_says_how_much_of_the_part_the_grip_covers() {
+    // Stock X -16 to 16; part X -10 to 15.175 (ends 0.825 mm short).
+    let part = openchuck_app::setup::PartExtent {
+        bounds: Aabb {
+            min: Point3::new(-10.0, -5.0, -5.0),
+            max: Point3::new(15.175, 5.0, 5.0),
+        },
+        radius: Millimetres(5.0),
+    };
+    let w = Workholding {
+        start: Some(held(4.0)),
+        end: Some(held(5.0)),
+        ..Workholding::default()
+    };
+    let stock = cyl();
+    // The end grip covers X 11 to 15.175: 4.175 mm.
+    let end = grip_warning(&w, End::End, Some(&stock), Some(&part)).expect("a warning");
+    assert!(end.contains("4.175 mm of the part"), "{end}");
+    assert!(end.contains("never machined"), "{end}");
+    // The start grip ends at X -12, clear of the part.
+    assert_eq!(
+        grip_warning(&w, End::Start, Some(&stock), Some(&part)),
+        None
+    );
+    // Without the part, or without a held region, there is nothing to say.
+    assert_eq!(grip_warning(&w, End::End, Some(&stock), None), None);
+    let none = Workholding::default();
+    assert_eq!(
+        grip_warning(&none, End::End, Some(&stock), Some(&part)),
+        None
+    );
 }

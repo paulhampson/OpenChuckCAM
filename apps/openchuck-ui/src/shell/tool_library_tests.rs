@@ -317,7 +317,7 @@ fn req_ui_16_req_tl_01_the_library_panes_do_not_move_with_the_mouse() {
         // Frames run only while the mouse moves in the application, so a
         // pane that creeps a little each frame must be caught from the
         // first frames on, not after it has settled.
-        let headings = ["CUTTING DATA BY MATERIAL", "FLAT END MILLS"];
+        let headings = ["CUTTING DATA BY MATERIAL", "\u{23f7} FLAT END MILLS (1)"];
         for _ in 0..3 {
             rig.frame(Vec::new());
         }
@@ -523,5 +523,247 @@ fn req_tl_05_req_nfr_12_the_operation_has_a_spindle_speed_row() {
     rig.shell.tool_act(op, ToolAct::Spindle("12000".into()));
     rig.shell.tool_act(op, ToolAct::SpindleReset);
     assert_eq!(spindle(&rig), None);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// The centre of the first text that contains `needle`.
+fn centre_of(rig: &Rig, needle: &str) -> egui::Pos2 {
+    rig.text_rects()
+        .into_iter()
+        .find(|(t, _)| t.contains(needle))
+        .unwrap_or_else(|| panic!("no text {needle:?}"))
+        .1
+        .center()
+}
+
+/// A library with a Makera Z1 tool set holding one ball end mill, and one
+/// flat end mill that no machine holds.
+fn library_with_machine(folder: &std::path::Path) -> (ToolId, ToolId) {
+    use openchuck_app::tools::{ControllerMapping, ToolSet, ToolSetEntry};
+    let ball = library_with(folder, ToolType::BallEnd, "Z1 ball");
+    let flat = library_with(folder, ToolType::FlatEnd, "Loose flat");
+    let mut library = ToolLibrary::open(folder).unwrap();
+    library
+        .save_tool_set(ToolSet {
+            machine: "Makera Z1".into(),
+            entries: vec![ToolSetEntry {
+                tool: ball,
+                controller: ControllerMapping::numbered(1),
+            }],
+        })
+        .unwrap();
+    (ball, flat)
+}
+
+#[test]
+fn req_tl_11_req_ui_15_the_list_has_foldable_machine_and_standard_sections_that_are_remembered() {
+    let folder = library_folder("sections");
+    let (ball, _) = library_with_machine(&folder);
+    let mut rig = Rig::cube("toollib-sections", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(ball)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for text in [
+        "MAKERA Z1 (1)",
+        "STANDARD TOOLS (1)",
+        "BALL END MILLS (1)",
+        "FLAT END MILLS (1)",
+        "Loose flat",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // Folding the type group hides its tools; the section stays.
+    rig.click(centre_of(&rig, "FLAT END MILLS (1)"));
+    rig.frame(Vec::new());
+    assert!(rig.shows("FLAT END MILLS (1)"));
+    assert!(!rig.shows("Loose flat"), "a folded group shows no tools");
+    assert!(rig.shows("STANDARD TOOLS (1)"));
+    // Folding the machine section hides its groups.
+    rig.click(centre_of(&rig, "MAKERA Z1 (1)"));
+    rig.frame(Vec::new());
+    assert!(!rig.shows("BALL END MILLS (1)"));
+    // Both folds are in the settings, per user (UI-15).
+    let view = rig.shell.settings.tool_library.clone();
+    assert!(view.is_folded("machine:makera z1"));
+    assert!(view.is_folded("standard/flat-end"));
+    // Closing and opening the window again keeps them.
+    rig.shell.tool_library.click(Chosen::Library(ball));
+    rig.shell.tool_library.close_for_test();
+    rig.frame(Vec::new());
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("MAKERA Z1 (1)") && !rig.shows("BALL END MILLS (1)"));
+    assert!(!rig.shows("Loose flat"));
+    // Unfolding shows them again.
+    rig.click(centre_of(&rig, "MAKERA Z1 (1)"));
+    rig.frame(Vec::new());
+    assert!(rig.shows("BALL END MILLS (1)"));
+    assert!(
+        !rig.shell
+            .settings
+            .tool_library
+            .is_folded("machine:makera z1")
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_04_the_size_filter_hides_tools_keeps_its_state_and_is_cleared_by_hand() {
+    use openchuck_app::tool_library::{SizeFilter, ToolFilter};
+    let folder = library_folder("filter");
+    let (ball, _) = library_with_machine(&folder);
+    // The new tools are 6 mm ball and 6 mm flat: make the flat one 10 mm.
+    {
+        let mut library = ToolLibrary::open(&folder).unwrap();
+        let mut flat = library
+            .tools()
+            .find(|t| t.name == "Loose flat")
+            .unwrap()
+            .clone();
+        flat.tool.diameter = openchuck_app::tools::Millimetres(10.0);
+        flat.tool.shank_diameter = openchuck_app::tools::Millimetres(10.0);
+        tool_library::save_draft(&mut library, &flat, &[]).unwrap();
+        let mut ball = library.get(ball).unwrap().clone();
+        ball.tool.diameter = openchuck_app::tools::Millimetres(6.0);
+        ball.tool.shank_diameter = openchuck_app::tools::Millimetres(6.0);
+        tool_library::save_draft(&mut library, &ball, &[]).unwrap();
+    }
+    let mut rig = Rig::cube("toollib-filter", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell.settings.tool_library.filter = ToolFilter {
+        diameter: SizeFilter {
+            exact: "10".into(),
+            ..SizeFilter::default()
+        },
+        ..ToolFilter::default()
+    };
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(ball)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Loose flat"));
+    // The machine section had only the 6 mm ball: gone with its group.
+    assert!(!rig.shows("MAKERA Z1 ("), "a filter hides empty sections");
+    assert!(rig.shows("Clear filter"));
+    // Closed and opened again, the filter is still on (no reset).
+    rig.shell.tool_library.close_for_test();
+    rig.frame(Vec::new());
+    rig.shell.open_tool_library(Purpose::Browse, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Loose flat") && !rig.shows("MAKERA Z1 ("));
+    // Clear filter empties it by hand and the machine section is back.
+    rig.click(centre_of(&rig, "Clear filter"));
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.tool_library.filter.is_empty());
+    assert!(rig.shows("MAKERA Z1 (1)"));
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_12_a_default_tool_shows_its_dimensions_read_only_and_copies_to_edit() {
+    let folder = library_folder("default");
+    let mut library = ToolLibrary::open(&folder).unwrap();
+    library.install_defaults().unwrap();
+    let default = library
+        .tools()
+        .find(|t| ToolType::of(&t.tool.shape) == ToolType::BullNose)
+        .unwrap()
+        .clone();
+    let mut rig = Rig::cube("toollib-default", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(default.id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    for text in [
+        "A default tool: it cannot be edited",
+        "Copy to edit",
+        "Diameter",
+        "Flute length",
+        "Overall length",
+        "Shank diameter",
+        "Corner radius",
+        "copy it to edit",
+    ] {
+        assert!(rig.shows(text), "{text}");
+    }
+    // Nothing to save or change in a default.
+    assert!(!rig.shows("Saved in the library"));
+    assert!(!rig.shows("Add material"));
+    assert!(!rig.shows("Edit the profile"));
+    // The copy is a new library draft; the default is unchanged.
+    rig.click(centre_of(&rig, "Copy to edit"));
+    let Some(Chosen::Library(copy)) = rig.shell.tool_library.chosen() else {
+        panic!("{:?}", rig.shell.tool_library.chosen())
+    };
+    assert_ne!(copy, default.id);
+    rig.frame(Vec::new());
+    assert!(rig.shows("New: not saved yet"));
+    assert!(!rig.shows("A default tool: it cannot be edited"));
+    assert!(rig.shows(&format!("{} copy", default.name)));
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    assert_eq!(reread.get(default.id), Some(&default));
+    assert!(reread.get(copy).is_some());
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_01_esc_in_a_text_field_ends_the_edit_and_a_second_esc_closes_the_window() {
+    // OI-536: Esc in a text field ended the edit and acted on the window too.
+    let folder = library_folder("esc-field");
+    let id = library_with(&folder, ToolType::FlatEnd, "6 mm flat");
+    let mut rig = Rig::new(Shell::with_settings(false, None, None), Vec::new());
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    // The search box has the keyboard: Esc ends the edit, the window stays.
+    rig.click(centre_of(&rig, "Search tools"));
+    rig.frame(Vec::new());
+    assert!(rig.ctx.egui_wants_keyboard_input());
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(rig.shell.tool_library.is_open(), "the first Esc closed it");
+    assert!(!rig.ctx.egui_wants_keyboard_input());
+    // With no field editing, Esc closes the window.
+    rig.press(Key::Escape, Modifiers::NONE);
+    rig.frame(Vec::new());
+    assert!(!rig.shell.tool_library.is_open());
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
+fn req_tl_11_req_tl_12_a_changed_tool_set_number_of_a_default_tool_can_be_saved_or_cancelled() {
+    // The default tool is read-only, but its machine tool set number is the
+    // machine's (decision 0199 item 6): a change must offer Save and Cancel.
+    let folder = library_folder("default-number");
+    let mut library = ToolLibrary::open(&folder).unwrap();
+    library.install_defaults().unwrap();
+    let id = ToolId::from_u128(0xc0de_0001_0000_4000_8000_0000_0000_0101);
+    let tool = library.get(id).expect("the first Z1 default tool").clone();
+    let mut rig = Rig::cube("toollib-default-number", None);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("A default tool: it cannot be edited"));
+    assert!(!rig.shows("Changed: not saved yet"));
+    rig.shell.tool_library.set_set_number("Makera Z1", "777");
+    rig.frame(Vec::new());
+    assert!(rig.shows("Changed: not saved yet"), "no way to commit it");
+    assert!(rig.shows("Save") && rig.shows("Cancel"));
+    // Save writes the number; the tool itself is unchanged.
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    assert_eq!(reread.get(id), Some(&tool));
+    let set = reread.tool_set("Makera Z1").unwrap();
+    assert_eq!(set.mapping_for(id).unwrap().number, 777);
     std::fs::remove_dir_all(&folder).ok();
 }

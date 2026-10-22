@@ -160,6 +160,28 @@ impl Rig {
         out
     }
 
+    /// Every text painted with the part of its rectangle that is not clipped away, in paint
+    /// order; texts wholly clipped away are left out.
+    pub(super) fn visible_text_rects(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) => {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clip);
+                    if rect.is_positive() {
+                        out.push((t.galley.text().to_string(), rect));
+                    }
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, clip, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
     pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {

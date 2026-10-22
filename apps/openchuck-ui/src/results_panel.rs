@@ -451,9 +451,7 @@ impl ResultsPanel {
                 let wanted = if reset {
                     Ok(DEFAULT_CELL)
                 } else {
-                    text.trim()
-                        .parse::<f64>()
-                        .map_err(|_| format!("“{}” is not a number of millimetres.", text.trim()))
+                    crate::arith::number(text, Some(3))
                 };
                 match wanted {
                     Ok(cell) if (cell - current).abs() > 1e-12 => {
