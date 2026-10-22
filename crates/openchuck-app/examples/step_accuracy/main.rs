@@ -214,7 +214,7 @@ fn main() -> Result<(), Error> {
     let (model_b, _) = import(&blisk_path(), TessellationSettings::default().linear)?;
     let placement = placement(&model_b)?;
     let placed_b = place(&model_b, &placement)?;
-    let (model_c, _) = import(&blisk_path(), fine)?;
+    let (model_c, _) = import_at(&blisk_path(), fine, args.angular)?;
     let placed_c = place(&model_c, &placement)?;
     let bounds = brep_bounds(&placed_b);
     println!(
@@ -252,7 +252,7 @@ fn main() -> Result<(), Error> {
     if let Some((mesh, _)) = &stl {
         forms.insert(0, ("a (owner's blisk.stl)", Form::Mesh(MeshSurface::new(mesh)?)));
     }
-    println!("form c deflection: {fine} mm");
+    println!("form c deflection: {fine} mm and {} rad", args.angular);
 
     let exact = Cloud::of_faces(&placed_b, SPACING);
     println!("exact samples: {} points, {SPACING} mm apart", exact.len());
