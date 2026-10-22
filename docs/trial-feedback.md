@@ -269,3 +269,11 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | F-93 | Facing | Face the unheld end of a part. | The held end cannot be chosen (SET-09); leaves the held region and tabs uncut (OP-21); follows the setup's workholding. Requirement entry and verification row proposed with the work. Issue [#286](https://github.com/paulhampson/OpenChuckCAM/issues/286). | Answered: a tab at the unheld end is left. Open for the lane: which end when both or neither are held. |
 | F-94 | Facing | Face the sides of a part. | Round bar and box; all round or on chosen sides; depends on the extend-beyond-the-stock option (#211); keeps clear of the held region, tabs and limits (NFR-12). Issue [#287](https://github.com/paulhampson/OpenChuckCAM/issues/287). | Answered: block (box stock) first; several passes with a user-chosen stepdown. Open for the lane: which sides of the block; the round bar later. |
 | F-95 | Facing | Restrict facing to the part, or the part plus tabs, instead of the whole stock. | Three extents (whole stock stays the default); the composite target of decision 0042; the deviation views must show the rest of the stock as left by design (#248, #217). Issue [#288](https://github.com/paulhampson/OpenChuckCAM/issues/288). | Answered: the part's bounding outline; an optional margin the user can enter. |
+
+F-93 to F-95: the owner confirmed "Block" means box stock (#287).
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #289 (F-96).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-96 | Add operation | Strategy list to a drop-down that shows the information for the selected strategy; the layout is unclear and the text alignment messy. | Refines #195 (lane OPCREATE, batch 3A, approved) and shares the control with #242; disabled with a reason for unusable strategies (#206); text only; whole-dialog layout test. Issue [#289](https://github.com/paulhampson/OpenChuckCAM/issues/289). Build 0.14.0, `452724e713a9`. | A screenshot of the current picker. |
