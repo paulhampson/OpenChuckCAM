@@ -553,6 +553,7 @@ impl WorkholdingPanel {
                 warned,
                 enabled: true,
                 focus,
+                number: true,
                 ..TextRow::default()
             },
         );
@@ -1144,6 +1145,7 @@ impl WorkholdingPanel {
                     applied: count.to_string(),
                     problem: problem_of(problem, Field::TabCount(i)),
                     enabled: true,
+                    number: true,
                     ..TextRow::default()
                 },
             );

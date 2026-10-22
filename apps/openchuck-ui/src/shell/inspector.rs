@@ -1241,6 +1241,7 @@ fn rows(
                 warned: None,
                 needs: None,
                 scroll_to: false,
+                number: !row.unit.is_empty(),
             },
         );
         if let Outcome::Commit(typed) = outcome {
