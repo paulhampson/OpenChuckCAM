@@ -315,3 +315,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-104 | Simulate stale message | The out-of-date message is in three places (viewport, playback controls, inspector); one place only; the button should not show the operation number. | Consolidates the #260 rule (lane BUG-SIMSTALE); plain button label ("Run simulation again"); name the operation by name; the step bar mark stays a mark (F-54); the stale result must still not read as current (NFR-12). The playback controls part is already being handled (#260, #262, #293 feedback). Issue [#297](https://github.com/paulhampson/OpenChuckCAM/issues/297). | Answered: the viewport. The dock and the inspector show no copy of the text; the step bar keeps its status mark. Still awaiting-planning (not dispatched). |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #298 (F-105).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-105 | Selection sets | Faces added with "Add selection to set" are not coloured as part of the set. | The faces take the set's colour at once, lose the pending highlight, and the list and count update; one source of truth for a face's colour; same family as F-83 (#254), F-69 (#225), F-90 (#261), F-85 (#256). Issue [#298](https://github.com/paulhampson/OpenChuckCAM/issues/298). | Are the faces in the set and only the colour missing? Which view? |
