@@ -526,6 +526,46 @@ fn req_tl_05_req_nfr_12_the_operation_has_a_spindle_speed_row() {
     std::fs::remove_dir_all(&folder).ok();
 }
 
+/// Applying a cutting data edit that leaves the material name alone keeps its
+/// spelling, even when another tool spells the same material differently
+/// (decision 0197).
+#[test]
+fn req_tl_05_applying_a_speed_edit_keeps_the_materials_spelling() {
+    let folder = library_folder("keep-spelling");
+    let id = library_with_cutting_data(&folder, &["oak"]);
+    library_with_cutting_data(&folder, &["Oak"]);
+    let mut rig = Rig::cube("toollib-spelling", None);
+    crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+    rig.size = egui::vec2(1366.0, 768.0);
+    rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+    rig.shell
+        .open_tool_library(Purpose::Add, Some(Chosen::Library(id)));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let row = centre_of(&rig, "oak");
+    rig.click(row);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    let apply = centre_of(&rig, "Apply");
+    rig.click(apply);
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    rig.shell.tool_library.save();
+    let reread = ToolLibrary::open(&folder).unwrap();
+    let materials: Vec<_> = reread
+        .get(id)
+        .unwrap()
+        .cutting_data
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(materials, vec!["oak".to_owned()]);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
 /// The centre of the first text that contains `needle`.
 fn centre_of(rig: &Rig, needle: &str) -> egui::Pos2 {
     rig.text_rects()

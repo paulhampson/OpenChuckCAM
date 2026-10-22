@@ -886,6 +886,13 @@ fn refuse(reason: &str) -> AppError {
     ))
 }
 
+fn refuse_spindle(reason: &str) -> AppError {
+    AppError::Engine(openchuck_types::Error::invalid(
+        "spindle speed",
+        reason.to_owned(),
+    ))
+}
+
 fn not_found_set(machine: &str) -> ProjectError {
     ProjectError::NotFound {
         kind: "tool set",
@@ -1347,12 +1354,15 @@ pub fn set_operation_spindle(
     let speed = match text {
         None => None,
         Some(text) => {
-            let number = text.trim().trim_end_matches("rpm").trim();
+            let text = text.trim();
+            let number = text.strip_suffix("rpm").unwrap_or(text).trim();
             let value: f64 = number
                 .parse()
-                .map_err(|_| refuse("type the spindle speed as a number in rpm"))?;
+                .map_err(|_| refuse_spindle("type the spindle speed as a number in rpm"))?;
             if !(value.is_finite() && value > 0.0) {
-                return Err(refuse("the spindle speed must be a number above 0 rpm"));
+                return Err(refuse_spindle(
+                    "the spindle speed must be a number above 0 rpm",
+                ));
             }
             Some(openchuck_types::units::SpindleSpeed(value))
         }

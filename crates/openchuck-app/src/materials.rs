@@ -64,9 +64,28 @@ pub fn canonical_material(known: &[String], typed: &str) -> String {
         .unwrap_or_else(|| typed.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
+/// The name an edited cutting data entry is saved under: the entry's own
+/// spelling when `typed` is that name (a speed edit never renames it), else
+/// as [`canonical_material`].
+pub fn edited_material(known: &[String], typed: &str, editing: Option<&str>) -> String {
+    match editing {
+        Some(old) if material_key(old) == material_key(typed) => old.to_owned(),
+        _ => canonical_material(known, typed),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_tl_05_an_edit_keeps_the_entrys_own_spelling() {
+        let known = vec!["Oak".to_owned()];
+        assert_eq!(edited_material(&known, "oak", Some("oak")), "oak");
+        assert_eq!(edited_material(&known, " OAK ", Some("oak")), "oak");
+        assert_eq!(edited_material(&known, "oak", Some("pine")), "Oak");
+        assert_eq!(edited_material(&known, "oak", None), "Oak");
+    }
 
     #[test]
     fn req_tl_05_a_typed_name_takes_the_known_spelling() {

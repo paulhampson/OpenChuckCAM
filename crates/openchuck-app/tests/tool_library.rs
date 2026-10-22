@@ -656,11 +656,12 @@ fn req_tl_05_the_operations_spindle_speed_comes_from_itself_then_the_tool_then_i
     });
     assert_eq!(operation_spindle(&project, op).unwrap().set, None);
     // A bad value is refused in plain words and nothing changes.
-    for bad in ["", "fast", "0", "-5", "NaN", "inf"] {
+    for bad in ["", "fast", "0", "-5", "NaN", "inf", "9000rpmrpm"] {
         let e = set_operation_spindle(&project, op, Some(bad))
             .unwrap_err()
             .to_string();
         assert!(e.contains("spindle speed"), "{bad}: {e}");
+        assert!(!e.contains("tool number"), "{bad}: {e}");
     }
     assert!(set_operation_spindle(&project, OperationId::from_u128(99), None).is_err());
     assert!(operation_spindle(&project, OperationId::from_u128(99)).is_none());

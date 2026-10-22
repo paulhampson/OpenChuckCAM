@@ -559,6 +559,28 @@ fn req_tl_05_the_cutting_feed_follows_the_operations_spindle_speed() {
     app.execute(Command::Replace(Item::Operation(op))).unwrap();
     let text = app.regenerate().unwrap().gcode[0].1.clone();
     assert!(text.contains("S5000 M3"));
-    assert_ne!(text, at_tool_speed, "half the speed, half the feed");
+    // The cutting moves (those that move X) halve; the plunge feed does not.
+    let cutting_feeds = |gcode: &str| -> Vec<f64> {
+        gcode
+            .lines()
+            .filter(|l| l.starts_with('X'))
+            .filter_map(|l| l.rsplit_once('F'))
+            .filter_map(|(_, f)| f.trim().parse().ok())
+            .collect()
+    };
+    let (before, after) = (cutting_feeds(&at_tool_speed), cutting_feeds(&text));
+    assert!(!before.is_empty() && before.len() == after.len());
+    // A feed the machine's limit holds down stays; the rest halve.
+    let mut halved = 0;
+    for (b, a) in before.iter().zip(&after) {
+        assert!(
+            *a <= *b + 0.06,
+            "a slower spindle never feeds faster: {b} -> {a}"
+        );
+        if (a - b / 2.0).abs() <= 0.06 {
+            halved += 1;
+        }
+    }
+    assert!(halved > 0, "half the speed, half the feed");
     std::fs::remove_dir_all(dir).unwrap();
 }

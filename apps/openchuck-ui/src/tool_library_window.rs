@@ -1260,8 +1260,11 @@ impl ToolLibraryWindow {
                     app.as_deref().map(Application::project),
                     self.library.as_ref(),
                 );
-                let material =
-                    openchuck_app::materials::canonical_material(&known, &draft.material);
+                let material = openchuck_app::materials::edited_material(
+                    &known,
+                    &draft.material,
+                    draft.editing.as_deref(),
+                );
                 let saved = draft.data().and_then(|data| {
                     self.edit(app, |t| {
                         library::edit_cutting_data(t, &material, data, draft.editing.as_deref())
