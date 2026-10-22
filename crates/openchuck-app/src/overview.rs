@@ -397,6 +397,11 @@ pub struct SetupCheck {
     pub action: Option<MessageAction>,
 }
 
+/// What the Simulate step says while the latest run holds an operation that
+/// was turned off or removed since (issue 260, NFR-12).
+pub const SIMULATION_HOLDS_GONE: &str =
+    "Out of date: an operation in the simulation was turned off or removed";
+
 /// What the Simulate step says while the project skips the stock simulation
 /// (issue 214; decision record 0168).
 pub const STOCK_SIMULATION_SKIPPED: &str =
@@ -773,6 +778,10 @@ struct RecordState {
     /// What the run is doing with `current`: nothing while it only takes it
     /// from the cache, which is not shown running (issue 239).
     activity: Option<PipelineActivity>,
+    /// The operations the latest successful run holds, the run the front
+    /// end shows and posts: Simulate is complete only while they are the
+    /// enabled operations (issue 260).
+    last_run: Option<Vec<OperationId>>,
 }
 
 /// What a pipeline run is doing with the operation it has reached
@@ -882,6 +891,7 @@ impl GenerationRecord {
                     s.simulated.insert(*id, key.chained);
                 }
             }
+            s.last_run = Some(run.groups.iter().map(|g| g.operation).collect());
             s.failure = None;
             s.current = None;
         });
@@ -1857,6 +1867,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .all(|s| s.stock.is_some() && s.part.is_some())
         && checks.is_some_and(|c| c.setups.iter().all(|s| s.warnings.is_empty()));
     let generated = any_enabled && any_generated;
+    // The run shown and posted must hold exactly the enabled operations: one
+    // that holds an operation turned off or removed since, or lacks one that
+    // is on, is out of date even where no key changed (issue 260, NFR-12).
+    let run_holds_gone = record.last_run.as_ref().is_some_and(|made| {
+        made.iter()
+            .any(|id| project.operation(*id).is_none_or(|o| !o.enabled))
+    });
+    let run_lacks_one = record
+        .last_run
+        .as_ref()
+        .is_none_or(|made| ops.iter().any(|o| o.enabled && !made.contains(&o.id)));
+    simulated_all &= !run_holds_gone && !run_lacks_one;
     // Post and export, in the File menu and as a step, needs what the dialog
     // needs to make its files, not generated operations (decision 0148).
     // The values still missing, setups first (issues 210, 224 and 140). The
@@ -2016,7 +2038,12 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     } else {
         good.clone()
     };
-    let simulate_health = if any_enabled && !simulated_all {
+    let simulate_health = if any_enabled && run_holds_gone {
+        (
+            StepHealth::Attention,
+            Some(SIMULATION_HOLDS_GONE.to_owned()),
+        )
+    } else if any_enabled && !simulated_all {
         (StepHealth::Attention, Some("Not simulated yet".to_owned()))
     } else if any_enabled && skip_stock {
         // Skipping is the user's choice, but the cut is then not checked

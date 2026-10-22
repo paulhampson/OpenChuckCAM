@@ -54,6 +54,7 @@ mod dock;
 mod frame;
 mod inspector;
 pub(crate) mod marks;
+mod out_of_date;
 mod tree;
 
 use dock::DockTab;
@@ -212,6 +213,11 @@ pub struct Shell {
     reset: Option<frame::Region>,
     /// What the user-action log last saw (NFR-18).
     recorder: actions::Recorder,
+    /// Whether the latest run still matches the project (issue 260).
+    out_of_date: out_of_date::OutOfDate,
+    /// The selection panel's count of sets shown, and the selection the set
+    /// shown last was shown for (issue 261).
+    shown_for: (u64, Option<Selection>),
 }
 
 impl Shell {
@@ -280,6 +286,8 @@ impl Shell {
             auto_collapsed: frame::AutoCollapse::default(),
             reset: None,
             recorder: actions::Recorder::default(),
+            out_of_date: out_of_date::OutOfDate::default(),
+            shown_for: (0, None),
         };
         crate::logging::set_recording(shell.settings.record_actions);
         shell.apply_simulate_settings();
@@ -690,6 +698,13 @@ impl Shell {
     /// Opens `step` if it is available (UI-10).
     fn open_step(&mut self, step: Step) {
         if self.overview.step(step).is_available() {
+            // Another step ends selection mode, and its highlight with it
+            // (issue 261).
+            if step != self.step
+                && matches!(self.selected, Some(Selection::Picking | Selection::Set(_)))
+            {
+                self.selected = None;
+            }
             self.step = step;
             if step == Step::Simulate {
                 self.play.open = true;
@@ -1181,6 +1196,28 @@ impl Shell {
         {
             self.selected = None;
         }
+        // The highlights follow the selection state (issue 261): the working
+        // selection is drawn only in selection mode, and a set shown for one
+        // item goes when another is selected, however the selection changed
+        // (a click, Esc, a deletion or another step).
+        let shows = self.selection.show_count();
+        if shows != self.shown_for.0 {
+            // A set was shown since: it is shown for the item selected now.
+            self.shown_for = (shows, self.selected);
+        } else if self.selected != self.shown_for.1 {
+            let keeps = matches!(
+                self.selected,
+                Some(Selection::Set(id)) if self.selection.shown_set() == Some(id)
+            );
+            if !keeps {
+                self.selection.show_set(None);
+            }
+            self.shown_for = (self.selection.show_count(), self.selected);
+        }
+        self.selection.set_picking(matches!(
+            self.selected,
+            Some(Selection::Picking | Selection::Set(_))
+        ));
         // The selected operation's avoid and check sets are drawn hatched (7.4).
         self.selection.show_roles_of(
             app,
@@ -1801,6 +1838,9 @@ impl Shell {
         self.update_window_title(&ctx);
         self.poll_scene(&ctx);
         self.overview_frame(&ctx);
+        // Before anything is drawn, so a result is never drawn as current
+        // in the frame after the change that made it out of date.
+        self.follow_out_of_date();
         self.bench_frame(&ctx);
         self.shortcuts(&ctx);
         self.layout(ui);
