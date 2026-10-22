@@ -308,6 +308,9 @@ pub(crate) fn regenerate(
         context.report(STAGE_GENERATE, i as u64 + 1, Some(total));
     }
     record.working_on(None);
+    // The comparisons made in this run, to keep with their stocks once the
+    // run is known to be sound.
+    let mut comparisons = Vec::new();
     if simulate {
         let mut report = SimulationReport {
             settings,
@@ -340,6 +343,12 @@ pub(crate) fn regenerate(
             )?;
             if compared {
                 regeneration.compared.push(state.id);
+                // Kept with the stock only after the part files are checked
+                // below, so a comparison made from a file that changed during
+                // the run is never kept under a key made from the old one.
+                if let (true, Some(deviation)) = (caching, &deviation) {
+                    comparisons.push((Arc::clone(&state), deviation.clone()));
+                }
             }
             let mut state = Arc::unwrap_or_clone(state);
             state.rename(project);
@@ -355,6 +364,9 @@ pub(crate) fn regenerate(
         return Err(AppError::Cache(
             "a model file changed while regenerating; regenerate again".to_owned(),
         ));
+    }
+    for (state, deviation) in comparisons {
+        state.keep_comparison(deviation);
     }
     regeneration.toolpath.validate()?;
     if let Some((selection, grouping)) = post {

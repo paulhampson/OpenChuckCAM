@@ -181,10 +181,11 @@ impl SetupState {
     }
 
     /// The stock compared with `part` (SIM-05): the comparison this state
-    /// already holds, or a new one, which it then keeps. `part` is called
-    /// only when the stock has not been compared, and gives `None` when the
-    /// setup has no part. The second value is true when the stock was
-    /// compared in this call.
+    /// holds, or a new one. `part` is called only when the state holds none,
+    /// and gives `None` when the setup has no part. The second value is true
+    /// when the stock was compared in this call; the pipeline then keeps the
+    /// comparison with [`SetupState::keep_comparison`] once the run is known
+    /// to have read the part files it was keyed on.
     pub(crate) fn compare(
         &self,
         part: impl FnOnce() -> Result<Option<openchuck_types::mesh::TriangleMesh>, AppError>,
@@ -203,10 +204,15 @@ impl SetupState {
             &DeviationOptions::for_cell(settings.cell.0),
             context,
         )?;
-        // Two runs never compare the same state at once (the pipeline runs one
-        // at a time), and either value would be the same (NFR-06).
-        let _ = self.compared.set(deviation.clone());
         Ok((Some(deviation), true))
+    }
+
+    /// Keeps `deviation` as this stock's comparison with the setup's part,
+    /// for the runs that take this state from the cache (OI-627). A state
+    /// that already holds one keeps it: both are made from the same inputs
+    /// (NFR-06).
+    pub(crate) fn keep_comparison(&self, deviation: Deviation) {
+        let _ = self.compared.set(deviation);
     }
 
     /// Finishes the setup's report with its comparison with the part, from
