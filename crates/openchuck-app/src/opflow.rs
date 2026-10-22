@@ -226,6 +226,7 @@ impl Application {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: RestrictionOptions::default(),
+                spindle_speed: None,
                 parameters,
                 enabled: true,
             }),
@@ -253,6 +254,8 @@ pub(crate) fn default_roughing_stock_to_leave(diameter: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::float_cmp)]
+
     use super::default_roughing_stock_to_leave as leave;
 
     /// OP-11, decision 0205: a tenth of the diameter on a 0.05 mm step, kept

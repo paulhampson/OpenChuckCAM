@@ -236,6 +236,15 @@ pub enum SetupWarningKind {
         /// The tab's X extent.
         x: (f64, f64),
     },
+    /// A held region reaches into the part, so the length of the part inside
+    /// it is never machined (SET-09, OI-554). Generation is still allowed;
+    /// the user verifies the G-code (NFR-12).
+    HeldRegionCoversPart {
+        /// True for the held region at the high-X end of the stock.
+        at_end: bool,
+        /// The X extent of the part inside the held region.
+        x: (f64, f64),
+    },
 }
 
 impl std::fmt::Display for SetupWarning {
@@ -268,6 +277,15 @@ impl std::fmt::Display for SetupWarning {
             SetupWarningKind::PartOutsideStock => {
                 f.write_str("some of the part lies outside the stock")?
             }
+            SetupWarningKind::HeldRegionCoversPart { at_end, x } => write!(
+                f,
+                "the grip at the {} of the stock covers {:.3} mm of the part (X {:.3} to {:.3}), \
+                 which is never machined; shorten the grip if that length should be cut",
+                if *at_end { "end" } else { "start" },
+                x.1 - x.0,
+                x.0,
+                x.1
+            )?,
             SetupWarningKind::OutsideTravel {
                 what,
                 axis,

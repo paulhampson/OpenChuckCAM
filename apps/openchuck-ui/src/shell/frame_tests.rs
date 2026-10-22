@@ -160,6 +160,67 @@ impl Rig {
         out
     }
 
+    /// Every text and filled rectangle painted, as much of it as its clip
+    /// lets show: the text (none for a rectangle) and the visible rectangle.
+    /// A text's rectangle covers its glyphs, not the indent a wrapped row
+    /// starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect)> {
+        fn walk(
+            shape: &egui::Shape,
+            clip: egui::Rect,
+            out: &mut Vec<(Option<String>, egui::Rect)>,
+        ) {
+            let (text, rect) = match shape {
+                egui::Shape::Text(t) => (
+                    Some(t.galley.text().to_string()),
+                    t.galley
+                        .rows
+                        .iter()
+                        .map(|r| r.rect_without_leading_space().translate(t.pos.to_vec2()))
+                        .reduce(|a, b| a.union(b))
+                        .unwrap_or(egui::Rect::NOTHING),
+                ),
+                egui::Shape::Rect(r) => (None, r.rect),
+                egui::Shape::Vec(shapes) => {
+                    shapes.iter().for_each(|s| walk(s, clip, out));
+                    return;
+                }
+                _ => return,
+            };
+            let seen = rect.intersect(clip);
+            if seen.is_positive() {
+                out.push((text, seen));
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
+    /// Every text painted with the part of its rectangle that is not clipped away, in paint
+    /// order; texts wholly clipped away are left out.
+    pub(super) fn visible_text_rects(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) => {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clip);
+                    if rect.is_positive() {
+                        out.push((t.galley.text().to_string(), rect));
+                    }
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, clip, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
     pub(super) fn shows(&self, needle: &str) -> bool {
         fn walk(shape: &egui::Shape, needle: &str) -> bool {
             match shape {

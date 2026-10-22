@@ -4,7 +4,8 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
-- Version 0.15.0 with the library family (decision 0204); no change to this crate's items.
+- Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
+- Version 0.15.0 with the library family (decision 0196, issue #249; TL-05). New: `tool::material_key` and `tool::find_cutting_data`, which match a stock material to a tool's cutting data ignoring case and repeated spaces (an exact name wins), and `CuttingData::cutting_feed_at`, the cutting feed at another spindle speed. `tool::validate_entry` now refuses two cutting data entries whose names differ only by case or spacing. `CuttingTable` is no longer matched exactly. Library files that hold both "Oak" and "oak" on one tool are refused with a message naming both; delete one.
 - Version 0.14.0 with the library family (`RegionConstraint` in `openchuck-path` gains `boundary_limits` and `watch`, a breaking change; decision 0176).
 - Version 0.13.0 with the library family (`StrategyOutput` and `GeneratedPath` in `openchuck-path` gain `warnings`, a breaking change; decision 0175).
 - Version 0.12.0 with the library family (`StrategyInput` in `openchuck-path` gains `keep_out`, a breaking change; decision 0161).

@@ -13,6 +13,7 @@
 use openchuck_path::params::{ParameterKind, ParameterSchema};
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_project::{Operation, Project};
+use openchuck_types::units::SpindleSpeed;
 
 use crate::Application;
 
@@ -27,6 +28,9 @@ pub enum RequirementField {
     Part,
     /// The operation has no tool.
     Tool,
+    /// The operation has no spindle speed: it gave none and the tool has no
+    /// cutting data for the setup's material (decision 0196).
+    SpindleSpeed,
     /// A parameter of the operation's strategy that is required and that
     /// neither the operation nor the tool's cutting data gives (by name).
     Parameter(String),
@@ -69,8 +73,55 @@ pub(crate) fn cutting_data<'a>(
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id))?;
-    let data = snapshot.cutting_data.get(material)?;
+    let (_, data) = openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)?;
     Some((material, snapshot, data))
+}
+
+/// Where an operation's spindle speed comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpindleSource {
+    /// The operation's own value.
+    Operation,
+    /// The tool's cutting data for the setup's material.
+    ToolData,
+}
+
+/// The spindle speed of `operation` and where it comes from: its own value,
+/// else the tool's cutting data for the setup's material, else none. There
+/// is no machine default (decision 0196).
+pub(crate) fn spindle_speed(
+    project: &Project,
+    operation: &Operation,
+) -> Option<(SpindleSpeed, SpindleSource)> {
+    if let Some(speed) = operation.spindle_speed {
+        return Some((speed, SpindleSource::Operation));
+    }
+    cutting_data(project, operation).map(|(_, _, d)| (d.spindle_speed, SpindleSource::ToolData))
+}
+
+/// Why `operation` has no spindle speed and what to do about it, in plain
+/// words; names the operation, the tool and the material.
+pub(crate) fn missing_spindle_message(project: &Project, operation: &Operation) -> String {
+    let tool = operation
+        .tool
+        .and_then(|id| project.tools().iter().find(|t| t.id == id))
+        .map(|t| t.name.as_str());
+    let material = project
+        .setup(operation.setup)
+        .and_then(|s| s.material.as_deref());
+    let fix = match (tool, material) {
+        (Some(tool), Some(material)) => format!(
+            "Enter a spindle speed for this operation, or add cutting data for \"{material}\" to the tool \"{tool}\" in the tool library"
+        ),
+        (Some(tool), None) => format!(
+            "Enter a spindle speed for this operation, or choose the stock material in the setup and add cutting data for it to the tool \"{tool}\" in the tool library"
+        ),
+        (None, _) => "Choose a tool, then enter a spindle speed for this operation".to_owned(),
+    };
+    format!(
+        "The operation \"{}\" has no spindle speed. {fix}.",
+        operation.name
+    )
 }
 
 /// The names of the parameters the cutting data can give.
@@ -167,6 +218,13 @@ pub(crate) fn operation_requirements(
             RequirementField::Tool,
             "Tool",
             "Choose a tool",
+        ));
+    }
+    if !no_tool && spindle_speed(project, op).is_none() {
+        out.push(Requirement::new(
+            RequirementField::SpindleSpeed,
+            "Spindle speed",
+            "Enter the spindle speed",
         ));
     }
     // An unknown strategy is reported when the operation is generated.
