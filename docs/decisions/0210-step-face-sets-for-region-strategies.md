@@ -1,9 +1,9 @@
 # 0210: Face sets on a STEP part for roughing, helical, axial, indexed and simultaneous finishing, and one check for the sets a strategy cannot use (lane STEPALL-F; issue #257)
 
 - **Status:** proposed (21 Oct 2026, lane STEPALL-F). It builds items 3, 4.4 and 10 of [decision 0209](0209-step-geometry-for-every-strategy.md) (accepted) and records the choices the build made that 0209 does not. Only the owner accepts this record (decision 0049).
-  - **Owner question, OP-23 (sent to the coordinator on 21 Oct 2026, awaiting an answer):** whether lane STEPALL-F adds requirement OP-23 and the verification rows of 0209 item 9 to `docs/requirements.md` and `docs/verification-plan.md` in the wording of 0209 item 9. Options: A, as worded, P1 (recommended); B, as worded, P2; C, no new ID, a wider IMP-02. Until the answer, neither document is edited and the tests carry the IDs of the requirements they already cover (OP-02, OP-05, OP-11, NFR-07, NFR-12, IMP-02, UI-07).
+  - **OP-23, agreed by the owner (21 Oct 2026, relayed by the coordinator):** option A. Lane STEPALL-F adds requirement OP-23 (P1) to `docs/requirements.md` as worded in 0209 item 9, with the verification plan's section 4 row, the two section 4.1 rows and the addition to IMP-06's row, in this change with its first tests, which carry the OP-23 name. The other options were P2, or a wider IMP-02 with no new ID.
 - **Date:** 21 Oct 2026.
-- **Requirements:** OP-02, OP-03 to OP-05, OP-11, IMP-02, NFR-07, NFR-12, UI-07, GC-07, NFR-06; OP-23 if agreed.
+- **Requirements:** OP-23 (added here), OP-02, OP-03 to OP-05, OP-11, IMP-02, IMP-06, NFR-07, NFR-12, UI-07, GC-07, NFR-06.
 - **Open items** ([docs/open-items.md](../open-items.md)): closes OI-233, OI-830 and OI-836. Opens OI-837 and OI-838. Depends on OI-81, OI-833 and OI-637 without closing them.
 
 Numbering: the coordinator gave lane STEPALL-F record 0210 and OI-837 and OI-838, and no project schema number. On 21 Oct 2026 the highest record on `main` was 0191 and on the unmerged branches 0209 (lane STEPALL's proposal, pull request 269), and the highest `OI-` number in use was OI-836, so these were free. No project file changes: face sets are already stored (decision 0209 item 8).
@@ -66,21 +66,21 @@ Records read: 0032, 0034, 0056, 0058, 0066, 0114, 0174, 0176, 0209. Open items r
 
 ## Verification
 
-Unit tests in `openchuck-app` (`operation.rs`), on a closed-form STEP part with no kernel (`openchuck_testkit::brep::banded_cylinder`: a round bar whose side is three cylinder faces):
-- `req_op_02_req_op_11_face_sets_limit_{helical,axial,indexed}_finishing_on_a_step_part_as_on_a_mesh` and `…_rotary_roughing_…`: Cut on, Contain within, Avoid, Check and a stock to leave per set, each on the STEP part and on the same triangles as an STL, each keeping to the same faces (item 2). Uninstrumented debug times on the lane's container: 10 to 25 s each run alone (all four together about 48 s run one after another).
-- `req_op_02_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part`.
-- `req_op_02_req_nfr_07_a_face_set_that_does_not_fit_the_step_part_is_refused`, in all four roles.
-- `req_op_02_req_op_11_req_nfr_07_one_check_refuses_sets_before_and_at_generation`: every registered strategy, every case of item 5 that applies to it, the check's text equal to generation's, no internal name or requirement ID, the label first where the text names the strategy.
-- `req_nfr_12_an_operation_on_a_step_part_names_the_surface_it_dropped_on`, and in `openchuck-import` `req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation`.
+OP-23's tests so far cover its face-selection and notes parts; its exact-surface parts are lanes STEPALL-M's and STEPALL-X's. Unit tests in `openchuck-app` (`operation.rs`), on a closed-form STEP part with no kernel (`openchuck_testkit::brep::banded_cylinder`: a round bar whose side is three cylinder faces):
+- `req_op_23_req_op_02_req_op_11_face_sets_limit_{helical,axial,indexed,rotary_roughing}_on_a_step_part_as_on_a_mesh`: Cut on, Contain within, Avoid, Check and a stock to leave per set, each on the STEP part and on the same triangles as an STL, each keeping to the same faces (item 2). Uninstrumented debug times on the lane's container: 10 to 25 s each run alone (all four together about 48 s run one after another).
+- `req_op_23_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part`.
+- `req_op_23_req_nfr_07_a_face_set_that_does_not_fit_the_step_part_is_refused`, in all four roles.
+- `req_op_23_req_op_11_req_nfr_07_one_check_refuses_sets_before_and_at_generation`: every registered strategy, every case of item 5 that applies to it, the check's text equal to generation's, no internal name or requirement ID, the label first where the text names the strategy.
+- `req_op_23_req_nfr_12_an_operation_on_a_step_part_names_the_surface_it_dropped_on`, and in `openchuck-import` `req_op_23_req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation`.
 
-Integration tests: `tests/operation.rs` `req_op_02_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating` (the overview's error state and Messages line before Generate, and the same words at generation), and in `openchuck-ui` `req_op_02_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use`.
+Integration tests: `tests/operation.rs` `req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating` (the overview's error state and Messages line before Generate, and the same words at generation), and in `openchuck-ui` `req_op_23_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use`.
 
 Not run in the lane's container: the kernel tests (`--features kernel-tests`), which need OpenCASCADE. They do not test the changed refusals or the new note, but CI runs them. `blisk.step` is not used here: it reaches `testdata/step/` with lane STEPALL-M, and its blades as a face set are a test for that lane or a later one, on a part with real faces.
 
 ## Consequences
 
 - **Code:** `openchuck-app` (`operation.rs`, `selection.rs`, the new `step_sets.rs`, `overview.rs`), `openchuck-ui` (`shell/inspector.rs`), `openchuck-import` (`step_tessellation_notice`), `openchuck-testkit` (`brep::banded_cylinder`). The application gains `Application::set_refusals` and `step_sets::SetRefusal`.
-- **Documents:** this record and the decision index; `docs/open-items.md` (OI-233, OI-830 and OI-836 closed; OI-837 and OI-838 added); the interface specification's Geometry item (0209 item 10.6); the work breakdown's STEPALL row. `docs/requirements.md` and `docs/verification-plan.md` wait for the owner's answer on OP-23.
+- **Documents:** this record and the decision index; `docs/requirements.md` (OP-23) and `docs/verification-plan.md` (OP-23's row, two rows of 4.1 and IMP-06's row), as the owner agreed; `docs/open-items.md` (OI-233, OI-830 and OI-836 closed; OI-837 and OI-838 added); the interface specification's Geometry item (0209 item 10.6); the work breakdown's STEPALL row.
 - **Open items:**
   - OI-837: the warning of 11.7 (a set reaching a held region or a tab) is not given for a face set on a STEP part: `workholding::selection_reach_notes` reads triangle sets only.
   - OI-838: on a mesh part, a set the strategy cannot use is still said only at generation, not in the Geometry section before Generate.

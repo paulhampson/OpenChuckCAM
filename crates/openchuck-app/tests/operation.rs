@@ -1312,7 +1312,7 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
 }
 
 #[test]
-fn req_op_02_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating() {
+fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating() {
     // Decision 0209 item 10: on a STEP part, a set the strategy cannot use
     // puts the operation in error at once, with the reason in Messages and
     // a Show link, from the same check generation makes; the Geometry

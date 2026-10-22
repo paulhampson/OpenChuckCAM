@@ -599,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation() {
+    fn req_op_23_req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation() {
         // Decision 0209 item 4.4 (OI-830): tool drops still use the
         // tessellation, so the notice does not say every toolpath is
         // computed on the exact surfaces.

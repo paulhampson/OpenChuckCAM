@@ -2467,27 +2467,27 @@ mod tests {
     }
 
     #[test]
-    fn req_op_02_req_op_11_face_sets_limit_helical_finishing_on_a_step_part_as_on_a_mesh() {
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh() {
         face_sets_limit_the_cut_as_on_a_mesh(openchuck_path::helical::NAME);
     }
 
     #[test]
-    fn req_op_02_req_op_11_face_sets_limit_axial_finishing_on_a_step_part_as_on_a_mesh() {
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_axial_on_a_step_part_as_on_a_mesh() {
         face_sets_limit_the_cut_as_on_a_mesh(openchuck_path::axial::NAME);
     }
 
     #[test]
-    fn req_op_02_req_op_11_face_sets_limit_indexed_finishing_on_a_step_part_as_on_a_mesh() {
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_indexed_on_a_step_part_as_on_a_mesh() {
         face_sets_limit_the_cut_as_on_a_mesh(openchuck_path::indexed::NAME);
     }
 
     #[test]
-    fn req_op_02_req_op_11_face_sets_limit_rotary_roughing_on_a_step_part_as_on_a_mesh() {
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_rotary_roughing_on_a_step_part_as_on_a_mesh() {
         face_sets_limit_the_cut_as_on_a_mesh(roughing::NAME);
     }
 
     #[test]
-    fn req_op_02_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part() {
+    fn req_op_23_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part() {
         // Decision 0209 item 3: simultaneous finishing reads its drive
         // points from the exact faces (decision 0036), so its cut is not the
         // mesh's move for move; a face set still limits it to those faces.
@@ -2515,7 +2515,7 @@ mod tests {
     }
 
     #[test]
-    fn req_nfr_12_an_operation_on_a_step_part_names_the_surface_it_dropped_on() {
+    fn req_op_23_req_nfr_12_an_operation_on_a_step_part_names_the_surface_it_dropped_on() {
         // Decision 0209 item 4.4 (OI-830): a strategy that drops the tool on
         // the tessellation says so in its notes, by its label; one that
         // reads the exact faces, and any on a mesh part, does not.
@@ -2538,7 +2538,7 @@ mod tests {
     }
 
     #[test]
-    fn req_op_02_req_op_11_req_nfr_07_one_check_refuses_sets_before_and_at_generation() {
+    fn req_op_23_req_op_11_req_nfr_07_one_check_refuses_sets_before_and_at_generation() {
         // Decision 0209 item 10: what a strategy cannot use on a STEP part is
         // one check, worded with the strategy's label and what to do, with
         // no internal name or requirement ID; generation refuses with the
@@ -2665,7 +2665,7 @@ mod tests {
     }
 
     #[test]
-    fn req_op_02_req_nfr_07_a_face_set_that_does_not_fit_the_step_part_is_refused() {
+    fn req_op_23_req_nfr_07_a_face_set_that_does_not_fit_the_step_part_is_refused() {
         // A region strategy's face sets are checked against the part as
         // swarf's are (decision 0176): the faces exist, the set selects some,
         // and it was made on this version of this part.

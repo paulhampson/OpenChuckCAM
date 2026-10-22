@@ -685,7 +685,7 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
 /// is generated, and the operation is in error (decision record 0209 item
 /// 10). The part is named as a STEP file; nothing reads it.
 #[test]
-fn req_op_02_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use() {
+fn req_op_23_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use() {
     use openchuck_app::project::{
         Item, OrderKey, Placement, RelativePath, SelectionSet, SelectionTarget,
     };
