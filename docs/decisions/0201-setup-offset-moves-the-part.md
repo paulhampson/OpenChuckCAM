@@ -1,6 +1,6 @@
 # 0201: The setup's offset along X moves the part, and the model's placement is shared (lane SETUPPOS; issues #175 and #181)
 
-- **Status:** proposed (lane SETUPPOS, 21 Oct 2026). Item 1 is the owner's decision on issue #175 (option C), settled with the coordinator on 21 Oct 2026; the rest is the lane's proposal and waits for the owner's acceptance.
+- **Status:** accepted (22 Oct 2026, by the owner directly in the lane SETUPPOS session: "I accept records 0201,0202,0203"). Item 1 is the owner's decision on issue #175 (option C), settled with the coordinator on 21 Oct 2026.
 - **What it amends:** [decision 0011](0011-slice-3-machine-stock-setup.md) items 1 and 2 (the machine frame and the meaning of `part_offset`), and the interface specification's sections 6 and 11.3 (edited with this record). No requirement changes: SET-05 already asks to "position the part relative to the rotary centreline and work coordinate system". The architecture says nothing about the frames' details (section 4, step 2, "part position"), so it is not changed.
 - **Date:** 21 Oct 2026.
 - **Open items:** none new. OI-780 (record 0202) is the lane's question on what the head and tail tab buttons make; it does not touch this record.

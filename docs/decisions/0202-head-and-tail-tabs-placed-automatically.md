@@ -1,6 +1,6 @@
 # 0202: Head and tail tabs, placed automatically, and a rounded new tab diameter (lane SETUPPOS; issues #182, #184 and #186)
 
-- **Status:** proposed (lane SETUPPOS, 21 Oct 2026). The behaviours in items 1 to 5 are the owner's answers on the issues (relayed in their comments, 20 Oct 2026); what the buttons make (item 2) is the owner's answer to OI-780, option A, relayed by the coordinator on 21 Oct 2026.
+- **Status:** accepted (22 Oct 2026, by the owner directly in the lane SETUPPOS session: "I accept records 0201,0202,0203"). The behaviours in items 1 to 5 are the owner's answers on the issues (relayed in their comments, 20 Oct 2026); what the buttons make (item 2) is the owner's answer to OI-780, option A, relayed by the coordinator on 21 Oct 2026.
 - **What it amends:** the interface specification's section 11.7 (edited with this record), and [decision 0035](0035-workholding-and-retaining-tabs.md) and [decision 0041](0041-slice-21a-workholding-data.md) (a tab gains `auto`). No requirement changes: OP-21 and SET-09 already cover tabs and their zones; the buttons and the tick box are interface functions on them.
 - **Date:** 21 Oct 2026.
 - **Open items:** OI-780 (what "Head tab" and "Tail tab" make) is new and closed by the owner's answer (option A).

@@ -1,6 +1,6 @@
 # 0203: The Setup panes zoom and pan (lane SETUPPOS; issue #185)
 
-- **Status:** proposed (lane SETUPPOS, 21 Oct 2026). Items 1 and 3 are the owner's answers on issue #185 (both panes; remembered; limited), relayed in its comment of 20 Oct 2026; how the view is remembered and the limits (item 2) were left to the lane and are proposed here.
+- **Status:** accepted (22 Oct 2026, by the owner directly in the lane SETUPPOS session: "I accept records 0201,0202,0203"). Items 1 and 3 are the owner's answers on issue #185, relayed in its comment of 20 Oct 2026.
 - **What it amends:** the interface specification's section 11.3 (edited with this record) and [decision 0129](0129-slice-22-setup-panes.md), whose panes were fitted only. No requirement changes (UI-03).
 - **Date:** 21 Oct 2026.
 - **Open items:** none.
