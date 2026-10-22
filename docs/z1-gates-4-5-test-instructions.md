@@ -1,6 +1,6 @@
 # Makera Z1 gates 4 and 5: step-by-step test instructions
 
-**Status: draft for the owner's review (lane GATES, 22 Oct 2026).** Written by an agent from the project documents, not from experience of the machine. Nothing in it has been run on a Z1. Where the documents do not say how the Z1 behaves, this document does not guess: it names the question and the open item (OI-910 to OI-919, section 9). Until the owner has answered the questions marked **Owner decision pending**, the steps that depend on them are not to be run.
+**Status: draft for the owner's review (lane GATES, 22 Oct 2026), with the owner's answers to OI-910 to OI-919 (22 Oct 2026, relayed by the coordinator).** Written by an agent from the project documents, not from experience of the machine. Nothing in it has been run on a Z1. Where the documents do not say how the Z1 behaves, this document does not guess: it names the question and the open item (section 9). Two things are still to settle before gate 5: the first-cut project's exact geometry (OI-914, 5.2 item G0) and [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) (proposed). The document stays a draft until the owner's gate 4 and 5 results are folded into section 10.
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM does not say that a program is safe or correct for any machine, tool or setup, and nothing in this document says otherwise. Passing gates 1 to 3, a clean simulation or a step of these instructions lowers the risk; it does not remove it. You, the operator, decide whether a program runs, and you can stop at any point.
 
@@ -11,11 +11,11 @@ Gates 4 and 5 are the two hands-on G-code gates of [verification plan section 6]
 This document turns them into steps that someone who is not a machinist can follow, each with what to do, what to expect, what to record and when to stop. It builds on, and does not replace, two documents the owner has already reviewed (14 Oct 2026, OI-133):
 
 - the [safe-practice checklist](z1-safe-practice-checklist.md): complete its section 1 at the start of every session, section 2 before gate 4, section 3 before gate 5 and section 4 after every run;
-- the [air-cut procedure](z1-air-cut-procedure.md): its steps 0 to 7 are the run order of gate 4 (section 4.4 below). Two statements in its step 3 do not match the software (OI-910, section 4.5).
+- the [air-cut procedure](z1-air-cut-procedure.md): its steps 0 to 7 are the run order of gate 4 (section 4.4 below). Its step 3 is corrected to time a whole operation (OI-910, section 4.5).
 
-The programs are the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post.
+Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post, and the first-cut project's program. Gate 5 cuts the first-cut project of section 5.2 (OI-914), not the reference job set (decision 0221, proposed).
 
-**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S7, G4-0 to G4-7 for gate 4; F1 to F6, W1 to W5, T1 to T4, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
+**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S7, G4-0 to G4-7 for gate 4; F1 to F6, G0, W1 to W5, T0 to T5, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
 
 | Rule ([verification plan section 6](verification-plan.md)) | Applies to |
 | --- | --- |
@@ -50,11 +50,11 @@ The programs are the reference job set of [reference-jobs.md](reference-jobs.md)
 ## 3. What you need
 
 - The release build of OpenChuckCAM (or the build named for the trial) on the computer you use to make the programs.
-- The project folders for the reference jobs, or their golden programs in `testdata/golden/reference/` (which one: OI-913, section 4.1 step P2).
+- The project folders for the reference jobs (OI-913: a follow-up lane commits them; until then, their golden programs in `testdata/golden/reference/`), and the first-cut project (5.2).
 - The setup sheet (HTML or PDF) written with each program (decision 0189), printed or on screen beside the machine.
 - The Makera Z1 with its rotary module and chuck, and its controller software. Know where its emergency stop, feed hold and feed override are before you start.
 - A stopwatch (a phone is fine), a camera (a phone is fine), masking tape and a marker.
-- For gate 5: the material (OI-915), the tool, a caliper or micrometer, eye and ear protection, and a way to manage dust and chips for the material.
+- For gate 5: tooling board stock 35 x 35 x 100 mm, the tailstock, the 3.175 mm tools agreed with the owner (5.3), a caliper or micrometer, eye and ear protection, and dust extraction or a mask for tooling board dust.
 - The results forms of section 8, printed or copied into a file.
 
 ## 4. Gate 4: the air cut
@@ -68,14 +68,14 @@ Do these at the computer and at the machine before anything moves. Each step has
 | Step | Do | Pass when | Record |
 | --- | --- | --- | --- |
 | P1 Software build | Open OpenChuckCAM, choose **Help > About OpenChuckCAM** and press **Copy build information**. Paste it into the results form (section 8.1). From a terminal, `openchuck-cli --version` gives the same text. | The version is the one named for the trial, the commit is shown, and **Uncommitted changes: no** (NFR-16). The About window also shows the notice that generated G-code must be verified by the user. | The pasted build information |
-| P2 Project and programs | **Owner decision pending (OI-913).** The reference jobs exist today as test code and as golden programs, not as project folders you can open in the application. Until OI-913 is answered, use the golden Z1 programs `testdata/golden/reference/*_makera-z1.nc` from the commit in P1 and note that they were written by the test suite, not by the build in P1. | You have the `.nc` files of the jobs you will run, from the commit in P1. | File names and the commit |
+| P2 Project and programs | Open each reference job's project folder in the build of P1 and write its G-code and setup sheet with the Makera Z1 post (the owner's answer to OI-913: a follow-up lane commits the reference jobs as project folders). Compare each program with its golden file in `testdata/golden/reference/`: only the version and operation comment lines may differ. Until that lane has merged, use the golden Z1 programs from the commit in P1 and note that they were written by the test suite, not by the build in P1. | You have the `.nc` file and setup sheet of each job you will run, from the build or commit in P1. | File names, the build or commit, the comparison |
 | P3 Machine profile | In the application, open the project's setup and its machine values (or `openchuck-cli machine <project>`). Each value is marked confirmed, vendor-supplied or unconfirmed (UI-13). | The profile is **Makera Z1**. Travel 200 x 200 x 100 mm, feeds 1200 mm/min X and Y, 600 Z, 3600 deg/min A, A continuous and right-handed about +X. The axis height is the measured value from P8, not the placeholder (OI-60). | Each value, and which are unconfirmed |
 | P4 Post | Check the post chosen for export. | **Makera Z1** (files end `.nc`), not the LinuxCNC verification post (`.ngc`). Feed mode: units per minute; the Z1 post never writes `G93`. | Post name |
 | P5 Firmware | On the Z1 controller, find the firmware version. | Noted. If it is not 1.1.2, the SP-12 conventions (decision 0007) must be rechecked first: step 1 of section 4.4. | Firmware version |
 | P6 Tool and stock | Take any tool out of the spindle. Empty the chuck, or close the jaws on nothing. Clear the bed. | **No tool, no material.** Nothing loose on the bed or in the enclosure. | Photo of the empty spindle and chuck |
-| P7 Spindle and tool change | **Owner decisions pending (OI-911, OI-912).** Every generated program has `M5`, `T1 M6` and `S... M3` near its start. With no tool fitted, decide before running how the spindle start and the tool change are handled. | The owner's decisions on OI-911 and OI-912 are recorded and followed. | The decisions |
-| P8 Axis height | **Owner decision pending (OI-917).** Measure the machine Z of the A axis centreline (OI-60). OI-60 suggests touching the tool tip to the chuck centre and reading the machine (G53) Z; that needs a tool, so it is done before P6. If it differs from machine Z -55, correct the project's machine profile and regenerate (P2). | A measured value is in the profile. | Measured axis height (mm), how it was measured |
-| P9 Work zero | **Owner decision pending (OI-917).** Set G54 with Y0 Z0 on the A axis centreline and X0 at the part's model origin, at least 10 mm clear of the jaws (OI-40). Note where A is zero. | The DRO in G54 reads Y0 Z0 at the axis centre and X0 where the setup sheet's "Work offset" line says. | G54 X, Y, Z in machine coordinates; how X0 was found |
+| P7 Spindle and tool change | Every generated program has `M5`, `T1 M6` and `S... M3` near its start. Run them **as generated**: the spindle runs with no tool fitted (OI-911, the owner confirms the Z1 spins an empty collet safely) and `T1 M6` runs with no tool, watched, with a hand on the stop (OI-912). Do not edit the program. | The controller accepts `T1 M6` and `S... M3`; what it does on `M6` matches what the owner expects. | What the controller did on `M6`; the spindle ran: yes / no |
+| P8 Axis height | Measure the machine Z of the A axis centreline (OI-60). Use **Makera's own work-zero routine** for Y and Z on the axis (OI-917), done before P6 if it needs a tool or probe fitted; the machine (G53) Z of the resulting G54 Z0 is the axis height. If it differs from machine Z -55, correct the project's machine profile and regenerate (P2). | A measured value is in the profile. | Measured axis height (mm), how it was measured |
+| P9 Work zero | Set G54 with **Makera's own routine** (OI-917): Y0 Z0 on the A axis centreline, X0 at the part's model origin, at least 10 mm clear of the jaws (OI-40), and A0. This document does not copy the routine's steps: follow Makera's documentation for the installed firmware. | The DRO in G54 reads Y0 Z0 at the axis centre and X0 where the setup sheet's "Work offset" line says. | G54 X, Y, Z in machine coordinates; which face X0 was taken from; how A0 was set |
 | P10 Clearances | With nothing fitted, jog Z to the program's safe Z (Z50 in G54 for the reference jobs) and jog X over the program's whole X range (read it from the program: the smallest and largest X words). Turn A by hand or by jog a full turn. | The spindle nose clears the chuck, jaws and rotary module everywhere along that X range, and safe Z is below the top of Z travel (with the profile's figures, safe Z 50 is machine Z -5, 5 mm below the top). | Lowest clearance seen |
 
 ### 4.2 Read the program before you run it
@@ -142,7 +142,7 @@ The setup sheet does not list the held regions or the tabs (OI-918). For gate 5 
 
 - Feed override at **10 %** for the first run of each program (air-cut procedure).
 - Your hand near the feed hold and the emergency stop for at least the first 20 lines, and in reach for the rest.
-- **Owner decision pending (OI-919):** whether the Z1 controller can step one line at a time (single block) for the first moves, or only feed hold at 10 % is used.
+- No single block (OI-919, the owner's answer): the first moves run at 10 % with your hand on feed hold.
 - The enclosure closed. Watch through it; do not reach in while anything can move.
 - A strip of tape on one jaw so you can see A turn.
 - Film each run if you can (the first 20 lines and the end block at least).
@@ -156,28 +156,32 @@ Follow the [air-cut procedure](z1-air-cut-procedure.md) steps 0 to 7 in order, w
 | G4-0 | Read `sphere_makera-z1.nc` (section 4.2) | | Every R and S item ticked |
 | G4-1 | SP-12 conventions program (`spikes/sp12/AIR-CUT.md` on `spike/sp-12-z1-conventions`), only if the firmware is not 1.1.2 | Direction, wrap, feed rule as decision 0007 records | The results match decision 0007 |
 | G4-2 | `sphere_makera-z1.nc` at 10 % | The first rapid goes to safe Z before any other motion. X, Z and A move together during the pass. The tape turns the way the A words say (A+ turns the top toward the front). The end block: up to Z near the top, then `G28` (watch where it goes and write it down: not yet seen, OI-41) | No alarm, no line refused, the motion looks like the simulation's playback of the same program, the machine ends where the program says |
-| G4-3 | Timed move | **Owner decision pending (OI-910).** No single move in the reference programs is long enough to time by hand (section 4.5) | As decided on OI-910 |
+| G4-3 | Timed operation on the sphere (section 4.5) | Stopwatch from the start of the plunge to the end of the last fed move | Measured time within the band agreed at this first run of predicted time = "about N s" x 100 / override |
 | G4-4 | `cone_makera-z1.nc` at 10 % | Z changes steadily with X | As G4-2 |
 | G4-5 | `groove_makera-z1.nc` at 10 % | About 15 turns of A, then the unwind. **At `G92.4 A0 S0` A must not move**; the DRO's A reading changes to the remainder. Note the DRO before and after | As G4-2, and A does not move at the unwind |
 | G4-6 | `G93` recheck (SP-12 test T5) only if the firmware is not 1.1.2 | | The result is recorded (verification plan section 6, feed mode) |
-| G4-6b | OI-267: an A-only fed move with an F above 1200 | **Owner decision pending (OI-910 covers the timing; the program for this test is not written).** The owner asked for it on a later air cut before the first release (17 Oct 2026) | The controller's behaviour (clamps, refuses or runs it) is recorded in OI-267 |
+| G4-6b | OI-267: an A-only fed move with an F above 1200 | The test program is not written yet; the owner asked for the test on an air cut before the first release (17 Oct 2026). Run it only once it is written and read like any other program | The controller's behaviour (clamps, refuses or runs it) is recorded in OI-267 |
 | G4-7 | Raise the override (25 %, 50 %, 100 %) on the sphere only | Only if steps 2 to 5 had no surprise and you agree | As G4-2 |
 
-The other reference programs (`lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead`, `cone_held_tabs`, `drilling`, `swarf`) are run the same way as G4-2 once G4-2 to G4-5 have passed. `lobed` is the one program that moves X, Y, Z and A together; `drilling` turns A to -30 and has no unwind; `swarf` turns to three A positions.
+The other reference programs (`lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead`, `cone_held_tabs`, `drilling`, `swarf`) and the first-cut project's program (5.2) are run the same way as G4-2 once G4-2 to G4-5 have passed. `lobed` is the one program that moves X, Y, Z and A together; `drilling` turns A to -30 and has no unwind; `swarf` turns to three A positions.
 
-### 4.5 The timed move (OI-910)
+### 4.5 The timed operation (OI-910)
 
-The verification plan asks for one simultaneous XYZA move whose measured time is compared with the predicted time under the Z1's feed rule. Two things stop the air-cut procedure's step 3 being followed as written:
+The verification plan asks for a simultaneous XYZA move whose measured time is compared with the predicted time under the Z1's feed rule. No single move in the reference programs is long enough to time by hand: computed from the golden programs with decision 0007's rule, the longest move that turns A while X, Y or Z also move takes about 0.13 s at 100 % feed (`groove`), 1.3 s at 10 %. The program header states no predicted total, and `openchuck-cli gcode-sim` gives no time per Z1 move.
 
-- **The moves are too short to time by hand.** The reference programs are made of many short moves. Computed from the golden programs with decision 0007's rule, the longest move that turns A while X, Y or Z also move takes about 0.13 s at 100 % feed (`groove`), 1.3 s at 10 %; a stopwatch cannot time that to the 10 % the SP-12 run reached.
-- **The predicted time is not where step 3 says.** The program header does not state a predicted total; each operation's comment does ("about N s", the programmed time of its fed moves). `openchuck-cli gcode-sim` compares a LinuxCNC simulator report with a LinuxCNC program and gives no time per Z1 move.
+So, as the owner decided (OI-910, option A), **time a whole operation**, which is a long run of such moves:
 
-Until OI-910 is answered, do not count G4-3 as passed. The recommended method (for the owner to decide) is to time a whole operation: start the stopwatch when the first fed move of the operation starts (the plunge) and stop it when the last fed move ends (the rapid up to safe Z starts), and compare it with "about N s" multiplied by 100 divided by the override (for 10 %, ten times). For the sphere that is about 76 s at 100 %, about 12.5 minutes at 10 %. Agree the band at the first run (verification plan section 6).
+1. Find the operation's comment line, `(operation <name>, tool T<n> <tool>, about N s)`. N is the programmed time of its fed moves at 100 % feed.
+2. Predicted time = N x 100 / override. At 10 % that is ten times N: about 760 s (12.5 minutes) for the sphere's N of about 76.
+3. Start the stopwatch when the plunge (the first `G1` after the rapid down) starts, and stop it when the last fed move ends (the `G0` up to safe Z starts).
+4. Ratio = measured / predicted. At this first run, agree the band with the owner (the SP-12 run confirmed the rule within about 10 %), write it on the form, and use it for every later run.
+
+Rapids are not in N, and the feed override does not scale them, so they are not timed.
 
 ### 4.6 Gate 4 pass and fail
 
-- **Pass** for a program: every preparation step passed; every R and S item ticked; no alarm; no line refused; the motion matched the simulation; A did not move at the unwind; the end position matched the program; the timed operation was within the agreed band (G4-3, once OI-910 is decided).
-- **Gate 4 passes** when every program of the reference job set chosen for the release has passed, and the `G93` result on the installed firmware is recorded.
+- **Pass** for a program: every preparation step passed; every R and S item ticked; no alarm; no line refused; the motion matched the simulation; A did not move at the unwind; the end position matched the program; the timed operation was within the agreed band (G4-3).
+- **Gate 4 passes** when every program of the reference job set chosen for the release, and the first-cut project's program, has passed, and the `G93` result on the installed firmware is recorded.
 - **Fail**: any unexpected motion, alarm, refused line, or a step that does not pass. Follow section 7. Do not go on to gate 5 with that program. A change to the profile, the post or the kinematics sends the affected programs back to gate 1.
 
 ### 4.7 What to keep from gate 4
@@ -193,39 +197,77 @@ Attach them to one GitHub issue for the gate 4 result (section 7.2), so the veri
 
 ## 5. Gate 5: the first cut
 
-Gate 5 cuts soft, low-cost material (wax or foam), attended, and compares the result with the model. It passes when the part matches the model within the limit in [verification plan 4.1](verification-plan.md) (start at ±0.1 mm; set the limit from a 3-axis test part first) and the findings are recorded.
+Gate 5 cuts soft, low-cost material, attended, and compares the result with the model. It passes when the part matches the model within the first-cut limit of [verification plan 4.1](verification-plan.md), **±0.1 mm**, and the findings are recorded. The owner chose (22 Oct 2026) to skip the 3-axis repeatability part and keep ±0.1 mm, and to cut a new first-cut project in tooling board rather than the reference job set. Both change slice 20 item 11, so they are in [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) (**proposed**, not yet accepted); until the owner accepts it, the verification plan and work breakdown still read as before.
 
 ### 5.1 Before gate 5
 
 | Step | Do | Pass when |
 | --- | --- | --- |
-| F1 | Gate 4 | The program you will cut passed gate 4, at the same commit, with the same profile and post. Any change since: back to gate 1. |
-| F2 | Safe-practice checklist section 3 | Every box ticked. |
-| F3 | Tool change test (OI-41) | The tool change (`M5`, `T<n> M6`) has been tested attended with a tool, or you change the tool by hand and have read the program's tool change lines. |
-| F4 | 3-axis test part | **Owner decision pending (OI-916).** No document says what the 3-axis test part is or how its result sets the first-cut limit. Until then the limit is ±0.1 mm. |
-| F5 | Choice of job | **Owner decision pending (OI-914).** Most reference jobs have stock only 2 mm longer than the part and no held region, so the stock cannot be gripped without the tool reaching the jaws. `cone_held_tabs` is the reference job that models the grip (held 4 mm and 2 mm) and the tabs. |
-| F6 | Material and cutting data | **Owner decision pending (OI-915).** The reference jobs use oak cutting data (12000 rpm, 0.02 mm per tooth, plunge 150 mm/min). Which wax or foam, and which speeds and feeds, is not in the documents. |
+| F1 | Gate 4 for this program | The first-cut project's own Z1 program (5.2) has passed gate 4 (air cut, no tool, no material, every step of section 4), at the same commit, with the same profile and post. Any change since: back to gate 1. |
+| F2 | Safe-practice checklist section 3 | Every box ticked. Its line on the 3-axis test part reads "±0.1 mm, no 3-axis part" while decision 0221 is proposed. |
+| F3 | Tool change test with a real tool (OI-41) | The tool change (`M5`, `T<n> M6`) has been run attended with a real tool and its length measurement watched. Gate 4 ran `T1 M6` with no tool (OI-912), which shows the controller accepts the line but not what it does with a tool fitted, so this test is still needed. |
+| F4 | First-cut limit | ±0.1 mm on every measurement of 5.7 (OI-916, decision 0221). |
+| F5 | The first-cut project | The project of 5.2 exists, its geometry has been confirmed with the owner (5.2, item G0), and it passes gates 1 to 3 like any other program. |
+| F6 | The tools confirmed with the owner | **Stop here and confirm the tools with the owner** once the project is generated (5.3, T0). Do not go on until they have agreed them. |
 
-### 5.2 The project: workholding and tabs
+### 5.2 The first-cut project
+
+The owner's specification (22 Oct 2026, OI-914):
+
+| Item | Value |
+| --- | --- |
+| Stock | Box, 35 x 35 x 100 mm, tooling board |
+| Where the job sits | At the **end** of the stock (the tailstock end), not over the whole length |
+| Part | 25 mm long |
+| Tab | 5 mm long, joining the part to the rest of the stock |
+| Tailstock tab | Very thin: 2 mm long, 10 mm diameter, at the tailstock end, to give the tailstock clearance |
+| Workholding | Chuck at one end, **tailstock** at the other |
+| Tools | Only the Z1 library's 3.175 mm single-flute or ball-nose tools (5.3) |
+| Material | "Plastic" (OI-915, 5.3) |
+
+**G0. Confirm before the project is built.** The specification does not give everything a project needs. Before the project is made, write down and agree with the owner:
+
+- the part's shape (a model file, or what to model: for example a cylinder or a profile of a given diameter) and its largest diameter;
+- the order along X from the chuck: gripped length, free stock, the 5 mm tab, the part, the 2 mm tailstock tab, and the stock's end, with X positions;
+- the 5 mm tab's diameter, and whether each tab is a cylinder or a frustum (OP-21);
+- the grip length at the chuck, and whether a holding diameter is given (without one the held region is the box's own section, decision 0160);
+- how the tailstock is represented: the software has a held region at the start and at the end of the stock (SET-09) but no tailstock as such, so the tailstock's point and the 2 mm tab's clearance are checked by eye (5.5 M2);
+- the setup's work zero X (the model origin) and the clearance (SET-06).
+
+The project folder is made by the owner or by the follow-up lane of OI-913 (the coordinator decides which); this document does not fix the geometry.
 
 In the application, select the setup and open **Workholding and tabs** (specification section 11.7). The setup sheet does not show these (OI-918), so read them here and write them on the form.
 
 | Step | Check | Pass when |
 | --- | --- | --- |
-| W1 | Held region at the start and at the end: grip length, and holding diameter if one is given | The grip length is the length the chuck will really grip (measure the jaw depth). With no holding diameter the held region is the stock's own section (decision 0160). |
-| W2 | The grip warning | No amber warning under **Grip length**. If there is one, it names how much of the part the held region covers (OI-554): that length of the part will **not** be machined. Go on only if you meant that. |
-| W3 | Tabs | Each tab's position, length and diameter (a frustum has two). Head and tail tabs made by the buttons are placed from the part and the stock and recalculated while ticked (decision 0202). A tab with no room shows a warning. |
+| W1 | Held region at the start (the chuck): grip length, and holding diameter if one is given | The grip length is the length the chuck will really grip (measure the jaw depth). With no holding diameter the held region is the box's own section (decision 0160). |
+| W2 | The grip warning | No amber warning under **Grip length**. If there is one, it names how much of the part the held region covers (OI-554): that length of the part will **not** be machined. With the job at the far end of a 100 mm stock there should be none. |
+| W3 | Tabs | The 5 mm tab and the 2 mm, 10 mm diameter tailstock tab are where G0 says, with the agreed diameters. A tab with no room shows a warning (decision 0202). |
 | W4 | Setup checks and messages | No error. Read every warning and write it down. "Safe Z cannot be checked against the Z travel" means the axis height is still the placeholder (OI-60): go back to gate 4 P8. |
-| W5 | Stock | The stock in the project is no smaller than the real stock you will load, and its X range puts the gripped length where the chuck is. |
+| W5 | Stock | Box 35 x 35 x 100 mm in the project, its X range putting the gripped length at the chuck and the job at the tailstock end. |
 
-### 5.3 Tool and speeds
+### 5.3 Tools, material and speeds
+
+The Z1 tool library (built-in defaults, `crates/openchuck-project/defaults/z1/`) holds five 3.175 mm tools. Every one has cutting data for **"Plastic"** and **"Softwood"** (checked on `main`, 22 Oct 2026; 32 of the library's 54 tools have Plastic data; material names match ignoring case, decision 0197):
+
+| No. | Tool | Type, flutes | Flute length | "Plastic" preset: rpm, mm per tooth (feed), plunge, stepover, stepdown |
+| --- | --- | --- | --- | --- |
+| 101 | Z1 O-flute metal 3.175x12 | Flat end, 1 flute | 12 mm | 10000, 0.1 (1000 mm/min), 300 mm/min, 2.2225 mm, 1.0 mm |
+| 104 | Z1 O-flute 3.175x25 | Flat end, 1 flute | 25 mm | 10000, 0.1 (1000 mm/min), 300 mm/min, 2.2225 mm, 1.0 mm |
+| 105 | Z1 O-flute 3.175x42 | Flat end, 1 flute | 42 mm | 10000, 0.1 (1000 mm/min), 300 mm/min, 2.2225 mm, 1.0 mm |
+| 201 | Z1 ball metal 3.175x10 | Ball end, 2 flutes | 10 mm | 12000, 0.0208 (500 mm/min), 200 mm/min, 0.4536 mm, 1.0 mm |
+| 204 | Z1 ball 3.175x22 | Ball end, 2 flutes | 22 mm | 12000, 0.0208 (500 mm/min), 200 mm/min, 0.4536 mm, 1.0 mm |
+
+The library has no single-flute ball-nose tool at 3.175 mm: the ball-nose tools are two-flute. The "Softwood" presets of these tools differ from "Plastic" only in the stepdown (2.0 mm).
 
 | Step | Check | Pass when |
 | --- | --- | --- |
-| T1 | The tool in the project (setup sheet Tools table) | It is the tool you will fit: type, diameter, flute length. The tool number matches the program's `T<n>`. |
-| T2 | Stick-out | The tool sticks out of the holder at least as far as the deepest cut plus a margin, and no further than needed. The Z1 measures tool length itself (decision 0007: no `G43`); follow the machine's own procedure. |
-| T3 | Spindle speed | The setup sheet's Spindle rpm and **Speed from** (R6): the value is what you chose for the material (OI-915), not the oak value carried over by accident. If you change it, regenerate and reread the program. |
-| T4 | Feeds | The operation's cutting feed and plunge feed are what you chose for the material, and the program's F words are within the profile's limits (R10). |
+| T0 | **Confirm the tools with the owner** (the owner's instruction). When the project is generated, show the owner the setup sheet's Tools and Operations tables (number, name, type, diameter, flute length, spindle rpm, Speed from) | The owner has agreed every tool and its use. Record who agreed and when. |
+| T1 | Each operation's tool | One of the five tools above, and the tool number matches the program's `T<n>` (GC-14). |
+| T2 | Material | The setup's material is **Plastic**, so the operations take the Plastic presets: the setup sheet's **Speed from** reads "tool data: Plastic" (decision 0196, OI-755). If an operation sets its own speed, Speed from reads "operation": check the value with the owner. |
+| T3 | A tool with no Plastic data | None of the five lacks it. If a tool without Plastic data is ever used: copy its Softwood data to a new Plastic entry in the tool library; if it has no Softwood data either, **ask the owner before** using settings from a similar tool (OI-915). |
+| T4 | Feeds | The program's F words are within the profile's limits (R10); the plunge F matches the preset. |
+| T5 | Stick-out | The tool sticks out of the holder at least as far as the deepest cut plus a margin, and the flute length covers the depth from the stock's surface to the part (the box's corners are 24.7 mm from the axis). The Z1 measures tool length itself (decision 0007: no `G43`); follow the machine's own procedure. |
 
 ### 5.4 Simulate before cutting
 
@@ -234,54 +276,55 @@ In the application, select the setup and open **Workholding and tabs** (specific
 | V1 | Run **Simulate** in the application (or `openchuck-cli simulate <project>`), at the default cell (0.1 mm) or finer | It completes. No banner saying the result is out of date (decision 0192). |
 | V2 | Overcut | The results inspector shows no overcut beyond the tolerance, and the command line reports no "OVERCUT" and no rapid move that removes material. |
 | V3 | Material left | Write down the largest material left and where it is (the probe and "Go to largest left" show it). Material left on a held region or tab face is not counted; a cut **into** one is (decision 0194). |
-| V4 | Held regions and tabs | They stay whole in the simulated stock (SET-09, OP-21). |
-| V5 | Playback | Play the program through. The tool stays clear of the chuck end of the stock (the gripped length): no fed move runs along it (decision 0161). |
+| V4 | Held region and tabs | They stay whole in the simulated stock (SET-09, OP-21); the 2 mm tailstock tab is not cut through. |
+| V5 | Playback | Play the program through. The tool stays clear of the gripped length (decision 0161) and of the tailstock end. |
 | V6 | Keep | A screenshot of the coloured part, the histogram and the worst values, for the comparison in 5.7. |
 
-The simulation is a check on the program, not a promise about the machine (NFR-12): it does not model the chuck, jaws or the machine's own errors.
+The simulation is a check on the program, not a promise about the machine (NFR-12): it does not model the chuck, the jaws, the tailstock or the machine's own errors.
 
 ### 5.5 On the machine: stock and offsets
 
 | Step | Do | Pass when |
 | --- | --- | --- |
-| M1 | Measure the stock (diameter, length) | It matches the project's stock within what you consider safe; never larger than the project's stock. |
-| M2 | Load the stock in the chuck with the gripped length the project says (W1); tighten | It does not move when you try to turn or pull it by hand. Turn A by jog a full turn at low feed: it turns true by eye and nothing touches. |
-| M3 | Fit the tool (T1, T2) | The tool number in the controller is the program's `T<n>`. |
-| M4 | Set and check work zero as in gate 4 P9 (OI-917) | G54 Y0 Z0 on the axis centreline; X0 matches the setup sheet's work offset line, measured from the stock's end face the owner chooses. |
-| M5 | Check by hand that the first rapid position is clear: jog to the program's first `G0` position in G54 (X, Y0, safe Z, A0) at low feed | The tool is above the stock at the X the program starts at, and clears the jaws. |
-| M6 | Protection | Eye and ear protection on; loose clothing, hair and jewellery secured; dust and chips managed for the material. |
+| M1 | Measure the stock (35 x 35 x 100 mm) | It matches the project's stock within what you consider safe; never larger. |
+| M2 | Load the stock in the chuck with the gripped length the project says (W1), and bring up the tailstock; tighten both | It does not move when you try to turn or pull it by hand. Turn A by jog a full turn at low feed: it turns true by eye and nothing touches. The tailstock point is clear of every move the playback showed. |
+| M3 | Fit the tool (T1, T5) | The tool number in the controller is the program's `T<n>`. |
+| M4 | Set the work zero with **Makera's own routine** (OI-917): Y and Z on the A axis, X0, and A0 | G54 Y0 Z0 on the axis centreline, X0 where the setup sheet's work offset line says, A0 as the routine sets it. Record on the form: which face X0 was taken from, how A0 was set, and G54 X, Y, Z in machine coordinates. The machine Z of G54 is the axis height (OI-60): compare it with the profile. |
+| M5 | Check by hand that the first rapid position is clear: jog to the program's first `G0` position in G54 (X, Y0, safe Z, A0) at low feed | The tool is above the stock at the X the program starts at, and clears the jaws and the tailstock. |
+| M6 | Protection | Eye and ear protection on; loose clothing, hair and jewellery secured; dust extraction or a mask for tooling board dust. |
 
 ### 5.6 The first cut
 
-- **C1.** Reread the program (section 4.2) one more time. It must be the file you air-cut in gate 4, regenerated only if you changed the tool, speeds or stock, in which case read it again from the start.
+- **C1.** Reread the program (section 4.2) one more time. It must be the file you air-cut for F1, regenerated only if you changed the tool, speeds or stock, in which case read it again from the start and air-cut it again.
 - **C2.** Feed override at 10 %. Hand near feed hold and emergency stop.
-- **C3.** Start. Watch the tool change and spindle start (OI-41, OI-911).
+- **C3.** Start. Watch the tool change and the spindle start.
 - **C4.** Watch the first plunge: the tool comes down at the plunge feed to the first cut, no faster.
 - **C5.** Raise the override slowly, only while the cut sounds and looks steady.
-- **C6.** Stop at any unexpected sound, vibration, smell, smoke, or motion (section 7). For wax: melting or smearing; for foam: tearing or the stock moving.
+- **C6.** Stop at any unexpected sound, vibration, smell, smoke, or motion (section 7): for tooling board, tearing, the stock moving, or the tailstock tab breaking.
 - **C7.** At the end, wait until everything has stopped before opening the enclosure.
 
 ### 5.7 Inspect against the model and the simulation
 
 | Step | Do | Pass when |
 | --- | --- | --- |
-| I1 | Look at the part before you remove it | Tabs whole, no marks on the gripped length (the tool kept clear of it, decision 0161), no gouges. Photograph it from four sides (A 0, 90, 180, 270). |
-| I2 | Measure diameters at stations along X (for the cone, at least 5 stations from end to end, away from the tabs) | Each is within the first-cut limit (F4) of the model's diameter at that X. |
-| I3 | Length and positions | The part's length and the tabs' positions match the setup within the limit. |
-| I4 | Compare with the simulation (V3, V6) | Where the simulation showed material left, the part has it too, about as much; where it showed none, there is none. A difference larger than the limit is a finding. |
+| I1 | Look at the part before you remove it | Both tabs whole, no marks on the gripped length (decision 0161), no gouges. Photograph it from four sides (A 0, 90, 180, 270). |
+| I2 | Measure the part's diameters (or widths) at stations along X: at least 5 over its 25 mm, away from the tabs | Each is within ±0.1 mm of the model at that X. |
+| I3 | Length and positions | The part's length (25 mm) and the tabs' positions and diameters within ±0.1 mm. |
+| I4 | Compare with the simulation (V3, V6) | Where the simulation showed material left, the part has it too, about as much; where it showed none, there is none. A difference larger than 0.1 mm is a finding. |
 | I5 | Surface | Write down anything that looks wrong: steps, chatter, a seam where A wraps. |
 
 ### 5.8 Gate 5 pass and fail
 
-- **Pass**: every check in 5.1 to 5.5 passed; the cut ran with no unexpected event; I1 to I4 within the limit; the findings recorded.
+- **Pass**: every check in 5.1 to 5.5 passed; the cut ran with no unexpected event; I1 to I4 within ±0.1 mm; the findings recorded.
 - **Fail**: any step above, or any measurement outside the limit. Follow section 7. A machine-side cause (stock slipped, wrong offset) is recorded and the cut repeated; a cause in the program is a defect.
 
 ### 5.9 What to keep from gate 5
 
 - The filled results form (section 8.2).
-- The gate 4 issue number for the same program.
+- The gate 4 issue number for the first-cut program.
+- The record of G0 (the geometry agreed) and T0 (the tools agreed).
 - The program, setup sheet and simulation screenshots (V6).
-- Photos of the setup in the machine (stock in the chuck, tool), and the finished part from four sides.
+- Photos of the setup in the machine (stock in the chuck, tailstock, tool), and the finished part from four sides.
 - The measurements and the instrument used.
 
 ## 6. One-page checklists
@@ -289,36 +332,37 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 ### 6.1 Gate 4 (air cut)
 
 - [ ] Safe-practice checklist sections 1 and 2 complete.
-- [ ] Owner decisions OI-910, OI-911, OI-912, OI-913, OI-917 and OI-919 answered and followed.
+- [ ] Owner's answers followed: OI-910 (time a whole operation), OI-911 (spindle runs, no tool), OI-912 (`T1 M6` as generated, watched), OI-913 (project folders, or golden programs until they exist), OI-917 (Makera's work-zero routine), OI-919 (no single block).
 - [ ] P1 build information pasted; uncommitted changes: no.
 - [ ] P2 programs from that commit.
 - [ ] P3 profile is Makera Z1; unconfirmed values noted.
 - [ ] P4 Makera Z1 post, `.nc`.
 - [ ] P5 firmware noted (1.1.2, or SP-12 rechecked).
 - [ ] P6 no tool, no material; photo.
-- [ ] P7 spindle and tool change handled as decided.
-- [ ] P8 axis height measured and in the profile.
-- [ ] P9 G54: Y0 Z0 on the axis, X0 as the setup sheet says.
+- [ ] P7 program run as generated: spindle on with no tool, `T1 M6` watched.
+- [ ] P8 axis height measured (Makera's routine, G53 Z of G54 Z0) and in the profile.
+- [ ] P9 G54 by Makera's routine: Y0 Z0 on the axis, X0 as the setup sheet says; X0 face and A0 recorded.
 - [ ] P10 safe Z and X range clear by jogging.
 - [ ] Program read: R1 to R12 and S1 to S7 ticked.
-- [ ] Override 10 %, hand on the stop, enclosure closed, tape on the jaw.
-- [ ] Sphere, cone, groove run: no alarm, no refused line, motion as simulated.
+- [ ] Override 10 %, hand on feed hold and the stop (no single block), enclosure closed, tape on the jaw.
+- [ ] Sphere, cone, groove, the other reference programs and the first-cut program run: no alarm, no refused line, motion as simulated.
 - [ ] Groove unwind: A did not move.
-- [ ] Timed operation within the band (OI-910).
+- [ ] Timed sphere operation: measured against "about N s" x 100 / override; band agreed and recorded.
 - [ ] `G93` result recorded; OI-267 test run.
 - [ ] Results form filled; issue raised with the attachments.
 
 ### 6.2 Gate 5 (first cut)
 
-- [ ] Gate 4 passed for this program, same commit, profile and post.
+- [ ] Gate 4 passed for the first-cut program, same commit, profile and post.
 - [ ] Safe-practice checklist section 3 complete.
-- [ ] Owner decisions OI-914, OI-915 and OI-916 answered; first-cut limit set.
-- [ ] Tool change tested (OI-41), or done by hand with the program's lines read.
-- [ ] Workholding: grip length matches the chuck; no grip warning, or understood; tabs as intended.
-- [ ] Tool, stick-out, spindle speed and Speed from, feeds checked.
+- [ ] First-cut project's geometry agreed with the owner (G0, OI-914); first-cut limit ±0.1 mm (decision 0221).
+- [ ] Tools agreed with the owner (T0): only the 3.175 mm O-flute (101, 104, 105) or ball (201, 204) tools; material Plastic, Speed from "tool data: Plastic".
+- [ ] Tool change tested attended with a real tool (OI-41).
+- [ ] Workholding: grip length matches the chuck; no grip warning; the 5 mm tab and the 2 mm, 10 mm tailstock tab as agreed.
+- [ ] Stick-out, spindle speed and feeds checked against the Plastic presets.
 - [ ] Simulated: up to date; no overcut; no rapid removes material; held regions and tabs whole; screenshots kept.
-- [ ] Stock measured, loaded to the grip length, turns true.
-- [ ] G54 and X0 checked; first rapid position jogged and clear.
+- [ ] Stock 35 x 35 x 100 mm measured, loaded to the grip length, tailstock up, turns true.
+- [ ] G54 by Makera's routine; X0 face and A0 recorded; first rapid position jogged and clear of jaws and tailstock.
 - [ ] Protection on.
 - [ ] Program reread; override 10 %; hand on the stop.
 - [ ] Part inspected and measured; compared with the simulation.
@@ -375,8 +419,10 @@ For a pass, the same issue (or one per gate) holds the results form and the atta
 Gate 4 (air cut)                          Date:            Operator:
 Build information:
 Firmware:                                 Axis height measured (mm):
-G54 in machine coordinates X / Y / Z:     X0 found by:
-Decisions followed: OI-910 / 911 / 912 / 913 / 917 / 919
+G54 in machine coordinates X / Y / Z:
+Programs from: project folders (build in P1) / golden files (commit)
+What the controller did on T1 M6 with no tool:
+X0 taken from:                            A0 set by:
 ```
 
 | Program | Read (R1-R12, S1-S7) | Override % | Alarms or refused lines (line) | Motion as simulated | Unwind: DRO A before / after, moved? | End position as program | Timed: predicted s x 100/override, measured s, ratio | Pass / fail | Issue |
@@ -406,11 +452,15 @@ Gate 5 (first cut)                        Date:            Operator:
 Build information:
 Gate 4 issue for this program:
 Program:                                  Setup sheet fingerprint:
-Material:                                 Stock measured (diameter x length):
-Grip length (start / end):                Tabs:
+Material: tooling board, setup material Plastic
+Stock measured (35 x 35 x 100 mm):
+Geometry agreed with the owner (G0), by and date:
+Tools agreed with the owner (T0), by and date:
+Grip length at the chuck:                 Tabs (5 mm; 2 mm x 10 mm tailstock tab):
+X0 taken from:                            A0 set by:
 Tool (number, type, diameter, stick-out):
 Spindle rpm and Speed from:               Cutting feed / plunge feed:
-First-cut limit (mm) and where it came from:
+First-cut limit: ±0.1 mm (decision 0221)
 Simulation: cell (mm), worst material left (mm, where), overcut:
 ```
 
@@ -430,22 +480,22 @@ Simulation: cell (mm), worst material left (mm, where), overcut:
 | Surface notes | |
 | Pass / fail, issue | |
 
-## 9. Open questions for the owner
+## 9. Owner decisions and open items
 
-Each is an open item in [open-items.md](open-items.md). The ones marked *decision* have been put to the owner through the coordinator, one at a time, with options and a recommendation; this document is updated with the answers.
+The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by the coordinator). Each is a row in [open-items.md](open-items.md).
 
-| OI | Question | Blocks |
-| --- | --- | --- |
-| OI-910 | How the timed XYZA move is measured, since no single generated move is long enough to time by hand and the predicted time is not where the air-cut procedure's step 3 says (*decision*) | Gate 4 G4-3 |
-| OI-911 | Whether the spindle runs during the air cut (the programs start it with `S... M3`) (*decision*) | Gate 4 P7 |
-| OI-912 | How `T1 M6` is handled with no tool fitted (*decision*) | Gate 4 P7 |
-| OI-913 | Where the owner gets the reference jobs to open in the release build, regenerate and read with their setup sheets (*decision*) | Gate 4 P2 |
-| OI-914 | Which job or jobs gate 5 cuts, given that only `cone_held_tabs` models the grip (*decision*) | Gate 5 F5 |
-| OI-915 | Which wax or foam, and which speeds and feeds, for gate 5 (*decision*) | Gate 5 F6, T3, T4 |
-| OI-916 | What the 3-axis test part is, how it is measured and how its result sets the first-cut limit (*decision*) | Gate 5 F4 |
-| OI-917 | How the axis height and work zero are found on the Z1: which tool or probe, which face X0 is taken from, and where A is zero (*decision*) | Gate 4 P8, P9; gate 5 M4 |
-| OI-918 | The setup sheet does not show the held regions and tabs, so the printed sheet is not enough to set up gate 5 | Gate 5 5.2 (worked around by reading the application) |
-| OI-919 | Whether the Z1 controller can run one line at a time (single block) for the first moves (*decision*) | Gate 4 4.3 |
+| OI | Question | Owner's answer | Where it is used | Still open |
+| --- | --- | --- | --- | --- |
+| OI-910 | How the timed XYZA move is measured | A: time a whole operation against "about N s" x 100 / override; band agreed at the first run; the air-cut procedure's step 3 corrected | 4.5, G4-3 | No |
+| OI-911 | Whether the spindle runs in the air cut | A: it runs as generated, with no tool; the program is tested exactly as generated | P7 | No |
+| OI-912 | How `T1 M6` is handled with no tool | B: run as generated and watch, ready on the stop; the tool change with a real tool is still tested before gate 5 (OI-41) | P7, F3 | No (OI-41 stays open) |
+| OI-913 | Where the reference jobs come from | A: a follow-up lane commits them as project folders | P2 | Yes, until that lane merges |
+| OI-914 | Which job gate 5 cuts | C: a new first-cut project to the owner's specification (5.2) | 5.2, F5 | Yes: the exact geometry (G0) and who builds the project |
+| OI-915 | Material and cutting data for gate 5 | Tooling board with the "Plastic" presets; Softwood copied where Plastic is missing; ask the owner before using a similar tool's data | 5.3 | No |
+| OI-916 | The 3-axis test part | B: skip it; the first-cut limit stays ±0.1 mm | F4, 5.7 | Until [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) is accepted |
+| OI-917 | How the axis height and work zero are found | Makera's own routine for Y and Z on the axis, X0 and A0; the form records the X0 face and A0 | P8, P9, M4 | No |
+| OI-918 | The setup sheet does not show held regions or tabs | A follow-up for scheduling (the coordinator assigns it) | 5.2 | Yes |
+| OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 
 ## 10. Results
 
