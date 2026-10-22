@@ -1,9 +1,9 @@
 # 0221: Gate 5 cuts a first-cut project in tooling board, with no 3-axis test part and a ±0.1 mm limit (lane GATES)
 
-- **Status:** proposed (22 Oct 2026). The owner's answers to OI-914, OI-915 and OI-916 were relayed by the coordinator session on 22 Oct 2026 (decision 0049); the coordinator asked for this record because they change slice 20 item 11 and verification plan 4.1. Only the owner accepts it, directly in the lane GATES session.
+- **Status:** accepted (22 Oct 2026) by the project owner, directly in the lane GATES session ("Accept 0221"). The owner's answers to OI-914, OI-915 and OI-916 were relayed by the coordinator session on 22 Oct 2026 (decision 0049); the coordinator asked for this record because they change slice 20 item 11 and verification plan 4.1. The document edits of *Consequences* are made with the acceptance.
 - **What it amends:** [work breakdown](../work-breakdown.md) slice 20 item 11 and its review checklist line "Gates 1 to 5 have passed for the reference job set"; [verification plan](../verification-plan.md) section 4.1, the row "First-cut part (gate 5)", and the note under section 5's assumptions that the limits are revised after "the 3-axis test cut"; the [safe-practice checklist](../z1-safe-practice-checklist.md) section 3 line on the 3-axis test part. No requirement and no architecture change: GC-09, OP-21, SET-09 and NFR-12 are unchanged.
 - **Date:** 22 Oct 2026.
-- **Open items:** OI-916 closes when this record is accepted; OI-914 and OI-915 are answered by items 2 and 3 (OI-914 stays open for the project's geometry).
+- **Open items:** OI-916 closed by the acceptance; OI-914 and OI-915 are answered by items 2 and 3 (both closed: the geometry was given by the owner and the project is built, `testdata/projects/first_cut/`).
 
 Numbering: 0221 was assigned to lane GATES by the coordinator and checked free on `main` and every unmerged branch on 22 Oct 2026.
 
@@ -31,11 +31,11 @@ Requirements: GC-09 (the Z1 post), OP-21 (tabs), SET-09 (workholding), NFR-12 (t
 
 ## Consequences
 
-The document edits below are proposed with this record and made only once the owner accepts it (CLAUDE.md: the verification plan and work breakdown wording is for the record to propose):
+The document edits below were proposed with this record and are made with its acceptance:
 
 - `docs/verification-plan.md` section 4.1, the "First-cut part (gate 5)" row: "±0.1 mm. The 3-axis test part is not cut (decision 0221); revise the limit after the first cut if it proves too tight or too loose." The note that the limits "are revised after the first benchmarks, the simulation spike and the 3-axis test cut" drops "and the 3-axis test cut".
 - `docs/work-breakdown.md` slice 20 item 11: "an air cut at reduced feed for the reference job set and the first-cut project (…), then a first cut of the first-cut project in tooling board ([decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md)) to a limit of ±0.1 mm"; the review checklist line: "Gates 1 to 4 have passed for the reference job set and gates 1 to 5 for the first-cut project, with results stored, and the G93 result is recorded".
 - `docs/z1-safe-practice-checklist.md` section 3: "The first-cut limit is ±0.1 mm (decision 0221)" in place of the 3-axis line, and "tooling board" beside wax or foam.
 - `docs/open-items.md`: OI-916 closed.
 
-The first-cut project itself is not built here: its exact geometry is to be agreed with the owner (OI-914), and who builds it is the coordinator's assignment. NFR-12 still applies: generated G-code is the user's to verify before running on a machine.
+The first-cut project is built in lane GATES from the owner's geometry (OI-914, closed): `testdata/projects/first_cut/`, its programs in `testdata/golden/first_cut/`. NFR-12 still applies: generated G-code is the user's to verify before running on a machine.

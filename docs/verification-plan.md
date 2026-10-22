@@ -189,7 +189,7 @@ These are starting values, chosen before there is anything to measure. They are 
 | Determinism | GC-07, NFR-06 | Zero difference, byte for byte, at 1, 2 and all threads |
 | Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; no unresolved crash for release; 24 cumulative CPU hours per parser is an advisory target, reported for release but not required ([decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md) item 7) |
 | Performance regression | NFR-03, NFR-04 | Flag at 10% on the median of several runs, on a dedicated runner |
-| First-cut part (gate 5) | GC-09 | Start at ±0.1 mm. First cut a 3-axis test part to measure the machine's own repeatability, then set the limit from that result; software tolerance cannot beat what the machine holds |
+| First-cut part (gate 5) | GC-09 | ±0.1 mm. The 3-axis test part is not cut (decision 0221); revise the limit after the first cut if it proves too tight or too loose. Software tolerance cannot beat what the machine holds |
 
 ### 4.2 Reference hardware for NFR-03
 
@@ -372,7 +372,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 **Open items.**
 
 - Keep section 4 in step with the requirements document and section 5 in step with the architecture; a change to either needs a matching change here.
-- The limits in 4.1 and the hardware in 4.2 are starting values. Revise them after the first benchmarks, the simulation spike and the 3-axis test cut, and record each change.
+- The limits in 4.1 and the hardware in 4.2 are starting values. Revise them after the first benchmarks and the simulation spike, and record each change.
 - Open architecture decisions that change verification: simulation stock representation (decided by SP-6, decision 0022: dexels) and Git LFS or a separate test-data repository.
 - The reference job set (parts, stock, tools) for gates 4 and 5 is chosen in work breakdown slice 6.
 - A safe-practice checklist for first machine trials is written in work breakdown slice 20 and reviewed by whoever operates the Makera Z1.

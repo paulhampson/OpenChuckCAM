@@ -1,6 +1,6 @@
 # Makera Z1 gates 4 and 5: step-by-step test instructions
 
-**Status: draft for the owner's review (lane GATES, 22 Oct 2026), with the owner's answers to OI-910 to OI-919 (22 Oct 2026, relayed by the coordinator).** Written by an agent from the project documents, not from experience of the machine. Nothing in it has been run on a Z1. Where the documents do not say how the Z1 behaves, this document does not guess: it names the question and the open item (section 9). Two things are still to settle before gate 5: the first-cut project's exact geometry (OI-914, 5.2 item G0) and [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) (proposed). The document stays a draft until the owner's gate 4 and 5 results are folded into section 10.
+**Status: draft for the owner's review (lane GATES, 22 Oct 2026), with the owner's answers to OI-910 to OI-919 (22 Oct 2026, relayed by the coordinator).** Written by an agent from the project documents, not from experience of the machine. Nothing in it has been run on a Z1. Where the documents do not say how the Z1 behaves, this document does not guess: it names the question and the open item (section 9). Two things are still to settle before gate 5: the first-cut project's exact geometry (OI-914, 5.2 item G0) and [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) (accepted). The document stays a draft until the owner's gate 4 and 5 results are folded into section 10.
 
 **Generated G-code is the user's to verify before running on a machine (NFR-12).** OpenChuckCAM does not say that a program is safe or correct for any machine, tool or setup, and nothing in this document says otherwise. Passing gates 1 to 3, a clean simulation or a step of these instructions lowers the risk; it does not remove it. You, the operator, decide whether a program runs, and you can stop at any point.
 
@@ -13,7 +13,7 @@ This document turns them into steps that someone who is not a machinist can foll
 - the [safe-practice checklist](z1-safe-practice-checklist.md): complete its section 1 at the start of every session, section 2 before gate 4, section 3 before gate 5 and section 4 after every run;
 - the [air-cut procedure](z1-air-cut-procedure.md): its steps 0 to 7 are the run order of gate 4 (section 4.4 below). Its step 3 is corrected to time a whole operation (OI-910, section 4.5).
 
-Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post, and the first-cut project's program. Gate 5 cuts the first-cut project of section 5.2 (OI-914), not the reference job set (decision 0221, proposed).
+Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post, and the first-cut project's program. Gate 5 cuts the first-cut project of section 5.2 (OI-914), not the reference job set (decision 0221).
 
 **Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S8, G4-0 to G4-7 for gate 4; F1 to F6, G0, W1 to W5, T0 to T5, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
 
@@ -196,14 +196,14 @@ Attach them to one GitHub issue for the gate 4 result (section 7.2), so the veri
 
 ## 5. Gate 5: the first cut
 
-Gate 5 cuts soft, low-cost material, attended, and compares the result with the model. It passes when the part matches the model within the first-cut limit of [verification plan 4.1](verification-plan.md), **±0.1 mm**, and the findings are recorded. The owner chose (22 Oct 2026) to skip the 3-axis repeatability part and keep ±0.1 mm, and to cut a new first-cut project in tooling board rather than the reference job set. Both change slice 20 item 11, so they are in [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) (**proposed**, not yet accepted); until the owner accepts it, the verification plan and work breakdown still read as before.
+Gate 5 cuts soft, low-cost material, attended, and compares the result with the model. It passes when the part matches the model within the first-cut limit of [verification plan 4.1](verification-plan.md), **±0.1 mm**, and the findings are recorded. The owner chose (22 Oct 2026) to skip the 3-axis repeatability part and keep ±0.1 mm, and to cut a new first-cut project in tooling board rather than the reference job set. Both change slice 20 item 11, so they are in [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) (accepted by the owner, 22 Oct 2026); the verification plan, the work breakdown and the safe-practice checklist are edited to match.
 
 ### 5.1 Before gate 5
 
 | Step | Do | Pass when |
 | --- | --- | --- |
 | F1 | Gate 4 for this program | The first-cut project's own Z1 program (5.2) has passed gate 4 (air cut, no tool, no material, every step of section 4), at the same commit, with the same profile and post. Any change since: back to gate 1. |
-| F2 | Safe-practice checklist section 3 | Every box ticked. Its line on the 3-axis test part reads "±0.1 mm, no 3-axis part" while decision 0221 is proposed. |
+| F2 | Safe-practice checklist section 3 | Every box ticked. Its first-cut limit line reads ±0.1 mm (decision 0221). |
 | F3 | Tool change test with a real tool (OI-41) | The tool change (`M5`, `T<n> M6`) has been run attended with a real tool and its length measurement watched. Gate 4 ran `T1 M6` with no tool (OI-912), which shows the controller accepts the line but not what it does with a tool fitted, so this test is still needed. |
 | F4 | First-cut limit | ±0.1 mm on every measurement of 5.7 (OI-916, decision 0221). |
 | F5 | The first-cut project | The project of 5.2 exists, its geometry has been confirmed with the owner (5.2, item G0), and it passes gates 1 to 3 like any other program. |
@@ -499,7 +499,7 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-913 | Where the reference jobs come from | A: committed as project folders (built in lane GATES); OI-920 A: without their generated meshes, which a generator example writes | P2 | No (OI-922: `drilling` and `swarf`) |
 | OI-914 | Which job gate 5 cuts | C: a new first-cut project to the owner's specification and geometry (5.2), built in lane GATES | 5.2, F5 | No (OI-923, OI-924) |
 | OI-915 | Material and cutting data for gate 5 | Tooling board with the "Plastic" presets; Softwood copied where Plastic is missing; ask the owner before using a similar tool's data | 5.3 | No |
-| OI-916 | The 3-axis test part | B: skip it; the first-cut limit stays ±0.1 mm | F4, 5.7 | Until [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) is accepted |
+| OI-916 | The 3-axis test part | B: skip it; the first-cut limit stays ±0.1 mm | F4, 5.7 | No ([decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) accepted) |
 | OI-917 | How the axis height and work zero are found | Makera's own routine for Y and Z on the axis, X0 and A0; the form records the X0 face and A0 | P8, P9, M4 | No |
 | OI-920 | The meshes are too large to commit | A: commit the project files, generate the parts (`sample_projects` example) | P2 | No |
 | OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
