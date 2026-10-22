@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -120,6 +120,7 @@ struct Args {
     deflections: Vec<f64>,
     fine: Option<f64>,
     angular: f64,
+    forms: Vec<char>,
 }
 
 fn args() -> Result<Args, Error> {
@@ -138,6 +139,7 @@ fn args() -> Result<Args, Error> {
         deflections: DEFLECTIONS.to_vec(),
         fine: None,
         angular: TessellationSettings::default().angular,
+        forms: vec!['a', 'b', 'c'],
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -161,6 +163,9 @@ fn args() -> Result<Args, Error> {
                     .split(',')
                     .map(str::parse)
                     .collect::<Result<_, _>>()?;
+            }
+            "--forms" => {
+                out.forms = it.next().ok_or("--forms LIST")?.split(',').filter_map(|f| f.chars().next()).collect();
             }
             "--angular" => out.angular = it.next().ok_or("--angular RAD")?.parse()?,
             "--fine" => out.fine = Some(it.next().ok_or("--fine MM")?.parse()?),
@@ -268,7 +273,10 @@ fn main() -> Result<(), Error> {
     let mut library_b = None;
     // The operations each form's strategies refused, by the form's letter.
     let mut refused: BTreeMap<char, Vec<bool>> = BTreeMap::new();
-    for (name, form) in &forms {
+    for (name, form) in forms
+        .iter()
+        .filter(|(name, _)| name.chars().next().is_some_and(|c| args.forms.contains(&c)))
+    {
         let tessellation = Cloud::of_mesh(form.surface().tessellation(), SPACING);
         println!("\n## form {name}: {} triangles", form.surface().tessellation().triangles.len());
         if wants("m2") || wants("m3") {
