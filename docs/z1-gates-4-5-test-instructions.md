@@ -231,15 +231,15 @@ The owner's specification (22 Oct 2026, OI-914):
 | X 0 | Work zero X0: the head end of the stock, on the axis | Owner |
 | X 0 to 10 | Gripped by the chuck jaws (at most 10 mm) | Owner |
 | X 10 to 68 | Free stock, **left uncut** | Owner ("do not use the whole length"); X positions the coordinator's proposed layout |
-| X 0 to 68 | **One held region at the start, 68 mm, box section** (no holding diameter, decision 0160): the 10 mm in the jaws plus the 58 mm left uncut. Nothing else in the software keeps a tool off a length of stock (OP-22 is not built, OI-923) | This lane's reading |
+| X 0 to 68 | **One held region at the start, 68 mm, box section** (no holding diameter, decision 0160): the 10 mm in the jaws plus the 58 mm left uncut, so the setup sheet reads "Held at the start: 68 mm" though the chuck grips 10 mm. Nothing else in the software keeps a tool off a length of stock (OP-22 is not built, OI-923). Accepted by the owner (22 Oct 2026) | This lane's reading, accepted |
 | X 68 to 73 | Tab, cylinder 10 mm diameter, 5 mm long, on the axis | Owner |
 | X 73 to 98 | Part: a cone 25 mm long, **20 mm diameter at X 73 (the head side), 10 mm at X 98 (the tailstock side)**, so its small end meets the 10 mm tailstock piece flush and the tailstock side has no shoulder | Owner: a cone 25 mm long, 20 mm largest; the small diameter and the direction are this lane's reading |
-| X 98 to 100 | Tailstock piece, 10 mm diameter, 2 mm long: **how it is modelled waits on the owner (OI-924)**. As a tab, the program cuts past X 100 (roughing to X 101.0; the finishing ball's edge to about X 101.6). As a held region at the end, every fed move stays between X 70.1 and 95.9, leaving the cone's last 2 mm unfinished | Owner (a 2 mm, 10 mm tab); modelling OI-924 |
+| X 98 to 100 | Tailstock piece, 10 mm diameter, 2 mm long: **a held region at the end** (the owner's answer to OI-924, option A), so every cutting move keeps clear of it and of the tailstock beyond it (decision 0161): the fed moves stay between X 70.1 and 95.9, and the cone's last 2 mm (X 95.9 to 98) are left unfinished. As a tab (rejected), the program cut past the stock's end: roughing 544 fed moves to X 101.02, the finishing ball's edge to about X 101.6 | Owner (a 10 mm, 2 mm piece; OI-924 A) |
 | X 100 | End of the stock; the tailstock centre | Owner |
 
-Stock box 35 x 35 x 100 mm, X 0 to 100, Y and Z -17.5 to 17.5; material "Plastic"; roughing (rotary roughing) with tool 104, finishing (helical, 5 degree steps) with tool 204, both with the Plastic presets (OI-921). The tools are numbered T1 (104) and T2 (204) in the program, because the Z1 profile carries no tool set; renumber them if the controller needs 104 and 204 (GC-14).
+Stock box 35 x 35 x 100 mm, X 0 to 100, Y and Z -17.5 to 17.5; material "Plastic"; roughing (rotary roughing) with tool 104, finishing (helical, 5 degree steps) with tool 204, both with the Plastic presets (OI-921). The program numbers them **T1 (104, roughing) and T2 (204, finishing)**, as the owner decided (22 Oct 2026): the Z1 profile carries no tool set, so fit 104 as T1 and 204 as T2.
 
-**Confirm with the owner** before gate 5: the 68 mm held region reading, the cone's 10 mm small end on the tailstock side, the tailstock modelling (OI-924), and the tool numbers.
+**Still for the owner to confirm:** the cone's direction, its 10 mm small end on the tailstock side (in the draft pull request's review). The 68 mm held region, the tailstock piece as a held region and the tool numbers are confirmed (22 Oct 2026).
 
 Read them on the setup sheet (its Setup section's "Held at the start", "Held at the end" and "Tabs" lines and the "Tabs: <setup>" table, OI-918) and check them against the application's **Workholding and tabs** section (specification section 11.7). Write them on the form.
 
@@ -247,7 +247,7 @@ Read them on the setup sheet (its Setup section's "Held at the start", "Held at 
 | --- | --- | --- |
 | W1 | Held region at the start: 68 mm, box section | The chuck grips 10 mm or less of it (measure the jaw depth); the rest, X 10 to 68, is the free stock left uncut (G0). |
 | W2 | The grip warning | No amber warning under **Grip length**. If there is one, it names how much of the part the held region covers (OI-554): that length of the part will **not** be machined. With the job at the far end of a 100 mm stock there should be none. |
-| W3 | Tabs and the tailstock piece | The 10 mm tab at X 68 to 73, and the 10 mm tailstock piece at X 98 to 100 as OI-924 decided (a tab, or a held region at the end). A tab with no room shows a warning (decision 0202). |
+| W3 | Tab and the tailstock piece | The 10 mm tab at X 68 to 73; "Held at the end" reads "2 mm of the stock, X 98 to 100 mm, at diameter 10 mm" (OI-924). A tab with no room shows a warning (decision 0202). |
 | W4 | Setup checks and messages | No error. Read every warning and write it down. "Safe Z cannot be checked against the Z travel" means the axis height is still the placeholder (OI-60): go back to gate 4 P8. |
 | W5 | Stock and part | Box 35 x 35 x 100 mm from X 0; the setup sheet's Part offset reads "part moved 73 mm", so the cone spans X 73 to 98. |
 
@@ -284,7 +284,7 @@ The library has no single-flute ball-nose tool at 3.175 mm: the ball-nose tools 
 | V2 | Overcut | The results inspector shows no overcut beyond the tolerance, and the command line reports no "OVERCUT" and no rapid move that removes material. |
 | V3 | Material left | Write down the largest material left and where it is (the probe and "Go to largest left" show it). Material left on a held region or tab face is not counted; a cut **into** one is (decision 0194). |
 | V4 | Held region and tabs | They stay whole in the simulated stock (SET-09, OP-21); the 2 mm tailstock tab is not cut through. |
-| V5 | Playback | Play the program through. The tool stays clear of the gripped length (decision 0161) and of the tailstock end. |
+| V5 | Playback | Play the program through. No fed move goes below X 70.1 or above X 95.9: the tool stays clear of the held regions at both ends (decision 0161, OI-924). |
 | V6 | Keep | A screenshot of the coloured part, the histogram and the worst values, for the comparison in 5.7. |
 
 The simulation is a check on the program, not a promise about the machine (NFR-12): it does not model the chuck, the jaws, the tailstock or the machine's own errors.
@@ -294,10 +294,10 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 | Step | Do | Pass when |
 | --- | --- | --- |
 | M1 | Measure the stock (35 x 35 x 100 mm) | It matches the project's stock within what you consider safe; never larger. |
-| M2 | Load the stock in the chuck with the gripped length the project says (W1), and bring up the tailstock; tighten both | It does not move when you try to turn or pull it by hand. Turn A by jog a full turn at low feed: it turns true by eye and nothing touches. The tailstock point is clear of every move the playback showed. |
+| M2 | Load the stock in the chuck with the gripped length the project says (W1), and bring up the tailstock; tighten both | It does not move when you try to turn or pull it by hand. Turn A by jog a full turn at low feed: it turns true by eye and nothing touches. **Tailstock clearance (OI-924): jog the tool, in the air, to X 95.9 at the radius of the cone's tail end and up to safe Z, and check that the tailstock's body clears the tool and the holder at both.** The software does not model the tailstock. |
 | M3 | Fit the tool (T1, T5) | The tool number in the controller is the program's `T<n>`. |
 | M4 | Set the work zero with **Makera's own routine** (OI-917): Y and Z on the A axis, X0, and A0 | G54 Y0 Z0 on the axis centreline, X0 where the setup sheet's work offset line says, A0 as the routine sets it. Record on the form: which face X0 was taken from, how A0 was set, and G54 X, Y, Z in machine coordinates. The machine Z of G54 is the axis height (OI-60): compare it with the profile. |
-| M5 | Check by hand that the first rapid position is clear: jog to the program's first `G0` position in G54 (X, Y0, safe Z, A0) at low feed | The tool is above the stock at the X the program starts at, and clears the jaws and the tailstock. |
+| M5 | Check by hand that the first rapid position is clear: jog to the program's first `G0` position in G54 (X, Y0, safe Z, A0) at low feed | The tool is above the stock at the X the program starts at, and clears the jaws and the tailstock body. |
 | M6 | Protection | Eye and ear protection on; loose clothing, hair and jewellery secured; dust extraction or a mask for tooling board dust. |
 
 ### 5.6 The first cut
@@ -503,8 +503,8 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-917 | How the axis height and work zero are found | Makera's own routine for Y and Z on the axis, X0 and A0; the form records the X0 face and A0 | P8, P9, M4 | No |
 | OI-920 | The meshes are too large to commit | A: commit the project files, generate the parts (`sample_projects` example) | P2 | No |
 | OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
-| OI-923 | Free stock to leave uncut | Not asked yet: the first-cut project uses a 68 mm held region (G0) | 5.2 | Yes, for the owner to confirm |
-| OI-924 | The tailstock | Pending: recommended a held region at the end in place of the 2 mm tab | 5.2, V5, M2, M5 | Yes |
+| OI-923 | Free stock to leave uncut | Accepted: the 68 mm held region at the start (G0) | 5.2 | Yes, for OP-22 volumes |
+| OI-924 | The tailstock | A: the 2 mm, 10 mm piece is a held region at the end; the tailstock body's clearance is checked by the operator (V5, M2, M5) | 5.2, V5, M2, M5 | No |
 | OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 
