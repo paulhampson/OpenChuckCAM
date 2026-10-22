@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -122,6 +122,8 @@ struct Args {
     angular: f64,
     forms: Vec<char>,
     threads: Vec<Threads>,
+    sim_tilt: f64,
+    sim_step: f64,
 }
 
 fn args() -> Result<Args, Error> {
@@ -148,6 +150,8 @@ fn args() -> Result<Args, Error> {
         angular: TessellationSettings::default().angular,
         forms: vec!['a', 'b', 'c'],
         threads: vec![Threads::Exactly(1), Threads::All],
+        sim_tilt: 10.0,
+        sim_step: 2.0,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -206,6 +210,8 @@ fn args() -> Result<Args, Error> {
                     })
                     .collect::<Result<_, _>>()?;
             }
+            "--sim-tilt" => out.sim_tilt = it.next().ok_or("--sim-tilt DEG")?.parse()?,
+            "--sim-step" => out.sim_step = it.next().ok_or("--sim-step DEG")?.parse()?,
             "--angular" => out.angular = it.next().ok_or("--angular RAD")?.parse()?,
             "--fine" => out.fine = Some(it.next().ok_or("--fine MM")?.parse()?),
             other => return Err(format!("unknown argument {other}").into()),
@@ -851,7 +857,8 @@ fn operations(args: &Args) -> Vec<Op> {
             tool: ball2,
             parameters: vec![
                 ("feed", n(500.0)),
-                ("max_angle_step", n(2.0)),
+                ("max_angle_step", n(args.sim_step)),
+                ("max_tilt", n(args.sim_tilt)),
                 ("stepover", n(quick(0.3, 1.0))),
             ],
             leave: 0.0,
