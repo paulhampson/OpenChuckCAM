@@ -692,6 +692,18 @@ impl Application {
                     unconfirmed: Vec::new(),
                 }),
             );
+            warnings.extend(
+                openchuck_types::workholding::check_held_regions(
+                    &s.workholding,
+                    s.stock.as_ref(),
+                    part.as_ref(),
+                )
+                .into_iter()
+                .map(|kind| setup::SetupWarning {
+                    kind,
+                    unconfirmed: Vec::new(),
+                }),
+            );
             // A tab narrower than a tool that operations of the setup use is
             // refused when they are generated (OI-159); say so here, when the
             // tab or the tool is chosen.
