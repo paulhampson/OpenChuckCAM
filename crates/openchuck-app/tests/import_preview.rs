@@ -194,3 +194,34 @@ fn req_nfr_04_model_is_prepared_off_the_caller_thread_then_added() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn req_ui_09_adding_a_model_reports_one_share_that_never_goes_back() {
+    // Issue 201: the reader's stages each counted on their own, so the
+    // progress of adding a model started again at each. It is one share of
+    // the job, out of one total, that only goes up and ends at the total.
+    let (dir, app) = app("import-progress");
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    std::fs::copy(stl("blisk.stl"), dir.join("models/blisk.stl")).unwrap();
+    app.drain_events();
+    let job = app
+        .start_prepare_model(&dir.join("models/blisk.stl"), None, &[])
+        .unwrap();
+    let id = job.id();
+    job.wait().unwrap();
+    let done: Vec<u64> = app
+        .drain_events()
+        .into_iter()
+        .filter_map(|e| match e {
+            openchuck_app::Event::JobProgress { job, progress } if job == id => {
+                assert_eq!(progress.total, Some(openchuck_app::RUN_PROGRESS_TOTAL));
+                Some(progress.done)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(done.len() > 2, "{done:?}");
+    assert!(done.windows(2).all(|w| w[0] < w[1]), "{done:?}");
+    assert_eq!(done.last(), Some(&openchuck_app::RUN_PROGRESS_TOTAL));
+    std::fs::remove_dir_all(&dir).ok();
+}
