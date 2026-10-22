@@ -416,6 +416,10 @@ pub enum PrimaryKind {
     Continue(Step),
     /// Generate the stale operations; the number of them.
     GenerateStale(usize),
+    /// Generate again without the stock simulation, which the project skips:
+    /// the latest run no longer holds exactly the enabled operations, though
+    /// none of them is stale (an operation in it was turned off or removed).
+    Generate,
     /// Generate and simulate.
     RunSimulation,
     /// Generate and simulate when an operation was never generated; the
@@ -644,6 +648,7 @@ impl Overview {
                     other => format!("Continue to {}", other.name().to_lowercase()),
                 },
                 PrimaryKind::GenerateStale(n) => format!("Generate stale ({n})"),
+                PrimaryKind::Generate => "Generate toolpaths".to_owned(),
                 PrimaryKind::RunSimulation => "Run simulation".to_owned(),
                 PrimaryKind::GenerateAndSimulate(n) => format!("Generate and simulate op {n}"),
                 PrimaryKind::OpenExport => "Post and export…".to_owned(),
@@ -679,6 +684,9 @@ impl Overview {
             // toolpaths (decision record 0168).
             Step::Simulate if self.skip_stock && !self.stale.is_empty() => {
                 blocked(action(PrimaryKind::GenerateStale(self.stale.len())))
+            }
+            Step::Simulate if self.skip_stock && self.any_enabled && !self.simulated_all => {
+                blocked(action(PrimaryKind::Generate))
             }
             Step::Simulate if self.any_enabled && !self.simulated_all => {
                 blocked(match self.first_unsimulated_unmade {
