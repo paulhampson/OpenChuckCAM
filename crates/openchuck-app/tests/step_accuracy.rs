@@ -192,9 +192,8 @@ fn req_op_12_a_pose_reads_its_gouge_and_its_gap_against_the_exact_faces() {
 #[test]
 fn req_op_12_a_moves_middle_and_quarters_lie_on_the_machines_straight_move() {
     // The Z1's mapping: the rotary axis along X, the tool along machine Z.
-    let rotary = RotaryMapping::of_profile(
-        &openchuck_app::setup::builtin("makera-z1").unwrap().unwrap(),
-    );
+    let rotary =
+        RotaryMapping::of_profile(&openchuck_app::setup::builtin("makera-z1").unwrap().unwrap());
     let model = cylinder(0.01);
     let outline = ball(3.0);
     let exact = Cloud::of_faces(&model, 0.02);
@@ -225,4 +224,57 @@ fn req_op_12_a_moves_middle_and_quarters_lie_on_the_machines_straight_move() {
         (start.tip.z + end.tip.z) / 2.0,
     );
     assert!(10.0 - middle.y.hypot(middle.z) > 0.15);
+}
+
+#[test]
+fn req_op_12_a_mesh_is_sampled_by_its_area_and_read_like_the_exact_faces() {
+    use openchuck_types::mesh::TriangleMesh;
+    // A sliver 50 mm long and 0.5 mm wide: about its area over the spacing
+    // squared, not the square of its length.
+    let sliver = TriangleMesh {
+        vertices: vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(50.0, 0.0, 0.0),
+            Point3::new(25.0, 0.5, 0.0),
+        ],
+        triangles: vec![[0, 1, 2]],
+        ..TriangleMesh::default()
+    };
+    let cloud = Cloud::of_mesh(&sliver, 0.05);
+    let area_points = 12.5 / (0.05 * 0.05);
+    assert!(
+        (cloud.len() as f64) < 1.5 * area_points + 2000.0,
+        "{} points",
+        cloud.len()
+    );
+    // A ball standing on it reads its height above the plane.
+    let outline = ball(3.0);
+    for (height, expected) in [(0.0, 0.0), (0.03, 0.03), (-0.02, -0.02)] {
+        let c = cloud.clearance(
+            &outline,
+            Point3::new(25.0, 0.1, height),
+            Vec3::new(0.0, 0.0, 1.0),
+            8.0,
+            0.5,
+        );
+        assert!((c - expected).abs() < 1e-3, "{height}: {c}");
+    }
+    // The cylinder's tessellation lies inside its exact face by its sagitta
+    // at most, so a ball on the exact face clears the tessellation by no more.
+    let model = cylinder(0.01);
+    let mesh = &model
+        .faces
+        .iter()
+        .find(|f| f.surface == openchuck_types::brep::SurfaceKind::Cylinder)
+        .unwrap()
+        .tessellation;
+    let tess = Cloud::of_mesh(mesh, 0.02);
+    let c = tess.clearance(
+        &outline,
+        Point3::new(25.0, 10.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        8.0,
+        0.5,
+    );
+    assert!((0.0..=0.0032).contains(&c), "{c}");
 }

@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -66,11 +66,11 @@ use openchuck_app::{Application, Command, PostSelection, Threads};
 use openchuck_geom::transform::{brep_placement, transform_brep};
 use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportOptions, ModelImporter};
-use openchuck_path::{
-    AcceptAll, AnalyticStock, BrepSurface, Contact, Hole, MeshSurface, RotaryMapping,
-    StockModel, StrategyInput, SurfaceSource, ToolLine, generate,
-};
 use openchuck_path::surface::{FaceRef, RayHit, SurfacePoint};
+use openchuck_path::{
+    AcceptAll, AnalyticStock, BrepSurface, Contact, Hole, MeshSurface, RotaryMapping, StockModel,
+    StrategyInput, SurfaceSource, ToolLine, generate,
+};
 use openchuck_sim::{DexelStock, Simulator};
 use openchuck_testkit::gouge::Outline;
 use openchuck_types::brep::{BrepModel, TessellationSettings};
@@ -80,9 +80,7 @@ use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::machine::MachineProfile;
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::model::ModelGeometry;
-use openchuck_types::tool::{
-    ControllerMapping, CuttingData, RevolvedProfile, Tool, ToolShape,
-};
+use openchuck_types::tool::{ControllerMapping, CuttingData, RevolvedProfile, Tool, ToolShape};
 use openchuck_types::units::{FeedRate, SpindleSpeed};
 
 use measure::{Cloud, Station};
@@ -107,7 +105,9 @@ const SPACING: f64 = 0.05;
 const MARGIN: f64 = 1.0;
 
 fn repo(path: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(path)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(path)
 }
 
 struct Args {
@@ -121,6 +121,7 @@ struct Args {
     fine: Option<f64>,
     angular: f64,
     forms: Vec<char>,
+    threads: Vec<Threads>,
 }
 
 fn args() -> Result<Args, Error> {
@@ -131,8 +132,14 @@ fn args() -> Result<Args, Error> {
         ops: Vec::new(),
         quick: false,
         parts: [
-            "cylinder", "cone", "sphere", "torus", "bspline_face", "filleted_box",
-            "revolved_spline", "blisk",
+            "cylinder",
+            "cone",
+            "sphere",
+            "torus",
+            "bspline_face",
+            "filleted_box",
+            "revolved_spline",
+            "blisk",
         ]
         .map(str::to_owned)
         .to_vec(),
@@ -140,6 +147,7 @@ fn args() -> Result<Args, Error> {
         fine: None,
         angular: TessellationSettings::default().angular,
         forms: vec!['a', 'b', 'c'],
+        threads: vec![Threads::Exactly(1), Threads::All],
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -147,14 +155,29 @@ fn args() -> Result<Args, Error> {
             "--stl" => out.stl = Some(PathBuf::from(it.next().ok_or("--stl FILE")?)),
             "--runs" => out.runs = it.next().ok_or("--runs N")?.parse()?,
             "--only" => {
-                out.only = it.next().ok_or("--only LIST")?.split(',').map(str::to_owned).collect();
+                out.only = it
+                    .next()
+                    .ok_or("--only LIST")?
+                    .split(',')
+                    .map(str::to_owned)
+                    .collect();
             }
             "--ops" => {
-                out.ops = it.next().ok_or("--ops LIST")?.split(',').map(str::to_owned).collect();
+                out.ops = it
+                    .next()
+                    .ok_or("--ops LIST")?
+                    .split(',')
+                    .map(str::to_owned)
+                    .collect();
             }
             "--quick" => out.quick = true,
             "--parts" => {
-                out.parts = it.next().ok_or("--parts LIST")?.split(',').map(str::to_owned).collect();
+                out.parts = it
+                    .next()
+                    .ok_or("--parts LIST")?
+                    .split(',')
+                    .map(str::to_owned)
+                    .collect();
             }
             "--deflections" => {
                 out.deflections = it
@@ -165,7 +188,23 @@ fn args() -> Result<Args, Error> {
                     .collect::<Result<_, _>>()?;
             }
             "--forms" => {
-                out.forms = it.next().ok_or("--forms LIST")?.split(',').filter_map(|f| f.chars().next()).collect();
+                out.forms = it
+                    .next()
+                    .ok_or("--forms LIST")?
+                    .split(',')
+                    .filter_map(|f| f.chars().next())
+                    .collect();
+            }
+            "--threads" => {
+                out.threads = it
+                    .next()
+                    .ok_or("--threads LIST")?
+                    .split(',')
+                    .map(|t| match t {
+                        "all" => Ok(Threads::All),
+                        n => n.parse().map(Threads::Exactly),
+                    })
+                    .collect::<Result<_, _>>()?;
             }
             "--angular" => out.angular = it.next().ok_or("--angular RAD")?.parse()?,
             "--fine" => out.fine = Some(it.next().ok_or("--fine MM")?.parse()?),
@@ -181,14 +220,23 @@ fn main() -> Result<(), Error> {
     println!("# step_accuracy (decision 0211)");
     println!("cpu:   {}", cpu_model());
     println!("cores: {cores}");
-    println!("build: {}", if cfg!(debug_assertions) { "debug (times are not the record's)" } else { "release" });
+    println!(
+        "build: {}",
+        if cfg!(debug_assertions) {
+            "debug (times are not the record's)"
+        } else {
+            "release"
+        }
+    );
     let wants = |m: &str| args.only.iter().any(|o| o == m);
 
     // M1: the corpus, then the blisk.
     let mut fine = None;
     if wants("m1") {
         println!("\n## M1: tessellation against the exact faces");
-        println!("part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | import s");
+        println!(
+            "part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | import s"
+        );
         println!("angular deflection: {} rad", args.angular);
         for part in &args.parts {
             for &d in &args.deflections {
@@ -202,9 +250,12 @@ fn main() -> Result<(), Error> {
         }
         println!(
             "finest needed: {}",
-            fine.map_or("none of the four is within the 0.005 mm share".to_owned(), |d| format!(
-                "{d} mm is the coarsest deflection within the 0.005 mm share on every face"
-            ))
+            fine.map_or(
+                "none of the four is within the 0.005 mm share".to_owned(),
+                |d| format!(
+                    "{d} mm is the coarsest deflection within the 0.005 mm share on every face"
+                )
+            )
         );
     }
     // Form (c): the deflection given, else the coarsest M1 found within the
@@ -239,7 +290,10 @@ fn main() -> Result<(), Error> {
                 worst = worst.max(d);
             }
         }
-        println!("owner's blisk.stl: {} triangles, vertices up to {worst:.4} mm from the exact faces", mesh.triangles.len());
+        println!(
+            "owner's blisk.stl: {} triangles, vertices up to {worst:.4} mm from the exact faces",
+            mesh.triangles.len()
+        );
     }
 
     // The project: the owner's tools and operations, on the STEP part.
@@ -248,14 +302,20 @@ fn main() -> Result<(), Error> {
     let (mut app, ids) = project(&dir, &blisk_path(), &placement, &bounds, &ops)?;
 
     let mut forms: Vec<(&str, Form)> = vec![
-        ("b (STEP, import tessellation 0.01 mm)", Form::Brep(BrepSurface::new(&placed_b)?)),
+        (
+            "b (STEP, import tessellation 0.01 mm)",
+            Form::Brep(BrepSurface::new(&placed_b)?),
+        ),
         (
             "c (STEP, finer tessellation)",
             Form::Brep(BrepSurface::new(&placed_c)?),
         ),
     ];
     if let Some((mesh, _)) = &stl {
-        forms.insert(0, ("a (owner's blisk.stl)", Form::Mesh(MeshSurface::new(mesh)?)));
+        forms.insert(
+            0,
+            ("a (owner's blisk.stl)", Form::Mesh(MeshSurface::new(mesh)?)),
+        );
     }
     println!("form c deflection: {fine} mm and {} rad", args.angular);
 
@@ -278,18 +338,28 @@ fn main() -> Result<(), Error> {
         .filter(|(name, _)| name.chars().next().is_some_and(|c| args.forms.contains(&c)))
     {
         let tessellation = Cloud::of_mesh(form.surface().tessellation(), SPACING);
-        println!("\n## form {name}: {} triangles", form.surface().tessellation().triangles.len());
+        println!(
+            "\n## form {name}: {} triangles",
+            form.surface().tessellation().triangles.len()
+        );
         if wants("m2") || wants("m3") {
             let run = job.run(form, Threads::All)?;
             if name.starts_with('b') {
-                library_b = Some(run.groups.iter().filter_map(|g| g.clone().ok()).collect::<Vec<_>>());
+                library_b = Some(
+                    run.groups
+                        .iter()
+                        .filter_map(|g| g.clone().ok())
+                        .collect::<Vec<_>>(),
+                );
             }
             if let Some(letter) = name.chars().next() {
                 refused.insert(letter, run.groups.iter().map(Result::is_err).collect());
             }
             if wants("m2") {
                 println!("### M2: the cut against the exact faces");
-                println!("operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses");
+                println!(
+                    "operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses"
+                );
                 for (op, group) in ops.iter().zip(&run.groups) {
                     let group = match group {
                         Ok(g) => g,
@@ -301,20 +371,35 @@ fn main() -> Result<(), Error> {
                     let m = m2(&job, op, group, &exact, &tessellation)?;
                     println!(
                         "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {}",
-                        op.label, op.leave, m.poses, m.deepest, m.deepest_at_ends, m.gap, m.error_in, m.error_out, m.contacts
+                        op.label,
+                        op.leave,
+                        m.poses,
+                        m.deepest,
+                        m.deepest_at_ends,
+                        m.gap,
+                        m.error_in,
+                        m.error_out,
+                        m.contacts
                     );
                 }
             }
             if wants("m3") {
                 println!("### M3: time (median of {} runs)", args.runs);
-                println!("operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s");
-                for threads in [Threads::Exactly(1), Threads::All] {
+                println!(
+                    "operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s"
+                );
+                for &threads in &args.threads {
                     let runs: Vec<Run> = (0..args.runs)
                         .map(|_| job.run(form, threads))
                         .collect::<Result<_, _>>()?;
                     for (i, op) in ops.iter().enumerate() {
                         let pick = |f: &dyn Fn(&Timing) -> f64| {
-                            median(runs.iter().filter_map(|r| r.timings.get(i)).map(f).collect())
+                            median(
+                                runs.iter()
+                                    .filter_map(|r| r.timings.get(i))
+                                    .map(f)
+                                    .collect(),
+                            )
                         };
                         let t = runs.first().and_then(|r| r.timings.get(i));
                         println!(
@@ -331,18 +416,23 @@ fn main() -> Result<(), Error> {
                 }
                 if let Form::Brep(surface) = form {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");
-                    println!("operation | drops sampled | refined | drop on tessellation us | exact ball drop us | exact above (mm, max) | exact below (mm, max) | estimated exact-surface generate s (all threads) | ratio");
+                    println!(
+                        "operation | drops sampled | refined | drop on tessellation us | exact ball drop us | exact above (mm, max) | exact below (mm, max) | estimated exact-surface generate s (all threads) | ratio"
+                    );
                     for (i, op) in ops.iter().enumerate() {
                         if !op.ball {
                             continue;
                         }
-                        let Some(t) = run.timings.get(i) else { continue };
+                        let Some(t) = run.timings.get(i) else {
+                            continue;
+                        };
                         let probe = probe_exact_ball(surface, &op.profile()?, &t.lines);
                         let per_drop = t.drop_time.as_secs_f64() / t.drops.max(1) as f64;
                         // The drops' share of the run, replaced by exact drops.
                         let wall = t.generate.as_secs_f64();
                         let share = (t.drop_time.as_secs_f64() / cores as f64).min(wall);
-                        let estimate = wall - share + share * probe.exact_us / (per_drop * 1e6).max(1e-9);
+                        let estimate =
+                            wall - share + share * probe.exact_us / (per_drop * 1e6).max(1e-9);
                         println!(
                             "{} | {} | {} | {:.1} | {:.1} | {:.4} | {:.4} | {:.2} | {:.2}",
                             op.label,
@@ -362,11 +452,17 @@ fn main() -> Result<(), Error> {
         if wants("m4") {
             println!("### M4: the toolpath at 1, 2 and {cores} threads");
             let first = job.run(form, Threads::Exactly(1))?;
+            if let Some(letter) = name.chars().next() {
+                refused.insert(letter, first.groups.iter().map(Result::is_err).collect());
+            }
             let one = serde_json::to_string(&first.groups)?;
             for n in [2, cores] {
                 let again = job.run(form, Threads::Exactly(n))?;
                 let same = serde_json::to_string(&again.groups)? == one;
-                println!("{n} threads: {}", if same { "identical" } else { "DIFFERENT" });
+                println!(
+                    "{n} threads: {}",
+                    if same { "identical" } else { "DIFFERENT" }
+                );
             }
         }
     }
@@ -432,7 +528,11 @@ fn main() -> Result<(), Error> {
 }
 
 /// Turns off the operations of `ids` that `refused` marks.
-fn disable(app: &mut Application, ids: &[OperationId], refused: Option<&Vec<bool>>) -> Result<(), Error> {
+fn disable(
+    app: &mut Application,
+    ids: &[OperationId],
+    refused: Option<&Vec<bool>>,
+) -> Result<(), Error> {
     let Some(refused) = refused else {
         return Ok(());
     };
@@ -440,7 +540,10 @@ fn disable(app: &mut Application, ids: &[OperationId], refused: Option<&Vec<bool
         if *off && let Some(op) = app.project().operation(*id) {
             let mut op = op.clone();
             op.enabled = false;
-            println!("operation '{}' is turned off: the strategy refused it", op.name);
+            println!(
+                "operation '{}' is turned off: the strategy refused it",
+                op.name
+            );
             app.execute(Command::Replace(Item::Operation(op)))?;
         }
     }
@@ -937,13 +1040,17 @@ impl SurfaceSource for Timed<'_> {
         let took = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
         self.drops.fetch_add(1, Ordering::Relaxed);
         self.drop_nanos.fetch_add(took, Ordering::Relaxed);
-        let key = line.origin.x.to_bits() ^ line.origin.y.to_bits().rotate_left(21)
+        let key = line.origin.x.to_bits()
+            ^ line.origin.y.to_bits().rotate_left(21)
             ^ line.origin.z.to_bits().rotate_left(42);
         if let Some(c) = contact
             && key % KEEP == 0
             && let Ok(mut lines) = self.lines.lock()
         {
-            lines.push(Line { line: *line, contact: c });
+            lines.push(Line {
+                line: *line,
+                contact: c,
+            });
         }
         contact
     }
@@ -1080,7 +1187,13 @@ struct M2 {
 /// M2 for one operation's moves: every fed pose and the middle and quarter
 /// points of every fed move, against the exact faces and against the
 /// tessellation the tool was dropped on.
-fn m2(job: &Job<'_>, op: &Op, group: &ToolpathGroup, exact: &Cloud, tess: &Cloud) -> Result<M2, Error> {
+fn m2(
+    job: &Job<'_>,
+    op: &Op,
+    group: &ToolpathGroup,
+    exact: &Cloud,
+    tess: &Cloud,
+) -> Result<M2, Error> {
     use rayon::prelude::*;
     let profile = op.profile()?;
     let outline = Outline::new(&profile);

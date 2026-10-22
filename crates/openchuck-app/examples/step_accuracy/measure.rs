@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use openchuck_path::surface::{ParametricFace, Uv};
 use openchuck_path::{ExactFace, RotaryMapping};
 use openchuck_testkit::gouge::Outline;
-use openchuck_types::brep::{BrepModel, Frame, Surface, SurfaceKind};
+use openchuck_types::brep::{BrepFace, BrepModel, Frame, Surface, SurfaceKind};
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::ir::ToolPose;
 use openchuck_types::mesh::TriangleMesh;
@@ -112,6 +112,37 @@ fn triangle_points(a: Point3, b: Point3, c: Point3, n: usize) -> Vec<Point3> {
     out
 }
 
+/// Points covering triangle `(a, b, c)` about `spacing` apart: rows
+/// parallel to its longest side, `spacing` apart across it, each with points
+/// `spacing` apart along it, so a long sliver gets as few points as its area
+/// needs.
+fn spaced_points(a: Point3, b: Point3, c: Point3, spacing: f64) -> Vec<Point3> {
+    // The longest side as the base (p, q), the apex r opposite it.
+    let sides = [(a, b, c), (b, c, a), (c, a, b)];
+    let (p, q, r) = sides
+        .into_iter()
+        .max_by(|x, y| (x.1 - x.0).length().total_cmp(&(y.1 - y.0).length()))
+        .unwrap_or((a, b, c));
+    let base = q - p;
+    let length = base.length();
+    let height = if length > 0.0 {
+        base.cross(r - p).length() / length
+    } else {
+        0.0
+    };
+    let rows = ((height / spacing).ceil() as usize).max(1);
+    let mut out = vec![a, b, c];
+    for k in 0..=rows {
+        let t = k as f64 / rows as f64;
+        let (from, to) = (p + (r - p) * t, q + (r - q) * t);
+        let n = (((1.0 - t) * length / spacing).ceil() as usize).max(1);
+        for i in 0..=n {
+            out.push(from + (to - from) * (i as f64 / n as f64));
+        }
+    }
+    out
+}
+
 fn mid(a: Point3, b: Point3) -> Point3 {
     a + (b - a) * 0.5
 }
@@ -170,13 +201,22 @@ pub fn tessellation_error(model: &BrepModel, grid: usize) -> Vec<KindError> {
                     (a.y + b.y + c.y) / 3.0,
                     (a.z + b.z + c.z) / 3.0,
                 );
-                if let (Some(unit), Some(closest)) = (UnitVec3::new(n).ok(), exact.closest(centre)) {
+                if let (Some(unit), Some(closest)) = (UnitVec3::new(n).ok(), exact.closest(centre))
+                {
                     let cos = unit.get().dot(closest.point.normal.get()).clamp(-1.0, 1.0);
                     normal = normal.max(cos.acos().to_degrees());
                 }
             }
             let measured = mesh.triangles.len().div_ceil(stride);
-            (face.surface, mesh.triangles.len(), distances, normal, trim, closed, measured)
+            (
+                face.surface,
+                mesh.triangles.len(),
+                distances,
+                normal,
+                trim,
+                closed,
+                measured,
+            )
         })
         .collect();
     let mut kinds: Vec<&'static str> = per_face.iter().map(|f| kind_name(f.0)).collect();
@@ -201,10 +241,7 @@ pub fn tessellation_error(model: &BrepModel, grid: usize) -> Vec<KindError> {
                 samples: all.len(),
                 max: all.last().copied().unwrap_or(0.0),
                 trimmed: of_kind.iter().map(|f| f.4).fold(0.0, f64::max),
-                closed_form: of_kind
-                    .iter()
-                    .filter_map(|f| f.5)
-                    .reduce(f64::max),
+                closed_form: of_kind.iter().filter_map(|f| f.5).reduce(f64::max),
                 p99: at(0.99),
                 normal_degrees: of_kind.iter().map(|f| f.3).fold(0.0, f64::max),
             }
@@ -251,14 +288,20 @@ impl Cloud {
     }
 
     /// Points on the exact faces of `model`, inside their trims, about
-    /// `spacing` mm apart along each parameter direction.
+    /// `spacing` mm apart along each parameter direction, and along each
+    /// face's trim loops, so the samples reach the face's edges (a grid alone
+    /// stops up to a step short of them).
     pub fn of_faces(model: &BrepModel, spacing: f64) -> Self {
         let per_face: Vec<Vec<Point3>> = model
             .faces
             .par_iter()
             .map(|face| {
                 ExactFace::new(face)
-                    .map(|exact| face_points(&exact, spacing))
+                    .map(|exact| {
+                        let mut points = face_points(&exact, spacing);
+                        points.extend(boundary_points(face, &exact, spacing));
+                        points
+                    })
                     .unwrap_or_default()
             })
             .collect();
@@ -277,9 +320,7 @@ impl Cloud {
                         .copied()
                         .unwrap_or(Point3::ORIGIN)
                 });
-                let longest = (b - a).length().max((c - b).length()).max((a - c).length());
-                let n = ((longest / spacing).ceil() as usize).max(1);
-                triangle_points(a, b, c, n)
+                spaced_points(a, b, c, spacing)
             })
             .collect();
         Self::from_points(per_triangle.into_iter().flatten())
@@ -368,7 +409,11 @@ fn face_points(face: &ExactFace, spacing: f64) -> Vec<Point3> {
             let mut last: Option<Point3> = None;
             for i in 0..=COARSE {
                 let free = i as f64 / COARSE as f64;
-                let p = if d == 0 { at(free, fixed) } else { at(fixed, free) };
+                let p = if d == 0 {
+                    at(free, fixed)
+                } else {
+                    at(fixed, free)
+                };
                 if let (Some(a), Some(b)) = (last, p) {
                     length += (b - a).length();
                 }
@@ -395,6 +440,33 @@ fn face_points(face: &ExactFace, spacing: f64) -> Vec<Point3> {
         .collect()
 }
 
+/// Points on the exact surface along the trim loops of `face`, about
+/// `spacing` mm apart: each loop's segments in (u, v) are divided until
+/// their ends are that close in space.
+fn boundary_points(face: &BrepFace, exact: &ExactFace, spacing: f64) -> Vec<Point3> {
+    let at = |u: f64, v: f64| exact.point_normal(Uv { u, v }).map(|p| p.point);
+    let mut out = Vec::new();
+    for l in &face.trims {
+        let n = l.0.len();
+        for k in 0..n {
+            let (Some(a), Some(b)) = (l.0.get(k), l.0.get((k + 1) % n)) else {
+                continue;
+            };
+            let (Some(pa), Some(pb)) = (at(a.u, a.v), at(b.u, b.v)) else {
+                continue;
+            };
+            let steps = (((pb - pa).length() / spacing).ceil() as usize).clamp(1, 10_000);
+            for i in 0..steps {
+                let t = i as f64 / steps as f64;
+                if let Some(p) = at(a.u + (b.u - a.u) * t, a.v + (b.v - a.v) * t) {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// A tool position inside a move: where the machine's straight move puts
 /// the tool, in the model frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -418,7 +490,10 @@ impl Station {
     /// to `end`, linear in the machine's X, Y, Z and A as the controller
     /// runs it (decisions 0025 item 3, 0115 and 0133).
     pub fn along(rotary: &RotaryMapping, start: &ToolPose, end: &ToolPose) -> Vec<Self> {
-        let (p, q) = (rotary.to_axis(start.tip, start.a), rotary.to_axis(end.tip, end.a));
+        let (p, q) = (
+            rotary.to_axis(start.tip, start.a),
+            rotary.to_axis(end.tip, end.a),
+        );
         [0.25, 0.5, 0.75]
             .into_iter()
             .map(|t| {
