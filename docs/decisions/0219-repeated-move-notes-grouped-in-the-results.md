@@ -32,5 +32,5 @@ The notes reach the results as sentences (`Regeneration::notes`): the operation,
 
 ## Tests
 
-- `note_groups::tests` (`crates/openchuck-app/src/note_groups.rs`): `req_nfr_12_repeated_notes_about_consecutive_moves_become_one_group` (the owner's ten lines), `req_nfr_12_close_values_give_a_range_and_a_value_far_off_starts_a_new_group`, `req_nfr_12_only_consecutive_moves_of_one_operation_with_the_same_wording_group`, `req_nfr_12_a_note_with_the_move_in_its_sentence_groups_too`, `req_nfr_12_numbers_inside_words_are_wording_not_values`.
+- `note_groups::tests` (`crates/openchuck-app/src/note_groups.rs`): `req_nfr_12_repeated_notes_about_consecutive_moves_become_one_group` (the owner's ten lines), `req_nfr_12_close_values_give_a_range_and_a_value_far_off_starts_a_new_group`, `req_nfr_12_only_consecutive_moves_of_one_operation_with_the_same_wording_group`, `req_nfr_12_a_note_with_the_move_in_its_sentence_groups_too`, `req_nfr_12_numbers_inside_words_are_wording_not_values`, `req_nfr_12_a_range_runs_from_the_lowest_to_the_highest_value`, `req_nfr_12_a_note_with_move_in_its_wording_but_no_move_number_is_not_grouped`.
 - `run_panel::tests::req_nfr_12_repeated_notes_are_one_line_that_opens_on_each_move` (`apps/openchuck-ui`).

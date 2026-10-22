@@ -338,4 +338,32 @@ mod tests {
         );
         assert!(group_notes(&[]).is_empty());
     }
+
+    #[test]
+    fn req_nfr_12_a_range_runs_from_the_lowest_to_the_highest_value() {
+        // Falling values: the range still reads low to high.
+        let mut notes = feed(2..=2, 975.1);
+        notes.extend(feed(3..=3, 972.9));
+        let groups = group_notes(&notes);
+        assert_eq!(groups.len(), 1);
+        assert!(
+            groups[0].text.contains("is 972.9 to 975.1 mm/min"),
+            "{}",
+            groups[0].text
+        );
+    }
+
+    #[test]
+    fn req_nfr_12_a_note_with_move_in_its_wording_but_no_move_number_is_not_grouped() {
+        // "remove 2" is not a move, nor is "move the part"; the second note
+        // names its move after those words.
+        let notes = [
+            "operation 'Roughing': remove 2 tabs".to_owned(),
+            "operation 'Roughing': remove 2 tabs".to_owned(),
+            "move the part: move 4: the feed is slowed".to_owned(),
+        ];
+        let groups = group_notes(&notes);
+        assert_eq!(groups.len(), 3);
+        assert!(groups.iter().zip(&notes).all(|(g, n)| g.text == *n));
+    }
 }
