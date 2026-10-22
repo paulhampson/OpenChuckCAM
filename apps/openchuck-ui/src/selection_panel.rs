@@ -358,6 +358,13 @@ struct Pending {
     combine: Combine,
 }
 
+/// What the legends' look of the shown set was worked out for: the set, the
+/// project's revision, picking and "Pick again".
+type LookKey = (SelectionSetId, u64, bool, bool);
+
+/// A selection set's name and colour, as the legends show it.
+type SetLook = Option<(String, [u8; 3])>;
+
 /// The panel's state between frames.
 pub struct SelectionPanel {
     choice: Choice,
@@ -392,7 +399,7 @@ pub struct SelectionPanel {
     drawn_shown: Option<(SelectionSetId, u64)>,
     /// The legends' look of the shown set, and what it was worked out for:
     /// the set, the project's revision, picking and "Pick again".
-    look: Option<((SelectionSetId, u64, bool, bool), Option<(String, [u8; 3])>)>,
+    look: Option<(LookKey, SetLook)>,
     /// The save or edit of a set being checked against its model.
     writing: Option<Writing>,
     /// Whether a plain click of the other kind asks first, as the project
