@@ -50,6 +50,7 @@ fn workholding() -> Workholding {
         end: None,
         tabs: vec![
             Tab {
+                auto: None,
                 x_start: Millimetres(-10.0),
                 length: Millimetres(2.0),
                 shape: TabShape::Frustum {
@@ -59,6 +60,7 @@ fn workholding() -> Workholding {
                 layout: TabLayout::OnAxis,
             },
             Tab {
+                auto: None,
                 x_start: Millimetres(10.0),
                 length: Millimetres(4.0),
                 shape: TabShape::Cylinder {
@@ -210,6 +212,7 @@ fn req_ui_25_the_default_tabs_offered_are_in_both_panes() {
     let (dir, app, id) = project("offered", true);
     let offered = Workholding {
         tabs: vec![Tab {
+            auto: None,
             x_start: Millimetres(-12.0),
             length: Millimetres(3.0),
             shape: TabShape::Frustum {

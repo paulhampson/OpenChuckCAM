@@ -9,10 +9,12 @@
 //! for. The first operation of a setup is generated against the setup's
 //! stock definition itself, which is exact.
 
+use std::sync::{Arc, OnceLock};
+
 use openchuck_project::Project;
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
-    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_cancellable,
+    Deviation, DeviationOptions, DexelStock, GroupResult, RapidCut, Simulator, compare_classified,
 };
 use openchuck_types::geometry::Aabb;
 use openchuck_types::ir::ToolpathGroup;
@@ -88,6 +90,13 @@ pub(crate) struct SetupState {
     /// cache inputs, so a state taken from the cache is named again from the
     /// project it is reported in.
     operation_ids: Vec<OperationId>,
+    /// The stock compared with the setup's part, once a run has compared it.
+    /// The cache shares this state under the key of the operation that left
+    /// it, and that key fixes the part, its held regions and tabs and the
+    /// cell as well as the stock, so a later run that ends the setup on the
+    /// same state takes the comparison from here (OI-627). Simulating on
+    /// clears it.
+    compared: Arc<OnceLock<Deviation>>,
 }
 
 impl std::fmt::Debug for SetupState {
@@ -117,6 +126,7 @@ impl SetupState {
             name: name.to_owned(),
             operations: Vec::new(),
             operation_ids: Vec::new(),
+            compared: Arc::default(),
         })
     }
 
@@ -134,6 +144,9 @@ impl SetupState {
         tool: &RevolvedProfile,
         context: &JobContext<'_>,
     ) -> Result<GroupResult, AppError> {
+        // The stock changes, so a comparison of the old one no longer holds;
+        // a copy made to simulate on must not share it with the cache either.
+        self.compared = Arc::default();
         let result = self.simulator.run_group(group, tool, context)?;
         self.operation_ids.push(id);
         self.operations.push(OperationSimulation {
@@ -167,29 +180,52 @@ impl SetupState {
         }
     }
 
-    /// Finishes the setup's report, comparing the stock with `part` when
-    /// given. The stock moves into the report; nothing is copied.
-    pub(crate) fn finish(
-        self,
-        part: Option<&openchuck_types::mesh::TriangleMesh>,
+    /// The stock compared with `part` (SIM-05): the comparison this state
+    /// holds, or a new one. `part` is called only when the state holds none,
+    /// and gives `None` when the setup has no part. The second value is true
+    /// when the stock was compared in this call; the pipeline then keeps the
+    /// comparison with [`SetupState::keep_comparison`] once the run is known
+    /// to have read the part files it was keyed on.
+    pub(crate) fn compare(
+        &self,
+        part: impl FnOnce() -> Result<Option<crate::workholding::DeviationTarget>, AppError>,
         settings: SimulationSettings,
-        context: &openchuck_types::job::JobContext<'_>,
-    ) -> Result<SetupSimulation, AppError> {
+        context: &JobContext<'_>,
+    ) -> Result<(Option<Deviation>, bool), AppError> {
+        if let Some(deviation) = self.compared.get() {
+            return Ok((Some(deviation.clone()), false));
+        }
+        let Some(target) = part()? else {
+            return Ok((None, false));
+        };
+        let deviation = compare_classified(
+            self.stock(),
+            &target.mesh,
+            &DeviationOptions::for_cell(settings.cell.0),
+            &|t, p, n| target.classify(t, p, n),
+            context,
+        )?;
+        Ok((Some(deviation), true))
+    }
+
+    /// Keeps `deviation` as this stock's comparison with the setup's part,
+    /// for the runs that take this state from the cache (OI-627). A state
+    /// that already holds one keeps it: both are made from the same inputs
+    /// (NFR-06).
+    pub(crate) fn keep_comparison(&self, deviation: Deviation) {
+        let _ = self.compared.set(deviation);
+    }
+
+    /// Finishes the setup's report with its comparison with the part, from
+    /// [`SetupState::compare`]. The stock moves into the report; nothing is
+    /// copied.
+    pub(crate) fn finish(self, deviation: Option<Deviation>) -> SetupSimulation {
         let mut stock = self.simulator.into_stock();
         // The report holds the stock; without the slack cutting left, it holds
         // and reports the same memory whether the stock was simulated in this
         // run or copied from the cache (NFR-06; decision record 0190).
         stock.shrink_to_fit();
-        let deviation = match part {
-            Some(mesh) => Some(compare_cancellable(
-                &stock,
-                mesh,
-                &DeviationOptions::for_cell(settings.cell.0),
-                context,
-            )?),
-            None => None,
-        };
-        Ok(SetupSimulation {
+        SetupSimulation {
             id: self.id,
             setup: self.name,
             initial_volume: self.initial_volume,
@@ -199,7 +235,7 @@ impl SetupState {
             operations: self.operations,
             deviation,
             stock,
-        })
+        }
     }
 }
 

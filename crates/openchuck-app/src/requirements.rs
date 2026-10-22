@@ -13,6 +13,7 @@
 use openchuck_path::params::{ParameterKind, ParameterSchema};
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_project::{Operation, Project};
+use openchuck_types::units::SpindleSpeed;
 
 use crate::Application;
 
@@ -27,6 +28,9 @@ pub enum RequirementField {
     Part,
     /// The operation has no tool.
     Tool,
+    /// The operation has no spindle speed: it gave none and the tool has no
+    /// cutting data for the setup's material (decision 0196).
+    SpindleSpeed,
     /// A parameter of the operation's strategy that is required and that
     /// neither the operation nor the tool's cutting data gives (by name).
     Parameter(String),
@@ -69,8 +73,55 @@ pub(crate) fn cutting_data<'a>(
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id))?;
-    let data = snapshot.cutting_data.get(material)?;
+    let (_, data) = openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)?;
     Some((material, snapshot, data))
+}
+
+/// Where an operation's spindle speed comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpindleSource {
+    /// The operation's own value.
+    Operation,
+    /// The tool's cutting data for the setup's material.
+    ToolData,
+}
+
+/// The spindle speed of `operation` and where it comes from: its own value,
+/// else the tool's cutting data for the setup's material, else none. There
+/// is no machine default (decision 0196).
+pub(crate) fn spindle_speed(
+    project: &Project,
+    operation: &Operation,
+) -> Option<(SpindleSpeed, SpindleSource)> {
+    if let Some(speed) = operation.spindle_speed {
+        return Some((speed, SpindleSource::Operation));
+    }
+    cutting_data(project, operation).map(|(_, _, d)| (d.spindle_speed, SpindleSource::ToolData))
+}
+
+/// Why `operation` has no spindle speed and what to do about it, in plain
+/// words; names the operation, the tool and the material.
+pub(crate) fn missing_spindle_message(project: &Project, operation: &Operation) -> String {
+    let tool = operation
+        .tool
+        .and_then(|id| project.tools().iter().find(|t| t.id == id))
+        .map(|t| t.name.as_str());
+    let material = project
+        .setup(operation.setup)
+        .and_then(|s| s.material.as_deref());
+    let fix = match (tool, material) {
+        (Some(tool), Some(material)) => format!(
+            "Enter a spindle speed for this operation, or add cutting data for \"{material}\" to the tool \"{tool}\" in the tool library"
+        ),
+        (Some(tool), None) => format!(
+            "Enter a spindle speed for this operation, or choose the stock material in the setup and add cutting data for it to the tool \"{tool}\" in the tool library"
+        ),
+        (None, _) => "Choose a tool, then enter a spindle speed for this operation".to_owned(),
+    };
+    format!(
+        "The operation \"{}\" has no spindle speed. {fix}.",
+        operation.name
+    )
 }
 
 /// The names of the parameters the cutting data can give.
@@ -94,8 +145,11 @@ pub(crate) fn missing_parameters(
         .parameters
         .iter()
         .filter(|spec| {
-            matches!(spec.kind, ParameterKind::Number { default: None, .. })
-                && !operation.parameters.contains_key(&spec.name)
+            matches!(
+                spec.kind,
+                ParameterKind::Number { default: None, .. }
+                    | ParameterKind::Integer { default: None, .. }
+            ) && !operation.parameters.contains_key(&spec.name)
                 && !(given && FROM_CUTTING_DATA.contains(&spec.name.as_str()))
                 && crate::operation::default_override(project, operation, &spec.name).is_none()
         })
@@ -166,6 +220,13 @@ pub(crate) fn operation_requirements(
             "Choose a tool",
         ));
     }
+    if !no_tool && spindle_speed(project, op).is_none() {
+        out.push(Requirement::new(
+            RequirementField::SpindleSpeed,
+            "Spindle speed",
+            "Enter the spindle speed",
+        ));
+    }
     // An unknown strategy is reported when the operation is generated.
     if let Ok(strategy) = registry.get(&op.strategy) {
         // In the order the inspector shows them, so "Show first" goes to the
@@ -188,4 +249,51 @@ pub(crate) fn operation_requirements(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use crate::test_project::TestProject;
+    use openchuck_path::params::ParameterSpec;
+    use openchuck_project::ParameterValue;
+
+    fn integer(name: &str, default: Option<i64>) -> ParameterSpec {
+        ParameterSpec {
+            name: name.to_owned(),
+            label: name.to_owned(),
+            description: String::new(),
+            kind: ParameterKind::Integer {
+                min: 1,
+                max: 9,
+                default,
+            },
+        }
+    }
+
+    /// An integer parameter with no default is required like a number with
+    /// none: it is listed until the operation gives it (OI-696; NFR-07,
+    /// UI-07). One with a default, or that the operation sets, is not.
+    #[test]
+    fn nfr_07_ui_07_a_required_integer_is_listed_as_missing() {
+        let mut t = TestProject::new("req-integer");
+        let id = t.add_operation("Op", "rotary_roughing");
+        let schema = ParameterSchema {
+            parameters: vec![integer("passes", None), integer("spare", Some(2))],
+        };
+        let project = t.app.project();
+        let mut op = project.operation(id).unwrap().clone();
+        let names = |op: &Operation| -> Vec<String> {
+            missing_parameters(project, op, &schema)
+                .into_iter()
+                .map(|(n, _)| n)
+                .collect()
+        };
+        assert_eq!(names(&op), ["passes"]);
+        op.parameters
+            .insert("passes".into(), ParameterValue::Integer(3));
+        assert!(names(&op).is_empty());
+    }
 }

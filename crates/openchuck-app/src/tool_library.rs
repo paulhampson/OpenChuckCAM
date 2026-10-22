@@ -18,8 +18,12 @@
 //! project's copy of the tool, its tool number and how it compares with the
 //! library (TL-07).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use serde::{Deserialize, Serialize};
 
 use openchuck_project::id::{OperationId, ToolId};
 use openchuck_project::{Item, ParameterValue, Placement, Project, ProjectError, ToolSnapshot};
@@ -143,6 +147,18 @@ pub enum ListGroup {
 }
 
 impl ListGroup {
+    /// A short stable name for the group, used in the keys that remember a
+    /// fold.
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::BallEnd => "ball-end",
+            Self::FlatEnd => "flat-end",
+            Self::BullNoseAndTapered => "bull-nose-and-tapered",
+            Self::PointedAndDrill => "pointed-and-drill",
+            Self::Custom => "custom",
+        }
+    }
+
     /// The group's heading.
     pub const fn title(self) -> &'static str {
         match self {
@@ -168,16 +184,202 @@ pub struct ListRow {
     pub in_project: bool,
 }
 
-/// The tool list: the library's tools whose name, type or material contains
-/// `search` (ignoring case), grouped by type in the board's order, each
-/// group's tools by name. Empty groups are left out.
+/// How far apart two sizes may be and still count as equal, in millimetres:
+/// well under what a tool size is given to.
+const SIZE_TOLERANCE: f64 = 0.0005;
+
+/// A filter on one size of a tool (TL-04), typed as text so that what the
+/// user typed is what is kept: an exact value, or a minimum and a maximum
+/// (owner's answer on issue 193). A field left empty is not used.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SizeFilter {
+    /// The size, exactly. When it is given the range is not used.
+    pub exact: String,
+    /// The smallest size.
+    pub min: String,
+    /// The largest size.
+    pub max: String,
+}
+
+/// A number typed in a filter field: nothing, a value, or the sentence for
+/// a field that cannot be used.
+fn typed_size(text: &str, label: &str, field: &str) -> Result<Option<f64>, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let value: f64 = text
+        .replace(',', ".")
+        .parse()
+        .ok()
+        .filter(|v: &f64| v.is_finite())
+        .ok_or_else(|| format!("{label}: type a number for the {field}."))?;
+    if value < 0.0 {
+        return Err(format!("{label}: the {field} cannot be negative."));
+    }
+    Ok(Some(value))
+}
+
+impl SizeFilter {
+    /// The bounds as (smallest, largest) after the checks, or the sentence
+    /// for the first field that cannot be used.
+    fn bounds(&self, label: &str) -> Result<(Option<f64>, Option<f64>), String> {
+        if let Some(exact) = typed_size(&self.exact, label, "exact value")? {
+            return Ok((Some(exact), Some(exact)));
+        }
+        let (min, max) = (
+            typed_size(&self.min, label, "minimum")?,
+            typed_size(&self.max, label, "maximum")?,
+        );
+        if let (Some(lo), Some(hi)) = (min, max)
+            && lo > hi
+        {
+            return Err(format!("{label}: the minimum is above the maximum."));
+        }
+        Ok((min, max))
+    }
+
+    /// Whether nothing is typed.
+    pub fn is_empty(&self) -> bool {
+        [&self.exact, &self.min, &self.max]
+            .iter()
+            .all(|t| t.trim().is_empty())
+    }
+
+    /// Whether `value` passes. A filter that cannot be read passes
+    /// everything (its sentence is [`ToolFilter::problem`]).
+    fn accepts(&self, label: &str, value: f64) -> bool {
+        let Ok((min, max)) = self.bounds(label) else {
+            return true;
+        };
+        min.is_none_or(|lo| value >= lo - SIZE_TOLERANCE)
+            && max.is_none_or(|hi| value <= hi + SIZE_TOLERANCE)
+    }
+}
+
+/// The filter on the tool list: the diameter and the flute length (TL-04;
+/// issue 193). Kept per user between runs and never reset on its own.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ToolFilter {
+    /// The cutting diameter.
+    pub diameter: SizeFilter,
+    /// The length of the fluted part.
+    pub flute_length: SizeFilter,
+}
+
+impl ToolFilter {
+    /// The sentence for the first field that cannot be used, if any.
+    pub fn problem(&self) -> Option<String> {
+        self.diameter
+            .bounds("Diameter")
+            .and(self.flute_length.bounds("Flute length"))
+            .err()
+    }
+
+    /// Whether nothing is typed in any field.
+    pub fn is_empty(&self) -> bool {
+        self.diameter.is_empty() && self.flute_length.is_empty()
+    }
+
+    /// Whether `tool` passes both sizes.
+    pub fn accepts(&self, tool: &Tool) -> bool {
+        self.diameter.accepts("Diameter", tool.diameter.0)
+            && self
+                .flute_length
+                .accepts("Flute length", tool.flute_length.0)
+    }
+}
+
+/// What the tool list shows, kept per user (UI-15): which groups are folded
+/// and the filter. Both are remembered between runs (owner's answers on
+/// issues 192 and 193); neither is in a project or a library file.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ToolLibraryView {
+    /// The keys of the folded sections and groups ([`ListSection::key`],
+    /// [`SectionGroup::key`]); everything else is unfolded.
+    pub folded: BTreeSet<String>,
+    /// The size filter.
+    pub filter: ToolFilter,
+}
+
+impl ToolLibraryView {
+    /// Whether the section or group with `key` is folded.
+    pub fn is_folded(&self, key: &str) -> bool {
+        self.folded.contains(key)
+    }
+
+    /// Folds or unfolds the section or group with `key`.
+    pub fn set_folded(&mut self, key: &str, folded: bool) {
+        if folded {
+            self.folded.insert(key.to_owned());
+        } else {
+            self.folded.remove(key);
+        }
+    }
+}
+
+/// What the tool list is asked for: a search text and the size filter.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ListQuery {
+    /// Text in the name, type or material (ignoring case).
+    pub search: String,
+    /// The size filter.
+    pub filter: ToolFilter,
+}
+
+impl ListQuery {
+    /// A query for `text` alone.
+    pub fn searching(text: &str) -> Self {
+        Self {
+            search: text.to_owned(),
+            filter: ToolFilter::default(),
+        }
+    }
+}
+
+/// The type group of a section: its tools by name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SectionGroup {
+    /// A stable key, distinct across the list, for remembering a fold.
+    pub key: String,
+    /// The type group.
+    pub group: ListGroup,
+    /// Its tools.
+    pub rows: Vec<ListRow>,
+}
+
+/// A section of the tool list: a machine's tools, or the tools no machine
+/// holds (TL-11; issue 192).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListSection {
+    /// A stable key for remembering a fold.
+    pub key: String,
+    /// The machine's name, or "Standard tools".
+    pub title: String,
+    /// The section's type groups in the board's order.
+    pub groups: Vec<SectionGroup>,
+}
+
+/// The heading of the section for the tools no machine holds.
+pub const STANDARD_TOOLS: &str = "Standard tools";
+
+/// The tool list: the library's tools that match `query`, in a section for
+/// each machine whose tool set holds them (in name order), then "Standard
+/// tools" for the rest; in each section the types in the board's order, each
+/// group's tools by name. A tool in several machines' sets is listed under
+/// each. Empty groups and sections are left out.
 pub fn tool_list(
     library: &ToolLibrary,
     project: Option<&Project>,
-    search: &str,
-) -> Vec<(ListGroup, Vec<ListRow>)> {
-    let needle = search.trim().to_lowercase();
-    let mut groups: BTreeMap<ListGroup, Vec<ListRow>> = BTreeMap::new();
+    query: &ListQuery,
+) -> Vec<ListSection> {
+    let needle = query.search.trim().to_lowercase();
+    // Section key to (title, groups).
+    let mut sections: BTreeMap<String, (String, BTreeMap<ListGroup, Vec<ListRow>>)> =
+        BTreeMap::new();
     for t in library.tools() {
         let kind = ToolType::of(&t.tool.shape);
         let haystack = format!(
@@ -187,23 +389,72 @@ pub fn tool_list(
             t.tool.material.as_deref().unwrap_or_default()
         )
         .to_lowercase();
-        if !needle.is_empty() && !haystack.contains(&needle) {
+        if (!needle.is_empty() && !haystack.contains(&needle)) || !query.filter.accepts(&t.tool) {
             continue;
         }
-        groups.entry(kind.group()).or_default().push(ListRow {
+        let row = ListRow {
             id: t.id,
             name: t.name.clone(),
             summary: summary(&t.tool),
             in_project: project.is_some_and(|p| p.tools().iter().any(|s| s.id == t.id)),
-        });
+        };
+        let machines: Vec<&str> = library
+            .tool_sets()
+            .filter(|set| set.entries.iter().any(|e| e.tool == t.id))
+            .map(|set| set.machine.as_str())
+            .collect();
+        if machines.is_empty() {
+            // The empty key sorts before every machine, so it is taken out
+            // again and put last below.
+            sections
+                .entry(String::new())
+                .or_insert_with(|| (STANDARD_TOOLS.to_owned(), BTreeMap::new()))
+                .1
+                .entry(kind.group())
+                .or_default()
+                .push(row);
+            continue;
+        }
+        for machine in machines {
+            sections
+                .entry(machine.to_lowercase())
+                .or_insert_with(|| (machine.to_owned(), BTreeMap::new()))
+                .1
+                .entry(kind.group())
+                .or_default()
+                .push(row.clone());
+        }
     }
-    groups
+    let build = |key: String, title: String, groups: BTreeMap<ListGroup, Vec<ListRow>>| {
+        let key = if key.is_empty() {
+            "standard".to_owned()
+        } else {
+            format!("machine:{key}")
+        };
+        ListSection {
+            groups: groups
+                .into_iter()
+                .map(|(group, mut rows)| {
+                    rows.sort_by_key(|r| natural_key(&r.name));
+                    SectionGroup {
+                        key: format!("{key}/{}", group.slug()),
+                        group,
+                        rows,
+                    }
+                })
+                .collect(),
+            key,
+            title,
+        }
+    };
+    // Machines in name order, the tools no machine holds last.
+    let standard = sections.remove("");
+    let mut out: Vec<ListSection> = sections
         .into_iter()
-        .map(|(g, mut rows)| {
-            rows.sort_by_key(|r| natural_key(&r.name));
-            (g, rows)
-        })
-        .collect()
+        .map(|(key, (title, groups))| build(key, title, groups))
+        .collect();
+    out.extend(standard.map(|(title, groups)| build(String::new(), title, groups)));
+    out
 }
 
 /// A sort key that orders "2 mm" before "10 mm".
@@ -242,6 +493,60 @@ pub fn summary(tool: &Tool) -> String {
             "flutes"
         }
     )
+}
+
+/// Whether `tool` is a default tool as the application ships it (TL-12):
+/// the same ID and the same content. The window shows it read-only, with a
+/// copy to edit (issue 194); a default the user has already changed is the
+/// user's tool and stays editable.
+pub fn is_shipped_default(tool: &LibraryTool) -> bool {
+    static SHIPPED: OnceLock<Vec<LibraryTool>> = OnceLock::new();
+    SHIPPED
+        .get_or_init(|| openchuck_project::tools::default_tools().unwrap_or_default())
+        .iter()
+        .any(|shipped| shipped == tool)
+}
+
+/// The dimensions that make up `tool`, as (label, value) in words and units
+/// for the read-only view of a default tool (TL-03, TL-04; issue 194): the
+/// sizes every tool has, then the ones its shape adds.
+pub fn default_dimensions(tool: &Tool) -> Vec<(String, String)> {
+    let mm = |label: &str, v: f64| (label.to_owned(), format!("{v} mm"));
+    let deg = |label: &str, v: f64, note: &str| (label.to_owned(), format!("{v}°{note}"));
+    let mut rows = vec![
+        mm("Diameter", tool.diameter.0),
+        mm("Flute length", tool.flute_length.0),
+        mm("Overall length", tool.overall_length.0),
+        mm("Shank diameter", tool.shank_diameter.0),
+    ];
+    match &tool.shape {
+        ToolShape::BullNose { corner_radius } => rows.push(mm("Corner radius", corner_radius.0)),
+        ToolShape::TaperedBall {
+            tip_radius,
+            taper_half_angle,
+        } => {
+            rows.push(mm("Tip radius", tip_radius.0));
+            rows.push(deg(
+                "Taper angle",
+                taper_half_angle.0,
+                " (half angle from the axis)",
+            ));
+        }
+        ToolShape::VBit {
+            included_angle,
+            tip_diameter,
+        }
+        | ToolShape::Chamfer {
+            included_angle,
+            tip_diameter,
+        } => {
+            rows.push(deg("Included angle", included_angle.0, ""));
+            rows.push(mm("Tip diameter", tip_diameter.0));
+        }
+        ToolShape::Drill { point_angle } => rows.push(deg("Point angle", point_angle.0, "")),
+        _ => {}
+    }
+    rows
 }
 
 fn not_found(id: ToolId) -> ProjectError {
@@ -499,6 +804,22 @@ pub fn edit_cutting_data(
         )));
     }
     edited(tool, |t| {
+        // A rename never lands on another entry; adding a material that is
+        // there under the same name replaces it, as it always has.
+        let key = openchuck_types::tool::material_key(material);
+        let taken = t.cutting_data.keys().find(|k| {
+            Some(k.as_str()) != replacing
+                && openchuck_types::tool::material_key(k) == key
+                && (replacing.is_some() || k.as_str() != material)
+        });
+        if let Some(other) = taken {
+            return Err(AppError::Engine(openchuck_types::Error::invalid(
+                "cutting_data",
+                format!(
+                    "the tool already has cutting data for {other:?}, which {material:?} would match too"
+                ),
+            )));
+        }
         if let Some(old) = replacing {
             t.cutting_data.remove(old);
         }
@@ -577,6 +898,13 @@ pub fn set_tool_set_number(
 fn refuse(reason: &str) -> AppError {
     AppError::Engine(openchuck_types::Error::invalid(
         "tool number",
+        reason.to_owned(),
+    ))
+}
+
+fn refuse_spindle(reason: &str) -> AppError {
+    AppError::Engine(openchuck_types::Error::invalid(
+        "spindle speed",
         reason.to_owned(),
     ))
 }
@@ -996,6 +1324,71 @@ pub fn operation_tool(
         tool_set_number,
         copy,
     })
+}
+
+/// An operation's spindle speed as its inspector's Tool section shows it
+/// (decision record 0196).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationSpindle {
+    /// The speed the user gave the operation, in rpm.
+    pub set: Option<f64>,
+    /// The speed the tool's cutting data gives for the setup's material, in
+    /// rpm, with the material's name as the tool holds it. Applies while
+    /// `set` is empty.
+    pub from_tool: Option<(f64, String)>,
+    /// What to do about it when neither gives a speed, in plain words.
+    pub missing: Option<String>,
+}
+
+/// Operation `operation`'s spindle speed, where it comes from, or what is
+/// missing. `None` when the project has no such operation.
+pub fn operation_spindle(project: &Project, operation: OperationId) -> Option<OperationSpindle> {
+    let op = project.operation(operation)?;
+    let from_tool =
+        crate::requirements::cutting_data(project, op).and_then(|(material, snapshot, data)| {
+            openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)
+                .map(|(name, _)| (data.spindle_speed.0, name.to_owned()))
+        });
+    let missing = (op.spindle_speed.is_none() && from_tool.is_none())
+        .then(|| crate::requirements::missing_spindle_message(project, op));
+    Some(OperationSpindle {
+        set: op.spindle_speed.map(|s| s.0),
+        from_tool,
+        missing,
+    })
+}
+
+/// The command that gives operation `operation` the spindle speed in the
+/// typed `text` (revolutions per minute), or takes its own speed away when
+/// `text` is `None`, so the tool's cutting data applies again. Text that is
+/// not a number above 0 is refused in plain words (NFR-07).
+pub fn set_operation_spindle(
+    project: &Project,
+    operation: OperationId,
+    text: Option<&str>,
+) -> Result<Command, AppError> {
+    let speed = match text {
+        None => None,
+        Some(text) => {
+            let text = text.trim();
+            let number = text.strip_suffix("rpm").unwrap_or(text).trim();
+            let value: f64 = number
+                .parse()
+                .map_err(|_| refuse_spindle("type the spindle speed as a number in rpm"))?;
+            if !(value.is_finite() && value > 0.0) {
+                return Err(refuse_spindle(
+                    "the spindle speed must be a number above 0 rpm",
+                ));
+            }
+            Some(openchuck_types::units::SpindleSpeed(value))
+        }
+    };
+    let mut changed = project
+        .operation(operation)
+        .cloned()
+        .ok_or_else(|| AppError::UnknownOperation(operation.to_string()))?;
+    changed.spindle_speed = speed;
+    Ok(Command::Replace(Item::Operation(changed)))
 }
 
 /// The command that gives operation `operation` the project tool `tool`.

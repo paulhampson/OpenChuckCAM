@@ -34,6 +34,7 @@ use openchuck_types::tool::profile::RevolvedProfile;
 
 use crate::cutter;
 use crate::error::{PathError, Result};
+use crate::extend::Extension;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::scallop;
@@ -78,59 +79,69 @@ impl Strategy for HelicalFinishing {
         "Helical finishing"
     }
 
+    fn description(&self) -> &str {
+        "Cuts the whole surface in one continuous spiral around the part, like a thread winding round a bolt, with the part turning steadily as the tool moves along it. A general-purpose finish for round shapes. It cannot reach into tight inside corners."
+    }
+
     fn schema(&self) -> ParameterSchema {
-        ParameterSchema::with_common(vec![
-            ParameterSpec {
-                name: parameter::ROTATION.to_owned(),
-                label: "Rotation".to_owned(),
-                description: "Which way A turns as X increases along the helix.".to_owned(),
-                kind: ParameterKind::Choice {
-                    options: vec!["positive".to_owned(), "negative".to_owned()],
-                    default: "positive".to_owned(),
+        ParameterSchema::with_common(
+            vec![
+                ParameterSpec {
+                    name: parameter::ROTATION.to_owned(),
+                    label: "Rotation".to_owned(),
+                    description: "Which way A turns as X increases along the helix.".to_owned(),
+                    kind: ParameterKind::Choice {
+                        options: vec!["positive".to_owned(), "negative".to_owned()],
+                        default: "positive".to_owned(),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::START_ANGLE.to_owned(),
-                label: "Start angle".to_owned(),
-                description: "A at the lowest X of the part, where the helix starts.".to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: None,
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                ParameterSpec {
+                    name: parameter::START_ANGLE.to_owned(),
+                    label: "Start angle".to_owned(),
+                    description: "A at the lowest X of the part, where the helix starts."
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: None,
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::MAX_ANGLE_STEP.to_owned(),
-                label: "Largest angle step".to_owned(),
-                description: "The most A may turn between two points of the path; points are \
+                ParameterSpec {
+                    name: parameter::MAX_ANGLE_STEP.to_owned(),
+                    label: "Largest angle step".to_owned(),
+                    description: "The most A may turn between two points of the path; points are \
                               added where the surface needs them."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Degrees,
-                    min: Some(0.0),
-                    min_exclusive: true,
-                    max: Some(90.0),
-                    default: Some(5.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Degrees,
+                        min: Some(0.0),
+                        min_exclusive: true,
+                        max: Some(90.0),
+                        default: Some(5.0),
+                    },
                 },
-            },
-            ParameterSpec {
-                name: parameter::SCALLOP.to_owned(),
-                label: "Scallop height".to_owned(),
-                description: "The largest cusp between turns, for ball-end and bull-nose \
+                ParameterSpec {
+                    name: parameter::SCALLOP.to_owned(),
+                    label: "Scallop height".to_owned(),
+                    description: "The largest cusp between turns, for ball-end and bull-nose \
                               tools. The pitch is the smaller of this and the stepover \
                               allows. 0 turns it off."
-                    .to_owned(),
-                kind: ParameterKind::Number {
-                    unit: Unit::Millimetres,
-                    min: Some(0.0),
-                    min_exclusive: false,
-                    max: None,
-                    default: Some(0.0),
+                        .to_owned(),
+                    kind: ParameterKind::Number {
+                        unit: Unit::Millimetres,
+                        min: Some(0.0),
+                        min_exclusive: false,
+                        max: None,
+                        default: Some(0.0),
+                    },
                 },
-            },
-        ])
+            ]
+            .into_iter()
+            .chain(crate::extend::specs(false))
+            .collect(),
+        )
     }
 
     fn honours_region(&self) -> bool {
@@ -208,6 +219,7 @@ fn passes(
         };
         let start = parameters.number(parameter::START_ANGLE)?;
         let mut step = parameters.number(parameter::MAX_ANGLE_STEP)?;
+        let extension = Extension::read(input, parameters, "helical finishing")?;
 
         let bounds = input.surface.bounds();
         let (x0, x1) = (bounds.min.x, bounds.max.x);
@@ -267,6 +279,10 @@ fn passes(
             wanted: None,
         };
 
-        fit_region(&fit, seeds, "helical finishing", context)
+        let passes = fit_region(&fit, seeds, "helical finishing", context)?;
+        Ok(match extension {
+            Some(e) => e.run_out(passes, input, &grown, leave, (x0, x1)),
+            None => passes,
+        })
     }
 }

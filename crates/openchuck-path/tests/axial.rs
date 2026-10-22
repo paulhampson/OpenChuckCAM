@@ -562,3 +562,233 @@ fn req_op_14_req_op_11_lead_entry_beside_the_stock_end_never_rapids_into_stock()
         "a rapid puts the ball {worst:.3} mm into the stock"
     );
 }
+
+/// The surface of a fixture, noting which of the pool's threads dropped the
+/// tool on it.
+#[derive(Debug)]
+struct Watched<'a> {
+    surface: &'a MeshSurface,
+    threads: std::sync::Mutex<std::collections::BTreeSet<Option<usize>>>,
+}
+
+impl openchuck_path::SurfaceSource for Watched<'_> {
+    fn bounds(&self) -> openchuck_types::geometry::Aabb {
+        self.surface.bounds()
+    }
+
+    fn project(
+        &self,
+        point: openchuck_types::geometry::Point3,
+    ) -> Option<openchuck_path::surface::SurfacePoint> {
+        self.surface.project(point)
+    }
+
+    fn cast_ray(
+        &self,
+        origin: openchuck_types::geometry::Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<openchuck_path::surface::RayHit> {
+        self.surface.cast_ray(origin, direction, max_distance)
+    }
+
+    fn tessellation(&self) -> &openchuck_types::mesh::TriangleMesh {
+        self.surface.tessellation()
+    }
+
+    fn drop_tool(
+        &self,
+        profile: &openchuck_types::tool::RevolvedProfile,
+        line: &openchuck_path::cutter::ToolLine,
+    ) -> Option<openchuck_path::cutter::Contact> {
+        self.threads
+            .lock()
+            .unwrap()
+            .insert(rayon::current_thread_index());
+        self.surface.drop_tool(profile, line)
+    }
+}
+
+#[test]
+fn req_nfr_04_axial_finishing_fits_its_passes_on_more_than_one_thread() {
+    // Issue #252: a pass of fewer than 64 points was fitted on one thread,
+    // and the passes one after another, so the whole job ran on one core.
+    let part = Cylinder {
+        radius: 10.0,
+        length: 20.0,
+    };
+    let f = fixture(&part, 3, 360, &ball(3.0));
+    let watched = Watched {
+        surface: &f.surface,
+        threads: std::sync::Mutex::default(),
+    };
+    let input = openchuck_path::StrategyInput {
+        surface: &watched,
+        ..f.input()
+    };
+    let v = values(0.5, &[]);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .unwrap();
+    pool.install(|| run(|ctx| generate(&AxialFinishing, &input, &v, ctx)).unwrap());
+    let threads = watched.threads.lock().unwrap().len();
+    assert!(threads > 1, "the tool was dropped on {threads} thread");
+}
+
+#[test]
+fn req_nfr_06_axial_finishing_is_identical_at_1_2_and_n_threads() {
+    let part = Cone {
+        start_radius: 12.0,
+        end_radius: 6.0,
+        length: 20.0,
+    };
+    let f = fixture(&part, 21, 360, &ball(3.0));
+    for direction in ["zigzag", "climb"] {
+        let v = values(
+            1.0,
+            &[(parameter::DIRECTION, ParameterValue::Text(direction.into()))],
+        );
+        let runs = openchuck_testkit::determinism::check(|| {
+            format!("{:?}", axial(&f, &v).group).into_bytes()
+        })
+        .unwrap();
+        assert_eq!(runs.len(), 4);
+    }
+}
+
+/// The progress reports of a job, in the order they were sent.
+#[derive(Default)]
+struct Reports(std::sync::Mutex<Vec<openchuck_types::job::Progress>>);
+
+impl openchuck_types::job::ProgressSink for Reports {
+    fn report(&self, progress: openchuck_types::job::Progress) {
+        self.0.lock().unwrap().push(progress);
+    }
+}
+
+#[test]
+fn req_ui_09_axial_finishing_counts_its_passes_with_one_total_that_only_goes_up() {
+    // Issue #248: each pass reported its own counts (its points, then its
+    // pieces), so the progress shown jumped between totals as the passes
+    // ran. The passes are counted instead, with one total.
+    let part = Cylinder {
+        radius: 10.0,
+        length: 20.0,
+    };
+    let f = fixture(&part, 3, 360, &ball(3.0));
+    let v = values(2.0, &[]);
+    let reports = Reports::default();
+    let cancel = openchuck_types::job::CancelToken::new();
+    let context = openchuck_types::job::JobContext::new(&cancel, &reports);
+    generate(&AxialFinishing, &f.input(), &v, &context).unwrap();
+    let reports = reports.0.into_inner().unwrap();
+    let strategy: Vec<_> = reports
+        .iter()
+        .filter(|p| p.stage.starts_with("axial finishing"))
+        .collect();
+    assert!(!strategy.is_empty());
+    let total = strategy[0].total;
+    // 2 mm round a radius of 10: 32 passes.
+    assert_eq!(total, Some(32));
+    let mut done = 0;
+    for p in &strategy {
+        assert_eq!(p.total, total, "{} changed the total", p.stage);
+        assert!(p.done >= done, "{} went back from {done}", p.stage);
+        done = p.done;
+    }
+    assert_eq!(done, 32);
+}
+
+/// A surface that cancels the job from inside the pass at its `at`th tool
+/// axis: an axial pass keeps one axis, so on one thread this is the `at`th
+/// pass, which then fails at its next check.
+#[derive(Debug)]
+struct CancelInPass<'a> {
+    surface: &'a MeshSurface,
+    at: usize,
+    cancel: openchuck_types::job::CancelToken,
+    axes: std::sync::Mutex<Vec<[u64; 3]>>,
+}
+
+impl openchuck_path::SurfaceSource for CancelInPass<'_> {
+    fn bounds(&self) -> openchuck_types::geometry::Aabb {
+        self.surface.bounds()
+    }
+    fn project(
+        &self,
+        point: openchuck_types::geometry::Point3,
+    ) -> Option<openchuck_path::SurfacePoint> {
+        self.surface.project(point)
+    }
+    fn cast_ray(
+        &self,
+        origin: openchuck_types::geometry::Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<openchuck_path::RayHit> {
+        self.surface.cast_ray(origin, direction, max_distance)
+    }
+    fn tessellation(&self) -> &openchuck_types::mesh::TriangleMesh {
+        self.surface.tessellation()
+    }
+    fn drop_tool(
+        &self,
+        profile: &openchuck_types::tool::RevolvedProfile,
+        line: &openchuck_path::ToolLine,
+    ) -> Option<openchuck_path::Contact> {
+        let a = line.axis.get();
+        let key = [a.x.to_bits(), a.y.to_bits(), a.z.to_bits()];
+        let mut axes = self.axes.lock().unwrap();
+        if !axes.contains(&key) {
+            axes.push(key);
+            if axes.len() == self.at {
+                self.cancel.cancel();
+            }
+        }
+        drop(axes);
+        self.surface.drop_tool(profile, line)
+    }
+}
+
+#[test]
+fn req_ui_09_a_pass_that_fails_is_not_counted_as_done() {
+    // OI-843: a pass that ended with an error was counted, so the progress
+    // could read "32 of 32" just before the run ended with that error. The
+    // last pass is cancelled from inside, on one thread so the passes run
+    // in order: 31 passes are done, and the count says so.
+    use openchuck_path::SurfaceSource;
+    let part = Cylinder {
+        radius: 10.0,
+        length: 20.0,
+    };
+    let f = fixture(&part, 3, 360, &ball(3.0));
+    let v = values(2.0, &[]);
+    let cancel = openchuck_types::job::CancelToken::new();
+    let surface = CancelInPass {
+        surface: &f.surface,
+        at: 32,
+        cancel: cancel.clone(),
+        axes: std::sync::Mutex::default(),
+    };
+    assert!(surface.bounds().max.x > surface.bounds().min.x);
+    let mut input = f.input();
+    input.surface = &surface;
+    let reports = Reports::default();
+    let context = openchuck_types::job::JobContext::new(&cancel, &reports);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap();
+    let result = pool.install(|| generate(&AxialFinishing, &input, &v, &context));
+    assert!(result.is_err());
+    let done = reports
+        .0
+        .into_inner()
+        .unwrap()
+        .iter()
+        .filter(|p| p.stage.ends_with("fitting the passes"))
+        .map(|p| p.done)
+        .max();
+    assert_eq!(done, Some(31));
+}

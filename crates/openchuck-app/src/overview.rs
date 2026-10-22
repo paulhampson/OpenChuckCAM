@@ -397,6 +397,11 @@ pub struct SetupCheck {
     pub action: Option<MessageAction>,
 }
 
+/// What the Simulate step says while the latest run holds an operation that
+/// was turned off or removed since (issue 260, NFR-12).
+pub const SIMULATION_HOLDS_GONE: &str =
+    "Out of date: an operation in the simulation was turned off or removed";
+
 /// What the Simulate step says while the project skips the stock simulation
 /// (issue 214; decision record 0168).
 pub const STOCK_SIMULATION_SKIPPED: &str =
@@ -411,6 +416,10 @@ pub enum PrimaryKind {
     Continue(Step),
     /// Generate the stale operations; the number of them.
     GenerateStale(usize),
+    /// Generate again without the stock simulation, which the project skips:
+    /// the latest run no longer holds exactly the enabled operations, though
+    /// none of them is stale (an operation in it was turned off or removed).
+    Generate,
     /// Generate and simulate.
     RunSimulation,
     /// Generate and simulate when an operation was never generated; the
@@ -468,6 +477,9 @@ pub struct Overview {
     first_unsimulated_unmade: Option<usize>,
     any_enabled: bool,
     models: usize,
+    /// Each model's extent as its placement steps put it, from the checks
+    /// (the Setup inspector's read-only position, decision record 0201).
+    model_extents: BTreeMap<ModelId, PartExtent>,
     /// Selection sets in error that an enabled operation uses.
     blocked_sets: Vec<ItemRef>,
     post_blocker: Option<&'static str>,
@@ -502,9 +514,17 @@ impl Overview {
             first_unsimulated_unmade: None,
             any_enabled: false,
             models: 0,
+            model_extents: BTreeMap::new(),
             blocked_sets: Vec::new(),
             post_blocker: Some("Open or start a project first"),
         }
+    }
+
+    /// The extent of `model` as its placement steps put it, from the checks
+    /// last worked out; `None` until they have read it. A setup's part is
+    /// this moved by the setup's offset ([`PartExtent::in_setup`]).
+    pub fn model_extent(&self, model: ModelId) -> Option<PartExtent> {
+        self.model_extents.get(&model).copied()
     }
 
     /// Why "Post and export…" in the File menu is unavailable, if it is: the
@@ -628,6 +648,7 @@ impl Overview {
                     other => format!("Continue to {}", other.name().to_lowercase()),
                 },
                 PrimaryKind::GenerateStale(n) => format!("Generate stale ({n})"),
+                PrimaryKind::Generate => "Generate toolpaths".to_owned(),
                 PrimaryKind::RunSimulation => "Run simulation".to_owned(),
                 PrimaryKind::GenerateAndSimulate(n) => format!("Generate and simulate op {n}"),
                 PrimaryKind::OpenExport => "Post and export…".to_owned(),
@@ -663,6 +684,9 @@ impl Overview {
             // toolpaths (decision record 0168).
             Step::Simulate if self.skip_stock && !self.stale.is_empty() => {
                 blocked(action(PrimaryKind::GenerateStale(self.stale.len())))
+            }
+            Step::Simulate if self.skip_stock && self.any_enabled && !self.simulated_all => {
+                blocked(action(PrimaryKind::Generate))
             }
             Step::Simulate if self.any_enabled && !self.simulated_all => {
                 blocked(match self.first_unsimulated_unmade {
@@ -773,6 +797,10 @@ struct RecordState {
     /// What the run is doing with `current`: nothing while it only takes it
     /// from the cache, which is not shown running (issue 239).
     activity: Option<PipelineActivity>,
+    /// The operations the latest successful run holds, the run the front
+    /// end shows and posts: Simulate is complete only while they are the
+    /// enabled operations (issue 260).
+    last_run: Option<Vec<OperationId>>,
 }
 
 /// What a pipeline run is doing with the operation it has reached
@@ -882,6 +910,7 @@ impl GenerationRecord {
                     s.simulated.insert(*id, key.chained);
                 }
             }
+            s.last_run = Some(run.groups.iter().map(|g| g.operation).collect());
             s.failure = None;
             s.current = None;
         });
@@ -983,7 +1012,9 @@ pub(crate) fn run_checks(
             .part
             .and_then(|id| checks.models.get(&id))
             .and_then(|m| m.findings.as_ref().ok())
-            .and_then(|f| f.extent);
+            .and_then(|f| f.extent)
+            // Where this setup's offset puts the part (decision record 0201).
+            .map(|e| e.in_setup(&s.frame));
         let mut notes = Vec::new();
         let warnings = match project.machine() {
             Some(profile) => {
@@ -1000,6 +1031,18 @@ pub(crate) fn run_checks(
         let mut warnings = warnings;
         warnings.extend(
             openchuck_types::workholding::check_tab_zones(
+                &s.workholding,
+                s.stock.as_ref(),
+                part.as_ref(),
+            )
+            .into_iter()
+            .map(|kind| SetupWarning {
+                kind,
+                unconfirmed: Vec::new(),
+            }),
+        );
+        warnings.extend(
+            openchuck_types::workholding::check_held_regions(
                 &s.workholding,
                 s.stock.as_ref(),
                 part.as_ref(),
@@ -1123,7 +1166,10 @@ fn part_of(kind: &SetupWarningKind) -> Option<SetupPart> {
         SetupWarningKind::ClearanceInsideStock { .. }
         | SetupWarningKind::ClearanceInsidePart { .. }
         | SetupWarningKind::OutsideTravel { .. } => Some(SetupPart::WorkOffset),
-        SetupWarningKind::TabOutsideEndZones { .. } => Some(SetupPart::Workholding),
+        SetupWarningKind::TabOutsideEndZones { .. }
+        | SetupWarningKind::AutoTabNoRoom { .. }
+        | SetupWarningKind::TabsOverlap { .. }
+        | SetupWarningKind::HeldRegionCoversPart { .. } => Some(SetupPart::Workholding),
         _ => None,
     }
 }
@@ -1844,6 +1890,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
             .all(|s| s.stock.is_some() && s.part.is_some())
         && checks.is_some_and(|c| c.setups.iter().all(|s| s.warnings.is_empty()));
     let generated = any_enabled && any_generated;
+    // The run shown and posted must hold exactly the enabled operations: one
+    // that holds an operation turned off or removed since, or lacks one that
+    // is on, is out of date even where no key changed (issue 260, NFR-12).
+    let run_holds_gone = record.last_run.as_ref().is_some_and(|made| {
+        made.iter()
+            .any(|id| project.operation(*id).is_none_or(|o| !o.enabled))
+    });
+    let run_lacks_one = record
+        .last_run
+        .as_ref()
+        .is_none_or(|made| ops.iter().any(|o| o.enabled && !made.contains(&o.id)));
+    simulated_all &= !run_holds_gone && !run_lacks_one;
     // Post and export, in the File menu and as a step, needs what the dialog
     // needs to make its files, not generated operations (decision 0148).
     // The values still missing, setups first (issues 210, 224 and 140). The
@@ -2003,7 +2061,12 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     } else {
         good.clone()
     };
-    let simulate_health = if any_enabled && !simulated_all {
+    let simulate_health = if any_enabled && run_holds_gone {
+        (
+            StepHealth::Attention,
+            Some(SIMULATION_HOLDS_GONE.to_owned()),
+        )
+    } else if any_enabled && !simulated_all {
         (StepHealth::Attention, Some("Not simulated yet".to_owned()))
     } else if any_enabled && skip_stock {
         // Skipping is the user's choice, but the cut is then not checked
@@ -2061,6 +2124,20 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
         first_unsimulated_unmade,
         any_enabled,
         models: project.models().len(),
+        model_extents: checks
+            .map(|c| {
+                c.models
+                    .iter()
+                    .filter_map(|(id, m)| {
+                        m.findings
+                            .as_ref()
+                            .ok()
+                            .and_then(|f| f.extent)
+                            .map(|e| (*id, e))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         blocked_sets,
         post_blocker,
     }
@@ -2091,6 +2168,18 @@ fn file_warnings(project: &Project, checks: Option<&Checks>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tab placed automatically with no room is a finding of the setup's
+    /// workholding: its message opens that section, where "Place
+    /// automatically" is unticked (decision record 0202; UI-25).
+    #[test]
+    fn req_ui_25_an_automatic_tab_with_no_room_is_on_the_workholding_row() {
+        let kind = SetupWarningKind::AutoTabNoRoom {
+            tab: 1,
+            end: openchuck_types::workholding::TabEnd::Head,
+        };
+        assert_eq!(part_of(&kind), Some(SetupPart::Workholding));
+    }
 
     #[test]
     fn req_ui_11_lengths_on_rows_have_no_trailing_zeros() {
@@ -2222,6 +2311,7 @@ mod tests {
                 avoid: Vec::new(),
                 check: Vec::new(),
                 restriction_options: Default::default(),
+                spindle_speed: None,
                 parameters: BTreeMap::new(),
             }),
             placement: Placement::End,

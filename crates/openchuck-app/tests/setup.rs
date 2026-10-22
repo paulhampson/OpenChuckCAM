@@ -117,9 +117,17 @@ fn req_set_01_z1_warnings_name_unconfirmed_values() {
     let z1 = builtin(MAKERA_Z1).unwrap().unwrap();
     app.execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
-    // Part offset far along the axis: the stock runs past the X travel.
+    // The stock far along the axis: it runs past the X travel. (The part
+    // offset moves only the part, decision record 0201.)
     let mut setup = app.find_setup("Setup 1").unwrap().clone();
-    setup.frame.part_offset = Millimetres(195.0);
+    match setup.stock.as_mut().unwrap() {
+        Stock::Cylinder { x_start, .. } => x_start.0 += 195.0,
+        Stock::Box { bounds } => {
+            bounds.min.x += 195.0;
+            bounds.max.x += 195.0;
+        }
+        other => panic!("{other:?}"),
+    }
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let report = &app.check_setups().unwrap()[0];
     let text: Vec<String> = report.warnings.iter().map(ToString::to_string).collect();
@@ -291,4 +299,38 @@ fn req_set_01_machine_copy_is_compared_with_its_source() {
         .is_err()
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn req_set_09_the_setup_report_warns_of_a_grip_that_reaches_into_the_part() {
+    let (dir, mut app, _) = project("grip-reach");
+    app.execute(Command::SetMachine(Some(Box::new(
+        MachineProfile::example_x_rotary(),
+    ))))
+    .unwrap();
+    // The cube spans X 0 to 10 and the stock X -2 to 12: a 4 mm grip at the
+    // start reaches X 2, so 2 mm of the cube lies in it.
+    let mut setup = app.find_setup("Setup 1").unwrap().clone();
+    setup.workholding.start = Some(openchuck_app::setup::HeldRegion {
+        length: Millimetres(4.0),
+        diameter: None,
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let covered: Vec<_> = app.check_setups().unwrap()[0]
+        .warnings
+        .iter()
+        .filter(|w| {
+            matches!(
+                w.kind,
+                SetupWarningKind::HeldRegionCoversPart { at_end: false, .. }
+            )
+        })
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(covered.len(), 1);
+    assert!(
+        covered[0].contains("covers 2.000 mm of the part"),
+        "{covered:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }

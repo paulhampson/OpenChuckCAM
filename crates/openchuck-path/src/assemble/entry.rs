@@ -127,7 +127,11 @@ impl Entry {
         };
         let name = "lead-out";
         let end = b.rotary.to_axis(last.tip, last.a);
-        let d = direction_at_end(b, points).ok_or_else(|| no_direction(pass, name))?;
+        // A pass of one cut point was entered by a plunge and has nothing to
+        // lead out along (decision 0204).
+        let Some(d) = direction_at_end(b, points) else {
+            return Ok(());
+        };
         let r = self.lead_radius;
         let offset = last.contact - last.tip;
         let mut refusal = None;
@@ -182,7 +186,12 @@ impl Entry {
     ) -> Result<()> {
         let name = "lead-in";
         let goal = b.rotary.to_axis(head.tip, head.a);
-        let d = direction_at_start(b, points).ok_or_else(|| no_direction(pass, name))?;
+        // A pass of one cut point (the part's tip just reaches this layer) has
+        // no line to lead along: it is entered by a plunge (issue 199,
+        // decision 0204).
+        let Some(d) = direction_at_start(b, points) else {
+            return plunge(b, stock, common, head);
+        };
         let r = self.lead_radius;
         let offset = head.contact - head.tip;
         let mut refusal = None;
@@ -265,7 +274,11 @@ impl Entry {
         if rise <= EPS {
             return plunge(b, stock, common, head);
         }
-        let d = direction_at_start(b, points).ok_or_else(|| no_direction(pass, name))?;
+        // As for the lead-in: a pass of one cut point has no line to ramp
+        // along (issue 199, decision 0204).
+        let Some(d) = direction_at_start(b, points) else {
+            return plunge(b, stock, common, head);
+        };
         let run = rise / self.ramp_tan;
         let start = AxisPosition {
             along: goal.along - d.0 * run,
@@ -491,13 +504,6 @@ impl Default for Gouge {
             x: f64::NAN,
         }
     }
-}
-
-fn no_direction(pass: usize, name: &str) -> PathError {
-    PathError::Strategy(format!(
-        "pass {}: the {name} needs a direction to follow, and the pass has no horizontal move",
-        pass + 1
-    ))
 }
 
 /// The height a rapid descent over the line the tool is on stops at: the

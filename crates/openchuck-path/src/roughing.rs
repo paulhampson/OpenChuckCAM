@@ -17,6 +17,16 @@
 //!   apart, and cuts each layer as lines along X at steps of the stepover
 //!   across the sector. A does not move while it cuts (OP-15).
 //!
+//! **Cut direction (issue 246; decision record 0212 part A).** Those are
+//! each form's own direction, and the default. Either form can be turned the
+//! other way: **continuous along the length** cuts each layer as lines along
+//! X at A positions no more than the stepover apart at the stock's radius,
+//! alternating in X, with A turning between lines; **indexed around the
+//! part** cuts, at each A position, lines across the sector (along Y),
+//! stepping along X by the stepover and alternating across, A held still.
+//! Both share the layers, the floor, the remaining stock and the region
+//! constraint below with the forms' own directions.
+//!
 //! **Aware of the remaining stock.** The stock is read once into a
 //! [`HeightStock`]; a node of a layer is cut only where more than `min_cut`
 //! of material stands above the tool's underside, so material already gone
@@ -51,13 +61,14 @@ use openchuck_types::units::Degrees;
 
 use crate::cutter;
 use crate::error::{PathError, Result};
+use crate::extend::Extension;
 use crate::field::HeightStock;
 use crate::helical::CHORD_FACTOR;
 use crate::parallel;
 use crate::params::{ParameterKind, ParameterSchema, ParameterSpec, Parameters, Unit, names};
 use crate::region::RegionConstraint;
 use crate::rotary::{AxisPosition, RotaryMapping};
-use crate::strategy::{CutPoint, Pass, PassStock, Strategy, StrategyInput};
+use crate::strategy::{CutPoint, Pass, PassStock, Strategy, StrategyGroup, StrategyInput};
 
 /// The registry name of [`RotaryRoughing`].
 pub const NAME: &str = "rotary_roughing";
@@ -76,6 +87,17 @@ pub mod parameter {
     pub const MAX_ANGLE_STEP: &str = "max_angle_step";
     /// Material thinner than this above the tool is treated as air.
     pub const MIN_CUT: &str = "min_cut";
+    /// Which way the passes run: [`USUAL`], [`ALONG`] or [`AROUND`] (issue
+    /// 246; decision record 0212 part A).
+    pub const DIRECTION: &str = "direction";
+    /// The form's own direction: around the part for the continuous form
+    /// (one helix a layer), along it for the indexed form. The default, so
+    /// an operation saved before the option cuts as it did.
+    pub const USUAL: &str = "usual for the form";
+    /// Passes along X, parallel to the rotary axis.
+    pub const ALONG: &str = "along the length of the part";
+    /// Passes around the part, stepping along X.
+    pub const AROUND: &str = "around the part";
 }
 
 /// Fine nodes per coarse node: the path between two nodes is refined down to
@@ -202,6 +224,14 @@ impl Strategy for RotaryRoughing {
         "Rotary roughing"
     }
 
+    fn description(&self) -> &str {
+        "Removes most of the material from the stock in layers, working from the outside in as the part turns, and leaves a thin layer on the part for a finishing operation to cut. Use it first. It is not meant to give a finished surface."
+    }
+
+    fn group(&self) -> StrategyGroup {
+        StrategyGroup::Roughing
+    }
+
     fn schema(&self) -> ParameterSchema {
         ParameterSchema::with_common(vec![
             ParameterSpec {
@@ -213,6 +243,25 @@ impl Strategy for RotaryRoughing {
                 kind: ParameterKind::Choice {
                     options: vec!["continuous".to_owned(), "indexed".to_owned()],
                     default: "continuous".to_owned(),
+                },
+            },
+            ParameterSpec {
+                name: parameter::DIRECTION.to_owned(),
+                label: "Cut direction".to_owned(),
+                description: "Along the length: the passes run along X, parallel to the rotary \
+                              axis, stepping round the part between them. Around the part: the \
+                              passes wrap around the part, stepping along X; in the indexed \
+                              form A is held, so each pass runs across (along Y) the side the \
+                              part is turned to. Usual for the form: around for continuous, \
+                              along for indexed."
+                    .to_owned(),
+                kind: ParameterKind::Choice {
+                    options: vec![
+                        parameter::USUAL.to_owned(),
+                        parameter::ALONG.to_owned(),
+                        parameter::AROUND.to_owned(),
+                    ],
+                    default: parameter::USUAL.to_owned(),
                 },
             },
             number(
@@ -266,7 +315,10 @@ impl Strategy for RotaryRoughing {
                 (0.0, false, None),
                 Some(0.15),
             ),
-        ])
+        ]
+        .into_iter()
+        .chain(crate::extend::specs(false))
+        .collect())
     }
 
     fn honours_region(&self) -> bool {
@@ -299,10 +351,18 @@ fn rough(
     parameters: &Parameters,
     context: &JobContext<'_>,
 ) -> Result<Vec<Pass>> {
-    let job = Job::new(input, region, parameters)?;
-    match parameters.text(parameter::FORM)? {
-        "indexed" => job.indexed(parameters, context),
-        _ => job.continuous(parameters, context),
+    let job = Job::new(input, region, parameters, "rotary roughing")?;
+    let indexed = parameters.text(parameter::FORM)? == "indexed";
+    let around = match parameters.text(parameter::DIRECTION)? {
+        parameter::ALONG => false,
+        parameter::AROUND => true,
+        _ => !indexed,
+    };
+    match (indexed, around) {
+        (true, false) => job.indexed(parameters, context),
+        (true, true) => job.indexed_around(parameters, context),
+        (false, false) => job.continuous_along(context),
+        (false, true) => job.continuous(parameters, context),
     }
     .and_then(|passes| {
         if passes.is_empty() {
@@ -326,12 +386,121 @@ fn rough(
     })
 }
 
+/// Facing (OP-24; decision record 0212 part B item 4): the whole stock, not
+/// only the part, cut down in layers to a flat face at each listed A
+/// (`round` false, `level` the face's distance from the axis) or round to a
+/// cylinder of radius `level`, with the stock's ends (and a flat's sides)
+/// extended past when the operation asks. Where the part with its stock to
+/// leave stands above the face the tool follows it, as roughing does.
+pub(crate) fn face(
+    input: &StrategyInput<'_>,
+    parameters: &Parameters,
+    round: bool,
+    level: f64,
+    context: &JobContext<'_>,
+) -> Result<Vec<Pass>> {
+    let label = "facing";
+    let mut job = Job::new(input, None, parameters, label)?;
+    let ends = input.stock.x_extent().ok_or_else(|| {
+        PathError::Strategy("facing needs the stock's ends, and the stock model gives none".into())
+    })?;
+    job.x_range = job.extension.map_or(ends, |e| e.widen(ends));
+    if !level.is_finite() || level <= 0.0 || level >= job.r_top - job.min_cut {
+        return Err(PathError::Parameter {
+            name: crate::facing::parameter::SIZE.to_owned(),
+            reason: format!(
+                "the face would be {level:.3} mm from the rotary axis, and the stock reaches \
+                 {:.3} mm: there is nothing to face",
+                job.r_top
+            ),
+        });
+    }
+    job.face = Some(level);
+    let passes = if round {
+        job.continuous(parameters, context)?
+    } else {
+        job.flat(parameters, level, context)?
+    };
+    if passes.is_empty() {
+        return Err(PathError::Strategy(format!(
+            "facing has no cut to make: no material stands more than {} mm above the face",
+            job.min_cut
+        )));
+    }
+    Ok(passes)
+}
+
 /// One cut position: model X, A (degrees) and the offset across the axis.
 #[derive(Debug, Clone, Copy)]
 struct Site {
     x: f64,
     a: f64,
     across: f64,
+}
+
+/// A straight line of cut positions with A held: `fine` intervals of fine
+/// nodes, `fine / SUB` coarse ones.
+#[derive(Debug, Clone, Copy)]
+struct Line {
+    kind: LineKind,
+    fine: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LineKind {
+    /// Along X from `x0` over `length` (from the far end when `reverse`), at
+    /// A `a` and `across` the axis.
+    AlongX {
+        x0: f64,
+        length: f64,
+        a: f64,
+        across: f64,
+        reverse: bool,
+    },
+    /// Across the axis from `-reach` to `reach` (the other way when
+    /// `reverse`), at `x` and A `a`.
+    Across {
+        x: f64,
+        a: f64,
+        reach: f64,
+        reverse: bool,
+    },
+}
+
+impl Line {
+    /// The site at fine node `f` (fractional between nodes).
+    fn site(&self, f: f64) -> Site {
+        match self.kind {
+            LineKind::AlongX {
+                x0,
+                length,
+                a,
+                across,
+                reverse,
+            } => {
+                let f = if reverse { self.fine as f64 - f } else { f };
+                Site {
+                    x: x0 + length * f / self.fine as f64,
+                    a,
+                    across,
+                }
+            }
+            LineKind::Across {
+                x,
+                a,
+                reach,
+                reverse,
+            } => {
+                let t = f / self.fine as f64;
+                let t = if reverse { 1.0 - t } else { t };
+                Site {
+                    x,
+                    a,
+                    across: -reach + 2.0 * reach * t,
+                }
+            }
+        }
+    }
 }
 
 struct Job<'a> {
@@ -349,6 +518,14 @@ struct Job<'a> {
     start: f64,
     r_top: f64,
     x_range: (f64, f64),
+    /// Past the stock's ends, when the operation asks (OP-24).
+    extension: Option<Extension>,
+    /// Facing: the level of the face, which the layers stop at in place of
+    /// the part's lowest floor.
+    face: Option<f64>,
+    /// Facing on a flat past its sides: the half width of the face, beyond
+    /// which the material at the side decides whether the tool cuts.
+    side_reach: Option<f64>,
 }
 
 impl<'a> Job<'a> {
@@ -356,6 +533,7 @@ impl<'a> Job<'a> {
         input: &'a StrategyInput<'a>,
         region: Option<&'a RegionConstraint<'a>>,
         p: &Parameters,
+        label: &str,
     ) -> Result<Self> {
         let radius = input.tool.cutting_radius();
         let leave = p.number(names::STOCK_TO_LEAVE)?;
@@ -369,7 +547,9 @@ impl<'a> Job<'a> {
         // The tool starts clear of the part's ends, with room for an entry,
         // rather than tangent to them.
         let margin = 3.0 * radius + leave;
-        let (x0, x1) = (bounds.min.x - margin, bounds.max.x + margin);
+        let extension = Extension::read(input, p, label)?;
+        let range = (bounds.min.x - margin, bounds.max.x + margin);
+        let (x0, x1) = extension.map_or(range, |e| e.widen(range));
         if x0.is_nan() || x1.is_nan() || x1 <= x0 {
             return Err(PathError::Strategy(
                 "the part has no length along the rotary axis to rough".to_owned(),
@@ -390,6 +570,9 @@ impl<'a> Job<'a> {
             start: p.number(parameter::START_ANGLE)?,
             r_top,
             x_range: (x0, x1),
+            extension,
+            face: None,
+            side_reach: None,
         })
     }
 
@@ -515,6 +698,20 @@ impl<'a> Job<'a> {
             bottom.max(0.25 * self.radius),
             (self.radius / 3.0).max(0.05),
         )
+    }
+
+    /// Where the material that decides whether the tool cuts at `x` is: `x`
+    /// itself, or the stock's end where `x` lies past an extended end, so the
+    /// tool carries on past the stock while there is material at its edge
+    /// (OP-24).
+    fn material_x(&self, x: f64) -> f64 {
+        self.extension.map_or(x, |e| e.onto_stock(x))
+    }
+
+    /// As [`Self::material_x`] across the axis: the side of a flat face
+    /// where `across` lies past it and the face is extended past its sides.
+    fn material_across(&self, across: f64) -> f64 {
+        self.side_reach.map_or(across, |w| across.clamp(-w, w))
     }
 
     fn cut_point(&self, site: Site, tip: f64) -> CutPoint {
@@ -746,7 +943,13 @@ impl<'a> Job<'a> {
                     .copied()
                     .flatten()
                     .map_or(*level, |v| v.max(*level));
-                field.excess(self.input.tool, s.x, s.a, s.across, tip)
+                field.excess(
+                    self.input.tool,
+                    self.material_x(s.x),
+                    s.a,
+                    self.material_across(s.across),
+                    tip,
+                )
             });
             let active: Vec<bool> = excess
                 .iter()
@@ -771,6 +974,14 @@ impl<'a> Job<'a> {
         Ok(passes)
     }
 
+    /// The node spacing along a straight line of cut positions.
+    fn line_spacing(&self) -> f64 {
+        (0.5 * self.radius).max(self.stepover.min(self.radius))
+    }
+
+    /// Indexed roughing along the length: at each A position, lines along X
+    /// stepping across the sector the position faces (decision record 0033
+    /// item 2).
     fn indexed(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
         let (x0, x1, _, _) = self.cut_range();
         let length = x1 - x0;
@@ -779,8 +990,7 @@ impl<'a> Job<'a> {
         let half = (0.5 * index).min(90.0).to_radians();
         let reach = self.r_top * half.sin();
         let lines = (2.0 * reach / self.stepover).ceil().max(1.0) as usize;
-        let spacing = (0.5 * self.radius).max(self.stepover.min(self.radius));
-        let coarse = (length / spacing).ceil().max(1.0) as usize;
+        let coarse = (length / self.line_spacing()).ceil().max(1.0) as usize;
         let fine = coarse * SUB;
         if ((lines + 1) * positions * (fine + 1)) as f64 > MAX_NODES {
             return Err(PathError::Parameter {
@@ -792,92 +1002,221 @@ impl<'a> Job<'a> {
                 ),
             });
         }
-        let at = |position: usize, line: usize, f: f64| Site {
-            x: x0 + length * f / fine as f64,
-            a: self.start + index * position as f64,
-            across: if lines == 0 {
-                0.0
-            } else {
-                -reach + 2.0 * reach * line as f64 / lines as f64
-            },
-        };
-
-        // The floor of every line of every position, once.
-        let mut floors: Vec<Vec<Option<f64>>> = Vec::new();
-        let mut allowed: Vec<Vec<bool>> = Vec::new();
-        let indices: Vec<usize> = (0..=fine).collect();
+        let mut all = Vec::with_capacity(positions * (lines + 1));
         for position in 0..positions {
             for line in 0..=lines {
-                context.check_cancelled()?;
-                let probes: Vec<(Option<f64>, bool)> =
-                    parallel::map_in_order(&indices, |f| self.probe(at(position, line, *f as f64)));
-                floors.push(probes.iter().map(|p| p.0).collect());
-                allowed.push(probes.iter().map(|p| p.1).collect());
+                all.push(Line {
+                    kind: LineKind::AlongX {
+                        x0,
+                        length,
+                        a: self.start + index * position as f64,
+                        across: if lines == 0 {
+                            0.0
+                        } else {
+                            -reach + 2.0 * reach * line as f64 / lines as f64
+                        },
+                        reverse: false,
+                    },
+                    fine,
+                });
             }
+        }
+        self.cut_lines(&all, context)
+    }
+
+    /// Continuous roughing along the length (issue 246; decision record 0212
+    /// part A item 2): lines along X at A positions no more than the
+    /// stepover apart at the stock's radius, alternating in X so A turns
+    /// between lines off the end of the last.
+    fn continuous_along(&self, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        let (x0, x1, _, _) = self.cut_range();
+        let length = x1 - x0;
+        let lines = (std::f64::consts::TAU * self.r_top / self.stepover)
+            .ceil()
+            .max(4.0);
+        let coarse = (length / self.line_spacing()).ceil().max(1.0);
+        let fine = coarse * SUB as f64;
+        if lines * (fine + 1.0) > MAX_NODES {
+            return Err(PathError::Parameter {
+                name: names::STEPOVER.to_owned(),
+                reason: format!(
+                    "{lines:.0} lines of {fine:.0} points around a stock of {:.3} mm radius is \
+                     too many; use a larger stepover",
+                    self.r_top
+                ),
+            });
+        }
+        let all: Vec<Line> = (0..lines as usize)
+            .map(|k| Line {
+                kind: LineKind::AlongX {
+                    x0,
+                    length,
+                    a: self.start + 360.0 * k as f64 / lines,
+                    across: 0.0,
+                    reverse: k % 2 == 1,
+                },
+                fine: fine as usize,
+            })
+            .collect();
+        self.cut_lines(&all, context)
+    }
+
+    /// Indexed roughing around the part (issue 246; decision record 0212
+    /// part A item 3): at each A position, lines across the sector the
+    /// position faces, stepping along X by the stepover and alternating
+    /// across. A is held while the tool cuts (OP-15).
+    fn indexed_around(&self, p: &Parameters, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        let (x0, x1, _, _) = self.cut_range();
+        let length = x1 - x0;
+        let index = p.number(parameter::INDEX_ANGLE)?;
+        let positions = (360.0 / index).ceil().max(1.0) as usize;
+        let half = (0.5 * index).min(90.0).to_radians();
+        let reach = self.r_top * half.sin();
+        let steps = (length / self.stepover).ceil().max(1.0) as usize;
+        let coarse = (2.0 * reach / self.line_spacing()).ceil().max(1.0) as usize;
+        let fine = coarse * SUB;
+        if ((steps + 1) * positions * (fine + 1)) as f64 > MAX_NODES {
+            return Err(PathError::Parameter {
+                name: parameter::INDEX_ANGLE.to_owned(),
+                reason: format!(
+                    "{positions} positions of {} lines of {fine} points is too many; use a \
+                     larger stepover or a larger index angle",
+                    steps + 1
+                ),
+            });
+        }
+        let mut all = Vec::with_capacity(positions * (steps + 1));
+        for position in 0..positions {
+            for step in 0..=steps {
+                all.push(Line {
+                    kind: LineKind::Across {
+                        x: x0 + length * step as f64 / steps as f64,
+                        a: self.start + index * position as f64,
+                        reach,
+                        reverse: step % 2 == 1,
+                    },
+                    fine,
+                });
+            }
+        }
+        self.cut_lines(&all, context)
+    }
+
+    /// Facing on a flat: at each listed A, lines along X across the whole
+    /// width of the face (the chord of the stock's circle at `level`), past
+    /// its sides when the operation asks.
+    fn flat(&mut self, p: &Parameters, level: f64, context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        let angles = p.angles(crate::facing::parameter::ANGLES)?;
+        if angles.is_empty() {
+            return Err(PathError::parameter(
+                crate::facing::parameter::ANGLES,
+                "at least one angle to face at",
+            ));
+        }
+        let (x0, x1, _, _) = self.cut_range();
+        let length = x1 - x0;
+        let half = (self.r_top * self.r_top - level * level).max(0.0).sqrt();
+        let reach = match self.extension {
+            Some(e) if e.sides => {
+                self.side_reach = Some(half);
+                half + e.radius + e.distance
+            }
+            _ => half,
+        };
+        let lines = (2.0 * reach / self.stepover).ceil().max(1.0) as usize;
+        let coarse = (length / self.line_spacing()).ceil().max(1.0) as usize;
+        let fine = coarse * SUB;
+        if ((lines + 1) * angles.len() * (fine + 1)) as f64 > MAX_NODES {
+            return Err(PathError::Parameter {
+                name: names::STEPOVER.to_owned(),
+                reason: format!(
+                    "{} faces of {} lines of {fine} points is too many; use a larger stepover",
+                    angles.len(),
+                    lines + 1
+                ),
+            });
+        }
+        let mut all = Vec::with_capacity(angles.len() * (lines + 1));
+        for a in &angles {
+            for line in 0..=lines {
+                all.push(Line {
+                    kind: LineKind::AlongX {
+                        x0,
+                        length,
+                        a: *a,
+                        across: -reach + 2.0 * reach * line as f64 / lines as f64,
+                        reverse: false,
+                    },
+                    fine,
+                });
+            }
+        }
+        self.cut_lines(&all, context)
+    }
+
+    /// Cuts `lines` layer by layer, each line in the order given, with A
+    /// held along every line.
+    fn cut_lines(&self, lines: &[Line], context: &JobContext<'_>) -> Result<Vec<Pass>> {
+        // The floor of every line, once.
+        let mut floors: Vec<Vec<Option<f64>>> = Vec::with_capacity(lines.len());
+        let mut allowed: Vec<Vec<bool>> = Vec::with_capacity(lines.len());
+        for line in lines {
+            context.check_cancelled()?;
+            let indices: Vec<usize> = (0..=line.fine).collect();
+            let probes: Vec<(Option<f64>, bool)> =
+                parallel::map_in_order(&indices, |f| self.probe(line.site(*f as f64)));
+            floors.push(probes.iter().map(|p| p.0).collect());
+            allowed.push(probes.iter().map(|p| p.1).collect());
         }
         // The edge of the region on each line, once: it does not depend on the layer.
-        let mut all_edges = Vec::new();
-        for position in 0..positions {
-            for line in 0..=lines {
-                let site_at = |f: f64| at(position, line, f);
-                let line_allowed = allowed
-                    .get(position * (lines + 1) + line)
-                    .map(Vec::as_slice)
-                    .unwrap_or_default();
-                all_edges.push(self.edges(line_allowed, &site_at));
-            }
-        }
+        let all_edges: Vec<_> = lines
+            .iter()
+            .zip(&allowed)
+            .map(|(line, line_allowed)| self.edges(line_allowed, &|f: f64| line.site(f)))
+            .collect();
         let bottom = self.bottom(floors.iter().flatten().zip(allowed.iter().flatten()))?;
         let levels = self.levels(bottom)?;
         let mut field = self.field(bottom)?;
 
-        let coarse_nodes: Vec<usize> = (0..=coarse).collect();
         let mut passes = Vec::new();
         for (k, level) in levels.iter().enumerate() {
             let snapshot = PassStock(Arc::new(field.clone()));
-            for position in 0..positions {
-                for line in 0..=lines {
-                    context.check_cancelled()?;
-                    let line_floors = floors
-                        .get(position * (lines + 1) + line)
-                        .map(Vec::as_slice)
-                        .unwrap_or_default();
-                    let site_at = |f: f64| at(position, line, f);
-                    let site = |f: usize| site_at(f as f64);
-                    let excess: Vec<f64> = parallel::map_in_order(&coarse_nodes, |i| {
-                        let s = site(i * SUB);
-                        let tip = line_floors
-                            .get(i * SUB)
-                            .copied()
-                            .flatten()
-                            .map_or(*level, |v| v.max(*level));
-                        field.excess(self.input.tool, s.x, s.a, s.across, tip)
-                    });
-                    let line_allowed = allowed
-                        .get(position * (lines + 1) + line)
-                        .map(Vec::as_slice)
-                        .unwrap_or_default();
-                    let edges = all_edges
-                        .get(position * (lines + 1) + line)
-                        .map(Vec::as_slice)
-                        .unwrap_or_default();
-                    let ends = RunEnds {
-                        allowed: if edges.is_empty() { &[] } else { line_allowed },
-                        edges,
-                    };
-                    let active: Vec<bool> = excess
-                        .iter()
-                        .enumerate()
-                        .map(|(i, e)| {
-                            *e > self.min_cut && line_allowed.get(i * SUB).copied().unwrap_or(false)
-                        })
-                        .collect();
-                    for (first, last) in Self::runs(&active, |i| Self::joined(line_allowed, i)) {
-                        let sites =
-                            self.run_points((first, last), *level, line_floors, &site, &ends);
-                        passes.push(self.pass(&sites, &snapshot));
-                        self.apply(&mut field, &sites);
-                    }
+            for (((line, line_floors), line_allowed), edges) in
+                lines.iter().zip(&floors).zip(&allowed).zip(&all_edges)
+            {
+                context.check_cancelled()?;
+                let site = |f: usize| line.site(f as f64);
+                let coarse_nodes: Vec<usize> = (0..=line.fine / SUB).collect();
+                let excess: Vec<f64> = parallel::map_in_order(&coarse_nodes, |i| {
+                    let s = site(i * SUB);
+                    let tip = line_floors
+                        .get(i * SUB)
+                        .copied()
+                        .flatten()
+                        .map_or(*level, |v| v.max(*level));
+                    field.excess(
+                        self.input.tool,
+                        self.material_x(s.x),
+                        s.a,
+                        self.material_across(s.across),
+                        tip,
+                    )
+                });
+                let ends = RunEnds {
+                    allowed: if edges.is_empty() { &[] } else { line_allowed },
+                    edges,
+                };
+                let active: Vec<bool> = excess
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| {
+                        *e > self.min_cut && line_allowed.get(i * SUB).copied().unwrap_or(false)
+                    })
+                    .collect();
+                for (first, last) in Self::runs(&active, |i| Self::joined(line_allowed, i)) {
+                    let sites = self.run_points((first, last), *level, line_floors, &site, &ends);
+                    passes.push(self.pass(&sites, &snapshot));
+                    self.apply(&mut field, &sites);
                 }
             }
             context.report(
@@ -899,6 +1238,9 @@ impl<'a> Job<'a> {
     /// The lowest the tool goes where the region allows a cut: the lowest
     /// floor, never below the axis.
     fn bottom<'f>(&self, floors: impl Iterator<Item = (&'f Option<f64>, &'f bool)>) -> Result<f64> {
+        if let Some(face) = self.face {
+            return Ok(face);
+        }
         floors
             .filter(|(_, allowed)| **allowed)
             .filter_map(|(floor, _)| *floor)

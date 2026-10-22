@@ -562,7 +562,6 @@ fn req_op_13_feed_at_the_contact_is_within_two_percent_on_the_lobed_part() {
 fn req_op_05_req_op_06_every_pose_round_trips_through_the_independent_oracle() {
     use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
     use openchuck_types::machine::ASense;
-    use openchuck_types::setup::SetupFrame;
     let part = LobedVase {
         length: 6.0,
         ..lobed()
@@ -572,7 +571,7 @@ fn req_op_05_req_op_06_every_pose_round_trips_through_the_independent_oracle() {
         f.machine.a_sense = sense;
         f.rotary = openchuck_path::RotaryMapping::of_profile(&f.machine);
         let path = simultaneous(&f, &values(1.0, &[]));
-        let frame = RotaryFrame::machine(&f.machine, &SetupFrame::default());
+        let frame = RotaryFrame::of_profile(&f.machine);
         let oracle = openchuck_testkit::oracle::OracleMachine {
             origin_x: frame.origin.x,
             origin_y: frame.origin.y,

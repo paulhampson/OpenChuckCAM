@@ -252,6 +252,7 @@ fn build(
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: parameters
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), v.clone()))
@@ -428,10 +429,16 @@ fn reach_into_grip(b: &Built) -> (f64, Option<Point3>) {
 /// move of either reaches over the gripped length, and the simulated stock
 /// keeps the whole held region (SET-09, NFR-12; #202).
 fn keeps_clear(strategy: &str, parameters: Vec<(&str, ParameterValue)>) {
+    keeps_clear_in_folder(strategy, strategy, parameters);
+}
+
+/// [`keeps_clear`] with the project folder named after `folder`, so tests of
+/// one strategy that run at the same time do not share a folder.
+fn keeps_clear_in_folder(folder: &str, strategy: &str, parameters: Vec<(&str, ParameterValue)>) {
     for shape in [Shape::Round, Shape::Box] {
         let name = format!("{strategy} on {shape:?} stock");
         let b = build(
-            &format!("{strategy}-{shape:?}"),
+            &format!("{folder}-{shape:?}"),
             shape,
             None,
             &[rough(), (strategy, parameters.clone())],
@@ -449,6 +456,32 @@ fn keeps_clear(strategy: &str, parameters: Vec<(&str, ParameterValue)>) {
 fn req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region() {
     let (strategy, parameters) = rough();
     keeps_clear(strategy, parameters);
+}
+
+/// Roughing in a cut direction issue 246 added keeps clear as the forms' own
+/// directions do (decision record 0212 part A item 4).
+fn keeps_clear_in(form: &str, direction: &str) {
+    keeps_clear_in_folder(
+        &format!("rotary_roughing-{form}"),
+        "rotary_roughing",
+        vec![
+            ("stock_to_leave", ParameterValue::Number(0.5)),
+            ("form", ParameterValue::Text(form.to_owned())),
+            ("direction", ParameterValue::Text(direction.to_owned())),
+        ],
+    );
+}
+
+#[test]
+fn req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region()
+ {
+    keeps_clear_in("continuous", "along the length of the part");
+}
+
+#[test]
+fn req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region()
+{
+    keeps_clear_in("indexed", "around the part");
 }
 
 #[test]

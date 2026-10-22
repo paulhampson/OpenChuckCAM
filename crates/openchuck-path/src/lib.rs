@@ -80,6 +80,8 @@ pub mod cutter;
 pub mod drill;
 pub mod edge_following;
 mod error;
+pub mod extend;
+pub mod facing;
 pub mod field;
 pub mod helical;
 pub mod holes;
@@ -111,6 +113,7 @@ pub use cutter::{Contact, ToolLine};
 pub use drill::RadialDrilling;
 pub use edge_following::EdgeFollowing;
 pub use error::{PathError, Result};
+pub use facing::Facing;
 pub use field::HeightStock;
 pub use helical::HelicalFinishing;
 pub use holes::{Hole, HoleEnd, find_holes};
@@ -128,8 +131,8 @@ pub use simultaneous::SimultaneousFinishing;
 pub use solid::Solid;
 pub use stock::{AcceptAll, AnalyticStock, CollisionOracle, StockModel};
 pub use strategy::{
-    CutPoint, LeaveZone, Pass, PassStock, Registry, Strategy, StrategyInput, StrategyOutput,
-    generate, generate_in_region, generate_in_zones,
+    CutPoint, LeaveZone, Pass, PassStock, Registry, Strategy, StrategyGroup, StrategyInput,
+    StrategyOutput, generate, generate_in_region, generate_in_zones,
 };
 pub use surface::{
     FaceClosest, FacePosition, FaceRef, MeshSurface, ParametricFace, RayHit, SurfacePoint,

@@ -187,6 +187,10 @@ fn req_op_11_a_bad_amount_or_a_strategy_without_zones_is_refused() {
         fn label(&self) -> &str {
             "No zones"
         }
+
+        fn description(&self) -> &str {
+            "A strategy for tests."
+        }
         fn schema(&self) -> openchuck_path::params::ParameterSchema {
             HelicalFinishing.schema()
         }

@@ -13,6 +13,120 @@ use openchuck_types::job::{CancelToken, JobContext, Progress, ProgressSink};
 
 use crate::{AppError, Event};
 
+/// The total of a run that reports one share of all its work (issue 201):
+/// tenths of a per cent. It is the same from the run's first report to its
+/// last, so the share shown never starts again at a new stage.
+pub const RUN_PROGRESS_TOTAL: u64 = 1000;
+
+/// One share of all a run's work, reported to the run's context as one count
+/// out of [`RUN_PROGRESS_TOTAL`] (issue 201). The run divides its work into
+/// shares ([`RunProgress::share`]); each passes on the reports of the work it
+/// runs as its place in the run. The count never goes back: a report that
+/// would move it back is dropped.
+pub(crate) struct RunProgress<'a> {
+    context: &'a JobContext<'a>,
+    /// The count reported last, held while reporting so that reports from
+    /// several threads leave in order.
+    reached: Mutex<Option<u64>>,
+}
+
+impl<'a> RunProgress<'a> {
+    /// A run reporting to `context`.
+    pub(crate) fn new(context: &'a JobContext<'a>) -> Self {
+        Self {
+            context,
+            reached: Mutex::new(None),
+        }
+    }
+
+    /// Reports `fraction` (0 to 1) of the run done, in `stage`, unless the
+    /// run has reported more already. The first report is always sent, so
+    /// the total is known from the start.
+    pub(crate) fn reach(&self, stage: &str, fraction: f64) {
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let count = (fraction.clamp(0.0, 1.0) * RUN_PROGRESS_TOTAL as f64).floor() as u64;
+        if let Ok(mut reached) = self.reached.lock()
+            && reached.is_none_or(|r| count > r)
+        {
+            *reached = Some(count);
+            self.context.report(stage, count, Some(RUN_PROGRESS_TOTAL));
+        }
+    }
+
+    /// The share of the run from `from` to `to` (fractions of the run), in
+    /// `stage`.
+    pub(crate) fn share(&self, stage: &'static str, from: f64, to: f64) -> ProgressShare<'_, 'a> {
+        ProgressShare {
+            run: self,
+            stage,
+            from,
+            to,
+            within: Mutex::new(Within::default()),
+        }
+    }
+}
+
+/// A share of a run's work, as a [`ProgressSink`] for the work done in it.
+///
+/// The work reports its own stages, each with its own count, and how many
+/// stages it has is not known beforehand. Each stage takes half of what is
+/// left of the share: the first the first half, the next the next quarter,
+/// and so on. A stage's count moves the figure across its part; a stage with
+/// no total stays at its start. The figure is rough, but it always moves
+/// forward with the work and never reaches the end of the share before the
+/// work does.
+pub(crate) struct ProgressShare<'r, 'a> {
+    run: &'r RunProgress<'a>,
+    stage: &'static str,
+    from: f64,
+    to: f64,
+    within: Mutex<Within>,
+}
+
+/// Where the work of a share has got to.
+#[derive(Default)]
+struct Within {
+    /// The stage the work reported last.
+    stage: Option<String>,
+    /// Where that stage starts, as a fraction of the share.
+    start: f64,
+}
+
+impl ProgressShare<'_, '_> {
+    /// Reports the share as done.
+    pub(crate) fn finish(&self) {
+        self.run.reach(self.stage, self.to);
+    }
+}
+
+impl ProgressSink for ProgressShare<'_, '_> {
+    fn report(&self, progress: Progress) {
+        let at = {
+            let Ok(mut within) = self.within.lock() else {
+                return;
+            };
+            if within.stage.as_deref() != Some(progress.stage.as_str()) {
+                if within.stage.is_some() {
+                    within.start += (1.0 - within.start) / 2.0;
+                }
+                within.stage = Some(progress.stage);
+            }
+            #[allow(clippy::cast_precision_loss)]
+            let done = progress
+                .total
+                .filter(|t| *t > 0)
+                .map_or(0.0, |t| (progress.done as f64 / t as f64).min(1.0));
+            within.start + (1.0 - within.start) / 2.0 * done
+        };
+        self.run
+            .reach(self.stage, self.from + (self.to - self.from) * at);
+    }
+}
+
 /// How many worker threads the pool uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Threads {
@@ -232,6 +346,15 @@ impl JobEntry {
         #[allow(clippy::cast_precision_loss)]
         let fraction = p.done as f32 / total as f32;
         Some(fraction.clamp(0.0, 1.0))
+    }
+
+    /// The whole per cent done, when the job reported a total: rounded
+    /// down, so a job reads 100 % only when all its work is done (issue
+    /// 201).
+    pub fn percent(&self) -> Option<u64> {
+        let p = self.progress.as_ref()?;
+        let total = p.total.filter(|t| *t > 0)?;
+        Some(p.done.min(total) * 100 / total)
     }
 
     /// Whether the job is still running.
@@ -508,6 +631,7 @@ mod tests {
         let entry = log.get(JobId(1)).unwrap();
         assert_eq!(entry.label, "Generating");
         assert_eq!(entry.fraction(), Some(0.25));
+        assert_eq!(entry.percent(), Some(25));
         assert!(entry.is_running());
         // The owner may see the result before the log reads the finish.
         log.set_summary(JobId(1), "Generated 2, reused 1".into());
@@ -594,5 +718,105 @@ mod tests {
             }
         ));
         assert!(!manager.cancel(JobId(999)));
+    }
+
+    /// Keeps every count reported.
+    #[derive(Default)]
+    struct Counts(Mutex<Vec<(String, u64, Option<u64>)>>);
+
+    impl ProgressSink for Counts {
+        fn report(&self, p: Progress) {
+            self.0.lock().unwrap().push((p.stage, p.done, p.total));
+        }
+    }
+
+    fn report(sink: &dyn ProgressSink, stage: &str, done: u64, total: Option<u64>) {
+        sink.report(Progress {
+            stage: stage.to_owned(),
+            done,
+            total,
+        });
+    }
+
+    #[test]
+    fn req_ui_09_a_share_moves_forward_through_stages_it_cannot_count_and_never_back() {
+        // Issue 201: a run's work reports stages whose number is not known,
+        // each with its own count. The run shows one figure out of one total,
+        // which moves with the work and never goes back.
+        let counts = Counts::default();
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &counts);
+        let run = RunProgress::new(&context);
+        run.reach("run", 0.0);
+        let share = run.share("run", 0.5, 1.0);
+        report(&share, "first", 0, Some(10));
+        report(&share, "first", 10, Some(10));
+        // A stage's count that goes back, and one that is over its total,
+        // move nothing back or past the stage.
+        report(&share, "first", 3, Some(10));
+        report(&share, "first", 20, Some(10));
+        report(&share, "second", 0, None);
+        report(&share, "second", 1, Some(2));
+        report(&share, "third", 1, Some(1));
+        share.finish();
+        // Reported again at the same place: nothing new is sent.
+        run.reach("run", 1.0);
+        let counts = counts.0.into_inner().unwrap();
+        let done: Vec<u64> = counts.iter().map(|c| c.1).collect();
+        // The share is the second half: the first stage takes its first
+        // half (500 to 750), the second the next quarter (750 to 875), and
+        // so on, up to the end of the share only when it is done.
+        assert_eq!(done, [0, 500, 750, 812, 937, 1000]);
+        assert!(
+            counts
+                .iter()
+                .all(|c| c.0 == "run" && c.2 == Some(RUN_PROGRESS_TOTAL))
+        );
+    }
+
+    #[test]
+    fn req_ui_09_reports_from_many_threads_leave_in_order() {
+        // The passes of a strategy report from several threads at once
+        // (decision 0195): the figure sent never goes back.
+        let counts = Counts::default();
+        let cancel = CancelToken::new();
+        let context = JobContext::new(&cancel, &counts);
+        let run = RunProgress::new(&context);
+        let share = run.share("run", 0.0, 1.0);
+        std::thread::scope(|scope| {
+            for t in 0..4 {
+                let share = &share;
+                scope.spawn(move || {
+                    for i in 0..250 {
+                        report(share, "passes", t * 250 + i, Some(1000));
+                    }
+                });
+            }
+        });
+        let counts = counts.0.into_inner().unwrap();
+        assert!(counts.windows(2).all(|w| w[0].1 < w[1].1), "{counts:?}");
+    }
+
+    #[test]
+    fn req_ui_09_a_job_reads_100_per_cent_only_when_done() {
+        // Issue 201: the percentage is rounded down, so 99.9 % is not shown
+        // as done while the last of the work runs.
+        let entry = |done, total| JobEntry {
+            id: JobId(1),
+            name: "regenerate".into(),
+            label: "Generating".into(),
+            started: Instant::now(),
+            took: None,
+            progress: Some(Progress {
+                stage: "regenerate".into(),
+                done,
+                total,
+            }),
+            outcome: None,
+        };
+        assert_eq!(entry(999, Some(RUN_PROGRESS_TOTAL)).percent(), Some(99));
+        assert_eq!(entry(1000, Some(RUN_PROGRESS_TOTAL)).percent(), Some(100));
+        assert_eq!(entry(5, Some(0)).percent(), None);
+        assert_eq!(entry(5, None).percent(), None);
     }
 }

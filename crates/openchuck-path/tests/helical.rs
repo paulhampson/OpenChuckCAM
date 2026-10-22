@@ -684,7 +684,6 @@ fn req_nfr_07_bad_input_is_refused_with_a_message() {
 fn req_op_05_req_op_06_every_helical_pose_round_trips_through_the_independent_oracle() {
     use openchuck_types::kinematics::{RotaryFrame, machine_xyz};
     use openchuck_types::machine::ASense;
-    use openchuck_types::setup::SetupFrame;
     // The shared forward kinematics map each IR pose to a machine position;
     // the test-only oracle, written separately, maps it back to the tool tip
     // (architecture section 9). Both senses of A, and a limited range.
@@ -698,7 +697,7 @@ fn req_op_05_req_op_06_every_helical_pose_round_trips_through_the_independent_or
         f.machine.a_sense = sense;
         f.rotary = openchuck_path::RotaryMapping::of_profile(&f.machine);
         let path = helical(&f, &values(1.0, &[]));
-        let frame = RotaryFrame::machine(&f.machine, &SetupFrame::default());
+        let frame = RotaryFrame::of_profile(&f.machine);
         let oracle = openchuck_testkit::oracle::OracleMachine {
             origin_x: frame.origin.x,
             origin_y: frame.origin.y,

@@ -172,6 +172,42 @@ pub fn run_is_current(project: &Project, run: &Regeneration) -> bool {
         })
 }
 
+/// Why `run` no longer matches `project`, in a plain sentence, or `None`
+/// while it does (issue 260, NFR-12). It uses the stale set the export check
+/// uses, so Simulate, the dock and export agree: an operation removed or
+/// turned off since the run is named first, then one that changed, then one
+/// the run does not hold. A change to the simulation settings (the cell
+/// size) is named as such. A rename or a hidden toolpath is not a change.
+pub fn simulation_out_of_date(project: &Project, run: &Regeneration) -> Option<String> {
+    let Ok(stale) = stale_operations(project, run) else {
+        return Some("Could not tell whether the simulation is up to date.".to_owned());
+    };
+    let name = |id: &OperationId| {
+        project
+            .operation(*id)
+            .or_else(|| run.project.operation(*id))
+            .map_or_else(|| "an operation".to_owned(), |o| format!("'{}'", o.name))
+    };
+    let made = |id: &OperationId| run.groups.iter().any(|g| g.operation == *id);
+    let why = |id: &OperationId| match project.operation(*id) {
+        None => (0, "was removed."),
+        Some(o) if !o.enabled => (1, "was turned off."),
+        Some(_) if made(id) => (2, "has changed since this simulation."),
+        Some(_) => (3, "is not in this simulation."),
+    };
+    let first = stale.iter().min_by_key(|id| why(id).0)?;
+    if why(first).0 == 2 && project.simulation() != run.project.simulation() {
+        return Some("The simulation settings have changed since this simulation.".to_owned());
+    }
+    let mut text = format!("Operation {} {}", name(first), why(first).1);
+    match stale.len() - 1 {
+        0 => {}
+        1 => text.push_str(" 1 more operation is out of date too."),
+        n => text.push_str(&format!(" {n} more operations are out of date too.")),
+    }
+    Some(text)
+}
+
 fn stale_operations(
     project: &Project,
     run: &Regeneration,

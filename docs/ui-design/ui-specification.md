@@ -30,7 +30,7 @@ Each element below names the requirement it serves. An element that serves only 
 | 4 Simulate and review | 11.5 |
 | 5 Post and export | 11.6 |
 | Tool library and profile editor | 12.1 |
-| Selection sets (dock tab) | 12.2 |
+| Selection sets (now in the inspector, [decision 0215](../decisions/0215-selection-sets-in-the-inspector-and-direct-set-editing.md); the board predates it) | 12.2 |
 | Undo history (popover) | 12.3 |
 | Operations at 1366 × 768 | 3 |
 
@@ -121,12 +121,12 @@ The steps are views over one project, not modes. The tree, menus, undo history a
 
 **One tree in every step** (UI-06). Groups, in pipeline order:
 
-1. **Model.** One row per model, with child rows for its placement and mesh check.
+1. **Model.** One row per model, with child rows for its placement and mesh check: "Placement", with a chip for its steps ("as in file", "1 step", "2 steps") and a tooltip that says the placement is shared by every setup, and "Mesh check", with the model's mark. Choosing one selects the model and opens its inspector at that section ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md) item 6).
 2. **Setups.** One row per setup, with child rows for the machine profile, stock, part position, work offset and clearance, and workholding (11.7).
 3. **Selection sets.** Each set's colour swatch, name and size.
 4. **Operations.** In machining order, each with its tool's number as a chip.
 
-**Tools are not in the tree** (UI-06 as amended; decision 0127). An operation's tool is in the operation's inspector (section 8), and the tool library window (12.1) lists and manages tools: it opens from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, and from an operation's Tool section.
+**Tools are not in the tree** (UI-06 as amended; decision 0127). An operation's tool is in the operation's inspector (section 8), and the tool library window (12.1) lists and manages tools: it opens from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, and from an operation's Tool section. The Tool section also holds the operation's **Spindle speed** (rpm; decision 0196): empty, it shows the tool's cutting data for the setup's material as the default ("from the tool's cutting data"), ↺ takes the operation's own value away, and a missing one is marked with what to enter and where.
 
 Each group header shows a count and a "+" button (22 pixels):
 
@@ -134,7 +134,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | --- | --- |
 | Model | Opens the import dialog (11.2) |
 | Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
-| Selection sets | Opens Operations with picking on and an empty working selection ("Select on the part…", decision 0037 item 7) |
+| Selection sets | Opens Operations with picking on and the inspector's New selection (12.2) |
 | Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
 
 **Rows** are 28 high. Columns, left to right:
@@ -159,7 +159,7 @@ A disabled operation's name is struck through and muted. It is skipped everywher
 
 **Group headers.** The Operations header also has Show all and Hide all toolpaths (an open and a struck eye), each disabled when there is nothing for it to do (decision 0169).
 
-**Context menu** (right click or the menu key): Rename, Duplicate, Enable or Disable, Delete, Show in view, and Generate (operations).
+**Context menu** (right click or the menu key): Rename, Duplicate, Enable or Disable, Delete (operations and selection sets; a set is refused while an operation uses it, naming them), Show in view, and Generate (operations).
 
 **Status marks** *(UI-11)*:
 
@@ -240,7 +240,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
 | Hovered edge | Magenta `#ff4fd8`, a colour of its own so it reads apart from a hovered triangle or face (decision 0153) | Line 2 pixels wide |
 | Selected edge | In the working selection orange `#ff6a00` (a pair with the blue of selected triangles and faces), or the shown set's swatch | Line 3 pixels wide, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
-| Saved set | Its own swatch from a fixed set of eight | Fill when shown |
+| Saved set | Its own swatch from a fixed set of eight, none blue, red, orange or grey (decision 0216) | Fill at 40% when shown, with a framed outline round its edge: 2 pixels in its colour inside 4 pixels of `#15171a`; the legends show it the same way |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
 | Clearance cylinder and safe Z | Green `#4cc38a` | Dashed |
@@ -277,7 +277,7 @@ UI-03 and UI-25 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-
 
 The inspector shows the selected item: a model, setup, selection set or operation, or the simulation results on Simulate.
 
-**While picking** (Operations, 11.4) the inspector shows a "Selection" section with the options of picking: "select by angle within" (default 30°, decision 0037 item 4), "same direction within" (default 10°), "Tangent edges" for a working edge selection, "Keep tangent edges by default" and "Warn before a click starts a new selection" (decision 0153, owner's decision on issue 153). The Selection sets tab of the dock keeps the table of sets and the buttons that act on them (12.2).
+**While picking** (Operations, 11.4) the inspector shows New selection, or the chosen set, with how to pick, the set's actions and the "Selection" section of the options of picking: "select by angle within" (default 30°, decision 0037 item 4), "same direction within" (default 10°), "Tangent edges" for a working edge selection, "Keep tangent edges by default" and "Warn before a click starts a new selection" (decision 0153). Section 12.2 gives the order.
 
 **Order** (principle 3):
 
@@ -300,6 +300,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 - **Hint and source.** An empty field shows the value that applies as a hint, with its source: the operation, the tool's cutting data for the stock material, or the strategy default.
 - **Committing.** A value is applied when the field loses focus or on Enter. Esc puts back the last applied text. Each applied value is one undoable command.
 - **Refusals.** A refused value stays in its field with a red border, and the reason in red under it ("Must not exceed the tool diameter (3.0 mm). Not applied."). The project and the undo history are unchanged.
+- **Sums in number boxes** (decision 0206; proposed UI-26). A number box accepts numbers with `+ - * /` and brackets ("12.5 + 3", "60 / 2"), worked out when the entry is committed and shown as its result, rounded to the places of the field's unit; a plain number is applied as typed. An entry that cannot be read is refused like any other value: red border and, under the box, a plain line that quotes it ("Cannot read '12*'; expected a number or a sum."); the last good value stays applied, and the step bar reads "Error to fix" until it is corrected or Esc puts the last value back. Units, percent and functions are not read.
 - **Reset.** A value the operation sets has a reset button (↺) in the label column. *(UI-19)* It also has a 6-pixel accent dot before its label.
 - **Derived values** are read-only, with how they were worked out under them, for example "0.020 mm × 2 flutes × 14000 rpm". *(UI-19)*
 - **Typed units.** A field accepts a number with a unit ("0.005 in"), converts it, and says "Stored as 0.127 mm". *(UI-18)*
@@ -320,7 +321,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 9. Dock
 
-**Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5).
+**Tabs:** Messages and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
 
 **Messages** *(UI-12)*:
 
@@ -345,8 +346,6 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 **Setup checks:** one row per check, each with a green tick or an amber triangle (SET-06). The checks of the stored workholding against the part and the tools are rows here (11.7).
 
-**Selection sets:** section 12.2 (decision 0037 items 6 and 7).
-
 **Jobs** (UI-09):
 
 - running and queued jobs, with progress, elapsed time and cancel;
@@ -354,7 +353,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 10. Footer
 
-- **Left:** the current job with its spinner and percentage, or "Ready", then a short note about the step ("edits are applied when you leave a field; undo with Ctrl Z"). After it comes the G-code notice in short form: "Verify G-code before running it" (NFR-12; decision 0029 item 8 shows it in the status bar).
+- **Left:** the current job with its spinner and percentage, or "Ready". The percentage is one figure for all the job's work that never goes back, followed by the operation being worked on ("Generating… 42 %: Generating 'Roughing'"), and "(and 1 more job)" when others run too. Choosing it opens the Jobs tab, with every job, its history and Cancel ([decision 0218](../decisions/0218-one-progress-figure-and-the-job-in-the-status-bar.md)). After the job comes a short note about the step ("edits are applied when you leave a field; undo with Ctrl Z"). After it comes the G-code notice in short form: "Verify G-code before running it" (NFR-12; decision 0029 item 8 shows it in the status bar).
 - **Right**, left to right:
   - the display units switch, "mm | in" *(UI-18)*; with P1 only it reads "mm · deg" and cannot be changed;
   - the tolerance of the selected operation or setup;
@@ -404,6 +403,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
   - file, format and triangle count, size;
   - unit (a segmented control, with a hint for where the unit came from);
   - placement steps (IMP-05):
+    - a muted line first: "The placement puts the model on the rotary axis and is shared by every setup. To move the part along the axis in one setup only, use that setup's Offset along X (Setup step, Part position)." ([decision 0201](../decisions/0201-setup-offset-moves-the-part.md));
     - an ordered list with a drag handle, and a description and value on each row;
     - removing a step is one undoable command;
     - "Add step" offers centre, orient, translate, rotate, scale and mirror;
@@ -430,13 +430,15 @@ Board 2 (SET-01, SET-03, SET-05, SET-06; UI-03).
 
 Both panes also draw the held regions and tabs in section (7.5).
 
+**Zoom and pan** ([decision 0203](../decisions/0203-setup-panes-zoom-and-pan.md)). Each pane zooms with the wheel about the pointer, from its fitted view up to 20 times it, and moves with a drag that starts in it, never so far that its centre leaves the drawing. A double-click, or the pane's "Fit" button at its top right (shown while it is zoomed or moved), fits it again. Each setup keeps its panes' zoom and pan while the program runs, also when the user leaves the step and comes back; they are not saved in the project. A click without a drag still selects a held region or tab (7.5).
+
 A legend strip sits under the panes; it lists the held region and tab roles when the setup has them (7.5).
 
 **Inspector:**
 
 1. **Machine** (section 8): profile; rotary axis; A range; A+ direction; axis height (machine Z); travel and maximum feeds (collapsed). The provenance icons are on the first four and on travel.
 2. **Stock** (SET-03): shape (Cylinder, Box, Bounds, where Bounds is the model's bounding box plus an offset), diameter or sizes, length, material. Imported stock (SET-04) is P2.
-3. **Part position** (SET-05): offset along X; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
+3. **Part position** (SET-05; [decision 0201](../decisions/0201-setup-offset-moves-the-part.md)): **Offset along X**, which moves the part along the rotary axis in this setup only, from where the Model step's placement puts it, while the stock, the held regions and tabs and the work zero stay where they are, so the toolpaths and G-code move with the part (its tooltip says so in those words); **Position**, read-only, the part's X range in this setup ("X 12.500 to 42.500 mm"), with a muted line under it naming where it comes from ("Placement X 0.000 to 30.000 + offset 12.500 mm") and a tooltip that says it is the placement plus the offset, measured from the machine's rotary reference point; the model's turn about the rotary axis is set by its placement steps (11.2), and the section says so in a read-only row (decision 0123, OI-366).
 4. **Work offset and clearance** (SET-05, SET-06): work offset register; zero position "On the A axis (Y0 Z0)", read-only (decision 0011 item 1); safe radius; safe Z above the axis.
 5. **Workholding and tabs** (SET-09, OP-21, UI-25): the held regions, the head and tail zones and the retaining tabs, edited as a draft and applied; section 11.7.
 
@@ -452,7 +454,7 @@ Boards 3 and 3b.
   - The selected operation's toolpath, and the others by the visibility settings (SIM-01).
   - The working selection, saved sets and avoid surfaces.
   - The held regions and tabs, outlines only while picking (7.5). A selection that reaches one gives the warning of 11.7 under its Geometry role.
-  - While picking: the selection tools, using the modes of decision 0037 item 4 (one triangle; connected shell; smooth patch by angle; same direction). Shift adds, and Ctrl (Command on macOS) removes.
+  - While picking: the selection tools, using the modes of decision 0037 item 4 (one triangle; connected shell; smooth patch by angle; same direction). Shift adds, and Ctrl (Command on macOS) removes: to the working selection, or, when a set is chosen, to the set itself (12.2).
 - **Generating.**
   - The footer and the "Generate" item in a row's menu start a job. Its row shows progress and cancel.
   - Several operations generate in chain order. An operation served from the cache shows "reused" in the Jobs tab.
@@ -475,14 +477,18 @@ Board 4 (SIM-01 to SIM-07).
 
 **Viewport:**
 
-- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12):
+- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
 
-  | Range | Colour | Meaning |
+  | Band | Colour | Meaning |
   | --- | --- | --- |
-  | Below −tolerance | Dark magenta `#a3157f` | Overcut |
-  | Within ±tolerance | Grey `#9aa0a8` | Within tolerance |
-  | Above +tolerance to +0.10 mm | Light blue `#b9d6ff` | Material left, small |
-  | Up to the scale end (+0.50 mm) | Blue to `#3f78d1` | Material left, more |
+  | Deeper than one cell | Vermilion `#df5230` | Overcut |
+  | Within one cell | Grey `#9aa0a8` | Within tolerance |
+  | Up to 0.25 mm left | Ice `#c6f9ff` | Material left, small |
+  | 0.25 to 1 mm left | Sky blue `#4bb7fc` | Material left, more |
+  | More than 1 mm left, or a bound | Strong blue `#4e71ea` | Material left, most |
+  | Not measured | Grey `#9aa0a8`, hatched | Not measured |
+
+  Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216).
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
@@ -496,13 +502,15 @@ Board 4 (SIM-01 to SIM-07).
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - "Overcut samples": the samples cut deeper than the tolerance and the separate places, so the largest overcut reads as one point or many (decision 0162);
 - a deviation histogram in the same colours, one labelled row per bin: the range in millimetres, a bar, and the count and share. The bins are the surface band ±tolerance and the colour thresholds (0.25, 0.5, 1.0 mm, mirrored for the overcut); the first row starts at the largest overcut and the last ends at the most material left, so the worst values are always on it. An end at the search limit is marked ≤ or ≥ (decision 0162);
-- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md));
+- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md)). Built as [decision 0217](../decisions/0217-band-visibility-and-the-kept-comparison.md) (accepted) sets out: the tick box is labelled with the row's range and a bin stays chosen across runs; the range is in signed millimetres (negative is overcut), ends included, an empty field without a limit, and narrows the ticked bins; "Show all" shows everything again. A triangle not shown keeps the part's own colour (so does one that "Colour by" leaves out); a triangle not measured stays hatched. A hidden row is drawn faint and one the range cuts across half faint; on the colour scale a hidden band is faint, a partly hidden one in its lower half, and the scale says "Some bands are hidden". The worst values, the share and the counts stay those of the whole part; a hidden band is drawn in a solid dark slate `#5d6570` of its own, never the part's grey, so it does not read as "within tolerance" ([decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md) item 8)
 - a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
-**Playback dock** (SIM-04):
+**A result out of date** *(NFR-12, UI-11; [decision 0192](../decisions/0192-simulate-result-out-of-date.md))*. While the latest run no longer matches the project (the export check's test: an operation in it changed, was turned off or removed, or an enabled operation is not in it), one banner says so over the top of the view, in the Playback tab under its controls (never over them) and at the top of the results inspector: the stale mark, "Simulation out of date", the reason in plain words ("Operation 'Roughing' was turned off.") and the Simulate primary action (section 5) as its button. The old numbers stay to compare, dimmed under "Results of the out-of-date simulation:", and so do the playback controls the tab still has. A run that holds an operation turned off or removed leaves the view (decision 0172 item 3), and the Playback tab shows the banner under the transport row it keeps.
 
-- **Transport:** previous operation, step back, play or pause (Space), step forward, next operation.
+**Playback dock** (SIM-04). The transport row (with "Skip stock simulation"), the timeline and the window strip are a strip that does not scroll; the rest scrolls under it, its bar in a strip of its own so it never lies over a control. At the default dock height everything fits without scrolling; in a dock too short for the strip, it scrolls with the rest, and the dock never grows past its height (issue 262; [decision 0192](../decisions/0192-simulate-result-out-of-date.md) items 7 and 8).
+
+- **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
@@ -588,6 +596,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
    | Field | Kind | Unit | Notes |
    | --- | --- | --- | --- |
    | Shape | Segmented: Cylinder, Frustum | | Changing to a frustum keeps the diameter as the diameter at the start and makes the far end 1.5 times it; changing to a cylinder keeps the diameter at the start |
+   | Place automatically | Check box | | A tab at the head or the tail: ticked, its Start X and Length fill the gap at that end of the part and follow the part, the stock and the held regions; editing Start X or Length by hand unticks it, keeping the other as shown; unticking keeps the position shown. Disabled, with the reason in its tooltip, for a tab in neither zone ([decision 0202](../decisions/0202-head-and-tail-tabs-placed-automatically.md)) |
    | Start X | Number | mm | Model X of the tab's low-X end |
    | Length | Number | mm | Along X |
    | Diameter | Number | mm | Cylinder only |
@@ -599,7 +608,7 @@ UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and
    | Offset from axis | Number | mm | Around the axis only; default 5.000; the distance from the rotary axis to each tab's centre line |
 
    The row's menu (right click, the menu key, or a "⋯" button) has Remove (Del when the row has focus) and Duplicate. Both change the draft only.
-5. **Add tab** and **Add default tabs**, side by side under the list. Add tab adds a cylinder on the axis, 5.000 mm long and a quarter of the stock's diameter across (at least 1.000 mm), starting at the inner edge of the held region at the start (or the start of the stock), expanded with its Start X focused.
+5. **Add tab** and **Add default tabs**, side by side under the list. Add tab adds a cylinder on the axis, 5.000 mm long and a quarter of the stock's diameter across (at least 1.000 mm), rounded to the field's 3 places, starting at the inner edge of the held region at the start (or the start of the stock), expanded with its Start X focused. Under them, **Head tab** and **Tail tab** ([decision 0202](../decisions/0202-head-and-tail-tabs-placed-automatically.md); the owner's option A on OI-780): each adds a tab with "Place automatically" ticked that fills the gap at that end of the part, from the part to the held region (or the end of the stock), as a cylinder on the axis of Add tab's diameter; each press adds another. A button is disabled with the reason in its tooltip without a part ("Import a model first") or stock, while the part is being read, or when there is no room ("No room at the head: the held region reaches the part.", "No room at the tail: the stock ends at the part."). A collapsed row of a tab placed automatically ends "· Automatic". When such a tab finds no room at its end it keeps its last position, and its row and the Setup checks carry a warning saying so; it is not removed.
 6. **Check against the part and tools**, a secondary button that runs the same checks as Apply without storing anything, then lists what it found under it, or "The tabs are in the head and tail zones and wide enough for the tools."
 7. **Apply** and **Revert**, right-aligned, Apply right-most.
 
@@ -669,11 +678,15 @@ The same findings for the stored workholding are rows of the Setup checks tab (s
 TL-01 to TL-07, TL-11, TL-12; decision 0014; decision 0029 item 12; decision 0127 (the owner's decisions on editing, deleting, drafts, import and the project's tools).
 
 - **Opens** from Tools, "Tool library…", from "Tool library…" on the Operations step's workflow bar, from an operation's Tool section ("Edit tool…", "From the library…") and from the New operation dialog ("From the library…"). It opens without a project, to edit the library.
-- **Left: the tool list.** A search field (name, type or material); "This project" first, one row per project tool with its tool number chip; then the library's tools grouped by type, with a chip "in project" on a library tool the project holds; New tool (by type), Duplicate and Delete.
+- **Left: the tool list.** A search field (name, type or material), and under it the size filter; "This project" first, one row per project tool with its tool number chip; then the library's tools in **sections** (decision 0199): one for each machine whose tool set holds them, in name order, then "Standard tools" for the tools no machine's set holds; inside a section the tools are in type groups (ball end, flat end, bull-nose and tapered, V-bit, chamfer and drill, custom profile), each with a chip "in project" on a library tool the project holds; a tool two machines hold is listed under each; New tool (by type), Duplicate and Delete.
+  - **Folding.** Every section and type group has a heading with an arrow and the number of tools inside ("⏷ MAKERA Z1 (3)"); a click folds or unfolds it. Which are folded is remembered per user (section 13).
+  - **Size filter.** "Diameter (mm)" and "Flute length (mm)", each with three boxes: exact, min and max. An exact value shows tools of that size (within 0.0005 mm) and the range beside it is then not used; min and max, either or both, show the tools between them, ends included. It applies with the search and hides the groups and sections it leaves empty. A box that cannot be read is not used, and a line says which and why. The filter keeps its state when the window is closed and opened again and between runs (section 13); "Clear filter" empties it by hand.
 - **Two kinds of tool** (decision 0127 items 1 and 4):
   - **A project tool** is the project's own copy (TL-07). Each change is one undoable step; the library is untouched.
   - **A library tool** is edited as a draft: nothing is written until Save; Cancel drops the changes; leaving a draft with changes (another tool, New tool, Duplicate, Import library, Close) asks "Discard the changes?" first. New tool starts from the default standard tool of its type (TL-12), named "New <type>"; Duplicate makes a library draft "<name> copy" with a new ID, no tool set numbers and not in the project.
 - **Centre top: the tool form.** Name, type (changing it keeps the sizes), diameter ("from profile" for a custom profile), flutes, flute length, shank diameter, overall length, material. For a library tool, Save and Cancel, with "New: not saved yet", "Changed: not saved yet" or "Saved in the library".
+- **A default tool** (a library tool equal to the default the application ships, TL-12; decision 0199 item 5) shows a read-only view in place of the form: "A default tool: it cannot be edited", its name, type, the dimensions that make it up (diameter, flute length, overall length, shank diameter, and corner radius, tip radius, taper angle, included angle, tip diameter or point angle where its shape has them), flutes and material, and its profile drawn as a custom profile's silhouette with nothing to edit. The primary button **"Copy to edit"** makes an editable library draft "<name> copy" (as Duplicate) and leaves the default as it is. The cutting data has no "Add material" and no editing; the machine tool set numbers stay editable (OI-771). A default the user changed earlier is theirs and opens in the form.
+- **Esc** in a text field ends the edit only; Esc again, with no field editing, closes the window (OI-536).
 - **Centre: the profile editor,** for a custom profile.
   - **Preview.** The revolved silhouette to scale on both sides of the axis. The selected segment and its end points are highlighted. The outline is green when valid and red when not.
   - **Segment table.** Number, type, end (r, z), arc radius; the selected arc's centre can be edited under the table.
@@ -691,19 +704,15 @@ TL-01 to TL-07, TL-11, TL-12; decision 0014; decision 0029 item 12; decision 012
 
 ### 12.2 Selection sets
 
-UI-05; decisions 0032 and 0037; a dock tab.
+UI-05; decisions 0032, 0037, 0153 and [0215](../decisions/0215-selection-sets-in-the-inspector-and-direct-set-editing.md). In the inspector; the tree (section 6) is the list of sets.
 
-- **Toolbar.**
-  - "New set from selection", "Add selection to set", "Remove from set", "Replace set" (the chosen set takes the working selection) and "Clear" (empties the working selection);
-  - a note on what can be selected: triangles and edges on meshes (decision 0066), faces and edges on STEP models;
-  - the tangent edges choice of a chosen edge set of a STEP model, "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9).
-- **Options in the inspector, not here** (decision 0153 item 5, owner's decision on issue 153). While picking, the inspector's "Selection" section (section 8) holds: the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example) and the angle for Same direction (default 10°); "Tangent edges" for a working edge selection; "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*; and "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until such a screen exists *(OI-260)*.
-- **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
-  - A set with a problem is red, with its reason as a sentence in the row (not the example "12 missing") and "Reselect". "Reselect" starts a fresh pick: it clears the working selection, shows the set's old selection on the model as a dashed grey ghost, and says "Pick the new selection, then Replace set."; "Replace set" makes the set current again (decision 0125, "As built"; OI-374).
-  - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
-  - A set's colour can be chosen from the eight swatches, or left as the default swatch of its place in the list (decision 0046 item 2).
-- **Checking.** Saving or editing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and edit buttons disabled until it ends (decision 0112 item 1).
-- **Footer line:** "Editing a set marks every operation that uses it stale."
+- **The list.** The tree's Selection sets group: each set's swatch, name, size and status mark with its reason. Choosing a row selects the set, shows it on the part and turns picking on. Rename and Delete are in the row menu; Delete is refused while an operation uses the set, naming the operations.
+- **New selection** (the "+", or a plain click that starts a new selection). The inspector shows, from the top: "New selection"; how to pick ("Click the part to select. Shift-click adds. Ctrl-click takes away. Esc stops picking.", the keys Q, W, E and R, and what can be picked: triangles and edges on meshes, faces and edges on STEP models); the count selected, a name field, "Save as new set" and "Clear" (empties the working selection, without asking); the options of picking (below).
+- **A chosen set.** The inspector shows, from the top: the header; the size and model; the error banner of a set with a problem; Used by (operations and roles); how to change it ("Shift-click adds to this set. Ctrl-click takes away from it. A click without Shift or Ctrl asks before it starts a new selection."); "Pick again"; the colour, from the swatches or "Default" (decision 0046 item 2); the tangent edges choice of a set of a STEP model's edges, "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9); the options of picking; and "Editing a set marks every operation that uses it stale."
+- **Changing a set on the part.** While a set is chosen, Shift-click adds to it and Ctrl-click takes from it, directly, each one undoable step, so what is shown is what the set holds. A plain click asks "Start a new selection?" first, unless the warning is turned off (section 15). A set with a problem cannot be added to or taken from.
+- **Pick again.** Shows the set's current selection as a dashed grey ghost and starts an empty pick for it: "Pick the new selection, then Replace." "Replace" asks first, with the counts it keeps, drops and adds ("Replace 'Pocket'? It holds 40 faces. The new selection has 12: 31 are dropped and 3 are added."), and makes a set with a problem current again (decision 0125).
+- **Options of picking.** The "Selection" section: the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example) and the angle for Same direction (default 10°); "Tangent edges" for a working edge selection; "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*; and "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until such a screen exists *(OI-260)*.
+- **Checking.** Saving or changing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and change buttons disabled until it ends (decision 0112 item 1). Clicks made on a chosen set while a check runs are joined into the next change.
 
 ### 12.3 Undo history
 
@@ -734,6 +743,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
   - display units;
   - recent projects;
   - remembered sections;
+  - the tool library's folded sections and groups and its size filter (`tool_library` in the `[interface]` table; decision 0199, issues 192 and 193);
   - the export acknowledgements of 11.6, and the acknowledgement that a project skips the stock simulation;
   - the Simulate step's choices: Turn part with A, the view's tick boxes, Hide path outside window, and whether new projects skip the stock simulation (one tick box in Settings) (decisions 0168 and 0169);
   - whether the user's actions are recorded in the log (NFR-18, decision 0157): on by default, one checkbox "Record my actions in the log" in a small Settings dialog (File, Settings…, and the same item in Help; both open the same dialog) with a sentence saying what is recorded (names, never values), that the log stays on the computer, and the log's path.
@@ -764,7 +774,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
 | `ok` | `#4cc38a` | `#1b7f53` | Up to date, confirmed |
 | `warning` | `#f2b84b` | `#8a5d00` | Stale, warnings, unconfirmed |
 | `error` | `#ff7b72` | `#c22b2b` | Errors, refused values |
-| `overcut` (text) | `#e27ad2` | `#9c1f86` | Overcut values in panels |
+| `overcut` (text) | `#ff8a66` | `#a8321a` | Overcut values in panels (decision 0216) |
 | Warning box | bg `#2a2316`, border `#6b5420`, text `#f2d28a` | `#fff4d6`, `#e0b44c`, `#5c4300` | Unit question, safety notice |
 | Error box | bg `#2e1a1a`, border `#7a3330`, text `#ffb4ae` | `#fde8e7`, `#e59a95`, `#7a1d18` | Error banners |
 
@@ -797,7 +807,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **Units.** Every number carries its unit: "mm", "deg" or "°", "mm/min", "rpm". Dates are written "13 Oct 2026".
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
-- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click (no Shift or Ctrl) asks first whenever the working selection is not empty, in a dialog titled with what it clears, "Clear 12 faces?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now." (for a pick of the same kind: "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take from it. ..."), with "Clear", "Cancel" and "Don't show me this warning again". Switching the filter to one that cannot hold the selection (Edges on triangles or faces, Faces on edges) asks the same way. The "Clear" button of the selection sets tab and Esc (which ends picking and keeps the working selection) do not ask (decision 0153).
+- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click (no Shift or Ctrl) asks first whenever the working selection is not empty, in a dialog titled with what it clears, "Clear 12 faces?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now." (for a pick of the same kind: "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take from it. ..."), with "Clear", "Cancel" and "Don't show me this warning again". Switching the filter to one that cannot hold the selection (Edges on triangles or faces, Faces on edges) asks the same way. The "Clear" button of New selection and Esc (which ends picking and keeps the working selection, or the chosen set) do not ask (decision 0153). While a set is chosen, a plain click asks "Start a new selection?": "This click starts a new selection. 'Pocket' stays as it is. Hold Shift to add to the set, or Ctrl to take from it." (decision 0215).
 - **The machine.** Machine values are described by provenance ("confirmed on the machine", "not confirmed on the machine"), not by blame.
 
 ## 16. Keyboard and accessibility
@@ -903,7 +913,7 @@ Images of the design canvas boards, rendered at 100% scale in headless Chromium 
 | [04-simulate.png](mockups/04-simulate.png) | Simulate, with the deviation probe | 11.5 |
 | [05-export-dialog.png](mockups/05-export-dialog.png) | Post and export | 11.6 |
 | [10-tool-library.png](mockups/10-tool-library.png) | Tool library and profile editor | 12.1 |
-| [11-selection-sets.png](mockups/11-selection-sets.png) | Selection sets tab | 12.2 |
+| [11-selection-sets.png](mockups/11-selection-sets.png) | Selection sets tab (before decision 0215) | 12.2 |
 | [12-undo-history.png](mockups/12-undo-history.png) | Undo history | 12.3 |
 | [13-operations-1366x768.png](mockups/13-operations-1366x768.png) | Operations at 1366 × 768 | 3 |
 | [14-operations-light.png](mockups/14-operations-light.png) | Operations, light theme | 14.2 |

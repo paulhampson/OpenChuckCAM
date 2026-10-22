@@ -11,7 +11,6 @@
 //! positions from `start_angle` when the list is empty.
 
 use openchuck_types::job::JobContext;
-use openchuck_types::units::Degrees;
 
 use crate::axial::{AlongX, parameter as axial_parameter};
 use crate::error::{PathError, Result};
@@ -45,6 +44,10 @@ impl Strategy for IndexedFinishing {
 
     fn label(&self) -> &str {
         "Indexed finishing"
+    }
+
+    fn description(&self) -> &str {
+        "Turns the part to each angle you choose, holds it still and cuts one straight pass along its length there. Use it for features that are cut from a few set directions."
     }
 
     fn schema(&self) -> ParameterSchema {
@@ -97,7 +100,12 @@ impl Strategy for IndexedFinishing {
             }
         }
         let own = super::axial::AxialFinishing.schema();
-        for name in [axial_parameter::DIRECTION, axial_parameter::MAX_X_STEP] {
+        for name in [
+            axial_parameter::DIRECTION,
+            axial_parameter::MAX_X_STEP,
+            crate::extend::parameter::EXTEND,
+            crate::extend::parameter::EXTEND_DISTANCE,
+        ] {
             if let Some(spec) = own.get(name) {
                 schema.parameters.push(spec.clone());
             }
@@ -172,10 +180,5 @@ fn passes(
     let angles = positions(parameters)?;
     let along = AlongX::read(input, region, zones, parameters)?;
     along.check_passes(angles.len())?;
-    let mut out = Vec::new();
-    for (i, a) in angles.iter().enumerate() {
-        context.check_cancelled()?;
-        out.extend(along.pass(Degrees(*a), along.zigzag && i % 2 == 1, context)?);
-    }
-    Ok(out)
+    along.passes_at(&angles, "indexed finishing", context)
 }
