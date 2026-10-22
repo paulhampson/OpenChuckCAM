@@ -1,6 +1,6 @@
 # 0213: Requirement OP-25, climb, conventional and meander cutting (lane CUTOPTS; issue 251, F-81)
 
-- **Status:** proposed (waits for the owner's acceptance of the record). The owner agreed OP-25 as worded below at P2, with the spindle kept at `M3` only, climb and conventional made by the feed direction and `M4` later as a tool property (option A, relayed by the coordinator, 22 Oct 2026; OI-855 closed). OP-25 and its verification-plan row are added to the documents in this change, on that agreement. Nothing is built (the owner's decision on issue 251: "P2 requirement proposal only, nothing built").
+- **Status:** accepted (22 Oct 2026, by the owner directly in the lane CUTOPTS session: "Accept 0212 and 0213"). The owner agreed OP-25 as worded below at P2, with the spindle kept at `M3` only, climb and conventional made by the feed direction and `M4` later as a tool property (option A, relayed by the coordinator, 22 Oct 2026; OI-855 closed). OP-25 and its verification-plan row are added to the documents in this change, on that agreement. Nothing is built (the owner's decision on issue 251: "P2 requirement proposal only, nothing built").
 - **Date:** 22 Oct 2026.
 - **Requirements:** adds OP-25 (P2); relates to OP-03, OP-04, OP-05, OP-07, OP-08, OP-09, OP-10, OP-11, GC-07, GC-12, NFR-06, NFR-07, NFR-12; issues 246 (pass direction, decision 0212) and 249 (spindle speed, decision 0196).
 - **Open items:** OI-855 (closed, option A), OI-856 (the build, deferred).
