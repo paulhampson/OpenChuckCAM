@@ -277,3 +277,9 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | ID | Area | Issue | Details and expectations | Open questions |
 | --- | --- | --- | --- | --- |
 | F-96 | Add operation | Strategy list to a drop-down that shows the information for the selected strategy; the layout is unclear and the text alignment messy. | Refines #195 (lane OPCREATE, batch 3A, approved) and shares the control with #242; disabled with a reason for unusable strategies (#206); text only; whole-dialog layout test. Issue [#289](https://github.com/paulhampson/OpenChuckCAM/issues/289). Build 0.14.0, `452724e713a9`. | A screenshot of the current picker. |
+
+Filed with the label `awaiting-planning` (not dispatched, not sent to the coordinator): #290 (F-97).
+
+| ID | Area | Issue | Details and expectations | Open questions |
+| --- | --- | --- | --- | --- |
+| F-97 | Strategy explanations, swarf | "walls that are made of straight lines" reads as if curved blades cannot be machined. | Say that the wall can curve along its length and that straight lines run across its height; mention STEP needed, the selected faces, and the twist warning (#226); no implication of safety (NFR-12). A draft wording is on the issue for the owner to review. Part of the #195 text review (lane OPCREATE). Issue [#290](https://github.com/paulhampson/OpenChuckCAM/issues/290). | The owner's wording preference. |
