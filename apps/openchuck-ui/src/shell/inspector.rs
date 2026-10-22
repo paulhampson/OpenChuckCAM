@@ -530,7 +530,6 @@ impl Shell {
                             range: Some("1 or more, not another project tool's number"),
                             applied: tool.controller.number.to_string(),
                             enabled: true,
-                            number: true,
                             ..TextRow::default()
                         };
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {

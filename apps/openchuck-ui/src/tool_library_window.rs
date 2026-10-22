@@ -742,7 +742,6 @@ impl ToolLibraryWindow {
                 applied: number.map(|n| n.to_string()).unwrap_or_default(),
                 hint: Some("not in the set".to_owned()),
                 enabled: true,
-                number: true,
                 ..TextRow::default()
             };
             if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &row) {
@@ -784,7 +783,6 @@ impl ToolLibraryWindow {
             range: Some("1 or more, not another project tool's number"),
             applied: row.number.to_string(),
             enabled: true,
-            number: true,
             ..TextRow::default()
         };
         if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &number) {

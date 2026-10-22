@@ -3,6 +3,8 @@
 //! entry is refused under its box, the step bar marks the job, and a sum is
 //! worked out when it is confirmed.
 
+#![allow(clippy::float_cmp)]
+
 use super::frame_tests::Rig;
 use eframe::egui::{self, Event, Key, Modifiers};
 
@@ -78,7 +80,19 @@ fn req_ui_07_req_ui_11_an_unreadable_entry_marks_the_step_bar_until_fixed() {
 fn req_ui_07_a_sum_is_worked_out_and_only_the_number_is_kept() {
     let mut rig = setup_rig("numbox-sum");
     let at = unit_box(&rig);
+    let diameter = |rig: &Rig| {
+        let setup = &rig.shell.app.as_ref().unwrap().project().setups()[0];
+        match setup.stock.as_ref() {
+            Some(openchuck_app::setup::Stock::Cylinder { diameter, .. }) => diameter.0,
+            other => panic!("the cube rig must have cylindrical stock: {other:?}"),
+        }
+    };
+    // A value that differs from the result, so a sum that was never applied
+    // cannot pass.
+    type_into(&mut rig, at, "18");
+    assert_eq!(diameter(&rig), 18.0);
     type_into(&mut rig, at, "10 + 5 * 2");
+    assert_eq!(diameter(&rig), 20.0);
     assert!(!rig.shows("Cannot read"), "{:?}", rig.texts());
     assert!(
         !rig.shows("10 + 5"),

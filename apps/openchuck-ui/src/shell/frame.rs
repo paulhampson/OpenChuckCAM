@@ -866,7 +866,7 @@ impl Shell {
         // it is in, and so the whole job, as an error to fix (UI-26).
         let unreadable = crate::field_row::unreadable_entries(ui.ctx());
         let steps = steps_with_unreadable(&self.overview, self.step, &unreadable);
-        let first_problem = self.overview.first_problem().is_some() || !unreadable.is_empty();
+        let first_problem = self.overview.first_problem().is_some();
         let health = worst(&steps);
         let foot = ui.max_rect();
         if self.app.is_some() {
