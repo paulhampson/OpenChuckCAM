@@ -523,6 +523,7 @@ mod tests {
                 faces: vec![FaceId(0)],
                 vertices: Some([VertexId(0), VertexId(0)]),
                 polyline: vec![Point3::ORIGIN, Point3::new(10.0, 0.0, 0.0)],
+                curve: None,
             }],
             vertices: vec![BrepVertex {
                 id: VertexId(0),

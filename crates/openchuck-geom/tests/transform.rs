@@ -13,8 +13,8 @@
 use openchuck_geom::check::check_mesh;
 use openchuck_geom::summary;
 use openchuck_geom::transform::{
-    Affine3, AxisDirection, bounds, orient_to_rotary_axis, place, placement, transform_mesh,
-    transform_normals,
+    Affine3, AxisDirection, bounds, orient_to_rotary_axis, place, placement, transform_brep,
+    transform_mesh, transform_normals,
 };
 use openchuck_testkit::parts::{Cone, RadialPart, standard_parts};
 use openchuck_types::geometry::Point3;
@@ -414,4 +414,132 @@ fn req_imp_05_stated_normals_follow_the_placement() {
             .normal_mismatches
             .is_empty()
     );
+}
+
+// ---- the exact curve of a B-rep edge (decision 0227) -------------------------
+
+fn curved_model() -> openchuck_types::brep::BrepModel {
+    use openchuck_types::brep::{BSplineCurve, BrepEdge, BrepModel, EdgeCurve, EdgeId, Frame};
+    use openchuck_types::geometry::Vec3;
+    let frame = Frame {
+        origin: Point3::new(1.0, 2.0, 3.0),
+        x: Vec3::new(1.0, 0.0, 0.0),
+        y: Vec3::new(0.0, 1.0, 0.0),
+        z: Vec3::new(0.0, 0.0, 1.0),
+    };
+    let edge = |id: u32, curve: EdgeCurve| BrepEdge {
+        id: EdgeId(id),
+        faces: vec![],
+        vertices: None,
+        polyline: vec![Point3::new(1.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0)],
+        curve: Some(curve),
+    };
+    BrepModel {
+        edges: vec![
+            edge(
+                0,
+                EdgeCurve::Circle {
+                    frame,
+                    radius: 5.0,
+                    first: 0.0,
+                    last: 1.0,
+                },
+            ),
+            edge(
+                1,
+                EdgeCurve::Line {
+                    origin: Point3::new(1.0, 1.0, 1.0),
+                    direction: Vec3::new(0.0, 1.0, 0.0),
+                    first: 2.0,
+                    last: 4.0,
+                },
+            ),
+            edge(
+                2,
+                EdgeCurve::BSpline(BSplineCurve {
+                    degree: 1,
+                    knots: vec![0.0, 0.0, 1.0, 1.0],
+                    poles: vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0)],
+                    weights: vec![1.0, 1.0],
+                    first: 0.0,
+                    last: 1.0,
+                }),
+            ),
+        ],
+        ..BrepModel::default()
+    }
+}
+
+#[test]
+fn req_imp_05_op_08_a_placed_edge_curve_is_the_curve_placed() {
+    use openchuck_types::brep::EdgeCurve;
+    let steps = [
+        TransformStep::Scale { factor: 2.0 },
+        TransformStep::Rotate {
+            axis: Axis::Z,
+            angle: Degrees(90.0),
+        },
+        TransformStep::Mirror { axis: Axis::X },
+        TransformStep::Translate {
+            x: 1.0,
+            y: -2.0,
+            z: 3.0,
+        },
+    ];
+    let map = placement(&TriangleMesh::default(), &steps).unwrap();
+    let placed = transform_brep(&curved_model(), &map).unwrap();
+    let close = |a: Point3, b: Point3| a.distance(b) < 1e-12;
+
+    // A circle: the point at the same angle is the original point, placed.
+    let (EdgeCurve::Circle { frame: before, .. }, EdgeCurve::Circle { frame, radius, .. }) = (
+        curved_model().edges[0].curve.clone().unwrap(),
+        placed.edges[0].curve.clone().unwrap(),
+    ) else {
+        panic!("a circle stays a circle");
+    };
+    assert!((radius - 10.0).abs() < 1e-12, "the radius scales");
+    let at = |f: &openchuck_types::brep::Frame, r: f64, t: f64| {
+        Point3::new(
+            f.origin.x + r * (t.cos() * f.x.x + t.sin() * f.y.x),
+            f.origin.y + r * (t.cos() * f.x.y + t.sin() * f.y.y),
+            f.origin.z + r * (t.cos() * f.x.z + t.sin() * f.y.z),
+        )
+    };
+    assert!(close(
+        map.apply(at(&before, 5.0, 0.7)),
+        at(&frame, 10.0, 0.7)
+    ));
+
+    // A line: its parameter is a length, so it scales with the model.
+    let EdgeCurve::Line {
+        origin,
+        direction,
+        first,
+        last,
+    } = placed.edges[1].curve.clone().unwrap()
+    else {
+        panic!("a line stays a line");
+    };
+    assert!((first - 4.0).abs() < 1e-12 && (last - 8.0).abs() < 1e-12);
+    let along = |t: f64| {
+        Point3::new(
+            origin.x + t * direction.x,
+            origin.y + t * direction.y,
+            origin.z + t * direction.z,
+        )
+    };
+    assert!(close(
+        map.apply(Point3::new(1.0, 1.0 + 3.0, 1.0)),
+        along(6.0)
+    ));
+
+    // A spline: poles move, parameters stay.
+    let EdgeCurve::BSpline(spline) = placed.edges[2].curve.clone().unwrap() else {
+        panic!("a spline stays a spline");
+    };
+    assert!(close(
+        spline.poles[1],
+        map.apply(Point3::new(1.0, 1.0, 1.0))
+    ));
+    assert_eq!((spline.first, spline.last), (0.0, 1.0));
 }

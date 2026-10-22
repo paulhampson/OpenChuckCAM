@@ -4,6 +4,7 @@ All notable changes to `openchuck-import` are recorded here.
 
 ## Unreleased
 
+- Version 0.18.0 with the library family (decision 0227). The kernel wrapper writes each edge's exact curve (line, circle, ellipse, clamped B-spline) beside its polyline.
 - Version 0.17.0 with the library family (decisions 0201 and 0202); no change to this crate's items.
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
 - Version 0.15.0 with the library family.

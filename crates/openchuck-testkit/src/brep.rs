@@ -267,6 +267,7 @@ pub fn drilled_blank(radius: f64, length: f64, specs: &[HoleSpec]) -> (BrepModel
                 id,
                 faces: shared,
                 vertices: None,
+                curve: None,
                 polyline,
             });
             id
