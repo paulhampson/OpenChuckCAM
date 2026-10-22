@@ -15,7 +15,7 @@ This document turns them into steps that someone who is not a machinist can foll
 
 Gate 4 runs the reference job set of [reference-jobs.md](reference-jobs.md) on the Makera Z1 post, and the first-cut project's program. Gate 5 cuts the first-cut project of section 5.2 (OI-914), not the reference job set (decision 0221).
 
-**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S8, G4-0 to G4-7 for gate 4; F1 to F6, G0, W1 to W5, T0 to T5, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
+**Step IDs.** Every step has an ID (P1 to P10, R1 to R12, S1 to S8, G4-0 to G4-8 and B1 to B14 for gate 4; F1 to F6, G0, W1 to W5, T0 to T5, V1 to V6, M1 to M6, C1 to C7, I1 to I5 for gate 5). Results are recorded against these IDs on the forms of section 8 and, once the owner has submitted them, folded into section 10 step by step, so each instruction can be read beside what happened when it was run.
 
 | Rule ([verification plan section 6](verification-plan.md)) | Applies to |
 | --- | --- |
@@ -161,6 +161,7 @@ Follow the [air-cut procedure](z1-air-cut-procedure.md) steps 0 to 7 in order, w
 | G4-6 | `G93` recheck (SP-12 test T5) only if the firmware is not 1.1.2 | | The result is recorded (verification plan section 6, feed mode) |
 | G4-6b | OI-267: an A-only fed move with an F above 1200 | The test program is not written yet; the owner asked for the test on an air cut before the first release (17 Oct 2026). Run it only once it is written and read like any other program | The controller's behaviour (clamps, refuses or runs it) is recorded in OI-267 |
 | G4-7 | Raise the override (25 %, 50 %, 100 %) on the sphere only | Only if steps 2 to 5 had no surprise and you agree | As G4-2 |
+| G4-8 | The block-rate air cut (section 4.8; decision 0222, proposed; OI-930) | Fourteen sections of 100 mm of X, each started by a 5 mm Z bob | Each section as in 4.8; **not run until OI-925 is decided** |
 
 The other reference programs (`lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead`, `cone_held_tabs`, `drilling`, `swarf`) and the first-cut project's program (5.2) are run the same way as G4-2 once G4-2 to G4-5 have passed. `lobed` is the one program that moves X, Y, Z and A together; `drilling` turns A to -30 and has no unwind; `swarf` turns to three A positions.
 
@@ -180,7 +181,7 @@ Rapids are not in N, and the feed override does not scale them, so they are not 
 ### 4.6 Gate 4 pass and fail
 
 - **Pass** for a program: every preparation step passed; every R and S item ticked; no alarm; no line refused; the motion matched the simulation; A did not move at the unwind; the end position matched the program; the timed operation was within the agreed band (G4-3).
-- **Gate 4 passes** when every program of the reference job set chosen for the release, and the first-cut project's program, has passed, and the `G93` result on the installed firmware is recorded.
+- **Gate 4 passes** when every program of the reference job set chosen for the release, and the first-cut project's program, has passed, the `G93` result on the installed firmware is recorded, and the block-rate air cut (4.8) has been run and recorded.
 - **Fail**: any unexpected motion, alarm, refused line, or a step that does not pass. Follow section 7. Do not go on to gate 5 with that program. A change to the profile, the post or the kinematics sends the affected programs back to gate 1.
 
 ### 4.7 What to keep from gate 4
@@ -193,6 +194,36 @@ Rapids are not in N, and the feed override does not scale them, so they are not 
 - Any defect raised (section 7), by issue number.
 
 Attach them to one GitHub issue for the gate 4 result (section 7.2), so the verification report (slice 20 item 13) can cite it.
+
+### 4.8 The block-rate air cut (decision 0222, OI-930)
+
+The owner added this measurement to gate 4 (22 Oct 2026, relayed by the coordinator). It is lane SHORTMOVE's [decision 0222](https://github.com/paulhampson/OpenChuckCAM/pull/315) item 7, which is **proposed**: the specification below is copied from it, not invented here. It measures how short a block the Z1 can run at full speed. Its result sets the Z1 profile's `min_block_ms`, with a block window of 32 blocks; **the Z1 profile ships with the minimum-block-time check off until this has been run** (OI-930).
+
+**Not yet to be run (OI-925).** The program is written by a script on the spike branch, not by the application's post, so it has not passed gates 1 to 3. Verification plan policy 6 makes an exception only for the SP-12 conventions program. Run it only after the owner has decided how it is checked first (OI-925).
+
+**The program.**
+- `spikes/sp14-short-moves/air-cut/block_rate_z1.nc` on the branch `spike/sp-14-short-moves` (commit `69d532f`; a spike branch is never merged), written by `python3 -I gen_block_rate.py > block_rate_z1.nc` beside it. It is 1,170,259 bytes, over the 1 MiB a file of `testdata/` may hold (decision 0004), so it is not copied here.
+- 27,966 lines; the longest is 50 characters, under the firmware's 63-character limit (OI-933).
+- Header `G90 G21 G17`, `G54`, then `G0 X0 Y0 Z50 A0`. Footer `G0 Z50`, `G92.4 A0 S0`, `G53 G0 Z-3`, `G28`, `M2`, as the Z1 post writes it (decision 0007). No tool change and no spindle.
+
+**The sections.**
+- Fourteen sections, each 100 mm of X at F1000 (6.0 s nominal), made of equal collinear `G1` blocks of one block time: 20, 10, 7, 5, 3, 2 and 1 ms (blocks of 0.333, 0.167, 0.117, 0.083, 0.050, 0.033 and 0.017 mm; 300 to 6,000 lines a section).
+- **Part A**, sections 1 to 7: X only. **Part B**, sections 8 to 14: the same, with A advancing 0.628 degrees per mm of X in every block (at Z50), so X still sets each block's time.
+- Every section is longer than the 224-line receive buffer plus the 32-block queue. Sections alternate direction (X 0 to 100, then back) to stay within 100 mm of X.
+- Each section starts after a marker: `G1 Z55 F1000`, then `G1 Z50 F1000`, a visible 5 mm bob of 0.6 s. There is no `G4` dwell (OI-937).
+
+**Predicted section times** (inference from the firmware source, decision 0222): 6.0 s for 20, 10, 7, 5, 3 and 2 ms; **7.9 s for 1 ms** (the 32-block queue limits the speed of very short blocks). Starting and stopping add about 0.1 s.
+
+**Setup and safety.** Gate 4 rules: no tool, no material, attended, emergency stop in reach. The gate 4 work offset (G54, Y0 Z0 on the A axis), with X0 placed so that X 0 to 100 at Z50 is clear travel. About 2 minutes of motion (92 s fed).
+
+| Step | Do | Pass when |
+| --- | --- | --- |
+| B0 | Record the firmware version, the controller (ESP32) version, and how the file reached the machine (WiFi upload, USB); play it from the machine. Start a phone video with sound. | Recorded |
+| B1 to B14 | For each section: start the stopwatch as Z comes back down to 50 after the bob, stop it as the next bob starts. Listen for stutter, watch for a pause. | Within 5 % of the predicted time (6.0 s, or 7.9 s for the 1 ms sections B7 and B14) and no audible stutter or pause |
+| B15 | If B1 or B2 (20 ms) or B8 or B9 (10 ms) fails | **Stop the test and log a defect** (section 7): nothing in the analysis predicts it |
+| B16 | Work out the result | The shortest block time at which **both parts pass** and every longer block time passes. If every section passes, the result is 1 ms. A 1 ms section near 7.9 s confirms the prediction; one near 6.0 s means the firmware plans differently from its source. Record the result for the Z1 profile's `min_block_ms` (OI-930) |
+
+Section numbers: Part A B1 = 20 ms, B2 = 10, B3 = 7, B4 = 5, B5 = 3, B6 = 2, B7 = 1; Part B B8 = 20 ms, B9 = 10, B10 = 7, B11 = 5, B12 = 3, B13 = 2, B14 = 1.
 
 ## 5. Gate 5: the first cut
 
@@ -356,6 +387,7 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 - [ ] Groove unwind: A did not move.
 - [ ] Timed sphere operation: measured against "about N s" x 100 / override; band agreed and recorded.
 - [ ] `G93` result recorded; OI-267 test run.
+- [ ] Block-rate air cut (4.8) run, once OI-925 is decided: 14 sections timed, the result recorded for `min_block_ms` (OI-930).
 - [ ] Results form filled; issue raised with the attachments.
 
 ### 6.2 Gate 5 (first cut)
@@ -452,6 +484,27 @@ X0 taken from:                            A0 set by:
 | `G28` at the end: where the machine went | |
 | Agreed band for the timed operation | |
 
+Block-rate air cut (4.8): firmware ________ ; controller (ESP32) ________ ; file sent by ________ ; video: yes / no
+
+| Section | Part | Block time | Predicted s | Measured s | Within 5 %? | Stutter or pause? | Pass / fail |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| B1 | A | 20 ms | 6.0 | | | | |
+| B2 | A | 10 ms | 6.0 | | | | |
+| B3 | A | 7 ms | 6.0 | | | | |
+| B4 | A | 5 ms | 6.0 | | | | |
+| B5 | A | 3 ms | 6.0 | | | | |
+| B6 | A | 2 ms | 6.0 | | | | |
+| B7 | A | 1 ms | 7.9 | | | | |
+| B8 | B | 20 ms | 6.0 | | | | |
+| B9 | B | 10 ms | 6.0 | | | | |
+| B10 | B | 7 ms | 6.0 | | | | |
+| B11 | B | 5 ms | 6.0 | | | | |
+| B12 | B | 3 ms | 6.0 | | | | |
+| B13 | B | 2 ms | 6.0 | | | | |
+| B14 | B | 1 ms | 7.9 | | | | |
+
+Result: the shortest block time at which both parts pass ________ ms (for `min_block_ms`, OI-930)
+
 ### 8.2 Gate 5 results
 
 ```text
@@ -505,6 +558,7 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
 | OI-923 | Free stock to leave uncut | Accepted: the 68 mm held region at the start (G0) | 5.2 | Yes, for OP-22 volumes |
 | OI-924 | The tailstock | A: the 2 mm, 10 mm piece is a held region at the end; the tailstock body's clearance is checked by the operator (V5, M2, M5) | 5.2, V5, M2, M5 | No |
+| OI-925 | How the block-rate air cut program is checked before it runs, since it is written by a script and has not passed gates 1 to 3 (verification plan policy 6 excepts only the SP-12 program) | Pending | 4.8, G4-8 | Yes |
 | OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 
