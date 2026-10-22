@@ -1,6 +1,6 @@
 # 0219: Repeated notes about consecutive moves are grouped in the results (lane MSGPROG; issue 255)
 
-- **Status:** proposed (22 Oct 2026). The grouping into a range and the closed default are the owner's answers on issue 255; the closeness rule (item 2) and the wording are the lane's, and wait for the owner's acceptance.
+- **Status:** accepted by the project owner (22 Oct 2026), given in the lane's own session (decision 0049). The grouping into a range and the closed default are the owner's answers on issue 255; the owner accepted the closeness rule (item 2) and the wording as written.
 - **What it amends:** nothing in the documents. It changes how the results window lists the notes of a run; the engine's notes are unchanged. No requirement changes; it serves NFR-12 (the user verifies the program from this list) and NFR-04.
 - **Date:** 22 Oct 2026.
 - **Open items:** OI-891 (a move's line has no link to the move in the view or the G-code) is new.

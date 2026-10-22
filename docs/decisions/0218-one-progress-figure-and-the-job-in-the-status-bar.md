@@ -1,6 +1,6 @@
 # 0218: One progress figure for the whole job, and the job in the status bar opens the Jobs tab (lane MSGPROG; issue 201)
 
-- **Status:** proposed (22 Oct 2026). Item 4 is the owner's option C, relayed by the coordinator; items 1 to 3 are the lane's and wait for the owner's acceptance.
+- **Status:** accepted by the project owner (22 Oct 2026), given in the lane's own session (decision 0049). Item 4 is the owner's option C, relayed by the coordinator; the owner accepted items 1 to 3 as written.
 - **What it amends:** [decision 0195](0195-axial-finishing-speed-and-steady-progress.md) item 3 (a run's progress counted operations) and the progress wording of [decision 0190](0190-cached-stock-per-operation.md) item 5 ("Simulating… 1 of 2" becomes "Simulating… 42 %"; the operation text after it is unchanged). It adds to specification section 10 (the footer) that choosing the job opens the Jobs tab. No requirement changes; it serves UI-09 and NFR-04.
 - **Date:** 22 Oct 2026.
 - **Open items:** OI-843 (a pass that failed was counted as done) is recorded and closed by this change. OI-890 (the shares are equal per operation; the owner checks on the reference laptop that the figure moves enough) is new.
