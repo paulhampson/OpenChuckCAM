@@ -2,7 +2,10 @@
 
 - **Status:** proposed (22 Oct 2026). Nothing is built. Only the owner accepts a record (decision 0049).
   - **Item 2 decided:** the owner chose option A (Report first, then Slow down; Merge deferred), relayed by the coordinator on 22 Oct 2026.
-  - **Item 3 still waits** on the owner (OI-931), as does the default value; the evidence for the value is in *The 5 ms figure* below, which the owner asked for.
+  - **Item 3 decided:** the owner chose option A, a window of N blocks held in the machine profile beside the minimum block time (N = 1 is the strict per-block case; the Z1 uses 32), relayed by the coordinator on 22 Oct 2026. OI-931 is closed.
+  - **Item 7's air cut decided:** the owner chose to add it to the gate 4 procedure now, in lane GATES' draft pull request #284, and the Z1 profile ships with the check **off** until it has been run (OI-930 stays open until then).
+  - **5 ms is not a Z1 value.** It is a placeholder threshold, used to describe the measurements and as a test value. No Z1 value is set until the air cut measures one (see *The 5 ms figure*).
+  - **Acceptance:** the owner accepts the record in this lane's session.
 - **What it amends:** nothing yet. The requirement, the profile and post fields, and the verification rows below are proposals. `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` are not edited (CLAUDE.md).
 - **Date:** 22 Oct 2026.
 - **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
@@ -111,13 +114,13 @@ GC-17 is the next free GC number on `main` and on every unmerged branch, checked
 - **Merge** within the existing budget removes only 6 to 20 % of the short blocks. A useful merge tolerance (0.01 mm) takes the whole NFR-05 budget. It needs the independent checker and its own gate-2 handling, so it costs more and does less.
 - **Report** costs almost nothing and tells the owner, on real jobs, whether the other modes are ever needed.
 
-### 3. A window over the controller's queue
+### 3. A window over the controller's queue (decided: the owner's option A, relayed 22 Oct 2026)
 
 The check is **a block time averaged over a window of N blocks**, not a test of each block alone. N is the controller's queue depth: 32 for the Z1. With N = 1 it is the strict per-block form.
 
 A queue absorbs short runs. The longest run measured is 11 blocks, but the worst 32-block mean is 5.6 ms. A strict per-block limit of 5 ms would flag 15,139 blocks on the axial file, where no 32-block window averages under 12 ms. Slow down then lowers the feed only where a window's mean is under the limit, lengthening the shortest blocks in that window first.
 
-This refines the owner's model, so it is put to the owner as a question (OI-931).
+This refines the owner's model. The owner agreed it (option A), closing OI-931.
 
 On the Z1 there are two buffers in series, so two window sizes matter (see *The 5 ms figure*). The 224-line receive buffer absorbs a slow line supply for up to about 256 lines. The 32-block planner queue absorbs slow parsing and planning for up to 32 blocks. The proposal uses the smaller of the two, 32, which is the stricter check.
 
@@ -129,7 +132,7 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
   - `short_block_mode` (`off`, `report` or `slow_down`; default `off`; `merge` reserved);
   - provenance per field, as for the other Z1 values (decision 0013).
 
-  The Z1 values stay unset (0) until gate 4 measures them (OI-930).
+  - The Z1 profile sets `block_window` 32 (fact: the firmware's planner queue, `Conveyor.cpp:75`) and keeps `min_block_ms` 0, so the check is off, until the gate 4 air cut measures a value (OI-930).
 - **Post definition** (`openchuck-post` `PostOptions`, GC-04): optional overrides of the same three fields. They follow the precedence of the post's `max_feed`.
 - **Format change.** `machine.toml` is part of the project folder, so this changes the project file format. It needs a project schema number, to be claimed in the work breakdown's table when the build is planned (OI-935; not claimed here).
 
@@ -159,15 +162,48 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
   - `req_gc_17_post_overrides_profile`.
   - A gate-2 test in which a slowed program replays within 1 % of the adjusted durations.
 - **Golden.** The blisk pencil finish, or a small cut of it in `testdata/`, posted with the limit set to 5 ms. Here 5 ms is a test value chosen because it slows some blocks, not a default. The owner's projects are not used directly (their README).
-- **Hardware check for the gate 4 procedure** (`docs/z1-gates-4-5-test-instructions.md` on #284; not edited here). This is an attended air cut, with no tool and no material, under the gate 4 rules:
-  - **Program.** A program with six sections, each 100 mm of X travel at F1000, made of equal collinear blocks of 20, 10, 5, 3, 2 and 1 ms. The block lengths are 0.333, 0.167, 0.083, 0.050, 0.033 and 0.017 mm, and the 1 ms section has 6,000 lines.
-    - Every section is longer than the 224-line receive buffer plus the 32-block queue (about 256 lines; the 20 ms section has 300). So a section that runs at its nominal time shows that the supply keeps up over time, not just that the buffer covered it.
-    - Each line carries all four axis words and an F word, written as the post writes them (about 35 characters). The supply rate is a rate in bytes, so short test lines would flatter it.
-  - **Variant.** The same blocks with a 0.2 degree A step in each, which exercises the firmware's A speed handling.
-  - **How it is run.** Upload the file and play it from the machine, the normal way, not streamed from a computer. Record the firmware version, the ESP32 (controller board) version and how the file was sent.
-  - **Measurement.** Stopwatch each section, as SP-12's T3 tests did. The nominal time is 6 s per section. The block time at which the measured time first exceeds the nominal by more than 5 % is the Z1's effective minimum block time, together with the firmware and the ESP32 version.
-  - **Listening.** Also listen for stutter in each section.
-  - **Use of the result.** That figure sets the Z1 profile's `min_block_ms`, marked confirmed (OI-930). The test runs about 2 minutes.
+- **Hardware check for the gate 4 procedure: the Z1 block-rate air cut.** The owner decided to add it to the gate 4 procedure now, in lane GATES' draft pull request #284 (`docs/z1-gates-4-5-test-instructions.md` on that branch; this record does not edit it). The specification below is complete enough to copy.
+  - **Program.**
+    - `spikes/sp14-short-moves/air-cut/block_rate_z1.nc` on `spike/sp-14-short-moves`, written by `gen_block_rate.py` beside it. Copy it into the gates lane's test files, or write it again from this specification.
+    - It has 26,246 lines; the longest is 50 characters, under the 63-character limit of OI-933.
+    - Header `G90 G21 G17`, `G54`, then `G0 X0 Y0 Z50 A0`.
+    - Footer `G0 Z50`, `G92.4 A0 S0`, `G53 G0 Z-3`, `G28`, `M2`, as the Z1 post writes it (decision 0007).
+    - No tool change and no spindle.
+  - **Sections.**
+    - Twelve sections. Each is 100 mm of X at F1000, with a nominal time of 6.0 s.
+    - Each is made of equal collinear `G1` blocks of one block time: 20, 10, 5, 3, 2 and 1 ms. The block lengths are 0.333, 0.167, 0.083, 0.050, 0.033 and 0.017 mm, so a section has 300, 600, 1,200, 2,000, 3,000 or 6,000 lines.
+    - Every section is longer than the 224-line receive buffer plus the 32-block queue (about 256 lines). A section at its predicted time therefore shows that the supply keeps up over time, not that the buffer covered it.
+    - Sections alternate direction (X 0 to 100, then 100 to 0) to stay inside 100 mm of X travel.
+    - Each section starts after a marker: `G1 Z55 F1000`, then `G1 Z50 F1000`, a visible 5 mm bob of 0.6 s. Start the stopwatch as Z comes back down to 50, and stop it as the next bob starts.
+    - Each `G1` line carries X, Y, Z, A and F, written with three decimals as the post writes them (about 43 characters). The link limit is in bytes, so short test lines would flatter the supply rate.
+  - **Parts A and B.**
+    - **Part A** (sections 1 to 6): X only.
+    - **Part B** (sections 7 to 12): the same, with A advancing in every block.
+    - **The A step in part B.** Each block moves A by 60 % of its X length's worth under the Z1 rule: 0.628 degrees per mm of X at Z50, where P = 2π·50 + 30 mm. So X still sets each block's time, and A stays far below its limit.
+    - **Why not the 0.2 degree step first proposed.** It cannot hold the short block times. The Z1's A axis is limited to 3600 degrees per minute (decision 0013), so a 0.2 degree step needs at least 3.3 ms. The rule's A term (0.19 mm at r = 50) would also outweigh the X length below 10 ms.
+    - Part B exercises the firmware's mixed X and A path (`Robot.cpp:1640-1704`).
+  - **Predicted times.** The prediction is inference from the firmware source: the planner plans the newest block to end at rest, and the acceleration is 150 mm/s². The 32-block queue then allows at most `sqrt(2 x 150 x 32 x L)` mm/s:
+
+    | Block time | Stopping limit, mm/min | Predicted section time |
+    | --- | --- | --- |
+    | 20, 10, 5, 3, 2 ms | 3,394, 2,400, 1,697, 1,315, 1,073 | 6.0 s |
+    | 1 ms | 759 | 7.9 s |
+
+    Starting and stopping add about 0.1 s to each section.
+  - **Setup and safety.** Gate 4 rules apply: no tool, no material, attended, emergency stop in reach. Use the gate 4 work offset (G54, Y0 Z0 on the A axis) with X0 placed so that X 0 to 100 at Z50 is clear travel.
+  - **What to record.**
+    - The firmware version and the controller (ESP32) version.
+    - How the file reached the machine (WiFi upload, USB), and that it was played from the machine.
+    - For each of the 12 sections: the stopwatch time, and whether there was audible stutter or a visible pause (yes or no).
+    - A phone video with sound is a good second record.
+  - **Pass and fail, per section.**
+    - A section **passes** when its time is within 5 % of its predicted time (6.0 s, or 7.9 s for 1 ms) and it has no audible stutter or pause.
+    - If the 20 ms or 10 ms section fails, stop the test and log a defect: nothing in the analysis predicts it.
+  - **Result.**
+    - The Z1's measured minimum block time is the shortest block time at which both parts pass and every longer block time passes. Record it in the Z1 profile's `min_block_ms`, marked confirmed with the firmware and controller versions (OI-930).
+    - If every section passes, record 1 ms, because the planner-depth limit already covers shorter blocks.
+    - A 1 ms section near 7.9 s confirms the stopping-distance prediction. One near 6.0 s means the firmware plans differently from its source (issue #2 on the firmware repository). Either way, record it in the decision that sets the value.
+  - **Duration.** About 2 minutes of motion, 79 s fed.
 
 ### 8. What this does not do
 
@@ -180,10 +216,10 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
 The owner asked whether 5 ms, and 1 ms or 10 ms, is a reasonable default or limit.
 
 **Short answer.**
-- **5 ms is not a Z1 figure.** It is one of the thresholds (1, 2, 5 and 10 ms) chosen to describe the measurements. No source gives the Z1's block rate, and no source names 5 ms.
+- **5 ms is not a measured Z1 value.** It is a placeholder: one of the thresholds (1, 2, 5 and 10 ms) chosen to describe the measurements, and the test value of the slow-down golden. No source gives the Z1's block rate, and no source names 5 ms. The check is off on the Z1 until the air cut measures a value (the owner's decision).
 - **The evidence puts the Z1's floor somewhere around 1 to 3 ms per line.** That is inference, set out below. The supply side is closed source and the parse time is unpublished.
-- **Recommendation.** The default stays **off**. The Z1 profile's value comes from the air cut in item 7 (OI-930), marked confirmed. Until then, the Z1 profile ships off.
-- **If the owner wants a value before the air cut,** 3 ms with the 32-block window is the evidence-based choice: above the estimated 1.2 to 2 ms supply floor, with margin. It would slow nothing in any job measured, because the worst 32-block mean is 5.6 ms. 5 ms with the window would also slow nothing measured. 10 ms would slow pencil.
+- **Decided.** The default is **off**, and the Z1 profile's value comes from the air cut in item 7 (OI-930), marked confirmed. Until then the Z1 profile ships with the check off (the owner's decision, relayed 22 Oct 2026).
+- **For reference only, not adopted:** a provisional 3 ms with the 32-block window would sit above both estimated floors below (the line supply, and the planner depth at the Z1's maximum feed). It would slow nothing in any job measured. 5 ms with the window would also slow nothing measured; 10 ms would slow pencil.
 
 Each point below is marked **fact** (read in a source), **inference** (worked out from facts) or **not found**.
 
@@ -207,7 +243,8 @@ Each point below is marked **fact** (read in a source), **inference** (worked ou
   - With `minimum_planner_speed` 0 (`Planner.cpp:47`), the newest block in the queue is always planned to end at rest (`Planner.cpp:281, 325`).
   - **Inference:** the machine keeps its speed only while new blocks arrive before it must start braking for the newest one. When lines arrive more slowly than the blocks run, the queue empties and the machine slows towards a stop at the end of each queued block. That is the stutter.
   - The stepper waits up to 100 ms for a full queue before it starts (`queue_delay_time_ms`, `Conveyor.cpp:76, 185-189`). That affects the start of a program, not the run.
-- **Inference: stopping distance is not the limit on these programs.** The acceleration is 150 mm/s² (`configZ1.default:445`). With a full queue, the speed allowed by stopping within the queued length stays at least 1.72 times the programmed speed in every 32-block window measured (SP-14). So the risk is the supply and the parse rate, not the queue depth.
+- **Inference: stopping distance is not the limit on these programs.** The acceleration is 150 mm/s² (`configZ1.default:445`). With a full queue, the speed allowed by stopping within the queued length stays at least 1.72 times the programmed speed in every 32-block window measured (SP-14). So on these programs the risk is the supply and the parse rate, not the queue depth.
+- **Inference: the queue depth sets a floor of its own.** Blocks of time t at speed v fill the 32-block queue with 32·v·t of path. Stopping within that allows `v <= sqrt(2 a 32 v t)`, that is `t >= v / (2 a 32)`. That is 1.74 ms per block at 1,000 mm/min and 2.08 ms at the Z1's 1,200 mm/min. Below it the machine slows even when lines arrive in time, so the 32-block window check with a limit of about 2.1 ms or more covers this too. The air cut's 1 ms section tests it (predicted 7.9 s against 6.0 s nominal).
 - **Not found: the parse and plan time per line on the LPC1768.** Neither the firmware nor anything published gives it.
   - As a scale only, Grbl's 2012 planner rewrite reports 1.9 ms per arc segment on a 16 MHz AVR (Grbl commit log, mirrored at gitea.psi.ch/motion/ecmc_plugin_grbl). The LPC1768 runs at 100 MHz, so this is an order of magnitude, not a figure for the Z1.
 - **Not found: anything from Makera.** No block-rate, stutter or segment guidance was found in Makera's sources:
@@ -247,14 +284,14 @@ The environment's network policy blocked these hosts:
 
 github.com pages answered 403 to direct requests; the firmware repositories were read from clones. The owner can allow these hosts under Network access in the cloud environment's settings (https://code.claude.com/docs/en/cloud-environments#network-access), or check Makera's pages by hand. No figure in this section stands in for those sources.
 
-### What the owner can measure instead
+### What the owner will measure instead (decided)
 
-The air cut in item 7 measures the Z1's minimum block time directly:
-- the six sections bracket the plausible 1 to 3 ms range, with 5, 10 and 20 ms as controls;
+The air cut in item 7, added to the gate 4 procedure in #284, measures the Z1's minimum block time directly:
+- its sections bracket the estimated 1.2 to 2.2 ms floors, with 3, 5, 10 and 20 ms as controls;
 - each section is longer than both buffers;
 - it takes about 2 minutes.
 
-The first section that runs more than 5 % over its nominal 6 s, or audibly stutters, gives the floor. The profile value would then be the next longer block time tested, recorded with the firmware and ESP32 versions (OI-930).
+Its result sets the Z1 profile's value (OI-930); its pass rule is in item 7.
 
 ## Alternatives considered
 
