@@ -30,7 +30,7 @@ Each element below names the requirement it serves. An element that serves only 
 | 4 Simulate and review | 11.5 |
 | 5 Post and export | 11.6 |
 | Tool library and profile editor | 12.1 |
-| Selection sets (dock tab) | 12.2 |
+| Selection sets (now in the inspector, [decision 0215](../decisions/0215-selection-sets-in-the-inspector-and-direct-set-editing.md); the board predates it) | 12.2 |
 | Undo history (popover) | 12.3 |
 | Operations at 1366 × 768 | 3 |
 
@@ -134,7 +134,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | --- | --- |
 | Model | Opens the import dialog (11.2) |
 | Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
-| Selection sets | Opens Operations with picking on and an empty working selection ("Select on the part…", decision 0037 item 7) |
+| Selection sets | Opens Operations with picking on and the inspector's New selection (12.2) |
 | Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
 
 **Rows** are 28 high. Columns, left to right:
@@ -159,7 +159,7 @@ A disabled operation's name is struck through and muted. It is skipped everywher
 
 **Group headers.** The Operations header also has Show all and Hide all toolpaths (an open and a struck eye), each disabled when there is nothing for it to do (decision 0169).
 
-**Context menu** (right click or the menu key): Rename, Duplicate, Enable or Disable, Delete, Show in view, and Generate (operations).
+**Context menu** (right click or the menu key): Rename, Duplicate, Enable or Disable, Delete (operations and selection sets; a set is refused while an operation uses it, naming them), Show in view, and Generate (operations).
 
 **Status marks** *(UI-11)*:
 
@@ -240,7 +240,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
 | Hovered edge | Magenta `#ff4fd8`, a colour of its own so it reads apart from a hovered triangle or face (decision 0153) | Line 2 pixels wide |
 | Selected edge | In the working selection orange `#ff6a00` (a pair with the blue of selected triangles and faces), or the shown set's swatch | Line 3 pixels wide, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
-| Saved set | Its own swatch from a fixed set of eight | Fill when shown |
+| Saved set | Its own swatch from a fixed set of eight, none blue, red, orange or grey (decision 0216) | Fill at 40% when shown, with a framed outline round its edge: 2 pixels in its colour inside 4 pixels of `#15171a`; the legends show it the same way |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
 | Clearance cylinder and safe Z | Green `#4cc38a` | Dashed |
@@ -277,7 +277,7 @@ UI-03 and UI-25 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-
 
 The inspector shows the selected item: a model, setup, selection set or operation, or the simulation results on Simulate.
 
-**While picking** (Operations, 11.4) the inspector shows a "Selection" section with the options of picking: "select by angle within" (default 30°, decision 0037 item 4), "same direction within" (default 10°), "Tangent edges" for a working edge selection, "Keep tangent edges by default" and "Warn before a click starts a new selection" (decision 0153, owner's decision on issue 153). The Selection sets tab of the dock keeps the table of sets and the buttons that act on them (12.2).
+**While picking** (Operations, 11.4) the inspector shows New selection, or the chosen set, with how to pick, the set's actions and the "Selection" section of the options of picking: "select by angle within" (default 30°, decision 0037 item 4), "same direction within" (default 10°), "Tangent edges" for a working edge selection, "Keep tangent edges by default" and "Warn before a click starts a new selection" (decision 0153). Section 12.2 gives the order.
 
 **Order** (principle 3):
 
@@ -321,7 +321,7 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 
 ## 9. Dock
 
-**Tabs:** Messages, Selection sets and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
+**Tabs:** Messages and Jobs, on every step. Setup adds "Setup checks". Simulate adds "Playback" (11.5). Selection sets are in the inspector (12.2; decision 0215). A tab's contents take the whole dock, so no part of it is left undrawn, however little the tab holds (decision 0192 item 5).
 
 **Messages** *(UI-12)*:
 
@@ -345,8 +345,6 @@ The inspector shows the selected item: a model, setup, selection set or operatio
 - **No pop-up errors.** None, except when a command the user gave fails outright (a failed save, an unreadable file).
 
 **Setup checks:** one row per check, each with a green tick or an amber triangle (SET-06). The checks of the stored workholding against the part and the tools are rows here (11.7).
-
-**Selection sets:** section 12.2 (decision 0037 items 6 and 7).
 
 **Jobs** (UI-09):
 
@@ -456,7 +454,7 @@ Boards 3 and 3b.
   - The selected operation's toolpath, and the others by the visibility settings (SIM-01).
   - The working selection, saved sets and avoid surfaces.
   - The held regions and tabs, outlines only while picking (7.5). A selection that reaches one gives the warning of 11.7 under its Geometry role.
-  - While picking: the selection tools, using the modes of decision 0037 item 4 (one triangle; connected shell; smooth patch by angle; same direction). Shift adds, and Ctrl (Command on macOS) removes.
+  - While picking: the selection tools, using the modes of decision 0037 item 4 (one triangle; connected shell; smooth patch by angle; same direction). Shift adds, and Ctrl (Command on macOS) removes: to the working selection, or, when a set is chosen, to the set itself (12.2).
 - **Generating.**
   - The footer and the "Generate" item in a row's menu start a job. Its row shows progress and cancel.
   - Several operations generate in chain order. An operation served from the cache shows "reused" in the Jobs tab.
@@ -479,14 +477,18 @@ Board 4 (SIM-01 to SIM-07).
 
 **Viewport:**
 
-- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12):
+- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
 
-  | Range | Colour | Meaning |
+  | Band | Colour | Meaning |
   | --- | --- | --- |
-  | Below −tolerance | Dark magenta `#a3157f` | Overcut |
-  | Within ±tolerance | Grey `#9aa0a8` | Within tolerance |
-  | Above +tolerance to +0.10 mm | Light blue `#b9d6ff` | Material left, small |
-  | Up to the scale end (+0.50 mm) | Blue to `#3f78d1` | Material left, more |
+  | Deeper than one cell | Vermilion `#df5230` | Overcut |
+  | Within one cell | Grey `#9aa0a8` | Within tolerance |
+  | Up to 0.25 mm left | Ice `#c6f9ff` | Material left, small |
+  | 0.25 to 1 mm left | Sky blue `#4bb7fc` | Material left, more |
+  | More than 1 mm left, or a bound | Strong blue `#4e71ea` | Material left, most |
+  | Not measured | Grey `#9aa0a8`, hatched | Not measured |
+
+  Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216).
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
@@ -500,7 +502,7 @@ Board 4 (SIM-01 to SIM-07).
 - "Go to overcut" and "Go to largest left" *(SIM-11)*;
 - "Overcut samples": the samples cut deeper than the tolerance and the separate places, so the largest overcut reads as one point or many (decision 0162);
 - a deviation histogram in the same colours, one labelled row per bin: the range in millimetres, a bar, and the count and share. The bins are the surface band ±tolerance and the colour thresholds (0.25, 0.5, 1.0 mm, mirrored for the overcut); the first row starts at the largest overcut and the last ends at the most material left, so the worst values are always on it. An end at the search limit is marked ≤ or ≥ (decision 0162);
-- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md)). Built as [decision 0217](../decisions/0217-band-visibility-and-the-kept-comparison.md) (accepted) sets out: the tick box is labelled with the row's range and a bin stays chosen across runs; the range is in signed millimetres (negative is overcut), ends included, an empty field without a limit, and narrows the ticked bins; "Show all" shows everything again. A triangle not shown keeps the part's own colour (so does one that "Colour by" leaves out); a triangle not measured stays hatched. A hidden row is drawn faint and one the range cuts across half faint; on the colour scale a hidden band is faint, a partly hidden one in its lower half, and the scale says "Some bands are hidden". The worst values, the share and the counts stay those of the whole part;
+- band visibility *(SIM-15)*: a "Show" tick box on each histogram row and "Show only from … to … mm"; the choice lasts for the session; the view says "Some bands are hidden" while any is hidden ([decision 0163](../decisions/0163-band-visibility-requirement-proposal.md)). Built as [decision 0217](../decisions/0217-band-visibility-and-the-kept-comparison.md) (accepted) sets out: the tick box is labelled with the row's range and a bin stays chosen across runs; the range is in signed millimetres (negative is overcut), ends included, an empty field without a limit, and narrows the ticked bins; "Show all" shows everything again. A triangle not shown keeps the part's own colour (so does one that "Colour by" leaves out); a triangle not measured stays hatched. A hidden row is drawn faint and one the range cuts across half faint; on the colour scale a hidden band is faint, a partly hidden one in its lower half, and the scale says "Some bands are hidden". The worst values, the share and the counts stay those of the whole part; a hidden band is drawn in a solid dark slate `#5d6570` of its own, never the part's grey, so it does not read as "within tolerance" ([decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md) item 8)
 - a table by operation (overcut and left *(SIM-14)*, status);
 - resolution: the cell size, default 0.1 mm and finest 0.025 mm, with the cost stated (SIM-07; decision 0025).
 
@@ -702,19 +704,15 @@ TL-01 to TL-07, TL-11, TL-12; decision 0014; decision 0029 item 12; decision 012
 
 ### 12.2 Selection sets
 
-UI-05; decisions 0032 and 0037; a dock tab.
+UI-05; decisions 0032, 0037, 0153 and [0215](../decisions/0215-selection-sets-in-the-inspector-and-direct-set-editing.md). In the inspector; the tree (section 6) is the list of sets.
 
-- **Toolbar.**
-  - "New set from selection", "Add selection to set", "Remove from set", "Replace set" (the chosen set takes the working selection) and "Clear" (empties the working selection);
-  - a note on what can be selected: triangles and edges on meshes (decision 0066), faces and edges on STEP models;
-  - the tangent edges choice of a chosen edge set of a STEP model, "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9).
-- **Options in the inspector, not here** (decision 0153 item 5, owner's decision on issue 153). While picking, the inspector's "Selection" section (section 8) holds: the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example) and the angle for Same direction (default 10°); "Tangent edges" for a working edge selection; "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*; and "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until such a screen exists *(OI-260)*.
-- **Table.** Swatch, name, kind, size, used by (operations and roles), status, action.
-  - A set with a problem is red, with its reason as a sentence in the row (not the example "12 missing") and "Reselect". "Reselect" starts a fresh pick: it clears the working selection, shows the set's old selection on the model as a dashed grey ghost, and says "Pick the new selection, then Replace set."; "Replace set" makes the set current again (decision 0125, "As built"; OI-374).
-  - Rename and delete are in the row menu. Delete is refused while an operation uses the set, naming the operations.
-  - A set's colour can be chosen from the eight swatches, or left as the default swatch of its place in the list (decision 0046 item 2).
-- **Checking.** Saving or editing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and edit buttons disabled until it ends (decision 0112 item 1).
-- **Footer line:** "Editing a set marks every operation that uses it stale."
+- **The list.** The tree's Selection sets group: each set's swatch, name, size and status mark with its reason. Choosing a row selects the set, shows it on the part and turns picking on. Rename and Delete are in the row menu; Delete is refused while an operation uses the set, naming the operations.
+- **New selection** (the "+", or a plain click that starts a new selection). The inspector shows, from the top: "New selection"; how to pick ("Click the part to select. Shift-click adds. Ctrl-click takes away. Esc stops picking.", the keys Q, W, E and R, and what can be picked: triangles and edges on meshes, faces and edges on STEP models); the count selected, a name field, "Save as new set" and "Clear" (empties the working selection, without asking); the options of picking (below).
+- **A chosen set.** The inspector shows, from the top: the header; the size and model; the error banner of a set with a problem; Used by (operations and roles); how to change it ("Shift-click adds to this set. Ctrl-click takes away from it. A click without Shift or Ctrl asks before it starts a new selection."); "Pick again"; the colour, from the swatches or "Default" (decision 0046 item 2); the tangent edges choice of a set of a STEP model's edges, "Project default (drop)" or "Project default (keep)", "Keep tangent edges", "Drop tangent edges" (decision 0066 item 9); the options of picking; and "Editing a set marks every operation that uses it stale."
+- **Changing a set on the part.** While a set is chosen, Shift-click adds to it and Ctrl-click takes from it, directly, each one undoable step, so what is shown is what the set holds. A plain click asks "Start a new selection?" first, unless the warning is turned off (section 15). A set with a problem cannot be added to or taken from.
+- **Pick again.** Shows the set's current selection as a dashed grey ghost and starts an empty pick for it: "Pick the new selection, then Replace." "Replace" asks first, with the counts it keeps, drops and adds ("Replace 'Pocket'? It holds 40 faces. The new selection has 12: 31 are dropped and 3 are added."), and makes a set with a problem current again (decision 0125).
+- **Options of picking.** The "Selection" section: the angle for selection by angle (default 30°, decision 0037 item 4; the board shows 15° as an example) and the angle for Same direction (default 10°); "Tangent edges" for a working edge selection; "Keep tangent edges by default", the project's default (off), until a project and software preferences screen exists to hold it *(OI-260)*; and "Warn before a click starts a new selection" (on by default; it also turns off the question before a Pick filter switch clears the selection), until such a screen exists *(OI-260)*.
+- **Checking.** Saving or changing a set in a way that changes what it selects checks it against the model as a job: "Checking the selection against the model…" with Cancel, and the other save and change buttons disabled until it ends (decision 0112 item 1). Clicks made on a chosen set while a check runs are joined into the next change.
 
 ### 12.3 Undo history
 
@@ -776,7 +774,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
 | `ok` | `#4cc38a` | `#1b7f53` | Up to date, confirmed |
 | `warning` | `#f2b84b` | `#8a5d00` | Stale, warnings, unconfirmed |
 | `error` | `#ff7b72` | `#c22b2b` | Errors, refused values |
-| `overcut` (text) | `#e27ad2` | `#9c1f86` | Overcut values in panels |
+| `overcut` (text) | `#ff8a66` | `#a8321a` | Overcut values in panels (decision 0216) |
 | Warning box | bg `#2a2316`, border `#6b5420`, text `#f2d28a` | `#fff4d6`, `#e0b44c`, `#5c4300` | Unit question, safety notice |
 | Error box | bg `#2e1a1a`, border `#7a3330`, text `#ffb4ae` | `#fde8e7`, `#e59a95`, `#7a1d18` | Error banners |
 
@@ -809,7 +807,7 @@ Dark is the default. The light theme *(UI-20)* changes the panels, bars and dial
 - **Units.** Every number carries its unit: "mm", "deg" or "°", "mm/min", "rpm". Dates are written "13 Oct 2026".
 - **G-code safety.** Never "safe", "verified", "ready to run" or "machine-ready" for G-code (NFR-12).
 - **Time.** "Programmed time" until SIM-08 gives an estimate (decision 0028 item 3).
-- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click (no Shift or Ctrl) asks first whenever the working selection is not empty, in a dialog titled with what it clears, "Clear 12 faces?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now." (for a pick of the same kind: "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take from it. ..."), with "Clear", "Cancel" and "Don't show me this warning again". Switching the filter to one that cannot hold the selection (Edges on triangles or faces, Faces on edges) asks the same way. The "Clear" button of the selection sets tab and Esc (which ends picking and keeps the working selection) do not ask (decision 0153).
+- **Selecting edges.** The filter reads "Pick", then "Both", "Faces" and "Edges". With the filter on Edges, or a working selection of edges, the tools read "Select one", "Chain" and "Smooth chain"; Same direction is hidden with the filter on Edges, and selects the edge alone on an edge. While picking, Q, W, E and R choose Select one, Flood fill, By angle and Same direction (R added by the owner, decision 0046 item 4). A Shift or Ctrl click of the other kind is refused: "The selection holds faces, so an edge cannot join it: a selection holds one kind. Choose Faces in the box on the view to pick only faces, or click without Shift or Ctrl to start a new selection." A plain click (no Shift or Ctrl) asks first whenever the working selection is not empty, in a dialog titled with what it clears, "Clear 12 faces?": "This click picks an edge, and the selection holds faces: a selection holds one kind. Starting a new selection with it clears the 12 faces selected now." (for a pick of the same kind: "This click starts a new selection. Hold Shift to add to the selection, or Ctrl to take from it. ..."), with "Clear", "Cancel" and "Don't show me this warning again". Switching the filter to one that cannot hold the selection (Edges on triangles or faces, Faces on edges) asks the same way. The "Clear" button of New selection and Esc (which ends picking and keeps the working selection, or the chosen set) do not ask (decision 0153). While a set is chosen, a plain click asks "Start a new selection?": "This click starts a new selection. 'Pocket' stays as it is. Hold Shift to add to the set, or Ctrl to take from it." (decision 0215).
 - **The machine.** Machine values are described by provenance ("confirmed on the machine", "not confirmed on the machine"), not by blame.
 
 ## 16. Keyboard and accessibility
@@ -915,7 +913,7 @@ Images of the design canvas boards, rendered at 100% scale in headless Chromium 
 | [04-simulate.png](mockups/04-simulate.png) | Simulate, with the deviation probe | 11.5 |
 | [05-export-dialog.png](mockups/05-export-dialog.png) | Post and export | 11.6 |
 | [10-tool-library.png](mockups/10-tool-library.png) | Tool library and profile editor | 12.1 |
-| [11-selection-sets.png](mockups/11-selection-sets.png) | Selection sets tab | 12.2 |
+| [11-selection-sets.png](mockups/11-selection-sets.png) | Selection sets tab (before decision 0215) | 12.2 |
 | [12-undo-history.png](mockups/12-undo-history.png) | Undo history | 12.3 |
 | [13-operations-1366x768.png](mockups/13-operations-1366x768.png) | Operations at 1366 × 768 | 3 |
 | [14-operations-light.png](mockups/14-operations-light.png) | Operations, light theme | 14.2 |
