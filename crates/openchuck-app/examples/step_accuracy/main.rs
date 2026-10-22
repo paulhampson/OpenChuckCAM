@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -124,6 +124,7 @@ struct Args {
     threads: Vec<Threads>,
     sim_tilt: f64,
     sim_step: f64,
+    part: String,
 }
 
 fn args() -> Result<Args, Error> {
@@ -152,6 +153,7 @@ fn args() -> Result<Args, Error> {
         threads: vec![Threads::Exactly(1), Threads::All],
         sim_tilt: 10.0,
         sim_step: 2.0,
+        part: "blisk".to_owned(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -210,6 +212,7 @@ fn args() -> Result<Args, Error> {
                     })
                     .collect::<Result<_, _>>()?;
             }
+            "--part" => out.part = it.next().ok_or("--part NAME")?,
             "--sim-tilt" => out.sim_tilt = it.next().ok_or("--sim-tilt DEG")?.parse()?,
             "--sim-step" => out.sim_step = it.next().ok_or("--sim-step DEG")?.parse()?,
             "--angular" => out.angular = it.next().ok_or("--angular RAD")?.parse()?,
@@ -273,14 +276,16 @@ fn main() -> Result<(), Error> {
     }
     let machine = builtin("makera-z1").ok_or("no Z1")??;
     let rotary = RotaryMapping::of_profile(&machine);
-    let (model_b, _) = import(&blisk_path(), TessellationSettings::default().linear)?;
+    let part_path = repo(&format!("testdata/step/valid/{}.step", args.part));
+    println!("\npart: {}", part_path.display());
+    let (model_b, _) = import(&part_path, TessellationSettings::default().linear)?;
     let placement = placement(&model_b)?;
     let placed_b = place(&model_b, &placement)?;
-    let (model_c, _) = import_at(&blisk_path(), fine, args.angular)?;
+    let (model_c, _) = import_at(&part_path, fine, args.angular)?;
     let placed_c = place(&model_c, &placement)?;
     let bounds = brep_bounds(&placed_b);
     println!(
-        "\nblisk placed: X {:.3} to {:.3}, Y {:.3} to {:.3}, Z {:.3} to {:.3}",
+        "part placed: X {:.3} to {:.3}, Y {:.3} to {:.3}, Z {:.3} to {:.3}",
         bounds.min.x, bounds.max.x, bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z
     );
     let stl = match &args.stl {
@@ -305,7 +310,7 @@ fn main() -> Result<(), Error> {
     // The project: the owner's tools and operations, on the STEP part.
     let ops = operations(&args);
     let dir = std::env::temp_dir().join(format!("openchuck-step-accuracy-{}", std::process::id()));
-    let (mut app, ids) = project(&dir, &blisk_path(), &placement, &bounds, &ops)?;
+    let (mut app, ids) = project(&dir, &part_path, &placement, &bounds, &ops)?;
 
     let mut forms: Vec<(&str, Form)> = vec![
         (
@@ -578,10 +583,6 @@ fn threads_name(threads: Threads, cores: usize) -> String {
 fn median(mut v: Vec<f64>) -> f64 {
     v.sort_by(f64::total_cmp);
     v.get(v.len() / 2).copied().unwrap_or(0.0)
-}
-
-fn blisk_path() -> PathBuf {
-    repo("testdata/step/valid/blisk.step")
 }
 
 /// The STEP file at `path`, imported by the kernel at `linear` mm and the
@@ -874,11 +875,16 @@ fn operations(args: &Args) -> Vec<Op> {
     }
 }
 
-/// The setup's stock: a cylinder 42 mm across, 1 mm longer than the part at
-/// each end (as lane BM's blisk project, decision 0115).
+/// The setup's stock: a cylinder 1 mm larger in radius than the part and
+/// 1 mm longer at each end (42 mm across for the blisk, as lane BM's blisk
+/// project, decision 0115).
 fn stock(bounds: &Aabb) -> Stock {
+    let radius = [bounds.min.y, bounds.max.y, bounds.min.z, bounds.max.z]
+        .into_iter()
+        .map(f64::abs)
+        .fold(0.0, f64::max);
     Stock::Cylinder {
-        diameter: Millimetres(42.0),
+        diameter: Millimetres(2.0 * radius + 2.0),
         length: Millimetres(bounds.max.x - bounds.min.x + 2.0),
         x_start: Millimetres(bounds.min.x - 1.0),
     }
