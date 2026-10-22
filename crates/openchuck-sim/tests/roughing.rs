@@ -361,6 +361,7 @@ fn req_sim_05_leftover_counts_samples_against_a_stock_to_leave() {
         normal: Vec3::new(0.0, 0.0, 1.0),
         value,
         at_least,
+        on: openchuck_sim::SampleOn::Part,
     };
     let points = vec![
         point(0.50, false),

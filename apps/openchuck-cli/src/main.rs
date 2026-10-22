@@ -1204,7 +1204,11 @@ fn print_simulation(
                 if p.at_least { ", at least" } else { "" }
             )
         };
-        println!("    against the part: {} surface samples", d.points.len());
+        println!(
+            "    against the part: {} surface samples, {} counted",
+            d.points.len(),
+            d.points.iter().filter(|p| p.counts()).count()
+        );
         match &d.worst_remaining {
             Some(p) => println!("      most material left: {:.4} mm at {}", p.value, at(p)),
             None => println!("      no material left on the part"),
