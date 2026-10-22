@@ -160,3 +160,26 @@ Each option's error, cost and fit:
 4. **The cheapest fallback is the slow-down.** It costs at most 1.4 % of an operation's time at 5 ms (7 % at 10 ms) and adds no error. A merge within the existing tolerance budget removes 6 to 20 % of the short blocks. A merge is worth having for line traffic, not as the fix for short blocks.
 5. **Recommended order: Report first, then Slow down.** The slow-down is the fallback that does the work. Merge should be built third, if at all, as a separate block-count reduction with its own tolerance from the budget. This reverses the owner's provisional order of Merge before Slow down.
 6. **The check should allow a window.** It should average the block time over the controller's queue depth, not test each block alone. A per-block limit of 5 ms would flag 15,139 blocks on the rest-machining file, and no 32-block window there averages below 12 ms.
+
+## Air-cut program for the Z1 block rate (added 22 Oct 2026; decision 0222 item 7)
+
+The owner decided to add this test to the gate 4 procedure (#284). `air-cut/gen_block_rate.py` writes `air-cut/block_rate_z1.nc`: 26,246 lines, the longest 50 characters.
+
+- **Part A:** six sections of 100 mm of X at F1000, made of 20, 10, 5, 3, 2 and 1 ms blocks (300 to 6,000 lines each).
+- **Part B:** the same six sections, with A advancing in every block.
+- **The A step in part B.** Each block's A step is 60 % of its X length's worth under the Z1 rule (0.628 degrees per mm of X at Z50), so X still sets the block's time. The owner's first idea was a 0.2 degree step, but that cannot hold the short block times. The Z1's A axis is limited to 3600 degrees per minute, so a 0.2 degree step needs at least 3.3 ms. The rule's A term would also dominate: 0.19 mm at r = 50.
+- **Check.** `gstat` on the file confirms the block times: 79 s of fed motion, 72 s of sections plus 12 markers.
+- **Stopping-distance prediction.** Smoothie plans the newest block to end at rest. A 32-block queue at acceleration 150 mm/s² therefore allows at most `sqrt(2 a 32 L)`, where L is the block length:
+
+  | Block | Length, mm | Stopping limit, mm/min | Predicted section time |
+  | --- | --- | --- | --- |
+  | 20 ms | 0.333 | 3,394 | 6.0 s |
+  | 10 ms | 0.167 | 2,400 | 6.0 s |
+  | 5 ms | 0.083 | 1,697 | 6.0 s |
+  | 3 ms | 0.050 | 1,315 | 6.0 s |
+  | 2 ms | 0.033 | 1,073 | 6.0 s |
+  | 1 ms | 0.017 | 759 | 7.9 s |
+
+  This is inference from the firmware source, not a measurement.
+  - It means the 1 ms section runs at about 7.9 s even if lines arrive fast enough.
+  - The same arithmetic gives a planner-depth floor of `t >= v / (2 a 32)` for any program: 1.74 ms per block at 1,000 mm/min, and 2.08 ms at the Z1's 1,200 mm/min.
