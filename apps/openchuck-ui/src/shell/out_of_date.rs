@@ -88,11 +88,18 @@ impl Shell {
                 | PrimaryKind::GenerateStale(_)
                 | PrimaryKind::Generate
         );
+        // Skipping the stock simulation, the button only generates the
+        // toolpaths (decision 0168), and the banner says so.
+        let toolpaths_only = matches!(
+            primary.kind,
+            PrimaryKind::GenerateStale(_) | PrimaryKind::Generate
+        );
         Some(Banner {
             reason,
             label: primary.label,
             blocked: primary.blocked,
             runs,
+            toolpaths_only,
             running: self.run.is_running(),
         })
     }
@@ -128,6 +135,7 @@ pub(super) struct Banner {
     label: String,
     blocked: Option<String>,
     runs: bool,
+    toolpaths_only: bool,
     running: bool,
 }
 
@@ -139,9 +147,10 @@ impl Banner {
             label,
             blocked,
             runs,
+            toolpaths_only,
             running,
         } = self;
-        let (runs, running) = (*runs, *running);
+        let (runs, toolpaths_only, running) = (*runs, *toolpaths_only, *running);
         let boxed = DARK.warning_box;
         let mut clicked = false;
         egui::Frame::new()
@@ -154,12 +163,12 @@ impl Banner {
                     marks::mark(ui, ItemState::Stale, reason);
                     ui.label(RichText::new(TITLE).strong().color(boxed.text));
                 });
-                let next = if running {
-                    " Simulating again…"
-                } else if runs {
-                    " Simulate again to see the effect."
-                } else {
-                    " Turn on an operation to simulate again."
+                let next = match (running, runs, toolpaths_only) {
+                    (true, _, true) => " Generating the toolpaths again…",
+                    (true, _, false) => " Simulating again…",
+                    (false, true, true) => " Generate the toolpaths again to see the effect.",
+                    (false, true, false) => " Simulate again to see the effect.",
+                    (false, false, _) => " Turn on an operation to simulate again.",
                 };
                 ui.add(
                     egui::Label::new(RichText::new(format!("{reason}{next}")).color(boxed.text))

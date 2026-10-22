@@ -555,6 +555,31 @@ fn req_nfr_12_req_ui_11_turning_off_an_operation_in_simulate_offers_to_simulate_
     );
     let (drawn, asked) = dock_heights(&rig);
     assert!((drawn - asked).abs() < 0.5, "{drawn} of {asked}");
+    // Skipping the stock simulation, the banner offers only the toolpaths,
+    // and says so (OI-732).
+    let skip = |rig: &mut Rig, on: bool| {
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .execute(openchuck_app::Command::SetSkipStockSimulation(on))
+            .unwrap();
+        rig.settle();
+    };
+    skip(&mut rig, true);
+    assert_eq!(
+        rig.shell.overview.primary(Step::Simulate).kind,
+        PrimaryKind::Generate
+    );
+    assert!(rig.shows(&format!(
+        "Operation '{name}' was turned off. Generate the toolpaths again to see the effect."
+    )));
+    assert_eq!(
+        count(&rig, "Generate toolpaths"),
+        4,
+        "three banners and the footer"
+    );
+    skip(&mut rig, false);
 
     rig.shell.primary();
     until_simulated_again(&mut rig);
@@ -652,15 +677,22 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
         .filter_map(|(t, _, r)| t.as_ref().map(|t| (t.as_str(), *r)))
         .filter(|(t, _)| !t.trim().is_empty())
         .collect();
+    // A required control is wholly shown: in the dock, and not clipped by a
+    // scroll area inside it.
+    let whole = |whole: &egui::Rect, seen: &egui::Rect| seen.contains_rect(whole.shrink(0.5));
     for row in ["⏮", "⏭", "Skip stock simulation"].iter().chain(rows) {
         assert!(
-            texts.iter().any(|(t, _)| t == row),
+            painted
+                .iter()
+                .any(|(t, w, r)| t.as_deref() == Some(*row) && whole(w, r)),
             "{what}: {row:?} is not wholly in the dock: {texts:?}"
         );
     }
     let timeline: Vec<egui::Rect> = painted
         .iter()
-        .filter(|(t, _, r)| t.is_none() && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0)
+        .filter(|(t, w, r)| {
+            t.is_none() && whole(w, r) && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0
+        })
         .map(|(_, _, r)| *r)
         .collect();
     assert!(
