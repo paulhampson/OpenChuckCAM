@@ -625,6 +625,29 @@ fn req_ui_05_deselecting_a_set_leaves_no_highlight() {
     rig.shell.tree_action(super::TreeAction::Select(op));
     rig.frame(Vec::new());
     assert!(!highlighted(&rig), "another item selected");
+    // Deleted while shown and picked again: nothing of it stays highlighted
+    // (OI-733).
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.shell.selection.pick_again(id);
+    rig.shell
+        .selection
+        .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[4]);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    rig.shell.delete_set(id);
+    rig.frame(Vec::new());
+    assert!(
+        !rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == id),
+        "the set was deleted"
+    );
+    assert!(!highlighted(&rig), "the deleted set's pick goes too");
     rig.cleanup();
 }
 

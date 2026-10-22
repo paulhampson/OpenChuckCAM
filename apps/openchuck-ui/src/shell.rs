@@ -738,7 +738,7 @@ impl Shell {
         match action.kind {
             PrimaryKind::ImportModel => self.import_model(),
             PrimaryKind::Continue(step) => self.open_step(step),
-            PrimaryKind::GenerateStale(_) => self.generate(false),
+            PrimaryKind::GenerateStale(_) | PrimaryKind::Generate => self.generate(false),
             PrimaryKind::RunSimulation | PrimaryKind::GenerateAndSimulate(_) => {
                 self.generate(true);
             }

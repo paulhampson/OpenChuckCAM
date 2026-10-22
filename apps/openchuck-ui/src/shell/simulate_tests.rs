@@ -645,11 +645,11 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
     let painted: Vec<_> = rig
         .painted()
         .into_iter()
-        .filter(|(_, r)| dock.contains_rect(r.shrink(0.5)))
+        .filter(|(_, whole, _)| dock.contains_rect(whole.shrink(0.5)))
         .collect();
     let texts: Vec<_> = painted
         .iter()
-        .filter_map(|(t, r)| t.as_ref().map(|t| (t.as_str(), *r)))
+        .filter_map(|(t, _, r)| t.as_ref().map(|t| (t.as_str(), *r)))
         .filter(|(t, _)| !t.trim().is_empty())
         .collect();
     for row in ["⏮", "⏭", "Skip stock simulation"].iter().chain(rows) {
@@ -660,8 +660,8 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
     }
     let timeline: Vec<egui::Rect> = painted
         .iter()
-        .filter(|(t, r)| t.is_none() && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0)
-        .map(|(_, r)| *r)
+        .filter(|(t, _, r)| t.is_none() && (r.height() - 26.0).abs() < 1.0 && r.width() > 40.0)
+        .map(|(_, _, r)| *r)
         .collect();
     assert!(
         !timeline.is_empty(),
@@ -677,8 +677,8 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
     }
     let bars: Vec<egui::Rect> = painted
         .iter()
-        .filter(|(t, r)| t.is_none() && r.width() < 12.0 && r.height() > 40.0)
-        .map(|(_, r)| *r)
+        .filter(|(t, _, r)| t.is_none() && r.width() < 12.0 && r.height() > 40.0)
+        .map(|(_, _, r)| *r)
         .collect();
     for bar in &bars {
         for (t, r) in &texts {

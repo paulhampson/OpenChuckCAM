@@ -82,6 +82,7 @@ impl Shell {
             PrimaryKind::RunSimulation
                 | PrimaryKind::GenerateAndSimulate(_)
                 | PrimaryKind::GenerateStale(_)
+                | PrimaryKind::Generate
         );
         let running = self.run.is_running();
         let boxed = DARK.warning_box;
