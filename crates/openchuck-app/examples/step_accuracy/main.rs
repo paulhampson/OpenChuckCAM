@@ -244,7 +244,7 @@ fn main() -> Result<(), Error> {
     if wants("m1") {
         println!("\n## M1: tessellation against the exact faces");
         println!(
-            "part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | import s"
+            "part | deflection mm | kind | faces | triangles | measured | samples | max mm | p99 mm | to trimmed face mm | closed form mm | normal deg | closest us | import s"
         );
         println!("angular deflection: {} rad", args.angular);
         for part in &args.parts {
@@ -637,7 +637,7 @@ fn print_m1(part: &str, d: f64, model: &BrepModel, took: Duration) -> f64 {
     let mut worst: f64 = 0.0;
     for k in &report {
         println!(
-            "{part} | {d} | {} | {} | {} | {} | {} | {:.5} | {:.5} | {:.5} | {} | {:.2} | {:.2}",
+            "{part} | {d} | {} | {} | {} | {} | {} | {:.5} | {:.5} | {:.5} | {} | {:.2} | {:.1} | {:.2}",
             k.kind,
             k.faces,
             k.triangles,
@@ -648,6 +648,7 @@ fn print_m1(part: &str, d: f64, model: &BrepModel, took: Duration) -> f64 {
             k.trimmed,
             k.closed_form.map_or("-".to_owned(), |c| format!("{c:.5}")),
             k.normal_degrees,
+            k.closest_us,
             took.as_secs_f64()
         );
         worst = worst.max(k.max);

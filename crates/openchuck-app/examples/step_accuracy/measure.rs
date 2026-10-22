@@ -63,6 +63,9 @@ pub struct KindError {
     /// The largest angle between a facet's normal and the exact normal at the
     /// closest point to its centre, in degrees (OI-76).
     pub normal_degrees: f64,
+    /// The mean time of one `ExactFace::closest` on the trimmed face over
+    /// the samples, in microseconds (one thread per face).
+    pub closest_us: f64,
 }
 
 /// The distance from `p` to the whole (untrimmed) analytic surface
@@ -150,103 +153,131 @@ fn mid(a: Point3, b: Point3) -> Point3 {
 /// The most triangles of one face that M1 measures.
 pub const MAX_TRIANGLES: usize = 20_000;
 
+/// M1 for one face.
+struct FaceError {
+    kind: SurfaceKind,
+    triangles: usize,
+    measured: usize,
+    /// Distances to the untrimmed surface, one per sample.
+    distances: Vec<f64>,
+    normal_degrees: f64,
+    trimmed: f64,
+    closed_form: Option<f64>,
+    /// Time spent in `closest` on the trimmed face, and how many calls.
+    closest_nanos: u128,
+    closest_calls: u64,
+}
+
 /// M1: the distance from the tessellation of every face of `model` to the
 /// face itself, by kind, sampled at the corners, the edge middles and a grid
 /// of `grid` steps a side of each triangle. The face's own triangles are
 /// measured against it, so a triangle is never judged against a neighbour.
 pub fn tessellation_error(model: &BrepModel, grid: usize) -> Vec<KindError> {
-    // Per face: (kind, triangles, distances, worst normal angle, worst
-    // distance to the trimmed face, worst closed-form distance).
-    let per_face: Vec<(SurfaceKind, usize, Vec<f64>, f64, f64, Option<f64>, usize)> = model
+    let per_face: Vec<FaceError> = model
         .faces
         .par_iter()
-        .map(|face| {
-            let untrimmed = openchuck_types::brep::BrepFace {
-                trims: Vec::new(),
-                ..face.clone()
-            };
-            let (Ok(exact), Ok(trimmed)) = (ExactFace::new(&untrimmed), ExactFace::new(face))
-            else {
-                return (face.surface, 0, Vec::new(), 0.0, 0.0, None, 0);
-            };
-            let mesh = &face.tessellation;
-            let mut distances = Vec::new();
-            let mut normal: f64 = 0.0;
-            let mut trim: f64 = 0.0;
-            let mut closed: Option<f64> = None;
-            // A face of many triangles is measured on every `stride`th of
-            // them, a fixed choice, so the run stays within minutes.
-            let stride = mesh.triangles.len().div_ceil(MAX_TRIANGLES).max(1);
-            for t in mesh.triangles.iter().step_by(stride) {
-                let [a, b, c] = t.map(|i| {
-                    mesh.vertices
-                        .get(i as usize)
-                        .copied()
-                        .unwrap_or(Point3::ORIGIN)
-                });
-                for p in triangle_points(a, b, c, grid) {
-                    if let Some(closest) = exact.closest(p) {
-                        distances.push(closest.distance);
-                    }
-                    if let Some(closest) = trimmed.closest(p) {
-                        trim = trim.max(closest.distance);
-                    }
-                    if let Some(d) = closed_form_distance(&face.geometry, p) {
-                        closed = Some(closed.unwrap_or(0.0).max(d));
-                    }
-                }
-                let n = (b - a).cross(c - a);
-                let centre = Point3::new(
-                    (a.x + b.x + c.x) / 3.0,
-                    (a.y + b.y + c.y) / 3.0,
-                    (a.z + b.z + c.z) / 3.0,
-                );
-                if let (Some(unit), Some(closest)) = (UnitVec3::new(n).ok(), exact.closest(centre))
-                {
-                    let cos = unit.get().dot(closest.point.normal.get()).clamp(-1.0, 1.0);
-                    normal = normal.max(cos.acos().to_degrees());
-                }
-            }
-            let measured = mesh.triangles.len().div_ceil(stride);
-            (
-                face.surface,
-                mesh.triangles.len(),
-                distances,
-                normal,
-                trim,
-                closed,
-                measured,
-            )
-        })
+        .map(|face| face_error(face, grid))
         .collect();
-    let mut kinds: Vec<&'static str> = per_face.iter().map(|f| kind_name(f.0)).collect();
+    let mut kinds: Vec<&'static str> = per_face.iter().map(|f| kind_name(f.kind)).collect();
     kinds.sort_unstable();
     kinds.dedup();
     kinds
         .into_iter()
         .map(|kind| {
-            let of_kind: Vec<_> = per_face.iter().filter(|f| kind_name(f.0) == kind).collect();
-            let mut all: Vec<f64> = of_kind.iter().flat_map(|f| f.2.iter().copied()).collect();
+            let of_kind: Vec<&FaceError> = per_face
+                .iter()
+                .filter(|f| kind_name(f.kind) == kind)
+                .collect();
+            let mut all: Vec<f64> = of_kind
+                .iter()
+                .flat_map(|f| f.distances.iter().copied())
+                .collect();
             all.sort_by(f64::total_cmp);
             let at = |q: f64| {
                 all.get(((all.len().saturating_sub(1)) as f64 * q).round() as usize)
                     .copied()
                     .unwrap_or(0.0)
             };
+            let calls: u64 = of_kind.iter().map(|f| f.closest_calls).sum();
+            let nanos: u128 = of_kind.iter().map(|f| f.closest_nanos).sum();
             KindError {
                 kind,
                 faces: of_kind.len(),
-                triangles: of_kind.iter().map(|f| f.1).sum(),
-                measured: of_kind.iter().map(|f| f.6).sum(),
+                triangles: of_kind.iter().map(|f| f.triangles).sum(),
+                measured: of_kind.iter().map(|f| f.measured).sum(),
                 samples: all.len(),
                 max: all.last().copied().unwrap_or(0.0),
-                trimmed: of_kind.iter().map(|f| f.4).fold(0.0, f64::max),
-                closed_form: of_kind.iter().filter_map(|f| f.5).reduce(f64::max),
+                trimmed: of_kind.iter().map(|f| f.trimmed).fold(0.0, f64::max),
+                closed_form: of_kind
+                    .iter()
+                    .filter_map(|f| f.closed_form)
+                    .reduce(f64::max),
                 p99: at(0.99),
-                normal_degrees: of_kind.iter().map(|f| f.3).fold(0.0, f64::max),
+                normal_degrees: of_kind.iter().map(|f| f.normal_degrees).fold(0.0, f64::max),
+                closest_us: nanos as f64 / 1000.0 / calls.max(1) as f64,
             }
         })
         .collect()
+}
+
+fn face_error(face: &BrepFace, grid: usize) -> FaceError {
+    let mut out = FaceError {
+        kind: face.surface,
+        triangles: face.tessellation.triangles.len(),
+        measured: 0,
+        distances: Vec::new(),
+        normal_degrees: 0.0,
+        trimmed: 0.0,
+        closed_form: None,
+        closest_nanos: 0,
+        closest_calls: 0,
+    };
+    let untrimmed = BrepFace {
+        trims: Vec::new(),
+        ..face.clone()
+    };
+    let (Ok(exact), Ok(trimmed)) = (ExactFace::new(&untrimmed), ExactFace::new(face)) else {
+        return out;
+    };
+    let mesh = &face.tessellation;
+    // A face of many triangles is measured on every `stride`th of them, a
+    // fixed choice, so the run stays within minutes.
+    let stride = mesh.triangles.len().div_ceil(MAX_TRIANGLES).max(1);
+    out.measured = mesh.triangles.len().div_ceil(stride);
+    for t in mesh.triangles.iter().step_by(stride) {
+        let [a, b, c] = t.map(|i| {
+            mesh.vertices
+                .get(i as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN)
+        });
+        for p in triangle_points(a, b, c, grid) {
+            if let Some(closest) = exact.closest(p) {
+                out.distances.push(closest.distance);
+            }
+            let started = std::time::Instant::now();
+            let answer = trimmed.closest(p);
+            out.closest_nanos += started.elapsed().as_nanos();
+            out.closest_calls += 1;
+            if let Some(closest) = answer {
+                out.trimmed = out.trimmed.max(closest.distance);
+            }
+            if let Some(d) = closed_form_distance(&face.geometry, p) {
+                out.closed_form = Some(out.closed_form.unwrap_or(0.0).max(d));
+            }
+        }
+        let n = (b - a).cross(c - a);
+        let centre = Point3::new(
+            (a.x + b.x + c.x) / 3.0,
+            (a.y + b.y + c.y) / 3.0,
+            (a.z + b.z + c.z) / 3.0,
+        );
+        if let (Some(unit), Some(closest)) = (UnitVec3::new(n).ok(), exact.closest(centre)) {
+            let cos = unit.get().dot(closest.point.normal.get()).clamp(-1.0, 1.0);
+            out.normal_degrees = out.normal_degrees.max(cos.acos().to_degrees());
+        }
+    }
+    out
 }
 
 /// Points on a surface, bucketed in cubes for the search round a tool.
