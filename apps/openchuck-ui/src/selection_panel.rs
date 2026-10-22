@@ -22,7 +22,7 @@ use openchuck_app::scene::{SceneMesh, SceneRole, SceneView, triangles_mesh};
 use openchuck_app::{
     Application, CheckedSet, EditStart, JobHandle, SelectionEdit, SelectionSummary, TriangleSet,
 };
-use openchuck_viewport::{Colour, Hatch, LineStyle, Scene, Slot};
+use openchuck_viewport::{Colour, Hatch, LineStyle, MeshItem, Outline, Scene, Slot};
 
 use crate::roles;
 use crate::theme::DARK;
@@ -39,9 +39,25 @@ const NO_EDGES: Colour = [0.0, 0.0, 0.0, 0.0];
 const FILL_ALPHA: f32 = 0.4;
 
 /// The fixed set of eight swatches a saved set takes its colour from, by its
-/// place in the project's list of sets (so up to eight sets are told apart).
-/// None is the working blue, the hover yellow or the avoid red.
+/// place in the project's list of sets (so up to eight sets are told apart):
+/// teal, plum, lime, forest green, orchid, olive, mint and sage (decision
+/// 0216 item 3). None is blue, red, orange or grey, so none is read as a
+/// deviation colour, the working blue, the hover yellow or the avoid red.
 const SWATCHES: [[u8; 3]; 8] = [
+    [0x23, 0x96, 0x88],
+    [0x8d, 0x34, 0x8c],
+    [0xb1, 0xd3, 0x64],
+    [0x27, 0x65, 0x3e],
+    [0xcb, 0x94, 0xc7],
+    [0x66, 0x5a, 0x00],
+    [0x1c, 0xe0, 0xac],
+    [0x7c, 0x8d, 0x51],
+];
+
+/// The swatches before decision 0216, which a project may still store as a
+/// chosen colour: each is shown as the new swatch at the same place (item
+/// 6), and the file keeps what it holds.
+const OLD_SWATCHES: [[u8; 3]; 8] = [
     [0x2d, 0x6c, 0xb5],
     [0xa0, 0x4a, 0x46],
     [0x7d, 0x5b, 0xb5],
@@ -61,14 +77,32 @@ fn swatch(index: usize) -> [u8; 3] {
 }
 
 /// The colour of a set: the one the user chose (`#rrggbb`), or the default
-/// swatch of its place in the list.
+/// swatch of its place in the list. A chosen colour that is one of the old
+/// swatches is shown as the new swatch at its place in that list (decision
+/// 0216 item 6).
 pub(crate) fn set_rgb(chosen: Option<&str>, index: usize) -> [u8; 3] {
     chosen
         .and_then(|c| {
             let byte = |i: usize| u8::from_str_radix(c.get(i..i + 2)?, 16).ok();
             Some([byte(1)?, byte(3)?, byte(5)?])
         })
+        .map(|rgb| {
+            OLD_SWATCHES
+                .iter()
+                .position(|old| *old == rgb)
+                .map_or(rgb, swatch)
+        })
         .unwrap_or_else(|| swatch(index))
+}
+
+/// An opaque colour of the viewport from a set's colour.
+fn opaque([r, g, b]: [u8; 3]) -> Colour {
+    [
+        f32::from(r) / 255.0,
+        f32::from(g) / 255.0,
+        f32::from(b) / 255.0,
+        1.0,
+    ]
 }
 
 fn hex(rgb: [u8; 3]) -> String {
@@ -585,6 +619,25 @@ impl SelectionPanel {
         self.dirty = true;
     }
 
+    /// The name and colour of the set drawn in its own colour now, for the
+    /// legends (decision 0216 item 5): none while it is a ghost (a set with
+    /// a problem, or one being picked again) or picking is off.
+    pub fn shown_look(&self, app: &Application) -> Option<(String, [u8; 3])> {
+        if !self.picking || self.repick {
+            return None;
+        }
+        let id = self.shown?;
+        let summaries = app.selection_summaries(&[]);
+        let (place, summary) = summaries.iter().enumerate().find(|(_, s)| s.id == id)?;
+        if summary.problem.is_some() {
+            return None;
+        }
+        Some((
+            summary.name.clone(),
+            set_rgb(summary.colour.as_deref(), place),
+        ))
+    }
+
     /// How many times a set was shown (see [`SelectionPanel::show_set`]).
     pub fn show_count(&self) -> u64 {
         self.show_count
@@ -1091,6 +1144,7 @@ impl SelectionPanel {
                     });
                 }
             } else {
+                let first = scene.meshes.len();
                 draw_target(
                     &mut scene,
                     view,
@@ -1099,18 +1153,33 @@ impl SelectionPanel {
                     &set,
                     Look {
                         fill: rgb_fill(rgb),
-                        line: {
-                            let [r, g, b] = rgb;
-                            [
-                                f32::from(r) / 255.0,
-                                f32::from(g) / 255.0,
-                                f32::from(b) / 255.0,
-                                1.0,
-                            ]
-                        },
+                        line: opaque(rgb),
                         style: LineStyle::Solid,
                     },
                 );
+                // A set's surfaces get a framed outline round their edge: the
+                // dark frame first, then the line in the set's colour over it
+                // (decision 0216 item 4).
+                let fills: Vec<_> = scene.meshes.drain(first..).collect();
+                for fill in fills {
+                    scene.meshes.push(MeshItem {
+                        outline: Some(Outline {
+                            colour: roles::SET_FRAME,
+                            width: roles::SET_FRAME_WIDTH,
+                            style: LineStyle::Solid,
+                        }),
+                        outline_only: true,
+                        ..fill.clone()
+                    });
+                    scene.meshes.push(MeshItem {
+                        outline: Some(Outline {
+                            colour: opaque(rgb),
+                            width: roles::SET_OUTLINE_WIDTH,
+                            style: LineStyle::Solid,
+                        }),
+                        ..fill
+                    });
+                }
             }
         }
         // While a set is changed on the part, it is what is drawn; the
@@ -2333,7 +2402,52 @@ mod tests {
         // A malformed stored value falls back to the swatch, never a panic.
         assert_eq!(set_rgb(Some("#12"), 2), swatch(2));
         assert_eq!(set_rgb(Some("zzzzzzz"), 2), swatch(2));
-        assert_eq!(hex([0x2d, 0x6c, 0xb5]), "#2d6cb5");
+        assert_eq!(hex([0x23, 0x96, 0x88]), "#239688");
+    }
+
+    #[test]
+    fn req_ui_05_an_old_stored_swatch_shows_as_the_new_one_at_its_place() {
+        // Decision 0216 item 6: a display mapping only; the file is unchanged.
+        for (place, old) in OLD_SWATCHES.iter().enumerate() {
+            assert_eq!(set_rgb(Some(&hex(*old)), 5), swatch(place), "{place}");
+        }
+        assert_eq!(set_rgb(Some("#2d6cb5"), 3), [0x23, 0x96, 0x88]);
+        assert_eq!(set_rgb(Some("#a04a46"), 0), [0x8d, 0x34, 0x8c]);
+    }
+
+    #[test]
+    fn req_ui_05_req_nfr_15_set_swatches_stay_apart_from_the_scale_and_the_roles() {
+        // Decision 0216 items 3 and 7: every swatch at least 20 (CIEDE2000)
+        // from each deviation band and each other swatch, at least 14 from
+        // the other roles.
+        use crate::roles::tests::measure::difference;
+        let bands = openchuck_app::pathview::DeviationBand::ALL.map(roles::band_colour);
+        let others = [
+            roles::SELECTED,
+            roles::HOVER,
+            roles::EDGE_HOVER,
+            roles::EDGE_SELECTED,
+            roles::AVOID,
+            roles::HELD_LINE,
+            roles::TAB,
+            roles::CUT,
+            roles::PART,
+        ];
+        for (i, s) in SWATCHES.iter().enumerate() {
+            let c = opaque(*s);
+            for band in bands {
+                let d = difference(c, band);
+                assert!(d >= 20.0, "swatch {} and {band:?}: {d:.1}", i + 1);
+            }
+            for other in others {
+                let d = difference(c, other);
+                assert!(d >= 14.0, "swatch {} and {other:?}: {d:.1}", i + 1);
+            }
+            for (j, t) in SWATCHES.iter().enumerate().skip(i + 1) {
+                let d = difference(c, opaque(*t));
+                assert!(d >= 20.0, "swatches {} and {}: {d:.1}", i + 1, j + 1);
+            }
+        }
     }
 
     #[test]
@@ -2440,8 +2554,14 @@ mod tests {
     }
 
     /// The triangles of the first mesh the overlay holds.
+    /// The triangles filled in the overlay (an outline-only frame fills none).
     fn overlay_triangles(scene: &Scene) -> usize {
-        scene.meshes.iter().map(|m| m.indices.len() / 3).sum()
+        scene
+            .meshes
+            .iter()
+            .filter(|m| !m.outline_only)
+            .map(|m| m.indices.len() / 3)
+            .sum()
     }
 
     #[test]
@@ -2475,6 +2595,21 @@ mod tests {
                 .zip(rgb_fill(swatch(0)))
                 .all(|(a, b)| (a - b).abs() < 1e-6)
         );
+        // A framed outline round the set's edge (decision 0216 item 4): the
+        // dark frame first, then the line in the set's colour over it.
+        let frame = &scene.meshes[0];
+        assert!(frame.outline_only);
+        let o = frame.outline.unwrap();
+        assert_eq!(
+            (o.colour, o.width),
+            (roles::SET_FRAME, roles::SET_FRAME_WIDTH)
+        );
+        let o = scene.meshes[1].outline.unwrap();
+        assert_eq!(
+            (o.colour, o.width),
+            (opaque(swatch(0)), roles::SET_OUTLINE_WIDTH)
+        );
+        assert!(!scene.meshes[1].outline_only);
         // Nothing changed since: nothing to draw again.
         assert!(panel.overlay(&app, &view).is_none());
         // A set made on a model the scene does not show draws nothing.

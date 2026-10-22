@@ -1,9 +1,9 @@
 # 0216: Selection sets and the deviation scale get separate colours; sets get an outline; the deviation steps are spread apart (lane SELSET; issues 256, 258)
 
-- **Status:** proposed. The owner chose option C through the coordinator (22 Oct 2026). Under option C the two palettes are kept separate: selection sets get hues of their own plus an outline or hatch, and the deviation scale is reworked to be safe for colour vision differences and checked on the dark view. The swatches below and the board [`0216-palette-board.png`](../ui-design/palettes/0216-palette-board.png) wait for the owner's approval before anything is built (OI-871).
+- **Status:** proposed; the colours were approved by the owner as shown (option A, 22 Oct 2026, relayed by the coordinator session), which closes OI-871: the deviation colours, the eight swatches, the 40% fill with the framed outline, and the old swatches shown as the new ones by place (display only, no schema). They are built, and the specification is edited, in the same change. The owner accepts the record itself directly in the lane SELSET session. The owner chose option C earlier (22 Oct 2026): the two palettes are kept separate, selection sets get hues of their own plus an outline or hatch, and the deviation scale is reworked to be safe for colour vision differences and checked on the dark view. Board: [`0216-palette-board.png`](../ui-design/palettes/0216-palette-board.png).
 - **What it amends:** the interface specification ([decision 0038](0038-ui-specification-and-requirements.md)), section 7.4 (saved set), section 11.5 (the deviation colours) and section 14.1 (the `overcut` text token). It also amends [decision 0046](0046-slice-10-selection-ui-to-specification.md) item 2 (the eight swatches) and the deviation colours that [decision 0119](0119-slice-22-viewport-drawing.md) built. The band thresholds and their meaning are unchanged (decision 0040 item 10; OI-194 stays open). SIM-05, UI-05, UI-11 and NFR-15 are unchanged.
 - **Date:** 22 Oct 2026.
-- **Open items:** OI-871 and OI-873 are new.
+- **Open items:** OI-871 (closed: the owner approved, 22 Oct 2026) and OI-873 are new.
 
 ## Context
 
@@ -60,7 +60,7 @@ The board shows the scale and the swatches now and as proposed. Each is shown as
 
 ## Specification entries proposed
 
-To be made when the owner approves the swatches (OI-871), and not before.
+Made in the same change, after the owner approved the colours (OI-871, 22 Oct 2026).
 
 - **7.4, Saved set:** "Its own swatch from a fixed set of eight, none blue, red, orange or grey (decision 0216) | Fill at 40% when shown, with a framed outline round its edge: 2 pixels in its colour inside 4 pixels of `#15171a`".
 - **11.5, the stock's colours:** the table becomes the six bands as built (decision 0040 item 10, until OI-194): overcut, vermilion `#df5230`; within tolerance, grey `#9aa0a8`; material left up to 0.25 mm, ice `#c6f9ff`; 0.25 to 1 mm, sky blue `#4bb7fc`; more than 1 mm or a bound, strong blue `#4e71ea`; not measured, grey hatched. Add: "Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216)."
@@ -74,6 +74,13 @@ To be made when the owner approves the swatches (OI-871), and not before.
 - **A hatch for sets in place of the outline.** Rejected: the single hatch already means avoid and check, the cross-hatch means held regions, and the grey hatch means a stale set. A hatch also hides the deviation colours under a set on Simulate, where an outline does not.
 - **Six swatches instead of eight.** Six can be spread further apart (29 at the closest, against 20). Not proposed, to keep decision 0046's count; the owner may prefer it.
 - **Rewriting stored colours in the project (a migration).** Rejected: it would change files that the display mapping leaves alone, and it would need a schema claim.
+
+## As built
+
+- `roles.rs`: the deviation constants; `SET_OUTLINE_WIDTH`, `SET_FRAME` and `SET_FRAME_WIDTH`; the test helpers in `roles::tests::measure` (CIEDE2000, the Machado simulation, WCAG contrast). `theme.rs`: the `overcut` token.
+- `selection_panel.rs`: `SWATCHES` and `OLD_SWATCHES`; `set_rgb` maps an old stored swatch to the new one at its place; a shown set's surfaces are drawn twice in the overlay, an outline-only mesh with the dark 4-pixel frame and then the fill with the 2-pixel outline in its colour (the outline pass tests depth with less-or-equal, in mesh order, so the colour line lies over the frame). `shown_look` gives the legends the set's name and colour, none while it is a ghost.
+- `viewport_overlays.rs`: `set_swatch` and a row for the shown set in the path legend (Operations) and under the colour scale (Simulate, "Selection set “Pocket”").
+- Tests: `req_sim_05_req_nfr_15_neighbouring_deviation_bands_are_clearly_apart`, `req_sim_05_req_nfr_15_material_left_darkens_in_clear_steps_with_contrast_on_the_view`, `req_ui_05_req_nfr_15_set_swatches_stay_apart_from_the_scale_and_the_roles`, `req_ui_05_an_old_stored_swatch_shows_as_the_new_one_at_its_place`, `req_ui_05_req_nfr_15_a_shown_set_joins_the_path_legend_framed`; the framed outline is checked in `req_ui_05_a_saved_set_is_highlighted_again_after_the_project_is_reopened`, and the absence of an outline on every band in the viewport's band test. The swatch test and the hex spot checks are updated.
 
 ## Consequences
 

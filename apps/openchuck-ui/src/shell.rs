@@ -1254,6 +1254,8 @@ impl Shell {
                 _ => None,
             },
         );
+        // The set drawn in its own colour joins the legends (decision 0216).
+        self.viewport.set_legend_set(self.selection.shown_look(app));
         if let Some(overlay) = self.selection.overlay(app, self.viewport.view()) {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();

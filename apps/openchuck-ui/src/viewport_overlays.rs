@@ -128,6 +128,45 @@ pub fn path_legend(view: &SceneView) -> Vec<LegendEntry> {
     out
 }
 
+/// The path legend's rows: its entries, and the shown set when there is one.
+fn legend_rows(viewport: &Viewport) -> f32 {
+    path_legend(viewport.view()).len() as f32 + f32::from(u8::from(viewport.legend_set.is_some()))
+}
+
+/// A shown selection set's legend swatch, drawn the way the set is drawn
+/// (decision 0216 items 4 and 5): its colour at 40% over the part grey,
+/// framed by its outline, dark outside and in its colour inside.
+pub fn set_swatch(painter: &egui::Painter, r: Rect, [red, green, blue]: [u8; 3]) {
+    let colour = Color32::from_rgb(red, green, blue);
+    let part = to_color32(roles::PART);
+    let mix = |a: u8, b: u8| {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let v = (f32::from(a) * 0.4 + f32::from(b) * 0.6).round() as u8;
+        v
+    };
+    painter.rect_filled(
+        r,
+        0.0,
+        Color32::from_rgb(
+            mix(red, part.r()),
+            mix(green, part.g()),
+            mix(blue, part.b()),
+        ),
+    );
+    painter.rect_stroke(
+        r,
+        0.0,
+        Stroke::new(2.0, to_color32(roles::SET_FRAME)),
+        egui::StrokeKind::Outside,
+    );
+    painter.rect_stroke(
+        r,
+        0.0,
+        Stroke::new(roles::SET_OUTLINE_WIDTH / 2.0, colour),
+        egui::StrokeKind::Inside,
+    );
+}
+
 /// Whether the path legend collapses to a button: the view is under 480
 /// pixels high (7.2).
 pub fn legend_collapsed(height: f32) -> bool {
@@ -341,21 +380,22 @@ pub(crate) fn boxes(ui: &egui::Ui, viewport: &Viewport, rect: Rect) -> Boxes {
         if legend_collapsed(rect.height()) {
             b.legend_button = Some(Rect::from_min_size(pos2(left, top), vec2(84.0, 26.0)));
             if viewport.legend_open {
-                let rows = path_legend(viewport.view()).len() as f32;
+                let rows = legend_rows(viewport);
                 b.legend = Some(Rect::from_min_size(
                     pos2(left, top + 30.0),
                     vec2(124.0, rows * ROW + 12.0),
                 ));
             }
         } else {
-            let rows = path_legend(viewport.view()).len() as f32;
+            let rows = legend_rows(viewport);
             b.legend = Some(Rect::from_min_size(
                 pos2(left, top),
                 vec2(124.0, rows * ROW + 12.0),
             ));
         }
     }
-    let held = workholding_entries(viewport.view()).len() as f32;
+    let held = workholding_entries(viewport.view()).len() as f32
+        + f32::from(u8::from(viewport.legend_set.is_some()));
     if step == ViewStep::Simulate && viewport.bands().is_some() {
         let height = 74.0 + held * ROW;
         b.scale = Some(Rect::from_min_size(
@@ -579,6 +619,18 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 roles::OVERLAY_TEXT,
             );
         }
+        if let Some((name, rgb)) = &viewport.legend_set {
+            let y = r.top() + 6.0 + ROW * path_legend(viewport.view()).len() as f32;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 3.0), vec2(18.0, 10.0));
+            set_swatch(&painter, swatch, *rgb);
+            painter.text(
+                pos2(swatch.right() + 8.0, swatch.center().y),
+                egui::Align2::LEFT_CENTER,
+                name,
+                font.clone(),
+                roles::OVERLAY_TEXT,
+            );
+        }
     }
     if let (Some(r), Some(bands)) = (b.scale, viewport.bands()) {
         frame(&painter, r);
@@ -595,6 +647,19 @@ pub fn paint(ui: &egui::Ui, viewport: &Viewport, rect: Rect) {
                 pos2(swatch.right() + 8.0, swatch.center().y),
                 egui::Align2::LEFT_CENTER,
                 name,
+                font.clone(),
+                roles::OVERLAY_TEXT,
+            );
+        }
+        if let Some((name, rgb)) = &viewport.legend_set {
+            let i = workholding_entries(viewport.view()).len() as f32;
+            let y = r.top() + 74.0 + ROW * i - 4.0;
+            let swatch = Rect::from_min_size(pos2(r.left() + 8.0, y + 2.0), vec2(14.0, 12.0));
+            set_swatch(&painter, swatch, *rgb);
+            painter.text(
+                pos2(swatch.right() + 8.0, swatch.center().y),
+                egui::Align2::LEFT_CENTER,
+                format!("Selection set “{name}”"),
                 font.clone(),
                 roles::OVERLAY_TEXT,
             );
@@ -965,6 +1030,47 @@ mod tests {
         // Below 480 pixels high it collapses to a button (7.2).
         assert!(legend_collapsed(479.0));
         assert!(!legend_collapsed(480.0));
+    }
+
+    #[test]
+    fn req_ui_05_req_nfr_15_a_shown_set_joins_the_path_legend_framed() {
+        // Decision 0216 item 5: the legend shows the set the way it is drawn.
+        let mut viewport = Viewport::new(false);
+        viewport.set_step(Some(ViewStep::Operations));
+        let ctx = egui::Context::default();
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0));
+        let mut heights = Vec::new();
+        let mut shapes = Vec::new();
+        for set in [None, Some(("Pocket".to_owned(), [0x23, 0x96, 0x88]))] {
+            viewport.set_legend_set(set);
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                heights.push(boxes(ui, &viewport, rect).legend.unwrap().height());
+                set_swatch(
+                    ui.painter(),
+                    Rect::from_min_size(pos2(10.0, 10.0), vec2(18.0, 10.0)),
+                    [0x23, 0x96, 0x88],
+                );
+            });
+            output.textures_delta.clear();
+            shapes = output.shapes;
+        }
+        assert!((heights[1] - heights[0] - ROW).abs() < 1e-3, "{heights:?}");
+        // The fill and two strokes: the dark frame and the set's colour.
+        let strokes: Vec<Color32> = shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::Shape::Rect(r) if r.stroke.width > 0.0 => Some(r.stroke.color),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            strokes.contains(&to_color32(roles::SET_FRAME)),
+            "{strokes:?}"
+        );
+        assert!(
+            strokes.contains(&Color32::from_rgb(0x23, 0x96, 0x88)),
+            "{strokes:?}"
+        );
     }
 
     #[test]

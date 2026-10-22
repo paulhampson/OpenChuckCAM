@@ -565,6 +565,9 @@ pub struct Viewport {
     pub(crate) tool_readout: Option<ToolReadout>,
     /// The path legend is open while the view is too low to show it (7.2).
     pub(crate) legend_open: bool,
+    /// The selection set drawn in its own colour, by name and colour, for a
+    /// row of the legends (decision 0216 item 5).
+    pub(crate) legend_set: Option<(String, [u8; 3])>,
     /// The "Show or hide" list is open (V).
     pub(crate) show_menu_open: bool,
     /// Where the view was drawn last frame (the import preview's overlays
@@ -651,6 +654,7 @@ impl Viewport {
             cursor_point: None,
             tool_readout: None,
             legend_open: false,
+            legend_set: None,
             show_menu_open: false,
             last_rect: Rect::NOTHING,
         }
@@ -701,6 +705,12 @@ impl Viewport {
     }
 
     /// Replaces the highlights drawn over the scene.
+    /// Names the selection set drawn in its own colour, or none, for the
+    /// legends (decision 0216 item 5).
+    pub fn set_legend_set(&mut self, set: Option<(String, [u8; 3])>) {
+        self.legend_set = set;
+    }
+
     pub fn set_overlay(&mut self, overlay: Scene) {
         self.set_layer(Layer::Overlay, overlay);
     }
@@ -1846,6 +1856,9 @@ pub(crate) mod tests {
         assert_eq!(triangles, 12);
         for (mesh, (band, set)) in coloured.meshes.iter().skip(1).zip(&bands.bands) {
             assert_eq!(mesh.colour, band_colour(*band));
+            // The scale never draws an outline, which marks a selection set
+            // (decision 0216 item 4).
+            assert!(mesh.outline.is_none() && !mesh.outline_only);
             assert_eq!(mesh.indices.len() / 3, set.len());
             assert_eq!(mesh.slot, Slot::Part);
         }

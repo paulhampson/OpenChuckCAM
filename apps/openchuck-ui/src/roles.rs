@@ -111,16 +111,29 @@ pub const PATH_WIDTH: f32 = 2.0;
 /// The work axes, drawn as arrows.
 pub const AXIS_WIDTH: f32 = 2.0;
 
-/// Deviation (11.5, D12): overcut, dark magenta `#a3157f`.
-pub const OVERCUT: Colour = hex(0xa3157f);
+/// Deviation (11.5; decision 0216 item 1): overcut, vermilion `#df5230`,
+/// on the warm side of the scale, opposite the blues of material left for
+/// every colour vision type.
+pub const OVERCUT: Colour = hex(0xdf5230);
 /// Deviation: within tolerance, grey `#9aa0a8`.
 pub const WITHIN: Colour = hex(0x9aa0a8);
-/// Deviation: material left, small, light blue `#b9d6ff`.
-pub const LEFT_SMALL: Colour = hex(0xb9d6ff);
-/// Deviation: material left, between the two blues.
-pub const LEFT_MEDIUM: Colour = hex(0x7ca7e8);
-/// Deviation: material left, more, blue `#3f78d1`.
-pub const LEFT_MORE: Colour = hex(0x3f78d1);
+/// Deviation: material left, up to 0.25 mm, ice `#c6f9ff`.
+pub const LEFT_SMALL: Colour = hex(0xc6f9ff);
+/// Deviation: material left, 0.25 to 1 mm, sky blue `#4bb7fc`.
+pub const LEFT_MEDIUM: Colour = hex(0x4bb7fc);
+/// Deviation: material left, more than 1 mm or a bound, strong blue
+/// `#4e71ea`, the darkest that keeps 3:1 against the view (section 16).
+pub const LEFT_MORE: Colour = hex(0x4e71ea);
+
+/// A shown selection set's outline (decision 0216 item 4): 2 pixels in the
+/// set's colour inside 4 pixels of [`SET_FRAME`], round the edge of the set.
+/// The deviation scale never draws outlines, so a set reads apart from it
+/// without colour.
+pub const SET_OUTLINE_WIDTH: f32 = 2.0;
+/// The dark frame of a shown set's outline, `#15171a`.
+pub const SET_FRAME: Colour = hex(0x15171a);
+/// The width of [`SET_FRAME`].
+pub const SET_FRAME_WIDTH: f32 = 4.0;
 
 /// The colour a deviation band is drawn in: decision 0040's six bands in
 /// the colours of section 11.5 (D12, until OI-194 is decided). Not measured
@@ -173,7 +186,7 @@ pub fn to_color32(c: Colour) -> Color32 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![allow(clippy::float_cmp)]
 
     use super::*;
@@ -184,7 +197,10 @@ mod tests {
         assert_eq!(to_color32(ROTARY_AXIS), Color32::from_rgb(0x35, 0xd0, 0xe0));
         assert_eq!(to_color32(PART), Color32::from_rgb(0xb7, 0xbf, 0xca));
         assert_eq!(to_color32(CUT), Color32::from_rgb(0xff, 0xb4, 0x54));
-        assert_eq!(to_color32(OVERCUT), Color32::from_rgb(0xa3, 0x15, 0x7f));
+        assert_eq!(to_color32(OVERCUT), Color32::from_rgb(0xdf, 0x52, 0x30));
+        assert_eq!(to_color32(LEFT_SMALL), Color32::from_rgb(0xc6, 0xf9, 0xff));
+        assert_eq!(to_color32(LEFT_MEDIUM), Color32::from_rgb(0x4b, 0xb7, 0xfc));
+        assert_eq!(to_color32(LEFT_MORE), Color32::from_rgb(0x4e, 0x71, 0xea));
         assert_eq!(HELD[3], 0.35);
         // D1: the rotary axis is cyan, not the amber of cut moves.
         assert_ne!(ROTARY_AXIS, CUT);
@@ -244,6 +260,214 @@ mod tests {
         // Every band but "not measured" is a plain fill.
         for band in DeviationBand::ALL {
             assert_eq!(band_hatched(band), band == DeviationBand::Unmeasured);
+        }
+    }
+
+    /// The colours as the test of decision 0216 measures them: CIEDE2000
+    /// differences, and the simulation of dichromacy by Machado, Oliveira and
+    /// Fernandes (2009, full severity). Test helpers only.
+    pub(crate) mod measure {
+        use openchuck_viewport::Colour;
+
+        fn linear(c: f64) -> f64 {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+
+        fn gamma(c: f64) -> f64 {
+            let c = c.clamp(0.0, 1.0);
+            if c <= 0.003_130_8 {
+                12.92 * c
+            } else {
+                1.055 * c.powf(1.0 / 2.4) - 0.055
+            }
+        }
+
+        /// The colour's linear RGB.
+        fn rgb(c: Colour) -> [f64; 3] {
+            [0, 1, 2].map(|i| linear(f64::from(c[i])))
+        }
+
+        /// CIELAB, D65.
+        fn lab(c: [f64; 3]) -> [f64; 3] {
+            let m = [
+                [0.4124, 0.3576, 0.1805],
+                [0.2126, 0.7152, 0.0722],
+                [0.0193, 0.1192, 0.9505],
+            ];
+            let white = [0.95047, 1.0, 1.08883];
+            let f = |t: f64| {
+                if t > 0.008_856 {
+                    t.cbrt()
+                } else {
+                    7.787 * t + 16.0 / 116.0
+                }
+            };
+            let xyz: [f64; 3] =
+                [0, 1, 2].map(|i| (m[i][0] * c[0] + m[i][1] * c[1] + m[i][2] * c[2]) / white[i]);
+            let [fx, fy, fz] = xyz.map(f);
+            [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+        }
+
+        /// The CIE L* of `c`.
+        pub fn lightness(c: Colour) -> f64 {
+            lab(rgb(c))[0]
+        }
+
+        /// The kinds of dichromacy simulated.
+        pub const KINDS: [&str; 3] = ["protanopia", "deuteranopia", "tritanopia"];
+
+        /// `c` as seen with `kind`, in linear RGB.
+        fn seen(c: Colour, kind: &str) -> [f64; 3] {
+            let m = match kind {
+                "protanopia" => [
+                    [0.152_286, 1.052_583, -0.204_868],
+                    [0.114_503, 0.786_281, 0.099_216],
+                    [-0.003_882, -0.048_116, 1.051_998],
+                ],
+                "deuteranopia" => [
+                    [0.367_322, 0.860_646, -0.227_968],
+                    [0.280_085, 0.672_501, 0.047_413],
+                    [-0.011_820, 0.042_940, 0.968_881],
+                ],
+                _ => [
+                    [1.255_528, -0.076_749, -0.178_779],
+                    [-0.078_411, 0.930_809, 0.147_602],
+                    [0.004_733, 0.691_367, 0.303_900],
+                ],
+            };
+            let l = rgb(c);
+            // Back through the display's gamma, as the simulation is shown.
+            [0, 1, 2].map(|i| {
+                linear(gamma(
+                    (m[i][0] * l[0] + m[i][1] * l[1] + m[i][2] * l[2]).clamp(0.0, 1.0),
+                ))
+            })
+        }
+
+        /// CIEDE2000 between two colours in linear RGB.
+        fn de2000(a: [f64; 3], b: [f64; 3]) -> f64 {
+            let ([l1, a1, b1], [l2, a2, b2]) = (lab(a), lab(b));
+            let c1 = a1.hypot(b1);
+            let c2 = a2.hypot(b2);
+            let cb = (c1 + c2) / 2.0;
+            let g = 0.5 * (1.0 - (cb.powi(7) / (cb.powi(7) + 25f64.powi(7))).sqrt());
+            let (a1p, a2p) = ((1.0 + g) * a1, (1.0 + g) * a2);
+            let (c1p, c2p) = (a1p.hypot(b1), a2p.hypot(b2));
+            let hue = |b: f64, a: f64| b.atan2(a).to_degrees().rem_euclid(360.0);
+            let (h1, h2) = (hue(b1, a1p), hue(b2, a2p));
+            let dl = l2 - l1;
+            let dc = c2p - c1p;
+            let mut dh = h2 - h1;
+            if c1p * c2p == 0.0 {
+                dh = 0.0;
+            } else if dh > 180.0 {
+                dh -= 360.0;
+            } else if dh < -180.0 {
+                dh += 360.0;
+            }
+            let dhh = 2.0 * (c1p * c2p).sqrt() * (dh / 2.0).to_radians().sin();
+            let lb = (l1 + l2) / 2.0;
+            let cbp = (c1p + c2p) / 2.0;
+            let hb = if c1p * c2p == 0.0 {
+                h1 + h2
+            } else if (h1 - h2).abs() <= 180.0 {
+                (h1 + h2) / 2.0
+            } else if h1 + h2 < 360.0 {
+                (h1 + h2 + 360.0) / 2.0
+            } else {
+                (h1 + h2 - 360.0) / 2.0
+            };
+            let cos = |d: f64| d.to_radians().cos();
+            let t = 1.0 - 0.17 * cos(hb - 30.0) + 0.24 * cos(2.0 * hb) + 0.32 * cos(3.0 * hb + 6.0)
+                - 0.20 * cos(4.0 * hb - 63.0);
+            let dth = 30.0 * (-((hb - 275.0) / 25.0).powi(2)).exp();
+            let rc = 2.0 * (cbp.powi(7) / (cbp.powi(7) + 25f64.powi(7))).sqrt();
+            let sl = 1.0 + 0.015 * (lb - 50.0).powi(2) / (20.0 + (lb - 50.0).powi(2)).sqrt();
+            let sc = 1.0 + 0.045 * cbp;
+            let sh = 1.0 + 0.015 * cbp * t;
+            let rt = -(2.0 * dth).to_radians().sin() * rc;
+            ((dl / sl).powi(2)
+                + (dc / sc).powi(2)
+                + (dhh / sh).powi(2)
+                + rt * (dc / sc) * (dhh / sh))
+                .sqrt()
+        }
+
+        /// CIEDE2000 between `a` and `b` in normal vision.
+        pub fn difference(a: Colour, b: Colour) -> f64 {
+            de2000(rgb(a), rgb(b))
+        }
+
+        /// The smallest CIEDE2000 between `a` and `b` over the simulated
+        /// kinds of dichromacy.
+        pub fn worst_difference(a: Colour, b: Colour) -> f64 {
+            KINDS
+                .iter()
+                .map(|k| de2000(seen(a, k), seen(b, k)))
+                .fold(f64::INFINITY, f64::min)
+        }
+
+        /// The WCAG contrast ratio of `a` and `b`.
+        pub fn contrast(a: Colour, b: Colour) -> f64 {
+            let y = |c: Colour| {
+                let [r, g, b] = rgb(c);
+                0.2126 * r + 0.7152 * g + 0.0722 * b
+            };
+            let (ya, yb) = (y(a), y(b));
+            (ya.max(yb) + 0.05) / (ya.min(yb) + 0.05)
+        }
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_15_neighbouring_deviation_bands_are_clearly_apart() {
+        // Decision 0216 item 7 (issues 256 and 258): each neighbouring pair
+        // at least 20 apart in normal vision and 16 for each simulated colour
+        // vision type; overcut at least 25 from every other band.
+        use measure::{difference, worst_difference};
+        let scale = [
+            DeviationBand::Overcut,
+            DeviationBand::OnTarget,
+            DeviationBand::Thin,
+            DeviationBand::Medium,
+            DeviationBand::Thick,
+        ]
+        .map(band_colour);
+        for pair in scale.windows(2) {
+            let (n, w) = (
+                difference(pair[0], pair[1]),
+                worst_difference(pair[0], pair[1]),
+            );
+            assert!(n >= 20.0 && w >= 16.0, "{pair:?}: {n:.1} / {w:.1}");
+        }
+        for other in &scale[1..] {
+            let w = worst_difference(scale[0], *other);
+            assert!(w >= 25.0, "overcut and {other:?}: {w:.1}");
+        }
+    }
+
+    #[test]
+    fn req_sim_05_req_nfr_15_material_left_darkens_in_clear_steps_with_contrast_on_the_view() {
+        // Decision 0216 item 7: at least 15 in L* per step, and every band
+        // at least 3:1 against the view's background (section 16).
+        use measure::{contrast, lightness};
+        let left = [
+            DeviationBand::Thin,
+            DeviationBand::Medium,
+            DeviationBand::Thick,
+        ]
+        .map(|b| lightness(band_colour(b)));
+        assert!(
+            left[0] - left[1] >= 15.0 && left[1] - left[2] >= 15.0,
+            "{left:?}"
+        );
+        let view = token(VIEW_TOP);
+        for band in DeviationBand::ALL {
+            let c = contrast(band_colour(band), view);
+            assert!(c >= 3.0, "{band:?}: {c:.2}:1");
         }
     }
 }

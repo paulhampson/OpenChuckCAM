@@ -240,7 +240,7 @@ The same role has the same colour everywhere. Hex values are the dark theme; the
 | Hovered triangle or face | Yellow `#ffe066` | Outline (OI-163, settled) |
 | Hovered edge | Magenta `#ff4fd8`, a colour of its own so it reads apart from a hovered triangle or face (decision 0153) | Line 2 pixels wide |
 | Selected edge | In the working selection orange `#ff6a00` (a pair with the blue of selected triangles and faces), or the shown set's swatch | Line 3 pixels wide, against the 1-pixel feature edges, so state is not by colour alone (section 16; decision 0112, OI-335) |
-| Saved set | Its own swatch from a fixed set of eight | Fill when shown |
+| Saved set | Its own swatch from a fixed set of eight, none blue, red, orange or grey (decision 0216) | Fill at 40% when shown, with a framed outline round its edge: 2 pixels in its colour inside 4 pixels of `#15171a`; the legends show it the same way |
 | Avoid and check surfaces | Red `#ff7b72` | Hatched |
 | Mesh findings | Red outline; holes ringed amber | (decision 0029 item 13) |
 | Clearance cylinder and safe Z | Green `#4cc38a` | Dashed |
@@ -477,14 +477,18 @@ Board 4 (SIM-01 to SIM-07).
 
 **Viewport:**
 
-- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12):
+- **The stock,** coloured by deviation from the model (SIM-05). The scale is diverging and ordered by lightness, so it can be read without hue. Decision 0040 (accepted) built six bands by triangle with their own thresholds; which thresholds stand is OI-194 (D12). The colours are those of [decision 0216](../decisions/0216-selection-set-colours-and-deviation-scale.md):
 
-  | Range | Colour | Meaning |
+  | Band | Colour | Meaning |
   | --- | --- | --- |
-  | Below −tolerance | Dark magenta `#a3157f` | Overcut |
-  | Within ±tolerance | Grey `#9aa0a8` | Within tolerance |
-  | Above +tolerance to +0.10 mm | Light blue `#b9d6ff` | Material left, small |
-  | Up to the scale end (+0.50 mm) | Blue to `#3f78d1` | Material left, more |
+  | Deeper than one cell | Vermilion `#df5230` | Overcut |
+  | Within one cell | Grey `#9aa0a8` | Within tolerance |
+  | Up to 0.25 mm left | Ice `#c6f9ff` | Material left, small |
+  | 0.25 to 1 mm left | Sky blue `#4bb7fc` | Material left, more |
+  | More than 1 mm left, or a bound | Strong blue `#4e71ea` | Material left, most |
+  | Not measured | Grey `#9aa0a8`, hatched | Not measured |
+
+  Neighbouring bands differ by at least 20 (CIEDE2000), and by at least 16 for the common colour vision differences; each has 3:1 contrast with the view's background (decision 0216).
 
   The tolerance band is the operation's tolerance. The scale is in a bottom-left box with labelled ends.
 - **Held regions and tabs** are coloured by deviation like the rest of the stock, with their outlines over it (7.5).
@@ -770,7 +774,7 @@ NFR-16, NFR-10, NFR-12, UI-14; decisions 0151 and 0152 (accepted). Opened from H
 | `ok` | `#4cc38a` | `#1b7f53` | Up to date, confirmed |
 | `warning` | `#f2b84b` | `#8a5d00` | Stale, warnings, unconfirmed |
 | `error` | `#ff7b72` | `#c22b2b` | Errors, refused values |
-| `overcut` (text) | `#e27ad2` | `#9c1f86` | Overcut values in panels |
+| `overcut` (text) | `#ff8a66` | `#a8321a` | Overcut values in panels (decision 0216) |
 | Warning box | bg `#2a2316`, border `#6b5420`, text `#f2d28a` | `#fff4d6`, `#e0b44c`, `#5c4300` | Unit question, safety notice |
 | Error box | bg `#2e1a1a`, border `#7a3330`, text `#ffb4ae` | `#fde8e7`, `#e59a95`, `#7a1d18` | Error banners |
 
