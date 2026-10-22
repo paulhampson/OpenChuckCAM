@@ -542,7 +542,7 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
         (
             "Part offset".to_string(),
             format!(
-                "{} mm along the rotary axis from the machine's reference point",
+                "part moved {} mm along the rotary axis from where its placement puts it",
                 mm(setup.frame.part_offset.0)
             ),
         ),

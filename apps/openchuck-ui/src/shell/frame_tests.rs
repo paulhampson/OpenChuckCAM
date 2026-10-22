@@ -861,6 +861,7 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
         .unwrap()
         .draft_mut()
         .tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(-7.0),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1542,6 +1543,48 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
         near(rig.inspector_layout().0, min),
         "dragged to the narrowest"
     );
+}
+
+/// Each model has its Placement and Mesh check rows in the tree (section 6;
+/// issue #181, decision record 0201): a click on one selects the model and
+/// opens that section of its inspector, and the Placement section says it
+/// is shared by every setup.
+#[test]
+fn req_ui_06_the_model_has_placement_and_mesh_check_rows() {
+    let mut rig = Rig::cube("model-rows", None);
+    let defaults = ["check", "file", "placement", "units"];
+    rig.shell
+        .settings
+        .set_section_open("model", "check", false, &defaults);
+    rig.settle();
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    let row = |rig: &Rig, text: &str| {
+        rig.text_rects()
+            .into_iter()
+            .find(|(t, r)| t == text && r.left() < 300.0)
+            .unwrap_or_else(|| panic!("no tree row '{text}'"))
+            .1
+    };
+    let placement = row(&rig, "Placement");
+    let check = row(&rig, "Mesh check");
+    assert!(check.top() > placement.top());
+    assert!(rig.shows("1 step"), "the placement chip");
+    rig.click(placement.center());
+    rig.settle();
+    assert_eq!(rig.shell.selected, Some(Selection::Model(model)));
+    assert_eq!(rig.shell.model_section, Some(crate::model_panel::PLACEMENT));
+    assert!(rig.shows("shared by every setup"), "the Placement line");
+    rig.click(row(&rig, "Mesh check").center());
+    rig.settle();
+    assert_eq!(
+        rig.shell.model_section,
+        Some(crate::model_panel::MESH_CHECK)
+    );
+    // A section opened to show it is not kept open in the settings.
+    assert!(!rig.shell.settings.section_open("model", "check", true));
+    // Choosing the model another way chooses no section of it.
+    rig.shell.show_item(ItemRef::Model(model));
+    assert_eq!(rig.shell.model_section, None);
 }
 
 /// The operation inspector names the strategy under its own heading with the

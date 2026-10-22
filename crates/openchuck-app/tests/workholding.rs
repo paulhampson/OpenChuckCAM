@@ -20,7 +20,7 @@ use openchuck_app::project::{
     Item, Operation, OrderKey, ParameterValue, Placement, Setup, ToolSnapshot,
 };
 use openchuck_app::setup::{
-    HeldRegion, Millimetres, Stock, Tab, TabLayout, TabShape, Workholding, builtin,
+    HeldRegion, Millimetres, Stock, Tab, TabEnd, TabLayout, TabShape, Workholding, builtin,
 };
 use openchuck_app::simulation::SimulationSettings;
 use openchuck_app::{Application, Command, PostSelection, Threads};
@@ -74,6 +74,7 @@ fn tab(x_start: f64, length: f64, small: f64, large: f64, small_at_start: bool) 
         (large, small)
     };
     Tab {
+        auto: None,
         x_start: Millimetres(x_start),
         length: Millimetres(length),
         shape: TabShape::Frustum {
@@ -720,6 +721,7 @@ fn req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock() {
         }),
         end: None,
         tabs: vec![Tab {
+            auto: None,
             x_start: Millimetres(-8.0),
             length: Millimetres(8.0),
             shape: TabShape::Cylinder {
@@ -769,4 +771,61 @@ fn req_op_21_tabs_around_the_axis_stay_in_the_simulated_stock() {
         "no sample on the outer side of a tab"
     );
     std::fs::remove_dir_all(&b.dir).unwrap();
+}
+
+/// Tabs placed automatically follow the part when the setup's offset moves
+/// it (issues #175 and #186; decision records 0201 and 0202): the run uses
+/// them where the part now puts them, exactly as tabs placed there by hand,
+/// while the same tabs placed by hand at the old position are refused.
+#[test]
+fn req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target() {
+    let automatic = |t: Tab, end| Tab {
+        auto: Some(end),
+        ..t
+    };
+    let mut auto = workholding();
+    auto.tabs[0] = automatic(auto.tabs[0], TabEnd::Head);
+    auto.tabs[1] = automatic(auto.tabs[1], TabEnd::Tail);
+    let moved = |b: &mut Built, offset: f64| {
+        let mut setup = b.app.project().setup(b.setup).unwrap().clone();
+        setup.frame.part_offset = Millimetres(offset);
+        b.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    };
+
+    // With the part 2 mm further along, the automatic tabs span X -8 to 2
+    // and 32 to 40; the stored values are still the old ones.
+    let mut a = build_with_mesh("auto-follow", auto, 1, BALL, (31, 36), false);
+    moved(&mut a, 2.0);
+    assert!(a.app.check_setups().unwrap()[0].warnings.is_empty());
+    let followed = a.app.regenerate().unwrap();
+
+    let mut by_hand = workholding();
+    by_hand.tabs[0].length = Millimetres(10.0);
+    by_hand.tabs[1].x_start = Millimetres(32.0);
+    by_hand.tabs[1].length = Millimetres(8.0);
+    let mut h = build_with_mesh("auto-hand", by_hand, 1, BALL, (31, 36), false);
+    moved(&mut h, 2.0);
+    let placed = h.app.regenerate().unwrap();
+    // The same moves; only the IDs in the tags differ between the projects.
+    let moves = |t: &Toolpath| {
+        t.groups
+            .iter()
+            .map(|g| (g.start, g.segments.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert!(!followed.toolpath.groups.is_empty());
+    assert_eq!(moves(&followed.toolpath), moves(&placed.toolpath));
+
+    // The same tabs placed by hand at the old position are now across the
+    // part and refused.
+    let mut stale = build_with_mesh("auto-stale", workholding(), 1, BALL, (31, 36), false);
+    moved(&mut stale, 2.0);
+    let refused = stale.app.regenerate().unwrap_err().to_string();
+    assert!(
+        refused.contains("not wholly in the head or the tail zone"),
+        "{refused}"
+    );
+    for b in [a, h, stale] {
+        std::fs::remove_dir_all(&b.dir).unwrap();
+    }
 }

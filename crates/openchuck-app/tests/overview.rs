@@ -916,6 +916,7 @@ fn req_ui_11_req_ui_12_workholding_findings_and_reach_are_messages() {
         diameter: None,
     });
     setup.workholding.tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(4.0),
         length: Millimetres(2.0),
         shape: TabShape::Cylinder {
@@ -1076,6 +1077,7 @@ fn req_ui_11_setup_rows_say_what_each_part_holds() {
         assert_eq!(row(&f, SetupPart::Stock).label, label);
     }
     let tab = |x: f64| Tab {
+        auto: None,
         x_start: Millimetres(x),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1231,9 +1233,17 @@ fn req_nfr_15_setup_messages_name_machine_values_in_plain_words() {
     f.app
         .execute(Command::SetMachine(Some(Box::new(z1))))
         .unwrap();
-    // Part offset far along the axis: the stock runs past the X travel.
+    // The stock far along the axis: it runs past the X travel. (The part
+    // offset moves only the part, decision record 0201.)
     let mut setup = f.app.project().setup(f.setup).unwrap().clone();
-    setup.frame.part_offset = Millimetres(195.0);
+    match setup.stock.as_mut().unwrap() {
+        Stock::Cylinder { x_start, .. } => x_start.0 += 195.0,
+        Stock::Box { bounds } => {
+            bounds.min.x += 195.0;
+            bounds.max.x += 195.0;
+        }
+        other => panic!("{other:?}"),
+    }
     f.app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
     let o = f.app.overview(Some(&checks), &JobLog::default());
@@ -1700,6 +1710,31 @@ fn req_ui_10_req_nfr_12_a_project_that_skips_the_stock_simulation_asks_only_for_
     let o = f.overview();
     assert!(o.step(Step::Simulate).complete);
     assert_eq!(o.step(Step::Simulate).health, StepHealth::Good);
+}
+
+/// The overview gives each model's extent as its placement puts it, from the
+/// checks, for the Setup inspector's read-only position: the setup's part is
+/// that extent moved by the setup's offset (SET-05; decision record 0201).
+#[test]
+fn req_set_05_the_overview_gives_the_model_extent_for_the_position_row() {
+    let mut f = fixture("model-extent", "cube_ascii.stl");
+    let o = f.app.overview(None, &JobLog::default());
+    assert_eq!(o.model_extent(f.model), None, "not read yet");
+    let checks = Arc::new(f.app.start_checks(None).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let extent = o.model_extent(f.model).expect("read by the checks");
+    let inspected = f.app.inspect_model(f.model).unwrap().extent.unwrap();
+    assert_eq!(extent, inspected);
+    // The offset changes the setup, not the model's own extent.
+    let mut setup = f.app.project().setup(f.setup).unwrap().clone();
+    setup.frame.part_offset = Millimetres(4.0);
+    f.app
+        .execute(Command::Replace(Item::Setup(setup.clone())))
+        .unwrap();
+    let checks = Arc::new(f.app.start_checks(Some(checks)).wait().unwrap());
+    let o = f.app.overview(Some(&checks), &JobLog::default());
+    let placed = o.model_extent(f.model).unwrap().in_setup(&setup.frame);
+    assert!((placed.bounds.min.x - inspected.bounds.min.x - 4.0).abs() < 1e-12);
 }
 
 #[test]

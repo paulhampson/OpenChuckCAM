@@ -316,11 +316,14 @@ impl Shell {
                         if let Some(panes) = &panes {
                             let (focused, selected) = self.viewport.marked_solids();
                             let marks = crate::setup_panes::Marks { focused, selected };
+                            // Each setup keeps its panes' zoom and pan for
+                            // the session (decision record 0203).
                             let seen = crate::setup_panes::show(
                                 ui,
                                 panes,
                                 marks,
                                 self.viewport.shows_unapplied(),
+                                egui::Id::new(("setup panes view", self.setup)),
                             );
                             if let Some(item) = seen.clicked {
                                 self.viewport.click_solid(item);

@@ -387,6 +387,23 @@ impl Shell {
                             ) {
                                 edited = Some(e);
                             }
+                            // The part as this setup places it, once the
+                            // checks have read it (decision record 0201).
+                            let extent = setup
+                                .part
+                                .and_then(|m| self.overview.model_extent(m))
+                                .map(|e| e.in_setup(&setup.frame));
+                            field_row::read_only_row(
+                                ui,
+                                "Position",
+                                setup_form::POSITION_EXPLAINED,
+                                setup_form::position_on_axis(extent.as_ref()),
+                            );
+                            field_row::note_line(
+                                ui,
+                                &setup_form::position_breakdown(&setup, extent.as_ref()),
+                                DARK.muted,
+                            );
                             field_row::read_only_row(
                                 ui,
                                 "Rotate about X",

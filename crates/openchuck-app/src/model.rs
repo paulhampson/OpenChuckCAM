@@ -16,9 +16,11 @@ use openchuck_geom::transform::{
 use openchuck_import::{ImportOptions, ImportedModel, import_bytes};
 use openchuck_project::{ContentHash, ModelRef};
 use openchuck_types::brep::BrepModel;
+use openchuck_types::geometry::Vec3;
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::model::ModelGeometry;
+use openchuck_types::setup::SetupFrame;
 
 use crate::AppError;
 
@@ -270,6 +272,30 @@ pub(crate) struct PlacedPart {
 }
 
 impl PlacedPart {
+    /// The part as the setup of `frame` places it: moved along the rotary
+    /// axis by the setup's part offset, after the placement steps shared by
+    /// every setup (SET-05; decision record 0201). Triangle, face and edge
+    /// indices keep their meaning. A zero offset returns the part untouched,
+    /// so its toolpaths and G-code stay byte for byte as before (GC-07).
+    pub(crate) fn in_setup(self, frame: &SetupFrame) -> Result<Self, AppError> {
+        if !frame.moves_part() {
+            return Ok(self);
+        }
+        let map = openchuck_geom::transform::Affine3::translation(Vec3::new(
+            frame.part_offset.0,
+            0.0,
+            0.0,
+        ));
+        Ok(Self {
+            mesh: mesh_in_setup(&self.mesh, frame),
+            brep: self
+                .brep
+                .map(|brep| transform_brep(&brep, &map))
+                .transpose()?,
+            hash: self.hash,
+        })
+    }
+
     fn place_brep(
         brep: &BrepModel,
         transform: &[TransformStep],
@@ -321,6 +347,39 @@ pub(crate) fn placed_part(
     )?;
     let (mesh, _, brep) = place(&imported, &model.transform)?;
     Ok(PlacedPart { mesh, brep, hash })
+}
+
+/// The triangles of `mesh` as the setup of `frame` places them: each vertex
+/// moved along X by the part offset ([`SetupFrame::place_part`]).
+pub(crate) fn mesh_in_setup(mesh: &TriangleMesh, frame: &SetupFrame) -> TriangleMesh {
+    TriangleMesh {
+        vertices: mesh.vertices.iter().map(|&p| frame.place_part(p)).collect(),
+        triangles: mesh.triangles.clone(),
+    }
+}
+
+/// The part of `setup`: its model imported, placed by the model's placement
+/// steps (shared by every setup) and moved by the setup's part offset (SET-05;
+/// decision record 0201). Everything that machines, draws, simulates or
+/// checks a setup's part reads it here, so the offset reaches the setup
+/// diagram, the view, the toolpaths, the simulation and the G-code alike.
+pub(crate) fn setup_part(
+    project_root: &Path,
+    model: &ModelRef,
+    setup: &openchuck_project::Setup,
+    context: &JobContext<'_>,
+) -> Result<PlacedPart, AppError> {
+    placed_part(project_root, model, context)?.in_setup(&setup.frame)
+}
+
+/// The triangles of [`setup_part`].
+pub(crate) fn setup_mesh(
+    project_root: &Path,
+    model: &ModelRef,
+    setup: &openchuck_project::Setup,
+    context: &JobContext<'_>,
+) -> Result<TriangleMesh, AppError> {
+    setup_part(project_root, model, setup, context).map(|part| part.mesh)
 }
 
 /// The placed triangles of a project's model: a mesh, or a STEP model's

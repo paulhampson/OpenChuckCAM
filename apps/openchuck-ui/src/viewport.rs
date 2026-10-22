@@ -1596,6 +1596,7 @@ pub(crate) mod tests {
             }),
             end: None,
             tabs: vec![Tab {
+                auto: None,
                 x_start: Millimetres(-10.0),
                 length: Millimetres(2.0),
                 shape: TabShape::Cylinder {
