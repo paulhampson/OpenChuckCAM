@@ -287,6 +287,15 @@ pub enum SetupWarningKind {
         /// The end of the part it is placed at.
         end: crate::workholding::TabEnd,
     },
+    /// A held region reaches into the part, so the length of the part inside
+    /// it is never machined (SET-09, OI-554). Generation is still allowed;
+    /// the user verifies the G-code (NFR-12).
+    HeldRegionCoversPart {
+        /// True for the held region at the high-X end of the stock.
+        at_end: bool,
+        /// The X extent of the part inside the held region.
+        x: (f64, f64),
+    },
     /// A tab placed automatically lies over a tab placed by hand. The
     /// G-code is not wrong (the target is the union of the tabs); the user
     /// may want to remove one (OP-21, decision record 0202, OI-841).
@@ -296,15 +305,6 @@ pub enum SetupWarningKind {
         /// Position of the hand-placed tab in the setup's list, from 1.
         hand_tab: usize,
         /// The X extent they share.
-        x: (f64, f64),
-    },
-    /// A held region reaches into the part, so the length of the part inside
-    /// it is never machined (SET-09, OI-554). Generation is still allowed;
-    /// the user verifies the G-code (NFR-12).
-    HeldRegionCoversPart {
-        /// True for the held region at the high-X end of the stock.
-        at_end: bool,
-        /// The X extent of the part inside the held region.
         x: (f64, f64),
     },
 }
