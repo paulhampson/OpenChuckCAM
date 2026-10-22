@@ -303,8 +303,10 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                     colour,
                     roles::FEATURE_EDGES,
                 );
-                // The triangles in no band shown keep the part's own colour
-                // (SIM-05, SIM-15).
+                // The triangles in no band shown, those of the bands hidden,
+                // are drawn in a slate of their own, never the part's grey,
+                // which could read as "within tolerance" (SIM-15; decision
+                // 0216 item 8, OI-882).
                 let banded: TriangleSet = bands
                     .bands
                     .iter()
@@ -317,7 +319,7 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                     scene.add_mesh(
                         &triangles_mesh(&mesh.mesh, &plain),
                         &[],
-                        colour,
+                        roles::HIDDEN_BAND,
                         roles::FEATURE_EDGES,
                     );
                 }
@@ -1900,7 +1902,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn req_sim_15_a_hidden_band_keeps_the_parts_colour_and_the_counts_stay() {
+    fn req_sim_15_a_hidden_band_is_drawn_in_its_own_slate_and_the_counts_stay() {
         use crate::playback_panel::shown_bands;
         use crate::results_panel::{BandFilter, ColourBy, bin_slot};
         use openchuck_app::pathview::deviation_bands;
@@ -1927,26 +1929,34 @@ pub(crate) mod tests {
                     ..SceneOptions::default()
                 },
             );
-            // Triangles drawn in the part's colour, and in any band's.
+            // Triangles drawn in the hidden band's slate (decision 0216 item
+            // 8), and in any colour; none in the part's own grey.
             let plain: usize = scene
+                .meshes
+                .iter()
+                .filter(|m| m.colour == roles::HIDDEN_BAND)
+                .map(|m| m.indices.len() / 3)
+                .sum();
+            let grey: usize = scene
                 .meshes
                 .iter()
                 .filter(|m| m.colour == part_colour)
                 .map(|m| m.indices.len() / 3)
                 .sum();
+            assert_eq!(grey, 0);
             let all: usize = scene.meshes.iter().map(|m| m.indices.len() / 3).sum();
             (plain, all)
         };
         assert_eq!(coloured(&bands), (0, 12));
         // Hide the bin of the overcut from 0.5 to 1 mm: exactly its two
-        // triangles keep the part's colour; the part stays whole.
+        // triangles are drawn in the slate; the part stays whole.
         let mut filter = BandFilter::default();
         filter.hidden[bin_slot(-0.7, tolerance)] = true;
         let shown = shown_bands(&bands, ColourBy::Deviation, &filter);
         assert_eq!(coloured(&shown), (2, 12));
         // A range alone, from -0.5 to 0 mm: the 0.3 mm overcut and the
-        // surface (six triangles) are shown; the other six keep the part's
-        // colour.
+        // surface (six triangles) are shown; the other six are drawn in the
+        // slate.
         let range = BandFilter {
             from: Some(-0.5),
             to: Some(0.0),
