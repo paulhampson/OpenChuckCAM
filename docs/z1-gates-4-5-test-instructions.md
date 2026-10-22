@@ -224,26 +224,32 @@ The owner's specification (22 Oct 2026, OI-914):
 | Tools | Only the Z1 library's 3.175 mm single-flute or ball-nose tools (5.3) |
 | Material | "Plastic" (OI-915, 5.3) |
 
-**G0. Confirm before the project is built.** The specification does not give everything a project needs. Before the project is made, write down and agree with the owner:
+**G0. The geometry, as the owner answered it (22 Oct 2026, relayed by the coordinator) and as this lane read it.** The project is committed in `testdata/projects/first_cut/`, built by `apps/openchuck-cli/tests/e2e.rs` (`build_first_cut`), and written out with its part by `cargo run -p openchuck-cli --example sample_projects -- <folder> first_cut`. Its programs are `testdata/golden/first_cut/`, checked by gates 1 and 2 in the end-to-end suite and replayed by gate 3 (`cargo xtask replay`).
 
-- the part's shape (a model file, or what to model: for example a cylinder or a profile of a given diameter) and its largest diameter;
-- the order along X from the chuck: gripped length, free stock, the 5 mm tab, the part, the 2 mm tailstock tab, and the stock's end, with X positions;
-- the 5 mm tab's diameter, and whether each tab is a cylinder or a frustum (OP-21);
-- the grip length at the chuck, and whether a holding diameter is given (without one the held region is the box's own section, decision 0160);
-- how the tailstock is represented: the software has a held region at the start and at the end of the stock (SET-09) but no tailstock as such, so the tailstock's point and the 2 mm tab's clearance are checked by eye (5.5 M2);
-- the setup's work zero X (the model origin) and the clearance (SET-06).
+| From X 0 (the head end, the chuck) | What | Source |
+| --- | --- | --- |
+| X 0 | Work zero X0: the head end of the stock, on the axis | Owner |
+| X 0 to 10 | Gripped by the chuck jaws (at most 10 mm) | Owner |
+| X 10 to 68 | Free stock, **left uncut** | Owner ("do not use the whole length"); X positions the coordinator's proposed layout |
+| X 0 to 68 | **One held region at the start, 68 mm, box section** (no holding diameter, decision 0160): the 10 mm in the jaws plus the 58 mm left uncut. Nothing else in the software keeps a tool off a length of stock (OP-22 is not built, OI-923) | This lane's reading |
+| X 68 to 73 | Tab, cylinder 10 mm diameter, 5 mm long, on the axis | Owner |
+| X 73 to 98 | Part: a cone 25 mm long, **20 mm diameter at X 73 (the head side), 10 mm at X 98 (the tailstock side)**, so its small end meets the 10 mm tailstock piece flush and the tailstock side has no shoulder | Owner: a cone 25 mm long, 20 mm largest; the small diameter and the direction are this lane's reading |
+| X 98 to 100 | Tailstock piece, 10 mm diameter, 2 mm long: **how it is modelled waits on the owner (OI-924)**. As a tab, the program cuts past X 100 (roughing to X 101.0; the finishing ball's edge to about X 101.6). As a held region at the end, every fed move stays between X 70.1 and 95.9, leaving the cone's last 2 mm unfinished | Owner (a 2 mm, 10 mm tab); modelling OI-924 |
+| X 100 | End of the stock; the tailstock centre | Owner |
 
-The project folder is made by the owner or by the follow-up lane of OI-913 (the coordinator decides which); this document does not fix the geometry.
+Stock box 35 x 35 x 100 mm, X 0 to 100, Y and Z -17.5 to 17.5; material "Plastic"; roughing (rotary roughing) with tool 104, finishing (helical, 5 degree steps) with tool 204, both with the Plastic presets (OI-921). The tools are numbered T1 (104) and T2 (204) in the program, because the Z1 profile carries no tool set; renumber them if the controller needs 104 and 204 (GC-14).
+
+**Confirm with the owner** before gate 5: the 68 mm held region reading, the cone's 10 mm small end on the tailstock side, the tailstock modelling (OI-924), and the tool numbers.
 
 Read them on the setup sheet (its Setup section's "Held at the start", "Held at the end" and "Tabs" lines and the "Tabs: <setup>" table, OI-918) and check them against the application's **Workholding and tabs** section (specification section 11.7). Write them on the form.
 
 | Step | Check | Pass when |
 | --- | --- | --- |
-| W1 | Held region at the start (the chuck): grip length, and holding diameter if one is given | The grip length is the length the chuck will really grip (measure the jaw depth). With no holding diameter the held region is the box's own section (decision 0160). |
+| W1 | Held region at the start: 68 mm, box section | The chuck grips 10 mm or less of it (measure the jaw depth); the rest, X 10 to 68, is the free stock left uncut (G0). |
 | W2 | The grip warning | No amber warning under **Grip length**. If there is one, it names how much of the part the held region covers (OI-554): that length of the part will **not** be machined. With the job at the far end of a 100 mm stock there should be none. |
-| W3 | Tabs | The 5 mm tab and the 2 mm, 10 mm diameter tailstock tab are where G0 says, with the agreed diameters. A tab with no room shows a warning (decision 0202). |
+| W3 | Tabs and the tailstock piece | The 10 mm tab at X 68 to 73, and the 10 mm tailstock piece at X 98 to 100 as OI-924 decided (a tab, or a held region at the end). A tab with no room shows a warning (decision 0202). |
 | W4 | Setup checks and messages | No error. Read every warning and write it down. "Safe Z cannot be checked against the Z travel" means the axis height is still the placeholder (OI-60): go back to gate 4 P8. |
-| W5 | Stock | Box 35 x 35 x 100 mm in the project, its X range putting the gripped length at the chuck and the job at the tailstock end. |
+| W5 | Stock and part | Box 35 x 35 x 100 mm from X 0; the setup sheet's Part offset reads "part moved 73 mm", so the cone spans X 73 to 98. |
 
 ### 5.3 Tools, material and speeds
 
@@ -491,12 +497,14 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-911 | Whether the spindle runs in the air cut | A: it runs as generated, with no tool; the program is tested exactly as generated | P7 | No |
 | OI-912 | How `T1 M6` is handled with no tool | B: run as generated and watch, ready on the stop; the tool change with a real tool is still tested before gate 5 (OI-41) | P7, F3 | No (OI-41 stays open) |
 | OI-913 | Where the reference jobs come from | A: committed as project folders (built in lane GATES); OI-920 A: without their generated meshes, which a generator example writes | P2 | No (OI-922: `drilling` and `swarf`) |
-| OI-914 | Which job gate 5 cuts | C: a new first-cut project to the owner's specification (5.2) | 5.2, F5 | Yes: the exact geometry (G0) and who builds the project |
+| OI-914 | Which job gate 5 cuts | C: a new first-cut project to the owner's specification and geometry (5.2), built in lane GATES | 5.2, F5 | No (OI-923, OI-924) |
 | OI-915 | Material and cutting data for gate 5 | Tooling board with the "Plastic" presets; Softwood copied where Plastic is missing; ask the owner before using a similar tool's data | 5.3 | No |
 | OI-916 | The 3-axis test part | B: skip it; the first-cut limit stays ±0.1 mm | F4, 5.7 | Until [decision 0221](decisions/0221-gate-5-first-cut-project-and-limit.md) is accepted |
 | OI-917 | How the axis height and work zero are found | Makera's own routine for Y and Z on the axis, X0 and A0; the form records the X0 face and A0 | P8, P9, M4 | No |
 | OI-920 | The meshes are too large to commit | A: commit the project files, generate the parts (`sample_projects` example) | P2 | No |
 | OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
+| OI-923 | Free stock to leave uncut | Not asked yet: the first-cut project uses a 68 mm held region (G0) | 5.2 | Yes, for the owner to confirm |
+| OI-924 | The tailstock | Pending: recommended a held region at the end in place of the 2 mm tab | 5.2, V5, M2, M5 | Yes |
 | OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 

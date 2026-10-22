@@ -56,10 +56,28 @@ pub fn lobed() -> LobedVase {
     }
 }
 
+/// The name of the gate 5 first-cut project (decision record 0221, OI-914).
+pub const FIRST_CUT: &str = "first_cut";
+
+/// The first-cut project's part: a cone 25 mm long from 20 mm diameter at
+/// its start (the head, towards the chuck) to 10 mm at its end, where it
+/// meets the 10 mm tailstock tab flush (the owner's answers on OI-914, 22 Oct
+/// 2026; the small diameter and the direction are lane GATES's reading).
+pub fn first_cut_part() -> Cone {
+    Cone {
+        start_radius: 10.0,
+        end_radius: 5.0,
+        length: 25.0,
+    }
+}
+
 /// The generated part of reference job `job` and its mesh (stations along
 /// X, vertices round the axis), or `None` for a job read from a file.
 pub fn generated_part(job: &str) -> Option<(Box<dyn RadialPart>, (u32, u32))> {
     let part: Box<dyn RadialPart> = match job {
+        // A cone is straight along X, so two stations are exact; 360 round
+        // the axis keep the facets within 0.0004 mm of the surface.
+        FIRST_CUT => return Some((Box::new(first_cut_part()), (2, 360))),
         "groove" => Box::new(groove()),
         "sphere" => Box::new(Sphere { radius: 10.0 }),
         "lobed" => return Some((Box::new(lobed()), (201, 720))),

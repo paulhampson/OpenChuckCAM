@@ -39,7 +39,9 @@ use openchuck_testkit::parts::{RadialPart, Sphere};
 
 #[path = "common/sample_projects.rs"]
 mod sample_projects;
-use sample_projects::{PART_FILE, generated_part, projects_dir, write_projects, write_stl};
+use sample_projects::{
+    FIRST_CUT, PART_FILE, generated_part, projects_dir, write_projects, write_stl,
+};
 
 /// The two shipped posts and the extension of their golden programs.
 const POSTS: [(&str, &str); 2] = [("makera-z1", "nc"), ("linuxcnc", "ngc")];
@@ -444,6 +446,9 @@ fn named(name: &str) -> Sample {
 /// decides where it runs (decision 0096).
 fn golden_path(name: &str, post: &str, ext: &str) -> PathBuf {
     let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/golden");
+    if name == FIRST_CUT {
+        return golden.join(FIRST_CUT).join(format!("{name}_{post}.{ext}"));
+    }
     match name.strip_prefix("blisk_") {
         Some(job) => golden.join("blisk").join(format!("{job}_{post}.{ext}")),
         None => golden
@@ -522,7 +527,11 @@ fn committed(name: &str) {
 /// the generated part, which is too large to commit (decision record 0004).
 fn bless_project(name: &str) {
     let root = scratch(&format!("bless-{name}"));
-    let built = build(&named(name), &root);
+    let built = if name == FIRST_CUT {
+        build_first_cut(&root)
+    } else {
+        build(&named(name), &root)
+    };
     let target = projects_dir().join(name);
     let _ = std::fs::remove_dir_all(&target);
     for (file, bytes) in files(&built) {
@@ -537,7 +546,8 @@ fn bless_project(name: &str) {
 }
 
 /// Every reference job with a generated part has a committed project folder,
-/// and every committed folder is a reference job (OI-913).
+/// and every committed folder is a reference job or the gate 5 first-cut
+/// project (OI-913, OI-914).
 #[test]
 fn req_gc_07_every_generated_reference_job_has_a_committed_project() {
     let mut generated: Vec<String> = samples()
@@ -545,6 +555,7 @@ fn req_gc_07_every_generated_reference_job_has_a_committed_project() {
         .filter(|s| matches!(s.model, Model::Generated(..)))
         .map(|s| s.name.to_owned())
         .collect();
+    generated.push(FIRST_CUT.to_owned());
     generated.sort();
     assert_eq!(sample_projects::committed_jobs().unwrap(), generated);
     for job in &generated {
@@ -553,6 +564,185 @@ fn req_gc_07_every_generated_reference_job_has_a_committed_project() {
             !projects_dir().join(job).join(PART_FILE).exists(),
             "{job}: the generated part is written by the generator, not committed"
         );
+    }
+}
+
+/// The Z1 tool library the first-cut project's tools come from (TL-12).
+fn z1_library() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/openchuck-project/defaults/z1")
+}
+
+/// The gate 5 first-cut project (decision record 0221, proposed; OI-914 and
+/// OI-921, the owner's answers of 22 Oct 2026), built from the command line
+/// as `build` builds the reference jobs. Box stock 35 x 35 x 100 mm from X 0,
+/// the work zero at its head end (the chuck side). The held region at the
+/// start is 68 mm: the 10 mm the chuck grips and the 58 mm of free stock the
+/// owner wants left uncut, since nothing else keeps a tool off a length of
+/// stock (OP-22 is not built; OI-923). A 10 mm cylinder tab, X 68 to 73,
+/// joins it to the part; the cone (20 mm to 10 mm) spans X 73 to 98; the
+/// 10 mm, 2 mm piece the tailstock centres on, X 98 to 100, is a held region
+/// at the end, so every cutting move keeps clear of it and of the tailstock
+/// beyond it (decision record 0161): as a tab, the program cut past X 100
+/// (OI-924, the owner's decision pending; the software has no tailstock).
+/// Tooling board with the "Plastic" presets; roughing with tool 104 (single
+/// flute) and finishing with tool 204 (two flutes).
+fn build_first_cut(root: &Path) -> PathBuf {
+    let project = root.join(FIRST_CUT);
+    let p = project.as_os_str();
+    cli_ok(&["new".as_ref(), p, "--name".as_ref(), FIRST_CUT.as_ref()]);
+    std::fs::create_dir_all(project.join("models")).unwrap();
+    let stl = project.join(PART_FILE);
+    let (part, mesh) = generated_part(FIRST_CUT).unwrap();
+    write_stl(part.as_ref(), mesh, &stl).unwrap();
+    cli_ok(&["import".as_ref(), p, stl.as_os_str()]);
+    cli_ok(&["machine".as_ref(), p, "makera-z1".as_ref()]);
+    let out = cli_ok(&[
+        "setup".as_ref(),
+        p,
+        "--new".as_ref(),
+        "Setup 1".as_ref(),
+        "--part".as_ref(),
+        PART_FILE.as_ref(),
+        "--stock".as_ref(),
+        "box=0,-17.5,-17.5,100,17.5,17.5".as_ref(),
+        "--material".as_ref(),
+        "Plastic".as_ref(),
+        "--part-offset".as_ref(),
+        "73".as_ref(),
+        "--work-x".as_ref(),
+        "0".as_ref(),
+        "--held-start".as_ref(),
+        "68".as_ref(),
+        "--tab".as_ref(),
+        "cylinder=68,5,10".as_ref(),
+        "--held-end".as_ref(),
+        "2,10".as_ref(),
+    ]);
+    assert!(out.stdout.contains("no problems found"), "{}", out.stdout);
+    let library = z1_library();
+    for name in ["Z1 O-flute 3.175x25", "Z1 ball 3.175x22"] {
+        cli_ok(&[
+            "tool".as_ref(),
+            p,
+            name.as_ref(),
+            "--add".as_ref(),
+            "--library".as_ref(),
+            library.as_os_str(),
+        ]);
+    }
+
+    let mut app = Application::open(&project, Threads::Exactly(1)).unwrap();
+    let setup = app.project().setups()[0].id;
+    let tool = |name: &str| {
+        app.project()
+            .tools()
+            .iter()
+            .find(|t| t.name == name)
+            .unwrap_or_else(|| panic!("no tool {name}"))
+            .id
+    };
+    let (rough, finish) = (tool("Z1 O-flute 3.175x25"), tool("Z1 ball 3.175x22"));
+    for (name, strategy, tool, parameters) in [
+        ("Rough", "rotary_roughing", rough, Vec::new()),
+        ("Finish", "helical_finishing", finish, angle_step(5.0)),
+    ] {
+        app.execute(Command::Add {
+            item: Item::Operation(Operation {
+                enabled: true,
+                id: OperationId::new(),
+                order: OrderKey::default(),
+                name: name.into(),
+                setup,
+                strategy: strategy.into(),
+                tool: Some(tool),
+                selections: Vec::new(),
+                boundary: None,
+                avoid: Vec::new(),
+                check: Vec::new(),
+                restriction_options: Default::default(),
+                spindle_speed: None,
+                parameters: parameters
+                    .into_iter()
+                    .map(|(k, v)| (k.to_owned(), v))
+                    .collect(),
+            }),
+            placement: Placement::End,
+        })
+        .unwrap();
+    }
+    app.save().unwrap();
+    project
+}
+
+/// The gate 5 first-cut project (decision record 0221, OI-914).
+mod first_cut {
+    use super::*;
+
+    /// The committed folder validates and, regenerated in separate processes
+    /// at 1, 2 and N threads, writes the same program each time with both
+    /// posts, passing gates 1 and 2 and matching its golden programs (GC-07,
+    /// NFR-06, NFR-08). `OPENCHUCK_BLESS_PROJECTS=1` first rewrites the
+    /// folder, as for the reference jobs.
+    #[test]
+    fn req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads()
+     {
+        if std::env::var_os("OPENCHUCK_BLESS_PROJECTS").is_some() {
+            bless_project(FIRST_CUT);
+        }
+        let root = scratch("first-cut-threads");
+        let project = &write_projects(&root, &[FIRST_CUT.to_owned()]).unwrap()[0];
+        cli_ok(&["validate".as_ref(), project.as_os_str()]);
+        for (post, ext) in POSTS {
+            let mut first: Option<String> = None;
+            for threads in thread_counts() {
+                let out = root.join(format!("{post}-{threads}"));
+                let program = regenerate(project, post, threads, &out);
+                match &first {
+                    None => first = Some(program),
+                    Some(f) => assert!(&program == f, "{post} at {threads} threads (NFR-06)"),
+                }
+            }
+            let program = first.unwrap();
+            openchuck_testkit::golden::check(&golden_path(FIRST_CUT, post, ext), &stable(&program))
+                .unwrap_or_else(|m| panic!("first_cut / {post} (NFR-08): {m}"));
+        }
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// The material removal simulation finds no overcut and no rapid move
+    /// through material, with the held region and the tabs kept (SIM-03,
+    /// SIM-05, SET-09, OP-21).
+    #[test]
+    fn req_sim_03_req_sim_05_req_set_09_req_op_21_simulates_without_overcut() {
+        let root = scratch("first-cut-simulate");
+        let project = &write_projects(&root, &[FIRST_CUT.to_owned()]).unwrap()[0];
+        let out = cli_ok(&["simulate".as_ref(), project.as_os_str()]);
+        assert!(!out.stdout.contains("no operations"), "{}", out.stdout);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// The setup the owner specified, as the setup sheet states it: the box
+    /// stock, the material, the grip and both tabs, and the two tools with
+    /// their "Plastic" presets (GC-12, SET-09, OP-21, TL-05; OI-921).
+    #[test]
+    fn req_gc_12_req_set_09_req_op_21_req_tl_05_the_sheet_states_the_owners_setup() {
+        let root = scratch("first-cut-sheet");
+        let project = &write_projects(&root, &[FIRST_CUT.to_owned()]).unwrap()[0];
+        let app = Application::open(project, Threads::Exactly(1)).unwrap();
+        let html = app.setup_sheet(None).to_html();
+        for expected in [
+            "box, X 0 to 100, Y -17.5 to 17.5, Z -17.5 to 17.5 mm",
+            "Plastic",
+            "part moved 73 mm along the rotary axis",
+            "68 mm of the stock, X 0 to 68 mm, at the stock&#39;s own section",
+            "2 mm of the stock, X 98 to 100 mm, at diameter 10 mm",
+            "Z1 O-flute 3.175x25",
+            "Z1 ball 3.175x22",
+            "tool data: Plastic",
+        ] {
+            assert!(html.contains(expected), "{expected}\n{html}");
+        }
+        std::fs::remove_dir_all(root).ok();
     }
 }
 
