@@ -744,12 +744,40 @@ impl StockModel for DexelStock {
     fn max_radius(&self) -> Option<f64> {
         Some(self.max_radius_of_material())
     }
+
+    /// The X range of the columns that hold material, to their cell edges
+    /// (OP-24; decision record 0212 part B).
+    fn x_extent(&self) -> Option<(f64, f64)> {
+        let with_material = |i: usize| (0..self.ny).any(|j| !self.column(i, j).is_empty());
+        let first = (0..self.nx).find(|&i| with_material(i))?;
+        let last = (0..self.nx).rev().find(|&i| with_material(i))?;
+        Some((
+            self.x0 + first as f64 * self.cx,
+            self.x0 + (last + 1) as f64 * self.cx,
+        ))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use openchuck_types::units::Millimetres;
+
+    #[test]
+    fn req_op_24_the_stock_ends_are_where_its_material_is() {
+        use openchuck_path::StockModel;
+        let stock = Stock::Cylinder {
+            diameter: Millimetres(20.0),
+            length: Millimetres(30.0),
+            x_start: Millimetres(-5.0),
+        };
+        let dexel = DexelStock::from_stock(&stock, None, 0.5).unwrap();
+        let (lo, hi) = dexel.x_extent().unwrap();
+        assert!(
+            (lo + 5.0).abs() <= 0.5 && (hi - 25.0).abs() <= 0.5,
+            "{lo} {hi}"
+        );
+    }
 
     #[test]
     fn req_sim_03_a_new_cylinder_holds_its_volume_within_the_resolution() {
