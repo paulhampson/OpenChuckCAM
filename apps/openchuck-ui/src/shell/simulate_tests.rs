@@ -15,6 +15,7 @@ use openchuck_app::overview::Step;
 use super::frame_tests::Rig;
 use super::*;
 use crate::import_panel::ImportSession;
+use crate::results_panel::bin_slot;
 
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
@@ -757,4 +758,98 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
             "{zoom}: the rest scrolls, with a bar to say so"
         );
     }
+}
+
+#[test]
+fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
+    // Decision record 0163: a "Show" tick box on each histogram row and
+    // "Show only from … to … mm", for the session; the part, the colour scale
+    // and the histogram follow, the views say "Some bands are hidden", and
+    // the worst values and counts stay those of the whole part.
+    let mut rig = simulated("sim-bands");
+    scroll_dock_to(&mut rig, "Colour the part by deviation");
+    let colour = at(&rig, "Colour the part by deviation");
+    rig.click(colour);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the bands were never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    rig.settle();
+    let whole = rig.shell.viewport.bands().unwrap().clone();
+    let triangles = |b: &openchuck_app::pathview::DeviationBands| -> usize {
+        b.bands.iter().map(|(_, t)| t.len()).sum()
+    };
+    assert!(!rig.shows(crate::results_panel::SOME_HIDDEN));
+    let run = rig.shell.run.last().unwrap().clone();
+    let summary = crate::results_panel::summarise(&run);
+    let bins = &summary[0].histogram;
+    // Untick the row of the bin that holds the most triangles.
+    let tolerance = whole.tolerance;
+    let slot_of = |v: &Option<(f64, bool)>| v.map(|(v, _)| bin_slot(v, tolerance));
+    let slot = (0..crate::results_panel::SLOTS)
+        .max_by_key(|s| {
+            whole
+                .values
+                .iter()
+                .filter(|v| slot_of(v) == Some(*s))
+                .count()
+        })
+        .unwrap();
+    let in_slot = whole
+        .values
+        .iter()
+        .filter(|v| slot_of(v) == Some(slot))
+        .count();
+    assert!(in_slot > 0);
+    let (i, bin) = bins
+        .iter()
+        .enumerate()
+        .find(|(_, b)| b.slot == slot)
+        .unwrap();
+    let label = crate::results_panel::bin_range(
+        bin,
+        i == 0 && summary[0].overcut_is_bound,
+        i == bins.len() - 1 && summary[0].left_is_bound,
+    );
+    let row = at(&rig, &label);
+    rig.click(row);
+    rig.frame(Vec::new());
+    assert!(rig.shell.results.filter.hidden[slot]);
+    // Exactly the triangles in that bin keep the part's colour.
+    let shown = rig.shell.viewport.bands().unwrap().clone();
+    assert_eq!(triangles(&shown), triangles(&whole) - in_slot);
+    // The inspector and the colour scale say so; the numbers do not move.
+    rig.frame(Vec::new());
+    assert!(rig.shows("Some bands are hidden."), "the inspector says so");
+    assert_eq!(
+        rig.shell.viewport.band_filter, rig.shell.results.filter,
+        "the colour scale follows the choice"
+    );
+    assert_eq!(crate::results_panel::summarise(&run), summary);
+    // A range narrows it further: only material left from 0.2 mm.
+    rig.shell.results.set_range_text("0.2", "");
+    rig.frame(Vec::new());
+    let ranged = rig.shell.viewport.bands().unwrap().clone();
+    let expected = whole
+        .values
+        .iter()
+        .filter(|v| slot_of(v).is_some_and(|s| s != slot) && v.is_some_and(|(v, _)| v >= 0.2))
+        .count();
+    let unmeasured = whole.values.iter().filter(|v| v.is_none()).count();
+    assert_eq!(triangles(&ranged), expected + unmeasured);
+    // A start above the end is refused, and the range stays.
+    rig.shell.results.set_range_text("0.5", "0.1");
+    assert!(rig.shell.results.range_error.is_some());
+    assert_eq!(rig.shell.results.filter.from, Some(0.2));
+    // The choice lasts for the session: a new run keeps it.
+    rig.shell.generate(true);
+    rig.settle();
+    assert!(rig.shell.results.filter.hides_any());
+    // "Show all" shows every band again.
+    rig.shell.results.show_all();
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(!rig.shows("Some bands are hidden."));
 }

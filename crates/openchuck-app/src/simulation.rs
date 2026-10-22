@@ -9,6 +9,8 @@
 //! for. The first operation of a setup is generated against the setup's
 //! stock definition itself, which is exact.
 
+use std::sync::{Arc, OnceLock};
+
 use openchuck_project::Project;
 use openchuck_project::id::{OperationId, SetupId};
 use openchuck_sim::{
@@ -88,6 +90,13 @@ pub(crate) struct SetupState {
     /// cache inputs, so a state taken from the cache is named again from the
     /// project it is reported in.
     operation_ids: Vec<OperationId>,
+    /// The stock compared with the setup's part, once a run has compared it.
+    /// The cache shares this state under the key of the operation that left
+    /// it, and that key fixes the part, its held regions and tabs and the
+    /// cell as well as the stock, so a later run that ends the setup on the
+    /// same state takes the comparison from here (OI-627). Simulating on
+    /// clears it.
+    compared: Arc<OnceLock<Deviation>>,
 }
 
 impl std::fmt::Debug for SetupState {
@@ -117,6 +126,7 @@ impl SetupState {
             name: name.to_owned(),
             operations: Vec::new(),
             operation_ids: Vec::new(),
+            compared: Arc::default(),
         })
     }
 
@@ -134,6 +144,9 @@ impl SetupState {
         tool: &RevolvedProfile,
         context: &JobContext<'_>,
     ) -> Result<GroupResult, AppError> {
+        // The stock changes, so a comparison of the old one no longer holds;
+        // a copy made to simulate on must not share it with the cache either.
+        self.compared = Arc::default();
         let result = self.simulator.run_group(group, tool, context)?;
         self.operation_ids.push(id);
         self.operations.push(OperationSimulation {
@@ -167,29 +180,45 @@ impl SetupState {
         }
     }
 
-    /// Finishes the setup's report, comparing the stock with `part` when
-    /// given. The stock moves into the report; nothing is copied.
-    pub(crate) fn finish(
-        self,
-        part: Option<&openchuck_types::mesh::TriangleMesh>,
+    /// The stock compared with `part` (SIM-05): the comparison this state
+    /// already holds, or a new one, which it then keeps. `part` is called
+    /// only when the stock has not been compared, and gives `None` when the
+    /// setup has no part. The second value is true when the stock was
+    /// compared in this call.
+    pub(crate) fn compare(
+        &self,
+        part: impl FnOnce() -> Result<Option<openchuck_types::mesh::TriangleMesh>, AppError>,
         settings: SimulationSettings,
-        context: &openchuck_types::job::JobContext<'_>,
-    ) -> Result<SetupSimulation, AppError> {
+        context: &JobContext<'_>,
+    ) -> Result<(Option<Deviation>, bool), AppError> {
+        if let Some(deviation) = self.compared.get() {
+            return Ok((Some(deviation.clone()), false));
+        }
+        let Some(mesh) = part()? else {
+            return Ok((None, false));
+        };
+        let deviation = compare_cancellable(
+            self.stock(),
+            &mesh,
+            &DeviationOptions::for_cell(settings.cell.0),
+            context,
+        )?;
+        // Two runs never compare the same state at once (the pipeline runs one
+        // at a time), and either value would be the same (NFR-06).
+        let _ = self.compared.set(deviation.clone());
+        Ok((Some(deviation), true))
+    }
+
+    /// Finishes the setup's report with its comparison with the part, from
+    /// [`SetupState::compare`]. The stock moves into the report; nothing is
+    /// copied.
+    pub(crate) fn finish(self, deviation: Option<Deviation>) -> SetupSimulation {
         let mut stock = self.simulator.into_stock();
         // The report holds the stock; without the slack cutting left, it holds
         // and reports the same memory whether the stock was simulated in this
         // run or copied from the cache (NFR-06; decision record 0190).
         stock.shrink_to_fit();
-        let deviation = match part {
-            Some(mesh) => Some(compare_cancellable(
-                &stock,
-                mesh,
-                &DeviationOptions::for_cell(settings.cell.0),
-                context,
-            )?),
-            None => None,
-        };
-        Ok(SetupSimulation {
+        SetupSimulation {
             id: self.id,
             setup: self.name,
             initial_volume: self.initial_volume,
@@ -199,7 +228,7 @@ impl SetupState {
             operations: self.operations,
             deviation,
             stock,
-        })
+        }
     }
 }
 

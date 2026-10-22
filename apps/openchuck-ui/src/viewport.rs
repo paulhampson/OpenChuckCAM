@@ -18,6 +18,7 @@ use openchuck_app::scene::{
     Mesh as TriangleMesh, SceneMesh, SceneRole, SceneSolid, SceneView, WorkholdingItem,
     triangles_mesh,
 };
+use openchuck_app::selection::TriangleSet;
 use openchuck_viewport::camera::{IDENTITY, Mat4, rigid_inverse, rotation_x, transform};
 use openchuck_viewport::wgpu;
 use openchuck_viewport::{
@@ -302,6 +303,24 @@ pub fn to_scene_with(view: &SceneView, options: &SceneOptions<'_>) -> Scene {
                     colour,
                     roles::FEATURE_EDGES,
                 );
+                // The triangles in no band shown keep the part's own colour
+                // (SIM-05, SIM-15).
+                let banded: TriangleSet = bands
+                    .bands
+                    .iter()
+                    .flat_map(|(_, triangles)| triangles.iter().copied())
+                    .collect();
+                let plain: TriangleSet = (0..mesh.mesh.triangles.len() as u32)
+                    .filter(|t| !banded.contains(t))
+                    .collect();
+                if !plain.is_empty() {
+                    scene.add_mesh(
+                        &triangles_mesh(&mesh.mesh, &plain),
+                        &[],
+                        colour,
+                        roles::FEATURE_EDGES,
+                    );
+                }
                 for (band, triangles) in &bands.bands {
                     let part = triangles_mesh(&mesh.mesh, triangles);
                     scene.add_mesh(&part, &[], band_colour(*band), roles::FEATURE_EDGES);
@@ -518,6 +537,8 @@ pub struct Viewport {
     bands: Option<(ModelId, DeviationBands)>,
     /// What the part is coloured by, for the probe's text.
     pub(crate) colour_by: ColourBy,
+    /// The deviation bands shown (SIM-15), for the colour scale's marks.
+    pub(crate) band_filter: crate::results_panel::BandFilter,
     /// Where the pointer came to rest and when (`egui` time, seconds).
     rest: Option<(egui::Pos2, f64)>,
     /// The triangle of the coloured part under the resting pointer, and the
@@ -628,6 +649,7 @@ impl Viewport {
             pixels: [0, 0],
             bands: None,
             colour_by: ColourBy::default(),
+            band_filter: crate::results_panel::BandFilter::default(),
             rest: None,
             probe_hover: None,
             probe_pinned: None,
@@ -1862,6 +1884,112 @@ pub(crate) mod tests {
         // A band for another model changes nothing.
         let other = to_scene_with(&view, &with_bands(ModelId::new()));
         assert_eq!(other.meshes.len(), 1);
+    }
+
+    #[test]
+    fn req_sim_15_a_hidden_band_keeps_the_parts_colour_and_the_counts_stay() {
+        use crate::playback_panel::shown_bands;
+        use crate::results_panel::{BandFilter, ColourBy, bin_slot};
+        use openchuck_app::pathview::deviation_bands;
+        let view = cube_scene("bands-hidden");
+        let model = view.meshes[0].model.unwrap();
+        let part_colour = view_colour(&view);
+        // An analytic case: two triangles overcut 0.7 mm, two overcut 0.3 mm,
+        // four on the surface, four with 0.6 mm left.
+        let value = |i: usize| match i {
+            0..=1 => -0.7,
+            2..=3 => -0.3,
+            4..=7 => 0.0,
+            _ => 0.6,
+        };
+        let values: Vec<Option<(f64, bool)>> = (0..12).map(|i| Some((value(i), false))).collect();
+        let tolerance = 0.1;
+        let bands = deviation_bands(&values, tolerance);
+        let coloured = |shown: &DeviationBands| {
+            let scene = to_scene_with(
+                &view,
+                &SceneOptions {
+                    bands: Some((model, shown)),
+                    show: Visibility::default(),
+                    ..SceneOptions::default()
+                },
+            );
+            // Triangles drawn in the part's colour, and in any band's.
+            let plain: usize = scene
+                .meshes
+                .iter()
+                .filter(|m| m.colour == part_colour)
+                .map(|m| m.indices.len() / 3)
+                .sum();
+            let all: usize = scene.meshes.iter().map(|m| m.indices.len() / 3).sum();
+            (plain, all)
+        };
+        assert_eq!(coloured(&bands), (0, 12));
+        // Hide the bin of the overcut from 0.5 to 1 mm: exactly its two
+        // triangles keep the part's colour; the part stays whole.
+        let mut filter = BandFilter::default();
+        filter.hidden[bin_slot(-0.7, tolerance)] = true;
+        let shown = shown_bands(&bands, ColourBy::Deviation, &filter);
+        assert_eq!(coloured(&shown), (2, 12));
+        // A range alone, from -0.5 to 0 mm: the 0.3 mm overcut and the
+        // surface (six triangles) are shown; the other six keep the part's
+        // colour.
+        let range = BandFilter {
+            from: Some(-0.5),
+            to: Some(0.0),
+            ..BandFilter::default()
+        };
+        let shown = shown_bands(&bands, ColourBy::Deviation, &range);
+        assert_eq!(coloured(&shown), (6, 12));
+        let kept: usize = shown.bands.iter().map(|(_, t)| t.len()).sum();
+        assert_eq!(kept, 6);
+        // The values stay whole for the probe, whatever is hidden.
+        assert_eq!(shown.values, bands.values);
+        // Colour by Remaining hides the overcut the same way.
+        let remaining = shown_bands(&bands, ColourBy::Remaining, &BandFilter::default());
+        assert_eq!(coloured(&remaining), (4, 12));
+    }
+
+    #[test]
+    fn req_sim_15_the_colour_scale_says_when_some_bands_are_hidden() {
+        use crate::results_panel::{BandFilter, SOME_HIDDEN};
+        use openchuck_app::pathview::deviation_bands;
+        let ctx = egui::Context::default();
+        let mut viewport = Viewport::new(true);
+        let view = cube_scene("scale-hidden");
+        let model = view.meshes[0].model.unwrap();
+        viewport.set_scene(view, true);
+        let values: Vec<Option<(f64, bool)>> = (0..12).map(|_| Some((0.2, false))).collect();
+        viewport.set_bands(Some((model, deviation_bands(&values, 0.1))));
+        let painted = |viewport: &mut Viewport| {
+            let mut texts = Vec::new();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| viewport.show(ui));
+                output.textures_delta.clear();
+                texts = output
+                    .shapes
+                    .iter()
+                    .filter_map(|s| match &s.shape {
+                        egui::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                        _ => None,
+                    })
+                    .collect();
+            }
+            texts
+        };
+        let texts = painted(&mut viewport);
+        assert!(texts.iter().any(|t| t == "Not measured"), "{texts:?}");
+        assert!(!texts.iter().any(|t| t == SOME_HIDDEN));
+        viewport.band_filter = BandFilter {
+            to: Some(0.0),
+            ..BandFilter::default()
+        };
+        assert!(painted(&mut viewport).iter().any(|t| t == SOME_HIDDEN));
+    }
+
+    /// The colour the scene gives the cube part with no bands.
+    fn view_colour(view: &SceneView) -> Colour {
+        to_scene(view).meshes[0].colour
     }
 
     /// A scene of the corpus cube with its picker, built through the

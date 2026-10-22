@@ -105,6 +105,10 @@ pub struct Regeneration {
     /// operation of its setup is made on it (SIM-06) or a simulation is asked
     /// for, unless the cache holds the stock it leaves (decision record 0190).
     pub simulated: Vec<OperationId>,
+    /// Setups whose final stock was compared with the part in this run. A
+    /// setup whose final stock came from the cache keeps the comparison made
+    /// with it and is not compared again (OI-627).
+    pub compared: Vec<openchuck_project::id::SetupId>,
     /// The operation the run stopped after, when it was asked to generate up
     /// to and including one operation ("generate selected", specification
     /// section 16; decision record 0117, OI-351). The enabled operations after
@@ -313,24 +317,33 @@ pub(crate) fn regenerate(
         for (done, state) in (0_u64..).zip(setups) {
             context.report(STAGE_SIMULATE, done, Some(count));
             context.check_cancelled()?;
-            let mut state = Arc::unwrap_or_clone(state);
-            state.rename(project);
             let setup = project.setup(state.id);
             let part = setup
                 .and_then(|s| s.part)
                 .and_then(|id| project.models().iter().find(|m| m.id == id));
             // The held regions and tabs are part of what the stock is
-            // compared with (SET-09, OP-21).
-            let mesh = match (part, setup) {
-                (Some(model), Some(setup)) => Some(crate::workholding::setup_deviation_target(
-                    setup,
-                    crate::model::setup_mesh(location, model, setup, context)?,
-                )?),
-                _ => None,
-            };
-            report
-                .setups
-                .push(state.finish(mesh.as_ref(), settings, context)?);
+            // compared with (SET-09, OP-21). A final stock taken from the
+            // cache keeps its comparison, so the part is read and compared
+            // only for a stock this run left (OI-627).
+            let (deviation, compared) = state.compare(
+                || match (part, setup) {
+                    (Some(model), Some(setup)) => {
+                        Ok(Some(crate::workholding::setup_deviation_target(
+                            setup,
+                            crate::model::setup_mesh(location, model, setup, context)?,
+                        )?))
+                    }
+                    _ => Ok(None),
+                },
+                settings,
+                context,
+            )?;
+            if compared {
+                regeneration.compared.push(state.id);
+            }
+            let mut state = Arc::unwrap_or_clone(state);
+            state.rename(project);
+            report.setups.push(state.finish(deviation));
         }
         context.report(STAGE_SIMULATE, count, Some(count));
         regeneration.simulation = Some(report);
