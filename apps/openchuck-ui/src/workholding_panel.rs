@@ -24,9 +24,9 @@ use openchuck_app::workholding::{
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, FieldProblem, NO_TABS_WARNING, Zone, check_draft,
-    default_chips, default_tabs_state, display_items, held_span, holding_hint, narrowest_line,
-    new_held_region, new_tab, no_default_line, part_facing, set_layout, set_shape, tab_zone,
-    zone_lines,
+    default_chips, default_tabs_state, display_items, grip_warning, held_span, holding_hint,
+    narrowest_line, new_held_region, new_tab, no_default_line, part_facing, set_layout, set_shape,
+    tab_zone, zone_lines,
 };
 use openchuck_app::{Application, Command, JobHandle};
 
@@ -534,6 +534,7 @@ impl WorkholdingPanel {
         value: Option<f64>,
         hint: Option<String>,
         problem: Option<&str>,
+        warned: Option<&str>,
         focus: bool,
     ) -> Option<Option<f64>> {
         let applied = value
@@ -549,6 +550,7 @@ impl WorkholdingPanel {
                 applied,
                 hint,
                 problem,
+                warned,
                 enabled: true,
                 focus,
                 number: true,
@@ -609,6 +611,14 @@ impl WorkholdingPanel {
             });
         }
         let Some(region) = current else { return };
+        // The grip reaches into the part: a warning on the field, not a
+        // refusal (SET-09, OI-554).
+        let grip_note = grip_warning(
+            self.draft.workholding(),
+            end,
+            setup.stock.as_ref(),
+            self.part_extent().as_ref(),
+        );
         let set = |w: &mut Workholding, region: HeldRegion| match end {
             End::Start => w.start = Some(region),
             End::End => w.end = Some(region),
@@ -621,6 +631,7 @@ impl WorkholdingPanel {
             Some(region.length.0),
             None,
             problem_of(problem, Field::Grip(end)),
+            grip_note.as_deref(),
             self.open_request == Some(item),
         ) {
             self.edit(|w| {
@@ -644,6 +655,7 @@ impl WorkholdingPanel {
             region.diameter.map(|d| d.0),
             Some(hint),
             problem_of(problem, Field::HoldingDiameter(end)),
+            None,
             false,
         ) {
             self.edit(|w| {
@@ -1010,6 +1022,7 @@ impl WorkholdingPanel {
             Some(tab.x_start.0),
             None,
             problem_of(problem, Field::TabStartX(i)),
+            None,
             focus,
         ) {
             set(self, &|t| t.x_start = Millimetres(v));
@@ -1022,6 +1035,7 @@ impl WorkholdingPanel {
             Some(tab.length.0),
             None,
             problem_of(problem, Field::TabLength(i)),
+            None,
             false,
         ) {
             set(self, &|t| t.length = Millimetres(v));
@@ -1036,6 +1050,7 @@ impl WorkholdingPanel {
                     Some(diameter.0),
                     None,
                     problem_of(problem, Field::TabDiameter(i)),
+                    None,
                     false,
                 ) {
                     set(self, &|t| {
@@ -1057,6 +1072,7 @@ impl WorkholdingPanel {
                     Some(start_diameter.0),
                     None,
                     problem_of(problem, Field::TabStartDiameter(i)),
+                    None,
                     false,
                 ) {
                     set(self, &|t| {
@@ -1073,6 +1089,7 @@ impl WorkholdingPanel {
                     Some(end_diameter.0),
                     None,
                     problem_of(problem, Field::TabEndDiameter(i)),
+                    None,
                     false,
                 ) {
                     set(self, &|t| {
@@ -1156,6 +1173,7 @@ impl WorkholdingPanel {
                 Some(start_angle.0),
                 None,
                 problem_of(problem, Field::TabStartAngle(i)),
+                None,
                 false,
             ) {
                 set(self, &|t| {
@@ -1173,6 +1191,7 @@ impl WorkholdingPanel {
                 Some(radial_offset.0),
                 None,
                 problem_of(problem, Field::TabOffset(i)),
+                None,
                 false,
             ) {
                 set(self, &|t| {
