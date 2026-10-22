@@ -1,0 +1,11 @@
+schema = 17
+id = "25efca0c-cc90-49c3-8558-793ea20f5a7c"
+order = "V"
+name = "Drill"
+setup = "18b91c7e-7ee8-43aa-9930-077d708d82e2"
+strategy = "radial_drilling"
+tool = "e8f30088-50cb-4532-ae26-f3c9c3e44a55"
+selections = []
+
+[parameters]
+peck_depth = 8.0
