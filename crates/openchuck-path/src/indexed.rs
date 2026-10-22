@@ -101,7 +101,12 @@ impl Strategy for IndexedFinishing {
             }
         }
         let own = super::axial::AxialFinishing.schema();
-        for name in [axial_parameter::DIRECTION, axial_parameter::MAX_X_STEP] {
+        for name in [
+            axial_parameter::DIRECTION,
+            axial_parameter::MAX_X_STEP,
+            crate::extend::parameter::EXTEND,
+            crate::extend::parameter::EXTEND_DISTANCE,
+        ] {
             if let Some(spec) = own.get(name) {
                 schema.parameters.push(spec.clone());
             }

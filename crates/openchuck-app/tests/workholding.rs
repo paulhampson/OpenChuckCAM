@@ -391,6 +391,62 @@ fn req_set_09_req_op_21_operations_never_cut_a_held_region_or_a_tab() {
     std::fs::remove_dir_all(&b.dir).unwrap();
 }
 
+/// Roughing in the cut directions issue 246 added, continuous along the
+/// length and indexed around the part, leaves the held regions and the tabs
+/// as the forms' own directions do (decision record 0212 part A item 4): the
+/// independent checker finds no roughing pose in them.
+#[test]
+fn req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab() {
+    let outline = Outline::new(
+        &Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(BALL),
+            flute_length: Millimetres(8.0),
+            overall_length: Millimetres(40.0),
+            shank_diameter: Millimetres(BALL),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        }
+        .profile()
+        .unwrap(),
+    );
+    let part = Held {
+        workholding: workholding(),
+    };
+    for (form, direction) in [
+        ("continuous", "along the length of the part"),
+        ("indexed", "around the part"),
+    ] {
+        let mut b = build(&format!("tabs-{form}"), workholding(), 2, BALL);
+        let rough = b.app.project().operations()[0].id;
+        for (name, value) in [("form", form), ("direction", direction)] {
+            b.app
+                .execute(Command::SetParameter {
+                    operation: rough,
+                    name: name.into(),
+                    value: Some(ParameterValue::Text(value.into())),
+                })
+                .unwrap();
+        }
+        let run = b.app.simulate().unwrap();
+        let poses = fed_poses(&run.toolpath, 0);
+        assert!(
+            poses.len() > 100,
+            "{form} {direction}: {} poses",
+            poses.len()
+        );
+        let gouge = max_gouge(&outline, &part, &poses, 0.25);
+        assert!(
+            gouge.depth <= 0.02,
+            "{form} {direction}: gouge {:.4} mm at {:?}",
+            gouge.depth,
+            gouge.at
+        );
+        std::fs::remove_dir_all(&b.dir).unwrap();
+    }
+}
+
 /// True when `(x, r)` is at least 0.5 mm inside the held regions and tabs
 /// along X, away from the faces where the solids end.
 fn near_solid_interior(x: f64, _r: f64) -> bool {

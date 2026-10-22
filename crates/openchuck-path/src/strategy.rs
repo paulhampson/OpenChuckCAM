@@ -631,6 +631,7 @@ impl Registry {
         let mut registry = Self::new();
         // The names are fixed and distinct, so these cannot fail.
         let _ = registry.register(Arc::new(crate::roughing::RotaryRoughing));
+        let _ = registry.register(Arc::new(crate::facing::Facing));
         let _ = registry.register(Arc::new(crate::helical::HelicalFinishing));
         let _ = registry.register(Arc::new(crate::axial::AxialFinishing));
         let _ = registry.register(Arc::new(crate::indexed::IndexedFinishing));

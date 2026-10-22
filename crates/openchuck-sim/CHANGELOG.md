@@ -4,6 +4,7 @@ All notable changes to `openchuck-sim` are recorded here.
 
 ## Unreleased
 
+- `DexelStock` answers `StockModel::x_extent`: the X range of the columns that hold material (OP-24; decision 0212 part B).
 - Version 0.17.0 with the library family (decisions 0201 and 0202); no change to this crate's items.
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
 - Version 0.15.0 with the library family.
