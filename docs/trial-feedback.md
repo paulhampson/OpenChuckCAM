@@ -377,3 +377,5 @@ Filed with the label `awaiting-planning` (not dispatched, not sent to the coordi
 | F-120 | [#314](https://github.com/paulhampson/OpenChuckCAM/issues/314) | Finishing | Optional stepdown for axial and helical finishing: off by default (G-code unchanged, GC-07); layers of at most the stepdown, the last pass at the surface plus the stock to leave; checked against the flute length; like roughing's stepdown; combines with F-109 (#303) and the stock to leave; cost shown in progress and time (#201). | Meaning for a part turning about its axis (radial, assumed, or along the tool axis); does indexed finishing get it too? |
 
 Owner (23 Oct 2026): the open questions on #306 to #313 and #314 will be answered when those issues are worked on in their lanes; do not ask again beforehand.
+
+Triage of the 28 issues awaiting planning (23 Oct 2026): see [trial-feedback-triage-2.md](trial-feedback-triage-2.md). Presented to the owner for checking and approval; nothing dispatched.
