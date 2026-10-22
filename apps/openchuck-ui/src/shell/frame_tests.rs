@@ -165,16 +165,13 @@ impl Rig {
         out
     }
 
-    /// Every text and filled rectangle painted, as much of it as its clip
-    /// lets show: the text (none for a rectangle) and the visible rectangle.
-    /// A text's rectangle covers its glyphs, not the indent a wrapped row
-    /// starts with. What a scroll area clips away entirely is left out.
-    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect)> {
-        fn walk(
-            shape: &egui::Shape,
-            clip: egui::Rect,
-            out: &mut Vec<(Option<String>, egui::Rect)>,
-        ) {
+    /// Every text and filled rectangle painted: the text (none for a
+    /// rectangle), its whole rectangle and as much of it as its clip lets
+    /// show. A text's rectangle covers its glyphs, not the indent a wrapped
+    /// row starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect, egui::Rect)> {
+        type Painted = Vec<(Option<String>, egui::Rect, egui::Rect)>;
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Painted) {
             let (text, rect) = match shape {
                 egui::Shape::Text(t) => (
                     Some(t.galley.text().to_string()),
@@ -194,7 +191,7 @@ impl Rig {
             };
             let seen = rect.intersect(clip);
             if seen.is_positive() {
-                out.push((text, seen));
+                out.push((text, rect, seen));
             }
         }
         let mut out = Vec::new();
