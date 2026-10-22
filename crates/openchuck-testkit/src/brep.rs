@@ -382,3 +382,68 @@ fn placeholder() -> BrepFace {
         tessellation: TriangleMesh::default(),
     }
 }
+
+/// A plain round bar of `radius` about the model X axis, from X = 0 to
+/// `length`, whose side is split along X into one cylinder face per band:
+/// the bands run between 0, each of `breaks` (in increasing order, inside
+/// the bar) and `length`, and face `i` is band `i`. Each face is tessellated
+/// on its own, 96 facets round and about 1 mm along, as a kernel does, so the
+/// joined tessellation repeats the corners where two bands meet. For the face
+/// selection tests of decision 0209 item 3 (a set of chosen faces machined as
+/// the same triangles on a mesh).
+pub fn banded_cylinder(radius: f64, length: f64, breaks: &[f64]) -> BrepModel {
+    const ROUND: usize = 96;
+    let frame = Frame {
+        origin: Point3::ORIGIN,
+        x: Vec3::new(0.0, 1.0, 0.0),
+        y: Vec3::new(0.0, 0.0, 1.0),
+        z: Vec3::new(1.0, 0.0, 0.0),
+    };
+    let ends: Vec<f64> = std::iter::once(0.0)
+        .chain(breaks.iter().copied())
+        .chain(std::iter::once(length))
+        .collect();
+    let faces = ends
+        .iter()
+        .zip(ends.iter().skip(1))
+        .enumerate()
+        .map(|(i, (&start, &end))| {
+            let along = ((end - start).ceil() as usize).max(1);
+            let mut tessellation = TriangleMesh::default();
+            for j in 0..=along {
+                let x = start + (end - start) * j as f64 / along as f64;
+                for k in 0..ROUND {
+                    let u = TAU * k as f64 / ROUND as f64;
+                    tessellation
+                        .vertices
+                        .push(Point3::new(x, radius * u.cos(), radius * u.sin()));
+                }
+            }
+            for j in 0..along as u32 {
+                for k in 0..ROUND as u32 {
+                    let next = (k + 1) % ROUND as u32;
+                    let (a, b) = (j * ROUND as u32 + k, j * ROUND as u32 + next);
+                    let (c, d) = (a + ROUND as u32, b + ROUND as u32);
+                    // Wound so the normals face away from the axis.
+                    tessellation.triangles.push([a, b, d]);
+                    tessellation.triangles.push([a, d, c]);
+                }
+            }
+            BrepFace {
+                id: FaceId(i as u32),
+                surface: openchuck_types::brep::SurfaceKind::Cylinder,
+                body: 0,
+                edges: Vec::new(),
+                geometry: Surface::Cylinder { frame, radius },
+                reversed: false,
+                uv_bounds: [0.0, TAU, start, end],
+                trims: Vec::new(),
+                tessellation,
+            }
+        })
+        .collect();
+    BrepModel {
+        faces,
+        ..BrepModel::default()
+    }
+}

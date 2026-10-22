@@ -18,6 +18,7 @@ use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
 use openchuck_app::requirements::RequirementField;
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
+use openchuck_app::step_sets::SetRefusal;
 use openchuck_app::tool_library;
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
@@ -689,6 +690,7 @@ impl Shell {
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
         let set_options = app.strategy_takes_set_options(&operation.strategy);
+        let refusals = app.set_refusals(id);
         let mut delete = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -792,7 +794,18 @@ impl Shell {
             open,
             false,
             |_| {},
-            |ui| geometry(ui, &operation, &summaries, &reach, set_options),
+            |ui| {
+                geometry(
+                    ui,
+                    &operation,
+                    &summaries,
+                    &Notes {
+                        reach: &reach,
+                        refusals: &refusals,
+                    },
+                    set_options,
+                )
+            },
         );
         if let Some((edit, action)) = section.body {
             role_edit = edit;
@@ -1084,19 +1097,32 @@ fn limits_nothing(ui: &mut egui::Ui, indent: f32, set: &str) {
     });
 }
 
+/// What the Geometry section says under the role that holds a set.
+struct Notes<'a> {
+    /// The warnings of sets reaching a held region or a tab (11.7).
+    reach: &'a [String],
+    /// The sets the strategy cannot use on this part (decision record 0209
+    /// item 10).
+    refusals: &'a [SetRefusal],
+}
+
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
 /// With `with_options`, each set's options under its role (decision record
 /// 0176 item 3). Under the role that holds a set reaching a held region or a
-/// tab, the warning of 11.7 with "Show in view" and "Edit workholding".
+/// tab, the warning of 11.7 with "Show in view" and "Edit workholding"; under
+/// the role that holds a set the strategy cannot use on this part, the
+/// warning with the reason and what to do, before anything is generated
+/// (decision record 0209 item 10).
 fn geometry(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
-    reach: &[String],
+    notes: &Notes<'_>,
     with_options: bool,
 ) -> (Option<GeometryEdit>, Option<ReachAction>) {
+    let reach = notes.reach;
     let mut edit = None;
     let mut action = None;
     if summaries.is_empty() {
@@ -1177,6 +1203,15 @@ fn geometry(
         // record 0176).
         if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
             edit = Some(e);
+        }
+        // A set the strategy cannot use here, under the role that holds it
+        // (decision record 0209 item 10).
+        for refusal in notes.refusals.iter().filter(|r| r.role == role) {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+                marks::mark(ui, ItemState::Warning, "Warning");
+                ui.label(RichText::new(&refusal.text).color(DARK.warning));
+            });
         }
         // The selection warning under the role that holds the set (11.7).
         for id in &sets {

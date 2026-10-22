@@ -680,6 +680,57 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
     }
 }
 
+/// On a STEP part, a set the strategy cannot use shows a Warning line under
+/// the role that holds it, with the reason and what to do, before anything
+/// is generated, and the operation is in error (decision record 0209 item
+/// 10). The part is named as a STEP file; nothing reads it.
+#[test]
+fn req_op_02_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use() {
+    use openchuck_app::project::{
+        Item, OrderKey, Placement, RelativePath, SelectionSet, SelectionTarget,
+    };
+    use openchuck_app::selection::SelectionRole;
+    let mut rig = Rig::cube("inspector-set-refused", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blade.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model.clone())))
+        .unwrap();
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    app.execute(Command::Add {
+        item: Item::SelectionSet(SelectionSet {
+            id: set,
+            order: OrderKey::default(),
+            name: "Blades".into(),
+            model: model.id,
+            model_hash: model.hash,
+            target: SelectionTarget::Faces([openchuck_app::pick::FaceId(1)].into()),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    op.strategy = "rest_machining".into();
+    app.execute(Command::Replace(Item::Operation(op.clone())))
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Avoid, set, true)
+        .unwrap();
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    let said = "Rest machining does not use a boundary, avoid or check set. Take the set 'Blades' \
+                out of the operation.";
+    assert!(rig.shows(said), "the warning is not shown");
+    assert!(rig.shows("This operation can't be generated"));
+    assert!(!rig.shows("rest_machining"));
+}
+
 /// The header's name is an editable field: a name is applied as one
 /// undoable command, and an empty one is refused under it (section 8).
 #[test]
