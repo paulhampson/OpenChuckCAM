@@ -483,6 +483,28 @@ pub fn check_tab_zones(
             });
         }
     }
+    // An automatic tab, once placed, can lie over a tab placed by hand. The
+    // G-code is right (the target is the union of the tabs), so this only
+    // says so (decision record 0202, OI-841).
+    for (i, a) in resolved.tabs.iter().enumerate() {
+        if a.auto.is_none() {
+            continue;
+        }
+        for (j, b) in resolved.tabs.iter().enumerate() {
+            if b.auto.is_some() {
+                continue;
+            }
+            let lo = a.x_start.0.max(b.x_start.0);
+            let hi = (a.x_start.0 + a.length.0).min(b.x_start.0 + b.length.0);
+            if hi - lo > EPS {
+                found.push(SetupWarningKind::TabsOverlap {
+                    auto_tab: i + 1,
+                    hand_tab: j + 1,
+                    x: (lo, hi),
+                });
+            }
+        }
+    }
     found
 }
 
@@ -745,16 +767,29 @@ mod tests {
         assert_eq!(w.resolved(None, Some(&part_at(30.0, 80.0))), w);
         assert_eq!(w.resolved(Some(&stock), None), w);
         assert!(w.auto_tabs_without_room(None, None).is_empty());
-        // Resolved, the automatic tabs are in their zones: no warning, but
-        // the manual tab across the tail zone still is checked.
+        // Resolved, the automatic tabs are in their zones; the manual tab
+        // lies over the automatic tail tab, which is said (OI-841).
         assert_eq!(
             check_tab_zones(&w, Some(&stock), Some(&part_at(30.0, 80.0))),
-            Vec::new()
+            vec![SetupWarningKind::TabsOverlap {
+                auto_tab: 2,
+                hand_tab: 3,
+                x: (90.0, 95.0),
+            }]
         );
+        // With the part reaching X 92 the manual tab is also across the
+        // part's end, which the zone check names first.
         let found = check_tab_zones(&w, Some(&stock), Some(&part_at(30.0, 92.0)));
         assert!(matches!(
             found[..],
-            [SetupWarningKind::TabOutsideEndZones { tab: 3, .. }]
+            [
+                SetupWarningKind::TabOutsideEndZones { tab: 3, .. },
+                SetupWarningKind::TabsOverlap {
+                    auto_tab: 2,
+                    hand_tab: 3,
+                    ..
+                }
+            ]
         ));
     }
 
