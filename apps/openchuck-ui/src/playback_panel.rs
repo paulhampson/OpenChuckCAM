@@ -851,6 +851,14 @@ impl PlaybackPanel {
         false
     }
 
+    /// Whether a run is being prepared for display. The controls under the
+    /// transport row, the cut part's note among them, are drawn only once it
+    /// is ready (OI-840).
+    #[cfg(test)]
+    pub fn is_preparing(&self) -> bool {
+        self.data_job.is_some()
+    }
+
     /// Whether the playback is running.
     #[cfg(test)]
     pub fn is_playing(&self) -> bool {
