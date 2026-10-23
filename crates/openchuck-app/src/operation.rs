@@ -20,9 +20,9 @@ use openchuck_path::roughing::{self, parameter::STEPDOWN};
 use openchuck_path::{
     AcceptAll, AnalyticStock, BoundaryLimits, BrepEdges, BrepSurface, ChosenSegments,
     CompositeSurface, CurveSource, EdgeFollowing, MeshSurface, ParameterValue, PathWarning,
-    Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy, StrategyInput,
-    SurfaceSource, WatchedSurface, Window, drill, edge_following, generate, generate_in_region,
-    generate_in_zones, swarf,
+    PencilFinishing, Protection, RegionConstraint, Registry, RotaryMapping, StockModel, Strategy,
+    StrategyInput, SurfaceSource, WatchedSurface, Window, drill, edge_following, generate,
+    generate_in_region, generate_in_zones, pencil, swarf,
 };
 use openchuck_project::id::{OperationId, SelectionSetId};
 use openchuck_project::{
@@ -82,9 +82,7 @@ pub fn parameter_values(
             (k.clone(), v)
         })
         .collect();
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref());
+    let material = crate::preset::material_of(project, operation);
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
@@ -568,6 +566,13 @@ pub(crate) fn generate_with_part(
     };
     let registry_strategy = strategy;
     let with_edges;
+    // Pencil clean-up on a STEP part follows the part's own inside corners,
+    // not creases between the facets of its tessellation (OP-09; decision
+    // 0226); on a mesh part it reads the mesh, as before.
+    let pencil_on_brep = match &placed.brep {
+        Some(brep) if operation.strategy == pencil::NAME => Some(PencilFinishing::on_brep(brep)?),
+        _ => None,
+    };
     let strategy: &dyn Strategy = match (brep_edges, mesh_edges) {
         (Some(source), _) => {
             with_edges = EdgeFollowing::with_source(source);
@@ -581,7 +586,9 @@ pub(crate) fn generate_with_part(
             );
             &with_edges
         }
-        (None, None) => strategy,
+        (None, None) => pencil_on_brep
+            .as_ref()
+            .map_or(strategy, |p| p as &dyn Strategy),
     };
     let path = if zones.is_empty() {
         match &constraint {
@@ -666,6 +673,15 @@ pub(crate) fn generate_with_part(
 fn tessellation_note(strategy: &dyn Strategy, name: &str) -> Option<String> {
     if [drill::NAME, swarf::NAME, edge_following::NAME].contains(&name) {
         return None;
+    }
+    if name == pencil::NAME {
+        return Some(format!(
+            "{} follows the STEP part's inside corners on its exact edges, and drops the tool \
+             on the part's tessellation, made at a deflection of {} mm, not on its exact faces: \
+             dropping on the exact faces is not built yet",
+            strategy.label(),
+            openchuck_types::brep::TessellationSettings::default().linear
+        ));
     }
     Some(format!(
         "{} drops the tool on the STEP part's tessellation, made at a deflection of {} mm, not \
@@ -1484,6 +1500,7 @@ mod tests {
                 check: Vec::new(),
                 restriction_options: Default::default(),
                 spindle_speed: None,
+                material: None,
                 parameters: values,
             }),
         ] {
@@ -2623,6 +2640,76 @@ mod tests {
         );
         assert_eq!(note(&helical.run_on(true).unwrap()), None);
         assert_eq!(note(&fixture(drill::NAME, &[]).run().unwrap()), None);
+    }
+
+    /// The shouldered shaft of the testkit (one sharp inside corner at X 12,
+    /// radius 8, and a fillet tessellated in four facets), under pencil
+    /// clean-up at a 20 degree crease angle.
+    fn shaft_fixture() -> Fixture {
+        let ball = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(BALL),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(BALL),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        fixture_on(
+            pencil::NAME,
+            &[(pencil::pencil_parameter::CREASE_ANGLE, Value::Number(20.0))],
+            openchuck_testkit::brep::shouldered_shaft(4),
+            Vec::new(),
+            "shaft.step",
+            ball,
+            12.0,
+        )
+    }
+
+    #[test]
+    fn req_op_09_req_op_23_pencil_on_a_step_part_follows_its_inside_corner_not_the_facets() {
+        // Decision 0226: on a STEP part the creases are the B-rep's inside
+        // corners, so only the shoulder at X 12 is cut, the tool resting on
+        // the bar against it; the same part read as a mesh also follows the
+        // facets of the fillet (X 24 to 26).
+        let f = shaft_fixture();
+        let path = f.run().unwrap();
+        let xs = cut_xs(&path);
+        assert!(!xs.is_empty());
+        let rest = 12.0 - 0.5 * BALL;
+        assert!(
+            xs.iter().all(|x| (x - rest).abs() <= 0.05),
+            "{:?}",
+            xs.iter()
+                .copied()
+                .fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)))
+        );
+        let said = path
+            .notes
+            .iter()
+            .find(|n| n.contains("tessellation"))
+            .cloned()
+            .unwrap();
+        assert!(
+            said.starts_with(
+                "Pencil clean-up follows the STEP part's inside corners on its exact edges"
+            ) && said.contains("0.01 mm")
+                && said.contains("not built yet"),
+            "{said}"
+        );
+        assert!(
+            path.notes
+                .iter()
+                .any(|n| n.contains("along the part's edges")),
+            "{:?}",
+            path.notes
+        );
+        let as_mesh = cut_xs(&f.run_on(true).unwrap());
+        assert!(
+            as_mesh.iter().any(|x| *x > 20.0),
+            "the mesh form follows the fillet's facets"
+        );
     }
 
     #[test]

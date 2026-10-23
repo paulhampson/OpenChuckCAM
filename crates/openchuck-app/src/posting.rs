@@ -535,6 +535,9 @@ pub(crate) fn post_toolpath(
                         crate::requirements::missing_spindle_message(project, operation)
                     ))
                 })?;
+            if let Some(why) = crate::requirements::spindle_out_of_range(project, operation) {
+                return Err(AppError::Post(format!("cannot post the G-code: {why}")));
+            }
             operation_spindle.insert(group.tags.operation.clone(), speed.0);
             if tools.contains_key(tag) {
                 continue;

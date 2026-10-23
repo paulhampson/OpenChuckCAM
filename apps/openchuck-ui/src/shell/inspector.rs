@@ -47,6 +47,9 @@ pub(super) enum ToolAct {
     Library,
     /// Set the project's tool number to the typed text.
     Number(ToolId, String),
+    /// Give the operation the preset of a material, `None` for the setup's
+    /// stock material (decision record 0230).
+    Preset(Option<String>),
     /// Set the operation's spindle speed to the typed text (rpm).
     Spindle(String),
     /// Take the operation's own spindle speed away (↺), so the tool's
@@ -547,6 +550,8 @@ impl Shell {
         let library = self.tool_library.library();
         let shown = tool_library::operation_tool(project, library, operation.id);
         let spindle = tool_library::operation_spindle(project, operation.id);
+        let preset =
+            openchuck_app::preset::operation_preset(project, app.strategies(), operation.id);
         let others: Vec<(ToolId, String)> = project
             .tools()
             .iter()
@@ -589,6 +594,11 @@ impl Shell {
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
                             act = Some(ToolAct::Number(tool.id, typed));
                         }
+                        if let Some(preset) = &preset
+                            && let Some(chosen) = preset_row(ui, preset)
+                        {
+                            act = Some(ToolAct::Preset(chosen));
+                        }
                         if let Some(spindle) = &spindle {
                             let row = TextRow {
                                 key: SPINDLE_SPEED,
@@ -596,7 +606,9 @@ impl Shell {
                                 description: "How fast the tool turns, in revolutions per \
                                               minute (rpm). It sets the S value in the G-code. \
                                               Left empty, the tool's cutting data for the \
-                                              stock material gives it. Check it against your \
+                                              material preset gives it: the setup's stock \
+                                              material unless the operation chose another. \
+                                              Check it against your \
                                               tool, material and machine before you run the \
                                               program.",
                                 unit: "rpm",
@@ -613,7 +625,14 @@ impl Shell {
                                 }),
                                 reset: spindle.set.is_some(),
                                 enabled: true,
-                                needs: spindle.missing.is_some().then_some("Enter spindle speed"),
+                                needs: if spindle.missing.is_some() {
+                                    Some("Enter spindle speed")
+                                } else {
+                                    spindle
+                                        .out_of_range
+                                        .is_some()
+                                        .then_some("Outside the machine's range")
+                                },
                                 scroll_to: jump_to_spindle,
                                 ..TextRow::default()
                             };
@@ -622,7 +641,9 @@ impl Shell {
                                 Outcome::Reset => act = Some(ToolAct::SpindleReset),
                                 Outcome::None => {}
                             }
-                            if let Some(message) = &spindle.missing {
+                            if let Some(message) =
+                                spindle.missing.as_ref().or(spindle.out_of_range.as_ref())
+                            {
                                 field_row::note_line(ui, message, DARK.warning);
                             }
                         }
@@ -747,13 +768,26 @@ impl Shell {
                 return;
             }
             ToolAct::Spindle(typed) => {
-                let result = tool_library::set_operation_spindle(project, operation, Some(&typed))
-                    .and_then(|c| app.execute(c))
-                    .map_err(|e| form_panel::refusal(&e.to_string()));
+                let result = tool_library::set_operation_spindle(
+                    project,
+                    app.strategies(),
+                    operation,
+                    Some(&typed),
+                )
+                .and_then(|c| app.execute(c))
+                .map_err(|e| form_panel::refusal(&e.to_string()));
                 self.form.result(SPINDLE_SPEED, result);
                 return;
             }
-            ToolAct::SpindleReset => tool_library::set_operation_spindle(project, operation, None),
+            ToolAct::Preset(material) => openchuck_app::preset::set_operation_preset(
+                project,
+                app.strategies(),
+                operation,
+                material.as_deref(),
+            ),
+            ToolAct::SpindleReset => {
+                tool_library::set_operation_spindle(project, app.strategies(), operation, None)
+            }
             ToolAct::Update(tool) => match &library {
                 Some(lib) => match tool_library::update_from_library(project, lib, tool) {
                     Ok(Some(c)) => Ok(c),
@@ -1436,6 +1470,56 @@ fn rows(
         }
     }
     edited
+}
+
+/// The Tool section's Material preset row (issue 197; decision record
+/// 0230): the list of the setup's material and the tool's other materials, a
+/// warning triangle when the chosen one is not the setup's, and why no preset
+/// applies when none does. Returns the material chosen this frame, `None`
+/// inside for the setup's.
+fn preset_row(
+    ui: &mut egui::Ui,
+    preset: &openchuck_app::preset::MaterialPreset,
+) -> Option<Option<String>> {
+    use openchuck_app::preset::PresetState;
+    let labels: Vec<&str> = preset.choices.iter().map(|c| c.label.as_str()).collect();
+    let dropped = preset.state == PresetState::Dropped;
+    // A dropped preset has no current entry, so choosing any applies it.
+    let current = (!dropped)
+        .then(|| {
+            preset
+                .choices
+                .iter()
+                .position(|c| c.material == preset.chosen)
+        })
+        .flatten();
+    let shown = match current.and_then(|i| labels.get(i)) {
+        Some(label) => *label,
+        None => "No preset",
+    };
+    // "No preset" is said in the box, with why in its tooltip, so an edit
+    // that drops the preset moves no row (UI-16).
+    let help = match (&preset.message, dropped) {
+        (Some(message), true) => format!("{message}\n\n{}", crate::run_panel::PRESET_HELP),
+        _ => crate::run_panel::PRESET_HELP.to_owned(),
+    };
+    let chosen = field_row::list_row(
+        ui,
+        "operation preset",
+        "Material preset",
+        &help,
+        (&labels, current),
+        shown,
+    )
+    .and_then(|i| preset.choices.get(i))
+    .map(|c| c.material.clone());
+    if let Some(why) = &preset.differs {
+        field_row::warning_line(ui, why);
+    }
+    if let Some(message) = preset.message.as_ref().filter(|_| !dropped) {
+        field_row::note_line(ui, message, DARK.warning);
+    }
+    chosen
 }
 
 /// The pick of a known material under the Material row: the names the tools

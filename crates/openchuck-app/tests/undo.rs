@@ -265,6 +265,7 @@ fn command(p: &Project, edit: Edit, next: &mut u128) -> Option<Command> {
                     check: Vec::new(),
                     restriction_options: Default::default(),
                     spindle_speed: None,
+                    material: None,
                     parameters: BTreeMap::new(),
                 }),
                 placement: placement(index),

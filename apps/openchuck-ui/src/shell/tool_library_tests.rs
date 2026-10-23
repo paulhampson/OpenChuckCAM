@@ -810,3 +810,54 @@ fn req_tl_11_req_tl_12_a_changed_tool_set_number_of_a_default_tool_can_be_saved_
     assert_eq!(set.mapping_for(id).unwrap().number, 777);
     std::fs::remove_dir_all(&folder).ok();
 }
+
+/// The operation's Tool section has a Material preset row (issue 197;
+/// decision record 0230): the setup's material by default, a warning when
+/// another of the tool's materials is chosen, and "No preset" once a cutting
+/// value is edited. New operation offers the same choice.
+#[test]
+fn req_tl_05_req_tl_09_the_operation_has_a_material_preset_row() {
+    use super::inspector::ToolAct;
+    use openchuck_app::project::Item;
+    let mut rig = Rig::cube("toollib-preset", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut tool = app.project().tools()[0].clone();
+    let mut steel = tool.cutting_data["oak"];
+    steel.spindle_speed = openchuck_app::tools::SpindleSpeed(6000.0);
+    tool.cutting_data.insert("Steel".into(), steel);
+    app.execute(openchuck_app::Command::Replace(Item::Tool(tool)))
+        .unwrap();
+    let op = app.project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Material preset"), "the row is there");
+    assert!(
+        rig.shows("Setup's stock material: oak"),
+        "the setup's by default"
+    );
+    rig.shell
+        .tool_act(op, ToolAct::Preset(Some("Steel".into())));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(
+        rig.shows("is not the setup's stock material"),
+        "the warning"
+    );
+    rig.shell.tool_act(op, ToolAct::Spindle("9000".into()));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("No preset"), "an edit drops the preset");
+    rig.shell.tool_act(op, ToolAct::Preset(None));
+    let project = rig.shell.app.as_ref().unwrap().project();
+    assert_eq!(project.operations()[0].material, None);
+    assert_eq!(project.operations()[0].spindle_speed, None);
+    // New operation offers the preset under the tool.
+    let app = rig.shell.app.as_ref().unwrap();
+    rig.shell.run.begin_add(app, None, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Material preset"));
+}

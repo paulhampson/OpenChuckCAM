@@ -269,6 +269,187 @@ pub struct BrepEdge {
     pub vertices: Option<[VertexId; 2]>,
     /// The edge sampled as a polyline at the model's tolerance.
     pub polyline: Vec<Point3>,
+    /// The exact curve under the edge, when the kernel gave one in a form
+    /// this build evaluates (decision 0227). `None` for a degenerate edge,
+    /// a curve kind not listed in [`EdgeCurve`], and models read before the
+    /// field existed; users of the edge then have only the polyline.
+    #[serde(default)]
+    pub curve: Option<EdgeCurve>,
+}
+
+/// The exact curve under a B-rep edge, in the direction of the edge's
+/// polyline (decision 0227). `first` and `last` are the curve parameters at
+/// the polyline's first and last point; `first` may be larger than `last`
+/// for an edge traversed against its curve.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", deny_unknown_fields)]
+#[non_exhaustive]
+pub enum EdgeCurve {
+    /// A straight line: the point at parameter `t` is `origin + t * direction`
+    /// (`t` in millimetres, `direction` a unit vector).
+    Line {
+        /// The point at `t = 0`.
+        origin: Point3,
+        /// The unit direction.
+        direction: Vec3,
+        /// Parameter at the edge's first point.
+        first: f64,
+        /// Parameter at the edge's last point.
+        last: f64,
+    },
+    /// A circle: `origin + radius * (cos t * x + sin t * y)` of the frame,
+    /// `t` in radians.
+    Circle {
+        /// The frame (its `x` and `y` span the circle's plane).
+        frame: Frame,
+        /// The radius in millimetres.
+        radius: f64,
+        /// Parameter at the edge's first point.
+        first: f64,
+        /// Parameter at the edge's last point.
+        last: f64,
+    },
+    /// An ellipse: `origin + major * cos t * x + minor * sin t * y`, `t` in
+    /// radians.
+    Ellipse {
+        /// The frame (`x` along the major axis).
+        frame: Frame,
+        /// The semi-major radius in millimetres.
+        major: f64,
+        /// The semi-minor radius in millimetres.
+        minor: f64,
+        /// Parameter at the edge's first point.
+        first: f64,
+        /// Parameter at the edge's last point.
+        last: f64,
+    },
+    /// Any other curve the kernel could give as a clamped rational B-spline.
+    BSpline(BSplineCurve),
+}
+
+/// A clamped, unwrapped rational B-spline curve with the range of the edge
+/// on it (decision 0227), as [`BSplinePatch`] is for a surface.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BSplineCurve {
+    /// Degree.
+    pub degree: u32,
+    /// Full knot vector (repeated knots listed as often as they occur); the
+    /// end knots repeat `degree + 1` times.
+    pub knots: Vec<f64>,
+    /// Poles.
+    pub poles: Vec<Point3>,
+    /// One weight per pole; all 1 for a non-rational curve.
+    pub weights: Vec<f64>,
+    /// Parameter at the edge's first point.
+    pub first: f64,
+    /// Parameter at the edge's last point.
+    pub last: f64,
+}
+
+impl BSplineCurve {
+    /// Fails unless the knots, poles and weights agree, everything is
+    /// finite, the knots are clamped and ascending, and both ends of the
+    /// edge lie inside the knot range.
+    pub fn validate(&self) -> Result<()> {
+        let bad = |what: &str| Error::invalid("b-spline curve", what);
+        let (n, d) = (self.poles.len(), self.degree as usize);
+        if d == 0 || n <= d {
+            return Err(bad("the degree needs more poles"));
+        }
+        if self.knots.len() != n + d + 1 || self.weights.len() != n {
+            return Err(bad("knot, pole and weight counts do not agree"));
+        }
+        if self.knots.iter().any(|k| !k.is_finite()) || !self.knots.is_sorted() {
+            return Err(bad("knots must be finite and ascending"));
+        }
+        let (Some(&lo), Some(&hi)) = (self.knots.first(), self.knots.last()) else {
+            return Err(bad("there are no knots"));
+        };
+        let clamped = self
+            .knots
+            .iter()
+            .take(d + 1)
+            .all(|k| k.total_cmp(&lo).is_eq())
+            && self
+                .knots
+                .iter()
+                .rev()
+                .take(d + 1)
+                .all(|k| k.total_cmp(&hi).is_eq());
+        if !clamped || lo >= hi {
+            return Err(bad("knots must be clamped over a range"));
+        }
+        if self.poles.iter().any(|p| !p.is_finite())
+            || self.weights.iter().any(|w| !w.is_finite() || *w <= 0.0)
+        {
+            return Err(bad("poles must be finite and weights positive"));
+        }
+        if ![self.first, self.last].iter().all(|t| *t >= lo && *t <= hi) {
+            return Err(bad("the edge's range is outside the knots"));
+        }
+        Ok(())
+    }
+}
+
+impl EdgeCurve {
+    /// Fails unless the frame, sizes and range are finite and usable.
+    pub fn validate(&self, what: &str) -> Result<()> {
+        let range = |first: f64, last: f64| {
+            if first.is_finite() && last.is_finite() {
+                Ok(())
+            } else {
+                Err(Error::invalid(what, "the curve's range is not finite"))
+            }
+        };
+        let size = |v: f64| {
+            if v.is_finite() && v > 0.0 {
+                Ok(())
+            } else {
+                Err(Error::invalid(what, "a radius must be positive and finite"))
+            }
+        };
+        match self {
+            Self::Line {
+                origin,
+                direction,
+                first,
+                last,
+            } => {
+                origin.validate(what)?;
+                if !direction.is_finite() || (direction.length() - 1.0).abs() > 1e-6 {
+                    return Err(Error::invalid(
+                        what,
+                        "the line's direction is not a unit vector",
+                    ));
+                }
+                range(*first, *last)
+            }
+            Self::Circle {
+                frame,
+                radius,
+                first,
+                last,
+            } => {
+                frame.validate(what)?;
+                size(*radius)?;
+                range(*first, *last)
+            }
+            Self::Ellipse {
+                frame,
+                major,
+                minor,
+                first,
+                last,
+            } => {
+                frame.validate(what)?;
+                size(*major)?;
+                size(*minor)?;
+                range(*first, *last)
+            }
+            Self::BSpline(curve) => curve.validate(),
+        }
+    }
 }
 
 /// One B-rep vertex.
@@ -419,6 +600,9 @@ impl BrepModel {
             }
             for p in &e.polyline {
                 p.validate(&what)?;
+            }
+            if let Some(curve) = &e.curve {
+                curve.validate(&what)?;
             }
         }
         for (i, f) in self.faces.iter().enumerate() {

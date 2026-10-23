@@ -186,6 +186,61 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
     out
 }
 
+/// The New operation dialog's material preset (issue 197; decision record
+/// 0230): the setup's stock material, or one of the tool's other materials,
+/// with a warning when it is not the setup's and a message when the tool has
+/// no cutting data for it. A choice the tool does not have goes back to the
+/// setup's material.
+fn preset_row(
+    ui: &mut egui::Ui,
+    project: &openchuck_app::project::Project,
+    setup: SetupId,
+    tool: Option<ToolId>,
+    material: &mut Option<String>,
+) {
+    use openchuck_app::preset::{PresetState, preset_for};
+    let mut preset = preset_for(project, setup, tool, material.as_deref());
+    if material.is_some() && preset.state != PresetState::Applied {
+        *material = None;
+        preset = preset_for(project, setup, tool, None);
+    }
+    if preset.state == PresetState::NoTool {
+        return;
+    }
+    ui.horizontal(|ui| {
+        ui.label("Material preset").on_hover_text(PRESET_HELP);
+        let shown = preset
+            .choices
+            .iter()
+            .find(|c| c.material == *material)
+            .map_or("", |c| c.label.as_str());
+        egui::ComboBox::from_id_salt("add op preset")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                for c in &preset.choices {
+                    ui.selectable_value(material, c.material.clone(), &c.label);
+                }
+            });
+    });
+    if let Some(why) = &preset.differs {
+        ui.horizontal_wrapped(|ui| {
+            crate::shell::mark(ui, openchuck_app::overview::ItemState::Warning, why);
+            ui.label(why);
+        });
+    }
+    if let Some(message) = &preset.message {
+        ui.horizontal_wrapped(|ui| {
+            ui.weak(message);
+        });
+    }
+}
+
+/// What the material preset is, for its tooltip.
+pub(crate) const PRESET_HELP: &str = "The tool's cutting data for one stock material: the \
+    spindle speed, feed per tooth, plunge feed, stepover and stepdown. It fills the \
+    operation's cutting values; changing one of them drops the preset. Check the values \
+    against your tool, material and machine before you run the program.";
+
 struct RunningJob {
     handle: JobHandle<Regeneration>,
     simulate: bool,
@@ -198,6 +253,9 @@ struct AddOperation {
     strategy: String,
     setup: Option<SetupId>,
     tool: Option<ToolId>,
+    /// The material whose preset the operation takes; `None` for the
+    /// setup's stock material (issue 197; decision record 0230).
+    material: Option<String>,
     /// The selection set the new operation takes in Cut on, with its name.
     cut_on: Option<(SelectionSetId, String)>,
 }
@@ -425,11 +483,16 @@ impl RunPanel {
             .or(choices.first())
             .map(|c| c.name.clone())
             .unwrap_or_default();
+        // The selected operation's preset comes along with its tool.
+        let material = from
+            .filter(|o| o.tool == tool)
+            .and_then(|o| o.material.clone());
         self.adding = Some(AddOperation {
             name: format!("Operation {}", project.operations().len() + 1),
             strategy,
             setup,
             tool,
+            material,
             cut_on,
         });
     }
@@ -550,6 +613,9 @@ impl RunPanel {
                         wants_library = true;
                     }
                 });
+                if let Some(setup) = form.setup {
+                    preset_row(ui, app.project(), setup, form.tool, &mut form.material);
+                }
                 let takes = choices
                     .iter()
                     .find(|c| c.name == form.strategy)
@@ -602,7 +668,14 @@ impl RunPanel {
                 .find(|c| c.name == form.strategy)
                 .is_some_and(|c| c.takes_selections);
             let cut_on = form.cut_on.as_ref().filter(|_| takes).map(|(id, _)| *id);
-            match app.add_operation_on(&form.name, &form.strategy, setup, form.tool, cut_on) {
+            match app.add_operation_on(
+                &form.name,
+                &form.strategy,
+                setup,
+                form.tool,
+                cut_on,
+                form.material.as_deref(),
+            ) {
                 Ok(id) => {
                     added = Some(id);
                     close = true;

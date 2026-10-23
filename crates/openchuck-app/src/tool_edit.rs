@@ -115,13 +115,13 @@ pub fn tool_form(tool: &Tool) -> Vec<Field> {
     out.push(mm(
         OVERALL_LENGTH,
         "Overall length",
-        "How long the whole tool is, in millimetres, from the tip to the end of the shank. It is used to check that the tool reaches the part.",
+        "How long the whole tool is, in millimetres, from the tip to the end of the shank. It is shown on the setup sheet.",
         tool.overall_length.0,
     ));
     out.push(mm(
         SHANK_DIAMETER,
         "Shank diameter",
-        "How wide the shank is, in millimetres: the plain part the machine holds. It is used to check that the shank does not touch the part.",
+        "How wide the shank is, in millimetres: the plain part the machine holds. The clearance kept around the part allows for it.",
         tool.shank_diameter.0,
     ));
     out.push(Field {

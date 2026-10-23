@@ -297,6 +297,7 @@ fn req_op_08_the_tangent_edge_choice_of_a_set_or_the_project_reaches_edge_follow
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: [("depth".to_owned(), ParameterValue::Number(0.2))].into(),
         }),
     ] {
