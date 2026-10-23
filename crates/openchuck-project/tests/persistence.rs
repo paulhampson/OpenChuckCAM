@@ -1874,6 +1874,29 @@ fn req_tl_05_req_prj_04_an_operation_material_round_trips_and_needs_schema_18() 
     assert!(back.operations().iter().all(|o| o.material.is_none()));
 }
 
+/// The project's machine copy keeps a spindle speed range, written only
+/// when set; a schema 17 copy cannot hold one (decision 0231).
+#[test]
+fn req_gc_14_req_prj_04_the_machine_copys_spindle_range_round_trips_and_needs_schema_18() {
+    let mut p = sample();
+    let mut machine = openchuck_types::machine::MachineProfile::example_x_rotary();
+    machine.max_spindle_rpm = Some(openchuck_types::units::SpindleSpeed(13000.0));
+    p.set_machine(Some(machine)).unwrap();
+    let dir = temp_dir("schema-18-machine");
+    file::save(&p, &dir).unwrap();
+    let tree = read_tree(&dir);
+    assert!(tree.values().any(|t| t.contains("max_spindle_rpm = 13000")));
+    assert_eq!(file::load(&dir).unwrap(), p);
+    let old = copy_tree_with(&tree, "schema-18-machine-as-17", |_, text| {
+        text.replacen(&current(), "schema = 17\n", 1)
+    });
+    let err = file::load(&old).unwrap_err().to_string();
+    assert!(
+        err.contains("max_spindle_rpm") && err.contains("schema 18"),
+        "{err}"
+    );
+}
+
 #[test]
 fn req_nfr_07_an_empty_operation_material_is_refused() {
     let mut p = sample();

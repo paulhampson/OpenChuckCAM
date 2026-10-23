@@ -29,7 +29,8 @@ pub enum RequirementField {
     /// The operation has no tool.
     Tool,
     /// The operation has no spindle speed: it gave none and the tool has no
-    /// cutting data for the setup's material (decision 0196).
+    /// cutting data for the setup's material (decision 0196); or its speed is
+    /// outside the machine's spindle speed range (decision 0231).
     SpindleSpeed,
     /// A parameter of the operation's strategy that is required and that
     /// neither the operation nor the tool's cutting data gives (by name).
@@ -119,6 +120,34 @@ pub(crate) fn missing_spindle_message(project: &Project, operation: &Operation) 
         "The operation \"{}\" has no spindle speed. {fix}.",
         operation.name
     )
+}
+
+/// Why `operation`'s spindle speed is outside the machine's spindle speed
+/// range and what to do, in plain words; `None` when it is inside, when the
+/// machine profile gives no range, or when there is no speed (decision
+/// 0231; OI-754).
+pub(crate) fn spindle_out_of_range(project: &Project, operation: &Operation) -> Option<String> {
+    use openchuck_types::machine::SpindleLimit;
+    let machine = project.machine()?;
+    let (speed, _) = spindle_speed(project, operation)?;
+    let (side, end, verb) = match machine.spindle_limit(speed)? {
+        SpindleLimit::Above(max) => (
+            "above",
+            format!("highest spindle speed, {:.0} rpm", max.0),
+            "Lower",
+        ),
+        SpindleLimit::Below(min) => (
+            "below",
+            format!("lowest spindle speed, {:.0} rpm", min.0),
+            "Raise",
+        ),
+    };
+    Some(format!(
+        "The operation \"{}\" runs at {:.0} rpm, {side} the {}'s {end}. {verb} the spindle \
+         speed for this operation, or choose a material preset whose speed is within the \
+         machine's range.",
+        operation.name, speed.0, machine.name
+    ))
 }
 
 /// The names of the parameters the cutting data can give.
@@ -222,6 +251,12 @@ pub(crate) fn operation_requirements(
             RequirementField::SpindleSpeed,
             "Spindle speed",
             "Enter the spindle speed",
+        ));
+    } else if !no_tool && spindle_out_of_range(project, op).is_some() {
+        out.push(Requirement::new(
+            RequirementField::SpindleSpeed,
+            "Spindle speed",
+            "Bring the spindle speed within the machine's range",
         ));
     }
     // An unknown strategy is reported when the operation is generated.

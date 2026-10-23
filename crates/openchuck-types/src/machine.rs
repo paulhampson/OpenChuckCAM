@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result, require_finite, require_positive};
 use crate::geometry::{Aabb, Point3};
-use crate::units::{Degrees, FeedRate, Millimetres, RotaryFeedRate};
+use crate::units::{Degrees, FeedRate, Millimetres, RotaryFeedRate, SpindleSpeed};
 
 /// The machine axis the rotary axis is parallel to.
 ///
@@ -190,11 +190,14 @@ pub enum ProfileField {
     MaxFeeds,
     /// [`MachineProfile::clearance`].
     Clearance,
+    /// [`MachineProfile::min_spindle_rpm`] and
+    /// [`MachineProfile::max_spindle_rpm`].
+    SpindleRange,
 }
 
 impl ProfileField {
     /// Every field, in order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::RotaryAxis,
         Self::ASense,
         Self::RotaryOrigin,
@@ -202,6 +205,7 @@ impl ProfileField {
         Self::Travel,
         Self::MaxFeeds,
         Self::Clearance,
+        Self::SpindleRange,
     ];
 
     /// The field's name in the profile file.
@@ -214,6 +218,7 @@ impl ProfileField {
             Self::Travel => "travel",
             Self::MaxFeeds => "max_feeds",
             Self::Clearance => "clearance",
+            Self::SpindleRange => "spindle_range",
         }
     }
 }
@@ -255,6 +260,16 @@ const fn default_max_tool_number() -> u32 {
     DEFAULT_MAX_TOOL_NUMBER
 }
 
+/// Which end of a machine's spindle speed range a speed is outside, with
+/// that end (decision record 0231).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpindleLimit {
+    /// Faster than the machine's highest speed.
+    Above(SpindleSpeed),
+    /// Slower than the machine's lowest speed.
+    Below(SpindleSpeed),
+}
+
 /// A machine profile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -284,6 +299,14 @@ pub struct MachineProfile {
     /// [`DEFAULT_MAX_TOOL_NUMBER`].
     #[serde(default = "default_max_tool_number")]
     pub max_tool_number: u32,
+    /// The lowest spindle speed the machine runs at, when the profile gives
+    /// one. A limit, never a default (decision records 0196 and 0231).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_spindle_rpm: Option<SpindleSpeed>,
+    /// The highest spindle speed the machine runs at, when the profile gives
+    /// one. A limit, never a default (decision records 0196 and 0231).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_spindle_rpm: Option<SpindleSpeed>,
     /// Where each value came from, and whether it is confirmed on the
     /// machine. A field not listed is treated as unconfirmed.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -337,6 +360,22 @@ impl MachineProfile {
             self.max_feeds.rapid_rotary.0,
         )?;
         self.clearance.validate("machine.clearance")?;
+        for (field, value) in [
+            ("machine.min_spindle_rpm", self.min_spindle_rpm),
+            ("machine.max_spindle_rpm", self.max_spindle_rpm),
+        ] {
+            if let Some(v) = value {
+                require_positive(field, v.0)?;
+            }
+        }
+        if let (Some(min), Some(max)) = (self.min_spindle_rpm, self.max_spindle_rpm)
+            && min.0 >= max.0
+        {
+            return Err(Error::invalid(
+                "machine.min_spindle_rpm",
+                format!("the lowest spindle speed ({min}) must be below the highest ({max})"),
+            ));
+        }
         for (field, provenance) in &self.provenance {
             if provenance.source.trim().is_empty() {
                 return Err(Error::invalid(
@@ -355,12 +394,31 @@ impl MachineProfile {
             .is_some_and(|p| p.state == Confirmation::Confirmed)
     }
 
-    /// The fields not confirmed on the machine, in order.
+    /// The fields not confirmed on the machine, in order. The spindle range
+    /// is listed only when the profile gives one.
     pub fn unconfirmed_fields(&self) -> Vec<ProfileField> {
+        let spindle = self.min_spindle_rpm.is_some() || self.max_spindle_rpm.is_some();
         ProfileField::ALL
             .into_iter()
+            .filter(|f| *f != ProfileField::SpindleRange || spindle)
             .filter(|f| !self.is_confirmed(*f))
             .collect()
+    }
+
+    /// Whether `speed` is outside the profile's spindle speed range, and
+    /// which end; `None` inside it or when the profile gives none.
+    pub fn spindle_limit(&self, speed: SpindleSpeed) -> Option<SpindleLimit> {
+        if let Some(max) = self.max_spindle_rpm
+            && speed.0 > max.0
+        {
+            return Some(SpindleLimit::Above(max));
+        }
+        if let Some(min) = self.min_spindle_rpm
+            && speed.0 < min.0
+        {
+            return Some(SpindleLimit::Below(min));
+        }
+        None
     }
 
     /// An example profile with the rotary axis along X, offset from the
@@ -387,6 +445,8 @@ impl MachineProfile {
                 rotary_in_feed: RotaryInFeed::Separate,
             },
             max_tool_number: DEFAULT_MAX_TOOL_NUMBER,
+            min_spindle_rpm: None,
+            max_spindle_rpm: None,
             clearance: Clearance {
                 radius: Millimetres(40.0),
                 safe_z: Millimetres(50.0),

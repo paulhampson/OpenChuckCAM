@@ -4,6 +4,8 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Version 0.18.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`; decision 0231).
+- Project schema 18 (decisions 0230 and 0231): `Operation` has a new public field, `material`, the stock material whose cutting data the operation's preset takes (`None` for the setup's), written only when set; the machine copy may hold the spindle speed range. Machine profile files go to their schema 4 for the range, and the built-in Makera Z1 gives `max_spindle_rpm = 13000`, unconfirmed. Both migrations change only the number and refuse an older file that already holds a new field.
 - Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
 - Project schema 17 (decisions 0201 and 0202): an older setup with a part offset has its cylinder or box stock, its tabs and its work zero moved along X by the offset, so it machines as before now that the offset moves only the part; a retaining tab may hold `auto` (`"head"` or `"tail"`), written only when set, and an older file that holds one is refused.
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.

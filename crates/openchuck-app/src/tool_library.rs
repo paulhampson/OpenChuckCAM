@@ -1338,6 +1338,9 @@ pub struct OperationSpindle {
     pub from_tool: Option<(f64, String)>,
     /// What to do about it when neither gives a speed, in plain words.
     pub missing: Option<String>,
+    /// Why the speed is outside the machine's spindle speed range and what
+    /// to do, in plain words (decision record 0231).
+    pub out_of_range: Option<String>,
 }
 
 /// Operation `operation`'s spindle speed, where it comes from, or what is
@@ -1355,6 +1358,7 @@ pub fn operation_spindle(project: &Project, operation: OperationId) -> Option<Op
         set: op.spindle_speed.map(|s| s.0),
         from_tool,
         missing,
+        out_of_range: crate::requirements::spindle_out_of_range(project, op),
     })
 }
 

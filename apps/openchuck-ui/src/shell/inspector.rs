@@ -622,7 +622,14 @@ impl Shell {
                                 }),
                                 reset: spindle.set.is_some(),
                                 enabled: true,
-                                needs: spindle.missing.is_some().then_some("Enter spindle speed"),
+                                needs: if spindle.missing.is_some() {
+                                    Some("Enter spindle speed")
+                                } else {
+                                    spindle
+                                        .out_of_range
+                                        .is_some()
+                                        .then_some("Outside the machine's range")
+                                },
                                 scroll_to: jump_to_spindle,
                                 ..TextRow::default()
                             };
@@ -631,7 +638,9 @@ impl Shell {
                                 Outcome::Reset => act = Some(ToolAct::SpindleReset),
                                 Outcome::None => {}
                             }
-                            if let Some(message) = &spindle.missing {
+                            if let Some(message) =
+                                spindle.missing.as_ref().or(spindle.out_of_range.as_ref())
+                            {
                                 field_row::note_line(ui, message, DARK.warning);
                             }
                         }

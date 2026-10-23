@@ -53,6 +53,9 @@ pub fn how_to_confirm(field: ProfileField) -> &'static str {
             "Take them from the controller's settings or the machine's documented limits."
         }
         ProfileField::Clearance => "Set a clearance on the setup to suit its stock.",
+        ProfileField::SpindleRange => {
+            "Check the spindle's lowest and highest speed in the machine's documents or controller settings."
+        }
     }
 }
 
@@ -83,8 +86,8 @@ fn degrees(v: f64) -> String {
 }
 
 /// The values of the machine section, in the order of 11.3: rotary axis, A
-/// range, A+ direction, axis height, then travel and the maximum feeds
-/// (collapsed).
+/// range, A+ direction, axis height, then travel, the maximum feeds and,
+/// when the profile gives one, the spindle speed range (collapsed).
 pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
     let value = |field, label, value: String, collapsed| MachineValue {
         field,
@@ -109,7 +112,13 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
     }
     let t = &profile.travel;
     let f = &profile.max_feeds;
-    vec![
+    let spindle = match (profile.min_spindle_rpm, profile.max_spindle_rpm) {
+        (Some(min), Some(max)) => Some(format!("{:.0} to {:.0} rpm", min.0, max.0)),
+        (None, Some(max)) => Some(format!("Up to {:.0} rpm", max.0)),
+        (Some(min), None) => Some(format!("From {:.0} rpm", min.0)),
+        (None, None) => None,
+    };
+    let mut values = vec![
         value(
             ProfileField::RotaryAxis,
             "Rotary axis",
@@ -142,7 +151,17 @@ pub fn machine_values(profile: &MachineProfile) -> Vec<MachineValue> {
             ),
             true,
         ),
-    ]
+    ];
+    // Only a profile that gives a range shows one (decision record 0231).
+    if let Some(range) = spindle {
+        values.push(value(
+            ProfileField::SpindleRange,
+            "Spindle speed",
+            range,
+            true,
+        ));
+    }
+    values
 }
 
 #[cfg(test)]
@@ -165,8 +184,15 @@ mod tests {
                 "A+ direction",
                 "Axis height",
                 "Travel",
-                "Maximum feeds"
+                "Maximum feeds",
+                "Spindle speed"
             ]
+        );
+        let spindle = values.iter().find(|v| v.label == "Spindle speed").unwrap();
+        assert_eq!(spindle.value, "Up to 13000 rpm");
+        assert!(
+            !spindle.confirmed,
+            "from Makera's documents, not the machine"
         );
         // The Z1's axis height is a placeholder: the amber triangle, with
         // where it came from and how to confirm it.

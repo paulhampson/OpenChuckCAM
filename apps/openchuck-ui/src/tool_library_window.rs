@@ -672,7 +672,7 @@ impl ToolLibraryWindow {
             ui,
             "tool type",
             "Type",
-            "The tool's shape (TL-02, TL-03). The sizes are kept.",
+            "The tool's shape. The sizes are kept.",
             &labels,
             current,
             true,
@@ -713,7 +713,7 @@ impl ToolLibraryWindow {
             ui,
             "tool material",
             "Material",
-            "What the tool is made of (TL-04). Not the stock material.",
+            "What the tool is made of. Not the stock material.",
             &labels,
             Some(current),
             true,
@@ -887,8 +887,8 @@ impl ToolLibraryWindow {
         let number = TextRow {
             key: "project number",
             label: "Tool number",
-            description: "The project's number for this tool (TL-06), used by every operation \
-                          that uses it.",
+            description: "The project's number for this tool, used by every operation that uses \
+                          it.",
             range: Some("1 or more, not another project tool's number"),
             applied: row.number.to_string(),
             enabled: true,
@@ -1881,7 +1881,7 @@ fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, dirty: bool, acts: &
     field_row::read_only_row(
         ui,
         "Type",
-        "The tool's shape (TL-02, TL-03).",
+        "The tool's shape.",
         ToolType::of(&tool.tool.shape).label(),
     );
     for (label, value) in library::default_dimensions(&tool.tool) {
@@ -1901,7 +1901,7 @@ fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, dirty: bool, acts: &
     field_row::read_only_row(
         ui,
         "Material",
-        "What the tool is made of (TL-04). Not the stock material.",
+        "What the tool is made of. Not the stock material.",
         tool.tool
             .material
             .as_deref()

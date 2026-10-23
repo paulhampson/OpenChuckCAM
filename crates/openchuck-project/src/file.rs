@@ -100,7 +100,9 @@ use openchuck_types::workholding::Workholding;
 ///   record 0202).
 /// - 18: an operation gains the optional `material`, the stock material
 ///   whose cutting data its preset takes, written only when the user chose
-///   one for it (decision record 0230).
+///   one for it (decision record 0230); the machine copy may give the
+///   spindle speed range, `min_spindle_rpm` and `max_spindle_rpm`, written
+///   only when set (decision record 0231).
 pub const SCHEMA: i64 = 18;
 
 /// Name of the machine profile file in the project folder.
@@ -335,12 +337,16 @@ fn schema_15_to_16(kind: FileKind, table: &mut toml::Table) -> Result<(), String
     Ok(())
 }
 
-/// Schema 18 adds the optional `material` to operation files, which a
-/// schema 17 file does not have, so it needs no change but its number: the
-/// operation takes the setup's stock material as before. A schema 17
-/// operation file that already holds one was not written by any version that
-/// knew it, so it is refused rather than guessed at.
+/// Schema 18 adds the optional `material` to operation files and the
+/// optional spindle speed range to the machine copy, which a schema 17 file
+/// does not have, so it needs no change but its number: the operation takes
+/// the setup's stock material and the machine checks no spindle speed, as
+/// before. A schema 17 file that already holds one was not written by any
+/// version that knew it, so it is refused rather than guessed at.
 fn schema_17_to_18(kind: FileKind, table: &mut toml::Table) -> Result<(), String> {
+    if kind == FileKind::Machine {
+        return crate::machines::premature_spindle_range(table, 17);
+    }
     if kind == FileKind::Operation && table.contains_key("material") {
         return Err(
             "this schema 17 file has `material`, a field schema 18 introduced; \

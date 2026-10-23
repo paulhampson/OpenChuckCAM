@@ -586,3 +586,63 @@ fn req_tl_05_the_cutting_feed_follows_the_operations_spindle_speed() {
     assert!(halved > 0, "half the speed, half the feed");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Gives the project's machine copy the spindle speed range `min` to `max`.
+fn spindle_range(app: &mut Application, min: Option<f64>, max: Option<f64>) {
+    let mut machine = app.project().machine().unwrap().clone();
+    machine.min_spindle_rpm = min.map(SpindleSpeed);
+    machine.max_spindle_rpm = max.map(SpindleSpeed);
+    app.execute(Command::SetMachine(Some(Box::new(machine))))
+        .unwrap();
+}
+
+/// A speed outside the machine's spindle speed range, from the operation or
+/// from the tool's cutting data, blocks Post and export with what to do; a
+/// speed inside it posts as before, and a profile with no range checks
+/// nothing (decision 0231; OI-754; NFR-12).
+#[test]
+fn req_gc_14_req_nfr_12_a_spindle_speed_outside_the_machines_range_is_refused() {
+    use openchuck_app::requirements::RequirementField;
+    let (dir, mut app, op) = project("post-spindle-range");
+    with_post(&mut app, "linuxcnc");
+    let before = app.regenerate().unwrap().gcode[0].1.clone();
+    // The tool's data gives 10000 rpm.
+    spindle_range(&mut app, None, Some(8000.0));
+    let needs = app.operation_requirements(op);
+    assert!(
+        needs
+            .iter()
+            .any(|r| r.field == RequirementField::SpindleSpeed),
+        "{needs:?}"
+    );
+    let e = app.regenerate().unwrap_err().to_string();
+    for part in [
+        "\"Finish\"",
+        "10000 rpm",
+        "above",
+        "highest spindle speed, 8000 rpm",
+        "Lower the spindle speed",
+    ] {
+        assert!(e.contains(part), "{part}: {e}");
+    }
+    // The operation's own speed, inside the range, posts.
+    let mut o = app.project().operation(op).unwrap().clone();
+    o.spindle_speed = Some(SpindleSpeed(7000.0));
+    app.execute(Command::Replace(Item::Operation(o.clone())))
+        .unwrap();
+    assert!(app.operation_requirements(op).is_empty());
+    assert!(app.regenerate().unwrap().gcode[0].1.contains("S7000 M3"));
+    // Below the lowest speed.
+    spindle_range(&mut app, Some(7500.0), Some(12000.0));
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(
+        e.contains("below") && e.contains("Raise the spindle speed"),
+        "{e}"
+    );
+    // No range: as before, byte for byte.
+    o.spindle_speed = None;
+    app.execute(Command::Replace(Item::Operation(o))).unwrap();
+    spindle_range(&mut app, None, None);
+    assert_eq!(app.regenerate().unwrap().gcode[0].1, before);
+    std::fs::remove_dir_all(dir).unwrap();
+}
