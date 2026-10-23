@@ -27,7 +27,7 @@ Edge following on a STEP part follows the part's real edges (decisions 0053 and 
 
 ## Consequences
 
-- Library family 0.18.0 (decision 0048): `openchuck-types` gains a public field on `BrepEdge` (breaking) and the types `EdgeCurve` and `BSplineCurve`; `openchuck-path` gains the module `edge_curve`.
+- Library family 0.19.0 (decision 0048): `openchuck-types` gains a public field on `BrepEdge` (breaking) and the types `EdgeCurve` and `BSplineCurve`; `openchuck-path` gains the module `edge_curve`.
 - The mesh path is unchanged.
 - The STEP kernel stays in `openchuck-import`; the path library gets the curve through `BrepModel`, as it gets the faces.
 - Changed generated G-code: an edge-following path on a STEP edge with a supported curve has more points on it (chords of 0.0005 mm instead of the tessellation's).

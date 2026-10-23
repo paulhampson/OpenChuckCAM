@@ -68,11 +68,16 @@ const MAX_ANSWER: u64 = 1 << 30;
 /// The importer [`crate::importer_for`] returns for STEP.
 pub static STEP_IMPORTER: StepImporter = StepImporter::new();
 
-/// What every STEP import tells the user (IMP-02, IMP-06).
+/// What every STEP import tells the user (IMP-02, IMP-06). Most strategies
+/// still drop the tool on the tessellation (OI-81), so the notice says so
+/// rather than that every toolpath uses the exact faces (NFR-12; decision
+/// 0209 item 4.4, OI-830).
 pub fn step_tessellation_notice(settings: TessellationSettings) -> String {
     format!(
-        "STEP keeps its exact faces and edges: toolpaths are computed on the exact surfaces. \
-The tessellation ({} mm, {} rad) is for display and mesh checks only.",
+        "STEP keeps its exact faces and edges, which radial drilling, swarf and edge following \
+read; pencil clean-up finds its inside corners on the exact edges. The other strategies, and \
+pencil clean-up, drop the tool on the tessellation ({} mm, {} rad) for now, and each \
+operation's notes say so; the display and the mesh checks use it too.",
         settings.linear, settings.angular
     )
 }
@@ -592,6 +597,29 @@ mod tests {
             none.notes
                 .iter()
                 .any(|n| n.contains("does not state a length unit"))
+        );
+    }
+
+    #[test]
+    fn req_op_23_req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation() {
+        // Decision 0209 item 4.4 (OI-830): tool drops still use the
+        // tessellation, so the notice does not say every toolpath is
+        // computed on the exact surfaces.
+        let notice = step_tessellation_notice(TessellationSettings::default());
+        assert!(
+            !notice.contains("toolpaths are computed on the exact"),
+            "{notice}"
+        );
+        assert!(
+            notice.contains("drop the tool on the tessellation (0.01 mm, 0.1 rad)")
+                && notice.contains("radial drilling, swarf and edge following"),
+            "{notice}"
+        );
+        // Pencil clean-up reads the exact edges for its inside corners only
+        // (decision 0226).
+        assert!(
+            notice.contains("pencil clean-up finds its inside corners on the exact edges"),
+            "{notice}"
         );
     }
 

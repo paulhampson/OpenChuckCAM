@@ -2,7 +2,8 @@
 //
 // Writes the STEP fixtures that testdata/step/valid does not take from SP-1: a part in inches, a file of three
 // separate solids, surfaces of revolution and extrusion (which the importer converts to B-splines), and a
-// hexagonal bar whose flats are ruled walls for swarf.
+// hexagonal bar whose flats are ruled walls for swarf, and a shouldered shaft with an inside corner for pencil
+// clean-up.
 // Every file is written by OpenCASCADE 7.8.1 itself, like the SP-1 fixtures (OI-25 is about files from other
 // CAD tools).
 //
@@ -22,9 +23,11 @@
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
+#include <GC_MakeArcOfCircle.hxx>
 #include <BRep_Builder.hxx>
 #include <GeomAPI_PointsToBSpline.hxx>
 #include <Geom_BSplineCurve.hxx>
+#include <Geom_TrimmedCurve.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <Interface_Static.hxx>
 #include <STEPControl_Writer.hxx>
@@ -119,6 +122,32 @@ int main(int argc, char** argv) {
     hexagon.Close();
     TopoDS_Face end = BRepBuilderAPI_MakeFace(hexagon.Wire(), Standard_True).Face();
     ok &= write(BRepPrimAPI_MakePrism(end, gp_Vec(40, 0, 0)).Shape(), dir + "hex_bar.step", "MM");
+  }
+
+  // A shouldered shaft along Z from 0 to 40, the closed form of openchuck_testkit::brep::shouldered_shaft
+  // (decision record 0226, OI-234 (b)): radius 8 to Z 12, a sharp shoulder out to radius 12 (the one inside
+  // corner, 90 degrees), radius 12 to Z 24, a shoulder in to radius 10, a quarter-round fillet of radius 2
+  // down to radius 8 at Z 26 (tangent at both ends), and radius 8 to Z 40. The profile in the XZ plane is
+  // revolved about Z.
+  {
+    const gp_Pnt p[] = {gp_Pnt(0, 0, 0),   gp_Pnt(8, 0, 0),   gp_Pnt(8, 0, 12),  gp_Pnt(12, 0, 12),
+                        gp_Pnt(12, 0, 24), gp_Pnt(10, 0, 24), gp_Pnt(8, 0, 26),  gp_Pnt(8, 0, 40),
+                        gp_Pnt(0, 0, 40)};
+    const double h = 2.0 * (1.0 - std::sqrt(0.5));
+    BRepBuilderAPI_MakeWire mw;
+    for (int k = 0; k < 8; ++k) {
+      if (k == 5) {
+        // The fillet: centre (10, 26), from (10, 24) to (8, 26) through the point at 45 degrees.
+        Handle(Geom_TrimmedCurve) arc = GC_MakeArcOfCircle(p[5], gp_Pnt(8 + h, 0, 24 + h), p[6]).Value();
+        mw.Add(BRepBuilderAPI_MakeEdge(arc).Edge());
+      } else {
+        mw.Add(BRepBuilderAPI_MakeEdge(p[k], p[k + 1]).Edge());
+      }
+    }
+    mw.Add(BRepBuilderAPI_MakeEdge(p[8], p[0]).Edge());
+    TopoDS_Face profile = BRepBuilderAPI_MakeFace(mw.Wire(), Standard_True).Face();
+    ok &= write(BRepPrimAPI_MakeRevol(profile, gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), 2 * M_PI).Shape(),
+                dir + "shouldered_shaft.step", "MM");
   }
 
   std::cerr << (ok ? "wrote the fixtures\n" : "FAILED\n");

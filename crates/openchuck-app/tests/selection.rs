@@ -613,8 +613,13 @@ fn req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted() {
         o.selections = vec![roof];
     });
     let e = app.regenerate().unwrap_err().to_string();
+    // Named by its label, with what to do, and no requirement ID (decision
+    // 0209 item 10.3).
     assert!(
-        e.contains("'careless'") && e.contains("cannot yet be limited"),
+        e.contains(
+            "Careless works on the whole part and cannot be limited to chosen triangles. Take \
+             the selection sets out of the operation."
+        ) && !e.contains("OP-02"),
         "{e}"
     );
     std::fs::remove_dir_all(&dir).unwrap();

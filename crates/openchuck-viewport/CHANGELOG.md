@@ -4,7 +4,8 @@ All notable changes to `openchuck-viewport` are recorded here.
 
 ## Unreleased
 
-- Version 0.18.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
+- Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Version 0.17.0 with the library family (decisions 0201 and 0202); no change to this crate's items.
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
 - Version 0.15.0 with the library family.
