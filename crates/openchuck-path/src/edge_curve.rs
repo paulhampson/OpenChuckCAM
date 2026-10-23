@@ -127,8 +127,11 @@ fn sag(a: Point3, b: Point3, m: Point3) -> f64 {
 }
 
 /// Appends the points after `a` up to and including `b` (parameters `ta`,
-/// `tb`), bisecting while the chord is more than [`SAG`] from the curve.
-/// `None` when the curve fails to evaluate or the point limit is passed.
+/// `tb`), bisecting while the chord is more than [`SAG`] from the curve at
+/// its quarter, middle or three-quarter point. `None` when the curve fails
+/// to evaluate, the point limit is passed, or the deepest bisection still
+/// leaves a chord further than [`SAG`] (the caller keeps the polyline
+/// rather than treat such samples as exact).
 fn refine(
     curve: &EdgeCurve,
     (ta, a): (f64, Point3),
@@ -138,7 +141,14 @@ fn refine(
 ) -> Option<()> {
     let tm = 0.5 * (ta + tb);
     let m = point(curve, tm)?;
-    if depth < MAX_DEPTH && sag(a, b, m) > SAG {
+    let mut worst = sag(a, b, m);
+    for f in [0.25, 0.75] {
+        worst = worst.max(sag(a, b, point(curve, ta + f * (tb - ta))?));
+    }
+    if worst > SAG {
+        if depth >= MAX_DEPTH {
+            return None;
+        }
         refine(curve, (ta, a), (tm, m), depth + 1, out)?;
         refine(curve, (tm, m), (tb, b), depth + 1, out)?;
     } else {

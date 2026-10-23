@@ -200,3 +200,55 @@ fn req_op_08_exact_curve_a_spline_feature_in_a_short_knot_span_is_not_missed() {
         );
     }
 }
+
+#[test]
+fn req_op_08_exact_curve_a_chord_is_checked_beyond_its_midpoint() {
+    // Degree 3, knots 0 x4, 1/16 x3, 1 x4: the first span is the Bezier cubic
+    // of the first four poles. With y = 0, 32/9, -32/9, 0 its ends and middle
+    // are on one chord while its quarter point is 1 mm off it (a CodeRabbit
+    // finding on pull request 317).
+    let w = 1.0 / 16.0;
+    let mut poles: Vec<Point3> = [0.0, 32.0 / 9.0, -32.0 / 9.0, 0.0]
+        .iter()
+        .enumerate()
+        .map(|(i, y)| Point3::new(w * i as f64 / 3.0, *y, 0.0))
+        .collect();
+    poles.extend((1..=3).map(|i| Point3::new(w + (1.0 - w) * f64::from(i) / 3.0, 0.0, 0.0)));
+    let mut knots = vec![0.0; 4];
+    knots.extend([w; 3]);
+    knots.extend([1.0; 4]);
+    let curve = EdgeCurve::BSpline(BSplineCurve {
+        degree: 3,
+        knots,
+        weights: vec![1.0; poles.len()],
+        poles,
+        first: 0.0,
+        last: 1.0,
+    });
+    let q = point(&curve, w / 4.0).unwrap();
+    assert!(
+        (q.y - 1.0).abs() < 1e-9,
+        "the quarter point is 1 mm off: {}",
+        q.y
+    );
+    let points = sample(&curve).unwrap();
+    let nearest = points
+        .windows(2)
+        .map(|v| {
+            let (a, b) = (v[0], v[1]);
+            let ab = [b.x - a.x, b.y - a.y];
+            let aq = [q.x - a.x, q.y - a.y];
+            let len2 = ab[0] * ab[0] + ab[1] * ab[1];
+            let s = if len2 > 0.0 {
+                ((ab[0] * aq[0] + ab[1] * aq[1]) / len2).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            (a.x + s * ab[0] - q.x).hypot(a.y + s * ab[1] - q.y)
+        })
+        .fold(f64::MAX, f64::min);
+    assert!(
+        nearest <= SAG + 1e-9,
+        "the quarter point is {nearest} from the chords"
+    );
+}
