@@ -303,6 +303,11 @@ impl WorkholdingPanel {
         self.draft.edit()
     }
 
+    /// The current draft also supplies the identities of selectable solids.
+    pub(crate) fn workholding(&self) -> &Workholding {
+        self.draft.workholding()
+    }
+
     /// The row with keyboard focus, whose solid the view outlines (7.5).
     pub fn focused(&self) -> Option<HeldItem> {
         self.focused
@@ -1249,6 +1254,12 @@ impl WorkholdingPanel {
             radial_offset,
         } = tab.layout
         {
+            let validate_count = |text: &str| {
+                text.trim()
+                    .parse::<u32>()
+                    .map(|_| ())
+                    .map_err(|_| "Not a whole number. Not applied.".to_owned())
+            };
             let outcome = field_row::text_row(
                 ui,
                 &mut self.fields,
@@ -1260,6 +1271,7 @@ impl WorkholdingPanel {
                     problem: problem_of(problem, Field::TabCount(i)),
                     enabled: true,
                     number: true,
+                    validate: Some(&validate_count),
                     ..TextRow::default()
                 },
             );

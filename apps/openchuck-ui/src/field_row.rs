@@ -90,6 +90,8 @@ pub enum Outcome {
     Reset,
 }
 
+type Validate<'a> = &'a dyn Fn(&str) -> Result<(), String>;
+
 /// A text or number row.
 #[derive(Clone, Default)]
 pub struct TextRow<'a> {
@@ -138,7 +140,8 @@ pub struct TextRow<'a> {
     pub number: bool,
     /// Checks the interpreted entry without applying it. The departure
     /// guard checks every pending field before any command is executed.
-    pub validate: Option<&'a dyn Fn(&str) -> Result<(), String>>,
+    pub validate: Option<Validate<'a>>,
+    pub preflight: Option<crate::pending_edits::Preflight>,
 }
 
 impl std::fmt::Debug for TextRow<'_> {
@@ -426,6 +429,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                 })
             });
         crate::pending_edits::track(ui, &response, row.label, pending);
+        crate::pending_edits::set_preflight(ui.ctx(), response.id, row.preflight.clone());
     });
     note_unreadable(ui.ctx(), row.key, state.unreadable.get(row.key));
     let error = state.error(row.key).map(str::to_owned);
@@ -715,7 +719,7 @@ pub fn list_row(
     ui.horizontal(|ui| {
         label_cell(ui, label, description, false);
         let mut chosen = None;
-        egui::ComboBox::from_id_salt(("list", key))
+        let response = egui::ComboBox::from_id_salt(("list", key))
             .selected_text(shown)
             .width(ui.available_width().max(80.0))
             .truncate()
@@ -730,6 +734,7 @@ pub fn list_row(
             })
             .response
             .on_hover_text(description);
+        crate::pending_edits::track(ui, &response, label, None);
         chosen
     })
     .inner

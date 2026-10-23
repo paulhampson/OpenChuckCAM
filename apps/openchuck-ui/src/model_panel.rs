@@ -74,6 +74,8 @@ pub struct ModelOutcome {
     pub settings_changed: bool,
     /// The user asked to choose a file to replace the model's.
     pub choose_replacement: bool,
+    /// Open the full mesh report after resolving any pending form entries.
+    pub show_report: bool,
     /// A replacement file has been read and checked: store it.
     pub replaced: Option<PreparedModel>,
 }
@@ -234,6 +236,10 @@ impl ModelPanel {
         }
     }
 
+    pub(crate) fn show_report(&mut self) {
+        self.report_open = true;
+    }
+
     /// Draws the panel for `reference` as the project holds it now, starting
     /// a check when it changed.
     pub fn show(
@@ -293,7 +299,7 @@ impl ModelPanel {
                     "units" => self.units_section(ui, reference, inspection.as_ref()),
                     "placement" => self.placement_section(ui, reference),
                     "check" => {
-                        self.check_section(ui, inspection.as_ref());
+                        outcome.show_report = self.check_section(ui, inspection.as_ref());
                         None
                     }
                     _ => {
@@ -710,10 +716,10 @@ impl ModelPanel {
 
     /// One row per kind of finding with its count, or a tick; the sentence
     /// that the check changes nothing; "Open full report" (IMP-04; 11.2).
-    fn check_section(&mut self, ui: &mut egui::Ui, inspection: Option<&ModelInspection>) {
+    fn check_section(&mut self, ui: &mut egui::Ui, inspection: Option<&ModelInspection>) -> bool {
         let Some(i) = inspection else {
             self.checking(ui);
-            return;
+            return false;
         };
         let problems = i.report.problems();
         if problems.is_empty() {
@@ -731,9 +737,7 @@ impl ModelPanel {
         ui.label(
             RichText::new("The check changes nothing in the model or its file.").color(DARK.muted),
         );
-        if ui.link("Open full report").clicked() {
-            self.report_open = true;
-        }
+        ui.link("Open full report").clicked()
     }
 
     /// The full check report, in a window of its own.

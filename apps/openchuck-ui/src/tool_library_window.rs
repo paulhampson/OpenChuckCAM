@@ -665,8 +665,9 @@ impl ToolLibraryWindow {
                 }
                 Some(Chosen::Library(id)) => {
                     let dirty = self.is_dirty();
+                    let pending = !crate::pending_edits::entries(ui.ctx()).is_empty();
                     let new = self.library.as_ref().is_some_and(|l| l.get(id).is_none());
-                    if crate::shell::primary_button(ui, "Save", dirty).clicked() {
+                    if crate::shell::primary_button(ui, "Save", dirty || pending).clicked() {
                         acts.push(Act::Save);
                     }
                     if ui.add_enabled(dirty, egui::Button::new("Cancel")).clicked() {
@@ -683,12 +684,18 @@ impl ToolLibraryWindow {
                 None => {}
             }
         });
+        let validate_name = |text: &str| {
+            let mut candidate = tool.clone();
+            library::edit_name(&mut candidate, text)
+                .map_err(|e| form_panel::refusal(&e.to_string()))
+        };
         let name = TextRow {
             key: "name",
             label: "Name",
             description: "The tool's name in lists and on the setup sheet.",
             applied: tool.name.clone(),
             enabled: true,
+            validate: Some(&validate_name),
             ..TextRow::default()
         };
         if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &name) {
@@ -721,7 +728,20 @@ impl ToolLibraryWindow {
             );
         }
         let fields = tool_edit::tool_form(&tool.tool);
-        for edit in form_panel::show_fields(ui, &fields, &[], false, &mut self.fields) {
+        let preflight = |field: &openchuck_app::form::Field| {
+            let field = field.clone();
+            crate::pending_edits::preflight(
+                egui::Id::new(("tool fields", tool.id)),
+                tool.tool.clone(),
+                move |tool, text| {
+                    let value = form_panel::parse(&field.kind, text)?
+                        .ok_or_else(|| "Needs a value. Not applied.".to_owned())?;
+                    tool_edit::set_tool_field(tool, &field.name, &value)
+                        .map_err(|e| form_panel::refusal(&e.to_string()))
+                },
+            )
+        };
+        for edit in form_panel::show_fields(ui, &fields, &[], false, &mut self.fields, preflight) {
             acts.push(Act::Field(edit.name, edit.value));
         }
         let mut materials: Vec<String> = MATERIALS.iter().map(|m| (*m).to_owned()).collect();

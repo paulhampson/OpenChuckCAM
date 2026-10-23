@@ -529,7 +529,7 @@ impl RunPanel {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Name");
-                    crate::pending_edits::text_edit(ui, &mut form.name, "Operation name");
+                    crate::pending_edits::name_edit(ui, &mut form.name, "Operation name");
                 });
                 // One list: roughing first, finishing next, the specialist
                 // strategies last, each with a short description under its

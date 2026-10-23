@@ -2,7 +2,8 @@
 //! Shared field tracking for form departures (UI-07, UI-10, UI-26;
 //! decision 0233). This holds UI buffers only, never project values.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
+use std::{any::Any, sync::Arc};
 
 use eframe::egui::{self, Id};
 
@@ -11,10 +12,70 @@ pub struct Entry {
     pub id: Id,
     pub label: String,
     pub checked: Result<String, String>,
+    pub preflight: Option<Preflight>,
+}
+
+/// A dry run against a private copy of the enclosing value. Fields in the
+/// same group share that copy, in the order Keep will confirm them. This
+/// checks interacting constraints with the application's existing editors.
+#[derive(Clone)]
+pub struct Preflight(Arc<Check>);
+
+type Candidates = BTreeMap<u64, Box<dyn Any>>;
+type Check = dyn Fn(&mut Candidates, &str) -> Result<(), String> + Send + Sync;
+
+impl std::fmt::Debug for Preflight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Preflight")
+    }
+}
+
+pub fn preflight<T: Clone + Send + Sync + 'static>(
+    group: Id,
+    original: T,
+    apply: impl Fn(&T, &str) -> Result<T, String> + Send + Sync + 'static,
+) -> Preflight {
+    Preflight(Arc::new(move |candidates, text| {
+        let candidate = candidates
+            .entry(group.value())
+            .or_insert_with(|| Box::new(original.clone()));
+        let Some(value) = candidate.downcast_mut::<T>() else {
+            return Err("The form changed; confirm the fields again. Not applied.".to_owned());
+        };
+        *value = apply(value, text)?;
+        Ok(())
+    }))
+}
+
+pub fn validate(entries: &[Entry]) -> Result<(), (Id, String)> {
+    let mut candidates = Candidates::new();
+    for entry in entries {
+        let text = entry
+            .checked
+            .as_ref()
+            .map_err(|reason| (entry.id, reason.clone()))?;
+        if let Some(check) = &entry.preflight {
+            (check.0)(&mut candidates, text).map_err(|reason| (entry.id, reason))?;
+        }
+    }
+    Ok(())
+}
+
+pub fn set_preflight(ctx: &egui::Context, id: Id, preflight: Option<Preflight>) {
+    read(ctx, |s| {
+        if let Some(entry) = s
+            .fields
+            .get_mut(&id.value())
+            .and_then(|f| f.pending.as_mut())
+        {
+            entry.preflight = preflight;
+        }
+    });
 }
 
 #[derive(Clone)]
 struct Field {
+    id: Id,
     form: Id,
     layer: egui::LayerId,
     rect: egui::Rect,
@@ -34,13 +95,14 @@ pub enum Mode {
 #[derive(Clone, Default)]
 struct State {
     form: Option<Id>,
-    fields: HashMap<Id, Field>,
+    fields: BTreeMap<u64, Field>,
     mode: Mode,
     outside: bool,
     focus: Option<Id>,
-    discard: HashSet<Id>,
-    refused: HashMap<Id, String>,
-    draft_original: HashMap<Id, String>,
+    discard: BTreeSet<u64>,
+    refused: BTreeMap<u64, String>,
+    draft_original: BTreeMap<u64, String>,
+    draft_errors: BTreeMap<u64, String>,
     next_ticket: u64,
     tickets: BTreeMap<u64, Option<bool>>,
     sections: Vec<Id>,
@@ -80,7 +142,7 @@ pub fn begin(ctx: &egui::Context) -> Option<Id> {
         if s.mode == Mode::Normal
             && let Some(at) = pointer
         {
-            let from = focused.and_then(|id| s.fields.get(&id));
+            let from = focused.and_then(|id| s.fields.get(&id.value()));
             let to = s.fields.values().find(|f| {
                 Some(f.layer) == layer && frame.saturating_sub(f.seen) <= 2 && f.rect.contains(at)
             });
@@ -93,12 +155,7 @@ pub fn begin(ctx: &egui::Context) -> Option<Id> {
                 && from.form != to.form
                 && from.pending.is_some()
             {
-                return to.pending.as_ref().map(|e| e.id).or_else(|| {
-                    s.fields
-                        .iter()
-                        .find(|(_, f)| std::ptr::eq(*f, to))
-                        .map(|(id, _)| *id)
-                });
+                return Some(to.id);
             }
         }
         None
@@ -133,8 +190,9 @@ pub fn track(
     let frame = ui.ctx().cumulative_pass_nr();
     read(ui.ctx(), |s| {
         s.fields.insert(
-            response.id,
+            response.id.value(),
             Field {
+                id: response.id,
                 form: s.form.unwrap_or_else(|| ui.layer_id().id),
                 layer: ui.layer_id(),
                 rect: response.rect.intersect(ui.clip_rect()),
@@ -143,6 +201,7 @@ pub fn track(
                     id: response.id,
                     label: label.to_owned(),
                     checked,
+                    preflight: None,
                 }),
                 sections: s.sections.clone(),
             },
@@ -164,7 +223,9 @@ pub fn entries(ctx: &egui::Context) -> Vec<Entry> {
 
 pub fn is_pending(ctx: &egui::Context, id: Id) -> bool {
     read(ctx, |s| {
-        s.fields.get(&id).is_some_and(|f| f.pending.is_some())
+        s.fields
+            .get(&id.value())
+            .is_some_and(|f| f.pending.is_some())
     })
 }
 
@@ -180,17 +241,17 @@ pub fn discard(ctx: &egui::Context) {
 }
 
 pub fn take_discard(ctx: &egui::Context, id: Id) -> bool {
-    read(ctx, |s| s.discard.remove(&id))
+    read(ctx, |s| s.discard.remove(&id.value()))
 }
 
 pub fn refuse(ctx: &egui::Context, id: Id, reason: String) {
     read(ctx, |s| {
-        s.refused.insert(id, reason);
+        s.refused.insert(id.value(), reason);
     });
 }
 
 pub fn take_refusal(ctx: &egui::Context, id: Id) -> Option<String> {
-    read(ctx, |s| s.refused.remove(&id))
+    read(ctx, |s| s.refused.remove(&id.value()))
 }
 
 pub fn focus(ctx: &egui::Context, id: Id) {
@@ -225,9 +286,12 @@ pub fn needs_section(ctx: &egui::Context, section: Id) -> bool {
     read(ctx, |s| match s.mode {
         Mode::Keep(id) => s
             .fields
-            .get(&id)
+            .get(&id.value())
             .is_some_and(|f| f.sections.contains(&section)),
-        _ => false,
+        _ => s
+            .focus
+            .and_then(|id| s.fields.get(&id.value()))
+            .is_some_and(|f| f.sections.contains(&section)),
     })
 }
 
@@ -285,18 +349,27 @@ pub fn draft_text(
     let ctx = ui.ctx();
     let original = read(ctx, |s| {
         if response.changed() {
+            s.draft_errors.remove(&response.id.value());
             s.draft_original
-                .entry(response.id)
+                .entry(response.id.value())
                 .or_insert_with(|| before.to_owned());
         }
-        s.draft_original.get(&response.id).cloned()
+        s.draft_original.get(&response.id.value()).cloned()
     });
+    // Returning to the original text ends this edit too. The same dialog
+    // widget may next edit another item, whose confirmed value is different.
+    if original.as_ref().is_some_and(|old| old == text) {
+        read(ctx, |s| {
+            s.draft_original.remove(&response.id.value());
+        });
+    }
     if take_discard(ctx, response.id) {
         if let Some(original) = &original {
             text.clone_from(original);
         }
         read(ctx, |s| {
-            s.draft_original.remove(&response.id);
+            s.draft_original.remove(&response.id.value());
+            s.draft_errors.remove(&response.id.value());
         });
         track(ui, response, label, None);
         return false;
@@ -307,10 +380,8 @@ pub fn draft_text(
     let explicit = ui.input(|i| i.key_pressed(egui::Key::Enter));
     let normal = mode(ctx) == Mode::Normal;
     let escape = normal && response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape));
-    if escape {
-        if let Some(original) = &original {
-            text.clone_from(original);
-        }
+    if escape && let Some(original) = &original {
+        text.clone_from(original);
     }
     let confirmed = mode(ctx) == Mode::Keep(response.id)
         || (normal && response.lost_focus() && (explicit || !holds_focus_loss(ctx)));
@@ -320,7 +391,8 @@ pub fn draft_text(
     }
     if (confirmed && checked.is_ok()) || escape {
         read(ctx, |s| {
-            s.draft_original.remove(&response.id);
+            s.draft_original.remove(&response.id.value());
+            s.draft_errors.remove(&response.id.value());
         });
     }
     let pending = (!escape
@@ -336,12 +408,36 @@ pub fn draft_text(
 /// A plain text field of a dialog draft, with the same registration and
 /// restoration as the inspector's shared field row.
 pub fn text_edit(ui: &mut egui::Ui, text: &mut String, label: &str) -> egui::Response {
+    checked_text_edit(ui, text, label, |text| Ok(text.to_owned()))
+}
+
+pub fn name_edit(ui: &mut egui::Ui, text: &mut String, label: &str) -> egui::Response {
+    checked_text_edit(ui, text, label, |text| {
+        if text.trim().is_empty() {
+            Err("Give the item a name. Not applied.".to_owned())
+        } else {
+            Ok(text.to_owned())
+        }
+    })
+}
+
+fn checked_text_edit(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    label: &str,
+    validate: impl FnOnce(&str) -> Result<String, String>,
+) -> egui::Response {
     let before = text.clone();
     let response = ui.text_edit_singleline(text);
-    draft_text(ui, &response, label, &before, text, |text| {
-        Ok(text.to_owned())
-    });
+    draft_text(ui, &response, label, &before, text, validate);
     if let Some(reason) = take_refusal(ui.ctx(), response.id) {
+        read(ui.ctx(), |s| {
+            s.draft_errors.insert(response.id.value(), reason);
+        });
+    }
+    if let Some(reason) = read(ui.ctx(), |s| {
+        s.draft_errors.get(&response.id.value()).cloned()
+    }) {
         ui.colored_label(crate::theme::DARK.error, reason);
     }
     response

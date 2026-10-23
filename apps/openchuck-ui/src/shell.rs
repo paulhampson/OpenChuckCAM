@@ -56,6 +56,7 @@ mod inspector;
 pub(crate) mod marks;
 mod out_of_date;
 mod pending;
+mod pending_pick;
 mod tree;
 
 #[cfg(test)]
@@ -1370,7 +1371,15 @@ impl Shell {
     fn pick_intent(&mut self, input: crate::viewport::PickInput, ctx: &egui::Context) {
         if input.click.is_some() || input.edge_click.is_some() || input.solid_click.is_some() {
             let deferred_ctx = ctx.clone();
-            if self.defer(move |s| s.pick_intent(input, &deferred_ctx)) {
+            let intent = self
+                .app
+                .as_ref()
+                .and_then(|app| pending_pick::Intent::capture(app, self.viewport.view(), input));
+            if self.defer(move |s| {
+                if let Some(intent) = intent {
+                    s.resume_pick(intent, &deferred_ctx);
+                }
+            }) {
                 return;
             }
         }
@@ -1565,6 +1574,7 @@ impl Shell {
         };
         let mut close = false;
         let mut form_submit = false;
+        let mut form_browse = false;
         let mut action: Option<Action> = None;
         egui::Modal::new(egui::Id::new("openchuck dialog")).show(ctx, |ui| match dialog {
             Dialog::Folder {
@@ -1584,11 +1594,7 @@ impl Shell {
                 });
                 ui.horizontal(|ui| {
                     crate::pending_edits::text_edit(ui, &mut folder, "Project folder");
-                    if ui.button("Browse…").clicked()
-                        && let Some(picked) = pick_folder(&folder)
-                    {
-                        folder = picked;
-                    }
+                    form_browse = ui.button("Browse…").clicked();
                 });
                 // What a new project would get: the cleaned folder name, and
                 // whether it can be made there (#219).
@@ -1598,7 +1604,7 @@ impl Shell {
                 // (OI-694).
                 if create {
                     ui.label("Project name:");
-                    crate::pending_edits::text_edit(ui, &mut name, "Project name");
+                    crate::pending_edits::name_edit(ui, &mut name, "Project name");
                     if name.trim().is_empty() {
                         ui.colored_label(DARK.error, "Give the project a name.");
                     } else if !folder.trim().is_empty() {
@@ -1707,7 +1713,7 @@ impl Shell {
             }
             Dialog::Rename { item, mut name } => {
                 ui.heading("Rename");
-                let field = crate::pending_edits::text_edit(ui, &mut name, "Name");
+                let field = crate::pending_edits::name_edit(ui, &mut name, "Name");
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 // The field has the keyboard when the dialog opens.
                 if !enter && ui.memory(|m| m.focused().is_none()) {
@@ -1786,6 +1792,10 @@ impl Shell {
                 }
             }
         });
+        if form_browse {
+            self.browse_form_dialog();
+            return;
+        }
         if form_submit {
             if !self.defer(Self::accept_form_dialog) {
                 self.accept_form_dialog();
@@ -1849,6 +1859,17 @@ impl Shell {
             }
             Some(Dialog::Rename { item, name }) => self.rename(item, &name),
             other => self.dialog = other,
+        }
+    }
+
+    fn browse_form_dialog(&mut self) {
+        if self.defer(Self::browse_form_dialog) {
+            return;
+        }
+        if let Some(Dialog::Folder { folder, .. }) = &mut self.dialog
+            && let Some(picked) = pick_folder(folder)
+        {
+            *folder = picked;
         }
     }
 
@@ -1934,6 +1955,10 @@ Nothing is overwritten. Choose another name.",
 }
 
 fn pick_folder(current: &str) -> Option<String> {
+    #[cfg(test)]
+    if stub_picker(current) {
+        return None;
+    }
     let mut dialog = rfd::FileDialog::new().set_title("Project folder");
     if let Some(start) = existing_dir(current) {
         dialog = dialog.set_directory(start);
@@ -1951,6 +1976,10 @@ pub(crate) const MODEL_FILTER: (&str, &[&str]) = (
 );
 
 pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
+    #[cfg(test)]
+    if stub_picker(current) {
+        return None;
+    }
     let mut dialog = rfd::FileDialog::new()
         .set_title("Import model")
         .add_filter(MODEL_FILTER.0, MODEL_FILTER.1);
@@ -1959,6 +1988,24 @@ pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<Str
         dialog = dialog.set_directory(start);
     }
     dialog.pick_file().map(|p| p.display().to_string())
+}
+
+#[cfg(test)]
+thread_local! {
+    static PICKER_INPUTS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn stub_picker(current: &str) -> bool {
+    PICKER_INPUTS.with(|inputs| {
+        let mut inputs = inputs.borrow_mut();
+        if let Some(inputs) = inputs.as_mut() {
+            inputs.push(current.to_owned());
+            true
+        } else {
+            false
+        }
+    })
 }
 
 /// The folder `text` names, or its parent, if it exists.
@@ -2065,6 +2112,7 @@ impl Shell {
         self.guard_close(&ctx);
         self.update_window_title(&ctx);
         self.poll_scene(&ctx);
+        self.finish_pick(&ctx);
         self.overview_frame(&ctx);
         // Before anything is drawn, so a result is never drawn as current
         // in the frame after the change that made it out of date.

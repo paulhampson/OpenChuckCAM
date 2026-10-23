@@ -13,6 +13,7 @@ pub(super) struct Guard {
     focus: Option<Id>,
     resolving: bool,
     dispatching: bool,
+    pick: Option<super::pending_pick::Intent>,
 }
 
 impl Guard {
@@ -22,6 +23,35 @@ impl Guard {
 }
 
 impl Shell {
+    pub(super) fn resume_pick(&mut self, intent: super::pending_pick::Intent, ctx: &egui::Context) {
+        if self.scene_job.is_some() {
+            self.edit_guard.pick = Some(intent);
+            ctx.request_repaint();
+            return;
+        }
+        if let Some(input) = self.app.as_ref().and_then(|app| {
+            intent.resolve(
+                app,
+                self.viewport.view(),
+                self.workholding_panel
+                    .as_ref()
+                    .map(|panel| (panel.setup(), panel.workholding())),
+            )
+        }) {
+            self.pick_intent(input, ctx);
+        } else {
+            self.status = "The selected geometry changed; select it again.".to_owned();
+        }
+    }
+
+    pub(super) fn finish_pick(&mut self, ctx: &egui::Context) {
+        if self.scene_job.is_none()
+            && let Some(intent) = self.edit_guard.pick.take()
+        {
+            self.resume_pick(intent, ctx);
+        }
+    }
+
     /// Every form-leaving action asks this policy, before changing UI or
     /// starting work. The closure owns IDs and meaning, never coordinates.
     pub(super) fn defer(&mut self, action: impl FnOnce(&mut Self) + 'static) -> bool {
@@ -90,12 +120,9 @@ impl Shell {
                 // Preflight the entire form before a widget can return a
                 // Commit. In particular an invalid earlier field must stop
                 // a valid active field from applying partially.
-                if let Some((entry, reason)) = entries
-                    .iter()
-                    .find_map(|e| e.checked.as_ref().err().map(|reason| (e, reason.clone())))
-                {
-                    edits::refuse(ctx, entry.id, reason);
-                    edits::focus(ctx, entry.id);
+                if let Err((id, reason)) = edits::validate(&entries) {
+                    edits::refuse(ctx, id, reason);
+                    edits::focus(ctx, id);
                     self.edit_guard.action = None;
                     edits::resolve_local(ctx, false);
                     edits::set_mode(ctx, Mode::Normal);

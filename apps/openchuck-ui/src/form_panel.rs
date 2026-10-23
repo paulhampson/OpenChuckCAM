@@ -186,7 +186,7 @@ pub fn show(
                     let warned = marks.warned.contains(&field.name).then_some(WARNED_SETTING);
                     let scroll = jump == Some(&field_key)
                         || marks.jump.as_deref() == Some(field.name.as_str());
-                    if let Some(e) = row(ui, field, true, state, need, warned, scroll) {
+                    if let Some(e) = row(ui, field, true, state, need, warned, scroll, None) {
                         edits.push(e);
                     }
                 }
@@ -217,10 +217,20 @@ pub fn show_fields(
     notes: &[String],
     reset: bool,
     state: &mut FormState,
+    preflight: impl Fn(&Field) -> crate::pending_edits::Preflight,
 ) -> Vec<Edit> {
     let mut edits = Vec::new();
     for field in fields {
-        if let Some(e) = row(ui, field, reset, state, None, None, false) {
+        if let Some(e) = row(
+            ui,
+            field,
+            reset,
+            state,
+            None,
+            None,
+            false,
+            Some(preflight(field)),
+        ) {
             edits.push(e);
         }
     }
@@ -230,6 +240,7 @@ pub fn show_fields(
     edits
 }
 
+#[allow(clippy::too_many_arguments)]
 fn row(
     ui: &mut egui::Ui,
     field: &Field,
@@ -238,6 +249,7 @@ fn row(
     need: Option<&str>,
     warned: Option<&str>,
     scroll: bool,
+    preflight: Option<crate::pending_edits::Preflight>,
 ) -> Option<Edit> {
     let name = || field.name.clone();
     match &field.kind {
@@ -284,7 +296,7 @@ fn row(
                         },
                         Some(ParameterValue::Number(v)),
                     ) => {
-                        if min.is_some_and(|m| v < m || (*min_exclusive && v == m))
+                        if min.is_some_and(|m| if *min_exclusive { v <= m } else { v < m })
                             || max.is_some_and(|m| v > m)
                         {
                             return Err(format!(
@@ -327,6 +339,7 @@ fn row(
                 scroll_to: scroll,
                 number: !matches!(field.kind, FieldKind::Text),
                 validate: Some(&validate),
+                preflight,
             };
             match field_row::text_row(ui, state, &row) {
                 Outcome::None => None,
