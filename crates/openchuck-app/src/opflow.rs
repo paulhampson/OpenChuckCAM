@@ -112,14 +112,16 @@ impl Application {
         setup: SetupId,
         tool: Option<ToolId>,
     ) -> Result<OperationId, AppError> {
-        self.add_operation_on(name, strategy, setup, tool, None)
+        self.add_operation_on(name, strategy, setup, tool, None, None)
     }
 
     /// [`Application::add_operation`] with the selection set `cut_on` in its
     /// Cut on role: the new operation takes the selection (interface
-    /// specification 11.4; decision record 0114 C16). One undoable step.
-    /// Fails, saying why, for a set the project does not have or a strategy
-    /// that cannot cut in a selection.
+    /// specification 11.4; decision record 0114 C16), and with the material
+    /// preset of `material` (`None` for the setup's stock material; issue
+    /// 197, decision record 0230). One undoable step. Fails, saying why, for
+    /// a set the project does not have, a strategy that cannot cut in a
+    /// selection, or a material the tool has no cutting data for.
     pub fn add_operation_on(
         &mut self,
         name: &str,
@@ -127,6 +129,7 @@ impl Application {
         setup: SetupId,
         tool: Option<ToolId>,
         cut_on: Option<openchuck_project::id::SelectionSetId>,
+        material: Option<&str>,
     ) -> Result<OperationId, AppError> {
         let name = name.trim();
         if name.is_empty() {
@@ -197,6 +200,9 @@ impl Application {
                 )));
             }
         }
+        let material =
+            crate::preset::chosen_material(&self.document.project, setup, tool, material)
+                .map_err(fail)?;
         // Rotary roughing starts with a stock to leave for the finishing that
         // follows, a tenth of the tool's diameter, written into the operation
         // so the inspector shows it as set (decision record 0205).
@@ -227,6 +233,7 @@ impl Application {
                 check: Vec::new(),
                 restriction_options: RestrictionOptions::default(),
                 spindle_speed: None,
+                material,
                 parameters,
                 enabled: true,
             }),

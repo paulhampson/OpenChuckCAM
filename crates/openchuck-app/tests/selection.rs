@@ -115,6 +115,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -1295,6 +1296,7 @@ fn req_op_02_a_new_operation_refuses_a_set_on_another_model() {
         existing.setup,
         existing.tool,
         Some(roof),
+        None,
     ));
     assert!(error.contains("different model"), "{error}");
     assert_eq!(app.project().operations().len(), count);
@@ -1321,6 +1323,7 @@ fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_i
             existing.setup,
             existing.tool,
             Some(set),
+            None,
         )
         .unwrap();
     assert_eq!(app.project().operation(new).unwrap().selections, [set]);
@@ -1333,6 +1336,7 @@ fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_i
             existing.setup,
             existing.tool,
             Some(set),
+            None,
         ));
         assert!(error.contains("ignores selections"), "{error}");
     }

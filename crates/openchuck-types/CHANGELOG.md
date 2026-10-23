@@ -4,6 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- **Breaking (0.20.0):** `machine::MachineProfile` has two new public fields, `min_spindle_rpm` and `max_spindle_rpm` (`Option<SpindleSpeed>`), the spindle speed range the machine runs at, a limit and never a default; `ProfileField` gains `SpindleRange` (`ProfileField::ALL` has eight entries), and `unconfirmed_fields` lists it only when the profile gives a range. New: `machine::SpindleLimit`, `MachineProfile::spindle_limit` and `MachineProfile::fields` (the fields the profile gives a value for; the CLI counts those). `validate` refuses a value that is not above 0, and a lowest speed not below the highest (decision 0231, OI-754; GC-14, NFR-12). Profile files without them read with no range.
 - **Breaking (0.19.0):** `brep::BrepEdge` has a new public field, `curve: Option<EdgeCurve>`, the exact curve under the edge (decision 0227, issue 257; OP-08, OI-229). New: `brep::EdgeCurve` (a line, circle, ellipse or `BSplineCurve`), `brep::BSplineCurve`; `BrepModel::validate` checks the curve. Models written before the field read as `None`.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Lane FOLLOW1 (OI-841; OP-21): `setup::SetupWarningKind::TabsOverlap`, a tab placed automatically that lies over a tab placed by hand; `workholding::check_tab_zones` reports it.

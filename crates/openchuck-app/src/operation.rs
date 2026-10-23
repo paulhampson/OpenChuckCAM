@@ -82,9 +82,7 @@ pub fn parameter_values(
             (k.clone(), v)
         })
         .collect();
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref());
+    let material = crate::preset::material_of(project, operation);
     let snapshot = operation
         .tool
         .and_then(|id| project.tools().iter().find(|t| t.id == id));
@@ -1497,6 +1495,7 @@ mod tests {
                 check: Vec::new(),
                 restriction_options: Default::default(),
                 spindle_speed: None,
+                material: None,
                 parameters: values,
             }),
         ] {

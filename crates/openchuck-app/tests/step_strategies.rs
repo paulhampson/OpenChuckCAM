@@ -184,6 +184,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application, ContentHash) {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: parameters
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), v.clone()))

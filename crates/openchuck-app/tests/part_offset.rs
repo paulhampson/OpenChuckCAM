@@ -143,6 +143,7 @@ fn build(name: &str) -> Built {
         check: Vec::new(),
         restriction_options: Default::default(),
         spindle_speed: None,
+        material: None,
         parameters: [("stock_to_leave".to_owned(), ParameterValue::Number(0.5))]
             .into_iter()
             .collect(),
