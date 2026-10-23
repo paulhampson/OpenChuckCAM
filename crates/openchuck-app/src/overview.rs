@@ -1535,6 +1535,30 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
                 Some(MessageAction::Show(item)),
             ));
         }
+        // A selection set the strategy cannot use on a STEP part: said at
+        // once, from the same check generation makes (decision 0209 item
+        // 10). The first sets the operation's state.
+        let refusals = crate::step_sets::refusals(project, &app.strategies, o);
+        if let Some(first) = refusals.first()
+            && status.state != ItemState::Error
+        {
+            status = ItemStatus::new(ItemState::Error, sentence(&first.text));
+        }
+        for refusal in refusals {
+            // Said once, when a generation already failed with it.
+            if messages
+                .iter()
+                .any(|m| m.source == Some(item) && m.text.contains(&refusal.text))
+            {
+                continue;
+            }
+            messages.push(Message::new(
+                Severity::Error,
+                refusal.text,
+                Some((item, label.clone())),
+                Some(MessageAction::Show(item)),
+            ));
+        }
         if let Some((_, notes)) = checks.and_then(|c| c.reach.get(&o.id)) {
             for note in notes {
                 messages.push(Message::new(
