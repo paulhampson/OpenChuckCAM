@@ -48,6 +48,7 @@
     clippy::too_many_lines
 )]
 
+mod checks;
 mod measure;
 
 use std::collections::BTreeMap;
@@ -500,11 +501,12 @@ fn main() -> Result<(), Error> {
             let one = serde_json::to_string(&first.groups)?;
             for n in [2, cores] {
                 let again = job.run(form, Threads::Exactly(n))?;
-                let same = serde_json::to_string(&again.groups)? == one;
-                println!(
-                    "{n} threads: {}",
-                    if same { "identical" } else { "DIFFERENT" }
-                );
+                checks::identical(
+                    &one,
+                    &serde_json::to_string(&again.groups)?,
+                    &format!("form {name}, {n} threads, serialized toolpath"),
+                )?;
+                println!("{n} threads: identical");
             }
         }
     }
@@ -524,21 +526,19 @@ fn main() -> Result<(), Error> {
             let took = started.elapsed();
             let clean = result.reports.iter().all(|r| r.is_clean());
             let gcode = result.gcode.clone();
-            let same = reference.as_ref().is_none_or(|r| *r == gcode);
+            checks::clean(clean, &format!("form b, {n} threads, replay gates"))?;
+            if let Some(expected) = &reference {
+                checks::identical(expected, &gcode, &format!("form b, {n} threads, G-code"))?;
+            }
             println!(
-                "form b, {n} threads: regenerate {:.1} s, gates {}, G-code {}",
-                took.as_secs_f64(),
-                if clean { "clean" } else { "NOT CLEAN" },
-                if same { "identical" } else { "DIFFERENT" }
+                "form b, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
+                took.as_secs_f64()
             );
             if n == cores
                 && let Some(library) = &library_b
             {
-                let matches = result.toolpath.groups == *library;
-                println!(
-                    "the library's form b path {} the application's",
-                    if matches { "is" } else { "is NOT" }
-                );
+                checks::identical(library, &result.toolpath.groups, "form b application path")?;
+                println!("the library's form b path is the application's");
             }
             reference.get_or_insert(gcode);
         }
@@ -554,11 +554,16 @@ fn main() -> Result<(), Error> {
                 let started = Instant::now();
                 let result = again.regenerate()?;
                 let gcode = result.gcode.clone();
-                let same = reference.as_ref().is_none_or(|r| *r == gcode);
+                checks::clean(
+                    result.reports.iter().all(|r| r.is_clean()),
+                    &format!("form a, {n} threads, replay gates"),
+                )?;
+                if let Some(expected) = &reference {
+                    checks::identical(expected, &gcode, &format!("form a, {n} threads, G-code"))?;
+                }
                 println!(
-                    "form a, {n} threads: regenerate {:.1} s, G-code {}",
-                    started.elapsed().as_secs_f64(),
-                    if same { "identical" } else { "DIFFERENT" }
+                    "form a, {n} threads: regenerate {:.1} s, gates clean, G-code identical",
+                    started.elapsed().as_secs_f64()
                 );
                 reference.get_or_insert(gcode);
             }
