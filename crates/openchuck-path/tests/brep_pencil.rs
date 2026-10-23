@@ -385,9 +385,38 @@ fn req_op_09_req_nfr_12_brep_an_edge_whose_side_cannot_be_told_is_left_out_and_s
     let f = Fixture::new(&model);
     let out = pencil(&f, &PencilFinishing::on_brep(&model).unwrap(), &[]).unwrap();
     assert!(
-        out.notes.iter().any(|n| n
-            .contains("1 edge of the part turns 30 degrees or more but is not followed: it is")),
+        out.notes
+            .iter()
+            .any(|n| n.contains("1 edge of the part that may be an inside corner is not followed")),
         "{:?}",
         out.notes
     );
+}
+
+#[test]
+fn req_op_09_req_nfr_07_brep_an_edge_whose_faces_cannot_be_compared_is_counted_as_left_out() {
+    // A damaged model: an edge between the bar and the end disc whose
+    // points are not numbers, so neither face can be asked about it. It is
+    // not followed, and it is counted with the edges left out (decision 0226
+    // item 3), whatever the crease angle, since its turn is not known.
+    let mut model = shouldered_shaft(4);
+    model.edges.push(openchuck_types::brep::BrepEdge {
+        id: EdgeId(11),
+        faces: vec![
+            openchuck_types::brep::FaceId(1),
+            openchuck_types::brep::FaceId(0),
+        ],
+        vertices: None,
+        polyline: vec![
+            Point3::new(f64::NAN, 0.0, 0.0),
+            Point3::new(1.0, f64::NAN, 0.0),
+        ],
+    });
+    for degrees in [1.0, 30.0, 89.0] {
+        let edges = BrepEdges::concave(&model).unwrap().with_crease(degrees);
+        assert_eq!(edges.edge_ids(), vec![EdgeId(1)], "{degrees}");
+        assert_eq!(edges.not_inside_throughout(), 1, "{degrees}");
+    }
+    // Edge following keeps it, as an edge it cannot compare (unchanged).
+    assert_eq!(BrepEdges::new(&model).unwrap().not_inside_throughout(), 0);
 }

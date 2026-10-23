@@ -221,16 +221,20 @@ impl BrepEdges {
             .collect()
     }
 
-    /// How many edges between two faces turn by at least the crease angle
-    /// but are not kept by [`Self::concave`], because they are an inside
-    /// corner along only part of their length or which side of them the
-    /// material is on could not be told. Zero for [`Self::new`].
+    /// How many edges between two faces are not kept by [`Self::concave`]
+    /// though they may be inside corners: those that turn by at least the
+    /// crease angle but are an inside corner along only part of their length
+    /// or whose side could not be told, and those whose faces could not be
+    /// compared at all (their turn is not known). Zero for [`Self::new`].
     pub fn not_inside_throughout(&self) -> usize {
         self.edges
             .iter()
-            .filter(|e| {
-                matches!(e.kind, Kind::Between(turn) if turn >= self.crease_degrees)
-                    && matches!(e.turn, Some(Turn::Both | Turn::Unknown))
+            .filter(|e| match e.kind {
+                Kind::Between(turn) => {
+                    turn >= self.crease_degrees
+                        && matches!(e.turn, Some(Turn::Both | Turn::Unknown))
+                }
+                Kind::Real => e.turn == Some(Turn::Unknown),
             })
             .count()
     }
@@ -288,11 +292,11 @@ fn examine(edge: &BrepEdge, faces: &[ExactFace], sides: bool) -> Option<EdgeData
         }
         [a, b] if ids.len() == 2 => {
             let (sharpest, turn) = between(a, b, &edge.polyline, sides);
+            // With `sides`, the turn is kept for every edge of two faces,
+            // one whose faces could not be compared too (then unknown), so
+            // it is counted as left out.
             let kind = sharpest.map_or(Kind::Real, Kind::Between);
-            (
-                kind,
-                (sides && matches!(kind, Kind::Between(_))).then_some(turn),
-            )
+            (kind, sides.then_some(turn))
         }
         _ => (Kind::Real, None),
     };

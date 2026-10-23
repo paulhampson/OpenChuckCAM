@@ -629,15 +629,15 @@ impl Strategy for PencilFinishing {
                 let edges = (**edges).clone().with_crease(angle);
                 let left_out = edges.not_inside_throughout();
                 if left_out > 0 {
-                    let (edges_turn, are, each) = if left_out == 1 {
-                        ("edge of the part turns", "is", "it is")
+                    let (edges, are) = if left_out == 1 {
+                        ("edge", "is")
                     } else {
-                        ("edges of the part turn", "are", "each is")
+                        ("edges", "are")
                     };
                     notes.push(format!(
-                        "pencil clean-up: {left_out} {edges_turn} {angle} degrees or more but \
-                         {are} not followed: {each} an inside corner along only part of its \
-                         length, or which side of it is material could not be told"
+                        "pencil clean-up: {left_out} {edges} of the part that may be an inside \
+                         corner {are} not followed: each is one along only part of its length, \
+                         or which side of it is material could not be told"
                     ));
                 }
                 edges
