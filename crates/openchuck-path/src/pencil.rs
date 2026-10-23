@@ -12,6 +12,16 @@
 //! `crease_angle` at each edge, so it is not pencilled: a crease is a sharp
 //! inside corner.
 //!
+//! **Creases of a B-rep part.** Built with [`PencilFinishing::on_brep`], the
+//! creases are the part's own inside corners instead (decision record 0226;
+//! decision 0209 item 2): the edges between two faces that turn inward by at
+//! least `crease_angle` somewhere along them, judged on the exact faces by
+//! [`BrepEdges::concave`] and chained the same way. So the facets of a
+//! tessellated fillet are never creases, and an edge's turn is the faces'
+//! turn, not its facets'. The points along a crease are the edge's polyline
+//! (the kernel's, at the model's tolerance). The tool is still placed by
+//! dropping it on the tessellation (OI-81).
+//!
 //! **Placement.** Each chain is resampled no further than `max_step` apart.
 //! At a sample the tool is dropped on the part with the stock to leave along
 //! vertical lines across the crease, and rests at the position where it is
@@ -40,13 +50,17 @@
 //! clean everywhere gives a clear message, not an empty path.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
+use openchuck_types::brep::BrepModel;
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::{Degrees, Millimetres};
 
+use crate::brep_edges::BrepEdges;
+use crate::curves::CurveSource;
 use crate::cutter::{self, ToolLine};
 use crate::error::{PathError, Result};
 use crate::parallel;
@@ -81,8 +95,28 @@ const WELD: f64 = 1e-5;
 const REST_TOLERANCE: f64 = 1e-5;
 
 /// Pencil clean-up along the concave creases of the whole model.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PencilFinishing;
+///
+/// The default finds the creases in the part's tessellation (a mesh part);
+/// [`Self::on_brep`] follows a B-rep part's own inside corners.
+#[derive(Debug, Clone, Default)]
+pub struct PencilFinishing {
+    /// The inside corners of a B-rep part, in place of the tessellation's
+    /// creases.
+    edges: Option<Arc<BrepEdges>>,
+}
+
+impl PencilFinishing {
+    /// The strategy following the inside corners of the B-rep `model`
+    /// (OP-09; decision record 0226): the edges [`BrepEdges::concave`] keeps
+    /// at the operation's crease angle, in place of creases found between
+    /// the facets of its tessellation. `model` must be the part the surface
+    /// of [`StrategyInput`] is made from. Fails when a face is invalid.
+    pub fn on_brep(model: &BrepModel) -> Result<Self> {
+        Ok(Self {
+            edges: Some(Arc::new(BrepEdges::concave(model)?)),
+        })
+    }
+}
 
 /// A chain of crease edges as a polyline.
 #[derive(Debug, Clone, PartialEq)]
@@ -589,11 +623,43 @@ impl Strategy for PencilFinishing {
         let angle = parameters.number(pencil_parameter::CREASE_ANGLE)?;
         let max_step = parameters.number(pencil_parameter::MAX_STEP)?;
 
-        let creases = concave_creases(input.surface.tessellation(), angle);
+        let mut notes = Vec::new();
+        let creases = match &self.edges {
+            Some(edges) => {
+                let edges = (**edges).clone().with_crease(angle);
+                let left_out = edges.not_inside_throughout();
+                if left_out > 0 {
+                    let (edges_turn, are, each) = if left_out == 1 {
+                        ("edge of the part turns", "is", "it is")
+                    } else {
+                        ("edges of the part turn", "are", "each is")
+                    };
+                    notes.push(format!(
+                        "pencil clean-up: {left_out} {edges_turn} {angle} degrees or more but \
+                         {are} not followed: {each} an inside corner along only part of its \
+                         length, or which side of it is material could not be told"
+                    ));
+                }
+                edges
+                    .chains(input.surface)?
+                    .into_iter()
+                    .map(|c| Crease {
+                        points: c.points,
+                        closed: c.closed,
+                    })
+                    .collect()
+            }
+            None => concave_creases(input.surface.tessellation(), angle),
+        };
         if creases.is_empty() {
+            let what = if self.edges.is_some() {
+                "no edge of the part is an inside corner that turns"
+            } else {
+                "no concave crease turns"
+            };
             return Err(PathError::Strategy(format!(
-                "pencil clean-up has no inside corner to follow: no concave crease turns \
-                 {angle} degrees or more; lower {}",
+                "pencil clean-up has no inside corner to follow: {what} {angle} degrees or \
+                 more; lower {}",
                 pencil_parameter::CREASE_ANGLE
             )));
         }
@@ -708,11 +774,19 @@ impl Strategy for PencilFinishing {
             ));
         }
         let passes = order(passes);
-        let notes = vec![format!(
-            "pencil clean-up: {} concave creases, {} passes",
-            creases.len(),
-            passes.len()
-        )];
+        let from = if self.edges.is_some() {
+            " along the part's edges"
+        } else {
+            ""
+        };
+        notes.insert(
+            0,
+            format!(
+                "pencil clean-up: {} concave creases{from}, {} passes",
+                creases.len(),
+                passes.len()
+            ),
+        );
         Ok(StrategyOutput {
             passes,
             notes,

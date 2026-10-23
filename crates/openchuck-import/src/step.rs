@@ -75,7 +75,8 @@ pub static STEP_IMPORTER: StepImporter = StepImporter::new();
 pub fn step_tessellation_notice(settings: TessellationSettings) -> String {
     format!(
         "STEP keeps its exact faces and edges, which radial drilling, swarf and edge following \
-read. The other strategies drop the tool on the tessellation ({} mm, {} rad) for now, and each \
+read; pencil clean-up finds its inside corners on the exact edges. The other strategies, and \
+pencil clean-up, drop the tool on the tessellation ({} mm, {} rad) for now, and each \
 operation's notes say so; the display and the mesh checks use it too.",
         settings.linear, settings.angular
     )
@@ -611,6 +612,12 @@ mod tests {
         assert!(
             notice.contains("drop the tool on the tessellation (0.01 mm, 0.1 rad)")
                 && notice.contains("radial drilling, swarf and edge following"),
+            "{notice}"
+        );
+        // Pencil clean-up reads the exact edges for its inside corners only
+        // (decision 0226).
+        assert!(
+            notice.contains("pencil clean-up finds its inside corners on the exact edges"),
             "{notice}"
         );
     }
