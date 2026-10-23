@@ -9,7 +9,6 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
 | 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; blocked by merge conflicts with main; lane update not yet pushed |
-
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320
