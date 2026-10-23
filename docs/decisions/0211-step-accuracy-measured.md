@@ -1,7 +1,7 @@
 # 0211: What the exact STEP surface gains, measured on the blisk: the measurement of decision 0209 item 4.1, and which strategies the exact drop should cover (lane STEPALL-M; issue #257)
 
-- **Status:** proposed by lane STEPALL-M, 23 Oct 2026. It records measurements and recommends; it changes no output (no golden file, no strategy, no default). Items 2 to 4 of the decision and the historical methodology deviations wait on the owner, through the coordinator: OI-834 (a toolpath tessellation setting, and whether it needs a schema claim), the order of lane STEPALL-X (OI-81) and OI-835 (whether the time limit is per operation or per job). Until the owner accepts it, this record is guidance for lane STEPALL-X, not authority (decision 0049).
-- **Date:** 22 to 23 Oct 2026.
+- **Status:** proposed by lane STEPALL-M, 23 Oct 2026. It records measurements and recommends; it changes no output (no golden file, no strategy, no default). Items 2 to 4 of the decision and the historical methodology deviations wait on the owner, through the coordinator: OI-834 (a toolpath tessellation setting, and whether it needs a schema claim), the order of lane STEPALL-X (OI-81) and OI-835 (whether to add a per-operation limit to the accepted per-job policy). Until the owner accepts it, this record is guidance for lane STEPALL-X, not authority (decision 0049).
+- **Date:** 22 to 24 Oct 2026 (Europe/London).
 - **Requirements:** IMP-02, IMP-06, OP-03 to OP-06, OP-09, OP-12, OP-23, NFR-04, NFR-05, NFR-06, NFR-12, GC-07, GC-09. Verification plan 4.1 (the 0.005 mm tessellation share of the 0.01 mm toolpath tolerance).
 - **Builds on:** [decision 0209](0209-step-geometry-for-every-strategy.md) item 4.1 (accepted), which asks for this measurement and says the numbers go into its *Measurements* "or 0210"; the coordinator assigned this lane record 0211, so they are here and 0209's section points to this record.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-839 is new (item 1). OI-832 was closed by decision 0209 and the file is copied here. Progresses OI-65, OI-76, OI-81, OI-831, OI-834 and OI-835 without closing them.
@@ -30,19 +30,19 @@ cargo run --release -p openchuck-app --features kernel-tests --example step_accu
 - **Forms.** (a) the owner's `blisk.stl`; (b) the STEP part as built today, dropping on the import's tessellation (0.01 mm, 0.1 rad); (c) the STEP part dropping on a finer tessellation (item 1 chooses it: 0.01 mm at 0.02 rad). Form (d), the exact drop, is lane STEPALL-X's.
 - **Independence.** Nothing measured uses the drop-cutter or the path fitter. M1 measures the tessellation against each face in closed form (planes, cylinders, cones, spheres, tori, from the face's plain data alone) and, for B-spline faces, by `ParametricFace::closest` against the face without its trims; the trimmed distance is reported beside it. M2 judges each tool position with the independent checker's outline (`openchuck_testkit::gouge::Outline`) against points on the exact faces 0.05 mm apart (5.3 million on the blisk), inside their trims and along their trim loops, and against points on the tessellation the tool was dropped on. A 2 mm ball between points 0.05 mm apart misses at most 0.0003 mm; the tapered ball's 0.25 mm tip at most 0.0013 mm.
 - **Stations.** Every fed pose, and the quarter, middle and three-quarter points of every fed move, placed on the machine's straight move in X, Y, Z and A (decisions 0025 item 3, 0115 and 0133).
-- **Checked first.** `crates/openchuck-app/tests/step_accuracy.rs` (kernel; four tests, 2.9 s under `cargo nextest`, in the STEP kernel job) checks the functions on closed forms: the measured error of the corpus cylinder equals its sagitta from the vertices alone at 0.01 and 0.0025 mm; a ball's gouge and gap read within 0.0002 mm; a move's stations lie on the machine's straight move; a mesh is sampled by its area.
-- **Machine.** Intel Xeon @ 2.80 GHz, 4 cores, 15 GB, release build, cloud container.
-- **Code measured.** M2 to M4 are on `main` at `57772e7` (merged into this branch on 23 Oct 2026); M1 does not depend on it. Merged into `main` after that and not measured here: lane STEPALL-P (pencil clean-up from a STEP part's exact edges, decision 0226), which replaces the crease source the pencil rows below measure; lane STEPALL-E (edge following on the exact edge curve, decision 0227); lane SHORTMOVE (short moves and a minimum block time, decision 0222), which can change any path; and lane OPSPEED (decisions 0230 and 0231). The owner authorised merging `main` while keeping this PR draft, relayed by the coordinator on 23 Oct 2026 as an exception to decision 0055's ready-first sequence. The transfer snapshot merges `a2605495`; M2 at quick stepovers and M4 still need rerunning. No new numerical result is claimed.
+- **Checked first, historically.** `crates/openchuck-app/tests/step_accuracy.rs` (kernel; four tests, 2.9 s in the historical `cargo nextest` run, in the STEP kernel job; refreshed timings below) checks the functions on closed forms: the measured error of the corpus cylinder equals its sagitta from the vertices alone at 0.01 and 0.0025 mm; a ball's gouge and gap read within 0.0002 mm; a move's stations lie on the machine's straight move; a mesh is sampled by its area.
+- **Historical machine.** Intel Xeon @ 2.80 GHz, 4 cores, 15 GB, release build, cloud container. The refreshed run below records its own machine and allocation.
+- **Code measured.** The historical M2 to M4 tables are on `57772e7` (merged into this branch on 23 Oct 2026); M1 does not depend on it. STEPALL-P, STEPALL-E, SHORTMOVE and OPSPEED merged after that. The owner authorised merging main while keeping this PR draft, relayed by the coordinator on 23 Oct 2026 as an exception to decision 0055's ready-first sequence. The refreshed section below measures source `827fc45` with main `a2605495` merged, at quick stepovers; it does not replace the historical full-stepover tables or supply refreshed M1/M3 timings.
 
 ## Limits of this historical report
 
-The tables below retain the measurements recorded by the original lane on `57772e7`; they have not been reproduced in the takeover environment. They are evidence for the owner's choices, not acceptance of those choices, a current performance claim, or a declaration that decision 0209's verification is complete. Merging this report does not accept record 0211, approve STEPALL-T, change STEPALL-X's order, close OI-831/OI-834/OI-835, or waive the verification plan.
+The tables below retain the measurements recorded by the original lane on `57772e7`; they have not been reproduced at full stepovers in the takeover environment. They are evidence for the owner's choices, not acceptance of those choices, a current performance claim, or a declaration that decision 0209's verification is complete. Merging this report does not accept record 0211, approve STEPALL-T, change STEPALL-X's order, close OI-831/OI-834/OI-835, or waive the verification plan.
 
 - **M1 samples, rather than bounds, the deviation.** It strides faces over 20,000 triangles; B-spline distances use the library evaluator. The known closest-point defect OI-839 remains in STEPALL-X's scope. A sampled maximum is not a certified error bound for an exact-drop search band. No tested setting meets the 0.005 mm share, so form (c) is an approximation outside that share, not the within-share alternative contemplated by decision 0209 item 4.3.
 - **M2's sampling limit is not established.** The stated estimate for the tapered tip is 0.0013 mm, above decision 0209's requirement of less than 0.001 mm. Moreover, the face grid is uniform in UV using lengths estimated on a coarse grid; it does not bound physical sample spacing on a nonuniform B-spline. The closed-form cylinder tests do not establish that bound on the blisk's blades. Reported cuts and gaps apply to sampled points and stations; the gap is restricted to positions that touch the tessellation within the harness's 0.002 mm contact window, not an exhaustive remaining-material check.
 - **M3 deviates from the approved timing method.** It uses three runs at all threads and one at one thread, rather than five at each, and reports total generation, summed drop time and simulation rather than separate fitting and assembly times. Its 1.24-times generation and 1.10-times generation-plus-simulation totals include simultaneous finishing's long unsuccessful attempt. They are not times for a completed seven-operation job. Summing only the six successful rows gives 38.24 s for (b) and 67.90 s for (c), about 1.78 times; this is arithmetic on rounded historical rows, not a new measurement or a median of complete jobs. The timings do not establish compliance with OI-835 on current `main`.
-- **M4 has a narrower scope than decision 0209 requests.** It compares library paths on (a), (b) and (c), but posted G-code only on (a) and (b). It uses quick stepovers and excludes refused operations from the application runs. This does not prove determinism at the owner's full stepovers or posted G-code determinism for form (c). Historically, differences and failed gates were printed without failing the process. The harness now rejects them through shared checks with three requirement-based tests; the new checks have not yet been exercised on a full kernel run. Form (a)'s replay gates are now checked too; no historical clean-gate result is claimed for that form.
-- **Current-main integration is unfinished.** The transfer snapshot adapts the harness to STEPALL-P's `PencilFinishing::on_brep` dispatch, rebuilding corners inside each operation's generation timing, and adds the operation material field required by current main. The kernel build was stopped for the owner-requested chat handover before completion: this adaptation is not yet type-checked or exercised. Verify library/application equality, rerun M2 at quick stepovers and M4, and label new runs separately from these full-stepover tables. A new, unwired `posting.rs` is deliberately still the empty-output red-test stub: two non-kernel posting contract tests failed, and the third was canceled by fail-fast. Finish it and wire form-c posting before claiming expanded M4 coverage. No current pencil performance claim follows from historical rows. An updated five-run M3 and resolution of the other methodology deviations remain separate work unless the owner explicitly accepts a narrower report.
+- **Historical M4 had a narrower scope than decision 0209 requests.** It compares library paths on (a), (b) and (c), but posted G-code only on (a) and (b). It uses quick stepovers and excludes refused operations from the application runs. This does not prove determinism at the owner's full stepovers or posted G-code determinism for form (c). Historically, differences and failed gates were printed without failing the process. The harness now rejects them through shared checks with three requirement-based tests; the native smoke run exercises the integrated checks, and the complete refreshed run is reported separately. Form (a)'s replay gates are now checked too; no historical clean-gate result is claimed for that form.
+- **Current-main integration.** The harness uses STEPALL-P's `PencilFinishing::on_brep` dispatch, rebuilding corners inside each operation's generation timing, and includes the operation material field required by current main. Source checkpoint `827fc45dd8736265d8504ab71bc8c5057ce9c664` completes `posting.rs` with the production Makera Z1 post and compares posted bytes at every M4 thread count for each measured form. It also requires form-b library/application equality for the path and posted text. The pinned kernel and full harness compile; all ten native measurement, rejection and posting tests pass. The three posting tests were first rerun against the stub and all failed, then passed after implementation. The full current-source quick run completed M2 and library M4 for all forms. Form-b application posting/replay checks passed at 1, 2 and 4 threads, and its IR matched the library at four threads. It then stopped with exit status 1 on form-a replay gates at one thread; the production CLI and separate two/four-thread application diagnostics reproduce the same gate-2 failure, with byte-identical programs at all counts. The smaller roughing/pencil form-b smoke check passed earlier too. No current pencil performance claim follows from historical rows. An updated five-run M3 and resolution of the other methodology deviations remain outstanding unless the owner explicitly accepts a narrower report.
 
 The original trial STL is recoverable from `claude/upbeat-davinci-jk46yd:docs/trial-feedback-projects/blisk.stl` (1,195,782 bytes, SHA-256 `48351f42635f05eea09aaf77dd685e7b2bd564cd087b4a336fb29554a7e33f37`). The similarly named corpus STL is a different fixture. The committed STEP was rechecked against the trial blob: SHA-256 `0e472ff5374c6bc40825a4f7e8885d69f6ac99e53fbb6dbc412104fadb55b646` matches. No STL is added to the corpus by this lane.
 
@@ -213,15 +213,119 @@ On `57772e7`, merged into this branch on 23 Oct 2026. Run with `--quick` (finish
 | | a (simultaneous left out) | – | identical | identical |
 | The library's form (b) path against the application's (`Regeneration::toolpath`), at 4 threads | b | | | identical |
 
-The last row records agreement on the historical project and code. It must be re-established after the harness is aligned with current application dispatch; the helper tests check rejection policy, not geometric equivalence.
+The last row records agreement on the historical project and code. The refreshed quick run below re-establishes form-b IR equality on current dispatch; helper tests alone check rejection policy, not geometric equivalence.
+
+## Refreshed M2/M4 on current source (quick stepovers, 23 to 24 Oct 2026, Europe/London)
+
+**Measured source:** `827fc45dd8736265d8504ab71bc8c5057ce9c664`, based on the owner-authorised draft merge of main `a2605495d4e05d323d4cc3f85a4f4d6be118072f`. Later documentation commits do not change that measured code. These readings are separate from the historical full-stepover tables above. The raw output, native test summary and environment are retained in [the rerun evidence](0211-step-accuracy-evidence.txt).
+
+**Build and allocation:** Rust 1.97.0 (`2d8144b78`, 7 Jul 2026), release with debug information and no coverage instrumentation; static OpenCASCADE 7.8.1 built through pinned `occt-sys`, CMake 4.4.4, GCC/G++ 14.2.0, C++17 wrapper. AMD EPYC 9V74 host; cgroup CPU quota `400000/100000` (four CPUs), five CPUs in the effective cpuset, 16 GiB memory limit. Rust reports four available cores. Build jobs and Rayon all-thread runs use four threads. The initial writable disk had about 30 GB free. No new product dependency, library API, schema, strategy or default is introduced.
+
+**Inputs and settings:** the exact trial STL hash and STEP hash are those stated above; the STL is kept outside the repository and is not committed. The trial STL has 6,386 triangles and, after the +10 mm X translation, a sampled maximum vertex distance of 0.0313 mm from the exact faces. Forms (b)/(c) have 15,936/106,928 triangles. The exact-face cloud has 5,307,226 points at the existing nominal 0.05 mm spacing. `--quick` sets rest, helical, axial, indexed and simultaneous stepovers to 1 mm; roughing stays at 2 mm stepover, 1 mm stepdown and 0.3 mm stock to leave, and pencil's parameters remain at their resolved defaults. Other tools, feeds, stock, 0.1 mm simulation cell, 0.01 mm path tolerance, 10-degree simultaneous tilt and 2-degree angle step are the harness settings described above. Form (b) retains the import's 0.01 mm / 0.1 rad settings; form (c) explicitly uses **0.01 mm / 0.02 rad**.
+
+From `/workspace/OpenChuckCAM`, with Rust and CMake on `PATH`, the actual build and run commands were:
+
+```text
+export CARGO_BUILD_JOBS=4
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+cargo build --release -p openchuck-import --features kernel --bins --locked
+cargo build --release -p openchuck-app --features kernel-tests --example step_accuracy --locked
+export OPENCHUCK_STEP_WORKER=/workspace/OpenChuckCAM/target/release/openchuck-step-worker
+export RAYON_NUM_THREADS=4
+cargo nextest run --release -p openchuck-app --features kernel-tests --test step_accuracy --test step_accuracy_checks --test step_accuracy_posting --locked --test-threads 1
+cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy --locked -- --only m2,m4 --forms a,b,c --fine 0.01 --angular 0.02 --stl /workspace/owner-blisk.stl --quick --keep /workspace/stepall-evidence/project
+```
+
+### M2: refreshed sampled accuracy
+
+All distances are mm, rounded to the four decimals printed by the harness. The station and contact-window definitions are unchanged; these are sampled readings, not a certified surface or remaining-material bound.
+
+| Form | Operation | Stock | Stations | Deepest cut | At ends | Largest gap | Drop error in | out | Contact poses |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| a | roughing | 0.3 | 38840 | 0.0000 | 0.0000 | 0.0593 | 0.0136 | 0.0593 | 6587 |
+| a | rest | 0 | 67104 | 0.0709 | 0.0709 | 0.0614 | 0.0709 | 0.0605 | 55123 |
+| a | pencil | 0 | 14060 | 0.0244 | 0.0244 | 0.0415 | 0.0256 | 0.0403 | 9743 |
+| a | helical | 0 | 67104 | 0.0709 | 0.0709 | 0.0614 | 0.0709 | 0.0605 | 55123 |
+| a | axial | 0 | 62460 | 0.0777 | 0.0777 | 0.0533 | 0.0780 | 0.0533 | 57401 |
+| a | indexed | 0 | 2348 | 0.0702 | 0.0702 | 0.0600 | 0.0704 | 0.0602 | 2091 |
+| b | roughing | 0.3 | 38868 | 0.0000 | 0.0000 | 0.0091 | 0.0264 | 0.0072 | 7360 |
+| b | rest | 0 | 73468 | 0.0421 | 0.0421 | 0.0097 | 0.0422 | 0.0086 | 61140 |
+| b | pencil | 0 | 9860 | 0.0340 | 0.0335 | 0.0086 | 0.0346 | 0.0084 | 6775 |
+| b | helical | 0 | 73460 | 0.0421 | 0.0421 | 0.0097 | 0.0422 | 0.0086 | 61132 |
+| b | axial | 0 | 94016 | 0.0414 | 0.0407 | 0.0089 | 0.0426 | 0.0087 | 86522 |
+| b | indexed | 0 | 2328 | 0.0316 | 0.0316 | 0.0073 | 0.0319 | 0.0074 | 2062 |
+| c | roughing | 0.3 | 37728 | 0.0000 | 0.0000 | 0.0050 | 0.0040 | 0.0042 | 7616 |
+| c | rest | 0 | 68240 | 0.0058 | 0.0047 | 0.0042 | 0.0052 | 0.0051 | 62275 |
+| c | pencil | 0 | 10100 | 0.0066 | 0.0007 | 0.0050 | 0.0022 | 0.0042 | 7288 |
+| c | helical | 0 | 68232 | 0.0058 | 0.0047 | 0.0042 | 0.0052 | 0.0051 | 62267 |
+| c | axial | 0 | 91204 | 0.0054 | 0.0049 | 0.0060 | 0.0062 | 0.0050 | 84572 |
+| c | indexed | 0 | 2260 | 0.0051 | 0.0035 | 0.0031 | 0.0038 | 0.0044 | 2003 |
+
+Simultaneous finishing refused all three forms: the tolerance errors name 0.0485 mm on (a), 0.0180 mm on (b), and 0.0184 mm on (c). No successful simultaneous path or completed seven-operation job is claimed. M4 compares the refusal results too; posting uses only successful groups, and the application disables each form's refused operation.
+
+The current quick-stepover observations retain the accuracy concern: the worst sampled successful finishing cut is 0.0777 mm on (a), 0.0421 mm on (b), and 0.0066 mm on (c); (c)'s largest sampled contact gap is 0.0060 mm. Pencil now uses the B-rep creases on (b)/(c), so its historical facet-crease rows are not current pencil results. On (c), pencil's worst sampled cut is 0.0066 mm although its endpoint maximum is 0.0007 mm: endpoint-only checks would miss the larger between-pose reading. Roughing still has no sampled cut into the part. These readings support investigating a finer toolpath mesh but do not establish the 0.005 mm tessellation allocation, a bounded sub-0.001 mm checker error, or performance compliance.
+
+### M4: refreshed determinism, application equivalence and the replay blocker
+
+**The full measurement returned exit status 1.** Library M4 and form-b application checks passed, then the form-a one-thread application replay failed. The main run did not reach form-a application counts 2/4. Separate diagnostics on the saved project subsequently checked those counts and reproduced the failure. No clean form-a replay result is claimed.
+
+| Check | Form | 1 thread | 2 threads vs 1 | 4 threads vs 1 |
+| --- | --- | --- | --- | --- |
+| Library IR, including refusal results | a/b/c | reference | identical | identical |
+| Production Makera Z1 posted text | a/b/c | reference | identical | identical |
+| Application posted text vs library reference | b | identical | identical | identical |
+| Application replay gates 1/2 | b | clean | clean | clean |
+| Application IR vs library IR | b | — | — | identical |
+| Application posted bytes, saved-project diagnostics | a | reference (CLI) | identical | identical |
+| Application gate 2, including separate diagnostics | a | **fails** | **fails** | **fails** |
+
+The form-b library/application IR equality is directly checked at four threads. Its posted text agrees at every count. The main run also compared form-a one-thread application text with the library before failing its gate check. The saved-project production CLI and two/four-thread diagnostic programs compare byte for byte identical (SHA-256 `9c4d20200e5a70076e1e16c010fc170ae255bcb57f5c104c04d8940b773fc268`). The separate two/four-thread reports contain no gate-1 findings, but gate 2 remains an error. The diagnostic process returning zero means that it completed its investigation, not that the G-code passed.
+
+Form (c) uses the production post directly because the application has no finer-tessellation setting; no application or replay-gate result for (c) is claimed. Its posting-context conclusion is supported by the full successful form-b application/context comparisons, not by the six helper tests alone. These results cover the quick stepovers and six successful operations; the refused simultaneous operation is excluded from posted programs and its refusal is compared in the serialized library results.
+
+#### The form-a failure, reproduced without changing the limit
+
+The production CLI reproduces `tip error 0.000912 mm is above 0.000867 mm` on the saved form-a project. The accepted gate-2 limit is still the verification plan's rounding budget (OI-91); it was not relaxed. Exact commands, diagnostic source and output are in [the evidence](0211-step-accuracy-evidence.txt). The CLI command is:
+
+```text
+OPENCHUCK_STEP_WORKER=/workspace/OpenChuckCAM/target/release/openchuck-step-worker RAYON_NUM_THREADS=4 cargo run --release -p openchuck-cli --locked -- --threads 1 regenerate /workspace/stepall-evidence/project.stl --post makera-z1 --tool-numbers keep --out /workspace/stepall-evidence/form-a-diagnostic
+```
+
+A temporary diagnostic using the public application, rounding and kinematic APIs reproduces a rounding-only error of **0.0009120345106203881 mm** at pencil's repositioning pose (zero-based group 2 and pose 2295; G-code line 31,243 in this program). Work-frame XYZ before rounding is `(21.558251369535647, -0.016498447475797207, 45.000000000000014)` and A is `120.93751838129586` degrees. Written XYZ is `(21.558, -0.016, 45.000)` and A is `120.938`. The XYZ errors are `(-0.000251369535647, +0.000498447475797, approximately 0)` mm and A error is `+0.000481618704143` degrees: each is within half a unit at three decimals. Inverting the rounded XYZ/A at approximately 45 mm rotary radius produces the larger model-tip error. The matching line is a modal G0 move, following `G0 Z45.000`.
+
+This characterizes the coupled XYZ/A rounding at one real pose; it uses shared kinematics and is not independent certification of the post. The fixed `sqrt(3) * 0.0005 * 1.001` tip limit in `Tolerances::for_decimals` accounts for three linear axes, while this example also incurs angular rounding at a nonzero radius. **The gate remains failed.** A decision about precision, the comparison budget or a product correction belongs through the coordinator and an authorised lane; STEPALL-M does not change the post, the checker or the accepted limit to make the measurement green. This finding needs central tracking/number assignment; this lane has not taken a new decision/OI number (0233/OI-983 remain BUG-EDIT's reservation).
+
+Recommendation: keep the current limit and draft status while the coordinator assigns and resolves this replay finding. Present the existing owner choices individually as instructed, beginning with OI-834; no acceptance of this report or a tessellation choice implicitly resolves the replay gate, sampling bound or timing departures.
+
+### Validation and remaining limits
+
+The kernel worker and complete harness build. All ten native nextest tests passed in 5.005 s, uninstrumented with one test at a time; each geometry test was under 2 s and the six posting/rejection tests each under 0.01 s. The six non-kernel contract tests also pass independently. All three posting tests failed against the original stub before implementation. Native harness/test clippy with warnings denied, formatting, dependency rules, SPDX/licence checks, dependency/register records, test-data checks, conflict-marker checks, publishing metadata and traceability pass (`cargo xtask all`: 99/99 P1 requirements have tests). `cargo deny --locked check` passes advisories, bans, licences and sources.
+
+The verification commands (nextest 0.9.149, cargo-llvm-cov 0.9.1, cargo-deny 0.20.2) were:
+
+```text
+cargo fmt --all -- --check
+cargo clippy --release -p openchuck-app --features kernel-tests --example step_accuracy --test step_accuracy --test step_accuracy_posting --test step_accuracy_checks --locked -- -D warnings
+cargo xtask all
+cargo deny --locked check
+cargo llvm-cov nextest --profile coverage -p openchuck-app --test step_accuracy_posting --test step_accuracy_checks --locked --no-report
+cargo llvm-cov report --summary-only --ignore-filename-regex '/(tests|examples|benches)/'
+cargo llvm-cov clean --workspace
+```
+
+The focused `cargo llvm-cov nextest --profile coverage -p openchuck-app --test step_accuracy_posting --test step_accuracy_checks --locked --no-report` run passed; the standard summary excluded tests/examples/benches and instrumented artifacts were cleaned with `cargo llvm-cov clean --workspace`. This narrow run does not establish 95% whole-crate coverage; the changed implementation is example code, outside the standard product-source summary, and no product-source line is changed.
+
+M1 and M3 were not refreshed. There is no new five-run, per-stage timing measurement or current performance ratio. The smaller form-b smoke overlapped the full run's STL provenance check, and native clippy overlapped initial preparation; printed regenerate times are diagnostics, not M3 evidence. The nonuniform B-spline sampling bound, tapered-tip sampling estimate, historical M1 sampling/closest-point limits, unmet 0.005 mm allocation and historical timing departures remain unresolved and unwaived. Quick-stepover determinism does not establish determinism at the owner's full finishing stepovers. OI-839 remains STEPALL-X's, and decision 0209's per-job performance policy remains the authority.
+
+Record 0211 remains **proposed**. No owner choice or methodology deviation is accepted by these runs. The coordinator must present OI-834 first, then STEPALL-X ordering, then OI-835 individually, showing the full record before requesting acceptance. The refined-mesh option still carries the unmet allocation and sampling risks; no STEPALL-T implementation or new default is authorised. PR 321 stays draft and is not released to the Merge Manager: the form-a replay gate, sampling/error-budget and timing criteria and required owner decisions remain unresolved. Full platform CI and external review remain for the authorised release sequence.
 
 ## Decision
 
-These are unapproved recommendations on the historical measurements above. The owner must decide items 2, 3 and 4 individually through the coordinator. Acceptance of this measurement report would not by itself accept those choices or the methodology deviations listed above. Decision 0209 and the verification plan remain the authority until explicitly amended.
+These recommendations remain unapproved. Their historical basis must be read with the refreshed quick measurements and replay blocker above; the table below retains the historical full-stepover figures. The owner must decide items 2, 3 and 4 individually through the coordinator. Acceptance of this measurement report would not by itself accept those choices or the methodology deviations listed above. Decision 0209 and the verification plan remain the authority until explicitly amended.
 
 1. **Per strategy, does the exact surface help?** Decision 0209 item 4.1 asks whether (b)'s error goes over the 0.005 mm share, or decides a gouge or a gap over the tolerance, where (c) or (d) would not.
 
-   | Strategy | (b) today | Helps? | Why |
+   | Strategy | (b), historical full stepovers | Helps? | Why |
    | --- | --- | --- | --- |
    | Rotary roughing | never cuts the part; at most 0.009 mm over its 0.3 mm | **No** | It leaves 0.3 mm; the error is under 3 % of it. It keeps the tessellation, and its notes say so (decision 0209 item 4.4). Not in lane STEPALL-X. |
    | Helical finishing | 0.043 mm into the part | **Yes** | Over the whole tolerance, at the drops. Ball end. |
@@ -237,6 +341,8 @@ These are unapproved recommendations on the historical measurements above. The o
    - (C) The tessellation follows each operation's tolerance: a different mesh per tolerance, cached per part; the most accurate, the most memory and the most code.
    - (D) Neither: wait for X.
 
+   The refreshed quick run on current dispatch measures a 0.0421 mm worst finishing cut on (b) and 0.0066 mm on (c), with a 0.0060 mm contact gap on (c). It supplies no new performance ratio, does not establish the allocation or sampling bound, and leaves the separate form-a replay failure unresolved. Option A remains an interim proposal for the owner; these observations do not authorise a default or a waiver.
+
    The schema claim OI-834 asks about is needed only for (B).
 3. **The exact drop waits on fast exact queries (OI-81, OI-835; owner's choice of the order).** With today's queries an exact ball drop costs 1.1 to 1.3 s, four orders of magnitude over the 2-times limit (M3 item 1). Lane STEPALL-X is recommended to start with the queries, not the drop:
    1. fix `ExactFace::closest` at a face's own boundary (OI-839);
@@ -247,8 +353,8 @@ These are unapproved recommendations on the historical measurements above. The o
 
    Form (c) is the proposed interim improvement, subject to item 2's owner choice and the unmet tessellation share. Decision 0209's accepted order remains in force until the owner changes it.
 4. **The 2-times limit (OI-835) needs the owner's scope decision.** Decision 0209's existing wording is the same job, measured over five runs at all threads; the owner is asked whether to apply a per-operation limit too. This historical report does not establish compliance: it uses fewer runs and includes an unsuccessful operation in the 1.24-times total. Four successful operations are below 2 times, pencil clean-up (3.6) and indexed finishing (2.2) are above it; the successful rows sum to about 1.78 times. The estimated 150 µs exact-drop allowance is a historical engineering estimate (M3 item 4), not an accepted strategy budget.
-5. **The verification plan's 0.005 mm tessellation share (4.1) is not met by any tessellation of the blisk tried** (M1). Form (c)'s sampled cut and contact-gap readings are below 0.01 mm (0.006 mm deepest, 0.0067 mm largest gap), with the sampling limits above. That does not establish the entire tolerance budget. An exact drop has not yet been built or verified by this lane; its accuracy remains to be demonstrated by STEPALL-X.
-6. **Two findings outside #257, for the owner through the coordinator:** simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2); pencil clean-up gains nothing from 4 threads on any form (M3 item 5; NFR-04). Neither has an `OI-` number yet: the coordinator assigns one if the owner wants them tracked.
+5. **The verification plan's 0.005 mm tessellation share (4.1) is not met by any tessellation of the blisk tried** (M1). Form (c)'s historical sampled cut and contact-gap readings are below 0.01 mm (0.006 mm deepest, 0.0067 mm largest gap); the refreshed quick readings are 0.0066 mm and 0.0060 mm, with the sampling limits above. That does not establish the entire tolerance budget. An exact drop has not yet been built or verified by this lane; its accuracy remains to be demonstrated by STEPALL-X.
+6. **Two historical findings outside #257, for the owner through the coordinator:** simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2, also reproduced in the refreshed quick run); historical pencil clean-up gained nothing from 4 threads on any form (M3 item 5; NFR-04), but current B-rep pencil performance has not been remeasured. Neither has an `OI-` number yet: the coordinator assigns one if the owner wants them tracked.
 7. **The import notice stays as decision 0209 item 4.4 has it** (OI-830, lane STEPALL-F): with form (c) a STEP part's toolpaths are still computed on a tessellation, finer than the display's, and its notes should say which.
 
 ## Alternatives considered
@@ -260,6 +366,6 @@ These are unapproved recommendations on the historical measurements above. The o
 
 ## Consequences
 
-- **Code:** a measuring example and its tests, in `crates/openchuck-app` (`examples/step_accuracy/`, `tests/step_accuracy.rs`, `tests/step_accuracy_checks.rs`, an `[[example]]` entry in `Cargo.toml`); CI's STEP kernel job runs the geometric tests and builds the example (`.github/workflows/ci.yml`); the M4 rejection tests also run without the kernel. No product code, library API, or generated toolpath/G-code changes. M4 now returns an error when an equality or replay check fails.
+- **Code:** a measuring example and its tests, in `crates/openchuck-app` (`examples/step_accuracy/`, `tests/step_accuracy.rs`, `tests/step_accuracy_checks.rs`, `tests/step_accuracy_posting.rs`, `examples/step_accuracy/posting.rs`, an `[[example]]` entry in `Cargo.toml`); CI's STEP kernel job runs the geometric tests and builds the example (`.github/workflows/ci.yml`); the M4 rejection tests also run without the kernel. No product code, library API, or generated toolpath/G-code changes. M4 now returns an error when an equality or replay check fails.
 - **Test data:** `testdata/step/valid/blisk.step`, with its row in `testdata/README.md`.
 - **Documents:** this record; the decision index; decision 0209's *Measurements* points here; `docs/open-items.md` (OI-839 new; OI-65, OI-76, OI-81, OI-831, OI-834 and OI-835 noted); the work breakdown's STEPALL row.
