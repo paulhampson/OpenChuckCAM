@@ -625,10 +625,7 @@ fn speed_source(
     match source {
         crate::requirements::SpindleSource::Operation => "operation".to_string(),
         crate::requirements::SpindleSource::ToolData => {
-            let material = project
-                .setup(operation.setup)
-                .and_then(|s| s.material.as_deref())
-                .unwrap_or_default();
+            let material = crate::preset::material_of(project, operation).unwrap_or_default();
             format!("tool data: {material}")
         }
     }

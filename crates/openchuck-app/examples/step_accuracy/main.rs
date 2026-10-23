@@ -69,8 +69,8 @@ use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportOptions, ModelImporter};
 use openchuck_path::surface::{FaceRef, RayHit, SurfacePoint};
 use openchuck_path::{
-    AcceptAll, AnalyticStock, BrepSurface, Contact, Hole, MeshSurface, RotaryMapping, StockModel,
-    StrategyInput, SurfaceSource, ToolLine, generate,
+    AcceptAll, AnalyticStock, BrepSurface, Contact, Hole, MeshSurface, PencilFinishing,
+    RotaryMapping, StockModel, Strategy, StrategyInput, SurfaceSource, ToolLine, generate,
 };
 use openchuck_sim::{DexelStock, Simulator};
 use openchuck_testkit::gouge::Outline;
@@ -320,14 +320,14 @@ fn main() -> Result<(), Error> {
     });
     let (mut app, ids) = project(&dir, &part_path, &placement, &bounds, &ops)?;
 
-    let mut forms: Vec<(&str, Form)> = vec![
+    let mut forms: Vec<(&str, Form<'_>)> = vec![
         (
             "b (STEP, import tessellation 0.01 mm)",
-            Form::Brep(BrepSurface::new(&placed_b)?),
+            Form::Brep(BrepSurface::new(&placed_b)?, &placed_b),
         ),
         (
             "c (STEP, finer tessellation)",
-            Form::Brep(BrepSurface::new(&placed_c)?),
+            Form::Brep(BrepSurface::new(&placed_c)?, &placed_c),
         ),
     ];
     if let Some((mesh, _)) = &stl {
@@ -450,7 +450,7 @@ fn main() -> Result<(), Error> {
                         );
                     }
                 }
-                if let Form::Brep(surface) = form {
+                if let Form::Brep(surface, _) = form {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");
                     println!(
                         "operation | drops kept | refined | not bracketed | drop on tessellation us | distance query us | exact ball drop us | offset p50 mm | p99 | exact above, max | below, max | estimated exact-surface generate s (all threads) | ratio"
@@ -987,6 +987,7 @@ fn project(
             restriction_options: Default::default(),
             // The tool's cutting data for the setup's material (decision 0196).
             spindle_speed: None,
+            material: None,
             parameters: op
                 .parameters
                 .iter()
@@ -1021,15 +1022,15 @@ fn project_stl(
 }
 
 /// The surface a form drops the tool on.
-enum Form {
-    Brep(BrepSurface),
+enum Form<'a> {
+    Brep(BrepSurface, &'a BrepModel),
     Mesh(MeshSurface),
 }
 
-impl Form {
+impl Form<'_> {
     fn surface(&self) -> &dyn SurfaceSource {
         match self {
-            Self::Brep(s) => s,
+            Self::Brep(s, _) => s,
             Self::Mesh(s) => s,
         }
     }
@@ -1152,7 +1153,7 @@ struct Job<'a> {
 impl Job<'_> {
     /// The operations in order on `form`, each on the stock the ones before
     /// it left, as the application's pipeline carries it (SIM-06).
-    fn run(&self, form: &Form, threads: Threads) -> Result<Run, Error> {
+    fn run(&self, form: &Form<'_>, threads: Threads) -> Result<Run, Error> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(match threads {
                 Threads::All => 0,
@@ -1163,7 +1164,7 @@ impl Job<'_> {
             .map_err(Into::into)
     }
 
-    fn run_here(&self, form: &Form) -> Result<Run, Error> {
+    fn run_here(&self, form: &Form<'_>) -> Result<Run, Error> {
         let cancel = CancelToken::new();
         let context = JobContext::new(&cancel, &NoProgress);
         let setup = self.project.setups().first().ok_or("no setup")?;
@@ -1187,7 +1188,7 @@ impl Job<'_> {
             let profile = snapshot.tool.profile()?;
             let values =
                 openchuck_app::operation::parameter_values(self.project, operation, self.registry)?;
-            let strategy = self.registry.get(&operation.strategy)?;
+            let registered = self.registry.get(&operation.strategy)?;
             let timed = Timed::new(form.surface());
             let tags = PathTags {
                 operation: operation.id.to_string(),
@@ -1207,6 +1208,18 @@ impl Job<'_> {
                 keep_out: &[],
             };
             let started = Instant::now();
+            // The application rebuilds B-rep corners for each pencil operation
+            // (decision 0226). Include that preparation in each generation
+            // timing, rather than caching it outside the measured run.
+            let pencil_on_brep = match form {
+                Form::Brep(_, model) if operation.strategy == openchuck_path::pencil::NAME => {
+                    Some(PencilFinishing::on_brep(model)?)
+                }
+                _ => None,
+            };
+            let strategy: &dyn Strategy = pencil_on_brep
+                .as_ref()
+                .map_or(registered, |pencil| pencil as &dyn Strategy);
             let path = generate(strategy, &input, &values.values, &context);
             let generated = started.elapsed();
             let started = Instant::now();

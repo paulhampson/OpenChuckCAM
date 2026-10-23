@@ -623,6 +623,10 @@ pub struct Operation {
     /// tool's cutting data for the setup's material, and without that the
     /// operation has no spindle speed and cannot be posted (decision 0196).
     pub spindle_speed: Option<SpindleSpeed>,
+    /// The stock material whose cutting data the operation's preset takes,
+    /// when the user chose one for this operation. `None` takes the setup's
+    /// stock material (decision 0230).
+    pub material: Option<String>,
     /// False when the user has disabled it: it stays in the project and the
     /// tree but is left out of regeneration, simulation and posting, as if it
     /// were absent (UI-06; decision record 0029 item 10).
@@ -1646,6 +1650,13 @@ impl Project {
                     return Err(openchuck_types::Error::invalid(
                         format!("operation {}.spindle_speed", o.id),
                         format!("{} must be a number greater than 0", speed),
+                    )
+                    .into());
+                }
+                if o.material.as_deref().is_some_and(|m| m.trim().is_empty()) {
+                    return Err(openchuck_types::Error::invalid(
+                        format!("operation {}.material", o.id),
+                        "the material is empty; leave it out to take the setup's",
                     )
                     .into());
                 }

@@ -81,11 +81,7 @@ pub fn check_tools(project: &Project, library: Option<&ToolLibrary>) -> Vec<Tool
             }
             let mut missing = std::collections::BTreeSet::new();
             for op in project.operations().iter().filter(|o| o.tool == Some(t.id)) {
-                let material = project
-                    .setups()
-                    .iter()
-                    .find(|s| s.id == op.setup)
-                    .and_then(|s| s.material.as_deref());
+                let material = crate::preset::material_of(project, op);
                 if let Some(material) = material
                     && openchuck_types::tool::find_cutting_data(&t.cutting_data, material).is_none()
                 {
@@ -309,6 +305,7 @@ mod tests {
                 check: Vec::new(),
                 restriction_options: Default::default(),
                 spindle_speed: None,
+                material: None,
                 parameters: Default::default(),
             }),
             Placement::End,

@@ -271,6 +271,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: parameters
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), ParameterValue::Number(*v)))
@@ -375,7 +376,8 @@ fn req_op_13_req_gc_09_req_prj_04_an_older_z1_copy_without_an_id_keeps_the_feed_
     assert!(!machine.contains("\nid = "), "{machine}");
     let older: String = machine
         .lines()
-        .filter(|l| !l.starts_with("rotary_in_feed"))
+        // Neither field existed in schema 12 (decisions 0076 and 0231).
+        .filter(|l| !l.starts_with("rotary_in_feed") && !l.starts_with("max_spindle_rpm"))
         .map(|l| {
             if l.starts_with("schema = ") {
                 "schema = 12\n".to_owned()

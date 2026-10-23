@@ -23,6 +23,12 @@ name = "step_accuracy"
 path = "examples/step_accuracy/main.rs"
 required-features = ["kernel-tests"]
 
+# Pencil clean-up's creases on a STEP part, measured (lane STEPALL-P,
+# decision 0226): it reads STEP files, so it needs the kernel.
+[[example]]
+name = "pencil_creases"
+required-features = ["kernel-tests"]
+
 [dependencies]
 openchuck-types.workspace = true
 openchuck-path.workspace = true

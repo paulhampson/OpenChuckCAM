@@ -199,6 +199,7 @@ fn build_job(
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: parameters
                 .iter()
                 .map(|(k, v)| ((*k).to_owned(), v.clone()))

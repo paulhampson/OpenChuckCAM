@@ -67,6 +67,7 @@ fn operation(id: u128, setup: SetupId) -> Operation {
         check: Vec::new(),
         restriction_options: Default::default(),
         spindle_speed: None,
+        material: None,
         parameters: BTreeMap::from([("stepover".into(), ParameterValue::Number(0.5))]),
     }
 }
