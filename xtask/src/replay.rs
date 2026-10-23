@@ -128,12 +128,14 @@ fn shard_programs(programs: &[PathBuf], index: usize, count: usize) -> Vec<PathB
     mine
 }
 
-/// The LinuxCNC golden programs: the reference jobs and the small part.
+/// The LinuxCNC golden programs: the reference jobs, the small part and the
+/// gate 5 first-cut project (decision record 0221, OI-914).
 fn default_programs(root: &Path) -> Result<Vec<PathBuf>> {
     let mut programs = Vec::new();
     for dir in [
         root.join("testdata/golden"),
         root.join("testdata/golden/reference"),
+        root.join("testdata/golden/first_cut"),
     ] {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -479,6 +481,20 @@ mod tests {
         assert!(select_share(&list, 1, list.len() + 1).is_err());
         // A huge count must not be allocated.
         assert!(select_share(&list, 1, 1_000_000_000).is_err());
+    }
+
+    #[test]
+    fn req_gc_10_the_replay_runs_the_first_cut_project_with_the_reference_jobs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let programs = default_programs(&root).unwrap();
+        let names: Vec<String> = programs
+            .iter()
+            .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(str::to_owned))
+            .collect();
+        for expected in ["first_cut_linuxcnc.ngc", "cone_linuxcnc.ngc"] {
+            assert!(names.iter().any(|n| n == expected), "{expected}: {names:?}");
+        }
+        assert!(names.iter().all(|n| !n.contains("makera")), "{names:?}");
     }
 
     #[test]

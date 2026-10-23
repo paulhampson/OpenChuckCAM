@@ -1,0 +1,26 @@
+schema = 17
+id = "e8f30088-50cb-4532-ae26-f3c9c3e44a55"
+order = "V"
+name = "6 mm drill"
+
+[tool]
+diameter = 6.0
+flute_length = 40.0
+overall_length = 80.0
+shank_diameter = 6.0
+flute_count = 2
+centre_cutting = true
+
+[tool.shape]
+type = "drill"
+point_angle = 118.0
+
+[controller]
+number = 1
+
+[cutting_data.oak]
+spindle_speed = 6000.0
+feed_per_tooth = 0.03
+plunge_feed = 120.0
+stepover = 1.0
+stepdown = 1.0

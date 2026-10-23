@@ -38,6 +38,15 @@
 # the axial passes 73 s and the 1, 2 and N threads test 70 s (alone: 27, 22, 17 and
 # 14 s).
 
+# Lane GATES (OI-913, 22 Oct 2026): the `lobed` sample's committed-project test (the
+# folder in `testdata/projects/` with its part generated, validated, then regenerated
+# with both posts and compared with the golden programs) takes 77 s in
+# `cargo test -p openchuck-cli --test e2e -- committed_project` (8 vCPU, beside the
+# other seven, each under 30 s).
+# The gate 5 first-cut project (decision 0221, OI-914), alone on 8 vCPU: its committed
+# project regenerated at 1, 2 and N threads with both posts (six runs of rotary roughing
+# on 35 x 35 mm box stock and helical finishing) 387 s, and its simulation 98 s.
+
 # The first exception to "the pull request Tests job runs every listed test" (OI-506,
 # owner, 20 Oct 2026, option C of the FIT flag; AGENTS.md: "accept it in the nightly run
 # only"): `req_op_12_the_independent_checker_finds_no_gouge_on_the_reference_parts`
@@ -179,6 +188,9 @@ default-filter = '''not (
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
   | test(~lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end)
   | test(~lobed::req_sim_03_req_sim_05_simulates_without_overcut)
+  | test(~lobed::req_gc_07_req_nfr_08_the_committed_project_writes_the_golden_programs)
+  | test(~first_cut::req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads)
+  | test(~first_cut::req_sim_03_req_sim_05_req_set_09_req_op_21_simulates_without_overcut)
   | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
   | test(~req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging)
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
@@ -200,6 +212,9 @@ default-filter = '''
   | test(~reference_jobs_are_identical_at_1_and_n_threads)
   | test(~lobed::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end)
   | test(~lobed::req_sim_03_req_sim_05_simulates_without_overcut)
+  | test(~lobed::req_gc_07_req_nfr_08_the_committed_project_writes_the_golden_programs)
+  | test(~first_cut::req_gc_07_req_nfr_06_req_nfr_08_the_committed_project_writes_the_golden_programs_at_1_2_and_n_threads)
+  | test(~first_cut::req_sim_03_req_sim_05_req_set_09_req_op_21_simulates_without_overcut)
   | test(~req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part)
   | test(~req_op_12_every_tool_profile_finishes_the_lobed_part_without_gouging)
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)

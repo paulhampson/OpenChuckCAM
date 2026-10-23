@@ -36,7 +36,7 @@ These rules apply to every change. A change that breaks one is not merged.
 3. **Automate by default.** Test, analysis and inspection steps that can run in CI do run in CI. Manual steps are written as scripts or checklists and their results are recorded.
 4. **Tests come with the change.** A feature or fix merges with its tests, and a bug fix merges with a regression test that fails without the fix.
 5. **Machine output is checked by something other than the generator.** G-code is never judged only by the code that produced it. An independent interpreter (the LinuxCNC simulator) and a test-only gouge and coverage checker, built on different code from the strategies, decide.
-6. **Nothing reaches a real machine unverified.** No G-code is run on the Makera Z1 until it has passed the simulator gate in section 6. The one exception is the SP-12 conventions program: it is hand-written, checked by hand and in the LinuxCNC simulator first, and then run only as an attended air cut with no tool, no material and reduced feed (the gate 4 rules).
+6. **Nothing reaches a real machine unverified.** No G-code is run on the Makera Z1 until it has passed the simulator gate in section 6. The one exception is the SP-12 conventions program: it is hand-written, checked by hand and in the LinuxCNC simulator first, and then run only as an attended air cut with no tool, no material and reduced feed (the gate 4 rules). The Z1 block-rate air-cut program of decision 0222 is treated the same way ([decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md)): read by hand, its LinuxCNC copy replayed by gate 3, then run only as an attended air cut under the gate 4 rules.
 7. **Determinism.** Given the same model, settings and tool, toolpaths and G-code are byte-identical across runs and thread counts on one platform and build, so results can be diffed and stored in Git. Across platforms the same golden files must match; a difference (f64 maths and the C++ kernel can vary by platform) is investigated and, only if unavoidable, recorded as a per-platform golden file with the reason.
 8. **Failure is explicit.** Invalid or unsupported input produces a clear error, never a silently wrong toolpath.
 9. **Independence.** The author of a change does not alone approve it. With a single maintainer, independence comes from CI, the independent simulator, and a delay-and-reread step before release sign-off.
@@ -193,7 +193,7 @@ These are starting values, chosen before there is anything to measure. They are 
 | Fuzzing | NFR-07 | 1 minute per parser on pull requests; 1 hour nightly; no unresolved crash for release; 24 cumulative CPU hours per parser is an advisory target, reported for release but not required ([decision 0107](decisions/0107-malformed-input-sweep-and-fuzz-hours.md) item 7) |
 | Performance regression | NFR-03, NFR-04 | Flag at 10% on the median of several runs, on a dedicated runner |
 | Exact-surface generation time ([decision 0209](decisions/0209-step-geometry-for-every-strategy.md) item 4.5) | OP-23, NFR-04 | Within 2 times the same job on the import's tessellation, median of 5 runs, all threads; over that, the owner decides before it becomes the default (OI-835) |
-| First-cut part (gate 5) | GC-09 | Start at ±0.1 mm. First cut a 3-axis test part to measure the machine's own repeatability, then set the limit from that result; software tolerance cannot beat what the machine holds |
+| First-cut part (gate 5) | GC-09 | ±0.1 mm. The 3-axis test part is not cut (decision 0221); revise the limit after the first cut if it proves too tight or too loose. Software tolerance cannot beat what the machine holds |
 
 ### 4.2 Reference hardware for NFR-03
 
@@ -376,7 +376,7 @@ Third-party crates and wrapped libraries are verified before adoption and on eve
 **Open items.**
 
 - Keep section 4 in step with the requirements document and section 5 in step with the architecture; a change to either needs a matching change here.
-- The limits in 4.1 and the hardware in 4.2 are starting values. Revise them after the first benchmarks, the simulation spike and the 3-axis test cut, and record each change.
+- The limits in 4.1 and the hardware in 4.2 are starting values. Revise them after the first benchmarks and the simulation spike, and record each change.
 - Open architecture decisions that change verification: simulation stock representation (decided by SP-6, decision 0022: dexels) and Git LFS or a separate test-data repository.
 - The reference job set (parts, stock, tools) for gates 4 and 5 is chosen in work breakdown slice 6.
 - A safe-practice checklist for first machine trials is written in work breakdown slice 20 and reviewed by whoever operates the Makera Z1.

@@ -1,0 +1,17 @@
+schema = 17
+id = "265794f5-8f99-4e7a-902a-7dd337f5baa9"
+order = "V"
+name = "Flats"
+model = "7cc5b822-e7df-402b-9936-745e1c4199c7"
+model_hash = "blake3:ede317badab25ca3922181593492ad84670f97fe77e9916f83e910da2417a154"
+descriptors = []
+
+[target]
+faces = [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+]
