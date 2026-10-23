@@ -1386,6 +1386,90 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
 }
 
 #[test]
+fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating() {
+    // Decision 0209 item 10: on a STEP part, a set the strategy cannot use
+    // puts the operation in error at once, with the reason in Messages and
+    // a Show link, from the same check generation makes; the Geometry
+    // section reads it too. The part is only named as a STEP file: the
+    // check reads the project, never the model.
+    use openchuck_app::overview::{ItemRef, ItemState, MessageAction, Severity};
+    use openchuck_app::project::{RelativePath, SelectionSet, SelectionTarget};
+    use openchuck_app::selection::SelectionRole;
+    let (dir, mut app, op) = project("step-set-refused");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "helical_finishing".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blade.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model.clone())))
+        .unwrap();
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    app.execute(Command::Add {
+        item: Item::SelectionSet(SelectionSet {
+            id: set,
+            order: OrderKey::default(),
+            name: "Rims".into(),
+            model: model.id,
+            model_hash: model.hash,
+            target: SelectionTarget::Edges([openchuck_app::pick::EdgeId(3)].into()),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    app.set_operation_selection(op, SelectionRole::Machine, set, true)
+        .unwrap();
+    let said = "Only edge following follows chosen edges. Take the edge set 'Rims' out of the \
+                operation, or use edge following.";
+    let refusals = app.set_refusals(op);
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(
+        (refusals[0].role, refusals[0].set, refusals[0].text.as_str()),
+        (SelectionRole::Machine, set, said)
+    );
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let status = &overview.items[&ItemRef::Operation(op)];
+    assert_eq!(status.state, ItemState::Error, "{status:?}");
+    assert!(status.cause.ends_with(said), "{}", status.cause);
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| m.text == said)
+        .expect("the refusal is in Messages");
+    assert_eq!(message.severity, Severity::Error);
+    assert_eq!(message.source, Some(ItemRef::Operation(op)));
+    assert_eq!(
+        message.action,
+        Some(MessageAction::Show(ItemRef::Operation(op)))
+    );
+    // Generating refuses with the same words.
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
+    assert!(e.contains(said), "{e}");
+    // After that generation, Messages says it once.
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    assert_eq!(
+        overview
+            .messages
+            .iter()
+            .filter(|m| m.text.contains(said))
+            .count(),
+        1,
+        "{:?}",
+        overview.messages
+    );
+    // Taken out, nothing is refused.
+    app.set_operation_selection(op, SelectionRole::Machine, set, false)
+        .unwrap();
+    assert!(app.set_refusals(op).is_empty());
+    assert!(app.set_refusals(OperationId::new()).is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_16_ui_06_the_strategy_list_is_ordered_and_each_entry_describes_itself() {
     // Decision 0204 (issue #195): one list, roughing first, finishing next,
     // the specialist strategies last, each with its description; the same

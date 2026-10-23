@@ -56,6 +56,7 @@ pub mod setup_form;
 pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
+pub mod step_sets;
 pub mod stockplay;
 #[cfg(test)]
 mod test_project;

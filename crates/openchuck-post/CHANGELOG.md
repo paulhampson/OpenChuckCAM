@@ -4,7 +4,9 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
-- Version 0.18.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`, and `ProfileField` gains `SpindleRange`, breaking changes; decision 0231).
+- Version 0.20.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`, and `ProfileField` gains `SpindleRange`, breaking changes; decision 0231).
+- Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.
 - **Breaking (0.15.0):** `PostJob` and `ConvertOptions` have a new public field, `operation_spindle` (spindle speeds in rpm by the IR's operation tag; decision 0196, issue #249; TL-05, GC-14). An operation with an entry runs at it; any other at its tool's `ToolSetting::spindle_rpm`, as before. A bad entry is a `PostError::Setting` naming the operation. Code that builds a `PostJob` or `ConvertOptions` adds `operation_spindle: BTreeMap::new()`.

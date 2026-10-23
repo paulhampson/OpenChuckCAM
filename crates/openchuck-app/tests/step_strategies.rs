@@ -34,7 +34,7 @@ use openchuck_geom::transform::{brep_placement, transform_brep};
 use openchuck_import::step::StepImporter;
 use openchuck_import::{ImportOptions, ModelImporter};
 use openchuck_path::surface::{ParametricFace, Uv};
-use openchuck_path::{BrepSurface, ExactFace, SurfaceSource, ToolLine};
+use openchuck_path::{BrepEdges, BrepSurface, CurveSource, ExactFace, SurfaceSource, ToolLine};
 use openchuck_testkit::gouge::Outline;
 use openchuck_types::brep::BrepModel;
 use openchuck_types::geometry::{Point3, UnitVec3, Vec3};
@@ -418,30 +418,77 @@ fn req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part_d
             ],
         });
     }
-    // Pencil clean-up follows concave creases; the corpus parts have none
-    // (OI-234), so on a STEP part it either finds none and says so, or cuts
-    // without gouging.
+    // Pencil clean-up follows the part's inside corners (decision 0226): the
+    // filleted box has none, its edges are all outside corners, so it says
+    // so. The shouldered shaft has one (below).
     let job = Job {
         part: "filleted_box",
         transform: onto_axis(),
         operations: vec![("pencil_finishing", Vec::new())],
     };
     let (dir, app, _) = build(&job, "pencil");
-    match app.regenerate() {
-        Ok(result) => {
-            let (depth, at) = Samples::of(&placed(job.part, &job.transform))
-                .deepest(&outline(), &result.toolpath);
-            assert!(
-                depth <= GOUGE_LIMIT,
-                "pencil reaches {depth:.4} mm at {at:?}"
-            );
-            println!("pencil on filleted_box: cut, deepest {depth:.4} mm");
-        }
-        Err(e) => {
-            let e = e.to_string();
-            println!("pencil on filleted_box: {e}");
-            assert!(e.contains("crease") || e.contains("concave"), "{e}");
-        }
+    let e = app.regenerate().unwrap_err().to_string();
+    assert!(e.contains("no inside corner to follow"), "{e}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_op_09_req_imp_02_pencil_on_a_step_part_follows_its_inside_corner_without_gouging() {
+    // OI-234 (b), decision 0226: the shouldered shaft's one inside corner
+    // (radius 8, the shoulder 12 mm along) is cut, with gates 1 and 2 clean
+    // on both posts, no gouge into the exact faces and the same G-code at 1,
+    // 2 and N threads. At a 2 degree crease angle the facets of its fillet
+    // are creases in the import's tessellation; on the B-rep they are not.
+    let job = Job {
+        part: "shouldered_shaft",
+        transform: onto_axis(),
+        operations: vec![("pencil_finishing", vec![("crease_angle", n(2.0))])],
+    };
+    check(&job);
+    let model = placed(job.part, &job.transform);
+    let surface = BrepSurface::new(&model).unwrap();
+    let chains = BrepEdges::concave(&model)
+        .unwrap()
+        .with_crease(2.0)
+        .chains(&surface)
+        .unwrap();
+    assert_eq!(chains.len(), 1, "{chains:?}");
+    let (mesh, _) = model.joined_tessellation();
+    let in_facets = openchuck_path::pencil::concave_creases(&mesh, 2.0);
+    println!(
+        "shouldered_shaft: {} creases in the tessellation at 2 degrees, 1 on the B-rep",
+        in_facets.len()
+    );
+    assert!(in_facets.len() > 1, "{}", in_facets.len());
+    let x = chains[0].points[0].x;
+    for p in &chains[0].points {
+        assert!((p.x - x).abs() < 1e-6, "{p:?}");
+        assert!((p.y.hypot(p.z) - 8.0).abs() < 0.011, "{p:?}");
+    }
+    // The 3 mm ball rests on the bar against the shoulder: its tip is on the
+    // bar, a tool radius from the corner.
+    let (dir, app, _) = build(&job, "pencil-corner");
+    let result = app.regenerate().unwrap();
+    let cuts: Vec<Point3> = result
+        .toolpath
+        .groups
+        .iter()
+        .flat_map(|g| &g.segments)
+        .filter(|s| s.kind == MoveKind::Cutting)
+        .map(|s| s.end.tip)
+        .collect();
+    assert!(!cuts.is_empty());
+    for tip in &cuts {
+        assert!(
+            ((tip.x - x).abs() - 1.5).abs() <= 0.05,
+            "a cut at X {} with the corner at {x}",
+            tip.x
+        );
+        assert!(
+            (tip.y.hypot(tip.z) - 8.0).abs() <= 0.05,
+            "a cut at radius {}",
+            tip.y.hypot(tip.z)
+        );
     }
     std::fs::remove_dir_all(dir).unwrap();
 }

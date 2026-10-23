@@ -146,7 +146,7 @@ fn req_op_16_the_new_strategies_are_registered_and_check_their_parameters() {
         assert!(registry.get(name).is_ok(), "{name}");
     }
     assert!(resolve(&RestMachining, &[]).is_ok());
-    assert!(resolve(&PencilFinishing, &[]).is_ok());
+    assert!(resolve(&PencilFinishing::default(), &[]).is_ok());
     let defaults = RestMachining.schema().resolve(&BTreeMap::from([
         ("stepover".to_owned(), ParameterValue::Number(1.0)),
         ("feed".to_owned(), ParameterValue::Number(400.0)),
@@ -168,7 +168,9 @@ fn req_op_16_the_new_strategies_are_registered_and_check_their_parameters() {
         (pencil_parameter::CREASE_ANGLE, 181.0),
         (pencil_parameter::MAX_STEP, 0.0),
     ] {
-        let err = resolve(&PencilFinishing, &[bad]).unwrap_err().to_string();
+        let err = resolve(&PencilFinishing::default(), &[bad])
+            .unwrap_err()
+            .to_string();
         assert!(err.contains(bad.0), "{err}");
     }
 }
@@ -273,10 +275,15 @@ fn req_op_09_a_closed_crease_clean_at_its_start_is_not_joined_across_the_gap() {
             .into_iter()
             .map(|(k, x)| (k.to_owned(), ParameterValue::Number(x)))
             .collect();
-    let parameters = PencilFinishing.schema().resolve(&values).unwrap();
+    let parameters = PencilFinishing::default()
+        .schema()
+        .resolve(&values)
+        .unwrap();
     let cancel = CancelToken::new();
     let ctx = JobContext::new(&cancel, &NoProgress);
-    let passes = PencilFinishing.passes(&input, &parameters, &ctx).unwrap();
+    let passes = PencilFinishing::default()
+        .passes(&input, &parameters, &ctx)
+        .unwrap();
     assert_eq!(passes.len(), 2, "two stretches of crease have material");
     for pass in &passes {
         for pair in pass.points.windows(2) {
