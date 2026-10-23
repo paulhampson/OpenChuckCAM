@@ -1,12 +1,12 @@
 # 0211: What the exact STEP surface gains, measured on the blisk: the measurement of decision 0209 item 4.1, and which strategies the exact drop should cover (lane STEPALL-M; issue #257)
 
-- **Status:** proposed by lane STEPALL-M, 23 Oct 2026. It records measurements and recommends; it changes no output (no golden file, no strategy, no default). The recommendations of item 3 wait on the owner, through the coordinator: OI-834 (a toolpath tessellation setting, and whether it needs a schema claim) and OI-835 (the time limit). Until the owner accepts it, this record is guidance for lane STEPALL-X, not authority (decision 0049).
+- **Status:** proposed by lane STEPALL-M, 23 Oct 2026. It records measurements and recommends; it changes no output (no golden file, no strategy, no default). Items 2 to 4 of the decision wait on the owner, through the coordinator: OI-834 (a toolpath tessellation setting, and whether it needs a schema claim), the order of lane STEPALL-X (OI-81) and OI-835 (whether the time limit is per operation or per job). Until the owner accepts it, this record is guidance for lane STEPALL-X, not authority (decision 0049).
 - **Date:** 22 to 23 Oct 2026.
 - **Requirements:** IMP-02, IMP-06, OP-03 to OP-06, OP-09, OP-12, NFR-04, NFR-05, NFR-06, NFR-12, GC-07. Verification plan 4.1 (the 0.005 mm tessellation share of the 0.01 mm toolpath tolerance).
 - **Builds on:** [decision 0209](0209-step-geometry-for-every-strategy.md) item 4.1 (accepted), which asks for this measurement and says the numbers go into its *Measurements* "or 0210"; the coordinator assigned this lane record 0211, so they are here and 0209's section points to this record.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-839 is new (item 1). OI-832 was closed by decision 0209 and the file is copied here. Progresses OI-65, OI-76, OI-81, OI-831, OI-834 and OI-835 without closing them.
 
-Numbering: the coordinator assigned this lane record 0211 and OI-839. On 22 Oct 2026 the highest record on `main` and every unmerged branch was 0209 (`claude/docs-stepall-proposal`), and the highest `OI-` number was OI-836 on the same branch, so both were free. No project schema number: nothing stored changes.
+Numbering: the coordinator assigned this lane record 0211 and OI-839. On 22 Oct 2026 the highest record on `main` and every unmerged branch was 0209 (`claude/docs-stepall-proposal`), and the highest `OI-` number was OI-836 on the same branch, so both were free. Checked again on 23 Oct 2026 after merging `main`: other lanes hold records 0210 and 0212 to 0219 and OI-837, OI-838 and OI-840 to OI-891, and neither 0211 nor OI-839 is used on `main` or any other branch. No project schema number: nothing stored changes.
 
 ## Context
 
@@ -21,7 +21,8 @@ cargo build --release -p openchuck-import --features kernel --bins
 OPENCHUCK_STEP_WORKER=target/release/openchuck-step-worker \
 cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
     [--only m1,m2,m3,m4] [--parts ...] [--deflections ...] [--angular RAD] \
-    [--forms a,b,c] [--fine MM] [--threads 1,all] [--runs N] [--stl OWNER_BLISK_STL] [--quick]
+    [--part NAME] [--forms a,b,c] [--fine MM] [--ops LIST] [--threads 1,all] [--runs N] \
+    [--stl OWNER_BLISK_STL] [--sim-tilt DEG] [--sim-step DEG] [--keep DIR] [--quick]
 ```
 
 - **Part.** `testdata/step/valid/blisk.step`, copied from the owner's trial file (OI-832; same SHA-256), placed on the rotary axis from X 10 to 60 as the owner's projects place `blisk.stl`. The owner's `blisk.stl` (form a) is read from a path given on the command line (`docs/trial-feedback-projects/blisk.stl` on branch `claude/upbeat-davinci-jk46yd`): it is not in `testdata/`, since OI-832 covered `blisk.step` only. It sits on the STEP part after the owner's own +10 mm X translation; its vertices lie up to 0.031 mm from the exact faces.
@@ -29,7 +30,7 @@ cargo run --release -p openchuck-app --features kernel-tests --example step_accu
 - **Forms.** (a) the owner's `blisk.stl`; (b) the STEP part as built today, dropping on the import's tessellation (0.01 mm, 0.1 rad); (c) the STEP part dropping on a finer tessellation (item 1 chooses it: 0.01 mm at 0.02 rad). Form (d), the exact drop, is lane STEPALL-X's.
 - **Independence.** Nothing measured uses the drop-cutter or the path fitter. M1 measures the tessellation against each face in closed form (planes, cylinders, cones, spheres, tori, from the face's plain data alone) and, for B-spline faces, by `ParametricFace::closest` against the face without its trims; the trimmed distance is reported beside it. M2 judges each tool position with the independent checker's outline (`openchuck_testkit::gouge::Outline`) against points on the exact faces 0.05 mm apart (5.3 million on the blisk), inside their trims and along their trim loops, and against points on the tessellation the tool was dropped on. A 2 mm ball between points 0.05 mm apart misses at most 0.0003 mm; the tapered ball's 0.25 mm tip at most 0.0013 mm.
 - **Stations.** Every fed pose, and the quarter, middle and three-quarter points of every fed move, placed on the machine's straight move in X, Y, Z and A (decisions 0025 item 3, 0115 and 0133).
-- **Checked first.** `crates/openchuck-app/tests/step_accuracy.rs` (kernel; 3.7 s, in the STEP kernel job) checks the functions on closed forms: the measured error of the corpus cylinder equals its sagitta from the vertices alone at 0.01 and 0.0025 mm; a ball's gouge and gap read within 0.0002 mm; a move's stations lie on the machine's straight move; a mesh is sampled by its area.
+- **Checked first.** `crates/openchuck-app/tests/step_accuracy.rs` (kernel; four tests, 2.9 s under `cargo nextest`, in the STEP kernel job) checks the functions on closed forms: the measured error of the corpus cylinder equals its sagitta from the vertices alone at 0.01 and 0.0025 mm; a ball's gouge and gap read within 0.0002 mm; a move's stations lie on the machine's straight move; a mesh is sampled by its area.
 - **Machine.** Intel Xeon @ 2.80 GHz, 4 cores, 15 GB, release build, cloud container.
 
 ## Measurements
@@ -173,6 +174,8 @@ Pencil clean-up gains nothing from 4 threads on any form (0.85 to 0.99 times); t
 | Indexed | c | 23 (23) | 83 µs | 59 ms | 1.29 s | 0.0003 | 0.0092 | 0.0092 | 0.0023 |
 | Simultaneous | c | 169 (169) | 76 µs | 50 ms | 1.11 s | 0.0002 | 0.0081 | 0.0270 | 0.0036 |
 
+**Through the application.** Lane BUG-TABDEV's `operation_times` example (`crates/openchuck-app/examples/operation_times.rs`, issue #252), run on the harness's form (b) project (`--keep DIR`, all threads), times each operation by "generate selected" up to it: its own generation plus the stock simulation of the one before it, which the application needs to carry the stock. Roughing 1.50 s, rest 11.87 s, pencil 22.50 s, helical 3.92 s, axial 27.30 s, indexed 337.33 s (of which axial's simulation, 335 s in the table above), and simultaneous finishing refused as above. They agree with the harness's figures summed the same way (rest 7.4 + 5.3, pencil 19.5 + 2.5, indexed 335 + 0.05); helical and axial read lower through the application (3.9 and 27.3 s against 0.1 + 5.2 and 13.1 + 24.0 s), within the spread of single runs on this machine.
+
 The probe was run on the code before the merge of 23 Oct 2026 for (b) and (c), and again on the merged `main` for (b): the same within 6 % (one `distance` 53 to 64 ms, one exact drop 1.17 to 1.39 s, the same offsets), as the merge did not touch the exact faces (`brep.rs`) or the paths.
 
 What M3 shows:
@@ -186,15 +189,15 @@ What M3 shows:
 
 ### M4: determinism
 
-Run with `--quick` (every stepover 1 mm, axial's too), which keeps a check at 1, 2 and 4 threads within the two-hour limit; the result does not depend on the stepover. Simultaneous finishing, which refuses the blisk, is turned off in the application's project (UI-06), so the application generates the rest.
+On the merged `main` of 23 Oct 2026. Run with `--quick` (every stepover 1 mm, axial's too), which keeps a check at 1, 2 and 4 threads within the two-hour limit; the result does not depend on the stepover. Simultaneous finishing, which refuses the blisk, is turned off in the application's project (UI-06), so the application generates the rest.
 
 | Check | Form | 1 thread | 2 threads | 4 threads |
 | --- | --- | --- | --- | --- |
 | The library's toolpath (every group, serialised), against 1 thread | b | – | identical | identical |
 | | c | – | identical | identical |
-| | a | – | FORM_A_LIB | FORM_A_LIB |
+| | a | – | identical | identical |
 | The application's posted G-code (Makera Z1), against 1 thread; gates 1 and 2 | b | clean | identical, clean | identical, clean |
-| | a | FORM_A_APP | | |
+| | a (simultaneous left out) | – | identical | identical |
 | The library's form (b) path against the application's (`Regeneration::toolpath`), at 4 threads | b | | | identical |
 
 The last row is the harness's own check: what it measures is what the application makes for the same project.
@@ -215,7 +218,7 @@ These are recommendations on the measurements above. Items 2 and 3 need the owne
    | Simultaneous finishing | 0.019 mm on `revolved_spline`, 0.009 on `cone` (it refuses the blisk on every form) | **Yes** | Its drops are the tessellation's like the others; its drive points are already exact. |
    | Pencil clean-up | 0.035 mm | **Yes**, through its drops; its creases are lane STEPALL-P's | A flat end here (the owner's 2 mm), so the outline form of the drop. |
 
-2. **The finer toolpath tessellation first (OI-834, OI-831; owner's choice).** Form (c) gives most of the gain now, at a cost decision 0209's 2-times limit allows: the deepest cut falls from 0.043 to 0.006 mm on every finishing operation, the job's generation takes 1.24 times as long (1.10 with the simulation) and the import 2.3 s instead of 0.2 s; per operation, pencil clean-up (3.6 times, its creases change on the finer mesh) and indexed finishing (2.2 times, a twentieth of a second) are over the 2 times, the others within it (M3 item 3). It does not meet the 0.005 mm share on the blisk (0.0057 mm, M1 item 3): no kernel setting tried does. Options, recommended first:
+2. **The finer toolpath tessellation first (OI-834, OI-831; owner's choice).** Form (c) gives most of the gain now, at a cost close to decision 0209's 2-times limit: the deepest cut falls from 0.043 to 0.006 mm on every finishing operation, the job's generation takes 1.24 times as long (1.10 with the simulation) and the import 2.3 s instead of 0.2 s; per operation, pencil clean-up (3.6 times, its creases change on the finer mesh) and indexed finishing (2.2 times, a twentieth of a second) are over the 2 times, the others within it (M3 item 3). It does not meet the 0.005 mm share on the blisk (0.0057 mm, M1 item 3): no kernel setting tried does. Options, recommended first:
    - **(A) A fixed toolpath tessellation, no stored setting:** the application tessellates a STEP part for toolpaths at 0.01 mm and 0.02 rad, and keeps the import's for display, the mesh checks and the stock comparison. No schema claim. A small lane (STEPALL-T, decision 0209's option) before X. It does not give the user IMP-06's control (OI-831 stays open).
    - (B) As (A), with the setting stored in the project and shown with the model, closing OI-831: needs a schema claim in the work breakdown, and a choice of what the user sets (one tolerance, or linear and angular).
    - (C) The tessellation follows each operation's tolerance: a different mesh per tolerance, cached per part; the most accurate, the most memory and the most code.
@@ -244,6 +247,6 @@ These are recommendations on the measurements above. Items 2 and 3 need the owne
 
 ## Consequences
 
-- **Code:** a measuring example and its test, in `crates/openchuck-app` (`examples/step_accuracy/`, `tests/step_accuracy.rs`, an `[[example]]` entry in `Cargo.toml`); the test runs in CI's STEP kernel job. No product code, no library API, no output changes.
+- **Code:** a measuring example and its test, in `crates/openchuck-app` (`examples/step_accuracy/`, `tests/step_accuracy.rs`, an `[[example]]` entry in `Cargo.toml`); CI's STEP kernel job runs the test and builds the example (`.github/workflows/ci.yml`). No product code, no library API, no output changes.
 - **Test data:** `testdata/step/valid/blisk.step`, with its row in `testdata/README.md`.
 - **Documents:** this record; the decision index; decision 0209's *Measurements* points here; `docs/open-items.md` (OI-839 new; OI-65, OI-76, OI-81, OI-831, OI-834 and OI-835 noted); the work breakdown's STEPALL row.

@@ -235,11 +235,7 @@ Lanes M and F can start at once and run side by side. P and E can run beside X. 
 
 ## Measurements
 
-<<<<<<< HEAD
 Lane STEPALL-M's measurements are in [decision 0211](0211-step-accuracy-measured.md) (proposed), which the coordinator numbered for them; this section is not repeated there. In short: on `blisk.step` as built today, every zero-stock finishing strategy cuts 0.032 to 0.044 mm into the exact faces, because the import's tessellation lies up to 0.043 mm off the blisk's cones; a toolpath tessellation at 0.01 mm and 0.02 rad brings that to 0.006 mm at 1.24 times the job's generation time (pencil clean-up 3.6 times); roughing gains nothing; and an exact ball drop on today's exact queries costs 1.1 to 1.3 s, so lane STEPALL-X starts with the queries. The figures in *Context* are from decisions 0017, 0027, 0056 and 0115 and OI-146, measured on other parts.
-=======
-None yet. Lane STEPALL-M fills this section (item 4.1) before STEPALL-X starts. The figures in *Context* are from decisions 0017, 0027, 0056 and 0115 and OI-146, measured on other parts.
->>>>>>> origin/main
 
 ## Consequences
 
