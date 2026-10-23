@@ -130,17 +130,19 @@ What M2 shows:
 
 Release build, 4 cores (the machine above). Decision 0209 asks for the median of 5 runs; the cloud container restarted several times during the long runs and a background job is limited to two hours, so the medians here are of 3 runs at all threads and of one run at 1 thread, each run printed as it ended. Seconds per operation, in machining order on the stock the ones before it left. "Drops" is the time inside `drop_tool` summed over the threads (so it can exceed the wall time); "simulate" is the stock simulation of the operation's moves at the project's cell (0.1 mm).
 
-**All threads (4), median of 3 runs:**
+**All threads (4), median of 3 runs**, on `main` as merged on 23 Oct 2026 (after lane BUG-TABDEV, #252). The first runs, on the code before that merge, gave the same paths (M2's figures were identical to the station) but axial finishing took 975 s and pencil 29 s on (b); they are not used.
 
-| Operation | (a) STL: generate | drops | simulate | (b) STEP today: generate | drops | simulate | (c) finer: generate | drops | simulate |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Roughing | 1.49 | 1.8 | 6.9 | 1.21 | 0.65 | 7.6 | 1.45 | 1.5 | 6.8 |
-| Rest | 9.97 | 35.5 | 21.7 | 6.79 | 19.9 | 20.1 | 10.22 | 35.4 | 19.2 |
-| Pencil | 68.78 | 37.0 | 0.25 | 29.34 | 4.5 | 0.09 | 25.70 | 18.4 | 0.09 |
-| Helical | 9.31 | 35.4 | 12.2 | 5.33 | 18.4 | 13.0 | 9.01 | 33.2 | 12.2 |
-| Axial | 534.76 | 24.0 | 119.0 | 975.31 | 33.5 | 326.5 | 799.69 | 56.8 | 309.8 |
-| Indexed | 1.13 | 0.17 | 0.07 | 1.32 | 0.07 | 0.07 | 1.48 | 0.20 | 0.06 |
-| Simultaneous (until it refuses) | 114.42 | 439.2 | – | 105.63 | 4.2 | – | 100.83 | 9.6 | – |
+| Operation | (a) STL: generate | drops | simulate | (b) STEP today: generate | drops | simulate | (c) finer: generate | drops | simulate | (c) over (b) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Roughing | 1.43 | 1.6 | 7.4 | 1.23 | 0.63 | 7.4 | 1.49 | 1.7 | 7.3 | 1.21 |
+| Rest | 10.02 | 37.4 | 21.7 | 5.32 | 18.8 | 19.5 | 10.27 | 38.1 | 20.8 | 1.93 |
+| Pencil | 12.27 | 37.2 | 0.25 | 2.48 | 3.9 | 0.10 | 8.95 | 19.5 | 0.10 | **3.61** |
+| Helical | 9.27 | 36.3 | 14.4 | 5.16 | 19.8 | 13.1 | 9.08 | 35.5 | 13.4 | 1.76 |
+| Axial | 20.00 | 76.0 | 129.0 | 24.00 | 91.2 | 335.3 | 38.00 | 139.4 | 348.1 | 1.58 |
+| Indexed | 0.12 | 0.35 | 0.07 | 0.05 | 0.14 | 0.07 | 0.11 | 0.33 | 0.07 | **2.2** |
+| Simultaneous (until it refuses) | 107.66 | 390.4 | – | 112.84 | 5.3 | – | 119.09 | 10.3 | – | 1.06 |
+| The job (generation) | 160.8 | | | 151.1 | | | 187.0 | | | 1.24 |
+| The job (generation and simulation) | 333.6 | | | 526.6 | | | 576.7 | | | 1.10 |
 
 Drop counts per run: helical 234,045 (a), 256,205 (b), 237,977 (c); axial 556,420, 828,608 and 810,532; pencil 410,107, 222,948 and 342,624. One tessellation drop costs about 70 µs on (b)'s 15,936 triangles and 110 to 160 µs on (c)'s 106,928 (the probe's figures below, on one thread).
 
