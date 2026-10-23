@@ -397,6 +397,7 @@ fn generate_with(
         watched,
         operation_leave,
         common.tolerance.get().0,
+        context,
     )?);
     context.check_cancelled()?;
     let mid = part_middle(input);

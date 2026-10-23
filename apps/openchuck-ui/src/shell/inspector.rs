@@ -1206,6 +1206,20 @@ fn set_options(
                 });
                 if current == OnBreak::Ignore {
                     limits_nothing(ui, indent, &set);
+                } else if current == OnBreak::Warn && !shown.boundary {
+                    // These strategies use the shared sampled measurement
+                    // (OI-970). Explain its limitation even without a hit.
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(indent);
+                        marks::mark(ui, ItemState::Warning, "Warning");
+                        ui.label(
+                            RichText::new(
+                                "Warn only samples the path and can miss a narrow set. No warning \
+                                 does not establish clearance; verify the cut before running G-code.",
+                            )
+                            .color(DARK.warning),
+                        );
+                    });
                 }
             }
         }

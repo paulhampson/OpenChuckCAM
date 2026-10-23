@@ -1,6 +1,6 @@
 # 0228: Avoid and check sets on a STEP part stay face sets (lane SWARF3; closes OI-634)
 
-- **Status:** proposed (23 Oct 2026, lane SWARF3). The owner chose option A on OI-634, relayed by the coordinator on 23 Oct 2026: close OI-634 and build nothing. Only the owner accepts this record (decision 0049).
+- **Status:** accepted by the project owner on 23 Oct 2026 ("Accept 0228"), relayed through the coordinator at the owner's instruction (decision 0049). Proposed 23 Oct 2026 by lane SWARF3. The owner chose option A on OI-634, also relayed by the coordinator: close OI-634 and build nothing.
 - **What it amends:** nothing. It confirms [decision 0176](0176-swarf-boundary-avoid-and-check-sets.md) item 5 (the owner's 3b: face sets only) and rule R5 of [decision 0209](0209-step-geometry-for-every-strategy.md) (a triangle set cannot be used on a STEP part). OP-02, OP-07 and OP-23 are unchanged.
 - **Date:** 23 Oct 2026.
 - **Open items** ([docs/open-items.md](../open-items.md)): closes OI-634.

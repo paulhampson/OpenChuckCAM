@@ -30,6 +30,7 @@
 //! offset ([`crate::candidates`], slice 12).
 
 use openchuck_types::geometry::Point3;
+use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
 use openchuck_types::tool::profile::RevolvedProfile;
 
@@ -283,8 +284,10 @@ const WATCH_ESTIMATE_PIECES: usize = 8;
 ///
 /// The passes were made as if the watched surfaces were not there. Each
 /// move between two cut points of a pass is followed as the machine makes
-/// it (straight in the machine's axes) and sampled no further apart on the
-/// part than an eighth of the tool's cutting radius. At each sample the
+/// it (straight in the machine's axes), with a nominal sample spacing of
+/// an eighth of the tool's cutting radius. The length estimate, minimum
+/// spacing and sample cap below make this an approximation: a narrow set
+/// can be missed between samples (OI-970). At each sample the
 /// tool, grown by the operation's stock to leave, is dropped along its axis
 /// onto each watched surface alone. It breaks the surface when
 ///
@@ -309,6 +312,7 @@ pub(crate) fn watched_warnings(
     watch: &[WatchedSurface<'_>],
     leave: f64,
     slack: f64,
+    context: &JobContext<'_>,
 ) -> Result<Vec<crate::assemble::PathWarning>> {
     if watch.is_empty() {
         return Ok(Vec::new());
@@ -326,7 +330,8 @@ pub(crate) fn watched_warnings(
         })
         .collect();
     let rotary = input.rotary;
-    let measured = crate::parallel::map_in_order(&moves, |(start, end)| {
+    let measured = crate::parallel::map_in_order(&moves, |(start, end)| -> Result<Vec<f64>> {
+        context.check_cancelled()?;
         let a0 = start.a;
         let a1 = crate::rotary::nearest_turn(end.a, a0);
         let (p0, p1) = (rotary.to_axis(start.tip, a0), rotary.to_axis(end.tip, a1));
@@ -354,6 +359,7 @@ pub(crate) fn watched_warnings(
         let lines: Vec<(ToolLine, Option<f64>)> = poses
             .iter()
             .map(|(tip, axis)| {
+                context.check_cancelled()?;
                 let line = ToolLine {
                     origin: *tip + axis.get() * -leave,
                     axis: *axis,
@@ -363,24 +369,25 @@ pub(crate) fn watched_warnings(
                     .drop_tool(&grown, &line)
                     .map(|c| c.offset)
                     .filter(|offset| offset.abs() <= slack + ON_SURFACE);
-                (line, rest)
+                Ok((line, rest))
             })
-            .collect();
+            .collect::<Result<_>>()?;
         let broken: Vec<Vec<bool>> = watch
             .iter()
             .map(|w| {
                 lines
                     .iter()
                     .map(|(line, rest)| {
-                        w.surface.drop_tool(&grown, line).is_some_and(|touch| {
+                        context.check_cancelled()?;
+                        Ok(w.surface.drop_tool(&grown, line).is_some_and(|touch| {
                             touch.offset >= -ON_SURFACE
                                 || rest.is_some_and(|r| touch.offset >= r - ON_SURFACE)
-                        })
+                        }))
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>>>()
             })
-            .collect();
-        broken
+            .collect::<Result<_>>()?;
+        Ok(broken
             .iter()
             .map(|flags| {
                 poses
@@ -395,11 +402,11 @@ pub(crate) fn watched_warnings(
                     })
                     .sum::<f64>()
             })
-            .collect::<Vec<f64>>()
+            .collect::<Vec<f64>>())
     });
     let mut lengths = vec![0.0f64; watch.len()];
     for per_move in measured {
-        for (total, length) in lengths.iter_mut().zip(per_move) {
+        for (total, length) in lengths.iter_mut().zip(per_move?) {
             *total += length;
         }
     }

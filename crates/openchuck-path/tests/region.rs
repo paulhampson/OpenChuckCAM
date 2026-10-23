@@ -157,6 +157,94 @@ fn warned_length(message: &str) -> f64 {
     rest.split(" mm").next().unwrap().parse().unwrap()
 }
 
+/// A host surface that requests cancellation during the warning measurement,
+/// after generation has finished. Counting queries avoids a timing assertion.
+#[derive(Debug)]
+struct CancelOnWatch<'a> {
+    surface: &'a MeshSurface,
+    cancel: &'a openchuck_types::job::CancelToken,
+    drops: std::sync::atomic::AtomicUsize,
+}
+
+impl openchuck_path::SurfaceSource for CancelOnWatch<'_> {
+    fn bounds(&self) -> openchuck_types::geometry::Aabb {
+        self.surface.bounds()
+    }
+
+    fn project(&self, point: Point3) -> Option<openchuck_path::SurfacePoint> {
+        self.surface.project(point)
+    }
+
+    fn cast_ray(
+        &self,
+        origin: Point3,
+        direction: openchuck_types::geometry::UnitVec3,
+        max_distance: f64,
+    ) -> Option<openchuck_path::RayHit> {
+        self.surface.cast_ray(origin, direction, max_distance)
+    }
+
+    fn tessellation(&self) -> &TriangleMesh {
+        self.surface.tessellation()
+    }
+
+    fn drop_tool(
+        &self,
+        profile: &openchuck_types::tool::RevolvedProfile,
+        line: &openchuck_path::ToolLine,
+    ) -> Option<openchuck_path::Contact> {
+        self.drops
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.cancel.cancel();
+        self.surface.drop_tool(profile, line)
+    }
+}
+
+#[test]
+fn req_op_02_req_ui_09_req_int_04_cancel_stops_watched_surface_queries() {
+    // UI-09 and architecture 5.1 require cancellation in every long-running
+    // phase, including Warn only's sampling after the passes are generated.
+    use openchuck_types::job::{CancelToken, JobContext, NoProgress};
+    let mesh = Cylinder {
+        radius: 3.0,
+        length: 4.0,
+    }
+    .mesh(3, 32);
+    let f = Fixture::new(MeshSurface::new(&mesh).unwrap(), 4.0, &ball(1.0));
+    let cancel = CancelToken::new();
+    let surface = CancelOnWatch {
+        surface: &f.surface,
+        cancel: &cancel,
+        drops: std::sync::atomic::AtomicUsize::new(0),
+    };
+    let watch = [WatchedSurface {
+        name: "Cancel during measurement",
+        protection: Protection::Avoid,
+        surface: &surface,
+    }];
+    let region = RegionConstraint {
+        watch: &watch,
+        ..Default::default()
+    };
+    // With one worker no query can already be in flight when cancellation
+    // is requested, so the next surface query must not start.
+    let result = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap()
+        .install(|| {
+            generate_in_region(
+                &HelicalFinishing,
+                &f.input(),
+                &region,
+                &values(),
+                &JobContext::new(&cancel, &NoProgress),
+            )
+        });
+    assert!(matches!(result, Err(PathError::Cancelled)), "{result:?}");
+    assert_eq!(surface.drops.load(std::sync::atomic::Ordering::Relaxed), 1);
+}
+
 #[test]
 fn req_op_02_a_set_that_only_warns_keeps_the_path_and_names_the_set() {
     // Warn only (decision 0229 item 1): the path is made as if the set were
