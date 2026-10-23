@@ -8,7 +8,7 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready for review; awaiting lane update from main and single push |
+| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; blocked by merge conflicts with main; lane update not yet pushed |
 
 ## SWARF3 / #320
 
@@ -28,3 +28,7 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 ## Completion gates
 
 Confirm the released head includes latest main, register and traceability checks pass, required CI is green, CodeRabbit has finished and blocking findings are resolved, and no new unapproved decision is relied on. Merge only the verified head; record its merge SHA and date here before releasing the next assigned PR.
+
+## Current release blocker
+
+At head `96258e867712ac9ee47000904715a6d956e30727`, GitHub reports the PR unmergeable and CodeRabbit flags merge conflicts. No pull-request Actions runs exist for this head: GitHub suppresses these workflows while conflicts remain. The lane must perform the already authorised main update, resolve conflicts and register unions, verify, and push once before full CI can run. Release instructions are posted on the PR; lane acknowledgement and new head remain pending. Do not wait for CI before this release update, or rerun old draft checks as a substitute.
