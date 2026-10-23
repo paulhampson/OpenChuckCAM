@@ -166,6 +166,7 @@ fn req_gc_14_req_nfr_12_a_profile_spindle_range_is_a_limit() {
     assert_eq!(m.spindle_limit(SpindleSpeed(1.0e6)), None);
     // No range: nothing to confirm either.
     assert!(!m.unconfirmed_fields().contains(&ProfileField::SpindleRange));
+    assert_eq!(m.fields().len(), ProfileField::ALL.len() - 1);
     m.max_spindle_rpm = Some(SpindleSpeed(13000.0));
     m.validate().unwrap();
     assert!(m.unconfirmed_fields().contains(&ProfileField::SpindleRange));

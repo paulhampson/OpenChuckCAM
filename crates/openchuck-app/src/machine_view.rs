@@ -213,7 +213,7 @@ mod tests {
             assert!(!v.tooltip.contains("rotary_origin"), "{}", v.tooltip);
             assert!(!v.value.contains('_'), "{}", v.value);
         }
-        assert!(values.iter().filter(|v| v.collapsed).count() == 2);
+        assert!(values.iter().filter(|v| v.collapsed).count() == 3);
     }
 
     #[test]

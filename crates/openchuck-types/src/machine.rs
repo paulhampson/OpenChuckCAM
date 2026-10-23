@@ -394,13 +394,20 @@ impl MachineProfile {
             .is_some_and(|p| p.state == Confirmation::Confirmed)
     }
 
-    /// The fields not confirmed on the machine, in order. The spindle range
-    /// is listed only when the profile gives one.
-    pub fn unconfirmed_fields(&self) -> Vec<ProfileField> {
+    /// The fields the profile gives a value for, in order: every field, but
+    /// the spindle range only when the profile gives one.
+    pub fn fields(&self) -> Vec<ProfileField> {
         let spindle = self.min_spindle_rpm.is_some() || self.max_spindle_rpm.is_some();
         ProfileField::ALL
             .into_iter()
             .filter(|f| *f != ProfileField::SpindleRange || spindle)
+            .collect()
+    }
+
+    /// The fields of [`Self::fields`] not confirmed on the machine, in order.
+    pub fn unconfirmed_fields(&self) -> Vec<ProfileField> {
+        self.fields()
+            .into_iter()
             .filter(|f| !self.is_confirmed(*f))
             .collect()
     }
