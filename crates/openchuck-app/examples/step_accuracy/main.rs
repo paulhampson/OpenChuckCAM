@@ -30,7 +30,7 @@
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
 //!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
-//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME]
+//!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME] [--keep DIR]
 //! ```
 //!
 //! The owner's `blisk.stl` is `docs/trial-feedback-projects/blisk.stl` on
@@ -125,6 +125,7 @@ struct Args {
     sim_tilt: f64,
     sim_step: f64,
     part: String,
+    keep: Option<PathBuf>,
 }
 
 fn args() -> Result<Args, Error> {
@@ -154,6 +155,7 @@ fn args() -> Result<Args, Error> {
         sim_tilt: 10.0,
         sim_step: 2.0,
         part: "blisk".to_owned(),
+        keep: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -212,6 +214,7 @@ fn args() -> Result<Args, Error> {
                     })
                     .collect::<Result<_, _>>()?;
             }
+            "--keep" => out.keep = Some(PathBuf::from(it.next().ok_or("--keep DIR")?)),
             "--part" => out.part = it.next().ok_or("--part NAME")?,
             "--sim-tilt" => out.sim_tilt = it.next().ok_or("--sim-tilt DEG")?.parse()?,
             "--sim-step" => out.sim_step = it.next().ok_or("--sim-step DEG")?.parse()?,
@@ -309,7 +312,11 @@ fn main() -> Result<(), Error> {
 
     // The project: the owner's tools and operations, on the STEP part.
     let ops = operations(&args);
-    let dir = std::env::temp_dir().join(format!("openchuck-step-accuracy-{}", std::process::id()));
+    // With `--keep` the project stays, saved, for `operation_times` (lane
+    // BUG-TABDEV's example) to time through the application.
+    let dir = args.keep.clone().unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("openchuck-step-accuracy-{}", std::process::id()))
+    });
     let (mut app, ids) = project(&dir, &part_path, &placement, &bounds, &ops)?;
 
     let mut forms: Vec<(&str, Form)> = vec![
@@ -555,10 +562,17 @@ fn main() -> Result<(), Error> {
                 );
                 reference.get_or_insert(gcode);
             }
-            let _ = std::fs::remove_dir_all(stl_dir);
+            if args.keep.is_none() {
+                let _ = std::fs::remove_dir_all(stl_dir);
+            }
         }
     }
-    let _ = std::fs::remove_dir_all(dir);
+    if args.keep.is_none() {
+        let _ = std::fs::remove_dir_all(dir);
+    } else {
+        app.save()?;
+        println!("project kept in {}", dir.display());
+    }
     Ok(())
 }
 
@@ -966,6 +980,8 @@ fn project(
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            // The tool's cutting data for the setup's material (decision 0196).
+            spindle_speed: None,
             parameters: op
                 .parameters
                 .iter()
