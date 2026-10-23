@@ -8,7 +8,7 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Release authorised; ready transition and lane update pending |
+| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready for review; awaiting lane update from main and single push |
 
 ## SWARF3 / #320
 
@@ -21,6 +21,9 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 - The 67.238-second regression remains in default PR tests and is classified in long/coverage profiles.
 - Owner explicitly authorises the merge coordinator to merge this PR when fully ready and green; do not enable auto-merge on the lane's behalf.
 - Present any new key decision to the owner individually, with a recommendation and risks.
+
+- Released by the merge coordinator on 23 October 2026: marked ready before any lane update; instructions posted in [PR comment](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6375867197).
+- Hourly follow-up is enabled to inspect lane progress, CI and CodeRabbit, coordinate blockers, and merge only when all gates are met. Notifications are limited to meaningful changes or required action.
 
 ## Completion gates
 
