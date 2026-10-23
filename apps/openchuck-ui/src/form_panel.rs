@@ -115,7 +115,7 @@ fn hint(field: &Field) -> Option<String> {
 #[derive(Debug, Default)]
 pub struct FormOutcome {
     /// The edit the user committed, if any.
-    pub edit: Option<Edit>,
+    pub edits: Vec<Edit>,
     /// A section was opened or closed: the settings need writing.
     pub settings_changed: bool,
 }
@@ -176,7 +176,7 @@ pub fn show(
             forced,
             |_| {},
             |ui| {
-                let mut edit = None;
+                let mut edits = Vec::new();
                 for field in fields {
                     let field_key = RequirementField::Parameter(field.name.clone());
                     let need = needs
@@ -187,14 +187,14 @@ pub fn show(
                     let scroll = jump == Some(&field_key)
                         || marks.jump.as_deref() == Some(field.name.as_str());
                     if let Some(e) = row(ui, field, true, state, need, warned, scroll) {
-                        edit = Some(e);
+                        edits.push(e);
                     }
                 }
-                edit
+                edits
             },
         );
-        if let Some(Some(edit)) = section.body {
-            outcome.edit = Some(edit);
+        if let Some(edits) = section.body {
+            outcome.edits.extend(edits);
         }
         let now_open = section.open;
         if now_open != open {
@@ -217,17 +217,17 @@ pub fn show_fields(
     notes: &[String],
     reset: bool,
     state: &mut FormState,
-) -> Option<Edit> {
-    let mut edit = None;
+) -> Vec<Edit> {
+    let mut edits = Vec::new();
     for field in fields {
         if let Some(e) = row(ui, field, reset, state, None, None, false) {
-            edit = Some(e);
+            edits.push(e);
         }
     }
     for note in notes {
         ui.label(RichText::new(note).color(DARK.muted));
     }
-    edit
+    edits
 }
 
 fn row(
@@ -272,6 +272,40 @@ fn row(
         FieldKind::Number { .. } | FieldKind::Integer { .. } | FieldKind::Text => {
             let unit = unit_of(&field.kind);
             let range = range(&field.kind);
+            let validate = |typed: &str| {
+                let value = parse(&field.kind, typed)?;
+                match (&field.kind, value) {
+                    (
+                        FieldKind::Number {
+                            min,
+                            min_exclusive,
+                            max,
+                            ..
+                        },
+                        Some(ParameterValue::Number(v)),
+                    ) => {
+                        if min.is_some_and(|m| v < m || (*min_exclusive && v == m))
+                            || max.is_some_and(|m| v > m)
+                        {
+                            return Err(format!(
+                                "{}: {}. Not applied.",
+                                field.label,
+                                range.as_deref().unwrap_or("outside the allowed range")
+                            ));
+                        }
+                    }
+                    (FieldKind::Integer { min, max }, Some(ParameterValue::Integer(v)))
+                        if v < *min || v > *max =>
+                    {
+                        return Err(format!(
+                            "{} must be from {min} to {max}. Not applied.",
+                            field.label
+                        ));
+                    }
+                    _ => {}
+                }
+                Ok(())
+            };
             let row = TextRow {
                 key: &field.name,
                 label: &field.label,
@@ -292,6 +326,7 @@ fn row(
                 warned,
                 scroll_to: scroll,
                 number: !matches!(field.kind, FieldKind::Text),
+                validate: Some(&validate),
             };
             match field_row::text_row(ui, state, &row) {
                 Outcome::None => None,

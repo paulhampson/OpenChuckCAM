@@ -580,6 +580,16 @@ impl Shell {
                     Some(tool) => {
                         ui.label(RichText::new(&tool.name).strong());
                         ui.label(RichText::new(&tool.description).color(DARK.muted));
+                        let validate_number = |text: &str| {
+                            let number = text
+                                .trim()
+                                .trim_start_matches(['T', 't'])
+                                .parse::<u32>()
+                                .map_err(|_| "Type a whole tool number. Not applied.".to_owned())?;
+                            tool_library::set_project_tool_number(project, tool.id, number)
+                                .map(|_| ())
+                                .map_err(|e| form_panel::refusal(&e.to_string()))
+                        };
                         let row = TextRow {
                             key: TOOL_NUMBER,
                             label: "Tool number",
@@ -589,6 +599,7 @@ impl Shell {
                             range: Some("1 or more, not another project tool's number"),
                             applied: tool.controller.number.to_string(),
                             enabled: true,
+                            validate: Some(&validate_number),
                             ..TextRow::default()
                         };
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
@@ -600,6 +611,16 @@ impl Shell {
                             act = Some(ToolAct::Preset(chosen));
                         }
                         if let Some(spindle) = &spindle {
+                            let validate_spindle = |text: &str| {
+                                tool_library::set_operation_spindle(
+                                    project,
+                                    app.strategies(),
+                                    operation.id,
+                                    Some(text),
+                                )
+                                .map(|_| ())
+                                .map_err(|e| form_panel::refusal(&e.to_string()))
+                            };
                             let row = TextRow {
                                 key: SPINDLE_SPEED,
                                 label: "Spindle speed",
@@ -634,6 +655,7 @@ impl Shell {
                                         .then_some("Outside the machine's range")
                                 },
                                 scroll_to: jump_to_spindle,
+                                validate: Some(&validate_spindle),
                                 ..TextRow::default()
                             };
                             match field_row::text_row(ui, form, &row) {
@@ -738,6 +760,15 @@ impl Shell {
 
     /// Does what the Tool section asked.
     pub(super) fn tool_act(&mut self, operation: OperationId, act: ToolAct) {
+        if matches!(
+            act,
+            ToolAct::Library | ToolAct::Edit(_) | ToolAct::SaveToLibrary(_)
+        ) {
+            let deferred = act.clone();
+            if self.defer(move |s| s.tool_act(operation, deferred)) {
+                return;
+            }
+        }
         if act == ToolAct::Library {
             let current = self
                 .app
@@ -976,7 +1007,7 @@ impl Shell {
                 .take_if(|(op, _)| *op == id)
                 .map(|(_, name)| name),
         };
-        let edit = match app.parameter_form(id) {
+        let edits = match app.parameter_form(id) {
             Ok(form) => {
                 let need_refs: Vec<&openchuck_app::requirements::Requirement> =
                     needs.iter().collect();
@@ -992,16 +1023,16 @@ impl Shell {
                 if outcome.settings_changed {
                     self.settings_changed = Some(std::time::Instant::now());
                 }
-                outcome.edit
+                outcome.edits
             }
             Err(e) => {
                 ui.label(RichText::new(e.to_string()).color(DARK.error));
-                None
+                Vec::new()
             }
         };
         // The jump has been drawn this frame.
         self.requirement_jump = None;
-        if let Some(edit) = edit {
+        for edit in edits {
             let result = app
                 .set_parameter(id, &edit.name, edit.value)
                 .map_err(|e| form_panel::refusal(&e.user_message()));
@@ -1402,6 +1433,7 @@ fn rows(
     let mut edited = None;
     for row in rows {
         let key = setup_key(row);
+        let validate = |text: &str| setup_form::apply(setup, machine, row.field, text).map(|_| ());
         let outcome = field_row::text_row(
             ui,
             state,
@@ -1421,6 +1453,7 @@ fn rows(
                 needs: None,
                 scroll_to: false,
                 number: !row.unit.is_empty(),
+                validate: Some(&validate),
             },
         );
         if let Outcome::Commit(typed) = outcome {

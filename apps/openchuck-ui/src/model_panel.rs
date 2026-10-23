@@ -597,6 +597,16 @@ impl ModelPanel {
         unit: &str,
         value: f64,
     ) -> Option<f64> {
+        let validate = |text: &str| {
+            let value = text
+                .parse::<f64>()
+                .map_err(|_| "Not a number. Not applied.".to_owned())?;
+            if !value.is_finite() || (key.ends_with("factor") && value <= 0.0) {
+                Err("Must be more than 0. Not applied.".to_owned())
+            } else {
+                Ok(())
+            }
+        };
         let outcome = field_row::text_row(
             ui,
             &mut self.fields,
@@ -607,6 +617,7 @@ impl ModelPanel {
                 applied: field_row::number(value, field_row::places(unit)),
                 enabled: true,
                 number: true,
+                validate: Some(&validate),
                 ..TextRow::default()
             },
         );

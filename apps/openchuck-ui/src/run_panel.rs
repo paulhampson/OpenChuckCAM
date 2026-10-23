@@ -270,6 +270,7 @@ pub struct RunPanel {
     last_seconds: f64,
     show_results: bool,
     adding: Option<AddOperation>,
+    deferred_add: Option<(crate::pending_edits::Ticket, (bool, bool, bool))>,
     /// The New operation dialog asked for the tool library (decision record
     /// 0127 item 6).
     wants_library: bool,
@@ -504,6 +505,7 @@ impl RunPanel {
         ctx: &egui::Context,
         app: &mut Application,
     ) -> (Option<OperationId>, Option<String>) {
+        let deferred = crate::pending_edits::take_local(ctx, &mut self.deferred_add);
         let Some(form) = &mut self.adding else {
             return (None, None);
         };
@@ -520,16 +522,14 @@ impl RunPanel {
             .iter()
             .map(|t| (t.id, t.name.clone()))
             .collect();
-        let mut close = false;
-        let mut add = false;
-        let mut wants_library = false;
+        let (mut add, mut close, mut wants_library) = deferred.unwrap_or((false, false, false));
         egui::Window::new("Add operation")
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Name");
-                    ui.text_edit_singleline(&mut form.name);
+                    crate::pending_edits::text_edit(ui, &mut form.name, "Operation name");
                 });
                 // One list: roughing first, finishing next, the specialist
                 // strategies last, each with a short description under its
@@ -660,6 +660,16 @@ impl RunPanel {
                     }
                 });
             });
+        if (add || close || wants_library)
+            && crate::pending_edits::defer_local(
+                ctx,
+                &mut self.deferred_add,
+                (add, close, wants_library),
+            )
+            .is_none()
+        {
+            return (None, None);
+        }
         let mut added = None;
         let mut error = None;
         if add && let Some(setup) = form.setup {

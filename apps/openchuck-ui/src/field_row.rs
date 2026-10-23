@@ -91,7 +91,7 @@ pub enum Outcome {
 }
 
 /// A text or number row.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TextRow<'a> {
     /// Identifies the row's typed text and refusal; unique within the form.
     pub key: &'a str,
@@ -136,6 +136,20 @@ pub struct TextRow<'a> {
     /// cannot be read is refused under the box, and the last good value is
     /// kept (UI-26; [`crate::arith`]).
     pub number: bool,
+    /// Checks the interpreted entry without applying it. The departure
+    /// guard checks every pending field before any command is executed.
+    pub validate: Option<&'a dyn Fn(&str) -> Result<(), String>>,
+}
+
+impl std::fmt::Debug for TextRow<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextRow")
+            .field("key", &self.key)
+            .field("label", &self.label)
+            .field("applied", &self.applied)
+            .field("number", &self.number)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Shows `text` as the tooltip of `response` on hover and while it has
@@ -331,8 +345,34 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         }
         if response.changed() {
             state.text.insert(row.key.to_owned(), typed.clone());
+            state.errors.remove(row.key);
+            state.unreadable.remove(row.key);
         }
-        if response.lost_focus() {
+        if crate::pending_edits::take_discard(ui.ctx(), response.id) {
+            state.text.remove(row.key);
+            state.errors.remove(row.key);
+            state.unreadable.remove(row.key);
+            typed = row.applied.clone();
+        }
+        if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id) {
+            state.refuse(row.key, &typed, reason);
+            if row.number && arith::entry_text(&typed, places(row.unit)).is_err() {
+                state
+                    .unreadable
+                    .insert(row.key.to_owned(), row.label.to_owned());
+            }
+        }
+        if crate::pending_edits::take_focus(ui.ctx(), response.id) {
+            response.request_focus();
+        }
+        let keep =
+            crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Keep(response.id);
+        if keep
+            || (response.lost_focus()
+                && crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Normal
+                && (!crate::pending_edits::holds_focus_loss(ui.ctx())
+                    || ui.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Escape))))
+        {
             if ui.input(|i| i.key_pressed(Key::Escape)) {
                 // Esc puts back the last applied text (section 8).
                 state.text.remove(row.key);
@@ -366,6 +406,26 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                 }
             }
         }
+        let pending = state
+            .typed(row.key)
+            .filter(|text| text.trim() != row.applied.trim())
+            .map(|text| {
+                if let Some(reason) = state.error(row.key) {
+                    return Err(reason.to_owned());
+                }
+                let checked = if row.number && !text.trim().is_empty() {
+                    arith::entry_text(text, places(row.unit))
+                } else {
+                    Ok(text.to_owned())
+                };
+                checked.and_then(|text| {
+                    if let Some(validate) = row.validate {
+                        validate(&text)?;
+                    }
+                    Ok(text)
+                })
+            });
+        crate::pending_edits::track(ui, &response, row.label, pending);
     });
     note_unreadable(ui.ctx(), row.key, state.unreadable.get(row.key));
     let error = state.error(row.key).map(str::to_owned);
@@ -440,8 +500,27 @@ pub fn name_field(ui: &mut egui::Ui, state: &mut FieldState, key: &str, applied:
     response.widget_info(|| egui::WidgetInfo::text_edit(true, applied, &typed, "Name"));
     if response.changed() {
         state.text.insert(key.to_owned(), typed.clone());
+        state.errors.remove(key);
     }
-    if response.lost_focus() {
+    if crate::pending_edits::take_discard(ui.ctx(), response.id) {
+        state.text.remove(key);
+        state.errors.remove(key);
+        typed = applied.to_owned();
+    }
+    if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id) {
+        state.refuse(key, &typed, reason);
+    }
+    if crate::pending_edits::take_focus(ui.ctx(), response.id) {
+        response.request_focus();
+    }
+    let keep =
+        crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Keep(response.id);
+    if keep
+        || (response.lost_focus()
+            && crate::pending_edits::mode(ui.ctx()) == crate::pending_edits::Mode::Normal
+            && (!crate::pending_edits::holds_focus_loss(ui.ctx())
+                || ui.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Escape))))
+    {
         if ui.input(|i| i.key_pressed(Key::Escape)) {
             state.text.remove(key);
             state.errors.remove(key);
@@ -454,6 +533,23 @@ pub fn name_field(ui: &mut egui::Ui, state: &mut FieldState, key: &str, applied:
             }
         }
     }
+    crate::pending_edits::track(
+        ui,
+        &response,
+        "Name",
+        state
+            .typed(key)
+            .filter(|text| *text != applied)
+            .map(|text| {
+                if let Some(reason) = state.error(key) {
+                    Err(reason.to_owned())
+                } else if text.trim().is_empty() {
+                    Err("Give the item a name. Not applied.".to_owned())
+                } else {
+                    Ok(text.to_owned())
+                }
+            }),
+    );
     outcome
 }
 
@@ -501,6 +597,7 @@ pub fn flag_row(
             response.widget_info(|| {
                 egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, on, label)
             });
+            crate::pending_edits::track(ui, &response, label, None);
             response.changed()
         })
         .inner;
@@ -530,7 +627,9 @@ pub fn segmented(
             .stroke(Stroke::new(1.0, DARK.line))
             .corner_radius(0.0)
             .selected(on);
-            if ui.add_enabled(enabled, button).clicked() && !on {
+            let response = ui.add_enabled(enabled, button);
+            crate::pending_edits::track(ui, &response, option, None);
+            if response.clicked() && !on {
                 chosen = Some(i);
             }
         }
@@ -582,7 +681,7 @@ pub fn choice_row(
                 .copied()
                 .unwrap_or_default();
             ui.add_enabled_ui(enabled, |ui| {
-                egui::ComboBox::from_id_salt(("choice", key))
+                let response = egui::ComboBox::from_id_salt(("choice", key))
                     .selected_text(shown)
                     .width(ui.available_width().max(80.0))
                     .show_ui(ui, |ui| {
@@ -594,6 +693,7 @@ pub fn choice_row(
                             }
                         }
                     });
+                crate::pending_edits::track(ui, &response.response, label, None);
             });
             chosen
         }
@@ -691,7 +791,7 @@ pub fn section<R>(
         id,
         default_open,
     );
-    if force_open {
+    if force_open || crate::pending_edits::needs_section(ui.ctx(), id) {
         state.set_open(true);
     }
     let mut clicked = false;
@@ -712,7 +812,10 @@ pub fn section<R>(
         header.toggle();
     }
     let open = header.is_open();
-    let (_, header, body) = header.body(body);
+    let (_, header, body) = header.body(|ui| {
+        let ctx = ui.ctx().clone();
+        crate::pending_edits::section(&ctx, id, || body(ui))
+    });
     Section {
         body: body.map(|b| b.inner),
         open,

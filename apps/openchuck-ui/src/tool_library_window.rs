@@ -246,6 +246,7 @@ enum Confirm {
 /// The window's state.
 #[derive(Debug)]
 pub struct ToolLibraryWindow {
+    deferred: Option<(crate::pending_edits::Ticket, Act)>,
     open: bool,
     purpose: Purpose,
     /// The library folder; the default folder when `None`.
@@ -286,6 +287,7 @@ impl ToolLibraryWindow {
     /// tool library folder when `None`.
     pub fn new(folder: Option<PathBuf>) -> Self {
         Self {
+            deferred: None,
             open: false,
             purpose: Purpose::Browse,
             folder,
@@ -459,6 +461,13 @@ impl ToolLibraryWindow {
             self.forget();
         }
         let mut acts = Vec::new();
+        if let Some((ticket, _)) = &self.deferred
+            && let Some(approved) = crate::pending_edits::local_result(ctx, *ticket)
+            && let Some((_, action)) = self.deferred.take()
+            && approved
+        {
+            acts.push(action);
+        }
         let project = app.as_deref().map(Application::project);
         let title = match self.purpose {
             Purpose::Operation(_) => "Tool library: choose the operation's tool",
@@ -473,6 +482,26 @@ impl ToolLibraryWindow {
         }
         self.field_had_keyboard = ctx.egui_wants_keyboard_input();
         for act in acts {
+            if (act.leaves()
+                || matches!(
+                    act,
+                    Act::Save
+                        | Act::SaveCutting
+                        | Act::AddToProject
+                        | Act::AskSaveToLibrary
+                        | Act::AskDelete
+                        | Act::CancelEdits
+                        | Act::EditProfile
+                        | Act::ExportLibrary
+                        | Act::ApplyImport
+                        | Act::CancelImport
+                        | Act::RemoveFromProject
+                ))
+                && let Some(ticket) = crate::pending_edits::request_local(ctx)
+            {
+                self.deferred = Some((ticket, act));
+                continue;
+            }
             let (status, added) = self.act(act, app.as_deref_mut());
             if status.is_some() {
                 outcome.status = status;
@@ -692,7 +721,7 @@ impl ToolLibraryWindow {
             );
         }
         let fields = tool_edit::tool_form(&tool.tool);
-        if let Some(edit) = form_panel::show_fields(ui, &fields, &[], false, &mut self.fields) {
+        for edit in form_panel::show_fields(ui, &fields, &[], false, &mut self.fields) {
             acts.push(Act::Field(edit.name, edit.value));
         }
         let mut materials: Vec<String> = MATERIALS.iter().map(|m| (*m).to_owned()).collect();
@@ -884,6 +913,20 @@ impl ToolLibraryWindow {
         }) else {
             return;
         };
+        let validate_number = |text: &str| {
+            let number = text
+                .trim()
+                .trim_start_matches(['T', 't'])
+                .parse::<u32>()
+                .map_err(|_| "Type a whole tool number. Not applied.".to_owned())?;
+            project
+                .ok_or_else(|| "Open a project first.".to_owned())
+                .and_then(|project| {
+                    library::set_project_tool_number(project, id, number)
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                })
+        };
         let number = TextRow {
             key: "project number",
             label: "Tool number",
@@ -892,6 +935,7 @@ impl ToolLibraryWindow {
             range: Some("1 or more, not another project tool's number"),
             applied: row.number.to_string(),
             enabled: true,
+            validate: Some(&validate_number),
             ..TextRow::default()
         };
         if let Outcome::Commit(typed) = field_row::text_row(ui, &mut self.fields, &number) {
@@ -1762,6 +1806,7 @@ fn cutting_editor(
     ui.group(|ui| {
         ui.horizontal(|ui| {
             field_row::tip(ui.label("Stock material"), MATERIAL_HELP);
+            let before = draft.material.clone();
             let response = ui.add(
                 egui::TextEdit::singleline(&mut draft.material)
                     .desired_width(CUTTING_BOX_MIN * 1.5)
@@ -1770,6 +1815,23 @@ fn cutting_editor(
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Stock material")
             });
+            crate::pending_edits::draft_text(
+                ui,
+                &response,
+                "Stock material",
+                &before,
+                &mut draft.material,
+                |text| {
+                    if text.trim().is_empty() {
+                        Err("Give the stock material a name.".to_owned())
+                    } else {
+                        Ok(text.to_owned())
+                    }
+                },
+            );
+            if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id) {
+                draft.problem = Some(reason);
+            }
             field_row::tip(response, MATERIAL_HELP);
             if !known.is_empty() {
                 egui::ComboBox::from_id_salt("cutting material pick")
@@ -1794,8 +1856,9 @@ fn cutting_editor(
                     // Wide enough for the largest value in full, and for
                     // what the pane leaves after the unit.
                     let width = cutting_box_width(ui.available_width());
+                    let before = text.clone();
                     let response = ui.add(
-                        egui::TextEdit::singleline(text)
+                        egui::TextEdit::singleline(&mut *text)
                             .desired_width(width)
                             .font(egui::TextStyle::Monospace),
                     );
@@ -1806,6 +1869,19 @@ fn cutting_editor(
                             format!("{label} in {unit}"),
                         )
                     });
+                    crate::pending_edits::draft_text(ui, &response, label, &before, text, |text| {
+                        crate::arith::entry_text(text, field_row::places(unit)).and_then(|number| {
+                            if number.parse::<f64>().is_ok_and(|v| v > 0.0) {
+                                Ok(number)
+                            } else {
+                                Err(format!("{label} must be above 0. Not applied."))
+                            }
+                        })
+                    });
+                    if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), response.id)
+                    {
+                        draft.problem = Some(reason);
+                    }
                     field_row::tip(response, &tip);
                     ui.label(RichText::new(*unit).color(DARK.muted));
                     ui.end_row();

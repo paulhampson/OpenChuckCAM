@@ -689,22 +689,42 @@ impl ResultsPanel {
             // holds a refused value), so a change from outside, such as an
             // undo, is shown and never written back.
             let id = ui.make_persistent_id("results cell size");
-            if !ui.memory(|m| m.has_focus(id)) && self.error.is_none() {
+            if !ui.memory(|m| m.has_focus(id))
+                && self.error.is_none()
+                && !crate::pending_edits::is_pending(ui.ctx(), id)
+            {
                 self.cell_text = None;
             }
             let text = self
                 .cell_text
                 .get_or_insert_with(|| format!("{current:.3}"));
-            let field = ui.add(egui::TextEdit::singleline(text).id(id).desired_width(70.0));
+            let before = text.clone();
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut *text)
+                    .id(id)
+                    .desired_width(70.0),
+            );
+            let confirmed =
+                crate::pending_edits::draft_text(ui, &field, "Cell size", &before, text, |text| {
+                    let cell = crate::arith::number(text, Some(3))?;
+                    SimulationSettings {
+                        cell: Millimetres(cell),
+                    }
+                    .validate()
+                    .map_err(|e| e.to_string())?;
+                    Ok(cell.to_string())
+                });
+            if let Some(reason) = crate::pending_edits::take_refusal(ui.ctx(), id) {
+                self.error = Some(reason);
+            }
             ui.label(RichText::new("mm").color(DARK.muted));
-            let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let reset = ui
                 .add_enabled(
                     (current - DEFAULT_CELL).abs() > 1e-12,
                     egui::Button::new("Default"),
                 )
                 .clicked();
-            if enter || field.lost_focus() || reset {
+            if confirmed || reset {
                 let wanted = if reset {
                     Ok(DEFAULT_CELL)
                 } else {
