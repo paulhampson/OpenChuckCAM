@@ -238,7 +238,6 @@ fn req_op_12_a_mesh_is_sampled_by_its_area_and_read_like_the_exact_faces() {
             Point3::new(25.0, 0.5, 0.0),
         ],
         triangles: vec![[0, 1, 2]],
-        ..TriangleMesh::default()
     };
     let cloud = Cloud::of_mesh(&sliver, 0.05);
     let area_points = 12.5 / (0.05 * 0.05);

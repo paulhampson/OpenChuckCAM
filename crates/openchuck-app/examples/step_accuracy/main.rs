@@ -1082,7 +1082,7 @@ impl SurfaceSource for Timed<'_> {
             ^ line.origin.y.to_bits().rotate_left(21)
             ^ line.origin.z.to_bits().rotate_left(42);
         if let Some(c) = contact
-            && key % KEEP == 0
+            && key.is_multiple_of(KEEP)
             && let Ok(mut lines) = self.lines.lock()
         {
             lines.push(Line {

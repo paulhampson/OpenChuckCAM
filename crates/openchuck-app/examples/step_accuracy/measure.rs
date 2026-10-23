@@ -8,7 +8,7 @@
 //! outline (`openchuck_testkit::gouge::Outline`), as decision 0056's
 //! *Verification* does.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use openchuck_path::surface::{ParametricFace, Uv};
 use openchuck_path::{ExactFace, RotaryMapping};
@@ -284,7 +284,7 @@ fn face_error(face: &BrepFace, grid: usize) -> FaceError {
 #[derive(Debug, Default)]
 pub struct Cloud {
     cell: f64,
-    cells: HashMap<[i64; 3], Vec<Point3>>,
+    cells: BTreeMap<[i64; 3], Vec<Point3>>,
     count: usize,
 }
 
