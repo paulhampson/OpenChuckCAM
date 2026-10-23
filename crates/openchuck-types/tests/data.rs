@@ -154,3 +154,40 @@ proptest! {
         let _ = serde_json::from_str::<openchuck_types::ir::Toolpath>(&text);
     }
 }
+
+// ---- the exact curve of a B-rep edge (decision 0227) -------------------------
+
+#[test]
+fn req_imp_06_nfr_07_an_edge_reads_with_or_without_its_exact_curve() {
+    use openchuck_types::brep::{BrepEdge, BrepModel, EdgeCurve};
+    // A model written before the field existed has no curve.
+    let old = r#"{"id":0,"faces":[],"vertices":null,"polyline":[{"x":0,"y":0,"z":0},{"x":1,"y":0,"z":0}]}"#;
+    let edge: BrepEdge = serde_json::from_str(old).unwrap();
+    assert_eq!(edge.curve, None);
+
+    // A line round-trips, and a damaged one is refused by the model check.
+    let with_curve = BrepEdge {
+        curve: Some(EdgeCurve::Line {
+            origin: Point3::ORIGIN,
+            direction: Vec3::new(1.0, 0.0, 0.0),
+            first: 0.0,
+            last: 1.0,
+        }),
+        ..edge
+    };
+    let text = serde_json::to_string(&with_curve).unwrap();
+    assert!(text.contains(r#""kind":"line""#));
+    assert_eq!(serde_json::from_str::<BrepEdge>(&text).unwrap(), with_curve);
+    let mut model = BrepModel {
+        edges: vec![with_curve],
+        ..BrepModel::default()
+    };
+    assert!(model.validate().is_ok());
+    model.edges[0].curve = Some(EdgeCurve::Line {
+        origin: Point3::ORIGIN,
+        direction: Vec3::new(0.0, 0.0, 0.0),
+        first: 0.0,
+        last: 1.0,
+    });
+    assert!(model.validate().is_err());
+}

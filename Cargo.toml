@@ -29,7 +29,7 @@ exclude = ["fuzz"]
 
 [workspace.package]
 # The four library-family crates share this version before 1.0 (architecture section 12).
-version = "0.18.0"
+version = "0.19.0"
 edition = "2024"
 rust-version = "1.97"
 license = "AGPL-3.0-or-later"
@@ -40,18 +40,18 @@ authors = ["OpenChuckCAM contributors"]
 # Project crates. Path dependencies carry a version so `cargo publish` works unchanged, except
 # the test-only `openchuck-testkit` (never published): with no version, cargo leaves the
 # dev-dependency out of a published manifest (decision 0103, OI-302).
-openchuck-types = { path = "crates/openchuck-types", version = "0.18.0" }
-openchuck-path = { path = "crates/openchuck-path", version = "0.18.0" }
-openchuck-post = { path = "crates/openchuck-post", version = "0.18.0" }
-openchuck-gcode = { path = "crates/openchuck-gcode", version = "0.18.0" }
-openchuck-geom = { path = "crates/openchuck-geom", version = "0.18.0" }
-openchuck-import = { path = "crates/openchuck-import", version = "0.18.0" }
-openchuck-sim = { path = "crates/openchuck-sim", version = "0.18.0" }
-openchuck-project = { path = "crates/openchuck-project", version = "0.18.0" }
-openchuck-app = { path = "crates/openchuck-app", version = "0.18.0" }
-openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.18.0" }
+openchuck-types = { path = "crates/openchuck-types", version = "0.19.0" }
+openchuck-path = { path = "crates/openchuck-path", version = "0.19.0" }
+openchuck-post = { path = "crates/openchuck-post", version = "0.19.0" }
+openchuck-gcode = { path = "crates/openchuck-gcode", version = "0.19.0" }
+openchuck-geom = { path = "crates/openchuck-geom", version = "0.19.0" }
+openchuck-import = { path = "crates/openchuck-import", version = "0.19.0" }
+openchuck-sim = { path = "crates/openchuck-sim", version = "0.19.0" }
+openchuck-project = { path = "crates/openchuck-project", version = "0.19.0" }
+openchuck-app = { path = "crates/openchuck-app", version = "0.19.0" }
+openchuck-viewport = { path = "crates/openchuck-viewport", version = "0.19.0" }
 openchuck-testkit = { path = "crates/openchuck-testkit" }
-openchuck-buildinfo = { path = "crates/openchuck-buildinfo", version = "0.18.0" }
+openchuck-buildinfo = { path = "crates/openchuck-buildinfo", version = "0.19.0" }
 
 # Third-party crates, exact pins (work breakdown slice 0 item 12).
 serde = { version = "=1.0.229", features = ["derive"] }

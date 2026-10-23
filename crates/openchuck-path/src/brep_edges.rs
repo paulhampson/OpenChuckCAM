@@ -43,12 +43,17 @@ use openchuck_types::geometry::{Point3, Vec3};
 
 use crate::brep::ExactFace;
 use crate::curves::{CurveSource, EdgeChain};
+use crate::edge_curve;
 use crate::error::{PathError, Result};
 use crate::parallel;
 use crate::surface::{FaceClosest, ParametricFace, SurfaceSource, Uv};
 
 /// How close, in millimetres, two edge ends must be to be the same corner.
 const WELD: f64 = 1e-5;
+
+/// How close, in millimetres, the ends of an edge's exact curve must be to
+/// the ends of its polyline for the curve to be used.
+const EXACT_ENDS: f64 = 1e-4;
 
 /// The most places along an edge where its faces' normals are compared.
 const MAX_SAMPLES: usize = 32;
@@ -99,6 +104,8 @@ enum Turn {
 #[derive(Debug, Clone)]
 struct EdgeData {
     id: EdgeId,
+    /// The points a chain is made of: the exact curve sampled finely when
+    /// the edge has one (decision 0227), else the kernel's polyline.
     polyline: Vec<Point3>,
     kind: Kind,
     /// Which way the edge turns; `None` when it was not asked.
@@ -269,6 +276,19 @@ impl CurveSource for BrepEdges {
     }
 }
 
+/// The edge's exact curve sampled finely (decision 0227, OI-229), or `None`
+/// when it has none, it cannot be evaluated, or it does not start and end
+/// where the kernel's polyline does (a damaged model keeps the polyline).
+fn exact_points(edge: &BrepEdge) -> Option<Vec<Point3>> {
+    let points = edge_curve::sample(edge.curve.as_ref()?)?;
+    let ends_agree = |a: Option<&Point3>, b: Option<&Point3>| {
+        a.zip(b).is_some_and(|(p, q)| p.distance(*q) <= EXACT_ENDS)
+    };
+    (ends_agree(points.first(), edge.polyline.first())
+        && ends_agree(points.last(), edge.polyline.last()))
+    .then_some(points)
+}
+
 /// What `edge` is, from the faces it joins, or `None` when it is no edge
 /// at all (degenerate, or a seam). With `sides`, which way an edge between
 /// two faces turns as well.
@@ -302,7 +322,7 @@ fn examine(edge: &BrepEdge, faces: &[ExactFace], sides: bool) -> Option<EdgeData
     };
     Some(EdgeData {
         id: edge.id,
-        polyline: edge.polyline.clone(),
+        polyline: exact_points(edge).unwrap_or_else(|| edge.polyline.clone()),
         kind,
         turn,
     })

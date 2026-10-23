@@ -4,6 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- **Breaking (0.19.0):** `brep::BrepEdge` has a new public field, `curve: Option<EdgeCurve>`, the exact curve under the edge (decision 0227, issue 257; OP-08, OI-229). New: `brep::EdgeCurve` (a line, circle, ellipse or `BSplineCurve`), `brep::BSplineCurve`; `BrepModel::validate` checks the curve. Models written before the field read as `None`.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Lane FOLLOW1 (OI-841; OP-21): `setup::SetupWarningKind::TabsOverlap`, a tab placed automatically that lies over a tab placed by hand; `workholding::check_tab_zones` reports it.
 - **Breaking (0.17.0):** a setup's part offset moves only the part (decision 0201, issue #175; SET-05). `kinematics::RotaryFrame::machine` is removed: every setup's machine frame is `RotaryFrame::of_profile`, with the model origin at the rotary reference point, and the stock, the workholding, the work zero and the toolpaths are fixed in it. `setup::SetupFrame::place_part` and `moves_part`, and `setup::PartExtent::in_setup`, place the part in a setup; `expected_work_offset` no longer adds the part offset; `SetupCheck::part` is the part as the setup places it.

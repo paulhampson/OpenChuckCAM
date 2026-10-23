@@ -377,6 +377,7 @@ fn req_op_09_req_nfr_12_brep_an_edge_whose_side_cannot_be_told_is_left_out_and_s
             openchuck_types::brep::FaceId(0),
         ],
         vertices: None,
+        curve: None,
         polyline: ring,
     });
     let edges = BrepEdges::concave(&model).unwrap().with_crease(30.0);
@@ -407,6 +408,7 @@ fn req_op_09_req_nfr_07_brep_an_edge_whose_faces_cannot_be_compared_is_counted_a
             openchuck_types::brep::FaceId(0),
         ],
         vertices: None,
+        curve: None,
         polyline: vec![
             Point3::new(f64::NAN, 0.0, 0.0),
             Point3::new(1.0, f64::NAN, 0.0),

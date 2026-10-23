@@ -4,6 +4,7 @@ All notable changes to `openchuck-import` are recorded here.
 
 ## Unreleased
 
+- Version 0.19.0 with the library family (decision 0227). The kernel wrapper writes each edge's exact curve (line, circle, ellipse, clamped B-spline) beside its polyline.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, a breaking change; decision 0226). The STEP import notice says pencil clean-up finds its inside corners on the exact edges and drops the tool on the tessellation.
 - The STEP import notice no longer says toolpaths are computed on the exact surfaces: it names the strategies that read them and says the others drop the tool on the tessellation for now (decision 0209 item 4.4, decision 0210 item 7; OI-830).
 - Version 0.17.0 with the library family (decisions 0201 and 0202); no change to this crate's items.

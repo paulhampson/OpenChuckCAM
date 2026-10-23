@@ -267,6 +267,7 @@ pub fn drilled_blank(radius: f64, length: f64, specs: &[HoleSpec]) -> (BrepModel
                 id,
                 faces: shared,
                 vertices: None,
+                curve: None,
                 polyline,
             });
             id
@@ -611,6 +612,7 @@ fn shaft_edge(id: u32, faces: &[u32], polyline: Vec<Point3>) -> BrepEdge {
         id: EdgeId(id),
         faces: faces.iter().map(|f| FaceId(*f)).collect(),
         vertices: None,
+        curve: None,
         polyline,
     }
 }
