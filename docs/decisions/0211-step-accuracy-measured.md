@@ -146,19 +146,19 @@ Release build, 4 cores (the machine above). Decision 0209 asks for the median of
 
 Drop counts per run: helical 234,045 (a), 256,205 (b), 237,977 (c); axial 556,420, 828,608 and 810,532; pencil 410,107, 222,948 and 342,624. One tessellation drop costs about 70 µs on (b)'s 15,936 triangles and 110 to 160 µs on (c)'s 106,928 (the probe's figures below, on one thread).
 
-**One thread, one run each**, and the speed-up of the generation from 1 thread to 4 (NFR-04; decision 0209 item 4.5 asks for it per form):
+**One thread, one run each**, on the same merged `main`, and the speed-up of the generation from 1 thread to 4 (NFR-04; decision 0209 item 4.5 asks for it per form):
 
 | Operation | (a): generate | simulate | speed-up | (b): generate | simulate | speed-up | (c): generate | simulate | speed-up |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Roughing | 2.28 | 22.5 | 1.5 | 1.55 | 22.4 | 1.3 | 2.47 | 22.3 | 1.7 |
-| Rest | 19.75 | 60.3 | 2.0 | 10.82 | 62.1 | 1.6 | 21.91 | 62.1 | 2.1 |
-| Pencil | 56.17 | 0.45 | **0.82** | 24.90 | 0.24 | **0.85** | 21.30 | 0.22 | **0.83** |
-| Helical | 18.33 | 39.4 | 2.0 | 9.54 | 41.3 | 1.8 | 20.71 | 41.1 | 2.3 |
-| Axial | 508.50 | 455.5 | **0.95** | 824.19 | 1,104.9 | **0.85** | 678.24 | 1,107.6 | **0.85** |
-| Indexed | 1.36 | 0.22 | 1.2 | 1.36 | 0.23 | 1.0 | 1.04 | 0.20 | 0.7 |
-| Simultaneous (until it refuses) | 219.10 | – | 1.9 | 381.07 | – | 3.6 | 362.93 | – | 3.6 |
+| Roughing | 2.29 | 24.8 | 1.6 | 1.60 | 22.9 | 1.3 | 2.57 | 22.9 | 1.7 |
+| Rest | 19.91 | 62.4 | 2.0 | 9.96 | 65.7 | 1.9 | 23.19 | 66.0 | 2.3 |
+| Pencil | 10.47 | 0.51 | **0.85** | 2.46 | 0.21 | **0.99** | 8.85 | 0.25 | **0.99** |
+| Helical | 19.37 | 41.3 | 2.1 | 9.91 | 43.3 | 1.9 | 21.96 | 42.7 | 2.4 |
+| Axial | 26.68 | 491.1 | 1.3 | 35.32 | 1,150.9 | 1.5 | 61.01 | 1,235.9 | 1.6 |
+| Indexed | 0.21 | 0.24 | 1.8 | 0.10 | 0.24 | 2.0 | 0.23 | 0.25 | 2.1 |
+| Simultaneous (until it refuses) | 232.18 | – | 2.2 | 402.80 | – | 3.6 | 448.85 | – | 3.8 |
 
-Pencil clean-up and axial finishing are slower on 4 threads than on 1, on every form; their simulations scale (axial's 1,105 s on one thread is 326 s on four). With four threads busy each drop costs about twice what it does alone (helical on (b): 8.8 s of drops on one thread, 18.4 s summed on four), so per-drop costs are compared on one thread.
+Pencil clean-up gains nothing from 4 threads on any form (0.85 to 0.99 times); the rest gain 1.3 to 3.8 times. The simulations scale (axial's 1,151 s on one thread is 335 s on four on (b)). With four threads busy each drop costs about twice what it does alone (helical on (b): 9.6 s of drops on one thread, 19.8 s summed on four), so per-drop costs are compared on one thread.
 
 **What an exact ball drop would cost with today's exact queries.** For each ball-end operation, a fixed stride of the drop lines (up to 200 of those kept by their coordinates, so the same at any thread count) is refined against the exact faces by bisection on `BrepSurface::distance` from the ball's centre, in a band of 0.05 mm about the tessellation's answer, 20 halvings, one thread. This is a measuring probe, not lane STEPALL-X's design: it ignores the flutes above the ball, so where the flutes touch first it reads the exact contact too low.
 
@@ -173,14 +173,16 @@ Pencil clean-up and axial finishing are slower on 4 threads than on 1, on every 
 | Indexed | c | 23 (23) | 83 µs | 59 ms | 1.29 s | 0.0003 | 0.0092 | 0.0092 | 0.0023 |
 | Simultaneous | c | 169 (169) | 76 µs | 50 ms | 1.11 s | 0.0002 | 0.0081 | 0.0270 | 0.0036 |
 
+The probe was run on the code before the merge of 23 Oct 2026 for (b) and (c), and again on the merged `main` for (b): the same within 6 % (one `distance` 53 to 64 ms, one exact drop 1.17 to 1.39 s, the same offsets), as the merge did not touch the exact faces (`brep.rs`) or the paths.
+
 What M3 shows:
 
 1. **An exact drop built on today's exact queries is not usable on the blisk.** One exact ball drop costs 1.1 to 1.3 s, 17,000 to 28,000 times a tessellation drop; helical finishing's 256,000 drops would take about 90 hours of one core. Decision 0209 item 4.5 proposes at most 2 times the tessellation job (OI-835). The cost is the exact query itself: one `BrepSurface::distance` takes 50 to 60 ms, because it visits several blades and one `closest` on a blade costs 1.8 ms and one on a long-trimmed plane or cylinder 0.7 ms (M1 item 7). Lane STEPALL-X needs a faster closest point on B-spline faces, a faster trim test, and a search of the faces near the seed only, before the drop is worth building; until then form (c) is the way to the accuracy.
 2. **The probe agrees with M2.** On (b) the tessellation drop lies up to 0.043 mm too deep (p99 0.030 mm); on (c) the median offset is 0.0005 mm and the p99 0.015 mm. Its largest readings on (c), 0.025 to 0.027 mm, are not in M2's checker, which finds no pose deeper than 0.006 mm on (c): they are the probe's ball-only model where the flutes touch, or `distance` answers of the OI-839 kind, and are not taken as measurements.
-3. **The finer tessellation (c) costs little.** Its generation is within 2 times today's STEP path for every operation: helical 1.7 times and rest 1.5 times (their time is mostly drops, each about twice as dear on seven times the triangles), roughing 1.2 and indexed 1.1 times, and pencil and axial faster (0.88 and 0.82 times). Its import takes 2.3 s instead of 0.2 s.
-4. **Axial finishing and pencil clean-up do not gain from threads** (NFR-04): on every form they take longer on 4 threads than on 1 (0.82 to 0.95 times the speed). That is the strategies' own, the same on the owner's STL as on the STEP part, and is outside #257; it is reported to the owner with #252 (item 6 of the decision).
-5. **Axial finishing's time is not in its drops** (issue #252). It takes 535 s on the STL, 975 s on (b) and 800 s on (c) at all threads, and its drops sum to 24 to 57 s of thread time, 1 to 2 % of the run; its simulation adds 119 to 327 s. An exact drop would barely change its time; what #252 needs is elsewhere in the strategy (its fitting and assembly at 0.12 mm stepover), outside #257.
-6. **The STEP part is faster than the owner's STL** for helical and rest machining (5.3 and 6.8 s against 9.3 and 10.0 s) and pencil (29 against 69 s), but slower for axial finishing (975 against 535 s, with half as many drops again).
+3. **The finer tessellation (c) costs little for the job, more for two operations.** The whole job's generation takes 1.24 times as long as on (b) (1.10 times with the simulation, which does not depend on the tessellation), and the import 2.3 s instead of 0.2 s. Per operation, roughing (1.21), axial (1.58), helical (1.76), rest (1.93) and simultaneous (1.06) are within decision 0209's 2 times; **pencil clean-up (3.61 times, 2.5 to 9.0 s) and indexed finishing (2.2 times, 0.05 to 0.11 s) are over it.** Pencil's is the creases: it finds more on the finer mesh (342,624 drops against 222,948), so its path changes, not only its drops' cost (lane STEPALL-P's concern). Indexed is a twentieth of a second. Whether the limit is per operation or per job is the owner's (OI-835).
+4. **Where the time goes.** On (b) the drops are almost all of every finishing operation's generation: 19.8 of helical's 20.6 thread-seconds, 91.2 of axial's 96. So an exact drop's cost lands on the whole operation: at 1.3 s a drop (item 1) nothing is left of the 2-times limit, and at the limit an exact drop may cost at most about twice a tessellation drop, some 150 µs.
+5. **Pencil clean-up gains nothing from threads** (NFR-04): 0.85 to 0.99 times the speed on 4 threads against 1, on every form, where the other operations gain 1.3 to 3.8 times. That is the strategy's own, the same on the owner's STL as on the STEP part, and outside #257 (item 6 of the decision).
+6. **The STEP part is faster than the owner's STL** for helical, rest and pencil (5.2, 5.3 and 2.5 s against 9.3, 10.0 and 12.3 s) and a little slower for axial finishing (24.0 against 20.0 s, with half as many drops again). Axial finishing takes 24 s on (b) at all threads since lane BUG-TABDEV's change (#252); before it, on the same paths, 975 s.
 
 ### M4: determinism
 
@@ -213,7 +215,7 @@ These are recommendations on the measurements above. Items 2 and 3 need the owne
    | Simultaneous finishing | 0.019 mm on `revolved_spline`, 0.009 on `cone` (it refuses the blisk on every form) | **Yes** | Its drops are the tessellation's like the others; its drive points are already exact. |
    | Pencil clean-up | 0.035 mm | **Yes**, through its drops; its creases are lane STEPALL-P's | A flat end here (the owner's 2 mm), so the outline form of the drop. |
 
-2. **The finer toolpath tessellation first (OI-834, OI-831; owner's choice).** Form (c) gives most of the gain now, at a cost decision 0209's 2-times limit allows: the deepest cut falls from 0.043 to 0.006 mm on every finishing operation, generation takes at most 1.7 times as long (helical) and the import 2.3 s instead of 0.2 s. It does not meet the 0.005 mm share on the blisk (0.0057 mm, M1 item 3): no kernel setting tried does. Options, recommended first:
+2. **The finer toolpath tessellation first (OI-834, OI-831; owner's choice).** Form (c) gives most of the gain now, at a cost decision 0209's 2-times limit allows: the deepest cut falls from 0.043 to 0.006 mm on every finishing operation, the job's generation takes 1.24 times as long (1.10 with the simulation) and the import 2.3 s instead of 0.2 s; per operation, pencil clean-up (3.6 times, its creases change on the finer mesh) and indexed finishing (2.2 times, a twentieth of a second) are over the 2 times, the others within it (M3 item 3). It does not meet the 0.005 mm share on the blisk (0.0057 mm, M1 item 3): no kernel setting tried does. Options, recommended first:
    - **(A) A fixed toolpath tessellation, no stored setting:** the application tessellates a STEP part for toolpaths at 0.01 mm and 0.02 rad, and keeps the import's for display, the mesh checks and the stock comparison. No schema claim. A small lane (STEPALL-T, decision 0209's option) before X. It does not give the user IMP-06's control (OI-831 stays open).
    - (B) As (A), with the setting stored in the project and shown with the model, closing OI-831: needs a schema claim in the work breakdown, and a choice of what the user sets (one tolerance, or linear and angular).
    - (C) The tessellation follows each operation's tolerance: a different mesh per tolerance, cached per part; the most accurate, the most memory and the most code.
@@ -228,9 +230,9 @@ These are recommendations on the measurements above. Items 2 and 3 need the owne
    5. then the ball drop (helical, indexed, rest, simultaneous), then the outline form (axial's tapered ball, pencil's flat end), checked against the 2-times limit on this harness at each step.
    
    Until then, form (c) is the way to accuracy on STEP parts; decision 0209's order otherwise stands (F and M first, then X, P, E).
-4. **The 2-times limit (OI-835) stands as proposed.** It is the measure X is checked against on this harness (M3, all threads, against form (b)); form (c) meets it today.
+4. **The 2-times limit (OI-835) stands as proposed.** It is the measure X is checked against on this harness (M3, all threads, against form (b)). The owner is asked whether it is per operation or per job: form (c) meets it for the job (1.24 times) and for five of the seven operations, not for pencil clean-up (3.6) and indexed finishing (2.2). For X, it leaves an exact drop about 150 µs (M3 item 4).
 5. **The verification plan's 0.005 mm tessellation share (4.1) is not met by any tessellation of the blisk tried** (M1). The total 0.01 mm toolpath tolerance is met by form (c) (0.006 mm deepest, 0.0067 mm largest gap). That is a fact for the owner, not a change to the plan: the share is met only by the exact drop.
-6. **Two findings outside #257, for the owner through the coordinator:** simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2); axial finishing and pencil clean-up are slower on 4 threads than on 1, on every form (M3; NFR-04, issue #252). Neither has an `OI-` number yet: the coordinator assigns one if the owner wants them tracked.
+6. **Two findings outside #257, for the owner through the coordinator:** simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2); pencil clean-up gains nothing from 4 threads on any form (M3 item 5; NFR-04). Neither has an `OI-` number yet: the coordinator assigns one if the owner wants them tracked.
 7. **The import notice stays as decision 0209 item 4.4 has it** (OI-830, lane STEPALL-F): with form (c) a STEP part's toolpaths are still computed on a tessellation, finer than the display's, and its notes should say which.
 
 ## Alternatives considered
