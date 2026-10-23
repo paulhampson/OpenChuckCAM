@@ -4,6 +4,7 @@ All notable changes to `openchuck-types` are recorded here.
 
 ## Unreleased
 
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Lane FOLLOW1 (OI-841; OP-21): `setup::SetupWarningKind::TabsOverlap`, a tab placed automatically that lies over a tab placed by hand; `workholding::check_tab_zones` reports it.
 - **Breaking (0.17.0):** a setup's part offset moves only the part (decision 0201, issue #175; SET-05). `kinematics::RotaryFrame::machine` is removed: every setup's machine frame is `RotaryFrame::of_profile`, with the model origin at the rotary reference point, and the stock, the workholding, the work zero and the toolpaths are fixed in it. `setup::SetupFrame::place_part` and `moves_part`, and `setup::PartExtent::in_setup`, place the part in a setup; `expected_work_offset` no longer adds the part offset; `SetupCheck::part` is the part as the setup places it.
 - **Breaking (0.17.0):** `workholding::Tab` has a new public field, `auto: Option<TabEnd>`, a tab placed automatically at the head or the tail of the part (decision 0202, issues #182 and #186; OP-21). New: `TabEnd`, `MIN_TAB_ROOM`, `auto_tab_span`, `Workholding::resolved` and `Workholding::auto_tabs_without_room`, and `setup::SetupWarningKind::AutoTabNoRoom`; `check_tab_zones` places automatic tabs first, and `validate_workholding` does not hold an automatic tab's stored position against the stock.

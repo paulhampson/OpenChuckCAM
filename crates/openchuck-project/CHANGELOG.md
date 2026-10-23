@@ -4,6 +4,7 @@ All notable changes to `openchuck-project` are recorded here.
 
 ## Unreleased
 
+- Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.
 - Version 0.17.0 with the library family (`Tab` in `openchuck-types` gains `auto`, and `RotaryFrame::machine` is removed, breaking changes; decisions 0201 and 0202).
 - Project schema 17 (decisions 0201 and 0202): an older setup with a part offset has its cylinder or box stock, its tabs and its work zero moved along X by the offset, so it machines as before now that the offset moves only the part; a retaining tab may hold `auto` (`"head"` or `"tail"`), written only when set, and an older file that holds one is refused.
 - Version 0.16.0 with the library family (decision 0204); no change to this crate's items.

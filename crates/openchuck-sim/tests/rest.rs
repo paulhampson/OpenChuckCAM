@@ -290,7 +290,7 @@ fn req_op_09_the_whole_part_is_rest_when_no_earlier_operation_has_cut() {
     let (x_lo, x_hi) = cutting_x_range(&path);
     assert!(x_lo < 1.0 && x_hi > LENGTH - 1.0, "{x_lo} {x_hi}");
     assert!(RestMachining.needs_earlier_operations());
-    assert!(PencilFinishing.needs_earlier_operations());
+    assert!(PencilFinishing::default().needs_earlier_operations());
 }
 
 #[test]
@@ -301,7 +301,7 @@ fn req_op_09_pencil_follows_the_crease_within_tolerance_without_gouging() {
     let small = small_ball();
     let v = values(&[(pencil_parameter::MAX_STEP, 0.4)]);
     let path = rig
-        .generate(&PencilFinishing, &small, &stock, &v)
+        .generate(&PencilFinishing::default(), &small, &stock, &v)
         .expect("the corner is a crease with material in it");
 
     // A ball of radius 0.5 in the corner touches the small cylinder and the
@@ -412,7 +412,7 @@ fn req_op_09_req_nfr_12_pencil_never_cuts_through_a_tooth_between_two_rests() {
         (parameter::MIN_REMAINING, 0.0),
     ]);
     let path = rig
-        .generate(&PencilFinishing, &flat, &stock, &v)
+        .generate(&PencilFinishing::default(), &flat, &stock, &v)
         .expect("the roots of the teeth are creases");
     let (after, faults) = rig.simulate(stock, &flat, &path);
     assert_eq!(faults, 0, "a rapid move cuts");
@@ -436,7 +436,12 @@ fn req_op_09_pencil_with_no_inside_corner_says_so() {
     };
     let small = small_ball();
     let err = rig
-        .generate(&PencilFinishing, &small, &rig.stock(), &values(&[]))
+        .generate(
+            &PencilFinishing::default(),
+            &small,
+            &rig.stock(),
+            &values(&[]),
+        )
         .unwrap_err()
         .to_string();
     assert!(err.contains("no inside corner"), "{err}");
@@ -451,7 +456,7 @@ fn req_nfr_06_req_op_09_rest_machining_is_identical_at_1_2_and_n_threads() {
     let runs = openchuck_testkit::determinism::check(|| {
         let rest = rig.generate(&RestMachining, &small, &stock, &v).unwrap();
         let pencil = rig
-            .generate(&PencilFinishing, &small, &stock, &values(&[]))
+            .generate(&PencilFinishing::default(), &small, &stock, &values(&[]))
             .unwrap();
         format!("{:?}{:?}", rest.group, pencil.group).into_bytes()
     })
