@@ -10,6 +10,8 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 | --- | --- | --- | --- | --- |
 | 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; blocked by merge conflicts with main; lane update not yet pushed |
 
+| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+
 ## SWARF3 / #320
 
 - Handoff head: `96258e867712ac9ee47000904715a6d956e30727`.
@@ -32,3 +34,16 @@ Confirm the released head includes latest main, register and traceability checks
 ## Current release blocker
 
 At head `96258e867712ac9ee47000904715a6d956e30727`, GitHub reports the PR unmergeable and CodeRabbit flags merge conflicts. No pull-request Actions runs exist for this head: GitHub suppresses these workflows while conflicts remain. The lane must perform the already authorised main update, resolve conflicts and register unions, verify, and push once before full CI can run. Release instructions are posted on the PR; lane acknowledgement and new head remain pending. Do not wait for CI before this release update, or rerun old draft checks as a substitute.
+
+## STEPALL-M / #321 — BLOCKED / IN PROGRESS
+
+- Queued behind SWARF3; not ready for release. Keep draft. Await completion and a verified handoff from the dedicated STEPALL-M chat; do not automatically release after #320 merges.
+- Pushed checkpoint: `9fa660cdfd0af150cc118250994f8c13a582b7e2`. Main merged: `a2605495d4e05d323d4cc3f85a4f4d6be118072f`. GitHub draft state and checkpoint head verified on intake.
+- The owner authorised merging main while retaining draft status, then requested transfer to a dedicated chat. The previous agent stopped; the replacement chat continues the pushed checkpoint. This exception is specific to this lane and is not release permission.
+- Completed source work (not a validated checkpoint): qualified historical accuracy/performance claims; made M4 mismatches and replay failures return errors; adapted the harness to current pencil dispatch and operation material data.
+- Implementation blocker: form-c posting helper remains an unwired, empty-output stub. Two new posting tests failed against that stub; one was cancelled.
+- Validation blockers: kernel build stopped for transfer; full harness compilation, refreshed M2/M4 measurements and required checks remain outstanding.
+- Decision 0211 remains PROPOSED. Owner choices OI-834, STEPALL-X ordering and OI-835 remain unresolved. Decisions must go individually through the coordinator, and the owner must see each complete record before acceptance is requested. No decision acceptance is authorised by this handoff.
+- Historical 1.24× timing includes a failed operation and must not be represented as current successful-job performance. No current successful-job performance is established by this checkpoint.
+- No new default or methodology waiver has been approved.
+- Release gates specific to this lane: implementation and required verification completed, refreshed evidence and accurate report supplied, pending owner decisions resolved through the coordinator, applicable full records explicitly accepted by the owner, and verified handoff received. Then reassess queue order and the sole ready-for-review slot.
