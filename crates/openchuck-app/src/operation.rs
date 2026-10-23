@@ -481,8 +481,12 @@ pub(crate) fn generate_with_part(
         .as_ref()
         .map(BrepLimits::watch)
         .unwrap_or_default();
+    let region_watch = resolved_region
+        .as_ref()
+        .map(crate::selection::ResolvedRegion::watch)
+        .unwrap_or_default();
     let constraint = match (&resolved_region, &brep_limits) {
-        (Some(r), _) => Some(r.constraint()),
+        (Some(r), _) => Some(r.constraint(&region_watch)),
         (None, Some(l)) => Some(l.constraint(&watch)),
         (None, None) => None,
     };
@@ -609,6 +613,7 @@ pub(crate) fn generate_with_part(
     let mut warnings = brep_limits
         .as_ref()
         .map(|l| l.warnings.clone())
+        .or_else(|| resolved_region.as_ref().map(|r| r.warnings.clone()))
         .unwrap_or_default();
     // Notes about the values come first, then the notes about moves.
     let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
@@ -998,7 +1003,7 @@ impl BrepLimits {
 
 /// The warning for a set whose options leave it limiting nothing (decision
 /// 0176): the path is made as if it were not there.
-fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
+pub(crate) fn limits_nothing(set: &str, why: &str, fix: &str) -> PathWarning {
     PathWarning {
         message: format!(
             "The {set} limits nothing, because {why}. {fix} beside the set in the operation \

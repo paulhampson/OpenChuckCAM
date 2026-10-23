@@ -40,7 +40,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use openchuck_geom::edges::EdgeMap;
 use openchuck_geom::select;
-use openchuck_path::{LeaveZone, MeshSurface, RegionConstraint, Window};
+use openchuck_path::{
+    LeaveZone, MeshSurface, PathWarning, Protection, RegionConstraint, WatchedSurface, Window,
+};
 use openchuck_project::id::{ModelId, OperationId, SelectionSetId};
 use openchuck_project::{
     BoundaryOptions, ContentHash, Item, ItemId, ModelRef, OnBreak, Operation, Placement, Project,
@@ -1120,6 +1122,11 @@ pub(crate) struct ResolvedRegion {
     boundary: Option<Window>,
     avoid: Option<MeshSurface>,
     check: Option<MeshSurface>,
+    /// The avoid and check sets that only warn, each with its name (decision
+    /// record 0229 item 1).
+    watched: Vec<(String, Protection, MeshSurface)>,
+    /// A warning for each set that limits nothing (set to Ignore).
+    pub(crate) warnings: Vec<PathWarning>,
     /// The selected triangles that have a stock to leave of their own,
     /// grouped by amount; where sets overlap the largest amount applies
     /// (OP-11, decision record 0034 item 4).
@@ -1153,14 +1160,31 @@ impl ResolvedRegion {
         zones
     }
 
-    pub(crate) fn constraint(&self) -> RegionConstraint<'_> {
+    /// The watched surfaces, for [`constraint`](Self::constraint).
+    pub(crate) fn watch(&self) -> Vec<WatchedSurface<'_>> {
+        self.watched
+            .iter()
+            .map(|(name, protection, surface)| WatchedSurface {
+                name,
+                protection: *protection,
+                surface,
+            })
+            .collect()
+    }
+
+    /// The region as the pathing library takes it. The boundary takes no
+    /// options here: its limits are swarf's, and swarf on a STEP part reads
+    /// its sets itself (decision record 0229 item 2).
+    pub(crate) fn constraint<'a>(
+        &'a self,
+        watch: &'a [WatchedSurface<'a>],
+    ) -> RegionConstraint<'a> {
         RegionConstraint {
             region: self.region.as_ref().map(|s| s as _),
             boundary: self.boundary,
             avoid: self.avoid.as_ref().map(|s| s as _),
             check: self.check.as_ref().map(|s| s as _),
-            // A mesh part's sets take no options yet: swarf, the only
-            // strategy that does, needs a STEP part (decision 0176; OI-637).
+            watch,
             ..RegionConstraint::default()
         }
     }
@@ -1300,8 +1324,54 @@ pub(crate) fn resolve(
             .transpose()
     };
     let region = surface(union(&mut operation.selections.iter().copied())?)?;
-    let avoid = surface(union(&mut operation.avoid.iter().copied())?)?;
-    let check = surface(union(&mut operation.check.iter().copied())?)?;
+    // Each avoid and check set by its choice (decision record 0229 item 1):
+    // the sets that cut short are one surface per role, as before; each set
+    // that only warns is a watched surface of its own; a set on Ignore is
+    // still checked, then left out with a warning.
+    let options = &operation.restriction_options;
+    let mut watched = Vec::new();
+    let mut warnings = Vec::new();
+    let mut short = [Vec::new(), Vec::new()];
+    for (ids, protection, role, slot) in [
+        (&operation.avoid, Protection::Avoid, "avoid", 0),
+        (&operation.check, Protection::Check, "check", 1),
+    ] {
+        for &id in ids {
+            let on_break = match protection {
+                Protection::Avoid => options.avoid(id).on_break,
+                Protection::Check => options.check(id).on_break,
+            };
+            let triangles = union(&mut std::iter::once(id))?;
+            let name = || {
+                project
+                    .selection_sets()
+                    .iter()
+                    .find(|s| s.id == id)
+                    .map(|s| s.name.clone())
+                    .unwrap_or_default()
+            };
+            match on_break {
+                OnBreak::CutShort => {
+                    if let Some(cut_short) = short.get_mut(slot) {
+                        cut_short.push(id);
+                    }
+                }
+                OnBreak::Warn => {
+                    if let Some(s) = surface(triangles)? {
+                        watched.push((name(), protection, s));
+                    }
+                }
+                OnBreak::Ignore => warnings.push(crate::operation::limits_nothing(
+                    &format!("{role} set '{}'", name()),
+                    "it is set to Ignore: the tool is not kept clear of it",
+                    "Set it to Cut short or Warn only",
+                )),
+            }
+        }
+    }
+    let [short_avoid, short_check] = short;
+    let avoid = surface(union(&mut short_avoid.into_iter())?)?;
+    let check = surface(union(&mut short_check.into_iter())?)?;
     let boundary = union(&mut operation.boundary.into_iter())?
         .map(|t| Ok::<_, AppError>(Window::of_mesh(&select::submesh(mesh, &t)?)?))
         .transpose()?;
@@ -1355,6 +1425,8 @@ pub(crate) fn resolve(
         boundary,
         avoid,
         check,
+        watched,
+        warnings,
         leaves,
         rest,
     }))

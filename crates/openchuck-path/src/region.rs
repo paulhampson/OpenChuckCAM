@@ -220,9 +220,11 @@ impl std::fmt::Debug for RegionConstraint<'_> {
 }
 
 impl RegionConstraint<'_> {
-    /// True when the constraint asks for anything a strategy must honour
-    /// restriction options to give: a boundary limit turned off, or a watched
-    /// surface (decision record 0176).
+    /// True when the constraint sets a restriction option: a boundary limit
+    /// turned off, or a watched surface (decision record 0176). A boundary
+    /// limit needs a strategy that honours restriction options (swarf);
+    /// watched surfaces are measured by the shared services for the other
+    /// strategies that honour a region (decision record 0229).
     pub fn has_restriction_options(&self) -> bool {
         self.boundary_limits != BoundaryLimits::default() || !self.watch.is_empty()
     }
@@ -264,4 +266,164 @@ impl RegionConstraint<'_> {
         }
         true
     }
+}
+
+/// Most samples along one move between two cut points when it is measured
+/// against the watched surfaces (NFR-07): at the spacing below, a move of
+/// several metres.
+const MAX_WATCH_SAMPLES: usize = 100_000;
+
+/// Pieces a move is first cut into to estimate its length, since a move that
+/// turns the part is an arc on it, not the chord between its ends.
+const WATCH_ESTIMATE_PIECES: usize = 8;
+
+/// The warnings for the watched surfaces of a strategy that does not measure
+/// them itself (decision record 0229 item 1): roughing, helical, axial,
+/// indexed and simultaneous finishing.
+///
+/// The passes were made as if the watched surfaces were not there. Each
+/// move between two cut points of a pass is followed as the machine makes
+/// it (straight in the machine's axes) and sampled no further apart on the
+/// part than an eighth of the tool's cutting radius. At each sample the
+/// tool, grown by the operation's stock to leave, is dropped along its axis
+/// onto each watched surface alone. It breaks the surface when
+///
+/// - it comes to rest there at its tip or above it: the tool where it is
+///   touches or reaches into the surface; or
+/// - the tool rides on the part (it rests on the part within the toolpath
+///   tolerance, `slack`, of where it is) and the surface is where it rests:
+///   the test Cut short makes at a cut point (a contact on an avoid surface,
+///   or a tool touching a check surface, [`RegionConstraint::allows`]), made
+///   between cut points too, where a straight move lies up to the tolerance
+///   off the part.
+///
+/// Roughing's upper layers ride on no part, so they break only a surface
+/// they reach into.
+///
+/// A piece of a move between two samples counts whole when both break the
+/// surface and half when one does. One warning names each surface broken,
+/// with the length, in the order of `watch`.
+pub(crate) fn watched_warnings(
+    passes: &[crate::strategy::Pass],
+    input: &crate::strategy::StrategyInput<'_>,
+    watch: &[WatchedSurface<'_>],
+    leave: f64,
+    slack: f64,
+) -> Result<Vec<crate::assemble::PathWarning>> {
+    if watch.is_empty() {
+        return Ok(Vec::new());
+    }
+    let grown = crate::cutter::grow_profile(input.tool, leave)?;
+    let spacing = (input.tool.cutting_radius() / 8.0).max(ON_SURFACE * 100.0);
+    let moves: Vec<_> = passes
+        .iter()
+        .flat_map(|pass| {
+            pass.points
+                .windows(2)
+                .enumerate()
+                .filter(|(i, _)| !pass.rapids.contains(&(i + 1)))
+                .filter_map(|(_, pair)| Some((*pair.first()?, *pair.get(1)?)))
+        })
+        .collect();
+    let rotary = input.rotary;
+    let measured = crate::parallel::map_in_order(&moves, |(start, end)| {
+        let a0 = start.a;
+        let a1 = crate::rotary::nearest_turn(end.a, a0);
+        let (p0, p1) = (rotary.to_axis(start.tip, a0), rotary.to_axis(end.tip, a1));
+        let at = |t: f64| {
+            let a = openchuck_types::units::Degrees(a0.0 + (a1.0 - a0.0) * t);
+            let position = crate::rotary::AxisPosition {
+                along: p0.along + (p1.along - p0.along) * t,
+                across: p0.across + (p1.across - p0.across) * t,
+                height: p0.height + (p1.height - p0.height) * t,
+            };
+            (rotary.to_model(position, a), rotary.tool_axis(a))
+        };
+        let estimate: f64 = (0..WATCH_ESTIMATE_PIECES)
+            .map(|k| {
+                let t = |k: usize| k as f64 / WATCH_ESTIMATE_PIECES as f64;
+                at(t(k)).0.distance(at(t(k + 1)).0)
+            })
+            .sum();
+        let samples = ((estimate / spacing).ceil() as usize).clamp(1, MAX_WATCH_SAMPLES);
+        let poses: Vec<_> = (0..=samples)
+            .map(|k| at(k as f64 / samples as f64))
+            .collect();
+        // Each pose's line from the grown tool's tip, and where the grown
+        // tool rests on the part along it when the tool rides on the part.
+        let lines: Vec<(ToolLine, Option<f64>)> = poses
+            .iter()
+            .map(|(tip, axis)| {
+                let line = ToolLine {
+                    origin: *tip + axis.get() * -leave,
+                    axis: *axis,
+                };
+                let rest = input
+                    .surface
+                    .drop_tool(&grown, &line)
+                    .map(|c| c.offset)
+                    .filter(|offset| offset.abs() <= slack + ON_SURFACE);
+                (line, rest)
+            })
+            .collect();
+        let broken: Vec<Vec<bool>> = watch
+            .iter()
+            .map(|w| {
+                lines
+                    .iter()
+                    .map(|(line, rest)| {
+                        w.surface.drop_tool(&grown, line).is_some_and(|touch| {
+                            touch.offset >= -ON_SURFACE
+                                || rest.is_some_and(|r| touch.offset >= r - ON_SURFACE)
+                        })
+                    })
+                    .collect()
+            })
+            .collect();
+        broken
+            .iter()
+            .map(|flags| {
+                poses
+                    .windows(2)
+                    .zip(flags.windows(2))
+                    .map(|(pair, hit)| {
+                        let weight = hit.iter().filter(|&&b| b).count() as f64 / 2.0;
+                        match (pair.first(), pair.get(1)) {
+                            (Some(a), Some(b)) if weight > 0.0 => weight * a.0.distance(b.0),
+                            _ => 0.0,
+                        }
+                    })
+                    .sum::<f64>()
+            })
+            .collect::<Vec<f64>>()
+    });
+    let mut lengths = vec![0.0f64; watch.len()];
+    for per_move in measured {
+        for (total, length) in lengths.iter_mut().zip(per_move) {
+            *total += length;
+        }
+    }
+    Ok(watch
+        .iter()
+        .zip(lengths)
+        .filter(|(_, length)| *length > 0.0)
+        .map(|(w, length)| {
+            let breaks = match w.protection {
+                Protection::Avoid => "cuts into the avoid set",
+                Protection::Check if leave > 0.0 => {
+                    "comes closer than the stock to leave to the check set"
+                }
+                Protection::Check => "touches the check set",
+            };
+            crate::assemble::PathWarning {
+                message: format!(
+                    "The tool {breaks} '{}' along about {length:.3} mm of the toolpath. The set \
+                     only warns, so the path is kept: set it to cut the pass short, or check the \
+                     cut in the simulation before using the path.",
+                    w.name
+                ),
+                parameter: None,
+            }
+        })
+        .collect())
 }

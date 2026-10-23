@@ -19,6 +19,22 @@ use openchuck_path::StrategyGroup;
 
 use crate::{AppError, Application, Command};
 
+/// Which options of its boundary, avoid and check sets a strategy takes
+/// (decision records 0176 item 3 and 0229).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SetOptionsShown {
+    /// The boundary set's two limits, Limits the pass and Limits the tip:
+    /// swarf's only (decision record 0229 item 2).
+    pub boundary: bool,
+    /// Each avoid and check set's choice, Cut short, Warn only or Ignore:
+    /// every strategy that takes a region (decision record 0229 item 1).
+    pub avoid_and_check: bool,
+    /// Cut short keeps the tool above a check set, by the stock to leave,
+    /// rather than stopping the pass: rotary roughing (decision record 0043
+    /// item 3).
+    pub check_lifts_tool: bool,
+}
+
 /// A strategy a user can choose for an operation (OP-16).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StrategyChoice {
@@ -90,14 +106,18 @@ impl Application {
             .map_or_else(String::new, |s| s.description().to_owned())
     }
 
-    /// Whether strategy `name` takes options on its boundary, avoid and check
-    /// sets (decision 0176; swarf so far, OI-637), so the Geometry section
-    /// shows them.
-    pub fn strategy_takes_set_options(&self, name: &str) -> bool {
+    /// Which options of its boundary, avoid and check sets strategy `name`
+    /// takes, so the Geometry section shows them (decision records 0176
+    /// item 3 and 0229). None for a strategy that is not registered.
+    pub fn strategy_set_options(&self, name: &str) -> SetOptionsShown {
         self.strategies
             .iter()
             .find(|s| s.name() == name)
-            .is_some_and(|s| s.honours_restriction_options())
+            .map_or_else(SetOptionsShown::default, |s| SetOptionsShown {
+                boundary: s.honours_restriction_options(),
+                avoid_and_check: s.honours_region(),
+                check_lifts_tool: name == openchuck_path::roughing::NAME,
+            })
     }
 
     /// Adds an operation at the end of the list, using `strategy` in `setup`,
