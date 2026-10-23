@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; lane verifying local main merge; single release push pending |
+| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; full CI running on 8e25a51; cargo audit blocker |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320
@@ -45,15 +45,19 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 Confirm the released head includes latest main, register and traceability checks pass, required CI is green, CodeRabbit has finished and blocking findings are resolved, and no new unapproved decision is relied on. Merge only the verified head; record its merge SHA and date here before releasing the next assigned PR.
 
-## Current release blocker
+## SWARF3 current release status
 
-At head `96258e867712ac9ee47000904715a6d956e30727`, GitHub reports the PR unmergeable and CodeRabbit flags merge conflicts. No pull-request Actions runs exist for this head: GitHub suppresses these workflows while conflicts remain. The lane must perform the already authorised main update, resolve conflicts and register unions, verify, and push once before full CI can run. The dedicated lane has acknowledged release and is verifying its local merge; the new remote head remains pending. Do not wait for CI before this release update, or rerun old draft checks as a substitute.
+Release update pushed once: `8e25a51e9180128ae0169228e5b6d3cd923b48ca`, merging main `a2605495d4e05d323d4cc3f85a4f4d6be118072f`. GitHub reports mergeable; #320 remains the sole ready PR. The old conflict/CI suppression blocker is cleared.
 
-## SWARF3 release progress
+The [lane handoff](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376228200) reports both changelog entries preserved, register unions reconciled, numerical decision-index order restored, and no duplicate IDs. Local `cargo xtask all` (including 99/99 P1 traceability), formatting, whitespace and changed-crate clippy pass. Uninstrumented tests: 25 path/region and 32 application/UI pass. Narrow-patch regression: 54.698 seconds here; existing long/coverage classification and default PR execution preserved. Handoff focused coverage retained; whole-crate 95% not claimed. Decisions 0228/0229 remain accepted; OI-970 stays open.
 
-The lane's [latest report](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376159612) confirms its execution environment recovered. Locally, main `a2605495d4e05d323d4cc3f85a4f4d6be118072f` is merged, both changelog conflicts are resolved with entries preserved, the decision index is ordered and duplicate register IDs were not found. Formatting, `cargo xtask records` and `cargo xtask all` pass, including workspace-built traceability: 99/99 P1 requirements have tests. These are lane-reported local results, not CI results for a pushed release head.
+[CI run 40035581319](https://github.com/paulhampson/OpenChuckCAM/actions/runs/40035581319) is still in progress on this head. All three STEP-kernel, UI-smoke, libraries-alone and Gate 3 legs pass, as do Linux/Windows build-test shards. macOS build/test remains in progress. End-to-end run 40035581314 succeeded. Fast checks fail at cargo audit; traceability, records, dependency rules, licences, cargo deny and semver passed.
 
-Focused uninstrumented tests and changed-crate clippy are still running before the single release push. Remote head remains `96258e867712ac9ee47000904715a6d956e30727`, unmergeable with main; no PR Actions runs exist for it. CodeRabbit reports success with no actionable findings on that old head and no inline review threads; review and CI must be checked again after the release push. No correction push is requested while lane verification proceeds.
+Confirmed blocker from job 120694160312 logs: cargo audit rejects transitive tokio 1.53.2 under RUSTSEC-2026-0386. The lane has [acknowledged the blocker](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376323853) and plans a minimal patched transitive update (reports 1.53.3), bundled with any other required corrections AFTER full CI and CodeRabbit finish. No early correction push requested.
+
+CodeRabbit status is success for `8e25a51`. Its sole minor suggestion to extend the explanation to swarf was withdrawn after the lane explained accepted decision 0229's non-swarf scope; the thread is resolved and no unresolved review threads remain. OI-636 retains the separate swarf limitation; OI-970 remains unchanged. No source change is required for the withdrawn finding.
+
+No eligible new owner-authored draft PRs found after the intake cutoff in a bounded repository search (fewer than 100 results). #321's explicit hold remains in force.
 
 ## STEPALL-M / #321 — BLOCKED / IN PROGRESS
 
