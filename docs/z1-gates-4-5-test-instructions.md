@@ -161,7 +161,7 @@ Follow the [air-cut procedure](z1-air-cut-procedure.md) steps 0 to 7 in order, w
 | G4-6 | `G93` recheck (SP-12 test T5) only if the firmware is not 1.1.2 | | The result is recorded (verification plan section 6, feed mode) |
 | G4-6b | OI-267: an A-only fed move with an F above 1200 | The test program is not written yet; the owner asked for the test on an air cut before the first release (17 Oct 2026). Run it only once it is written and read like any other program | The controller's behaviour (clamps, refuses or runs it) is recorded in OI-267 |
 | G4-7 | Raise the override (25 %, 50 %, 100 %) on the sphere only | Only if steps 2 to 5 had no surprise and you agree | As G4-2 |
-| G4-8 | The block-rate air cut (section 4.8; decision 0222, proposed; OI-930) | Fourteen sections of 100 mm of X, each started by a 5 mm Z bob | Each section as in 4.8; **not run until OI-925 is decided** |
+| G4-8 | The block-rate air cut (section 4.8; decision 0222, proposed; OI-930) | Fourteen sections of 100 mm of X, each started by a 5 mm Z bob | Each section as in 4.8; **run only after K1 to K4 have passed** (decision 0232) |
 
 The other reference programs (`lobed`, `cone_axial`, `cone_indexed`, `cone_axial_lead`, `cone_held_tabs`, `drilling`, `swarf`) and the first-cut project's program (5.2) are run the same way as G4-2 once G4-2 to G4-5 have passed. `lobed` is the one program that moves X, Y, Z and A together; `drilling` turns A to -30 and has no unwind; `swarf` turns to three A positions.
 
@@ -199,7 +199,14 @@ Attach them to one GitHub issue for the gate 4 result (section 7.2), so the veri
 
 The owner added this measurement to gate 4 (22 Oct 2026, relayed by the coordinator). It is lane SHORTMOVE's [decision 0222](https://github.com/paulhampson/OpenChuckCAM/pull/315) item 7, which is **proposed**: the specification below is copied from it, not invented here. It measures how short a block the Z1 can run at full speed. Its result sets the Z1 profile's `min_block_ms`, with a block window of 32 blocks; **the Z1 profile ships with the minimum-block-time check off until this has been run** (OI-930).
 
-**Not yet to be run (OI-925).** The program is written by a script on the spike branch, not by the application's post, so it has not passed gates 1 to 3. Verification plan policy 6 makes an exception only for the SP-12 conventions program. Run it only after the owner has decided how it is checked first (OI-925).
+**Check it first, as SP-12 was (OI-925, the owner's option A; [decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md), proposed).** The program is written by a script on the spike branch, not by the application's post, so gates 1 to 3 have not checked it. Verification plan policy 6 excepts only the SP-12 conventions program; decision 0232 extends that exception to this program, on the checks K1 to K4 below. Do not run it on the Z1 until K1 to K4 have passed.
+
+| Step | Do | Pass when |
+| --- | --- | --- |
+| K1 Fetch | From a checkout: `git fetch origin spike/sp-14-short-moves`, then `git show 69d532f:spikes/sp14-short-moves/air-cut/block_rate_z1.nc > block_rate_z1.nc`. | The file has 27,966 lines (`wc -l`) and its first line is `(SP-14 Z1 block-rate air cut - decision 0222)` |
+| K2 Read the header and footer | Lines 1 to 5 and the last 5 lines. | Header: the two comment lines, `G90 G21 G17`, `G54`, `G0 X0.000 Y0.000 Z50.000 A0.000`. Footer: `G0 Z50.000`, `G92.4 A0 S0`, `G53 G0 Z-3`, `G28`, `M2`. No `T`, `M6`, `S`, `M3`, `G93` or `G4` anywhere (`grep -nE 'T[0-9]\|M6\|S[0-9]\|M3\|G93\|G4' block_rate_z1.nc` finds only the `S0` of `G92.4 A0 S0`) |
+| K3 Read one section of each part | Section 1 (part A, from the line `(section 1: ...`) and section 8 (part B, `(section 8: ...`): its marker and its first and last ten lines. | Each section starts `G1 Z55.000 F1000.0`, `G1 Z50.000 F1000.0`; every other line is `G1` with X, Y0.000, Z50.000, A and F1000.0. X steps by the block length (0.333 mm in section 1) and stays within 0 to 100; Y stays 0 and Z 50. In part A A stays at its value; in section 8 A grows by about 0.209 degrees a block (0.628 per mm) |
+| K4 Gate 3 on a LinuxCNC copy | Make the copy without the Z1 footer: `sed -e '/^G92.4 A0 S0$/,$d' block_rate_z1.nc > block_rate_linuxcnc.ngc` and `printf 'M5\nM30\n' >> block_rate_linuxcnc.ngc`. Build the LinuxCNC image once (`docker build -t openchuck-linuxcnc docker/linuxcnc`), then `cargo xtask replay --docker openchuck-linuxcnc block_rate_linuxcnc.ngc` (about 2 minutes, in real time; see `tools/linuxcnc/README.md`). | The replay reports every move reached and no fault, and the program ends where the replay says, as for the golden programs |
 
 **The program.**
 - `spikes/sp14-short-moves/air-cut/block_rate_z1.nc` on the branch `spike/sp-14-short-moves` (commit `69d532f`; a spike branch is never merged), written by `python3 -I gen_block_rate.py > block_rate_z1.nc` beside it. It is 1,170,259 bytes, over the 1 MiB a file of `testdata/` may hold (decision 0004), so it is not copied here.
@@ -387,7 +394,7 @@ The simulation is a check on the program, not a promise about the machine (NFR-1
 - [ ] Groove unwind: A did not move.
 - [ ] Timed sphere operation: measured against "about N s" x 100 / override; band agreed and recorded.
 - [ ] `G93` result recorded; OI-267 test run.
-- [ ] Block-rate air cut (4.8) run, once OI-925 is decided: 14 sections timed, the result recorded for `min_block_ms` (OI-930).
+- [ ] Block-rate program checked (K1 to K4: fetched from 69d532f, header, footer and sections 1 and 8 read, gate 3 on its LinuxCNC copy), then the air cut (4.8) run: 14 sections timed, the result recorded for `min_block_ms` (OI-930).
 - [ ] Results form filled; issue raised with the attachments.
 
 ### 6.2 Gate 5 (first cut)
@@ -486,6 +493,8 @@ X0 taken from:                            A0 set by:
 
 Block-rate air cut (4.8): firmware ________ ; controller (ESP32) ________ ; file sent by ________ ; video: yes / no
 
+Checks before running (decision 0232): K1 fetched from 69d532f, 27,966 lines: yes / no ; K2 header and footer as listed: yes / no ; K3 sections 1 and 8 as listed: yes / no ; K4 gate 3 on the LinuxCNC copy: moves reached ______ , faults ______ , pass / fail
+
 | Section | Part | Block time | Predicted s | Measured s | Within 5 %? | Stutter or pause? | Pass / fail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B1 | A | 20 ms | 6.0 | | | | |
@@ -558,7 +567,7 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
 | OI-923 | Free stock to leave uncut | Accepted: the 68 mm held region at the start (G0) | 5.2 | Yes, for OP-22 volumes |
 | OI-924 | The tailstock | A: the 2 mm, 10 mm piece is a held region at the end; the tailstock body's clearance is checked by the operator (V5, M2, M5) | 5.2, V5, M2, M5 | No |
-| OI-925 | How the block-rate air cut program is checked before it runs, since it is written by a script and has not passed gates 1 to 3 (verification plan policy 6 excepts only the SP-12 program) | Pending | 4.8, G4-8 | Yes |
+| OI-925 | How the block-rate air cut program is checked before it runs, since it is written by a script and has not passed gates 1 to 3 (verification plan policy 6 excepts only the SP-12 program) | A: as SP-12 was, read by hand and replayed by gate 3 as a LinuxCNC copy ([decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md), proposed) | 4.8 K1 to K4, G4-8 | Until 0232 is accepted |
 | OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 
