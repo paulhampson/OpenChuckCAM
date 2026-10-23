@@ -361,6 +361,12 @@ jobs:
       # picked, saved and the same after reopening and a second import (decision 0066).
       - name: STEP parts through the application
         run: cargo test --locked -p openchuck-app --features kernel-tests --test step_drilling --test step_pipeline --test step_strategies --test step_selection
+      # The STEP accuracy measurement (decision 0211): its functions checked on closed forms, and
+      # the measuring example built so it keeps compiling. The measurement itself is run by hand.
+      - name: STEP accuracy measurement
+        run: |
+          cargo test --locked -p openchuck-app --features kernel-tests --test step_accuracy
+          cargo build --locked -p openchuck-app --features kernel-tests --example step_accuracy
       - name: Mutation run through the importer (NFR-07)
         run: cargo run --locked -p openchuck-import --features kernel --example step_mutations -- 150
 

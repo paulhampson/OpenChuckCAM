@@ -1,7 +1,7 @@
 # 0211: What the exact STEP surface gains, measured on the blisk: the measurement of decision 0209 item 4.1, and which strategies the exact drop should cover (lane STEPALL-M; issue #257)
 
-- **Status:** proposed by lane STEPALL-M, 22 Oct 2026. It records measurements and recommends; it changes no output (no golden file, no strategy, no default). The recommendations of item 3 wait on the owner, through the coordinator: OI-834 (a toolpath tessellation setting, and whether it needs a schema claim) and OI-835 (the time limit). Until the owner accepts it, this record is guidance for lane STEPALL-X, not authority (decision 0049).
-- **Date:** 22 Oct 2026.
+- **Status:** proposed by lane STEPALL-M, 23 Oct 2026. It records measurements and recommends; it changes no output (no golden file, no strategy, no default). The recommendations of item 3 wait on the owner, through the coordinator: OI-834 (a toolpath tessellation setting, and whether it needs a schema claim) and OI-835 (the time limit). Until the owner accepts it, this record is guidance for lane STEPALL-X, not authority (decision 0049).
+- **Date:** 22 to 23 Oct 2026.
 - **Requirements:** IMP-02, IMP-06, OP-03 to OP-06, OP-09, OP-12, NFR-04, NFR-05, NFR-06, NFR-12, GC-07. Verification plan 4.1 (the 0.005 mm tessellation share of the 0.01 mm toolpath tolerance).
 - **Builds on:** [decision 0209](0209-step-geometry-for-every-strategy.md) item 4.1 (accepted), which asks for this measurement and says the numbers go into its *Measurements* "or 0210"; the coordinator assigned this lane record 0211, so they are here and 0209's section points to this record.
 - **Open items** are tracked in [docs/open-items.md](../open-items.md): OI-839 is new (item 1). OI-832 was closed by decision 0209 and the file is copied here. Progresses OI-65, OI-76, OI-81, OI-831, OI-834 and OI-835 without closing them.
@@ -182,7 +182,18 @@ What M3 shows:
 
 ### M4: determinism
 
-MEASURE_M4
+Run with `--quick` (every stepover 1 mm, axial's too), which keeps a check at 1, 2 and 4 threads within the two-hour limit; the result does not depend on the stepover. Simultaneous finishing, which refuses the blisk, is turned off in the application's project (UI-06), so the application generates the rest.
+
+| Check | Form | 1 thread | 2 threads | 4 threads |
+| --- | --- | --- | --- | --- |
+| The library's toolpath (every group, serialised), against 1 thread | b | – | identical | identical |
+| | c | – | identical | identical |
+| | a | – | FORM_A_LIB | FORM_A_LIB |
+| The application's posted G-code (Makera Z1), against 1 thread; gates 1 and 2 | b | clean | identical, clean | identical, clean |
+| | a | FORM_A_APP | | |
+| The library's form (b) path against the application's (`Regeneration::toolpath`), at 4 threads | b | | | identical |
+
+The last row is the harness's own check: what it measures is what the application makes for the same project.
 
 ## Decision
 
