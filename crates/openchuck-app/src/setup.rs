@@ -225,6 +225,7 @@ pub fn profile_field_label(field: ProfileField) -> &'static str {
         ProfileField::Travel => "travel",
         ProfileField::MaxFeeds => "maximum feeds",
         ProfileField::Clearance => "clearance",
+        ProfileField::SpindleRange => "spindle speed range",
     }
 }
 
@@ -242,6 +243,8 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         max_feeds,
         clearance,
         max_tool_number,
+        min_spindle_rpm,
+        max_spindle_rpm,
         provenance,
     } = a;
     let checks = [
@@ -254,6 +257,10 @@ fn differing_fields(a: &MachineProfile, b: &MachineProfile) -> Vec<&'static str>
         ("maximum feeds", *max_feeds == b.max_feeds),
         ("clearance", *clearance == b.clearance),
         ("highest tool number", *max_tool_number == b.max_tool_number),
+        (
+            "spindle speed range",
+            *min_spindle_rpm == b.min_spindle_rpm && *max_spindle_rpm == b.max_spindle_rpm,
+        ),
         ("which values are confirmed", *provenance == b.provenance),
     ];
     checks

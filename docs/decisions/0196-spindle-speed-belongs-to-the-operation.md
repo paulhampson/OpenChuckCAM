@@ -27,7 +27,7 @@ The S words and every other word of a program are unchanged for a project that p
 
 ## Not decided here
 
-- The machine profile has no spindle maximum, and a tool has no speed limit of its own, so the issue's "checked against the machine's limits and the tool's" cannot be done (OI-754).
+- The machine profile has no spindle maximum, and a tool has no speed limit of its own, so the issue's "checked against the machine's limits and the tool's" cannot be done (OI-754). Settled later by the owner: the machine profile may give a spindle speed range, which blocks Post and export; a tool has no limit of its own ([decision 0231](0231-machine-spindle-speed-range.md), lane OPSPEED, OI-754 closed).
 - Whether the setup sheet or a G-code comment should say where the speed came from (the operation or the tool's data) (OI-755). Settled later by the owner: the setup sheet says it; the G-code does not (lane SHEETSRC, OI-755 closed).
 
 ## Tests

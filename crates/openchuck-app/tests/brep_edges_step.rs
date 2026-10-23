@@ -180,3 +180,153 @@ fn req_op_08_step_a_rotary_blank_is_engraved_along_its_b_rep_edges_at_constant_d
         }
     }
 }
+
+// ---- the exact edge curve from the kernel (decision 0227, OI-229) ------------
+
+const CORPUS: [&str; 14] = [
+    "box",
+    "box_inch",
+    "bspline_face",
+    "cone",
+    "cylinder",
+    "extruded_spline",
+    "filleted_box",
+    "hex_bar",
+    "multi_body",
+    "revolved_spline",
+    "revolved_spline_partial",
+    "rotary_blank_drilled",
+    "sphere",
+    "torus",
+];
+
+/// How far `p` is from the polyline `line`.
+fn distance_to(
+    line: &[openchuck_types::geometry::Point3],
+    p: openchuck_types::geometry::Point3,
+) -> f64 {
+    line.windows(2)
+        .map(|w| {
+            let (a, b) = (w[0], w[1]);
+            let ab = [b.x - a.x, b.y - a.y, b.z - a.z];
+            let ap = [p.x - a.x, p.y - a.y, p.z - a.z];
+            let len2: f64 = ab.iter().map(|v| v * v).sum();
+            let s = if len2 > 0.0 {
+                (ab.iter().zip(&ap).map(|(x, y)| x * y).sum::<f64>() / len2).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let foot = openchuck_types::geometry::Point3::new(
+                a.x + s * ab[0],
+                a.y + s * ab[1],
+                a.z + s * ab[2],
+            );
+            foot.distance(p)
+        })
+        .fold(f64::MAX, f64::min)
+}
+
+#[test]
+fn req_op_08_step_every_edge_curve_runs_where_the_kernels_polyline_runs() {
+    use openchuck_path::edge_curve::sample;
+    let mut seen = 0;
+    for name in CORPUS {
+        let model = import(name);
+        let tolerance = model.tessellation.linear + 1e-6;
+        for edge in &model.edges {
+            let Some(curve) = &edge.curve else { continue };
+            seen += 1;
+            let dense =
+                sample(curve).unwrap_or_else(|| panic!("{name}: edge {} samples", edge.id.0));
+            let (f, l) = (
+                edge.polyline.first().unwrap(),
+                edge.polyline.last().unwrap(),
+            );
+            assert!(
+                dense[0].distance(*f) < 1e-6,
+                "{name}: edge {} start",
+                edge.id.0
+            );
+            assert!(
+                dense.last().unwrap().distance(*l) < 1e-6,
+                "{name}: edge {} end",
+                edge.id.0
+            );
+            for q in &edge.polyline {
+                let d = distance_to(&dense, *q);
+                assert!(
+                    d <= openchuck_path::edge_curve::SAG + 1e-9,
+                    "{name}: edge {} vertex {d} off the curve",
+                    edge.id.0
+                );
+            }
+            // The sample is as close to the polyline as the polyline is to the curve.
+            for q in &dense {
+                assert!(
+                    distance_to(&edge.polyline, *q) <= tolerance,
+                    "{name}: edge {} is more than the tessellation tolerance from the polyline",
+                    edge.id.0
+                );
+            }
+        }
+    }
+    assert!(seen > 50, "the corpus gave only {seen} edge curves");
+}
+
+#[test]
+fn req_op_08_step_the_kernel_gives_the_curve_kinds_of_the_corpus_edges() {
+    use openchuck_types::brep::EdgeCurve;
+    let kinds = |name: &str| {
+        let model = import(name);
+        let (mut lines, mut circles, mut splines, mut none) = (0, 0, 0, 0);
+        for e in &model.edges {
+            match e.curve {
+                Some(EdgeCurve::Line { .. }) => lines += 1,
+                Some(EdgeCurve::Circle { .. }) => circles += 1,
+                Some(EdgeCurve::BSpline(_)) => splines += 1,
+                _ => none += 1,
+            }
+        }
+        (lines, circles, splines, none)
+    };
+    let (lines, circles, _, _) = kinds("box");
+    assert_eq!((lines, circles), (12, 0));
+    let (_, circles, _, _) = kinds("cylinder");
+    assert!(circles >= 2, "the rims are circles");
+    let (_, _, splines, _) = kinds("bspline_face");
+    assert!(splines > 0, "a spline face has spline edges");
+}
+
+#[test]
+fn req_op_08_step_chain_points_are_on_the_edge_curve_not_the_tessellation() {
+    // The rim of the cylinder: every chain point is on the circle to rounding.
+    use openchuck_types::brep::EdgeCurve;
+    let model = import("cylinder");
+    let rims: Vec<_> = model
+        .edges
+        .iter()
+        .filter_map(|e| match &e.curve {
+            Some(EdgeCurve::Circle { frame, radius, .. }) => Some((e.id, *frame, *radius)),
+            _ => None,
+        })
+        .collect();
+    assert!(!rims.is_empty());
+    let (id, frame, radius) = rims[0];
+    let surface = BrepSurface::new(&model).unwrap();
+    let source = BrepEdges::with_edges(&model, &[id]).unwrap();
+    let chains = source.chains(&surface).unwrap();
+    assert_eq!(chains.len(), 1);
+    for q in &chains[0].points {
+        let d = [
+            q.x - frame.origin.x,
+            q.y - frame.origin.y,
+            q.z - frame.origin.z,
+        ];
+        let along = d[0] * frame.z.x + d[1] * frame.z.y + d[2] * frame.z.z;
+        let ring = (d.iter().map(|v| v * v).sum::<f64>() - along * along).sqrt();
+        assert!(
+            along.abs() < 1e-9 && (ring - radius).abs() < 1e-9,
+            "{along} {ring}"
+        );
+    }
+}

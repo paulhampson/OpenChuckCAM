@@ -46,6 +46,7 @@ pub mod pick;
 mod pipeline;
 pub mod playback;
 mod posting;
+pub mod preset;
 pub mod requirements;
 pub mod scene;
 pub mod selection;
@@ -55,6 +56,7 @@ pub mod setup_form;
 pub mod setup_panes;
 mod setup_sheet;
 pub mod simulation;
+pub mod step_sets;
 pub mod stockplay;
 #[cfg(test)]
 mod test_project;
@@ -845,6 +847,17 @@ impl Application {
             name,
             value.as_ref(),
         )?;
+        // A cutting value the user sets drops the operation's material
+        // preset (issue 197; decision record 0230).
+        if let Some(value) = &value
+            && requirements::FROM_CUTTING_DATA.contains(&name)
+            && let Some(op) = self.document.project.operation(operation)
+        {
+            let mut edited = op.clone();
+            edited.parameters.insert(name.to_owned(), value.clone());
+            preset::drop_preset(&self.document.project, &self.strategies, &mut edited);
+            return self.execute(Command::Replace(Item::Operation(edited)));
+        }
         self.execute(Command::SetParameter {
             operation,
             name: name.to_owned(),

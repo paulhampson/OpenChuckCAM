@@ -80,6 +80,7 @@ fn project_with_operation(tool: Option<ToolId>) -> Project {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: Default::default(),
         }),
         Placement::End,
@@ -630,6 +631,7 @@ fn req_tl_05_a_material_added_to_one_tool_is_known_to_every_tool_and_setup() {
 #[test]
 fn req_tl_05_the_operations_spindle_speed_comes_from_itself_then_the_tool_then_is_missing() {
     use openchuck_app::tool_library::{operation_spindle, set_operation_spindle};
+    let registry = openchuck_app::path::Registry::builtin();
     let mut lib = ToolLibrary::open(&temp_dir("spindle")).unwrap();
     let mut draft = new_draft(&lib, ToolType::FlatEnd).unwrap();
     edit_cutting_data(&mut draft, "Softwood", oak(), None).unwrap();
@@ -658,21 +660,21 @@ fn req_tl_05_the_operations_spindle_speed_comes_from_itself_then_the_tool_then_i
     assert!(s.missing.is_none());
     // The user's own value wins and ↺ (None) takes it away again.
     apply(&mut project, |p| {
-        set_operation_spindle(p, op, Some(" 9000 rpm ")).unwrap()
+        set_operation_spindle(p, &registry, op, Some(" 9000 rpm ")).unwrap()
     });
     assert_eq!(operation_spindle(&project, op).unwrap().set, Some(9000.0));
     apply(&mut project, |p| {
-        set_operation_spindle(p, op, None).unwrap()
+        set_operation_spindle(p, &registry, op, None).unwrap()
     });
     assert_eq!(operation_spindle(&project, op).unwrap().set, None);
     // A bad value is refused in plain words and nothing changes.
     for bad in ["", "fast", "0", "-5", "NaN", "inf", "9000rpmrpm"] {
-        let e = set_operation_spindle(&project, op, Some(bad))
+        let e = set_operation_spindle(&project, &registry, op, Some(bad))
             .unwrap_err()
             .to_string();
         assert!(e.contains("spindle speed"), "{bad}: {e}");
         assert!(!e.contains("tool number"), "{bad}: {e}");
     }
-    assert!(set_operation_spindle(&project, OperationId::from_u128(99), None).is_err());
+    assert!(set_operation_spindle(&project, &registry, OperationId::from_u128(99), None).is_err());
     assert!(operation_spindle(&project, OperationId::from_u128(99)).is_none());
 }

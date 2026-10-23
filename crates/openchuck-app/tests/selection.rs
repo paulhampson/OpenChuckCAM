@@ -115,6 +115,7 @@ fn project(name: &str) -> (PathBuf, Application, OperationId, ModelId) {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: BTreeMap::new(),
         }),
     ] {
@@ -613,8 +614,13 @@ fn req_op_02_a_strategy_that_ignores_regions_is_refused_not_trusted() {
         o.selections = vec![roof];
     });
     let e = app.regenerate().unwrap_err().to_string();
+    // Named by its label, with what to do, and no requirement ID (decision
+    // 0209 item 10.3).
     assert!(
-        e.contains("'careless'") && e.contains("cannot yet be limited"),
+        e.contains(
+            "Careless works on the whole part and cannot be limited to chosen triangles. Take \
+             the selection sets out of the operation."
+        ) && !e.contains("OP-02"),
         "{e}"
     );
     std::fs::remove_dir_all(&dir).unwrap();
@@ -1290,6 +1296,7 @@ fn req_op_02_a_new_operation_refuses_a_set_on_another_model() {
         existing.setup,
         existing.tool,
         Some(roof),
+        None,
     ));
     assert!(error.contains("different model"), "{error}");
     assert_eq!(app.project().operations().len(), count);
@@ -1316,6 +1323,7 @@ fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_i
             existing.setup,
             existing.tool,
             Some(set),
+            None,
         )
         .unwrap();
     assert_eq!(app.project().operation(new).unwrap().selections, [set]);
@@ -1328,6 +1336,7 @@ fn req_ui_06_req_op_02_a_new_operation_takes_the_selection_unless_its_strategy_i
             existing.setup,
             existing.tool,
             Some(set),
+            None,
         ));
         assert!(error.contains("ignores selections"), "{error}");
     }

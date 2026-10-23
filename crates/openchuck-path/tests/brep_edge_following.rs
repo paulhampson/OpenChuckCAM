@@ -23,7 +23,7 @@ use openchuck_path::{
     Pass, RotaryMapping, Strategy, StrategyInput, SurfaceSource, generate,
 };
 use openchuck_types::brep::{
-    BrepEdge, BrepFace, BrepModel, EdgeId, FaceId, Frame, Surface, TrimLoop, UvPoint,
+    BrepEdge, BrepFace, BrepModel, EdgeCurve, EdgeId, FaceId, Frame, Surface, TrimLoop, UvPoint,
 };
 use openchuck_types::geometry::{Point3, Vec3};
 use openchuck_types::ir::PathTags;
@@ -175,6 +175,7 @@ fn edge(id: u32, faces: &[u32], polyline: Vec<Point3>) -> BrepEdge {
         id: EdgeId(id),
         faces: faces.iter().map(|f| FaceId(*f)).collect(),
         vertices: None,
+        curve: None,
         polyline,
     }
 }
@@ -520,6 +521,138 @@ fn req_nfr_06_req_op_08_brep_edge_following_is_identical_at_1_2_and_n_threads() 
     let f = Fixture::new(&model);
     let strategy = EdgeFollowing::with_source(BrepEdges::new(&model).unwrap().shared());
     let v = values(&[(p::DEPTH, num(0.3)), (p::DEPTH_PER_PASS, num(0.15))]);
+    let runs = openchuck_testkit::determinism::check(|| {
+        let path = run(|ctx| generate(&strategy, &f.input(), &v, ctx)).unwrap();
+        format!("{:?}{:?}", path.group, path.notes).into_bytes()
+    })
+    .unwrap();
+    assert_eq!(runs.len(), 4);
+}
+
+// ---- the exact edge curve (decision 0227, OI-229) -----------------------------
+
+/// A circle edge about the X axis at `x`, the exact curve of `arc`.
+fn rim_curve(x: f64) -> EdgeCurve {
+    EdgeCurve::Circle {
+        frame: frame(
+            p3(x, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+        ),
+        radius: R,
+        first: 0.0,
+        last: TAU,
+    }
+}
+
+/// The capped cylinder whose rims the kernel tessellated into only `pieces`
+/// chords (a coarse model), with or without the rims' exact curve.
+fn coarse_cylinder(pieces: usize, exact: bool) -> BrepModel {
+    let mut model = capped_cylinder();
+    for (id, x) in [(0_usize, 0.0), (1, LENGTH)] {
+        model.edges[id].polyline = arc(x, 0.0, TAU, pieces);
+        model.edges[id].curve = exact.then(|| rim_curve(x));
+    }
+    model
+}
+
+/// A closed chain repeats its first point last, so only that differs.
+fn assert_polyline_kept(chain: &openchuck_path::EdgeChain, polyline: &[Point3]) {
+    let n = polyline.len();
+    assert_eq!(chain.points.len(), n);
+    assert_eq!(chain.points[..n - 1], polyline[..n - 1]);
+    assert_eq!(chain.points[n - 1], polyline[0]);
+}
+
+fn widest_gap(points: &[Point3]) -> f64 {
+    points
+        .iter()
+        .map(|q| (radius(*q) - R).abs())
+        .fold(0.0, f64::max)
+}
+
+#[test]
+fn req_op_08_brep_a_chain_on_an_edge_with_an_exact_curve_lies_on_the_curve() {
+    let model = coarse_cylinder(24, true);
+    let chains = chains_of(&model, &BrepEdges::new(&model).unwrap());
+    assert_eq!(chains.len(), 2);
+    for chain in &chains {
+        assert!(chain.closed);
+        assert!(
+            widest_gap(&chain.points) < 1e-9,
+            "every point is on the rim"
+        );
+        // Chords sag no more than the sampling limit below the circle.
+        let sag = chain
+            .points
+            .iter()
+            .zip(chain.points.iter().skip(1))
+            .map(|(a, b)| R - radius(p3((a.x + b.x) / 2.0, (a.y + b.y) / 2.0, (a.z + b.z) / 2.0)))
+            .fold(0.0, f64::max);
+        assert!(sag <= openchuck_path::edge_curve::SAG + 1e-12, "sag {sag}");
+    }
+}
+
+#[test]
+fn req_op_08_brep_an_edge_without_an_exact_curve_keeps_the_kernels_polyline() {
+    let model = coarse_cylinder(24, false);
+    let chains = chains_of(&model, &BrepEdges::new(&model).unwrap());
+    assert_polyline_kept(&chains[0], &model.edges[0].polyline);
+    // The chords of the coarse polyline cut inside the rim by up to 0.0856.
+    let sag = R * (1.0 - (TAU / 48.0).cos());
+    assert!(sag > 0.08);
+}
+
+#[test]
+fn req_op_08_brep_a_curve_that_does_not_meet_its_edge_is_ignored() {
+    let mut model = coarse_cylinder(24, true);
+    // The curve now ends a millimetre away from the polyline's ends.
+    model.edges[0].curve = Some(EdgeCurve::Circle {
+        frame: frame(
+            p3(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+        ),
+        radius: R,
+        first: 0.1,
+        last: TAU,
+    });
+    let chains = chains_of(&model, &BrepEdges::new(&model).unwrap());
+    assert_polyline_kept(&chains[0], &model.edges[0].polyline);
+}
+
+#[test]
+fn req_op_08_brep_engraved_depth_is_exact_on_a_coarsely_tessellated_curved_edge() {
+    let depth = 0.3;
+    let tips = |exact: bool| -> f64 {
+        let model = coarse_cylinder(24, exact);
+        let f = Fixture::new(&model);
+        let strategy = EdgeFollowing::with_source(BrepEdges::new(&model).unwrap().shared());
+        let out = passes(&f, &strategy, &values(&[(p::DEPTH, num(depth))]));
+        assert_eq!(out.len(), 2);
+        out.iter()
+            .flat_map(|pass| pass.points.iter())
+            .map(|c| (radius(c.tip) - (R - depth)).abs())
+            .fold(0.0, f64::max)
+    };
+    let with_curve = tips(true);
+    let without = tips(false);
+    assert!(
+        with_curve <= 0.002,
+        "depth error with the exact curve {with_curve}"
+    );
+    assert!(
+        without > 0.05,
+        "the coarse polyline's chords should show as depth error: {without}"
+    );
+}
+
+#[test]
+fn req_nfr_06_req_op_08_brep_exact_edge_following_is_identical_at_1_2_and_n_threads() {
+    let model = coarse_cylinder(24, true);
+    let f = Fixture::new(&model);
+    let strategy = EdgeFollowing::with_source(BrepEdges::new(&model).unwrap().shared());
+    let v = values(&[(p::DEPTH, num(0.3))]);
     let runs = openchuck_testkit::determinism::check(|| {
         let path = run(|ctx| generate(&strategy, &f.input(), &v, ctx)).unwrap();
         format!("{:?}{:?}", path.group, path.notes).into_bytes()

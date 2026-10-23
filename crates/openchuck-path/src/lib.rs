@@ -78,6 +78,7 @@ mod composite;
 pub mod curves;
 pub mod cutter;
 pub mod drill;
+pub mod edge_curve;
 pub mod edge_following;
 mod error;
 pub mod extend;

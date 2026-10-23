@@ -73,45 +73,35 @@ impl Shell {
     /// the Simulate step's primary action, was clicked: the caller runs it
     /// with [`Shell::primary`]. Draws nothing while the result is current.
     pub(super) fn out_of_date_banner(&self, ui: &mut egui::Ui) -> bool {
-        let Some(reason) = self.out_of_date.reason().map(str::to_owned) else {
-            return false;
-        };
+        self.banner().is_some_and(|banner| banner.show(ui))
+    }
+
+    /// What the banner says while the result is out of date, so it can be
+    /// drawn while a panel of the shell is borrowed.
+    pub(super) fn banner(&self) -> Option<Banner> {
+        let reason = self.out_of_date.reason()?.to_owned();
         let primary = self.overview.primary(Step::Simulate);
         let runs = matches!(
             primary.kind,
             PrimaryKind::RunSimulation
                 | PrimaryKind::GenerateAndSimulate(_)
                 | PrimaryKind::GenerateStale(_)
+                | PrimaryKind::Generate
         );
-        let running = self.run.is_running();
-        let boxed = DARK.warning_box;
-        let mut clicked = false;
-        egui::Frame::new()
-            .fill(boxed.bg)
-            .stroke(Stroke::new(1.0, boxed.border))
-            .corner_radius(crate::theme::RADIUS)
-            .inner_margin(egui::Margin::same(8))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    marks::mark(ui, ItemState::Stale, &reason);
-                    ui.label(RichText::new(TITLE).strong().color(boxed.text));
-                });
-                let next = if running {
-                    " Simulating again…"
-                } else if runs {
-                    " Simulate again to see the effect."
-                } else {
-                    " Turn on an operation to simulate again."
-                };
-                ui.add(egui::Label::new(RichText::new(reason + next).color(boxed.text)).wrap());
-                if runs {
-                    let enabled = primary.blocked.is_none() && !running;
-                    clicked = frame::primary_button(ui, &primary.label, enabled)
-                        .on_disabled_hover_text(primary.blocked.as_deref().unwrap_or("Running"))
-                        .clicked();
-                }
-            });
-        clicked
+        // Skipping the stock simulation, the button only generates the
+        // toolpaths (decision 0168), and the banner says so.
+        let toolpaths_only = matches!(
+            primary.kind,
+            PrimaryKind::GenerateStale(_) | PrimaryKind::Generate
+        );
+        Some(Banner {
+            reason,
+            label: primary.label,
+            blocked: primary.blocked,
+            runs,
+            toolpaths_only,
+            running: self.run.is_running(),
+        })
     }
 
     /// The banner over the top of the 3D view on Simulate, on the result it
@@ -136,5 +126,61 @@ impl Shell {
         if again {
             self.primary();
         }
+    }
+}
+
+/// The out-of-date banner's contents (see [`Shell::banner`]).
+pub(super) struct Banner {
+    reason: String,
+    label: String,
+    blocked: Option<String>,
+    runs: bool,
+    toolpaths_only: bool,
+    running: bool,
+}
+
+impl Banner {
+    /// Draws the banner. Returns true when its button was clicked.
+    pub(super) fn show(&self, ui: &mut egui::Ui) -> bool {
+        let Banner {
+            reason,
+            label,
+            blocked,
+            runs,
+            toolpaths_only,
+            running,
+        } = self;
+        let (runs, toolpaths_only, running) = (*runs, *toolpaths_only, *running);
+        let boxed = DARK.warning_box;
+        let mut clicked = false;
+        egui::Frame::new()
+            .fill(boxed.bg)
+            .stroke(Stroke::new(1.0, boxed.border))
+            .corner_radius(crate::theme::RADIUS)
+            .inner_margin(egui::Margin::same(8))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    marks::mark(ui, ItemState::Stale, reason);
+                    ui.label(RichText::new(TITLE).strong().color(boxed.text));
+                });
+                let next = match (running, runs, toolpaths_only) {
+                    (true, _, true) => " Generating the toolpaths again…",
+                    (true, _, false) => " Simulating again…",
+                    (false, true, true) => " Generate the toolpaths again to see the effect.",
+                    (false, true, false) => " Simulate again to see the effect.",
+                    (false, false, _) => " Turn on an operation to simulate again.",
+                };
+                ui.add(
+                    egui::Label::new(RichText::new(format!("{reason}{next}")).color(boxed.text))
+                        .wrap(),
+                );
+                if runs {
+                    let enabled = blocked.is_none() && !running;
+                    clicked = frame::primary_button(ui, label, enabled)
+                        .on_disabled_hover_text(blocked.as_deref().unwrap_or("Running"))
+                        .clicked();
+                }
+            });
+        clicked
     }
 }

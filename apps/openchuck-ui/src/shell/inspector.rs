@@ -18,6 +18,7 @@ use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
 use openchuck_app::requirements::RequirementField;
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
+use openchuck_app::step_sets::SetRefusal;
 use openchuck_app::tool_library;
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
@@ -46,6 +47,9 @@ pub(super) enum ToolAct {
     Library,
     /// Set the project's tool number to the typed text.
     Number(ToolId, String),
+    /// Give the operation the preset of a material, `None` for the setup's
+    /// stock material (decision record 0230).
+    Preset(Option<String>),
     /// Set the operation's spindle speed to the typed text (rpm).
     Spindle(String),
     /// Take the operation's own spindle speed away (↺), so the tool's
@@ -546,6 +550,8 @@ impl Shell {
         let library = self.tool_library.library();
         let shown = tool_library::operation_tool(project, library, operation.id);
         let spindle = tool_library::operation_spindle(project, operation.id);
+        let preset =
+            openchuck_app::preset::operation_preset(project, app.strategies(), operation.id);
         let others: Vec<(ToolId, String)> = project
             .tools()
             .iter()
@@ -588,6 +594,11 @@ impl Shell {
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
                             act = Some(ToolAct::Number(tool.id, typed));
                         }
+                        if let Some(preset) = &preset
+                            && let Some(chosen) = preset_row(ui, preset)
+                        {
+                            act = Some(ToolAct::Preset(chosen));
+                        }
                         if let Some(spindle) = &spindle {
                             let row = TextRow {
                                 key: SPINDLE_SPEED,
@@ -595,7 +606,9 @@ impl Shell {
                                 description: "How fast the tool turns, in revolutions per \
                                               minute (rpm). It sets the S value in the G-code. \
                                               Left empty, the tool's cutting data for the \
-                                              stock material gives it. Check it against your \
+                                              material preset gives it: the setup's stock \
+                                              material unless the operation chose another. \
+                                              Check it against your \
                                               tool, material and machine before you run the \
                                               program.",
                                 unit: "rpm",
@@ -612,7 +625,14 @@ impl Shell {
                                 }),
                                 reset: spindle.set.is_some(),
                                 enabled: true,
-                                needs: spindle.missing.is_some().then_some("Enter spindle speed"),
+                                needs: if spindle.missing.is_some() {
+                                    Some("Enter spindle speed")
+                                } else {
+                                    spindle
+                                        .out_of_range
+                                        .is_some()
+                                        .then_some("Outside the machine's range")
+                                },
                                 scroll_to: jump_to_spindle,
                                 ..TextRow::default()
                             };
@@ -621,7 +641,9 @@ impl Shell {
                                 Outcome::Reset => act = Some(ToolAct::SpindleReset),
                                 Outcome::None => {}
                             }
-                            if let Some(message) = &spindle.missing {
+                            if let Some(message) =
+                                spindle.missing.as_ref().or(spindle.out_of_range.as_ref())
+                            {
                                 field_row::note_line(ui, message, DARK.warning);
                             }
                         }
@@ -746,13 +768,26 @@ impl Shell {
                 return;
             }
             ToolAct::Spindle(typed) => {
-                let result = tool_library::set_operation_spindle(project, operation, Some(&typed))
-                    .and_then(|c| app.execute(c))
-                    .map_err(|e| form_panel::refusal(&e.to_string()));
+                let result = tool_library::set_operation_spindle(
+                    project,
+                    app.strategies(),
+                    operation,
+                    Some(&typed),
+                )
+                .and_then(|c| app.execute(c))
+                .map_err(|e| form_panel::refusal(&e.to_string()));
                 self.form.result(SPINDLE_SPEED, result);
                 return;
             }
-            ToolAct::SpindleReset => tool_library::set_operation_spindle(project, operation, None),
+            ToolAct::Preset(material) => openchuck_app::preset::set_operation_preset(
+                project,
+                app.strategies(),
+                operation,
+                material.as_deref(),
+            ),
+            ToolAct::SpindleReset => {
+                tool_library::set_operation_spindle(project, app.strategies(), operation, None)
+            }
             ToolAct::Update(tool) => match &library {
                 Some(lib) => match tool_library::update_from_library(project, lib, tool) {
                     Ok(Some(c)) => Ok(c),
@@ -788,6 +823,7 @@ impl Shell {
         let strategy = app.strategy_label(&operation.strategy);
         let strategy_text = app.strategy_description(&operation.strategy);
         let set_options = app.strategy_takes_set_options(&operation.strategy);
+        let refusals = app.set_refusals(id);
         let mut delete = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -901,7 +937,18 @@ impl Shell {
             open,
             false,
             |_| {},
-            |ui| geometry(ui, &operation, &summaries, &reach, set_options),
+            |ui| {
+                geometry(
+                    ui,
+                    &operation,
+                    &summaries,
+                    &Notes {
+                        reach: &reach,
+                        refusals: &refusals,
+                    },
+                    set_options,
+                )
+            },
         );
         if let Some((edit, action)) = section.body {
             role_edit = edit;
@@ -1193,19 +1240,32 @@ fn limits_nothing(ui: &mut egui::Ui, indent: f32, set: &str) {
     });
 }
 
+/// What the Geometry section says under the role that holds a set.
+struct Notes<'a> {
+    /// The warnings of sets reaching a held region or a tab (11.7).
+    reach: &'a [String],
+    /// The sets the strategy cannot use on this part (decision record 0209
+    /// item 10).
+    refusals: &'a [SetRefusal],
+}
+
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
 /// With `with_options`, each set's options under its role (decision record
 /// 0176 item 3). Under the role that holds a set reaching a held region or a
-/// tab, the warning of 11.7 with "Show in view" and "Edit workholding".
+/// tab, the warning of 11.7 with "Show in view" and "Edit workholding"; under
+/// the role that holds a set the strategy cannot use on this part, the
+/// warning with the reason and what to do, before anything is generated
+/// (decision record 0209 item 10).
 fn geometry(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
-    reach: &[String],
+    notes: &Notes<'_>,
     with_options: bool,
 ) -> (Option<GeometryEdit>, Option<ReachAction>) {
+    let reach = notes.reach;
     let mut edit = None;
     let mut action = None;
     if summaries.is_empty() {
@@ -1286,6 +1346,15 @@ fn geometry(
         // record 0176).
         if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
             edit = Some(e);
+        }
+        // A set the strategy cannot use here, under the role that holds it
+        // (decision record 0209 item 10).
+        for refusal in notes.refusals.iter().filter(|r| r.role == role) {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+                marks::mark(ui, ItemState::Warning, "Warning");
+                ui.label(RichText::new(&refusal.text).color(DARK.warning));
+            });
         }
         // The selection warning under the role that holds the set (11.7).
         for id in &sets {
@@ -1370,6 +1439,56 @@ fn rows(
         }
     }
     edited
+}
+
+/// The Tool section's Material preset row (issue 197; decision record
+/// 0230): the list of the setup's material and the tool's other materials, a
+/// warning triangle when the chosen one is not the setup's, and why no preset
+/// applies when none does. Returns the material chosen this frame, `None`
+/// inside for the setup's.
+fn preset_row(
+    ui: &mut egui::Ui,
+    preset: &openchuck_app::preset::MaterialPreset,
+) -> Option<Option<String>> {
+    use openchuck_app::preset::PresetState;
+    let labels: Vec<&str> = preset.choices.iter().map(|c| c.label.as_str()).collect();
+    let dropped = preset.state == PresetState::Dropped;
+    // A dropped preset has no current entry, so choosing any applies it.
+    let current = (!dropped)
+        .then(|| {
+            preset
+                .choices
+                .iter()
+                .position(|c| c.material == preset.chosen)
+        })
+        .flatten();
+    let shown = match current.and_then(|i| labels.get(i)) {
+        Some(label) => *label,
+        None => "No preset",
+    };
+    // "No preset" is said in the box, with why in its tooltip, so an edit
+    // that drops the preset moves no row (UI-16).
+    let help = match (&preset.message, dropped) {
+        (Some(message), true) => format!("{message}\n\n{}", crate::run_panel::PRESET_HELP),
+        _ => crate::run_panel::PRESET_HELP.to_owned(),
+    };
+    let chosen = field_row::list_row(
+        ui,
+        "operation preset",
+        "Material preset",
+        &help,
+        (&labels, current),
+        shown,
+    )
+    .and_then(|i| preset.choices.get(i))
+    .map(|c| c.material.clone());
+    if let Some(why) = &preset.differs {
+        field_row::warning_line(ui, why);
+    }
+    if let Some(message) = preset.message.as_ref().filter(|_| !dropped) {
+        field_row::note_line(ui, message, DARK.warning);
+    }
+    chosen
 }
 
 /// The pick of a known material under the Material row: the names the tools

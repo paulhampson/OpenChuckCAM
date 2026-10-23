@@ -97,6 +97,7 @@ pub fn cube_project(name: &str) -> (PathBuf, Application, OperationId, SetupId) 
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: BTreeMap::new(),
         }),
     ] {

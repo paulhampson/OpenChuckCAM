@@ -240,6 +240,7 @@ impl Fixture {
                     check: Vec::new(),
                     restriction_options: Default::default(),
                     spindle_speed: None,
+                    material: None,
                     parameters: BTreeMap::new(),
                 }),
                 placement: Placement::End,
@@ -351,6 +352,7 @@ fn req_ui_10_req_ui_14_post_and_export_names_the_first_thing_missing() {
             check: Vec::new(),
             restriction_options: Default::default(),
             spindle_speed: None,
+            material: None,
             parameters: BTreeMap::new(),
         }),
         placement: Placement::End,
@@ -1735,6 +1737,38 @@ fn req_set_05_the_overview_gives_the_model_extent_for_the_position_row() {
     let o = f.app.overview(Some(&checks), &JobLog::default());
     let placed = o.model_extent(f.model).unwrap().in_setup(&setup.frame);
     assert!((placed.bounds.min.x - inspected.bounds.min.x - 4.0).abs() < 1e-12);
+}
+
+#[test]
+fn req_ui_10_req_nfr_12_skipping_the_stock_simulation_a_turned_off_operation_asks_only_for_toolpaths()
+ {
+    // Decision 0168 with 0192: while the project skips the stock simulation,
+    // a run that holds an operation now turned off asks to generate again,
+    // never to run the stock simulation it skips.
+    let (mut f, [_, _, three]) = three_operations("skip-stock-off");
+    f.app
+        .execute(Command::SetSkipStockSimulation(true))
+        .unwrap();
+    f.app.start_generate().wait().unwrap();
+    assert_eq!(
+        f.overview().primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    let primary = f.overview().primary(Step::Simulate);
+    assert_eq!(primary.kind, PrimaryKind::Generate);
+    assert_eq!(primary.label, "Generate toolpaths");
+    let run = f.app.start_generate().wait().unwrap();
+    assert!(run.simulation.is_none());
+    assert_eq!(
+        f.overview().primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
 }
 
 #[test]

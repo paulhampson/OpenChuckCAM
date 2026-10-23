@@ -738,7 +738,7 @@ impl Shell {
         match action.kind {
             PrimaryKind::ImportModel => self.import_model(),
             PrimaryKind::Continue(step) => self.open_step(step),
-            PrimaryKind::GenerateStale(_) => self.generate(false),
+            PrimaryKind::GenerateStale(_) | PrimaryKind::Generate => self.generate(false),
             PrimaryKind::RunSimulation | PrimaryKind::GenerateAndSimulate(_) => {
                 self.generate(true);
             }
@@ -940,6 +940,11 @@ impl Shell {
         match action {
             MessageAction::Show(item) => self.show_item(item),
             MessageAction::Reselect(set) => {
+                // Waits, as the Pick again button does, while a change is
+                // checked (decision 0215 item 6; OI-874).
+                if self.selection.is_writing() {
+                    return;
+                }
                 self.start_picking();
                 self.selection.pick_again(set);
                 self.select(Selection::Set(set));
