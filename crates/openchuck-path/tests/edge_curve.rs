@@ -161,3 +161,42 @@ fn req_op_08_exact_curve_validation_refuses_a_damaged_curve() {
     };
     assert!(line.validate("edge").is_err());
 }
+
+/// A degree-1 spline whose one tall vertex sits in a very short knot span
+/// that even steps and midpoints alone would step over (CodeRabbit finding
+/// on pull request 317).
+fn spike(first: f64, last: f64) -> EdgeCurve {
+    EdgeCurve::BSpline(BSplineCurve {
+        degree: 1,
+        knots: vec![0.0, 0.0, 1.0 / 64.0, 1.0 / 32.0, 1.0, 1.0],
+        poles: vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0 / 64.0, 1.0, 0.0),
+            Point3::new(1.0 / 32.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+        ],
+        weights: vec![1.0; 4],
+        first,
+        last,
+    })
+}
+
+#[test]
+fn req_op_08_exact_curve_a_spline_feature_in_a_short_knot_span_is_not_missed() {
+    for (first, last) in [(0.0, 1.0), (1.0, 0.0)] {
+        let points = sample(&spike(first, last)).unwrap();
+        let top = points.iter().map(|p| p.y).fold(0.0, f64::max);
+        assert!(
+            (top - 1.0).abs() < 1e-12,
+            "the tall vertex is sampled: {top}"
+        );
+        assert!(points[0].distance(point(&spike(first, last), first).unwrap()) < 1e-12);
+        assert!(
+            points
+                .last()
+                .unwrap()
+                .distance(point(&spike(first, last), last).unwrap())
+                < 1e-12
+        );
+    }
+}

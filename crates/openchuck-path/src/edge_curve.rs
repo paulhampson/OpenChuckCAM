@@ -161,15 +161,35 @@ pub fn sample(curve: &EdgeCurve) -> Option<Vec<Point3>> {
         EdgeCurve::BSpline(c) => FIRST_PIECES.max(c.poles.len() * 2),
         _ => FIRST_PIECES,
     };
+    // The seeds the edge is cut at before bisecting: even steps, and for a
+    // spline its interior knots too, so a feature in a short span between
+    // two steps cannot hide behind a chord whose midpoint lies on it. They
+    // run from `first` to `last` whichever is larger, and end at `last`.
+    let mut seeds: Vec<f64> = (1..pieces)
+        .map(|i| first + (last - first) * i as f64 / pieces as f64)
+        .collect();
+    if let EdgeCurve::BSpline(c) = curve {
+        let (low, high) = (first.min(last), first.max(last));
+        seeds.extend(c.knots.iter().copied().filter(|k| *k > low && *k < high));
+    }
+    seeds.sort_by(|x, y| {
+        let order = x.total_cmp(y);
+        if first <= last {
+            order
+        } else {
+            order.reverse()
+        }
+    });
+    seeds.dedup();
+    seeds.push(last);
     let mut out = vec![a];
     let mut previous = (first, a);
-    for i in 1..=pieces {
-        let t = if i == pieces {
-            last
+    for t in seeds {
+        let here = if t.total_cmp(&last).is_eq() {
+            b
         } else {
-            first + (last - first) * i as f64 / pieces as f64
+            point(curve, t)?
         };
-        let here = if i == pieces { b } else { point(curve, t)? };
         refine(curve, previous, (t, here), 0, &mut out)?;
         previous = (t, here);
     }
