@@ -8,7 +8,7 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; blocked by merge conflicts with main; lane update not yet pushed |
+| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; lane verifying local main merge; single release push pending |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320
@@ -18,7 +18,7 @@ Only lanes handed to the merge coordinator by the owner or task coordinator ente
 - OI-970 remains open: reliable detection of narrow crossings is deferred. Warn only remains advisory and must always explain its sampling limitation.
 - Release under decision 0055: coordinator marks ready first; lane then merges latest main, reconciles register unions, runs `cargo xtask records` and required checks (including outstanding traceability), and pushes once, reporting the exact head.
 - Wait for both full CI and CodeRabbit before batching required corrections into one push. Findings higher than major must be fixed; other genuinely blocking failures must be addressed. Minor/optional findings, missing docs and additional open items ride the next PR unless needed to fix a blocker.
-- Handoff verification: 25 path, 2 UI and 1 application tests passed; focused coverage reached every new executable path/UI line; changed-crate clippy, formatting, dependency, licence and record checks passed. Traceability is pending after a local workspace build exceeded environment capacity. Full CI and CodeRabbit are pending.
+- Handoff verification: 25 path, 2 UI and 1 application tests passed; focused coverage reached every new executable path/UI line; changed-crate clippy, formatting, dependency, licence and record checks passed. Traceability was pending at handoff after a local workspace build exceeded environment capacity; see the lane's release progress below. Updated-head full CI and CodeRabbit remain pending.
 - The 67.238-second regression remains in default PR tests and is classified in long/coverage profiles.
 - Owner explicitly authorises the merge coordinator to merge this PR when fully ready and green; do not enable auto-merge on the lane's behalf.
 - Present any new key decision to the owner individually, with a recommendation and risks.
@@ -32,7 +32,13 @@ Confirm the released head includes latest main, register and traceability checks
 
 ## Current release blocker
 
-At head `96258e867712ac9ee47000904715a6d956e30727`, GitHub reports the PR unmergeable and CodeRabbit flags merge conflicts. No pull-request Actions runs exist for this head: GitHub suppresses these workflows while conflicts remain. The lane must perform the already authorised main update, resolve conflicts and register unions, verify, and push once before full CI can run. Release instructions are posted on the PR; lane acknowledgement and new head remain pending. Do not wait for CI before this release update, or rerun old draft checks as a substitute.
+At head `96258e867712ac9ee47000904715a6d956e30727`, GitHub reports the PR unmergeable and CodeRabbit flags merge conflicts. No pull-request Actions runs exist for this head: GitHub suppresses these workflows while conflicts remain. The lane must perform the already authorised main update, resolve conflicts and register unions, verify, and push once before full CI can run. The dedicated lane has acknowledged release and is verifying its local merge; the new remote head remains pending. Do not wait for CI before this release update, or rerun old draft checks as a substitute.
+
+## SWARF3 release progress
+
+The lane's [latest report](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376159612) confirms its execution environment recovered. Locally, main `a2605495d4e05d323d4cc3f85a4f4d6be118072f` is merged, both changelog conflicts are resolved with entries preserved, the decision index is ordered and duplicate register IDs were not found. Formatting, `cargo xtask records` and `cargo xtask all` pass, including workspace-built traceability: 99/99 P1 requirements have tests. These are lane-reported local results, not CI results for a pushed release head.
+
+Focused uninstrumented tests and changed-crate clippy are still running before the single release push. Remote head remains `96258e867712ac9ee47000904715a6d956e30727`, unmergeable with main; no PR Actions runs exist for it. CodeRabbit reports success with no actionable findings on that old head and no inline review threads; review and CI must be checked again after the release push. No correction push is requested while lane verification proceeds.
 
 ## STEPALL-M / #321 — BLOCKED / IN PROGRESS
 
