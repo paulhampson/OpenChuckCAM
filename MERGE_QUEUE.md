@@ -1,6 +1,6 @@
 # OpenChuckCAM merge queue
 
-Updated: 23 October 2026 (Europe/London).
+Updated: 24 October 2026 (Europe/London).
 
 ## Working practice — owner instruction, 23 October 2026
 
@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; full CI running on 8e25a51; cargo audit blocker |
+| 1 | SWARF3 | [#320](https://github.com/paulhampson/OpenChuckCAM/pull/320) | `claude/lane-swarf3` | Ready; 87b557e audit fix green; macOS tests still running |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320
@@ -47,17 +47,17 @@ Confirm the released head includes latest main, register and traceability checks
 
 ## SWARF3 current release status
 
-Release update pushed once: `8e25a51e9180128ae0169228e5b6d3cd923b48ca`, merging main `a2605495d4e05d323d4cc3f85a4f4d6be118072f`. GitHub reports mergeable; #320 remains the sole ready PR. The old conflict/CI suppression blocker is cleared.
+Current head: `87b557ed3b1bcfd252733c389d499ab103f393a2`, parent release head `8e25a51e9180128ae0169228e5b6d3cd923b48ca`. Latest main merged: `a2605495d4e05d323d4cc3f85a4f4d6be118072f`. GitHub reports mergeable; #320 remains the sole released PR.
 
-The [lane handoff](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376228200) reports both changelog entries preserved, register unions reconciled, numerical decision-index order restored, and no duplicate IDs. Local `cargo xtask all` (including 99/99 P1 traceability), formatting, whitespace and changed-crate clippy pass. Uninstrumented tests: 25 path/region and 32 application/UI pass. Narrow-patch regression: 54.698 seconds here; existing long/coverage classification and default PR execution preserved. Handoff focused coverage retained; whole-crate 95% not claimed. Decisions 0228/0229 remain accepted; OI-970 stays open.
+The lane waited for full CI and CodeRabbit on the release head before pushing its [single batched correction](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376729522). Only transitive Tokio's version/checksum in Cargo.lock changed, 1.53.2 to 1.53.3, addressing RUSTSEC-2026-0386. Audit was reproduced failing before and passing after; cargo deny and cargo xtask all pass locally, including 99/99 P1 traceability. No source, schema, direct dependency pin or decision change. OI-970 remains open.
 
-[CI run 40035581319](https://github.com/paulhampson/OpenChuckCAM/actions/runs/40035581319) is still in progress on this head. All three STEP-kernel, UI-smoke, libraries-alone and Gate 3 legs pass, as do Linux/Windows build-test shards. macOS build/test remains in progress. End-to-end run 40035581314 succeeded. Fast checks fail at cargo audit; traceability, records, dependency rules, licences, cargo deny and semver passed.
+On the release head, 25 path/region and 32 application/UI focused tests passed locally; full platform tests, UI smoke, STEP kernel, standalone libraries, LinuxCNC replay and offline CLI passed in CI. Focused coverage evidence is retained; whole-crate 95% is not claimed. Register unions and changelog conflicts were reconciled with both branches' entries preserved.
 
-Confirmed blocker from job 120694160312 logs: cargo audit rejects transitive tokio 1.53.2 under RUSTSEC-2026-0386. The lane has [acknowledged the blocker](https://github.com/paulhampson/OpenChuckCAM/pull/320#issuecomment-6376323853) and plans a minimal patched transitive update (reports 1.53.3), bundled with any other required corrections AFTER full CI and CodeRabbit finish. No early correction push requested.
+Latest-head [CI run 40039352507](https://github.com/paulhampson/OpenChuckCAM/actions/runs/40039352507) remains in progress. Fast checks are now SUCCESS, including audit, records and traceability. All STEP-kernel, UI-smoke, standalone-library, Gate 3 and Linux/Windows build-test legs pass. macOS build/test is still executing Tests; required-check aggregation is not yet complete. End-to-end run 40039352328 passed. Fuzz is skipped by path filter. Do not merge until remaining required CI is green.
 
-CodeRabbit status is success for `8e25a51`. Its sole minor suggestion to extend the explanation to swarf was withdrawn after the lane explained accepted decision 0229's non-swarf scope; the thread is resolved and no unresolved review threads remain. OI-636 retains the separate swarf limitation; OI-970 remains unchanged. No source change is required for the withdrawn finding.
+CodeRabbit status is SUCCESS for the current head; its new review was skipped because Cargo.lock is excluded by existing filters. Unchanged source was reviewed on the parent. Its sole minor swarf suggestion was withdrawn as outside decision 0229 scope and the thread resolved; no unresolved review threads remain. No further lane push is planned without a genuine blocker.
 
-No eligible new owner-authored draft PRs found after the intake cutoff in a bounded repository search (fewer than 100 results). #321's explicit hold remains in force.
+Intake search found no new owner-authored draft PRs after cutoff (under 100 results). Existing #321 remains on explicit hold.
 
 ## STEPALL-M / #321 — BLOCKED / IN PROGRESS
 
@@ -71,3 +71,11 @@ No eligible new owner-authored draft PRs found after the intake cutoff in a boun
 - Historical 1.24× timing includes a failed operation and must not be represented as current successful-job performance. No current successful-job performance is established by this checkpoint.
 - No new default or methodology waiver has been approved.
 - Release gates specific to this lane: implementation and required verification completed, refreshed evidence and accurate report supplied, pending owner decisions resolved through the coordinator, applicable full records explicitly accepted by the owner, and verified handoff received. Then reassess queue order and the sole ready-for-review slot.
+
+## STEPALL-M checkpoint update — 24 October 2026
+
+Current draft head is `9e981c2149ed9f8637b7bf06f9edecb7fd2f3dd5`; measured code `827fc45dd8736265d8504ab71bc8c5057ce9c664` includes the previously authorised main `a2605495`. The original stub/build blockers above describe the intake checkpoint; the PR now reports production-post integration, full harness/kernel compilation, ten passing native tests, local lint/register/traceability checks (99/99 P1), cargo deny, and focused coverage. Do not treat this as release completion.
+
+Refreshed quick M2/M4 evidence is reported: production-posted bytes/library IR identical for a/b/c at 1/2/4 threads, plus form-b application comparisons. However the complete measurement exits 1: form-a gate 2 tip error 0.000912 mm exceeds the accepted 0.000867 mm limit; production CLI and separate application diagnostics reproduce it. No gate waiver or rounding-method acceptance is authorised. Tracking and the precision/comparison/product question must be resolved through the task coordinator and an authorised lane; merge coordinator makes no allocation or policy decision here.
+
+Decision 0211 remains PROPOSED; OI-834, STEPALL-X order and OI-835 remain unresolved. M1/M3, sampling bounds, unmet 0.005 mm tessellation allocation, five-run stage timings and full-stepover determinism remain unresolved/unwaived. Historical 1.24× remains invalid as current successful-job performance. Keep BLOCKED / IN PROGRESS and draft until verified completion and owner decisions resolve the explicit hold.
