@@ -484,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn req_gc_10_gate_3_replays_the_first_cut_project_with_the_reference_jobs() {
+    fn req_gc_10_the_replay_runs_the_first_cut_project_with_the_reference_jobs() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let programs = default_programs(&root).unwrap();
         let names: Vec<String> = programs
