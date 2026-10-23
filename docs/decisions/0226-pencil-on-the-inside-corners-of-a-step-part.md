@@ -1,6 +1,6 @@
 # 0226: Pencil clean-up on the inside corners of a STEP part, from its exact edges (lane STEPALL-P; issue #257)
 
-- **Status:** proposed by lane STEPALL-P (23 Oct 2026), awaiting the project owner. It builds the pencil part of [decision 0209](0209-step-geometry-for-every-strategy.md) item 2 (T, B-rep topology), step 3 of the order the owner chose (option A), and records the choices the build made that 0209 does not.
+- **Status:** accepted by the project owner (23 Oct 2026, directly in the lane STEPALL-P session: "Accept 0226"). Proposed the same day by lane STEPALL-P. It builds the pencil part of [decision 0209](0209-step-geometry-for-every-strategy.md) item 2 (T, B-rep topology), step 3 of the order the owner chose (option A), and records the choices the build made that 0209 does not.
 - **Date:** 23 Oct 2026.
 - **Requirements:** OP-09, OP-23, IMP-02, NFR-06, GC-07, NFR-07, NFR-12.
 - **Open items** ([docs/open-items.md](../open-items.md)): settles part (b) of OI-234 (part (a) stays open, so the row stays open). Opens OI-950 and OI-951. Depends on OI-81 (the exact drop, lane STEPALL-X) without closing it.
