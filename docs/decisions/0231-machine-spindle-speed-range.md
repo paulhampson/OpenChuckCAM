@@ -3,7 +3,7 @@
 - **Status:** proposed (23 Oct 2026). The choice is the owner's option A on OI-754, relayed by the coordinator session on 22 Oct 2026: a machine limit only, now; a limit, never a default; the built-in Makera Z1 figures from Makera's published specification marked unconfirmed; an out-of-range speed blocks Post and export with an actionable message; on project schema 18 and machine profile schema 4, with a library minor bump. The owner did not give the Z1's figures; the lane took them from Makera's document (item 3).
 - **What it amends:** [decision 0196](0196-spindle-speed-belongs-to-the-operation.md) "Not decided here" (OI-754) and the machine profile of [decision 0011](0011-slice-3-machine-stock-setup.md). Decision 0196 item 1, no machine default, stands. Requirements GC-14, SET-01 and NFR-12 are unchanged.
 - **Date:** 23 Oct 2026.
-- **Open items:** OI-754 is closed by this record. OI-982 (the owner confirms the Z1's spindle range on the machine) is new.
+- **Open items:** OI-754 is closed by this record. OI-982 (the owner confirms the Z1's spindle range on the machine) is new; the specification entry below joins OI-981.
 
 ## Context
 
@@ -18,6 +18,12 @@ Issue 249 asked for the spindle speed to be checked against the machine's limit 
 5. **The machine section shows it.** The Setup inspector's machine values list "Spindle speed" ("Up to 13000 rpm", or "2000 to 13000 rpm") with the others in the collapsed part, with its confirmation mark, its source and how to confirm it ("Check the spindle's lowest and highest speed in the machine's documents or controller settings.").
 6. **Formats.** Machine profile files go to their schema 4; the project's machine copy takes project schema 18 (shared with decision 0230; claimed in the work breakdown). Both steps are additive: they change only the number and refuse an older file that already holds the range.
 7. **Library family 0.18.0.** `MachineProfile` gains two public fields and `ProfileField` a variant, breaking changes (decision 0048): the workspace minor version goes to 0.18.0, with changelog entries in each crate of the family. Lane STEPALL-E (unmerged) also takes 0.18.0; whichever merges second takes 0.19.0.
+
+## Specification entry proposed
+
+For the owner to agree with those of decision 0230 (OI-981); the specification is not edited by this record.
+
+- **Section 11.3, the machine values:** after the maximum feeds, in the collapsed part, "Spindle speed" with the profile's range, shown only when the profile gives one; and in section 11.6, an operation whose spindle speed is outside the machine's range blocks Post and export like a missing value.
 
 ## G-code and golden files
 
