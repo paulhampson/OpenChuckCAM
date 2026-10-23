@@ -1,6 +1,6 @@
 # 0227: Edge following cuts along the exact curve of a STEP edge, not the chords of its tessellation (lane STEPALL-E; issue 257; OI-229)
 
-- **Status:** proposed. Step 4 of the order the owner chose in [decision 0209](0209-step-geometry-for-every-strategy.md) (accepted, option A; item 5 there), which is on the branch `claude/docs-stepall-proposal` and not yet on `main`. Awaiting the owner's acceptance.
+- **Status:** accepted by the project owner (23 Oct 2026), given directly in the lane STEPALL-E session ("Accept 0227"; decision 0049). Step 4 of the order the owner chose in [decision 0209](0209-step-geometry-for-every-strategy.md) (accepted, option A; item 5 there).
 - **What it amends:** nothing in the requirements or the architecture. It settles [decision 0053](0053-slice-16-edge-following-brep.md) item 5 (the chains lie on the surface to the tessellation tolerance) for edges whose curve the kernel can give, and closes OI-229. Edge following on a mesh part is unchanged (decision 0047).
 - **Date:** 22 Oct 2026.
 - **Requirements:** OP-08 (edge and curve following), IMP-02, IMP-06, NFR-05 to NFR-07, GC-07.
