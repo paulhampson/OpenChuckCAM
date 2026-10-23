@@ -165,16 +165,13 @@ impl Rig {
         out
     }
 
-    /// Every text and filled rectangle painted, as much of it as its clip
-    /// lets show: the text (none for a rectangle) and the visible rectangle.
-    /// A text's rectangle covers its glyphs, not the indent a wrapped row
-    /// starts with. What a scroll area clips away entirely is left out.
-    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect)> {
-        fn walk(
-            shape: &egui::Shape,
-            clip: egui::Rect,
-            out: &mut Vec<(Option<String>, egui::Rect)>,
-        ) {
+    /// Every text and filled rectangle painted: the text (none for a
+    /// rectangle), its whole rectangle and as much of it as its clip lets
+    /// show. A text's rectangle covers its glyphs, not the indent a wrapped
+    /// row starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect, egui::Rect)> {
+        type Painted = Vec<(Option<String>, egui::Rect, egui::Rect)>;
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Painted) {
             let (text, rect) = match shape {
                 egui::Shape::Text(t) => (
                     Some(t.galley.text().to_string()),
@@ -194,7 +191,7 @@ impl Rig {
             };
             let seen = rect.intersect(clip);
             if seen.is_positive() {
-                out.push((text, seen));
+                out.push((text, rect, seen));
             }
         }
         let mut out = Vec::new();
@@ -744,6 +741,57 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
     ] {
         assert!(rig.shows(needle), "{needle} is not shown");
     }
+}
+
+/// On a STEP part, a set the strategy cannot use shows a Warning line under
+/// the role that holds it, with the reason and what to do, before anything
+/// is generated, and the operation is in error (decision record 0209 item
+/// 10). The part is named as a STEP file; nothing reads it.
+#[test]
+fn req_op_23_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use() {
+    use openchuck_app::project::{
+        Item, OrderKey, Placement, RelativePath, SelectionSet, SelectionTarget,
+    };
+    use openchuck_app::selection::SelectionRole;
+    let mut rig = Rig::cube("inspector-set-refused", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blade.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model.clone())))
+        .unwrap();
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    app.execute(Command::Add {
+        item: Item::SelectionSet(SelectionSet {
+            id: set,
+            order: OrderKey::default(),
+            name: "Blades".into(),
+            model: model.id,
+            model_hash: model.hash,
+            target: SelectionTarget::Faces([openchuck_app::pick::FaceId(1)].into()),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    op.strategy = "rest_machining".into();
+    app.execute(Command::Replace(Item::Operation(op.clone())))
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Avoid, set, true)
+        .unwrap();
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    let said = "Rest machining does not use a boundary, avoid or check set. Take the set 'Blades' \
+                out of the operation.";
+    assert!(rig.shows(said), "the warning is not shown");
+    assert!(rig.shows("This operation can't be generated"));
+    assert!(!rig.shows("rest_machining"));
 }
 
 /// The header's name is an editable field: a name is applied as one
@@ -1639,4 +1687,42 @@ fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descrip
     // The list scrolls, so only the first entries are drawn; the first
     // entry's description is under its name.
     assert!(rig.shows(&choices[0].description[..40]));
+}
+
+/// Issue 201, the owner's option C: the status bar shows the current job,
+/// and choosing it opens the Jobs tab, with every job, its history and
+/// Cancel, even when the dock was collapsed.
+#[test]
+fn req_ui_09_the_job_in_the_status_bar_opens_the_jobs_tab() {
+    let mut rig = Rig::cube("frame-jobs-status", None);
+    rig.shell.toggle_region(super::frame::Region::Dock);
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.settings.dock.collapsed);
+}
+
+#[test]
+fn req_ui_09_req_ui_16_the_job_in_the_status_bar_opens_a_dock_the_small_window_closed() {
+    // CodeRabbit on pull request 281: the small-window rule closes the dock
+    // without the user's setting, and the status bar left it closed.
+    let mut rig = Rig::cube("frame-jobs-small", None);
+    rig.size = egui::vec2(1300.0, 700.0);
+    rig.frame(Vec::new());
+    assert!(rig.shell.collapsed(Region::Dock));
+    assert!(!rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.collapsed(Region::Dock));
 }

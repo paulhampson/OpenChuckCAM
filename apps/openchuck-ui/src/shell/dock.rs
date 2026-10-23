@@ -56,6 +56,15 @@ impl Shell {
         tabs
     }
 
+    /// Opens the Jobs tab, opening the dock if it was collapsed (the job in
+    /// the status bar, issue 201).
+    pub(super) fn show_jobs(&mut self) {
+        self.dock_tab = DockTab::Jobs;
+        if self.collapsed(super::frame::Region::Dock) {
+            self.toggle_region(super::frame::Region::Dock);
+        }
+    }
+
     /// The tab strip, with the error and warning counts on Messages.
     pub(super) fn dock_tabs(&mut self, ui: &mut egui::Ui) {
         let tabs = self.tabs();
@@ -210,6 +219,12 @@ impl Shell {
     /// their outcome (UI-09; specification section 9).
     fn jobs_tab(&mut self, ui: &mut egui::Ui) {
         let mut cancel = None;
+        // The operation the pipeline works on, as the status bar says it
+        // (decision 0190 item 5).
+        let activity = self
+            .app
+            .as_ref()
+            .and_then(openchuck_app::Application::pipeline_activity);
         egui::ScrollArea::vertical()
             .id_salt("jobs")
             .auto_shrink([false, false])
@@ -220,7 +235,12 @@ impl Shell {
                 for entry in self.jobs.running() {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(&entry.label);
+                        match &activity {
+                            Some(a) if matches!(entry.name.as_str(), "regenerate" | "simulate") => {
+                                ui.label(format!("{}: {a}", entry.label))
+                            }
+                            _ => ui.label(&entry.label),
+                        };
                         if let Some(f) = entry.fraction() {
                             ui.add(
                                 egui::ProgressBar::new(f)
@@ -314,41 +334,91 @@ impl Shell {
         // The project's stock simulation choice (issue 214; decision record
         // 0168) is in the tab with or without a run, as one undoable step.
         // A result out of date says so here, with the way to simulate again,
-        // above the controls it still has or in place of the ones it lost
-        // (issues 259 and 260).
+        // under the controls it still has or the ones it lost (issues 259
+        // and 260): the banner never lies over a control or pushes one out
+        // of the dock (the owner's feedback on issue 260).
         let stale = self.out_of_date.reason().is_some();
-        let again = self.app.is_some() && self.out_of_date_banner(ui);
+        let banner = self.app.as_ref().and_then(|_| self.banner());
+        let mut again = false;
+        let rest = || {
+            egui::ScrollArea::vertical()
+                .id_salt("playback")
+                .auto_shrink([false, true])
+                // However little room is left, the rest scrolls in it: the
+                // dock does not grow past its height (issue 262).
+                .min_scrolled_height(0.0)
+        };
         let skip = match &self.app {
             Some(app) if self.play.has_run() => {
                 // The transport and the timeline stay in a strip that does
                 // not scroll; the rest scrolls under it, with a bar in a strip
-                // of its own so it never lies over a control (issue 262).
-                ui.scope(|ui| {
-                    if stale {
-                        ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
-                    }
-                    let skip = self.play.show_strip(ui, app);
-                    crate::theme::solid_scroll_bar(ui);
-                    egui::ScrollArea::vertical()
-                        .id_salt("playback")
-                        .auto_shrink([false, true])
-                        // However little room the strip and the banner
-                        // leave, the rest scrolls in it: the dock does not
-                        // grow past its height (issue 262).
-                        .min_scrolled_height(0.0)
-                        .show(ui, |ui| self.play.show_rest(ui, app));
+                // of its own so it never lies over a control (issue 262). In a
+                // dock too short for the strip, the strip scrolls too.
+                let strip_id = egui::Id::new("playback strip height");
+                let strip_height = ui
+                    .data(|d| d.get_temp::<f32>(strip_id))
+                    .unwrap_or(f32::INFINITY);
+                let fits = strip_height <= ui.available_height();
+                let play = &mut self.play;
+                let strip = |ui: &mut egui::Ui, play: &mut crate::playback_panel::PlaybackPanel| {
+                    let top = ui.cursor().top();
+                    let skip = ui
+                        .scope(|ui| {
+                            if stale {
+                                ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
+                            }
+                            play.show_strip(ui, app)
+                        })
+                        .inner;
+                    let height = ui.cursor().top() - top;
+                    ui.data_mut(|d| d.insert_temp(strip_id, height));
                     skip
-                })
-                .inner
+                };
+                let mut below =
+                    |ui: &mut egui::Ui, play: &mut crate::playback_panel::PlaybackPanel| {
+                        if let Some(banner) = &banner {
+                            again |= banner.show(ui);
+                        }
+                        ui.scope(|ui| {
+                            if stale {
+                                ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
+                            }
+                            play.show_rest(ui, app);
+                        });
+                    };
+                if fits {
+                    let skip = strip(ui, play);
+                    crate::theme::solid_scroll_bar(ui);
+                    rest().show(ui, |ui| below(ui, play));
+                    skip
+                } else {
+                    crate::theme::solid_scroll_bar(ui);
+                    rest()
+                        .show(ui, |ui| {
+                            let skip = strip(ui, play);
+                            below(ui, play);
+                            skip
+                        })
+                        .inner
+                }
             }
             Some(app) => {
-                let skip = crate::playback_panel::waiting_row(ui, app);
-                if !stale {
-                    ui.label(
-                        RichText::new("Run the simulation to play the cut.").color(DARK.muted),
-                    );
-                }
-                skip
+                crate::theme::solid_scroll_bar(ui);
+                rest()
+                    .show(ui, |ui| {
+                        let skip = crate::playback_panel::waiting_row(ui, app);
+                        match &banner {
+                            Some(banner) => again |= banner.show(ui),
+                            None => {
+                                ui.label(
+                                    RichText::new("Run the simulation to play the cut.")
+                                        .color(DARK.muted),
+                                );
+                            }
+                        }
+                        skip
+                    })
+                    .inner
             }
             None => {
                 ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
