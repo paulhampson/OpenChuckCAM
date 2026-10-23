@@ -199,7 +199,7 @@ Attach them to one GitHub issue for the gate 4 result (section 7.2), so the veri
 
 The owner added this measurement to gate 4 (22 Oct 2026, relayed by the coordinator). It is lane SHORTMOVE's [decision 0222](https://github.com/paulhampson/OpenChuckCAM/pull/315) item 7, which is **proposed**: the specification below is copied from it, not invented here. It measures how short a block the Z1 can run at full speed. Its result sets the Z1 profile's `min_block_ms`, with a block window of 32 blocks; **the Z1 profile ships with the minimum-block-time check off until this has been run** (OI-930).
 
-**Check it first, as SP-12 was (OI-925, the owner's option A; [decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md), proposed).** The program is written by a script on the spike branch, not by the application's post, so gates 1 to 3 have not checked it. Verification plan policy 6 excepts only the SP-12 conventions program; decision 0232 extends that exception to this program, on the checks K1 to K4 below. Do not run it on the Z1 until K1 to K4 have passed.
+**Check it first, as SP-12 was (OI-925, the owner's option A; [decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md), accepted).** The program is written by a script on the spike branch, not by the application's post, so gates 1 to 3 have not checked it. Verification plan policy 6 excepts only the SP-12 conventions program; decision 0232 extends that exception to this program, on the checks K1 to K4 below. Do not run it on the Z1 until K1 to K4 have passed.
 
 | Step | Do | Pass when |
 | --- | --- | --- |
@@ -567,7 +567,7 @@ The owner answered the questions of OI-910 to OI-919 on 22 Oct 2026 (relayed by 
 | OI-921 | The first-cut project's tools | A: rough with 104, finish with 204, Plastic presets | 5.3 | No |
 | OI-923 | Free stock to leave uncut | Accepted: the 68 mm held region at the start (G0) | 5.2 | Yes, for OP-22 volumes |
 | OI-924 | The tailstock | A: the 2 mm, 10 mm piece is a held region at the end; the tailstock body's clearance is checked by the operator (V5, M2, M5) | 5.2, V5, M2, M5 | No |
-| OI-925 | How the block-rate air cut program is checked before it runs, since it is written by a script and has not passed gates 1 to 3 (verification plan policy 6 excepts only the SP-12 program) | A: as SP-12 was, read by hand and replayed by gate 3 as a LinuxCNC copy ([decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md), proposed) | 4.8 K1 to K4, G4-8 | Until 0232 is accepted |
+| OI-925 | How the block-rate air cut program is checked before it runs, since it is written by a script and has not passed gates 1 to 3 (verification plan policy 6 excepts only the SP-12 program) | A: as SP-12 was, read by hand and replayed by gate 3 as a LinuxCNC copy ([decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md), accepted) | 4.8 K1 to K4, G4-8 | Until 0232 is accepted |
 | OI-918 | The setup sheet does not show held regions or tabs | Show them, in plain wording (owner, 22 Oct 2026); built in lane GATES: the Setup section's held-region and tab lines and a tab table per setup, HTML and PDF | S8, 5.2 | No |
 | OI-919 | Single block on the Z1 | B: no single block; 10 % override with a hand on feed hold | 4.3 | No |
 

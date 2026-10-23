@@ -1,9 +1,9 @@
 # 0232: The Z1 block-rate air-cut program is checked as the SP-12 program was (verification plan policy 6; lane GATES)
 
-- **Status:** proposed (23 Oct 2026). The owner chose option A on OI-925, relayed by the coordinator on 23 Oct 2026 (decision 0049), and asked for a record of the exception. Only the owner accepts it, directly in the lane GATES session.
-- **What it amends:** [verification plan](../verification-plan.md) section 1, policy 6 ("Nothing reaches a real machine unverified"), whose one exception is the SP-12 conventions program. The edit is proposed below and is made only once this record is accepted (CLAUDE.md). No requirement and no architecture change.
+- **Status:** accepted (23 Oct 2026) by the project owner, directly in the lane GATES session ("accept 0232"). The owner chose option A on OI-925, relayed by the coordinator on 23 Oct 2026 (decision 0049). The verification plan edit of *Consequences* is made with the acceptance.
+- **What it amends:** [verification plan](../verification-plan.md) section 1, policy 6 ("Nothing reaches a real machine unverified"), whose one exception is the SP-12 conventions program. The edit is made with the acceptance. No requirement and no architecture change.
 - **Date:** 23 Oct 2026.
-- **Open items:** OI-925 closes when this record is accepted. OI-930 (the Z1's measured minimum block time) is lane SHORTMOVE's and stays open until the air cut has run.
+- **Open items:** OI-925 closed by the acceptance. OI-930 (the Z1's measured minimum block time) is lane SHORTMOVE's and stays open until the air cut has run.
 
 Numbering: 0231 is the highest record on `main` and every remote branch on 23 Oct 2026, so this takes 0232.
 
@@ -28,7 +28,7 @@ Requirements: GC-09 (the Z1 post), GC-10 (the verification post), NFR-12 (the us
 
 ## Consequences
 
-The document edit below is proposed with this record and made only once the owner accepts it:
+The document edit below was proposed with this record and is made with its acceptance:
 
 - `docs/verification-plan.md` section 1, policy 6: after "The one exception is the SP-12 conventions program: …", add "The Z1 block-rate air-cut program of decision 0222 is treated the same way ([decision 0232](decisions/0232-block-rate-program-checked-as-sp-12-was.md)): read by hand, its LinuxCNC copy replayed by gate 3, then run only as an attended air cut under the gate 4 rules."
 - `docs/open-items.md`: OI-925 closed.
