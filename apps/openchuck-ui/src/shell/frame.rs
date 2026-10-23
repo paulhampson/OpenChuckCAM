@@ -10,7 +10,7 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, RichText, Stroke};
-use openchuck_app::overview::{ItemStatus, Step};
+use openchuck_app::overview::{ItemStatus, Overview, Step, StepHealth, StepState};
 use openchuck_app::settings::{SCALE_RANGE, region};
 use openchuck_viewport::{DisplayMode, Projection, StandardView};
 
@@ -316,11 +316,14 @@ impl Shell {
                         if let Some(panes) = &panes {
                             let (focused, selected) = self.viewport.marked_solids();
                             let marks = crate::setup_panes::Marks { focused, selected };
+                            // Each setup keeps its panes' zoom and pan for
+                            // the session (decision record 0203).
                             let seen = crate::setup_panes::show(
                                 ui,
                                 panes,
                                 marks,
                                 self.viewport.shows_unapplied(),
+                                egui::Id::new(("setup panes view", self.setup)),
                             );
                             if let Some(item) = seen.clicked {
                                 self.viewport.click_solid(item);
@@ -329,6 +332,9 @@ impl Shell {
                         }
                         let corner = crate::selection_panel::tools_corner(ui.max_rect());
                         self.viewport.show(ui);
+                        // A result that no longer matches the project says so on
+                        // the result itself (issue 260).
+                        self.view_banner(ui.ctx());
                         // The selection tools sit over the top left of the view.
                         if self.viewport.is_picking() {
                             self.selection.tools(ui.ctx(), corner);
@@ -862,7 +868,12 @@ impl Shell {
         // The bar's colour follows the whole job's health (issue 210): a line
         // along its foot, and the badge at its right end, which also has the
         // shape (UI-11).
-        let health = self.overview.health();
+        // A number box holding an entry that cannot be read marks the step
+        // it is in, and so the whole job, as an error to fix (UI-26).
+        let unreadable = crate::field_row::unreadable_entries(ui.ctx());
+        let steps = steps_with_unreadable(&self.overview, self.step, &unreadable);
+        let first_problem = self.overview.first_problem().is_some();
+        let health = worst(&steps);
         let foot = ui.max_rect();
         if self.app.is_some() {
             ui.painter().hline(
@@ -872,7 +883,7 @@ impl Shell {
             );
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if self.app.is_some() && self.health_badge(ui) {
+            if self.app.is_some() && self.health_badge(ui, &steps, first_problem) {
                 self.go_to_first_problem();
             }
             match self.step {
@@ -936,7 +947,11 @@ impl Shell {
                     .show(ui, |ui| {
                         ui.horizontal_centered(|ui| {
                             for step in Step::ALL {
-                                let state = self.overview.step(step);
+                                let state = steps
+                                    .iter()
+                                    .find(|s| s.step == step)
+                                    .cloned()
+                                    .unwrap_or_else(|| self.overview.step(step));
                                 let active = self.step == step;
                                 if step_tab(ui, step, active, &state).clicked() {
                                     self.open_step(step);
@@ -952,8 +967,8 @@ impl Shell {
     /// the words of the job's health. Its tooltip names what needs attention
     /// in each step; clicking it goes to the first problem. Returns true when
     /// clicked.
-    fn health_badge(&self, ui: &mut egui::Ui) -> bool {
-        let health = self.overview.health();
+    fn health_badge(&self, ui: &mut egui::Ui, steps: &[StepState], first_problem: bool) -> bool {
+        let health = worst(steps);
         let label = health.name();
         let galley = ui.painter().layout_no_wrap(
             label.to_owned(),
@@ -989,8 +1004,12 @@ impl Shell {
                 format!("Overall status: {label}"),
             )
         });
-        let lines = self.overview.health_lines();
-        let first = self.overview.first_problem().is_some();
+        let lines: Vec<_> = steps
+            .iter()
+            .filter(|s| s.health != StepHealth::Good)
+            .filter_map(|s| Some((s.step, s.health, s.reason.clone()?)))
+            .collect();
+        let first = first_problem;
         let response = response.on_hover_ui(|ui| {
             ui.strong(format!("Overall status: {label}"));
             for (step, health, reason) in &lines {
@@ -1066,23 +1085,29 @@ impl Shell {
             }
             ui.label("mm · deg").on_hover_text("Display units");
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                // The current job, with its one percentage and the
+                // operation it works on; choosing it opens the Jobs tab, with
+                // every job, their history and Cancel (issue 201, the
+                // owner's option C).
                 let running = self.run.running_text(self.app.as_ref()).or_else(|| {
                     self.jobs.running().first().map(|e| {
-                        let percent = e
-                            .fraction()
-                            .map(|f| format!(" {:.0} %", f * 100.0))
-                            .unwrap_or_default();
+                        let percent = e.percent().map(|p| format!(" {p} %")).unwrap_or_default();
                         format!("{}…{percent}", e.label)
                     })
                 });
-                match running {
+                let text = match running {
                     Some(text) => {
                         ui.spinner();
-                        ui.label(text);
+                        text + &more_jobs(self.jobs.running().len())
                     }
-                    None => {
-                        ui.label("Ready");
-                    }
+                    None => "Ready".to_owned(),
+                };
+                if ui
+                    .add(egui::Label::new(text).sense(egui::Sense::click()))
+                    .on_hover_text("Show the Jobs tab: every job, with its progress and Cancel")
+                    .clicked()
+                {
+                    self.show_jobs();
                 }
                 ui.separator();
                 // D2: the short form; the full notice is at export.
@@ -1161,6 +1186,16 @@ impl Shell {
     }
 }
 
+/// What the status bar adds after the current job when others run too:
+/// " (and 1 more job)". Nothing when it is the only one.
+fn more_jobs(running: usize) -> String {
+    match running.saturating_sub(1) {
+        0 => String::new(),
+        1 => " (and 1 more job)".to_owned(),
+        n => format!(" (and {n} more jobs)"),
+    }
+}
+
 fn bar_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(DARK.bar)
@@ -1170,6 +1205,28 @@ fn bar_frame() -> egui::Frame {
 /// One step of the workflow bar: a numbered circle and the name, an accent
 /// underline when active, a green ring when complete, dimmed with its reason
 /// when unavailable (specification section 4).
+/// The five steps' states with `step` marked as an error to fix while number
+/// boxes in it hold entries that cannot be read (UI-26).
+fn steps_with_unreadable(overview: &Overview, step: Step, unreadable: &[String]) -> Vec<StepState> {
+    let mut steps = overview.steps.clone();
+    if !unreadable.is_empty()
+        && let Some(state) = steps.iter_mut().find(|s| s.step == step)
+    {
+        state.health = StepHealth::Error;
+        state.reason = Some(format!("Fix {}: it cannot be read", unreadable.join(", ")));
+    }
+    steps
+}
+
+/// The worst health of `steps`, as the whole job's.
+fn worst(steps: &[StepState]) -> StepHealth {
+    steps
+        .iter()
+        .map(|s| s.health)
+        .max()
+        .unwrap_or(StepHealth::Attention)
+}
+
 fn step_tab(
     ui: &mut egui::Ui,
     step: Step,
@@ -1291,5 +1348,20 @@ fn view_step(step: Step) -> ViewStep {
         Step::Operations => ViewStep::Operations,
         Step::Simulate => ViewStep::Simulate,
         Step::Export => ViewStep::Export,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn req_ui_09_the_status_bar_says_when_more_jobs_run() {
+        // Issue 201: the status bar shows one job; the others are counted,
+        // and listed in the Jobs tab.
+        assert_eq!(more_jobs(0), "");
+        assert_eq!(more_jobs(1), "");
+        assert_eq!(more_jobs(2), " (and 1 more job)");
+        assert_eq!(more_jobs(3), " (and 2 more jobs)");
     }
 }

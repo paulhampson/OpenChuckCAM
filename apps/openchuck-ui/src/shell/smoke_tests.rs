@@ -96,7 +96,8 @@ fn req_ui_01_req_ui_07_every_inspector_and_setup_section_draws() {
     draw(&mut rig);
     assert!(rig.shows("WORKHOLDING AND TABS"));
 
-    // Picking on the part opens the selection tools and the Selection sets tab.
+    // Picking on the part opens the selection tools and New selection in the
+    // inspector (decision 0215).
     rig.shell.start_picking();
     draw(&mut rig);
     assert!(matches!(rig.shell.selected, Some(Selection::Picking)));
@@ -110,7 +111,6 @@ fn req_ui_01_req_ui_12_every_dock_tab_draws() {
     // stay on any step.
     for (tab, step) in [
         (DockTab::Messages, Step::Operations),
-        (DockTab::SelectionSets, Step::Operations),
         (DockTab::Jobs, Step::Operations),
         (DockTab::SetupChecks, Step::Setup),
         (DockTab::Playback, Step::Simulate),

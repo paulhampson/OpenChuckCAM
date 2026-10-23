@@ -46,6 +46,7 @@ use openchuck_project::{
     BoundaryOptions, ContentHash, Item, ItemId, ModelRef, OnBreak, Operation, Placement, Project,
     SelectionSet, SelectionTarget, SetOptions,
 };
+use openchuck_types::brep::{BrepModel, FaceId};
 use openchuck_types::geometry::Vec3;
 use openchuck_types::job::JobContext;
 use openchuck_types::mesh::TriangleMesh;
@@ -1165,15 +1166,58 @@ impl ResolvedRegion {
     }
 }
 
+/// The faces of a STEP part and the face each triangle of its joined
+/// tessellation belongs to (`BrepModel::joined_tessellation`), so a face set
+/// resolves to the triangles of its faces (decision 0209 item 3). While the
+/// tool is dropped on the tessellation (OI-81), those triangles are exactly
+/// the surface the contacts lie on.
+pub(crate) struct FaceTriangles {
+    faces: BTreeSet<FaceId>,
+    owner: Vec<FaceId>,
+}
+
+impl FaceTriangles {
+    /// The faces and triangles of the placed B-rep `brep`.
+    pub(crate) fn of(brep: &BrepModel) -> Self {
+        Self {
+            faces: brep.faces.iter().map(|f| f.id).collect(),
+            owner: brep.joined_tessellation().1,
+        }
+    }
+
+    /// The triangles of `faces`, in order.
+    fn triangles(&self, faces: &BTreeSet<FaceId>) -> TriangleSet {
+        self.owner
+            .iter()
+            .zip(0_u32..)
+            .filter(|(f, _)| faces.contains(f))
+            .map(|(_, t)| t)
+            .collect()
+    }
+}
+
+/// The triangles `target` selects on the part: a triangle set's own on a
+/// mesh, or the triangles of a face set's faces on a STEP part (`faces`).
+/// `None` for a target of another kind.
+fn triangles_of(target: &SelectionTarget, faces: Option<&FaceTriangles>) -> Option<TriangleSet> {
+    match (target, faces) {
+        (SelectionTarget::Triangles(triangles), None) => Some(triangles.clone()),
+        (SelectionTarget::Faces(chosen), Some(map)) => Some(map.triangles(chosen)),
+        _ => None,
+    }
+}
+
 /// Resolves the selection sets of `operation` against its part: `part` is the
-/// model, `hash` the hash of its file as read now and `mesh` its placed mesh.
-/// `None` when the operation uses no sets.
+/// model, `hash` the hash of its file as read now and `mesh` its placed mesh,
+/// or a STEP part's joined tessellation with `faces` mapping its triangles to
+/// their faces. `None` when the operation uses no sets.
 pub(crate) fn resolve(
     project: &Project,
     operation: &Operation,
     part: &ModelRef,
     hash: ContentHash,
     mesh: &TriangleMesh,
+    faces: Option<&FaceTriangles>,
 ) -> Result<Option<ResolvedRegion>, AppError> {
     if operation.selection_refs().next().is_none() {
         return Ok(None);
@@ -1192,14 +1236,20 @@ pub(crate) fn resolve(
                     .iter()
                     .find(|s| s.id == id)
                     .ok_or_else(|| AppError::UnknownSelection(id.to_string()))?;
-                let SelectionTarget::Triangles(triangles) = &set.target else {
+                let Some(triangles) = triangles_of(&set.target, faces) else {
                     return Err(fail(
                         set,
-                        format!(
-                            "it selects {}, which only edge following uses, as the edges it \
-                             follows",
-                            set.target.kind_name()
-                        ),
+                        match faces {
+                            None => format!(
+                                "it selects {}, which only edge following uses, as the edges it \
+                                 follows",
+                                set.target.kind_name()
+                            ),
+                            Some(_) => format!(
+                                "it selects {}, and a STEP part is limited by a set of its faces",
+                                set.target.kind_name()
+                            ),
+                        },
                     ));
                 };
                 if set.model != part.id {
@@ -1218,8 +1268,16 @@ pub(crate) fn resolve(
                         ),
                     ));
                 }
+                if let (SelectionTarget::Faces(chosen), Some(map)) = (&set.target, faces)
+                    && let Some(face) = chosen.iter().find(|f| !map.faces.contains(f))
+                {
+                    return Err(fail(set, format!("face {} is not in the model", face.0)));
+                }
                 if triangles.is_empty() {
-                    return Err(fail(set, "it selects no triangles".to_owned()));
+                    return Err(fail(
+                        set,
+                        format!("it selects no {}", set.target.kind_name()),
+                    ));
                 }
                 if let Some(&bad) = triangles.iter().next_back()
                     && bad as usize >= mesh.triangles.len()
@@ -1232,8 +1290,7 @@ pub(crate) fn resolve(
                         ),
                     ));
                 }
-                all.get_or_insert_with(BTreeSet::new)
-                    .extend(triangles.iter().copied());
+                all.get_or_insert_with(BTreeSet::new).extend(triangles);
             }
             Ok(all)
         };
@@ -1255,12 +1312,11 @@ pub(crate) fn resolve(
         let Some(set) = project.selection_sets().iter().find(|s| s.id == *id) else {
             continue;
         };
-        let (Some(leave), SelectionTarget::Triangles(triangles)) =
-            (set.stock_to_leave, &set.target)
+        let (Some(leave), Some(triangles)) = (set.stock_to_leave, triangles_of(&set.target, faces))
         else {
             continue;
         };
-        for &t in triangles {
+        for t in triangles {
             let entry = amount.entry(t).or_insert(leave);
             *entry = entry.max(leave);
         }

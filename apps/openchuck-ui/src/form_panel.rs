@@ -291,6 +291,7 @@ fn row(
                 needs: need,
                 warned,
                 scroll_to: scroll,
+                number: !matches!(field.kind, FieldKind::Text),
             };
             match field_row::text_row(ui, state, &row) {
                 Outcome::None => None,

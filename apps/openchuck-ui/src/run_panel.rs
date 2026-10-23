@@ -20,7 +20,14 @@ use openchuck_app::{Application, JobHandle, JobId, JobLog, Regeneration, Strateg
 
 use crate::theme::DARK;
 
+/// How often the window is drawn again while a job runs, for its progress.
+const RUNNING_REPAINT: std::time::Duration = std::time::Duration::from_millis(100);
+
 const PROBLEM: Color32 = DARK.error;
+
+/// What a group of results says when pointed at (issue 255).
+const GROUP_HINT: &str = "The same note for consecutive moves, with values within 1 % of each \
+     other. Open it to see each move.";
 const NOTE: Color32 = DARK.warning;
 
 /// How serious a line of the results is.
@@ -41,6 +48,9 @@ pub struct ResultLine {
     pub severity: Severity,
     /// The sentence.
     pub text: String,
+    /// The notes a grouped line holds, one per move, shown when it is
+    /// opened (issue 255); empty for a line of its own.
+    pub moves: Vec<String>,
 }
 
 /// The lines of the results window for `run`, in order: what was generated
@@ -52,7 +62,11 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             .operation(id)
             .map_or_else(|| "(removed operation)".to_owned(), |o| o.name.clone())
     };
-    let line = |severity, text: String| ResultLine { severity, text };
+    let line = |severity, text: String| ResultLine {
+        severity,
+        text,
+        moves: Vec::new(),
+    };
     let mut out = Vec::new();
     let names = |ids: &[OperationId]| {
         ids.iter()
@@ -75,8 +89,18 @@ pub fn result_lines(run: &Regeneration, project: &Project) -> Vec<ResultLine> {
             ),
         ));
     }
-    for note in &run.notes {
-        out.push(line(Severity::Warning, note.clone()));
+    // Repeated notes about consecutive moves are one line each (issue 255;
+    // decision record 0218).
+    for group in openchuck_app::note_groups::group_notes(&run.notes) {
+        out.push(ResultLine {
+            severity: Severity::Warning,
+            text: group.text,
+            moves: if group.notes.len() > 1 {
+                group.notes
+            } else {
+                Vec::new()
+            },
+        });
     }
     for report in &run.reports {
         match &report.comparison {
@@ -282,17 +306,17 @@ impl RunPanel {
     ) -> Option<(Arc<Regeneration>, JobId)> {
         let job = self.job.as_ref()?;
         let id = job.handle.id();
-        if let Some(entry) = jobs.get(id)
-            && let Some(progress) = &entry.progress
-        {
-            self.progress = Some(match progress.total {
-                Some(total) => format!("{} of {total}", progress.done),
-                None => progress.stage.clone(),
-            });
+        // One share of the whole run, as a percentage that never starts
+        // again at a new stage (issue 201).
+        if let Some(percent) = jobs.get(id).and_then(openchuck_app::JobEntry::percent) {
+            self.progress = Some(format!("{percent} %"));
         }
         match job.handle.try_result() {
             None => {
-                ctx.request_repaint();
+                // The progress text and the end of the job need no more than
+                // this; a repaint every frame kept the graphics busy for the
+                // whole of a long generation (issue 252).
+                ctx.request_repaint_after(RUNNING_REPAINT);
                 None
             }
             Some(result) => {
@@ -320,8 +344,8 @@ impl RunPanel {
         }
     }
 
-    /// What the footer says while a job runs: "Generating… 2 of 4", or
-    /// `None` when nothing runs.
+    /// What the footer says while a job runs: "Generating… 42 %", then the
+    /// operation being worked on, or `None` when nothing runs.
     pub fn running_text(&self, app: Option<&Application>) -> Option<String> {
         let job = self.job.as_ref()?;
         let what = if job.simulate {
@@ -444,30 +468,39 @@ impl RunPanel {
                     ui.label("Name");
                     ui.text_edit_singleline(&mut form.name);
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Strategy");
-                    let shown = choices
-                        .iter()
-                        .find(|c| c.name == form.strategy)
-                        .map_or("choose…", |c| c.label.as_str());
-                    egui::ComboBox::from_id_salt("add op strategy")
-                        .selected_text(shown)
-                        .show_ui(ui, |ui| {
-                            for c in &choices {
-                                // Disabled with the reason, not hidden: a
-                                // strategy that needs a STEP part on a mesh
-                                // part (decision record 0174).
-                                if let Some(why) = &c.unavailable {
-                                    ui.add_enabled(
+                // One list: roughing first, finishing next, the specialist
+                // strategies last, each with a short description under its
+                // name (issue 195; decision record 0204).
+                ui.label("Strategy");
+                egui::ScrollArea::vertical()
+                    .id_salt("add op strategy list")
+                    .max_height(300.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        let mut group = None;
+                        for c in &choices {
+                            if group != Some(c.group) {
+                                group = Some(c.group);
+                                ui.add_space(2.0);
+                                ui.label(
+                                    egui::RichText::new(group_heading(c.group))
+                                        .small()
+                                        .strong(),
+                                );
+                            }
+                            // Disabled with the reason, not hidden: a
+                            // strategy that needs a STEP part on a mesh part
+                            // (decision record 0174).
+                            if let Some(why) = &c.unavailable {
+                                ui.add_enabled(
+                                    false,
+                                    egui::Button::selectable(
                                         false,
-                                        egui::Button::selectable(
-                                            false,
-                                            format!("{} \u{b7} needs a STEP model", c.label),
-                                        ),
-                                    )
-                                    .on_disabled_hover_text(why);
-                                    continue;
-                                }
+                                        format!("{} \u{b7} needs a STEP model", c.label),
+                                    ),
+                                )
+                                .on_disabled_hover_text(why);
+                            } else {
                                 let label = if c.takes_selections {
                                     c.label.clone()
                                 } else {
@@ -475,8 +508,12 @@ impl RunPanel {
                                 };
                                 ui.selectable_value(&mut form.strategy, c.name.clone(), label);
                             }
-                        });
-                });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.add_space(18.0);
+                                ui.weak(&c.description);
+                            });
+                        }
+                    });
                 ui.horizontal(|ui| {
                     ui.label("Setup");
                     let shown = setups
@@ -618,13 +655,30 @@ impl RunPanel {
                         egui::ScrollArea::vertical()
                             .max_height(360.0)
                             .show(ui, |ui| {
-                                for line in result_lines(run, app.project()) {
-                                    let text = RichText::new(&line.text);
-                                    ui.label(match line.severity {
+                                for (index, line) in
+                                    result_lines(run, app.project()).into_iter().enumerate()
+                                {
+                                    let colour = |text: RichText| match line.severity {
                                         Severity::Info => text,
                                         Severity::Warning => text.color(NOTE),
                                         Severity::Problem => text.color(PROBLEM),
-                                    });
+                                    };
+                                    if line.moves.is_empty() {
+                                        ui.label(colour(RichText::new(&line.text)));
+                                        continue;
+                                    }
+                                    // A group opens on its moves, one line
+                                    // each; it starts closed (issue 255).
+                                    egui::CollapsingHeader::new(colour(RichText::new(&line.text)))
+                                        .id_salt(("result group", index))
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            for note in &line.moves {
+                                                ui.label(colour(RichText::new(note)));
+                                            }
+                                        })
+                                        .header_response
+                                        .on_hover_text(GROUP_HINT);
                                 }
                             });
                         ui.separator();
@@ -636,11 +690,44 @@ impl RunPanel {
     }
 }
 
+/// The heading over a group of the strategy list.
+fn group_heading(group: openchuck_app::StrategyGroup) -> &'static str {
+    use openchuck_app::StrategyGroup;
+    match group {
+        StrategyGroup::Roughing => "Roughing",
+        StrategyGroup::Finishing => "Finishing",
+        StrategyGroup::Specialist => "Specialist",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn req_nfr_12_repeated_notes_are_one_line_that_opens_on_each_move() {
+        // Issue 255: the results group repeated notes about consecutive moves
+        // and keep each move's note for when the line is opened.
+        let notes: Vec<String> = (2..=4)
+            .map(|m| {
+                format!(
+                    "operation 'Roughing': move {m}: the machine's feed limits slow this move: \
+                     the contact feed is 972.9 mm/min, not 1000.0"
+                )
+            })
+            .collect();
+        let run = Regeneration {
+            notes: notes.clone(),
+            ..Regeneration::default()
+        };
+        let lines = result_lines(&run, &Project::new("notes"));
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].text.contains("moves 2 to 4 (3 moves)"));
+        assert_eq!(lines[0].moves, notes);
+        assert_eq!(lines[0].severity, Severity::Warning);
+    }
 
     #[test]
     fn req_ui_09_an_empty_run_has_no_lines_and_a_new_panel_is_not_stale_for_nothing() {
@@ -650,6 +737,60 @@ mod tests {
         let panel = RunPanel::default();
         assert!(!panel.is_running());
         assert!(panel.last.is_none());
+    }
+
+    /// While a job runs the window is drawn again at a steady pace for its
+    /// progress, not at every frame the display can show (issue 252: a
+    /// generation of 20 minutes kept the graphics busy the whole time).
+    #[test]
+    fn req_ui_09_req_nfr_04_a_running_job_redraws_at_a_steady_pace() {
+        use std::time::{Duration, Instant};
+
+        use openchuck_app::JobLog;
+
+        use crate::testing::cube_project;
+
+        let (dir, app, _, _) = cube_project("run-pace");
+        let ctx = egui::Context::default();
+        let pass = |f: &mut dyn FnMut(&egui::Context)| {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| f(ui.ctx()));
+            // No renderer here takes the font texture.
+            output.textures_delta.clear();
+            output
+                .viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .map(|v| v.repaint_delay)
+        };
+        // egui's own first passes ask for repaints of their own; with
+        // nothing running it then waits for input.
+        let mut warm = 0;
+        while pass(&mut |_| {}) != Some(Duration::MAX) {
+            warm += 1;
+            assert!(warm < 10);
+        }
+        let mut panel = RunPanel::default();
+        panel.start(&app, false);
+        let started = Instant::now();
+        let mut running_passes = 0;
+        while panel.is_running() {
+            let delay = pass(&mut |ctx| {
+                panel.poll(&JobLog::default(), ctx);
+            });
+            if panel.is_running() {
+                running_passes += 1;
+                // egui takes its own frame time off the delay.
+                let delay = delay.unwrap();
+                assert!(
+                    delay > Duration::from_millis(50) && delay <= RUNNING_REPAINT,
+                    "{delay:?}"
+                );
+            }
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(running_passes > 0);
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// A cancelled run must not make an older run look current: what the

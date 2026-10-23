@@ -291,69 +291,84 @@ impl ImportSession {
         // A window inside the main one (decision 0164), of a fixed size: the header and the footer stay in view and the body
         // scrolls (UI-16, OI-431).
         let ((), event) = floating_fixed(ctx, WINDOW_KEY, "Import model", WINDOW_SIZE, |ui| {
-            egui::Panel::top("import header").show(ui, |ui| {
-                ui.add_space(4.0);
-                ui.label(RichText::new("FILE").small().strong().color(DARK.muted));
-                ui.horizontal(|ui| {
-                    let field = ui.add(
-                        egui::TextEdit::singleline(&mut self.path_text)
-                            .desired_width(ui.available_width() - 240.0)
-                            .hint_text("Path of a model file (STL or STEP)"),
-                    );
-                    // The file being added is the one checked: no new path meanwhile.
-                    let busy = self.adding.is_some();
-                    if ui
-                        .add_enabled(!busy, egui::Button::new("Browse…"))
-                        .clicked()
-                        && let Some(picked) = crate::shell::pick_model(&self.path_text, Some(app))
-                    {
-                        self.path_text = picked;
-                        submit = true;
+            egui::Panel::top("import header")
+                .resizable(false)
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("FILE").small().strong().color(DARK.muted));
+                    ui.horizontal(|ui| {
+                        let field = ui.add(
+                            egui::TextEdit::singleline(&mut self.path_text)
+                                .desired_width(ui.available_width() - 240.0)
+                                .hint_text("Path of a model file (STL or STEP)"),
+                        );
+                        // The file being added is the one checked: no new path meanwhile.
+                        let busy = self.adding.is_some();
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("Browse…"))
+                            .clicked()
+                            && let Some(picked) =
+                                crate::shell::pick_model(&self.path_text, Some(app))
+                        {
+                            self.path_text = picked;
+                            submit = true;
+                        }
+                        let enter = !busy
+                            && field.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        let ready = !busy && !self.path_text.trim().is_empty();
+                        if ui
+                            .add_enabled(ready, egui::Button::new(CHECK_LABEL))
+                            .clicked()
+                            || enter
+                        {
+                            submit = true;
+                        }
+                    });
+                    ui.weak(step_line(checked));
+                    let working = if self.adding.is_some() {
+                        Some("Adding…")
+                    } else if self.job.is_some() {
+                        Some("Checking…")
+                    } else {
+                        None
+                    };
+                    status_row(ui, working);
+                    if let Some(error) = &self.error {
+                        ui.colored_label(DARK.error, error);
                     }
-                    let enter = !busy
-                        && field.lost_focus()
-                        && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    let ready = !busy && !self.path_text.trim().is_empty();
-                    if ui
-                        .add_enabled(ready, egui::Button::new(CHECK_LABEL))
-                        .clicked()
-                        || enter
-                    {
-                        submit = true;
-                    }
+                    ui.add_space(2.0);
                 });
-                ui.weak(step_line(checked));
-                let working = if self.adding.is_some() {
-                    Some("Adding…")
-                } else if self.job.is_some() {
-                    Some("Checking…")
-                } else {
-                    None
-                };
-                status_row(ui, working);
-                if let Some(error) = &self.error {
-                    ui.colored_label(DARK.error, error);
-                }
-                ui.add_space(2.0);
-            });
-            egui::Panel::bottom("import footer").show(ui, |ui| {
-                ui.add_space(4.0);
-                ui.weak("The file is not changed. Its path and hash are stored in the project.");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let can_add = self.can_add();
-                    let add =
-                        egui::Button::new(RichText::new("Add to project").color(DARK.primary_text))
+            egui::Panel::bottom("import footer")
+                .resizable(false)
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    ui.weak(
+                        "The file is not changed. Its path and hash are stored in the project.",
+                    );
+                    // A row of its own height: a layout given the panel's whole height centres
+                    // the buttons in it, and the panel then keeps growing (issue 222).
+                    let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+                    ui.allocate_ui_with_layout(
+                        row,
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            let can_add = self.can_add();
+                            let add = egui::Button::new(
+                                RichText::new("Add to project").color(DARK.primary_text),
+                            )
                             .fill(DARK.primary)
                             .stroke(egui::Stroke::new(1.0, DARK.primary_border));
-                    if ui.add_enabled(can_add, add).clicked() {
-                        action = ImportAction::Add;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        action = ImportAction::Cancel;
-                    }
+                            if ui.add_enabled(can_add, add).clicked() {
+                                action = ImportAction::Add;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                action = ImportAction::Cancel;
+                            }
+                        },
+                    );
+                    ui.add_space(2.0);
                 });
-                ui.add_space(2.0);
-            });
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -509,8 +524,10 @@ impl ImportSession {
                 .corner_radius(4.0)
                 .inner_margin(egui::Margin::symmetric(10, 6))
         };
+        // Under the dialog, which is a window in the same frame, so a small view never has the
+        // card drawn over the dialog's controls (issue 222).
         egui::Area::new(egui::Id::new("import legend"))
-            .order(egui::Order::Middle)
+            .order(egui::Order::Background)
             .fixed_pos(area.left_bottom() + egui::vec2(12.0, -12.0))
             .pivot(egui::Align2::LEFT_BOTTOM)
             .show(ctx, |ui| {
@@ -524,8 +541,8 @@ impl ImportSession {
             });
         let lines = readout_lines(i);
         egui::Area::new(egui::Id::new("import readout"))
-            .order(egui::Order::Middle)
-            .fixed_pos(area.right_bottom() + egui::vec2(-12.0 - 460.0, -12.0))
+            .order(egui::Order::Background)
+            .fixed_pos(area.right_bottom() + egui::vec2(-12.0, -12.0))
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .show(ctx, |ui| {
                 frame().show(ui, |ui| {

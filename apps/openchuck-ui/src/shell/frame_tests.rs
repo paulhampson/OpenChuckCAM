@@ -51,7 +51,11 @@ impl Rig {
         rig
     }
 
-    /// Draws until the scene, the checks and any run are done.
+    /// Draws until the scene, the checks and any run are done, and the run
+    /// is prepared for playback. A run that lands is handed to the playback
+    /// panel in the same frame, which then prepares it in a job; until that
+    /// job is done the dock draws only the transport row, so a test that
+    /// read the rows under it straight after a run raced the job (OI-840).
     pub(super) fn settle(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
@@ -60,6 +64,7 @@ impl Rig {
             if s.scene_job.is_none()
                 && s.checks_job.is_none()
                 && !s.run.is_running()
+                && !s.play.is_preparing()
                 && s.overview.checks_current
             {
                 break;
@@ -157,6 +162,64 @@ impl Rig {
         }
         let mut out = Vec::new();
         self.shapes.iter().for_each(|s| walk(&s.shape, &mut out));
+        out
+    }
+
+    /// Every text and filled rectangle painted: the text (none for a
+    /// rectangle), its whole rectangle and as much of it as its clip lets
+    /// show. A text's rectangle covers its glyphs, not the indent a wrapped
+    /// row starts with. What a scroll area clips away entirely is left out.
+    pub(super) fn painted(&self) -> Vec<(Option<String>, egui::Rect, egui::Rect)> {
+        type Painted = Vec<(Option<String>, egui::Rect, egui::Rect)>;
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Painted) {
+            let (text, rect) = match shape {
+                egui::Shape::Text(t) => (
+                    Some(t.galley.text().to_string()),
+                    t.galley
+                        .rows
+                        .iter()
+                        .map(|r| r.rect_without_leading_space().translate(t.pos.to_vec2()))
+                        .reduce(|a, b| a.union(b))
+                        .unwrap_or(egui::Rect::NOTHING),
+                ),
+                egui::Shape::Rect(r) => (None, r.rect),
+                egui::Shape::Vec(shapes) => {
+                    shapes.iter().for_each(|s| walk(s, clip, out));
+                    return;
+                }
+                _ => return,
+            };
+            let seen = rect.intersect(clip);
+            if seen.is_positive() {
+                out.push((text, rect, seen));
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
+        out
+    }
+
+    /// Every text painted with the part of its rectangle that is not clipped away, in paint
+    /// order; texts wholly clipped away are left out.
+    pub(super) fn visible_text_rects(&self) -> Vec<(String, egui::Rect)> {
+        fn walk(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<(String, egui::Rect)>) {
+            match shape {
+                egui::Shape::Text(t) => {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clip);
+                    if rect.is_positive() {
+                        out.push((t.galley.text().to_string(), rect));
+                    }
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, clip, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.shapes
+            .iter()
+            .for_each(|s| walk(&s.shape, s.clip_rect, &mut out));
         out
     }
 
@@ -680,6 +743,57 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
     }
 }
 
+/// On a STEP part, a set the strategy cannot use shows a Warning line under
+/// the role that holds it, with the reason and what to do, before anything
+/// is generated, and the operation is in error (decision record 0209 item
+/// 10). The part is named as a STEP file; nothing reads it.
+#[test]
+fn req_op_23_req_ui_07_the_geometry_section_warns_of_a_set_the_strategy_cannot_use() {
+    use openchuck_app::project::{
+        Item, OrderKey, Placement, RelativePath, SelectionSet, SelectionTarget,
+    };
+    use openchuck_app::selection::SelectionRole;
+    let mut rig = Rig::cube("inspector-set-refused", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blade.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model.clone())))
+        .unwrap();
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    app.execute(Command::Add {
+        item: Item::SelectionSet(SelectionSet {
+            id: set,
+            order: OrderKey::default(),
+            name: "Blades".into(),
+            model: model.id,
+            model_hash: model.hash,
+            target: SelectionTarget::Faces([openchuck_app::pick::FaceId(1)].into()),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    op.strategy = "rest_machining".into();
+    app.execute(Command::Replace(Item::Operation(op.clone())))
+        .unwrap();
+    app.set_operation_selection(op.id, SelectionRole::Avoid, set, true)
+        .unwrap();
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    let said = "Rest machining does not use a boundary, avoid or check set. Take the set 'Blades' \
+                out of the operation.";
+    assert!(rig.shows(said), "the warning is not shown");
+    assert!(rig.shows("This operation can't be generated"));
+    assert!(!rig.shows("rest_machining"));
+}
+
 /// The header's name is an editable field: a name is applied as one
 /// undoable command, and an empty one is refused under it (section 8).
 #[test]
@@ -800,6 +914,7 @@ fn req_ui_25_the_draft_and_the_selected_solid_reach_the_view() {
         .unwrap()
         .draft_mut()
         .tabs = vec![Tab {
+        auto: None,
         x_start: Millimetres(-7.0),
         length: Millimetres(1.0),
         shape: TabShape::Cylinder {
@@ -1481,4 +1596,133 @@ fn req_ui_16_the_inspector_follows_its_splitter_within_its_range_and_stays_align
         near(rig.inspector_layout().0, min),
         "dragged to the narrowest"
     );
+}
+
+/// Each model has its Placement and Mesh check rows in the tree (section 6;
+/// issue #181, decision record 0201): a click on one selects the model and
+/// opens that section of its inspector, and the Placement section says it
+/// is shared by every setup.
+#[test]
+fn req_ui_06_the_model_has_placement_and_mesh_check_rows() {
+    let mut rig = Rig::cube("model-rows", None);
+    let defaults = ["check", "file", "placement", "units"];
+    rig.shell
+        .settings
+        .set_section_open("model", "check", false, &defaults);
+    rig.settle();
+    let model = rig.shell.app.as_ref().unwrap().project().models()[0].id;
+    let row = |rig: &Rig, text: &str| {
+        rig.text_rects()
+            .into_iter()
+            .find(|(t, r)| t == text && r.left() < 300.0)
+            .unwrap_or_else(|| panic!("no tree row '{text}'"))
+            .1
+    };
+    let placement = row(&rig, "Placement");
+    let check = row(&rig, "Mesh check");
+    assert!(check.top() > placement.top());
+    assert!(rig.shows("1 step"), "the placement chip");
+    rig.click(placement.center());
+    rig.settle();
+    assert_eq!(rig.shell.selected, Some(Selection::Model(model)));
+    assert_eq!(rig.shell.model_section, Some(crate::model_panel::PLACEMENT));
+    assert!(rig.shows("shared by every setup"), "the Placement line");
+    rig.click(row(&rig, "Mesh check").center());
+    rig.settle();
+    assert_eq!(
+        rig.shell.model_section,
+        Some(crate::model_panel::MESH_CHECK)
+    );
+    // A section opened to show it is not kept open in the settings.
+    assert!(!rig.shell.settings.section_open("model", "check", true));
+    // Choosing the model another way chooses no section of it.
+    rig.shell.show_item(ItemRef::Model(model));
+    assert_eq!(rig.shell.model_section, None);
+}
+
+/// The operation inspector names the strategy under its own heading with the
+/// same plain description the New operation list shows, apart from the
+/// operation's own name; a rename leaves the strategy as it was (issue 242;
+/// decision record 0204; OP-16, UI-07, GC-07).
+#[test]
+fn req_op_16_req_ui_07_the_inspector_shows_the_strategy_apart_from_the_name() {
+    let mut rig = Rig::cube("inspector-strategy", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut op = app.project().operations()[0].clone();
+    op.name = "Operation 3".to_owned();
+    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
+        op.clone(),
+    )))
+    .unwrap();
+    let label = app.strategy_label(&op.strategy);
+    let text = app.strategy_description(&op.strategy);
+    assert!(!text.is_empty());
+    rig.settle();
+    rig.shell.select(Selection::Operation(op.id));
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Operation 3"));
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows(&label), "{label}");
+    assert!(rig.shows(&text[..40]), "{text}");
+}
+
+/// New operation is one list of strategies, roughing first and the specialist
+/// strategies last, each with its description under it (issue 195; decision
+/// record 0204; OP-16, UI-06).
+#[test]
+fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descriptions() {
+    let mut rig = Rig::cube("new-operation-list", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_ref().unwrap();
+    let choices = app.strategy_choices();
+    rig.shell.run.begin_add(app, None, None);
+    rig.frame(Vec::new());
+    rig.frame(Vec::new());
+    assert!(rig.shows("Strategy"));
+    assert!(rig.shows("Roughing"));
+    assert!(rig.shows("Finishing"));
+    assert!(rig.shows("Rotary roughing"));
+    // The list scrolls, so only the first entries are drawn; the first
+    // entry's description is under its name.
+    assert!(rig.shows(&choices[0].description[..40]));
+}
+
+/// Issue 201, the owner's option C: the status bar shows the current job,
+/// and choosing it opens the Jobs tab, with every job, its history and
+/// Cancel, even when the dock was collapsed.
+#[test]
+fn req_ui_09_the_job_in_the_status_bar_opens_the_jobs_tab() {
+    let mut rig = Rig::cube("frame-jobs-status", None);
+    rig.shell.toggle_region(super::frame::Region::Dock);
+    rig.frame(Vec::new());
+    assert!(rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.settings.dock.collapsed);
+}
+
+#[test]
+fn req_ui_09_req_ui_16_the_job_in_the_status_bar_opens_a_dock_the_small_window_closed() {
+    // CodeRabbit on pull request 281: the small-window rule closes the dock
+    // without the user's setting, and the status bar left it closed.
+    let mut rig = Rig::cube("frame-jobs-small", None);
+    rig.size = egui::vec2(1300.0, 700.0);
+    rig.frame(Vec::new());
+    assert!(rig.shell.collapsed(Region::Dock));
+    assert!(!rig.shell.settings.dock.collapsed);
+    let (_, at) = rig
+        .text_rects()
+        .into_iter()
+        .find(|(t, _)| t == "Ready")
+        .expect("the status bar says Ready");
+    rig.click(at.center());
+    assert_eq!(rig.shell.dock_tab, super::dock::DockTab::Jobs);
+    assert!(!rig.shell.collapsed(Region::Dock));
 }

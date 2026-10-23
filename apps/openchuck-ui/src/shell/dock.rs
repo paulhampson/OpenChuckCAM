@@ -10,24 +10,22 @@ use eframe::egui::{self, RichText};
 use openchuck_app::JobOutcome;
 use openchuck_app::overview::{Severity, Step};
 
-use super::{Command, Dialog, Selection, Shell, marks};
+use super::{Command, Shell, marks};
 use crate::theme::DARK;
 
 /// A tab of the dock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DockTab {
     Messages,
-    SelectionSets,
     Jobs,
     SetupChecks,
     Playback,
 }
 
 impl DockTab {
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Messages => "Messages",
-            Self::SelectionSets => "Selection sets",
             Self::Jobs => "Jobs",
             Self::SetupChecks => "Setup checks",
             Self::Playback => "Playback",
@@ -48,14 +46,23 @@ fn duration(d: Duration) -> String {
 
 impl Shell {
     /// The tabs this step offers.
-    fn tabs(&self) -> Vec<DockTab> {
-        let mut tabs = vec![DockTab::Messages, DockTab::SelectionSets, DockTab::Jobs];
+    pub(super) fn tabs(&self) -> Vec<DockTab> {
+        let mut tabs = vec![DockTab::Messages, DockTab::Jobs];
         match self.step {
             Step::Setup => tabs.insert(0, DockTab::SetupChecks),
             Step::Simulate => tabs.push(DockTab::Playback),
             _ => {}
         }
         tabs
+    }
+
+    /// Opens the Jobs tab, opening the dock if it was collapsed (the job in
+    /// the status bar, issue 201).
+    pub(super) fn show_jobs(&mut self) {
+        self.dock_tab = DockTab::Jobs;
+        if self.collapsed(super::frame::Region::Dock) {
+            self.toggle_region(super::frame::Region::Dock);
+        }
     }
 
     /// The tab strip, with the error and warning counts on Messages.
@@ -104,6 +111,12 @@ impl Shell {
 
     /// The dock's contents.
     pub(super) fn dock(&mut self, ui: &mut egui::Ui) {
+        // The panel's frame is drawn as tall as what is in it: a tab with
+        // little in it would leave the rest of the dock undrawn (the black
+        // area of issue 259) and its size would change from frame to frame
+        // (the playback box moving, issue 215). The contents take the whole
+        // panel.
+        ui.set_min_size(ui.available_size());
         ui.horizontal(|ui| {
             self.dock_tabs(ui);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -119,7 +132,6 @@ impl Shell {
         ui.separator();
         match self.dock_tab {
             DockTab::Messages => self.messages_tab(ui),
-            DockTab::SelectionSets => self.sets_tab(ui),
             DockTab::Jobs => self.jobs_tab(ui),
             DockTab::SetupChecks => self.checks_tab(ui),
             DockTab::Playback => self.playback_tab(ui),
@@ -203,35 +215,16 @@ impl Shell {
         }
     }
 
-    /// Selection sets: the table, the save and edit controls (section 12.2;
-    /// its rework is lane X6's).
-    fn sets_tab(&mut self, ui: &mut egui::Ui) {
-        let Some(app) = &mut self.app else {
-            ui.label(RichText::new("No project open.").color(DARK.muted));
-            return;
-        };
-        let summaries = app.selection_summaries(&[]);
-        if let Some(Selection::Set(id)) = self.selected
-            && !summaries.iter().any(|s| s.id == id)
-        {
-            self.selected = Some(Selection::Picking);
-        }
-        let error = egui::ScrollArea::vertical()
-            .id_salt("selection sets")
-            .show(ui, |ui| {
-                self.selection
-                    .show(ui, app, &summaries, self.viewport.view())
-            })
-            .inner;
-        if let Some(error) = error {
-            self.dialog = Some(Dialog::Error(error));
-        }
-    }
-
     /// Jobs: running jobs with progress, time and Cancel; finished jobs with
     /// their outcome (UI-09; specification section 9).
     fn jobs_tab(&mut self, ui: &mut egui::Ui) {
         let mut cancel = None;
+        // The operation the pipeline works on, as the status bar says it
+        // (decision 0190 item 5).
+        let activity = self
+            .app
+            .as_ref()
+            .and_then(openchuck_app::Application::pipeline_activity);
         egui::ScrollArea::vertical()
             .id_salt("jobs")
             .auto_shrink([false, false])
@@ -242,7 +235,12 @@ impl Shell {
                 for entry in self.jobs.running() {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(&entry.label);
+                        match &activity {
+                            Some(a) if matches!(entry.name.as_str(), "regenerate" | "simulate") => {
+                                ui.label(format!("{}: {a}", entry.label))
+                            }
+                            _ => ui.label(&entry.label),
+                        };
                         if let Some(f) = entry.fraction() {
                             ui.add(
                                 egui::ProgressBar::new(f)
@@ -335,23 +333,101 @@ impl Shell {
     fn playback_tab(&mut self, ui: &mut egui::Ui) {
         // The project's stock simulation choice (issue 214; decision record
         // 0168) is in the tab with or without a run, as one undoable step.
+        // A result out of date says so here, with the way to simulate again,
+        // under the controls it still has or the ones it lost (issues 259
+        // and 260): the banner never lies over a control or pushes one out
+        // of the dock (the owner's feedback on issue 260).
+        let stale = self.out_of_date.reason().is_some();
+        let banner = self.app.as_ref().and_then(|_| self.banner());
+        let mut again = false;
+        let rest = || {
+            egui::ScrollArea::vertical()
+                .id_salt("playback")
+                .auto_shrink([false, true])
+                // However little room is left, the rest scrolls in it: the
+                // dock does not grow past its height (issue 262).
+                .min_scrolled_height(0.0)
+        };
         let skip = match &self.app {
             Some(app) if self.play.has_run() => {
-                egui::ScrollArea::vertical()
-                    .id_salt("playback")
-                    .show(ui, |ui| self.play.show(ui, app))
-                    .inner
+                // The transport and the timeline stay in a strip that does
+                // not scroll; the rest scrolls under it, with a bar in a strip
+                // of its own so it never lies over a control (issue 262). In a
+                // dock too short for the strip, the strip scrolls too.
+                let strip_id = egui::Id::new("playback strip height");
+                let strip_height = ui
+                    .data(|d| d.get_temp::<f32>(strip_id))
+                    .unwrap_or(f32::INFINITY);
+                let fits = strip_height <= ui.available_height();
+                let play = &mut self.play;
+                let strip = |ui: &mut egui::Ui, play: &mut crate::playback_panel::PlaybackPanel| {
+                    let top = ui.cursor().top();
+                    let skip = ui
+                        .scope(|ui| {
+                            if stale {
+                                ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
+                            }
+                            play.show_strip(ui, app)
+                        })
+                        .inner;
+                    let height = ui.cursor().top() - top;
+                    ui.data_mut(|d| d.insert_temp(strip_id, height));
+                    skip
+                };
+                let mut below =
+                    |ui: &mut egui::Ui, play: &mut crate::playback_panel::PlaybackPanel| {
+                        if let Some(banner) = &banner {
+                            again |= banner.show(ui);
+                        }
+                        ui.scope(|ui| {
+                            if stale {
+                                ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
+                            }
+                            play.show_rest(ui, app);
+                        });
+                    };
+                if fits {
+                    let skip = strip(ui, play);
+                    crate::theme::solid_scroll_bar(ui);
+                    rest().show(ui, |ui| below(ui, play));
+                    skip
+                } else {
+                    crate::theme::solid_scroll_bar(ui);
+                    rest()
+                        .show(ui, |ui| {
+                            let skip = strip(ui, play);
+                            below(ui, play);
+                            skip
+                        })
+                        .inner
+                }
             }
             Some(app) => {
-                let skip = crate::playback_panel::skip_box(ui, app);
-                ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
-                skip
+                crate::theme::solid_scroll_bar(ui);
+                rest()
+                    .show(ui, |ui| {
+                        let skip = crate::playback_panel::waiting_row(ui, app);
+                        match &banner {
+                            Some(banner) => again |= banner.show(ui),
+                            None => {
+                                ui.label(
+                                    RichText::new("Run the simulation to play the cut.")
+                                        .color(DARK.muted),
+                                );
+                            }
+                        }
+                        skip
+                    })
+                    .inner
             }
             None => {
                 ui.label(RichText::new("Run the simulation to play the cut.").color(DARK.muted));
                 None
             }
         };
+        if again {
+            self.primary();
+        }
         if let Some(skip) = skip {
             self.tree_action(super::TreeAction::Command(Box::new(
                 Command::SetSkipStockSimulation(skip),

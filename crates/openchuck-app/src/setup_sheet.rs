@@ -10,7 +10,8 @@
 //! random identifier, no clock.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use openchuck_path::Registry;
 use openchuck_project::{Operation, Project, Setup, ToolSnapshot};
@@ -50,6 +51,105 @@ pub struct SetupSheet {
     pub title: String,
     /// The sections, in reading order.
     pub sections: Vec<SheetSection>,
+}
+
+/// Where the sheet reads the time it was generated from (decision 0110 item
+/// 2). The system clock is read only when a sheet is written; a test passes a
+/// [`FixedClock`] so a snapshot of the sheet is the same every run.
+pub trait Clock: fmt::Debug + Send + Sync {
+    /// The current time.
+    fn now(&self) -> SystemTime;
+}
+
+/// The system clock.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> SystemTime {
+        SystemTime::now()
+    }
+}
+
+/// A clock that always reads the same time.
+#[derive(Debug, Clone, Copy)]
+pub struct FixedClock(pub SystemTime);
+
+impl Clock for FixedClock {
+    fn now(&self) -> SystemTime {
+        self.0
+    }
+}
+
+/// `time` as ISO 8601 in UTC to the second, for example
+/// `2026-10-21T09:30:05Z`. UTC keeps the sheet the same on every computer;
+/// the `Z` is its time zone. A time before 1970 reads as 1970.
+pub fn iso8601_utc(time: SystemTime) -> String {
+    let seconds = time
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_secs();
+    let (days, rest) = (seconds / 86_400, seconds % 86_400);
+    // Civil date from days since 1970-01-01 (proleptic Gregorian).
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let day_of_era = z % 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + u64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3_600,
+        rest % 3_600 / 60,
+        rest % 60
+    )
+}
+
+/// What ties a printed sheet to the files it came from and to the moment it
+/// was made (GC-12, decision 0110). Each field is the text the sheet shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Traceability {
+    /// When the sheet was generated, ISO 8601 with the time zone.
+    pub generated: String,
+    /// When the project was last saved (its files' modification time), or
+    /// "not saved yet".
+    pub saved: String,
+    /// The software version that made the sheet.
+    pub version: String,
+    /// A hash of the saved project files, or "not saved yet".
+    pub fingerprint: String,
+    /// The version-control line.
+    pub version_control: String,
+}
+
+impl Traceability {
+    /// The version-control line until `openchuck-vcs` exists.
+    pub const NOT_TRACKED: &'static str = "not tracked";
+    /// What the saved time and the fingerprint read when no project file has
+    /// been saved.
+    pub const NOT_SAVED: &'static str = "not saved yet";
+
+    /// The sheet's Traceability section.
+    pub fn section(&self) -> SheetSection {
+        SheetSection {
+            heading: "Traceability".into(),
+            body: SheetBody::Facts(vec![
+                ("Generated".into(), self.generated.clone()),
+                ("Project last saved".into(), self.saved.clone()),
+                ("Software version".into(), self.version.clone()),
+                ("Project fingerprint".into(), self.fingerprint.clone()),
+                ("Version control".into(), self.version_control.clone()),
+            ]),
+        }
+    }
 }
 
 /// `value` in millimetres with up to three decimals and no trailing zeros.
@@ -140,6 +240,14 @@ fn describe_shape(tool: &ToolSnapshot) -> String {
 }
 
 impl SetupSheet {
+    /// The sheet with the Traceability section added after the Notes, where
+    /// a printed copy ends (GC-12, decision 0110).
+    #[must_use]
+    pub fn with_traceability(mut self, traceability: &Traceability) -> Self {
+        self.sections.push(traceability.section());
+        self
+    }
+
     /// Reads the sheet from `project`. With a `toolpath` (a regeneration's),
     /// each operation shows its programmed time; without one the time column
     /// is a dash.
@@ -263,6 +371,7 @@ impl SetupSheet {
                     "Setup",
                     "Tool",
                     "Spindle rpm",
+                    "Speed from",
                     "Tolerance",
                     "Time",
                 ]
@@ -434,7 +543,7 @@ fn setup_facts(project: &Project, setup: &Setup) -> Vec<(String, String)> {
         (
             "Part offset".to_string(),
             format!(
-                "{} mm along the rotary axis from the machine's reference point",
+                "part moved {} mm along the rotary axis from where its placement puts it",
                 mm(setup.frame.part_offset.0)
             ),
         ),
@@ -466,15 +575,9 @@ fn operation_row(
         || "none".to_string(),
         |t| format!("T{} {}", t.controller.number, t.name),
     );
-    let material = project
-        .setup(operation.setup)
-        .and_then(|s| s.material.as_deref());
-    let rpm = match (snapshot, material) {
-        (Some(t), Some(m)) => t
-            .cutting_data
-            .get(m)
-            .map_or_else(|| "-".to_string(), |d| plain(d.spindle_speed.0, 0)),
-        _ => "-".to_string(),
+    let (rpm, speed_from) = match crate::requirements::spindle_speed(project, operation) {
+        Some((speed, source)) => (plain(speed.0, 3), speed_source(project, operation, source)),
+        None => ("-".to_string(), "none".to_string()),
     };
     let time = if with_times {
         times
@@ -501,13 +604,34 @@ fn operation_row(
     vec![
         (index + 1).to_string(),
         operation.name.clone(),
-        operation.strategy.clone(),
+        registry
+            .get(&operation.strategy)
+            .map_or_else(|_| operation.strategy.clone(), |s| s.label().to_string()),
         setup,
         tool,
         rpm,
+        speed_from,
         tolerance,
         time,
     ]
+}
+
+/// Where a spindle speed came from, in plain words (decision 0196, OI-755).
+fn speed_source(
+    project: &Project,
+    operation: &Operation,
+    source: crate::requirements::SpindleSource,
+) -> String {
+    match source {
+        crate::requirements::SpindleSource::Operation => "operation".to_string(),
+        crate::requirements::SpindleSource::ToolData => {
+            let material = project
+                .setup(operation.setup)
+                .and_then(|s| s.material.as_deref())
+                .unwrap_or_default();
+            format!("tool data: {material}")
+        }
+    }
 }
 
 /// HTML text escaping for element content.
@@ -570,6 +694,10 @@ mod pdf {
     impl Line {
         pub fn blank() -> Self {
             Self::body("")
+        }
+        #[cfg(test)]
+        pub fn text(&self) -> &str {
+            &self.text
         }
         pub fn body(text: &str) -> Self {
             Self {
@@ -646,17 +774,39 @@ mod pdf {
             })
             .collect();
         let total = |w: &[usize]| w.iter().sum::<usize>() + GAP * columns.saturating_sub(1);
-        while total(&widths) > COLUMNS {
-            let Some((widest, _)) = widths
-                .iter()
-                .enumerate()
-                .filter(|(_, w)| **w > 6)
-                .max_by_key(|(i, w)| (**w, std::cmp::Reverse(*i)))
-            else {
-                break;
-            };
-            if let Some(w) = widths.get_mut(widest) {
-                *w -= 1;
+        // Shrink the widest column first. A column keeps the width of its
+        // longest word while any other can still shrink, so a cell breaks
+        // between words, not inside one (OI-842); only a table that cannot
+        // otherwise fit cuts words, down to a few characters.
+        let longest_word = |c: usize| {
+            std::iter::once(headers.get(c))
+                .chain(rows.iter().map(|r| r.get(c)))
+                .flatten()
+                .flat_map(|t| t.split_whitespace())
+                .map(|w| w.chars().count())
+                .max()
+                .unwrap_or(1)
+        };
+        let floors: Vec<usize> = (0..columns).map(longest_word).collect();
+        for use_words in [true, false] {
+            while total(&widths) > COLUMNS {
+                let Some((widest, _)) = widths
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, w)| {
+                        **w > if use_words {
+                            floors.get(*i).copied().unwrap_or(6)
+                        } else {
+                            6
+                        }
+                    })
+                    .max_by_key(|(i, w)| (**w, std::cmp::Reverse(*i)))
+                else {
+                    break;
+                };
+                if let Some(w) = widths.get_mut(widest) {
+                    *w -= 1;
+                }
             }
         }
         let render = |cells: &[String]| -> Vec<Line> {
@@ -791,5 +941,60 @@ mod pdf {
             objects.len() + 1
         );
         out.into_bytes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(seconds: u64) -> SystemTime {
+        UNIX_EPOCH + Duration::from_secs(seconds)
+    }
+
+    #[test]
+    fn req_gc_12_the_generation_time_is_iso_8601_in_utc() {
+        assert_eq!(iso8601_utc(at(0)), "1970-01-01T00:00:00Z");
+        assert_eq!(iso8601_utc(at(951_827_696)), "2000-02-29T12:34:56Z");
+        assert_eq!(iso8601_utc(at(1_792_575_005)), "2026-10-21T09:30:05Z");
+        assert_eq!(iso8601_utc(at(4_102_444_799)), "2099-12-31T23:59:59Z");
+        // A time before 1970 reads as 1970 rather than failing (NFR-07).
+        assert_eq!(
+            iso8601_utc(UNIX_EPOCH - Duration::from_secs(5)),
+            "1970-01-01T00:00:00Z"
+        );
+    }
+
+    /// A narrow table wraps a cell at its spaces only: no column shrinks below
+    /// its longest word, so a strategy name is never cut inside a word
+    /// (OI-842; GC-12).
+    #[test]
+    fn req_gc_12_a_table_breaks_lines_only_between_words() {
+        let mut headers: Vec<String> = vec!["Operation".into(), "Strategy".into()];
+        let mut row: Vec<String> = vec![
+            "Finish the blade surfaces".into(),
+            "Helical finishing".into(),
+        ];
+        // Many wide cells, so the table is over the line width.
+        for i in 0..8 {
+            headers.push(format!("Column {i}"));
+            row.push("a b c d e f g h".into());
+        }
+        let rows = vec![row];
+        let lines = pdf::table(&headers, &rows);
+        let text: Vec<&str> = lines.iter().map(pdf::Line::text).collect();
+        let all = text.join("\n");
+        for word in ["Helical", "finishing", "Operation", "surfaces"] {
+            assert!(all.contains(word), "{word} was cut:\n{all}");
+        }
+        assert!(text.iter().all(|l| l.chars().count() <= pdf::COLUMNS));
+        // The same table gives the same lines (GC-07).
+        assert_eq!(lines, pdf::table(&headers, &rows));
+    }
+
+    #[test]
+    fn req_gc_12_the_clocks_read_the_time_they_are_given() {
+        assert_eq!(FixedClock(at(7)).now(), at(7));
+        assert!(SystemClock.now() > at(1_700_000_000));
     }
 }

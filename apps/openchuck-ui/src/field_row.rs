@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 
 use eframe::egui::{self, Key, RichText, Stroke};
 
+use crate::arith;
 use crate::theme::{DARK, RADIUS, width};
 
 /// Text being typed into fields, and refused values with their reasons, by
@@ -27,6 +28,10 @@ use crate::theme::{DARK, RADIUS, width};
 pub struct FieldState {
     text: BTreeMap<String, String>,
     errors: BTreeMap<String, String>,
+    /// Fields whose typed entry cannot be read as a number or a sum
+    /// (UI-26); their label, by key. They are a kind of refusal, kept apart
+    /// so the step bar can mark them.
+    unreadable: BTreeMap<String, String>,
 }
 
 impl FieldState {
@@ -34,6 +39,7 @@ impl FieldState {
     pub fn clear(&mut self) {
         self.text.clear();
         self.errors.clear();
+        self.unreadable.clear();
     }
 
     /// Records the outcome of applying a committed value of `key`: accepted
@@ -43,6 +49,7 @@ impl FieldState {
             Ok(()) => {
                 self.text.remove(key);
                 self.errors.remove(key);
+                self.unreadable.remove(key);
             }
             Err(e) => {
                 self.errors.insert(key.to_owned(), e);
@@ -124,6 +131,11 @@ pub struct TextRow<'a> {
     /// Scroll this row into view this frame (the "Show setting" and "Show
     /// first" jumps).
     pub scroll_to: bool,
+    /// A number box: the entry may be a sum (`12.5 + 3`), worked out when it
+    /// is confirmed and rounded to the places of the unit; an entry that
+    /// cannot be read is refused under the box, and the last good value is
+    /// kept (UI-26; [`crate::arith`]).
+    pub number: bool,
 }
 
 /// Shows `text` as the tooltip of `response` on hover and while it has
@@ -325,15 +337,38 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                 // Esc puts back the last applied text (section 8).
                 state.text.remove(row.key);
                 state.errors.remove(row.key);
+                state.unreadable.remove(row.key);
             } else if state.text.contains_key(row.key) {
-                if typed.trim() == row.applied.trim() && error.is_none() {
-                    state.text.remove(row.key);
+                // A sum is worked out here, so what is applied and kept is
+                // only the number (UI-26); an entry that cannot be read is
+                // refused and the last good value stays (NFR-07).
+                let entry = if row.number && !typed.trim().is_empty() {
+                    arith::entry_text(&typed, places(row.unit))
                 } else {
-                    outcome = Outcome::Commit(typed);
+                    Ok(typed.clone())
+                };
+                match entry {
+                    Err(reason) => {
+                        state.refuse(row.key, &typed, reason);
+                        state
+                            .unreadable
+                            .insert(row.key.to_owned(), row.label.to_owned());
+                    }
+                    Ok(text) => {
+                        state.unreadable.remove(row.key);
+                        if text.trim() == row.applied.trim() && error.is_none() {
+                            state.text.remove(row.key);
+                        } else {
+                            state.text.insert(row.key.to_owned(), text.clone());
+                            outcome = Outcome::Commit(text);
+                        }
+                    }
                 }
             }
         }
     });
+    note_unreadable(ui.ctx(), row.key, state.unreadable.get(row.key));
+    let error = state.error(row.key).map(str::to_owned);
     if let Some(reason) = error.as_deref().or(row.problem) {
         reason_line(ui, reason, DARK.error);
     } else if let (true, Some(text)) = (needed, row.needs) {
@@ -342,6 +377,39 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
         warning_line(ui, text);
     }
     outcome
+}
+
+/// Remembers for the step bar that `key` holds an entry that cannot be read
+/// (or that it no longer does), as of this frame.
+fn note_unreadable(ctx: &egui::Context, key: &str, label: Option<&String>) {
+    let id = egui::Id::new("unreadable-entries");
+    let frame = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let seen = d.get_temp_mut_or_default::<BTreeMap<String, (u64, String)>>(id);
+        match label {
+            Some(label) => {
+                seen.insert(key.to_owned(), (frame, label.clone()));
+            }
+            None => {
+                seen.remove(key);
+            }
+        }
+    });
+}
+
+/// The labels of the number boxes drawn in the last frame or two that hold
+/// an entry that cannot be read, for the step bar (UI-26).
+pub fn unreadable_entries(ctx: &egui::Context) -> Vec<String> {
+    let id = egui::Id::new("unreadable-entries");
+    let frame = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let seen = d.get_temp_mut_or_default::<BTreeMap<String, (u64, String)>>(id);
+        seen.retain(|_, (at, _)| frame.saturating_sub(*at) <= 2);
+        let mut labels: Vec<String> = seen.values().map(|(_, l)| l.clone()).collect();
+        labels.sort();
+        labels.dedup();
+        labels
+    })
 }
 
 /// A warning under a field or a section: the warning shape the tree uses and

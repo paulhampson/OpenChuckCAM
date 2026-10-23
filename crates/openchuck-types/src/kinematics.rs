@@ -30,8 +30,11 @@
 //! tip_model = R(-sign * A) * B^-1 * (fixed_xyz - origin)
 //! ```
 //!
-//! [`RotaryFrame::machine`] and [`RotaryFrame::work`] build the two frames of
-//! a setup from the machine profile and the setup's position data.
+//! [`RotaryFrame::of_profile`] and [`RotaryFrame::work`] build the two frames
+//! of a setup from the machine profile and the setup's position data. The
+//! model frame of a setup has its origin at the profile's rotary reference
+//! point; the setup's part offset moves the part along the axis in it, not
+//! the frame (SET-05; decision record 0201).
 
 use crate::geometry::{Point3, UnitVec3, Vec3};
 use crate::machine::{ASense, MachineProfile, RotaryAxis};
@@ -59,22 +62,17 @@ pub struct RotaryFrame {
 }
 
 impl RotaryFrame {
-    /// The machine frame with the model origin at the profile's rotary
-    /// reference point, as if the part offset were zero.
+    /// The machine frame of every setup: the model origin at the profile's
+    /// rotary reference point. The stock, the workholding, the work zero and
+    /// the toolpaths are fixed in it; a setup's part offset moves only the
+    /// part (decision record 0201, which replaced the frame that moved with
+    /// the part offset).
     pub fn of_profile(profile: &MachineProfile) -> Self {
         Self {
             axis: profile.rotary_axis,
             sense: profile.a_sense,
             origin: profile.rotary_origin,
         }
-    }
-
-    /// The machine frame of a setup: the model origin lies on the rotary
-    /// axis, `part_offset` along it from the profile's rotary reference point.
-    pub fn machine(profile: &MachineProfile, setup: &SetupFrame) -> Self {
-        let mut frame = Self::of_profile(profile);
-        frame.origin = frame.origin + axis_direction(frame.axis) * setup.part_offset.0;
-        frame
     }
 
     /// The work frame of a setup: the coordinates its program is written in.
@@ -97,7 +95,7 @@ impl RotaryFrame {
 }
 
 /// Something that defines a [`RotaryFrame`]: a frame itself, or a machine
-/// profile (the frame with a zero part offset).
+/// profile (its machine frame).
 pub trait AsRotaryFrame {
     /// The frame.
     fn rotary_frame(&self) -> RotaryFrame;

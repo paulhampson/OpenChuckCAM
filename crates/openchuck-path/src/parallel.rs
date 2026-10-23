@@ -28,3 +28,17 @@ where
         .flatten()
         .collect()
 }
+
+/// [`map_in_order`] for a few items of much work each, such as the passes of
+/// axial finishing: each item may go to its own thread, where a chunk of
+/// [`CHUNK`] would keep them all on one (issue #252). Each item is still
+/// computed alone and the results come back in input order, so they never
+/// depend on the thread count.
+pub fn map_each_in_order<T, U, F>(items: &[T], f: F) -> Vec<U>
+where
+    T: Sync,
+    U: Send,
+    F: Fn(&T) -> U + Sync,
+{
+    items.par_iter().map(&f).collect()
+}
