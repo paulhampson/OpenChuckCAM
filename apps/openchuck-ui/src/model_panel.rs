@@ -94,7 +94,20 @@ pub struct ModelPanel {
     report_open: bool,
     /// Why "Show in folder" failed.
     folder_error: Option<String>,
+    /// A section to open and scroll to on the next frame, chosen by its row
+    /// in the project tree (issue #181).
+    focus: Option<&'static str>,
+    /// Sections closed in the settings that were opened only to show them:
+    /// they stay closed in the settings until the user closes one.
+    shown: Vec<&'static str>,
 }
+
+/// The key of the Placement section, which the model's "Placement" row in
+/// the project tree opens (section 6; issue #181).
+pub const PLACEMENT: &str = "placement";
+/// The key of the Mesh check section, which the model's "Mesh check" row
+/// opens (section 6).
+pub const MESH_CHECK: &str = "check";
 
 impl std::fmt::Debug for ModelPanel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -194,7 +207,14 @@ impl ModelPanel {
             fields: FieldState::default(),
             report_open: false,
             folder_error: None,
+            focus: None,
+            shown: Vec::new(),
         }
+    }
+
+    /// Opens the section `key` and scrolls to it on the next frame.
+    pub fn open_section(&mut self, key: &'static str) {
+        self.focus = Some(key);
     }
 
     /// The model shown.
@@ -257,14 +277,16 @@ impl ModelPanel {
             _ => None,
         };
 
+        let focus = self.focus.take();
         for (key, title) in SECTIONS {
             let open = settings.section_open("model", key, DEFAULT_OPEN.contains(&key));
+            let focused = focus == Some(key);
             let section = field_row::section(
                 ui,
                 egui::Id::new(("model section", key)),
                 title,
                 open,
-                false,
+                focused,
                 |_| {},
                 |ui| match key {
                     "file" => self.file_section(ui, reference, inspection.as_ref()),
@@ -285,7 +307,17 @@ impl ModelPanel {
             if let Some(Some(command)) = section.body {
                 outcome.command = Some(command);
             }
-            if section.open != open {
+            if focused {
+                section.header.scroll_to_me(Some(egui::Align::TOP));
+            }
+            // A section opened to show it is not the user's choice to keep.
+            if focused && !open && !self.shown.contains(&key) {
+                self.shown.push(key);
+            }
+            if !section.open {
+                self.shown.retain(|k| *k != key);
+            }
+            if section.open != open && !self.shown.contains(&key) {
                 settings.set_section_open("model", key, section.open, &DEFAULT_OPEN);
                 outcome.settings_changed = true;
             }
@@ -413,6 +445,7 @@ impl ModelPanel {
             model: reference.id,
             transform: steps,
         };
+        ui.label(RichText::new(openchuck_app::setup_form::PLACEMENT_EXPLAINED).color(DARK.muted));
         if reference.transform.is_empty() {
             ui.label(RichText::new("As in the file.").color(DARK.muted));
         }

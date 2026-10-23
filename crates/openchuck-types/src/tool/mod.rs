@@ -392,7 +392,13 @@ pub struct CuttingData {
 impl CuttingData {
     /// The cutting feed: spindle speed times flute count times feed per tooth.
     pub fn cutting_feed(&self, tool: &Tool) -> FeedRate {
-        FeedRate(self.spindle_speed.0 * f64::from(tool.flute_count) * self.feed_per_tooth.0)
+        self.cutting_feed_at(tool, self.spindle_speed)
+    }
+
+    /// The cutting feed at `spindle`, which may differ from the entry's own
+    /// speed when an operation sets its own: the chip load stays the entry's.
+    pub fn cutting_feed_at(&self, tool: &Tool, spindle: SpindleSpeed) -> FeedRate {
+        FeedRate(spindle.0 * f64::from(tool.flute_count) * self.feed_per_tooth.0)
     }
 
     /// Fails if a value is not finite and positive, the stepover exceeds the
@@ -427,8 +433,35 @@ impl CuttingData {
 }
 
 /// Cutting data by stock material name (the name a setup gives its stock,
-/// matched exactly).
+/// matched ignoring case and repeated spaces; see [`find_cutting_data`]).
 pub type CuttingTable = BTreeMap<String, CuttingData>;
+
+/// The form of a material name that names are compared in: surrounding
+/// white space removed, runs of white space made one space, and lower case.
+/// "Softwood", "softwood" and " SOFTWOOD " share a key; "Soft wood" does not.
+pub fn material_key(name: &str) -> String {
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// The cutting data of `table` for the stock material `material`, with the
+/// name the table holds it under. An exact name wins; otherwise the names are
+/// compared by [`material_key`], first in name order.
+pub fn find_cutting_data<'a>(
+    table: &'a CuttingTable,
+    material: &str,
+) -> Option<(&'a str, &'a CuttingData)> {
+    if let Some((name, data)) = table.get_key_value(material) {
+        return Some((name, data));
+    }
+    let key = material_key(material);
+    table
+        .iter()
+        .find(|(name, _)| material_key(name) == key)
+        .map(|(name, data)| (name.as_str(), data))
+}
 
 /// Checks a whole tool entry as the library and the project hold it: the
 /// geometry, the controller mapping and every cutting data entry. Material
@@ -443,6 +476,17 @@ pub fn validate_entry(
     for (material, data) in cutting_data {
         require_name("cutting_data", material)?;
         data.validate(tool, &format!("cutting_data.{material}"))?;
+    }
+    let mut seen: BTreeMap<String, &str> = BTreeMap::new();
+    for material in cutting_data.keys() {
+        if let Some(first) = seen.insert(material_key(material), material) {
+            return Err(Error::invalid(
+                "cutting_data",
+                format!(
+                    "the materials {first:?} and {material:?} differ only by case or spacing, so a stock material would match both"
+                ),
+            ));
+        }
     }
     Ok(())
 }

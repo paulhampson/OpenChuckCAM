@@ -325,7 +325,12 @@ pub(crate) fn build_scene(
         context.check_cancelled()?;
         // A STEP part brings its placed B-rep, so it is drawn with its own
         // edges and picked by face and edge (decision record 0066).
-        match placed_part(root, model, context) {
+        // The setup's part is where its offset puts it (decision record 0201).
+        let placed = match chosen {
+            Some(s) => placed_part(root, model, context).and_then(|p| p.in_setup(&s.frame)),
+            None => placed_part(root, model, context),
+        };
+        match placed {
             Ok(placed) => {
                 part = merge_extent(part, openchuck_geom::part_extent(&placed.mesh));
                 view.part_silhouette = crate::setup_panes::silhouette(&placed.mesh);

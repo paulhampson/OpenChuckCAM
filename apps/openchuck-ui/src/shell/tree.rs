@@ -247,6 +247,15 @@ fn all_eyes(ui: &mut egui::Ui, hidden: usize, count: usize) -> Option<bool> {
 }
 
 /// A "None yet" row for an empty group (specification section 11.1).
+/// The chip of a model's Placement row: how many placement steps it has.
+fn placement_chip(steps: usize) -> String {
+    match steps {
+        0 => "as in file".to_owned(),
+        1 => "1 step".to_owned(),
+        n => format!("{n} steps"),
+    }
+}
+
 fn none_yet(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.add_space(8.0 + INDENT);
@@ -295,11 +304,12 @@ impl Shell {
                 }
                 for m in project.models() {
                     let item = ItemRef::Model(m.id);
+                    let chosen = self.selected == Some(Selection::Model(m.id));
                     let response = row(
                         ui,
                         Row {
                             indent: 1,
-                            selected: self.selected == Some(Selection::Model(m.id)),
+                            selected: chosen && self.model_section.is_none(),
                             status: status(item),
                             swatch: None,
                             name: RichText::new(m.path.as_str()),
@@ -308,9 +318,46 @@ impl Shell {
                         |_| {},
                     );
                     if response.clicked() {
-                        actions.push(TreeAction::SelectModel(m.id));
+                        actions.push(TreeAction::SelectModel(m.id, None));
                     }
                     item_menu(&response, item, None, &mut actions);
+                    // Its placement (shared by every setup) and its mesh
+                    // check, as child rows (section 6; issue #181).
+                    for (key, label, chip, mark) in [
+                        (
+                            crate::model_panel::PLACEMENT,
+                            "Placement",
+                            Some(placement_chip(m.transform.len())),
+                            None,
+                        ),
+                        (
+                            crate::model_panel::MESH_CHECK,
+                            "Mesh check",
+                            None,
+                            status(item),
+                        ),
+                    ] {
+                        let response = row(
+                            ui,
+                            Row {
+                                indent: 2,
+                                selected: chosen && self.model_section == Some(key),
+                                status: mark,
+                                swatch: None,
+                                name: RichText::new(label).color(DARK.muted),
+                                chip,
+                            },
+                            |_| {},
+                        );
+                        let response = if key == crate::model_panel::PLACEMENT {
+                            response.on_hover_text(openchuck_app::setup_form::PLACEMENT_EXPLAINED)
+                        } else {
+                            response
+                        };
+                        if response.clicked() {
+                            actions.push(TreeAction::SelectModel(m.id, Some(key)));
+                        }
+                    }
                 }
                 // Setups, with their parts as child rows.
                 let blocked = openchuck_app::add_setup_blocked(project);
@@ -576,6 +623,15 @@ fn item_menu(
                 actions.push(TreeAction::Delete(id));
                 ui.close();
             }
+        }
+        if let ItemRef::SelectionSet(id) = item
+            && ui
+                .button("Delete")
+                .on_hover_text("Delete this set; refused while an operation uses it (Del)")
+                .clicked()
+        {
+            actions.push(TreeAction::DeleteSet(id));
+            ui.close();
         }
         if ui.button("Show in view").clicked() {
             actions.push(TreeAction::ShowInView(item));

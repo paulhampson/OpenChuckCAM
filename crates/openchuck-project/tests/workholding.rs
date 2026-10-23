@@ -56,6 +56,7 @@ fn full() -> Workholding {
         }),
         tabs: vec![
             Tab {
+                auto: None,
                 x_start: mm(80.0),
                 length: mm(6.0),
                 shape: TabShape::Frustum {
@@ -65,6 +66,7 @@ fn full() -> Workholding {
                 layout: TabLayout::OnAxis,
             },
             Tab {
+                auto: None,
                 x_start: mm(40.0),
                 length: mm(5.0),
                 shape: TabShape::Cylinder { diameter: mm(4.0) },
@@ -211,4 +213,23 @@ fn req_op_21_impossible_tabs_are_refused() {
         },
         "overlaps",
     );
+}
+
+/// A tab placed automatically keeps its end through save and load; `auto`
+/// is written only when set (decision record 0202; project schema 17).
+#[test]
+fn req_op_21_req_prj_04_an_automatic_tab_survives_save_and_load() {
+    use openchuck_types::workholding::TabEnd;
+    let mut w = full();
+    w.tabs[0].auto = Some(TabEnd::Tail);
+    let p = project_with(w.clone());
+    let dir = temp_dir("auto");
+    file::save(&p, &dir).unwrap();
+    let text = std::fs::read_to_string(dir.join("setups").join(format!("{SETUP}.toml"))).unwrap();
+    assert_eq!(text.matches("auto = ").count(), 1, "{text}");
+    assert!(text.contains("auto = \"tail\""), "{text}");
+    assert!(text.starts_with("schema = 17"), "{text}");
+    let back = file::load(&dir).unwrap();
+    assert_eq!(back.setup(SETUP).unwrap().workholding, w);
+    std::fs::remove_dir_all(&dir).ok();
 }

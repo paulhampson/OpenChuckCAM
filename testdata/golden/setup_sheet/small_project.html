@@ -42,7 +42,7 @@ section { break-inside: avoid; }
 <dt>Stock</dt><dd>cylinder, diameter 20 mm, length 14 mm, from X -7 mm</dd>
 <dt>Stock material</dt><dd>oak</dd>
 <dt>Work offset</dt><dd>G54, work zero at model X 0 mm on the rotary axis</dd>
-<dt>Part offset</dt><dd>0 mm along the rotary axis from the machine&#39;s reference point</dd>
+<dt>Part offset</dt><dd>part moved 0 mm along the rotary axis from where its placement puts it</dd>
 </dl>
 </section>
 <section>
@@ -52,7 +52,7 @@ section { break-inside: avoid; }
 <dt>Stock</dt><dd>cylinder, diameter 20 mm, length 14 mm, from X -7 mm</dd>
 <dt>Stock material</dt><dd>oak</dd>
 <dt>Work offset</dt><dd>G54, work zero at model X 0 mm on the rotary axis</dd>
-<dt>Part offset</dt><dd>0 mm along the rotary axis from the machine&#39;s reference point</dd>
+<dt>Part offset</dt><dd>part moved 0 mm along the rotary axis from where its placement puts it</dd>
 </dl>
 </section>
 <section>
@@ -68,12 +68,12 @@ section { break-inside: avoid; }
 <section>
 <h2>Operations</h2>
 <table>
-<thead><tr><th>No</th><th>Operation</th><th>Strategy</th><th>Setup</th><th>Tool</th><th>Spindle rpm</th><th>Tolerance</th><th>Time</th></tr></thead>
+<thead><tr><th>No</th><th>Operation</th><th>Strategy</th><th>Setup</th><th>Tool</th><th>Spindle rpm</th><th>Speed from</th><th>Tolerance</th><th>Time</th></tr></thead>
 <tbody>
-<tr><td>1</td><td>Finish A</td><td>helical_finishing</td><td>Setup 1</td><td>T1 4 mm ball</td><td>10000</td><td>0.01 mm</td><td>0:20</td></tr>
-<tr><td>2</td><td>Finish B</td><td>helical_finishing</td><td>Setup 1</td><td>T2 6 mm ball</td><td>10000</td><td>0.01 mm</td><td>0:20</td></tr>
-<tr><td>3</td><td>Touch up A</td><td>helical_finishing</td><td>Setup 1</td><td>T1 4 mm ball</td><td>10000</td><td>0.01 mm</td><td>0:18</td></tr>
-<tr><td>4</td><td>Side two</td><td>helical_finishing</td><td>Flip / side 2</td><td>T1 4 mm ball</td><td>10000</td><td>0.01 mm</td><td>0:20</td></tr>
+<tr><td>1</td><td>Finish A</td><td>Helical finishing</td><td>Setup 1</td><td>T1 4 mm ball</td><td>10000</td><td>tool data: oak</td><td>0.01 mm</td><td>0:20</td></tr>
+<tr><td>2</td><td>Finish B</td><td>Helical finishing</td><td>Setup 1</td><td>T2 6 mm ball</td><td>10000</td><td>tool data: oak</td><td>0.01 mm</td><td>0:20</td></tr>
+<tr><td>3</td><td>Touch up A</td><td>Helical finishing</td><td>Setup 1</td><td>T1 4 mm ball</td><td>10000</td><td>tool data: oak</td><td>0.01 mm</td><td>0:18</td></tr>
+<tr><td>4</td><td>Side two</td><td>Helical finishing</td><td>Flip / side 2</td><td>T1 4 mm ball</td><td>10000</td><td>tool data: oak</td><td>0.01 mm</td><td>0:20</td></tr>
 </tbody>
 </table>
 </section>

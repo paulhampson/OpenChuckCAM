@@ -18,6 +18,7 @@ use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
 use openchuck_app::requirements::RequirementField;
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
+use openchuck_app::step_sets::SetRefusal;
 use openchuck_app::tool_library;
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
@@ -34,6 +35,9 @@ const NAME: &str = "\u{0}name";
 /// The key of the Tool section's tool number in the form state.
 const TOOL_NUMBER: &str = "\u{0}tool number";
 
+/// The key of the Tool section's spindle speed in the form state.
+const SPINDLE_SPEED: &str = "\u{0}spindle speed";
+
 /// What the user asked of an operation's Tool section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ToolAct {
@@ -43,6 +47,11 @@ pub(super) enum ToolAct {
     Library,
     /// Set the project's tool number to the typed text.
     Number(ToolId, String),
+    /// Set the operation's spindle speed to the typed text (rpm).
+    Spindle(String),
+    /// Take the operation's own spindle speed away (↺), so the tool's
+    /// cutting data applies again.
+    SpindleReset,
     /// Replace the project's copy with the library tool (TL-07).
     Update(ToolId),
     /// Write the project's copy into the library, after the window's
@@ -156,15 +165,15 @@ impl Shell {
             Some(Selection::Setup(id)) => self.setup_properties(ui, id),
             Some(Selection::Set(id)) => self.set_properties(ui, id),
             Some(Selection::Picking) => {
-                ui.heading("Selecting on the part");
-                ui.label(
-                    "Click the part to select. The Selection sets tab of the dock saves and \
-                     edits sets; Esc stops picking.",
-                );
-                if let Some(app) = &mut self.app
-                    && let Some(error) = self.selection.options(ui, app)
-                {
-                    self.dialog = Some(Dialog::Error(error));
+                // New selection (12.2; decision 0215 item 3).
+                if let Some(app) = &mut self.app {
+                    let error = self
+                        .selection
+                        .new_selection(ui, app, self.viewport.view())
+                        .or_else(|| self.selection.options(ui, app));
+                    if let Some(error) = error {
+                        self.dialog = Some(Dialog::Error(error));
+                    }
                 }
             }
             None => {
@@ -176,10 +185,21 @@ impl Shell {
     /// The results inspector of the Simulate step (specification 11.5).
     fn results_inspector(&mut self, ui: &mut egui::Ui) {
         let run = self.run.last().cloned();
+        // An out-of-date result says so first, with the way to simulate
+        // again, and its numbers are dimmed (issue 260).
+        if self.out_of_date_banner(ui) {
+            self.primary();
+        }
+        let stale = self
+            .out_of_date
+            .reason()
+            .map(|_| super::out_of_date::STALE_OPACITY);
         let Some(app) = &mut self.app else { return };
-        if self.results.show(ui, app, run.as_ref()) {
+        if self.results.show(ui, app, run.as_ref(), stale) {
             self.play
                 .set_colour_by(self.results.colour_by, &mut self.viewport);
+            self.play
+                .set_band_filter(&self.results.filter, &mut self.viewport);
         }
     }
 
@@ -198,7 +218,9 @@ impl Shell {
         frame::status_chip(ui, self.overview.status(item));
     }
 
-    /// A selection set: its size, its problem and where it is used.
+    /// A selection set (12.2; decision 0215 item 4): its size, its problem
+    /// and where it is used, then how to change it on the part, Pick again,
+    /// its colour and the options of picking.
     fn set_properties(&mut self, ui: &mut egui::Ui, id: SelectionSetId) {
         let Some(app) = &self.app else { return };
         let summaries = app.selection_summaries(&[]);
@@ -216,7 +238,7 @@ impl Shell {
                 ui,
                 "This set can't be used",
                 &form_panel::refusal(problem).replace(" Not applied.", ""),
-                &[("Reselect in the view", BannerAction::Reselect(id))],
+                &[("Pick again", BannerAction::Reselect(id))],
             )
         {
             self.message_action(MessageAction::Reselect(set));
@@ -225,15 +247,21 @@ impl Shell {
             ui.label(RichText::new("No operation uses it.").color(DARK.muted));
         } else {
             for u in &s.uses {
-                ui.label(format!("Used by {}", u.name));
+                let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
+                ui.label(format!("Used by {} ({})", u.name, roles.join(", ")));
             }
         }
-        // A set that is selected also turns picking on, so the angles and
-        // options stay in reach here (decision 0153).
-        if let Some(app) = &mut self.app
-            && let Some(error) = self.selection.options(ui, app)
-        {
-            self.dialog = Some(Dialog::Error(error));
+        ui.separator();
+        // A set that is selected also turns picking on: Shift and Ctrl change
+        // it, and the angles and options stay in reach here (decision 0215).
+        if let Some(app) = &mut self.app {
+            let error = self
+                .selection
+                .set_section(ui, app, &s)
+                .or_else(|| self.selection.options(ui, app));
+            if let Some(error) = error {
+                self.dialog = Some(Dialog::Error(error));
+            }
         }
     }
 
@@ -344,12 +372,17 @@ impl Shell {
                                 .workholding_panel
                                 .as_ref()
                                 .and_then(|p| p.part_extent());
+                            let known = openchuck_app::materials::known_materials(
+                                Some(app.project()),
+                                self.tool_library.library(),
+                            );
                             if let Some(e) = stock_section(
                                 ui,
                                 &mut self.form,
                                 &setup,
                                 copy.as_ref(),
                                 part_extent,
+                                &known,
                             ) {
                                 edited = Some(e);
                             }
@@ -361,9 +394,27 @@ impl Shell {
                                 &setup,
                                 copy.as_ref(),
                                 &setup_form::part_position_rows(&setup),
+                                &[],
                             ) {
                                 edited = Some(e);
                             }
+                            // The part as this setup places it, once the
+                            // checks have read it (decision record 0201).
+                            let extent = setup
+                                .part
+                                .and_then(|m| self.overview.model_extent(m))
+                                .map(|e| e.in_setup(&setup.frame));
+                            field_row::read_only_row(
+                                ui,
+                                "Position",
+                                setup_form::POSITION_EXPLAINED,
+                                setup_form::position_on_axis(extent.as_ref()),
+                            );
+                            field_row::note_line(
+                                ui,
+                                &setup_form::position_breakdown(&setup, extent.as_ref()),
+                                DARK.muted,
+                            );
                             field_row::read_only_row(
                                 ui,
                                 "Rotate about X",
@@ -489,10 +540,13 @@ impl Shell {
     ) -> Option<ToolAct> {
         let jump_to_tool =
             self.requirement_jump == Some(openchuck_app::requirements::RequirementField::Tool);
+        let jump_to_spindle = self.requirement_jump
+            == Some(openchuck_app::requirements::RequirementField::SpindleSpeed);
         let app = self.app.as_ref()?;
         let project = app.project();
         let library = self.tool_library.library();
         let shown = tool_library::operation_tool(project, library, operation.id);
+        let spindle = tool_library::operation_spindle(project, operation.id);
         let others: Vec<(ToolId, String)> = project
             .tools()
             .iter()
@@ -534,6 +588,43 @@ impl Shell {
                         };
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
                             act = Some(ToolAct::Number(tool.id, typed));
+                        }
+                        if let Some(spindle) = &spindle {
+                            let row = TextRow {
+                                key: SPINDLE_SPEED,
+                                label: "Spindle speed",
+                                description: "How fast the tool turns, in revolutions per \
+                                              minute (rpm). It sets the S value in the G-code. \
+                                              Left empty, the tool's cutting data for the \
+                                              stock material gives it. Check it against your \
+                                              tool, material and machine before you run the \
+                                              program.",
+                                unit: "rpm",
+                                range: Some("above 0"),
+                                applied: spindle
+                                    .set
+                                    .map(|v| field_row::number(v, Some(0)))
+                                    .unwrap_or_default(),
+                                hint: spindle.from_tool.as_ref().map(|(v, material)| {
+                                    format!(
+                                        "{} \u{b7} from the tool's cutting data for {material}",
+                                        field_row::number(*v, Some(0))
+                                    )
+                                }),
+                                reset: spindle.set.is_some(),
+                                enabled: true,
+                                needs: spindle.missing.is_some().then_some("Enter spindle speed"),
+                                scroll_to: jump_to_spindle,
+                                ..TextRow::default()
+                            };
+                            match field_row::text_row(ui, form, &row) {
+                                Outcome::Commit(typed) => act = Some(ToolAct::Spindle(typed)),
+                                Outcome::Reset => act = Some(ToolAct::SpindleReset),
+                                Outcome::None => {}
+                            }
+                            if let Some(message) = &spindle.missing {
+                                field_row::note_line(ui, message, DARK.warning);
+                            }
                         }
                         if let Some((machine, number)) = &tool.tool_set_number {
                             field_row::note_line(
@@ -655,6 +746,14 @@ impl Shell {
                 self.form.result(TOOL_NUMBER, result);
                 return;
             }
+            ToolAct::Spindle(typed) => {
+                let result = tool_library::set_operation_spindle(project, operation, Some(&typed))
+                    .and_then(|c| app.execute(c))
+                    .map_err(|e| form_panel::refusal(&e.to_string()));
+                self.form.result(SPINDLE_SPEED, result);
+                return;
+            }
+            ToolAct::SpindleReset => tool_library::set_operation_spindle(project, operation, None),
             ToolAct::Update(tool) => match &library {
                 Some(lib) => match tool_library::update_from_library(project, lib, tool) {
                     Ok(Some(c)) => Ok(c),
@@ -688,7 +787,9 @@ impl Shell {
         };
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
+        let strategy_text = app.strategy_description(&operation.strategy);
         let set_options = app.strategy_takes_set_options(&operation.strategy);
+        let refusals = app.set_refusals(id);
         let mut delete = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -706,7 +807,17 @@ impl Shell {
         });
         field_row::name_problem(ui, &self.form, NAME);
         frame::status_chip(ui, self.overview.status(ItemRef::Operation(id)));
-        ui.label(RichText::new(strategy).color(DARK.muted));
+        // The strategy under its own heading, apart from the operation's name
+        // the user can change: its plain name and the one-line description
+        // the New operation list shows. Shown only; it cannot be changed here
+        // (issue 242; decision record 0204).
+        ui.add_space(4.0);
+        ui.label(RichText::new("Strategy").small().color(DARK.muted));
+        ui.label(RichText::new(strategy).strong());
+        if !strategy_text.is_empty() {
+            ui.label(RichText::new(strategy_text).color(DARK.muted));
+        }
+        ui.add_space(4.0);
 
         // What is missing, as soon as the operation exists (issue 224): a
         // count and a jump to the first one, in the same words as under the
@@ -792,7 +903,18 @@ impl Shell {
             open,
             false,
             |_| {},
-            |ui| geometry(ui, &operation, &summaries, &reach, set_options),
+            |ui| {
+                geometry(
+                    ui,
+                    &operation,
+                    &summaries,
+                    &Notes {
+                        reach: &reach,
+                        refusals: &refusals,
+                    },
+                    set_options,
+                )
+            },
         );
         if let Some((edit, action)) = section.body {
             role_edit = edit;
@@ -868,16 +990,16 @@ impl Shell {
             Some(BannerAction::Reselect(set)) => self.message_action(MessageAction::Reselect(set)),
             Some(BannerAction::ShowMissing(set)) => {
                 self.selection.show_set(Some(set));
-                self.dock_tab = super::dock::DockTab::SelectionSets;
                 self.viewport.fit();
             }
             None => {}
         }
         match reach_action {
             Some(ReachAction::Show(set, item)) => {
-                // Selects the tab or held region (7.5) and shows the set.
-                self.selection.show_set(Some(set));
+                // Selects the tab or held region (7.5) and shows the set,
+                // after the selection changes, so it stays shown for it.
                 self.choose_setup(operation.setup, Some(SetupPart::Workholding));
+                self.selection.show_set(Some(set));
                 if let Some(item) = item {
                     if let Some(panel) = &mut self.workholding_panel {
                         panel.open_item(item);
@@ -1084,19 +1206,32 @@ fn limits_nothing(ui: &mut egui::Ui, indent: f32, set: &str) {
     });
 }
 
+/// What the Geometry section says under the role that holds a set.
+struct Notes<'a> {
+    /// The warnings of sets reaching a held region or a tab (11.7).
+    reach: &'a [String],
+    /// The sets the strategy cannot use on this part (decision record 0209
+    /// item 10).
+    refusals: &'a [SetRefusal],
+}
+
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
 /// With `with_options`, each set's options under its role (decision record
 /// 0176 item 3). Under the role that holds a set reaching a held region or a
-/// tab, the warning of 11.7 with "Show in view" and "Edit workholding".
+/// tab, the warning of 11.7 with "Show in view" and "Edit workholding"; under
+/// the role that holds a set the strategy cannot use on this part, the
+/// warning with the reason and what to do, before anything is generated
+/// (decision record 0209 item 10).
 fn geometry(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
-    reach: &[String],
+    notes: &Notes<'_>,
     with_options: bool,
 ) -> (Option<GeometryEdit>, Option<ReachAction>) {
+    let reach = notes.reach;
     let mut edit = None;
     let mut action = None;
     if summaries.is_empty() {
@@ -1178,6 +1313,15 @@ fn geometry(
         if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
             edit = Some(e);
         }
+        // A set the strategy cannot use here, under the role that holds it
+        // (decision record 0209 item 10).
+        for refusal in notes.refusals.iter().filter(|r| r.role == role) {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+                marks::mark(ui, ItemState::Warning, "Warning");
+                ui.label(RichText::new(&refusal.text).color(DARK.warning));
+            });
+        }
         // The selection warning under the role that holds the set (11.7).
         for id in &sets {
             let Some(s) = summaries.iter().find(|s| s.id == *id) else {
@@ -1219,6 +1363,7 @@ fn rows(
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
     rows: &[SetupRow],
+    known_materials: &[String],
 ) -> Option<(Setup, Option<String>)> {
     let mut edited = None;
     for row in rows {
@@ -1245,6 +1390,14 @@ fn rows(
             },
         );
         if let Outcome::Commit(typed) = outcome {
+            // A material typed in another spelling of a known one takes the
+            // known spelling, so the tools' cutting data is found (decision
+            // 0196).
+            let typed = if row.field == setup_form::SetupField::Material {
+                openchuck_app::materials::canonical_material(known_materials, &typed)
+            } else {
+                typed
+            };
             match setup_form::apply(setup, machine, row.field, &typed) {
                 Ok(s) => edited = Some((s, Some(key))),
                 Err(reason) => state.refuse(&key, &typed, format!("{reason} Not applied.")),
@@ -1252,6 +1405,40 @@ fn rows(
         }
     }
     edited
+}
+
+/// The pick of a known material under the Material row: the names the tools
+/// of the project and the library have cutting data for (decision 0196).
+fn material_pick(
+    ui: &mut egui::Ui,
+    setup: &Setup,
+    known: &[String],
+) -> Option<(Setup, Option<String>)> {
+    if known.is_empty() {
+        return None;
+    }
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+        egui::ComboBox::from_id_salt(("setup material pick", setup.id))
+            .selected_text("Pick\u{2026}")
+            .show_ui(ui, |ui| {
+                for name in known {
+                    let current = setup.material.as_deref() == Some(name.as_str());
+                    if ui.selectable_label(current, name).clicked() && !current {
+                        let mut edited = setup.clone();
+                        edited.material = Some(name.clone());
+                        picked = Some((edited, None));
+                    }
+                }
+            })
+            .response
+            .on_hover_text(
+                "Materials the project's and the library's tools have cutting data for. A \
+                 material that matches one of them gets that tool's speeds and feeds.",
+            );
+    });
+    picked
 }
 
 /// The Stock section (SET-03; 11.3): the shape as a segmented control, its
@@ -1262,6 +1449,7 @@ fn stock_section(
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
     part: Option<openchuck_app::setup::PartExtent>,
+    known_materials: &[String],
 ) -> Option<(Setup, Option<String>)> {
     let shapes: Vec<&str> = StockShape::ALL.iter().map(|s| s.name()).collect();
     let current = StockShape::of(setup.stock.as_ref())
@@ -1290,7 +1478,16 @@ fn stock_section(
             None,
         ));
     }
-    rows(ui, state, setup, machine, &setup_form::stock_rows(setup)).or(edited)
+    let typed = rows(
+        ui,
+        state,
+        setup,
+        machine,
+        &setup_form::stock_rows(setup),
+        known_materials,
+    );
+    let picked = material_pick(ui, setup, known_materials);
+    typed.or(picked).or(edited)
 }
 
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
@@ -1325,6 +1522,7 @@ fn clearance_section(
         setup,
         machine,
         &setup_form::clearance_rows(setup, machine),
+        &[],
     ) {
         edited = Some(e);
     }

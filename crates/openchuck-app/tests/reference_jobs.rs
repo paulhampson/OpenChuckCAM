@@ -198,6 +198,7 @@ pub fn cone_workholding() -> Workholding {
         tabs: vec![
             // Head: a cylinder the size of the part's wide end.
             Tab {
+                auto: None,
                 x_start: Millimetres(-8.0),
                 length: Millimetres(8.0),
                 shape: TabShape::Cylinder {
@@ -207,6 +208,7 @@ pub fn cone_workholding() -> Workholding {
             },
             // Tail: a frustum from the part's narrow end out to the stock.
             Tab {
+                auto: None,
                 x_start: Millimetres(30.0),
                 length: Millimetres(10.0),
                 shape: TabShape::Frustum {
@@ -322,6 +324,7 @@ fn build(job: &Job, tag: &str) -> (PathBuf, Application) {
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters,
         }),
     ] {

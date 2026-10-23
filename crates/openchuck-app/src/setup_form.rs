@@ -68,7 +68,7 @@ pub enum SetupField {
     BoundsOffset,
     /// The stock material.
     Material,
-    /// The part's offset along X from the rotary reference point.
+    /// How far this setup moves the part along X (decision record 0201).
     PartOffset,
     /// Model X of the work zero.
     WorkZeroX,
@@ -205,7 +205,7 @@ pub fn stock_rows(setup: &Setup) -> Vec<SetupRow> {
     rows.push(SetupRow {
         field: SetupField::Material,
         label: "Material",
-        description: "The stock material, which chooses the tools' cutting data.",
+        description: "The stock material, such as Softwood. It chooses the tools' cutting data, matched by name ignoring capital letters and extra spaces. Pick one the tools already know, or type a new one.",
         unit: "",
         value: setup.material.clone().unwrap_or_default(),
         hint: Some("Not set".to_owned()),
@@ -214,16 +214,59 @@ pub fn stock_rows(setup: &Setup) -> Vec<SetupRow> {
     rows
 }
 
-/// The row of the Part position section (SET-05): the part's offset along X.
+/// What the Model step's placement does, shown with the placement steps so
+/// the two ways of moving a part are told apart (decision record 0201).
+pub const PLACEMENT_EXPLAINED: &str = "The placement puts the model on the rotary axis and is \
+     shared by every setup. To move the part along the axis in one setup only, use that \
+     setup's Offset along X (Setup step, Part position).";
+
+/// What the setup's offset along X does (decision record 0201).
+pub const PART_OFFSET_EXPLAINED: &str = "Moves the part along the rotary axis in this setup \
+     only, from where the Model step's placement puts it. The stock, the held regions and tabs \
+     and the work zero stay where they are, so the toolpaths and the G-code move with the \
+     part. Use it to choose where the part sits in the stock. To move the part in every \
+     setup, change the placement in the Model step instead.";
+
+/// What the read-only position row shows (decision record 0201).
+pub const POSITION_EXPLAINED: &str = "Where the part is along the rotary axis in this setup: \
+     the Model step's placement plus this setup's Offset along X, measured from the \
+     machine's rotary reference point (the chuck face). Read only.";
+
+/// The row of the Part position section (SET-05): how far this setup moves
+/// the part along X.
 pub fn part_position_rows(setup: &Setup) -> Vec<SetupRow> {
     vec![row(
         SetupField::PartOffset,
         "Offset along X",
-        "How far along the rotary axis the model origin is from the machine's rotary \
-         reference point (the chuck face).",
+        PART_OFFSET_EXPLAINED,
         Some(setup.frame.part_offset.0),
         None,
     )]
+}
+
+/// The read-only position of the part in the setup (decision record 0201):
+/// its X range as the setup places it, `extent`, or `None` while it is not
+/// known.
+pub fn position_on_axis(extent: Option<&PartExtent>) -> String {
+    match extent {
+        None => "The part is being read\u{2026}".to_owned(),
+        Some(e) => format!("X {} to {} mm", mm(e.bounds.min.x), mm(e.bounds.max.x)),
+    }
+}
+
+/// Where the position comes from, for the line under it: the placement's X
+/// range and the setup's offset (decision record 0201).
+pub fn position_breakdown(setup: &Setup, extent: Option<&PartExtent>) -> String {
+    let offset = setup.frame.part_offset.0;
+    match extent {
+        None => format!("Placement + offset {} mm", mm(offset)),
+        Some(e) => format!(
+            "Placement X {} to {} + offset {} mm",
+            mm(e.bounds.min.x - offset),
+            mm(e.bounds.max.x - offset),
+            mm(offset)
+        ),
+    }
 }
 
 /// The rows of the Work offset and clearance section (SET-05, SET-06): the
@@ -237,7 +280,9 @@ pub fn clearance_rows(setup: &Setup, machine: Option<&MachineProfile>) -> Vec<Se
         row(
             SetupField::WorkZeroX,
             "Zero at X",
-            "Model X of the work zero, which lies on the rotary axis.",
+            "Where the work zero (the program's X0) lies on the rotary axis, measured from the \
+             machine's rotary reference point, like the stock. It stays put when the part is \
+             moved with Offset along X.",
             Some(setup.frame.work_offset.x.0),
             None,
         ),
@@ -488,6 +533,36 @@ mod tests {
         assert_eq!(back.stock, s.stock);
         let bounds = with_stock_shape(&s, StockShape::Bounds, None);
         assert_eq!(stock_rows(&bounds)[0].label, "Offset");
+    }
+
+    /// The two ways of moving a part are told apart in plain words, and the
+    /// combined position is shown read-only (SET-05; issue #175, decision
+    /// record 0201).
+    #[test]
+    fn req_set_05_the_offset_and_the_placement_are_told_apart_and_combined() {
+        let mut s = setup();
+        s.frame.part_offset = Millimetres(12.5);
+        let rows = part_position_rows(&s);
+        assert_eq!(rows[0].label, "Offset along X");
+        assert_eq!(rows[0].value, "12.500");
+        assert!(rows[0].description.contains("in this setup only"));
+        assert!(rows[0].description.contains("Model step"));
+        assert!(PLACEMENT_EXPLAINED.contains("shared by every setup"));
+        assert!(PLACEMENT_EXPLAINED.contains("Offset along X"));
+        let extent = PartExtent {
+            bounds: Aabb {
+                min: Point3::new(12.5, -5.0, -5.0),
+                max: Point3::new(42.5, 5.0, 5.0),
+            },
+            radius: Millimetres(5.0),
+        };
+        assert_eq!(position_on_axis(Some(&extent)), "X 12.500 to 42.500 mm");
+        assert_eq!(
+            position_breakdown(&s, Some(&extent)),
+            "Placement X 0.000 to 30.000 + offset 12.500 mm"
+        );
+        assert_eq!(position_on_axis(None), "The part is being read\u{2026}");
+        assert_eq!(position_breakdown(&s, None), "Placement + offset 12.500 mm");
     }
 
     #[test]

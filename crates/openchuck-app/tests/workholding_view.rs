@@ -15,12 +15,13 @@ use openchuck_app::project::id::SetupId;
 use openchuck_app::project::{Item, Placement, Setup};
 use openchuck_app::scene::{SceneRole, SceneView};
 use openchuck_app::setup::{
-    Aabb, HeldRegion, Millimetres, Point3, Stock, Tab, TabLayout, TabShape, Workholding,
+    Aabb, HeldRegion, Millimetres, PartExtent, Point3, Stock, Tab, TabEnd, TabLayout, TabShape,
+    Workholding,
 };
 use openchuck_app::workholding_view::{
     DefaultTabsState, Draft, End, Field, PartFacing, check_draft, default_chips,
-    default_tabs_state, grip_warning, held_span, holding_hint, new_tab, part_facing, set_layout,
-    set_shape,
+    default_tabs_state, end_tab, grip_warning, held_span, holding_hint, new_tab, part_facing,
+    set_layout, set_shape, set_tab_auto, set_tab_span, to_field_places,
 };
 use openchuck_app::{Application, Command, Threads};
 use openchuck_types::units::Degrees;
@@ -35,6 +36,7 @@ fn cyl() -> Stock {
 
 fn cylinder_tab(x: f64, length: f64, d: f64) -> Tab {
     Tab {
+        auto: None,
         x_start: Millimetres(x),
         length: Millimetres(length),
         shape: TabShape::Cylinder {
@@ -167,6 +169,7 @@ fn req_ui_25_validation_marks_the_field_with_a_plain_message() {
     assert_eq!(
         problem(
             &with_tab(Tab {
+                auto: None,
                 shape: TabShape::Frustum {
                     start_diameter: Millimetres(5.0),
                     end_diameter: Millimetres(5.0)
@@ -181,6 +184,7 @@ fn req_ui_25_validation_marks_the_field_with_a_plain_message() {
         )
     );
     let around = |count, offset| Tab {
+        auto: None,
         layout: TabLayout::AroundAxis {
             count,
             start_angle: Degrees(0.0),
@@ -338,6 +342,7 @@ fn req_ui_25_shape_and_placement_changes_keep_the_values_the_specification_names
 #[test]
 fn req_ui_25_a_frustum_says_which_end_faces_the_part() {
     let frustum = |a, b| Tab {
+        auto: None,
         shape: TabShape::Frustum {
             start_diameter: Millimetres(a),
             end_diameter: Millimetres(b),
@@ -358,6 +363,7 @@ fn req_ui_25_a_frustum_says_which_end_faces_the_part() {
         None
     );
     let tail = Tab {
+        auto: None,
         x_start: Millimetres(9.0),
         ..frustum(4.0, 8.0)
     };
@@ -502,6 +508,7 @@ fn req_ui_25_req_ui_03_the_view_draws_held_regions_and_tabs_with_outlines() {
             tabs: vec![
                 cylinder_tab(-10.0, 2.0, 4.0),
                 Tab {
+                    auto: None,
                     layout: TabLayout::AroundAxis {
                         count: 3,
                         start_angle: Degrees(90.0),
@@ -653,6 +660,7 @@ fn selection_project(
             avoid: Vec::new(),
             check: Vec::new(),
             restriction_options: Default::default(),
+            spindle_speed: None,
             parameters: std::collections::BTreeMap::new(),
         }),
         placement: Placement::End,
@@ -686,6 +694,7 @@ fn req_ui_25_the_selection_warning_names_what_is_reached_in_plain_words() {
         "reach-tab",
         Workholding {
             tabs: vec![Tab {
+                auto: None,
                 layout: TabLayout::AroundAxis {
                     count: 3,
                     start_angle: Degrees(90.0),
@@ -759,6 +768,7 @@ fn req_ui_25_a_frustum_tab_and_a_held_region_with_its_own_diameter_are_described
         tabs: vec![
             cylinder_tab(-10.0, 2.0, 4.0),
             Tab {
+                auto: None,
                 shape: TabShape::Frustum {
                     start_diameter: Millimetres(4.0),
                     end_diameter: Millimetres(8.0),
@@ -848,6 +858,123 @@ fn req_ui_25_a_tab_names_its_zone_and_its_narrowest_against_the_tools() {
     assert_eq!(narrowest_line(&head, &[]).0, "4.000 mm");
 }
 
+/// A new tab's diameter is rounded to the 3 places its field shows; its
+/// position and length are as before (issue #184; decision record 0202).
+#[test]
+fn req_op_21_a_new_tab_diameter_is_rounded_to_the_field() {
+    // A box 20 by 17 mm: its radius is half the diagonal, an irrational
+    // number of millimetres.
+    let boxed = Stock::Box {
+        bounds: Aabb {
+            min: Point3::new(0.0, -10.0, -8.5),
+            max: Point3::new(40.0, 10.0, 8.5),
+        },
+    };
+    let raw = 2.0 * boxed.radius(None).unwrap().0 / 4.0;
+    assert_ne!(raw, to_field_places(raw));
+    let tab = new_tab(&Workholding::default(), Some(&boxed));
+    let d = tab.shape.max_diameter().0;
+    assert_eq!(d, to_field_places(raw));
+    assert_eq!(d, 6.562);
+    assert_eq!(format!("{d:.3}").parse::<f64>().unwrap(), d);
+    assert_eq!((tab.x_start.0, tab.length.0), (0.0, 5.0));
+    assert_eq!(tab.auto, None);
+    assert_eq!(to_field_places(1.23449), 1.234);
+    assert_eq!(to_field_places(-2.0005), -2.001);
+}
+
+/// "Head tab" and "Tail tab" make a tab placed automatically over the gap at
+/// that end, with the shape and diameter of "Add tab", or say why they
+/// cannot (issue #182; decision record 0202, OI-780).
+#[test]
+fn req_op_21_the_head_and_tail_buttons_make_automatic_tabs_or_say_why_not() {
+    // Stock X -16 to 16, 26 across; the part X -8 to 8; 6 mm held at the
+    // start.
+    let part = PartExtent {
+        bounds: Aabb {
+            min: Point3::new(-8.0, -10.0, -10.0),
+            max: Point3::new(8.0, 10.0, 10.0),
+        },
+        radius: Millimetres(10.0),
+    };
+    let w = Workholding {
+        start: Some(held(6.0)),
+        ..Workholding::default()
+    };
+    let head = end_tab(&w, Some(&cyl()), Some(&part), true, TabEnd::Head).unwrap();
+    assert_eq!((head.x_start.0, head.length.0), (-10.0, 2.0));
+    assert_eq!(head.auto, Some(TabEnd::Head));
+    assert_eq!(head.shape, new_tab(&w, Some(&cyl())).shape);
+    assert_eq!(head.layout, TabLayout::OnAxis);
+    let tail = end_tab(&w, Some(&cyl()), Some(&part), true, TabEnd::Tail).unwrap();
+    assert_eq!((tail.x_start.0, tail.length.0), (8.0, 8.0));
+    assert_eq!(tail.auto, Some(TabEnd::Tail));
+    // A second press adds another: the button does not look at the tabs.
+    let mut with = w.clone();
+    with.tabs.push(head);
+    assert_eq!(
+        end_tab(&with, Some(&cyl()), Some(&part), true, TabEnd::Head),
+        Ok(head)
+    );
+    // Why not.
+    let why = |w: &Workholding, stock: Option<&Stock>, part: Option<&PartExtent>, has, end| {
+        end_tab(w, stock, part, has, end).unwrap_err()
+    };
+    assert_eq!(
+        why(&w, Some(&cyl()), Some(&part), false, TabEnd::Head),
+        "Import a model first"
+    );
+    assert!(why(&w, None, Some(&part), true, TabEnd::Head).starts_with("Set the stock first"));
+    assert!(why(&w, Some(&cyl()), None, true, TabEnd::Head).starts_with("Working out"));
+    let deep = Workholding {
+        start: Some(held(10.0)),
+        ..Workholding::default()
+    };
+    assert_eq!(
+        why(&deep, Some(&cyl()), Some(&part), true, TabEnd::Head),
+        "No room at the head: the held region reaches the part."
+    );
+    let flush = PartExtent {
+        bounds: Aabb {
+            min: Point3::new(-8.0, -10.0, -10.0),
+            max: Point3::new(16.0, 10.0, 10.0),
+        },
+        radius: Millimetres(10.0),
+    };
+    assert_eq!(
+        why(&w, Some(&cyl()), Some(&flush), true, TabEnd::Tail),
+        "No room at the tail: the stock ends at the part."
+    );
+}
+
+/// A hand edit of the start or the length unticks "Place automatically" and
+/// keeps the other value as shown; unticking keeps the shown position;
+/// ticking again places it (issue #186; decision record 0202).
+#[test]
+fn req_op_21_a_hand_edit_unticks_an_automatic_tab() {
+    let stored = Tab {
+        auto: Some(TabEnd::Head),
+        ..cylinder_tab(0.0, 1.0, 4.0)
+    };
+    // Where the part puts it now.
+    let shown = Tab {
+        x_start: Millimetres(-10.0),
+        length: Millimetres(2.0),
+        ..stored
+    };
+    let mut t = stored;
+    set_tab_span(&mut t, &shown, Some(-9.5), None);
+    assert_eq!((t.x_start.0, t.length.0, t.auto), (-9.5, 2.0, None));
+    let mut t = stored;
+    set_tab_span(&mut t, &shown, None, Some(1.5));
+    assert_eq!((t.x_start.0, t.length.0, t.auto), (-10.0, 1.5, None));
+    assert_eq!(t.shape, stored.shape);
+    let mut t = stored;
+    set_tab_auto(&mut t, &shown, None);
+    assert_eq!((t.x_start.0, t.length.0, t.auto), (-10.0, 2.0, None));
+    set_tab_auto(&mut t, &shown, Some(TabEnd::Head));
+    assert_eq!(t.auto, Some(TabEnd::Head));
+}
 #[test]
 fn req_set_09_the_grip_field_says_how_much_of_the_part_the_grip_covers() {
     // Stock X -16 to 16; part X -10 to 15.175 (ends 0.825 mm short).

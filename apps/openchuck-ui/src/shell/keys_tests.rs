@@ -46,10 +46,6 @@ impl Rig {
         // Not the real configuration folder.
         let mut shell = Shell::with_settings(false, Some(dir.clone()), None);
         shell.export = ExportPanel::new(None);
-        // The selection sets are a tab of the dock (specification 12.2),
-        // tall enough here to show a set's details under the table.
-        shell.dock_tab = super::dock::DockTab::SelectionSets;
-        shell.settings.dock.size = 380.0;
         let mut rig = Self {
             shell,
             ctx: egui::Context::default(),
@@ -360,78 +356,17 @@ fn req_ui_04_the_selection_tools_box_chooses_the_click_mode_by_a_click() {
 }
 
 #[test]
-fn req_ui_05_the_sets_panel_selects_a_set_in_view_and_takes_its_swatch_colour() {
-    let mut rig = Rig::picking("sets-panel");
-    let model = rig.model();
-    let id = rig
-        .shell
-        .app
-        .as_mut()
-        .unwrap()
-        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
-        .unwrap();
-    // A grid is laid out in its first frame and shown in the next.
+fn req_ui_05_a_chosen_sets_inspector_takes_its_swatch_colour() {
+    // The set's colour is in its inspector (12.2; decision 0215 item 4).
+    let mut rig = Rig::picking("sets-inspector");
+    let id = select_a_set(&mut rig);
     for _ in 0..3 {
         rig.frame(Vec::new());
     }
-    assert!(rig.shell.selection.working_triangles().is_empty());
-    // "Select in view" makes the set the working selection.
-    // The table is wider than the panel: scroll it sideways to the link.
-    let header = rig.text_centre("Kind").expect("the table is shown");
-    let over_panel = header;
-    rig.frame(vec![Event::PointerMoved(over_panel)]);
-    for _ in 0..4 {
-        rig.frame(vec![Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            phase: egui::TouchPhase::Move,
-            delta: egui::vec2(-400.0, 0.0),
-            modifiers: Modifiers::NONE,
-        }]);
-    }
-    // Let the scroll settle before looking for the link: it has stopped when
-    // the link does not move between frames.
-    let mut last = None;
-    for _ in 0..200 {
-        rig.frame(Vec::new());
-        let now = rig.text_centre("Select in view");
-        if now.is_some() && now == last {
-            break;
-        }
-        last = now;
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    let at = rig
-        .text_centre("Select in view")
-        .expect("the link is shown");
-    // The table's scroll bar floats over the lower part of its rows: click
-    // the link near its top.
-    rig.click(egui::pos2(at.x, at.y - 4.0));
-    assert_eq!(rig.shell.selection.working_triangles(), vec![0, 1]);
-    // The set's details are now shown with a row of swatches: choosing the
-    // third stores that colour on the set, through an undoable command.
-    // The details are under the table in the dock: scroll down to them.
-    let mut swatches = rig.square_fills(18.0);
-    for _ in 0..40 {
-        if swatches.len() >= 8 {
-            break;
-        }
-        rig.frame(vec![
-            Event::PointerMoved(over_panel),
-            Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                phase: egui::TouchPhase::Move,
-                delta: egui::vec2(0.0, -60.0),
-                modifiers: Modifiers::NONE,
-            },
-        ]);
-        std::thread::sleep(Duration::from_millis(5));
-        swatches = rig.square_fills(18.0);
-    }
-    // Let the scroll settle, so the swatches are where they will be clicked.
-    for _ in 0..20 {
-        rig.frame(Vec::new());
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    assert_eq!(rig.shell.selected, Some(Selection::Set(id)));
+    assert!(rig.text_centre("Change this set on the part").is_some());
+    // Choosing the third swatch stores that colour on the set, through an
+    // undoable command.
     let swatches = rig.square_fills(18.0);
     assert!(swatches.len() >= 8, "{} swatches", swatches.len());
     let (at, fill) = swatches[2];
@@ -461,10 +396,113 @@ fn req_ui_05_the_sets_panel_selects_a_set_in_view_and_takes_its_swatch_colour() 
     rig.cleanup();
 }
 
+#[test]
+fn req_ui_05_the_dock_has_no_selection_sets_tab() {
+    // Decision 0215 item 1 (issue 225): everything moved to the inspector.
+    let mut rig = Rig::picking("no-sets-tab");
+    for step in [Step::Model, Step::Setup, Step::Operations, Step::Simulate] {
+        rig.shell.step = step;
+        assert!(
+            rig.shell
+                .tabs()
+                .iter()
+                .all(|t| t.name() != "Selection sets"),
+            "{step:?}"
+        );
+    }
+    // The tree's "+" opens New selection in the inspector.
+    rig.shell.step = Step::Operations;
+    rig.shell.start_picking();
+    for _ in 0..3 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.text_centre("New selection").is_some());
+    assert!(rig.text_centre("Save as new set").is_some());
+    rig.cleanup();
+}
+
+#[test]
+fn req_ui_05_a_set_is_deleted_from_the_tree_and_refused_while_used() {
+    // Decision 0215 item 2: Delete is in the tree's row menu and on Del.
+    let mut rig = Rig::picking("tree-delete");
+    let id = select_a_set(&mut rig);
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_operation_selection(
+            op,
+            openchuck_app::selection::SelectionRole::Machine,
+            id,
+            true,
+        )
+        .unwrap();
+    rig.shell.tree_action(super::TreeAction::DeleteSet(id));
+    match &rig.shell.dialog {
+        Some(Dialog::Error(note)) => assert!(note.contains("is used by"), "{note}"),
+        other => panic!("refused with a note, not {other:?}"),
+    }
+    assert_eq!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .selection_sets()
+            .len(),
+        1
+    );
+    rig.shell.dialog = None;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_operation_selection(
+            op,
+            openchuck_app::selection::SelectionRole::Machine,
+            id,
+            false,
+        )
+        .unwrap();
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.frame(Vec::new());
+    rig.press(Key::Delete);
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .selection_sets()
+            .is_empty()
+    );
+    assert_eq!(rig.shell.selected, Some(Selection::Picking));
+    rig.cleanup();
+}
+
+/// A plain click that the user confirms leaves the chosen set, and the
+/// inspector shows New selection; saving a new set shows its inspector
+/// (decision 0215 items 3 and 5).
+#[test]
+fn req_ui_05_the_inspector_follows_the_set_chosen_or_left() {
+    let mut rig = Rig::picking("follow-panel");
+    let id = select_a_set(&mut rig);
+    rig.shell.selection.leave_set_for_test();
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.selected, Some(Selection::Picking));
+    assert_eq!(rig.shell.selection.shown_set(), None);
+    // Choosing it again shows its inspector.
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.selected, Some(Selection::Set(id)));
+    rig.cleanup();
+}
+
 /// A set made on an older version of the model is not loaded as the working
-/// selection by "Reselect": its numbers may name other geometry now. It is
-/// drawn as a ghost, the user picks again and Replace set makes it current
-/// (specification 12.2; decision 0125).
+/// selection by "Pick again": its numbers may name other geometry now. It is
+/// drawn as a ghost, the user picks again and Replace makes it current
+/// (specification 12.2; decisions 0125 and 0215).
 #[test]
 fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_ghost() {
     use openchuck_app::project::{ContentHash, Item};
@@ -474,9 +512,6 @@ fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_
     let id = app
         .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
         .unwrap();
-    // The working selection is something else.
-    rig.shell.selection.select_set_in_view_for_test(app, id);
-    assert!(!rig.shell.selection.working_triangles().is_empty());
     // The set becomes stale: made on another version of the file.
     let mut old = app.project().selection_sets()[0].clone();
     old.model_hash = ContentHash::of_bytes(b"an older version");
@@ -484,7 +519,8 @@ fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_
         .unwrap();
     let summary = app.selection_summaries(&[])[0].clone();
     assert!(summary.problem.is_some());
-    rig.shell.selection.select_set_in_view_for_test(app, id);
+    // "Pick again" in the inspector's banner, as a message's action does.
+    rig.shell.message_action(MessageAction::Reselect(id));
     // Nothing is loaded; the set is shown, with what to do next.
     assert!(rig.shell.selection.working_triangles().is_empty());
     assert_eq!(rig.shell.selection.shown_set(), Some(id));
@@ -492,7 +528,7 @@ fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_
         rig.shell
             .selection
             .notice()
-            .is_some_and(|m| m.contains("Pick the new selection, then Replace set"))
+            .is_some_and(|m| m.contains("Pick the new selection, then Replace."))
     );
     // The overlay draws the old selection hatched (a ghost), not in the
     // working colour.
@@ -506,5 +542,186 @@ fn req_ui_05_req_prj_06_reselect_on_a_stale_set_starts_a_fresh_pick_and_draws_a_
         overlay.meshes.iter().any(|m| m.hatch.is_some()),
         "a ghost is hatched"
     );
+    rig.cleanup();
+}
+
+/// Whether anything is drawn in the highlight layer over the part.
+fn highlighted(rig: &Rig) -> bool {
+    rig.shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Overlay)
+        .is_some_and(|s| !s.meshes.is_empty() || !s.lines.is_empty())
+}
+
+/// Saves a set of two triangles, selects it in the tree and draws a frame.
+fn select_a_set(rig: &mut Rig) -> SelectionSetId {
+    let model = rig.model();
+    let id = rig
+        .shell
+        .app
+        .as_mut()
+        .unwrap()
+        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
+        .unwrap();
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.frame(Vec::new());
+    id
+}
+
+#[test]
+fn req_ui_04_req_ui_05_leaving_selection_mode_leaves_no_highlight() {
+    // Issue 261: the pending selection is drawn only while selection mode is
+    // on. It is kept for the next time picking starts.
+    let mut rig = Rig::picking("highlight-leave");
+    let model = rig.model();
+    rig.shell
+        .selection
+        .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[0, 1]);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    rig.press(Key::Escape);
+    rig.frame(Vec::new());
+    assert_eq!(rig.shell.selected, None);
+    assert!(!highlighted(&rig), "Esc leaves no highlight");
+    rig.shell.selected = Some(Selection::Picking);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig), "picking again shows it again");
+    // Leaving a selected set by Esc takes its highlight away too.
+    let id = select_a_set(&mut rig);
+    assert_eq!(rig.shell.selected, Some(Selection::Set(id)));
+    rig.press(Key::Escape);
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig));
+    assert_eq!(rig.shell.selection.shown_set(), None);
+    rig.cleanup();
+}
+
+#[test]
+fn req_ui_05_deselecting_a_set_leaves_no_highlight() {
+    let mut rig = Rig::picking("highlight-deselect");
+    let id = select_a_set(&mut rig);
+    assert!(highlighted(&rig));
+    // The list's click on the chosen set deselects it.
+    rig.shell.selection.show_set(None);
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig), "deselected in the list");
+    // Picked again, then deselected: the new pick goes with it.
+    rig.shell.selection.pick_again(id);
+    let model = rig.model();
+    rig.shell
+        .selection
+        .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[4]);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    rig.shell.selection.show_set(None);
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig), "the new pick goes too");
+    assert!(rig.shell.selection.working_triangles().is_empty());
+    // Selecting another item deselects the set.
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.tree_action(super::TreeAction::Select(op));
+    rig.frame(Vec::new());
+    assert!(!highlighted(&rig), "another item selected");
+    // Deleted while shown and picked again: nothing of it stays highlighted
+    // (OI-733).
+    rig.shell.tree_action(super::TreeAction::SelectSet(id));
+    rig.shell.selection.pick_again(id);
+    rig.shell
+        .selection
+        .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[4]);
+    rig.frame(Vec::new());
+    assert!(highlighted(&rig));
+    rig.shell.delete_set(id);
+    rig.frame(Vec::new());
+    assert!(
+        !rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .selection_sets()
+            .iter()
+            .any(|s| s.id == id),
+        "the set was deleted"
+    );
+    assert!(!highlighted(&rig), "the deleted set's pick goes too");
+    rig.cleanup();
+}
+
+#[test]
+fn req_ui_05_changing_step_leaves_no_highlight_in_any_view() {
+    // Model, Operations and Simulate share the highlight layer; leaving the
+    // step ends selection mode, from a pending selection or a selected set.
+    let mut rig = Rig::picking("highlight-step");
+    rig.shell.generate(false);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.run.last().is_none() {
+        rig.frame(Vec::new());
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(Instant::now() < deadline, "timed out");
+    }
+    let model = rig.model();
+    rig.shell.step = Step::Operations;
+    for (from, to) in [
+        (Step::Operations, Step::Model),
+        (Step::Model, Step::Simulate),
+        (Step::Simulate, Step::Operations),
+    ] {
+        rig.shell.step = from;
+        rig.shell.selected = Some(Selection::Picking);
+        rig.shell
+            .selection
+            .set_working_for_test(rig.shell.app.as_ref().unwrap(), model, &[0, 1]);
+        rig.frame(Vec::new());
+        assert!(highlighted(&rig), "{from:?}");
+        rig.shell.open_step(to);
+        rig.frame(Vec::new());
+        assert_eq!(rig.shell.step, to);
+        assert_eq!(rig.shell.selected, None);
+        assert!(!highlighted(&rig), "{from:?} to {to:?}, pending selection");
+
+        rig.shell.step = from;
+        let id = select_a_set(&mut rig);
+        assert!(highlighted(&rig), "{from:?}, set");
+        rig.shell.open_step(to);
+        rig.frame(Vec::new());
+        assert!(!highlighted(&rig), "{from:?} to {to:?}, set");
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .execute(Command::Remove(
+                openchuck_app::project::ItemId::SelectionSet(id),
+            ))
+            .unwrap();
+    }
+    rig.cleanup();
+}
+
+/// "Pick again" from a set's banner or a message waits while a change of a
+/// set is checked, as the inspector's button does, and leaves the shell as it
+/// was (decision 0215 item 6; OI-874).
+#[test]
+fn req_ui_05_reselect_waits_while_a_change_is_checked() {
+    let mut rig = Rig::picking("reselect-while-checking");
+    let model = rig.model();
+    let app = rig.shell.app.as_mut().unwrap();
+    let a = app
+        .save_selection("Set A", model, BTreeSet::from([0u32, 1]))
+        .unwrap();
+    let b = app
+        .save_selection("Set B", model, BTreeSet::from([5u32]))
+        .unwrap();
+    rig.shell.selection.show_set(Some(a));
+    rig.shell.selected = Some(Selection::Set(a));
+    let app = rig.shell.app.as_ref().unwrap();
+    rig.shell.selection.add_to_chosen_for_test(app, model, &[2]);
+    assert!(rig.shell.selection.is_writing());
+    rig.shell.message_action(MessageAction::Reselect(b));
+    assert_eq!(rig.shell.selected, Some(Selection::Set(a)));
+    assert_eq!(rig.shell.selection.shown_set(), Some(a));
     rig.cleanup();
 }
