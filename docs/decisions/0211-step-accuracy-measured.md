@@ -144,7 +144,19 @@ Release build, 4 cores (the machine above). Decision 0209 asks for the median of
 
 Drop counts per run: helical 234,045 (a), 256,205 (b), 237,977 (c); axial 556,420, 828,608 and 810,532; pencil 410,107, 222,948 and 342,624. One tessellation drop costs about 70 µs on (b)'s 15,936 triangles and 110 to 160 µs on (c)'s 106,928 (the probe's figures below, on one thread).
 
-ONE_THREAD
+**One thread, one run each**, and the speed-up of the generation from 1 thread to 4 (NFR-04; decision 0209 item 4.5 asks for it per form):
+
+| Operation | (a): generate | simulate | speed-up | (b): generate | simulate | speed-up | (c): generate | simulate | speed-up |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Roughing | 2.28 | 22.5 | 1.5 | 1.55 | 22.4 | 1.3 | 2.47 | 22.3 | 1.7 |
+| Rest | 19.75 | 60.3 | 2.0 | 10.82 | 62.1 | 1.6 | 21.91 | 62.1 | 2.1 |
+| Pencil | 56.17 | 0.45 | **0.82** | 24.90 | 0.24 | **0.85** | 21.30 | 0.22 | **0.83** |
+| Helical | 18.33 | 39.4 | 2.0 | 9.54 | 41.3 | 1.8 | 20.71 | 41.1 | 2.3 |
+| Axial | 508.50 | 455.5 | **0.95** | 824.19 | 1,104.9 | **0.85** | 678.24 | 1,107.6 | **0.85** |
+| Indexed | 1.36 | 0.22 | 1.2 | 1.36 | 0.23 | 1.0 | 1.04 | 0.20 | 0.7 |
+| Simultaneous (until it refuses) | 219.10 | – | 1.9 | 381.07 | – | 3.6 | 362.93 | – | 3.6 |
+
+Pencil clean-up and axial finishing are slower on 4 threads than on 1, on every form; their simulations scale (axial's 1,105 s on one thread is 326 s on four). With four threads busy each drop costs about twice what it does alone (helical on (b): 8.8 s of drops on one thread, 18.4 s summed on four), so per-drop costs are compared on one thread.
 
 **What an exact ball drop would cost with today's exact queries.** For each ball-end operation, a fixed stride of the drop lines (up to 200 of those kept by their coordinates, so the same at any thread count) is refined against the exact faces by bisection on `BrepSurface::distance` from the ball's centre, in a band of 0.05 mm about the tessellation's answer, 20 halvings, one thread. This is a measuring probe, not lane STEPALL-X's design: it ignores the flutes above the ball, so where the flutes touch first it reads the exact contact too low.
 
@@ -164,8 +176,9 @@ What M3 shows:
 1. **An exact drop built on today's exact queries is not usable on the blisk.** One exact ball drop costs 1.1 to 1.3 s, 17,000 to 28,000 times a tessellation drop; helical finishing's 256,000 drops would take about 90 hours of one core. Decision 0209 item 4.5 proposes at most 2 times the tessellation job (OI-835). The cost is the exact query itself: one `BrepSurface::distance` takes 50 to 60 ms, because it visits several blades and one `closest` on a blade costs 1.8 ms and one on a long-trimmed plane or cylinder 0.7 ms (M1 item 7). Lane STEPALL-X needs a faster closest point on B-spline faces, a faster trim test, and a search of the faces near the seed only, before the drop is worth building; until then form (c) is the way to the accuracy.
 2. **The probe agrees with M2.** On (b) the tessellation drop lies up to 0.043 mm too deep (p99 0.030 mm); on (c) the median offset is 0.0005 mm and the p99 0.015 mm. Its largest readings on (c), 0.025 to 0.027 mm, are not in M2's checker, which finds no pose deeper than 0.006 mm on (c): they are the probe's ball-only model where the flutes touch, or `distance` answers of the OI-839 kind, and are not taken as measurements.
 3. **The finer tessellation (c) costs little.** Its generation is within 2 times today's STEP path for every operation: helical 1.7 times and rest 1.5 times (their time is mostly drops, each about twice as dear on seven times the triangles), roughing 1.2 and indexed 1.1 times, and pencil and axial faster (0.88 and 0.82 times). Its import takes 2.3 s instead of 0.2 s.
-4. **Axial finishing's time is not in its drops** (issue #252). It takes 535 s on the STL, 975 s on (b) and 800 s on (c) at all threads, and its drops sum to 24 to 57 s of thread time, 1 to 2 % of the run; its simulation adds 119 to 327 s. An exact drop would barely change its time; what #252 needs is elsewhere in the strategy (its fitting and assembly at 0.12 mm stepover), outside #257.
-5. **The STEP part is faster than the owner's STL** for helical and rest machining (5.3 and 6.8 s against 9.3 and 10.0 s) and pencil (29 against 69 s), but slower for axial finishing (975 against 535 s, with half as many drops again).
+4. **Axial finishing and pencil clean-up do not gain from threads** (NFR-04): on every form they take longer on 4 threads than on 1 (0.82 to 0.95 times the speed). That is the strategies' own, the same on the owner's STL as on the STEP part, and is outside #257; it is reported to the owner with #252 (item 6 of the decision).
+5. **Axial finishing's time is not in its drops** (issue #252). It takes 535 s on the STL, 975 s on (b) and 800 s on (c) at all threads, and its drops sum to 24 to 57 s of thread time, 1 to 2 % of the run; its simulation adds 119 to 327 s. An exact drop would barely change its time; what #252 needs is elsewhere in the strategy (its fitting and assembly at 0.12 mm stepover), outside #257.
+6. **The STEP part is faster than the owner's STL** for helical and rest machining (5.3 and 6.8 s against 9.3 and 10.0 s) and pencil (29 against 69 s), but slower for axial finishing (975 against 535 s, with half as many drops again).
 
 ### M4: determinism
 
@@ -173,7 +186,39 @@ MEASURE_M4
 
 ## Decision
 
-RECOMMENDATIONS
+These are recommendations on the measurements above. Items 2 and 3 need the owner's choice (asked through the coordinator); the rest follow from decision 0209.
+
+1. **Per strategy, does the exact surface help?** Decision 0209 item 4.1 asks whether (b)'s error goes over the 0.005 mm share, or decides a gouge or a gap over the tolerance, where (c) or (d) would not.
+
+   | Strategy | (b) today | Helps? | Why |
+   | --- | --- | --- | --- |
+   | Rotary roughing | never cuts the part; at most 0.009 mm over its 0.3 mm | **No** | It leaves 0.3 mm; the error is under 3 % of it. It keeps the tessellation, and its notes say so (decision 0209 item 4.4). Not in lane STEPALL-X. |
+   | Helical finishing | 0.043 mm into the part | **Yes** | Over the whole tolerance, at the drops. Ball end. |
+   | Axial finishing | 0.043 mm | **Yes** | As helical; a tapered ball, so it needs the outline form of the exact drop (decision 0209 item 4.2), after the ball. |
+   | Indexed finishing | 0.032 mm | **Yes** | As helical. Ball end. |
+   | Rest machining | 0.043 mm | **Yes** | Its passes are `wrap_fit`'s, as helical's, and gain with them. Its detection is not changed. |
+   | Simultaneous finishing | 0.019 mm on `revolved_spline`, 0.009 on `cone` (it refuses the blisk on every form) | **Yes** | Its drops are the tessellation's like the others; its drive points are already exact. |
+   | Pencil clean-up | 0.035 mm | **Yes**, through its drops; its creases are lane STEPALL-P's | A flat end here (the owner's 2 mm), so the outline form of the drop. |
+
+2. **The finer toolpath tessellation first (OI-834, OI-831; owner's choice).** Form (c) gives most of the gain now, at a cost decision 0209's 2-times limit allows: the deepest cut falls from 0.043 to 0.006 mm on every finishing operation, generation takes at most 1.7 times as long (helical) and the import 2.3 s instead of 0.2 s. It does not meet the 0.005 mm share on the blisk (0.0057 mm, M1 item 3): no kernel setting tried does. Options, recommended first:
+   - **(A) A fixed toolpath tessellation, no stored setting:** the application tessellates a STEP part for toolpaths at 0.01 mm and 0.02 rad, and keeps the import's for display, the mesh checks and the stock comparison. No schema claim. A small lane (STEPALL-T, decision 0209's option) before X. It does not give the user IMP-06's control (OI-831 stays open).
+   - (B) As (A), with the setting stored in the project and shown with the model, closing OI-831: needs a schema claim in the work breakdown, and a choice of what the user sets (one tolerance, or linear and angular).
+   - (C) The tessellation follows each operation's tolerance: a different mesh per tolerance, cached per part; the most accurate, the most memory and the most code.
+   - (D) Neither: wait for X.
+
+   The schema claim OI-834 asks about is needed only for (B).
+3. **The exact drop waits on fast exact queries (OI-81, OI-835; owner's choice of the order).** With today's queries an exact ball drop costs 1.1 to 1.3 s, four orders of magnitude over the 2-times limit (M3 item 1). Lane STEPALL-X is recommended to start with the queries, not the drop:
+   1. fix `ExactFace::closest` at a face's own boundary (OI-839);
+   2. make the trim test and the boundary search cheap (an index on the trim polylines: the blisk's planes and cylinders cost 700 µs a query against 6 µs untrimmed);
+   3. a faster closest point on B-spline faces (1.8 ms on a blade), with a per-face seed from the tessellation contact;
+   4. search only the faces within the tool's reach of the seed contact, not every face nearer than the best answer;
+   5. then the ball drop (helical, indexed, rest, simultaneous), then the outline form (axial's tapered ball, pencil's flat end), checked against the 2-times limit on this harness at each step.
+   
+   Until then, form (c) is the way to accuracy on STEP parts; decision 0209's order otherwise stands (F and M first, then X, P, E).
+4. **The 2-times limit (OI-835) stands as proposed.** It is the measure X is checked against on this harness (M3, all threads, against form (b)); form (c) meets it today.
+5. **The verification plan's 0.005 mm tessellation share (4.1) is not met by any tessellation of the blisk tried** (M1). The total 0.01 mm toolpath tolerance is met by form (c) (0.006 mm deepest, 0.0067 mm largest gap). That is a fact for the owner, not a change to the plan: the share is met only by the exact drop.
+6. **Two findings outside #257, for the owner through the coordinator:** simultaneous finishing refuses the blisk at every setting tried and on every form, including the STL, at the blades' roots (M2); axial finishing and pencil clean-up are slower on 4 threads than on 1, on every form (M3; NFR-04, issue #252). Neither has an `OI-` number yet: the coordinator assigns one if the owner wants them tracked.
+7. **The import notice stays as decision 0209 item 4.4 has it** (OI-830, lane STEPALL-F): with form (c) a STEP part's toolpaths are still computed on a tessellation, finer than the display's, and its notes should say which.
 
 ## Alternatives considered
 
