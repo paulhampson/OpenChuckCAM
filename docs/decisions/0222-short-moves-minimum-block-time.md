@@ -1,12 +1,11 @@
 # 0222: Short moves: a minimum block time, reported first, then met by slowing down (lane SHORTMOVE; SP-14)
 
-- **Status:** proposed (22 Oct 2026). Nothing is built. Only the owner accepts a record (decision 0049).
+- **Status:** accepted (23 Oct 2026) by the project owner, given in this lane's own session (decision 0049). Proposed 22 Oct 2026. Nothing is built yet.
   - **Item 2 decided:** the owner chose option A (Report first, then Slow down; Merge deferred), relayed by the coordinator on 22 Oct 2026.
   - **Item 3 decided:** the owner chose option A, a window of N blocks held in the machine profile beside the minimum block time (N = 1 is the strict per-block case; the Z1 uses 32), relayed by the coordinator on 22 Oct 2026. OI-931 is closed.
   - **Item 7's air cut decided:** the owner chose to add it to the gate 4 procedure now, in lane GATES' draft pull request #284, and the Z1 profile ships with the check **off** until it has been run (OI-930 stays open until then).
   - **5 ms is not a Z1 value.** It is a placeholder threshold, used to describe the measurements and as a test value. No Z1 value is set until the air cut measures one (see *The 5 ms figure*).
-  - **Acceptance:** the owner accepts the record in this lane's session.
-- **What it amends:** nothing yet. The requirement, the profile and post fields, and the verification rows below are proposals. `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` are not edited (CLAUDE.md).
+- **What it amends:** nothing in the documents yet. With the record accepted, the requirement (GC-17), the profile and post fields and the verification rows below are agreed. They are written into `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` in the build lane's pull request, which also claims the project schema number (OI-935).
 - **Date:** 22 Oct 2026.
 - **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
 - **Open items:** OI-930 to OI-937 are new (OI-937 added after the published sources were read). OI-68 (arcs are not replayed) is touched but unchanged. OI-932 (the merge tolerance) stays open as deferred, with Merge.
@@ -98,9 +97,9 @@ These were read from source, not measured on the machine:
   - A segment's speed is capped at `length / (1.02 x servo period)`. The servo period is 1 ms, so LinuxCNC needs blocks of about 1 ms or more.
   - `G64 P Q` blends and merges collinear moves, for XYZ-only moves.
 
-## Decision proposed (for the owner to agree or refine)
+## Decision (accepted 23 Oct 2026)
 
-### 1. Requirement (proposed wording, ID GC-17, P1, Include)
+### 1. Requirement (agreed wording, ID GC-17, P1, Include)
 
 > GC-17: A machine profile can set a minimum block time in milliseconds, which a post can override; 0, the default, turns the check off and leaves the G-code unchanged. When it is set, each fed move's time is worked out with the post's feed rule, and the user chooses, per machine profile or post: **Report** (the setup sheet and a warning state how many moves are under the limit, the longest run of them, the effective feed in that run and the time a slow-down would add, and the G-code is unchanged), or **Slow down** (the feed of each move under the limit is lowered so that the move lasts the limit; the toolpath geometry is unchanged). A later mode, **Merge**, may join consecutive moves within a stated tolerance before slowing down; merged moves are checked against the model by the independent checker.
 
@@ -152,7 +151,7 @@ On the Z1 there are two buffers in series, so two window sizes matter (see *The 
 - **No tolerance is used** by Report or Slow down. Merge would take its tolerance from the NFR-05 budget, and the verification plan's 4.1 row would say how (OI-932).
 - **The setup sheet**, per operation, gives: the limit and its source (profile or post), the mode, the count under the limit, the longest run, the worst window mean, the effective feed in the worst run, and the seconds added. The "about N s" comment then includes the added time.
 
-### 7. Verification (proposed rows; the verification plan is not edited)
+### 7. Verification (agreed rows; written into the verification plan by the build lane)
 
 - **Tests**, written first from the requirement:
   - `req_gc_17_off_leaves_output_unchanged`: the reference goldens, byte-identical with 0.
@@ -339,7 +338,7 @@ Its result sets the Z1 profile's value (OI-930); its pass rule is in item 7.
 
 ## Consequences
 
-- **If accepted:** the requirement, verification plan and architecture edits above are proposed to the owner and made in the build lane's pull request. The work breakdown gains a task: Report and Slow down in the post stage, the profile and post fields with a schema claim, the setup sheet lines, and the tests.
+- **Accepted:** the requirement, verification plan and architecture edits above are made in the build lane's pull request. The work breakdown gains a task: Report and Slow down in the post stage, the profile and post fields with a schema claim, the setup sheet lines, and the tests.
 - **The gate 4 procedure** gains the block-rate check above. Until it runs, the Z1 profile ships with the check off.
 - **New open items:**
   - OI-930: the Z1's effective minimum block time is not measured.
