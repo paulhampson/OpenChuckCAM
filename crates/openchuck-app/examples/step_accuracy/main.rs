@@ -487,6 +487,9 @@ fn main() -> Result<(), Error> {
             if let Some(letter) = name.chars().next() {
                 refused.insert(letter, first.groups.iter().map(Result::is_err).collect());
             }
+            if name.starts_with('b') && library_b.is_none() {
+                library_b = Some(first.groups.iter().filter_map(|g| g.clone().ok()).collect());
+            }
             let one = serde_json::to_string(&first.groups)?;
             for n in [2, cores] {
                 let again = job.run(form, Threads::Exactly(n))?;
