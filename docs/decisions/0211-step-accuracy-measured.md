@@ -128,7 +128,44 @@ What M2 shows:
 
 ### M3: time
 
-MEASURE_M3
+Release build, 4 cores (the machine above). Decision 0209 asks for the median of 5 runs; the cloud container restarted several times during the long runs and a background job is limited to two hours, so the medians here are of 3 runs at all threads and of one run at 1 thread, each run printed as it ended. Seconds per operation, in machining order on the stock the ones before it left. "Drops" is the time inside `drop_tool` summed over the threads (so it can exceed the wall time); "simulate" is the stock simulation of the operation's moves at the project's cell (0.1 mm).
+
+**All threads (4), median of 3 runs:**
+
+| Operation | (a) STL: generate | drops | simulate | (b) STEP today: generate | drops | simulate | (c) finer: generate | drops | simulate |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Roughing | 1.49 | 1.8 | 6.9 | 1.21 | 0.65 | 7.6 | 1.45 | 1.5 | 6.8 |
+| Rest | 9.97 | 35.5 | 21.7 | 6.79 | 19.9 | 20.1 | 10.22 | 35.4 | 19.2 |
+| Pencil | 68.78 | 37.0 | 0.25 | 29.34 | 4.5 | 0.09 | 25.70 | 18.4 | 0.09 |
+| Helical | 9.31 | 35.4 | 12.2 | 5.33 | 18.4 | 13.0 | 9.01 | 33.2 | 12.2 |
+| Axial | 534.76 | 24.0 | 119.0 | 975.31 | 33.5 | 326.5 | 799.69 | 56.8 | 309.8 |
+| Indexed | 1.13 | 0.17 | 0.07 | 1.32 | 0.07 | 0.07 | 1.48 | 0.20 | 0.06 |
+| Simultaneous (until it refuses) | 114.42 | 439.2 | – | 105.63 | 4.2 | – | 100.83 | 9.6 | – |
+
+Drop counts per run: helical 234,045 (a), 256,205 (b), 237,977 (c); axial 556,420, 828,608 and 810,532; pencil 410,107, 222,948 and 342,624. One tessellation drop costs about 70 µs on (b)'s 15,936 triangles and 110 to 160 µs on (c)'s 106,928 (the probe's figures below, on one thread).
+
+ONE_THREAD
+
+**What an exact ball drop would cost with today's exact queries.** For each ball-end operation, a fixed stride of the drop lines (up to 200 of those kept by their coordinates, so the same at any thread count) is refined against the exact faces by bisection on `BrepSurface::distance` from the ball's centre, in a band of 0.05 mm about the tessellation's answer, 20 halvings, one thread. This is a measuring probe, not lane STEPALL-X's design: it ignores the flutes above the ball, so where the flutes touch first it reads the exact contact too low.
+
+| Operation | Form | Refined (of sampled) | Tessellation drop | One `distance` | One exact ball drop | Seed offset p50 | p99 | Seed too deep, max | Seed too high, max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Rest | b | 183 (187) | 77 µs | 59 ms | 1.29 s | 0.0042 | 0.0295 | 0.0431 | 0.0332 |
+| Helical | b | 183 (187) | 74 µs | 60 ms | 1.31 s | 0.0042 | 0.0295 | 0.0431 | 0.0332 |
+| Indexed | b | 25 (25) | 32 µs | 58 ms | 1.28 s | 0.0032 | 0.0231 | 0.0231 | 0.0188 |
+| Simultaneous | b | 189 (191) | 40 µs | 51 ms | 1.10 s | 0.0034 | 0.0226 | 0.0233 | 0.0215 |
+| Rest | c | 187 (187) | 160 µs | 60 ms | 1.33 s | 0.0005 | 0.0147 | 0.0247 | 0.0092 |
+| Helical | c | 187 (187) | 117 µs | 60 ms | 1.33 s | 0.0005 | 0.0147 | 0.0247 | 0.0092 |
+| Indexed | c | 23 (23) | 83 µs | 59 ms | 1.29 s | 0.0003 | 0.0092 | 0.0092 | 0.0023 |
+| Simultaneous | c | 169 (169) | 76 µs | 50 ms | 1.11 s | 0.0002 | 0.0081 | 0.0270 | 0.0036 |
+
+What M3 shows:
+
+1. **An exact drop built on today's exact queries is not usable on the blisk.** One exact ball drop costs 1.1 to 1.3 s, 17,000 to 28,000 times a tessellation drop; helical finishing's 256,000 drops would take about 90 hours of one core. Decision 0209 item 4.5 proposes at most 2 times the tessellation job (OI-835). The cost is the exact query itself: one `BrepSurface::distance` takes 50 to 60 ms, because it visits several blades and one `closest` on a blade costs 1.8 ms and one on a long-trimmed plane or cylinder 0.7 ms (M1 item 7). Lane STEPALL-X needs a faster closest point on B-spline faces, a faster trim test, and a search of the faces near the seed only, before the drop is worth building; until then form (c) is the way to the accuracy.
+2. **The probe agrees with M2.** On (b) the tessellation drop lies up to 0.043 mm too deep (p99 0.030 mm); on (c) the median offset is 0.0005 mm and the p99 0.015 mm. Its largest readings on (c), 0.025 to 0.027 mm, are not in M2's checker, which finds no pose deeper than 0.006 mm on (c): they are the probe's ball-only model where the flutes touch, or `distance` answers of the OI-839 kind, and are not taken as measurements.
+3. **The finer tessellation (c) costs little.** Its generation is within 2 times today's STEP path for every operation: helical 1.7 times and rest 1.5 times (their time is mostly drops, each about twice as dear on seven times the triangles), roughing 1.2 and indexed 1.1 times, and pencil and axial faster (0.88 and 0.82 times). Its import takes 2.3 s instead of 0.2 s.
+4. **Axial finishing's time is not in its drops** (issue #252). It takes 535 s on the STL, 975 s on (b) and 800 s on (c) at all threads, and its drops sum to 24 to 57 s of thread time, 1 to 2 % of the run; its simulation adds 119 to 327 s. An exact drop would barely change its time; what #252 needs is elsewhere in the strategy (its fitting and assembly at 0.12 mm stepover), outside #257.
+5. **The STEP part is faster than the owner's STL** for helical and rest machining (5.3 and 6.8 s against 9.3 and 10.0 s) and pencil (29 against 69 s), but slower for axial finishing (975 against 535 s, with half as many drops again).
 
 ### M4: determinism
 
