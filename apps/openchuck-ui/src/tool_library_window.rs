@@ -1888,14 +1888,14 @@ fn default_tool_view(ui: &mut egui::Ui, tool: &LibraryTool, dirty: bool, acts: &
         field_row::read_only_row(
             ui,
             &label,
-            "A dimension of the tool (TL-04).",
+            "A dimension of the tool.",
             RichText::new(value).monospace(),
         );
     }
     field_row::read_only_row(
         ui,
         "Flutes",
-        "The number of flutes (TL-04).",
+        "The number of flutes.",
         RichText::new(tool.tool.flute_count.to_string()).monospace(),
     );
     field_row::read_only_row(
