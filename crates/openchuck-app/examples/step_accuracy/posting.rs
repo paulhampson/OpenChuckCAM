@@ -2,17 +2,20 @@
 //! Post each measured form for M4, including a finer tessellation which the
 //! application cannot select.
 //!
-//! UNFINISHED TRANSFER SNAPSHOT: this is the deliberate empty-output stub from
-//! the red test phase. It is not wired into main.rs. Implement posting, then
-//! integrate it into M4 before claiming form-c G-code determinism. The contract
-//! tests currently fail; no ignore or successful verification is claimed.
-
-use openchuck_post::PostJob;
-use openchuck_types::ir::ToolpathGroup;
+use openchuck_post::{PostJob, PostProcessor, TemplatePost, builtin};
+use openchuck_types::ir::{Toolpath, ToolpathGroup};
 
 pub fn post_run(
-    _groups: &[Result<ToolpathGroup, String>],
-    _job: &PostJob,
+    groups: &[Result<ToolpathGroup, String>],
+    job: &PostJob,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(String::new())
+    let groups: Vec<_> = groups
+        .iter()
+        .filter_map(|g| g.as_ref().ok().cloned())
+        .collect();
+    if groups.is_empty() {
+        return Err("M4 cannot post a run with no successful operations".into());
+    }
+    let post = TemplatePost::new(builtin("makera-z1").ok_or("no Z1 post")??);
+    Ok(post.post(&Toolpath { groups }, job)?.text)
 }

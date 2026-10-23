@@ -23,7 +23,7 @@
 //!   and, for the ball-end operations, what an exact ball drop would cost,
 //!   from a probe that refines sampled drops against the exact faces.
 //! - **M4**, determinism: each form's toolpath at 1, 2 and all threads, and
-//!   the posted G-code of forms (a) and (b) through the application, byte
+//!   each form's posted G-code, with (a) and (b) checked through the application, byte
 //!   for byte (GC-07, NFR-06); and the library's path of form (b) against
 //!   the application's, so the harness measures what the application makes.
 //!
@@ -50,6 +50,7 @@
 
 mod checks;
 mod measure;
+mod posting;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -349,6 +350,8 @@ fn main() -> Result<(), Error> {
         part_bounds: bounds,
     };
 
+    let post_job = job.post_job()?;
+    let mut library_posts = BTreeMap::new();
     let mut library_b = None;
     // The operations each form's strategies refused, by the form's letter.
     let mut refused: BTreeMap<char, Vec<bool>> = BTreeMap::new();
@@ -499,6 +502,10 @@ fn main() -> Result<(), Error> {
                 library_b = Some(first.groups.iter().filter_map(|g| g.clone().ok()).collect());
             }
             let one = serde_json::to_string(&first.groups)?;
+            let posted = posting::post_run(&first.groups, &post_job)?;
+            if let Some(letter) = name.chars().next() {
+                library_posts.insert(letter, posted.clone());
+            }
             for n in [2, cores] {
                 let again = job.run(form, Threads::Exactly(n))?;
                 checks::identical(
@@ -506,7 +513,12 @@ fn main() -> Result<(), Error> {
                     &serde_json::to_string(&again.groups)?,
                     &format!("form {name}, {n} threads, serialized toolpath"),
                 )?;
-                println!("{n} threads: identical");
+                checks::identical(
+                    &posted,
+                    &posting::post_run(&again.groups, &post_job)?,
+                    &format!("form {name}, {n} threads, posted G-code"),
+                )?;
+                println!("{n} threads: toolpath and posted G-code identical");
             }
         }
     }
@@ -526,6 +538,11 @@ fn main() -> Result<(), Error> {
             let took = started.elapsed();
             let clean = result.reports.iter().all(|r| r.is_clean());
             let gcode = result.gcode.clone();
+            if let Some(library) = library_posts.get(&'b') {
+                checks::identical(&1, &gcode.len(), "form b application file count")?;
+                let (_, text) = gcode.first().ok_or("no form b G-code")?;
+                checks::identical(library, text, "form b library/application G-code")?;
+            }
             checks::clean(clean, &format!("form b, {n} threads, replay gates"))?;
             if let Some(expected) = &reference {
                 checks::identical(expected, &gcode, &format!("form b, {n} threads, G-code"))?;
@@ -554,6 +571,11 @@ fn main() -> Result<(), Error> {
                 let started = Instant::now();
                 let result = again.regenerate()?;
                 let gcode = result.gcode.clone();
+                if let Some(library) = library_posts.get(&'a') {
+                    checks::identical(&1, &gcode.len(), "form a application file count")?;
+                    let (_, text) = gcode.first().ok_or("no form a G-code")?;
+                    checks::identical(library, text, "form a library/application G-code")?;
+                }
                 checks::clean(
                     result.reports.iter().all(|r| r.is_clean()),
                     &format!("form a, {n} threads, replay gates"),
@@ -1151,6 +1173,56 @@ struct Job<'a> {
 }
 
 impl Job<'_> {
+    /// Mirror this harness project's single-setup application post context.
+    /// M4 compares the resulting bytes with application output before using
+    /// this context to establish form-c posting determinism.
+    fn post_job(&self) -> Result<openchuck_post::PostJob, Error> {
+        use openchuck_post::ToolSetting;
+        use openchuck_types::kinematics::RotaryFrame;
+
+        let setup = self.project.setups().first().ok_or("no setup")?;
+        let mut tools = BTreeMap::new();
+        let mut operation_names = BTreeMap::new();
+        let mut operation_spindle = BTreeMap::new();
+        for id in self.ids {
+            let operation = self.project.operation(*id).ok_or("no operation")?;
+            let snapshot = self
+                .project
+                .tools()
+                .iter()
+                .find(|t| Some(t.id) == operation.tool)
+                .ok_or("no tool")?;
+            let material = operation
+                .material
+                .as_ref()
+                .or(setup.material.as_ref())
+                .ok_or("no material")?;
+            let (_, data) =
+                openchuck_types::tool::find_cutting_data(&snapshot.cutting_data, material)
+                    .ok_or("no cutting data")?;
+            let speed = operation.spindle_speed.unwrap_or(data.spindle_speed).0;
+            operation_names.insert(id.to_string(), operation.name.clone());
+            operation_spindle.insert(id.to_string(), speed);
+            tools
+                .entry(snapshot.id.to_string())
+                .or_insert_with(|| ToolSetting {
+                    number: snapshot.controller.number,
+                    name: snapshot.name.clone(),
+                    spindle_rpm: speed,
+                });
+        }
+        Ok(openchuck_post::PostJob {
+            frame: RotaryFrame::work(self.machine, &setup.frame),
+            tools,
+            operation_names,
+            operation_spindle,
+            title: format!("{} - {}", self.project.name(), setup.name),
+            revision: None,
+            generator: Some(format!("OpenChuckCAM {}", env!("CARGO_PKG_VERSION"))),
+            work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
+        })
+    }
+
     /// The operations in order on `form`, each on the stock the ones before
     /// it left, as the application's pipeline carries it (SIM-06).
     fn run(&self, form: &Form<'_>, threads: Threads) -> Result<Run, Error> {
