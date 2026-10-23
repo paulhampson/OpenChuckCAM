@@ -32,6 +32,7 @@ cargo run --release -p openchuck-app --features kernel-tests --example step_accu
 - **Stations.** Every fed pose, and the quarter, middle and three-quarter points of every fed move, placed on the machine's straight move in X, Y, Z and A (decisions 0025 item 3, 0115 and 0133).
 - **Checked first.** `crates/openchuck-app/tests/step_accuracy.rs` (kernel; four tests, 2.9 s under `cargo nextest`, in the STEP kernel job) checks the functions on closed forms: the measured error of the corpus cylinder equals its sagitta from the vertices alone at 0.01 and 0.0025 mm; a ball's gouge and gap read within 0.0002 mm; a move's stations lie on the machine's straight move; a mesh is sampled by its area.
 - **Machine.** Intel Xeon @ 2.80 GHz, 4 cores, 15 GB, release build, cloud container.
+- **Code measured.** M2 to M4 are on `main` at `57772e7` (merged into this branch on 23 Oct 2026); M1 does not depend on it. Merged into `main` after that and not measured here: lane STEPALL-P (pencil clean-up from a STEP part's exact edges, decision 0226), which replaces the crease source the pencil rows below measure; lane STEPALL-E (edge following on the exact edge curve, decision 0227); lane SHORTMOVE (short moves and a minimum block time, decision 0222), which can change any path; and lane OPSPEED (decisions 0230 and 0231). When this branch is updated from `main` (decision 0055), the harness is run again on M2 at the quick stepovers and on M4, and any figure that moves is corrected.
 
 ## Measurements
 
