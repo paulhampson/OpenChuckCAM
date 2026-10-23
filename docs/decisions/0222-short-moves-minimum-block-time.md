@@ -7,7 +7,7 @@
   - **5 ms is not a Z1 value.** It is a placeholder threshold, used to describe the measurements and as a test value. No Z1 value is set until the air cut measures one (see *The 5 ms figure*).
 - **What it amends:** nothing in the documents yet. With the record accepted, the requirement (GC-17), the profile and post fields and the verification rows below are agreed. They are written into `docs/requirements.md`, `docs/architecture.md` and `docs/verification-plan.md` in the build lane's pull request, which also claims the project schema number (OI-935).
 - **Date:** 22 Oct 2026.
-- **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
+- **Spike branch:** `spike/sp-14-short-moves` (throwaway, never merged, but kept: the gate 4 procedure fetches the air-cut program `spikes/sp14-short-moves/air-cut/block_rate_z1.nc` from it). The write-up is `spikes/sp14-short-moves/RESULT.md` and the raw tables are in `spikes/sp14-short-moves/results/`.
 - **Open items:** OI-930 to OI-937 are new (OI-937 added after the published sources were read). OI-68 (arcs are not replayed) is touched but unchanged. OI-932 (the merge tolerance) stays open as deferred, with Merge.
 - **Number note:** the lane was given 0222 and 0223. This investigation needs one record, so 0223 stays free.
 
