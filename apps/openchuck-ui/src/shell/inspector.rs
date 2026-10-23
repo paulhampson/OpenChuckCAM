@@ -606,7 +606,9 @@ impl Shell {
                                 description: "How fast the tool turns, in revolutions per \
                                               minute (rpm). It sets the S value in the G-code. \
                                               Left empty, the tool's cutting data for the \
-                                              stock material gives it. Check it against your \
+                                              material preset gives it: the setup's stock \
+                                              material unless the operation chose another. \
+                                              Check it against your \
                                               tool, material and machine before you run the \
                                               program.",
                                 unit: "rpm",
