@@ -319,6 +319,15 @@ pub(crate) fn generate_with_part(
     if let Some(reason) = brep_only(project, registry, operation) {
         return Err(missing(operation, &reason));
     }
+    // A set the strategy cannot use on a STEP part: the same check the
+    // Geometry section and the overview read before generation (decision
+    // 0209 item 10).
+    if let Some(refusal) = crate::step_sets::refusals(project, registry, operation)
+        .into_iter()
+        .next()
+    {
+        return Err(missing(operation, &refusal.text));
+    }
     let limited = operation.selection_refs().next().is_some();
     // A STEP part's selections are faces and edges, which choose the holes
     // and the edges below (decision 0056); a mesh part's are triangles, or
@@ -332,9 +341,9 @@ pub(crate) fn generate_with_part(
         return Err(missing(
             operation,
             &format!(
-                "the strategy '{}' cannot yet be limited to selections (OP-02); remove \
-                 the operation's selections to machine the whole part",
-                operation.strategy
+                "{} works on the whole part and cannot be limited to chosen triangles. Take \
+                 the selection sets out of the operation.",
+                strategy.label()
             ),
         ));
     }
@@ -381,10 +390,18 @@ pub(crate) fn generate_with_part(
     }
     let (mesh, file_hash) = (&placed.mesh, placed.hash);
     context.check_cancelled()?;
+    // A strategy that takes a region on a mesh takes face sets on a STEP
+    // part as the triangles of their faces (OP-02, OP-11; decision 0209
+    // item 3); swarf, drilling and edge following read the faces and edges
+    // themselves.
+    let faces_as_triangles =
+        placed.brep.is_some() && strategy.honours_region() && operation.strategy != swarf::NAME;
     // A STEP part is machined on its exact faces (IMP-02; decision 0056).
     let brep_choice = match &placed.brep {
-        Some(brep) => Some(brep_selection(project, operation, model, file_hash, brep)?),
-        None => None,
+        Some(brep) if !faces_as_triangles => {
+            Some(brep_selection(project, operation, model, file_hash, brep)?)
+        }
+        _ => None,
     };
     let model_surface: Arc<dyn SurfaceSource> = match (&placed.brep, &brep_choice) {
         (Some(brep), Some(choice)) if !choice.faces.is_empty() => {
@@ -442,7 +459,17 @@ pub(crate) fn generate_with_part(
         None => crate::selection::mesh_edge_segments(project, operation, model, file_hash, mesh)?,
     };
     let resolved_region = match (&placed.brep, &mesh_edges) {
-        (None, None) => crate::selection::resolve(project, operation, model, file_hash, mesh)?,
+        (None, None) => {
+            crate::selection::resolve(project, operation, model, file_hash, mesh, None)?
+        }
+        (Some(brep), None) if faces_as_triangles => crate::selection::resolve(
+            project,
+            operation,
+            model,
+            file_hash,
+            mesh,
+            Some(&crate::selection::FaceTriangles::of(brep)),
+        )?,
         _ => None,
     };
     // Swarf on a STEP part is limited by face sets (decision 0176).
@@ -587,6 +614,13 @@ pub(crate) fn generate_with_part(
     let mut notes: Vec<String> = warnings.iter().map(|w| w.message.clone()).collect();
     notes.extend(resolved.notes);
     notes.extend(leave_notes);
+    // On a STEP part, the surface the tool was dropped on (decision 0209
+    // item 4.4, OI-830; NFR-12).
+    if placed.brep.is_some()
+        && let Some(note) = tessellation_note(registry_strategy, &operation.strategy)
+    {
+        notes.push(note);
+    }
     notes.extend(reach_notes);
     // The registry's strategy: a B-rep edge source uses the crease angle and
     // the shortest chain, so the warning that they are not used does not apply.
@@ -617,6 +651,23 @@ pub(crate) fn generate_with_part(
             warnings
         },
     })
+}
+
+/// The note on an operation of `strategy` (registered as `name`) on a STEP
+/// part that drops the tool on the part's tessellation, not on its exact
+/// faces, until the exact drop is built (OI-81; decision 0209 item 4.4,
+/// OI-830). `None` for the strategies that read the exact faces or edges
+/// themselves: radial drilling, swarf and edge following.
+fn tessellation_note(strategy: &dyn Strategy, name: &str) -> Option<String> {
+    if [drill::NAME, swarf::NAME, edge_following::NAME].contains(&name) {
+        return None;
+    }
+    Some(format!(
+        "{} drops the tool on the STEP part's tessellation, made at a deflection of {} mm, not \
+         on its exact faces: dropping on the exact faces is not built yet",
+        strategy.label(),
+        openchuck_types::brep::TessellationSettings::default().linear
+    ))
 }
 
 /// The largest stock to leave of the selection sets `operation` selects, and
@@ -980,8 +1031,10 @@ struct BrepChoice {
 }
 
 /// Reads the selections of `operation` on its STEP part `part` (decision
-/// 0056). Only face sets for radial drilling and swarf (decision 0061 item 1)
-/// and edge sets for edge following are honoured so far; anything else is an
+/// 0056), for the strategies that read faces and edges themselves: face sets
+/// for radial drilling and swarf (decision 0061 item 1) and edge sets for
+/// edge following. A set the strategy cannot use has been refused before
+/// ([`crate::step_sets::refusals`]); a set that does not fit the part is an
 /// error that says so, never a silent drop (OP-02).
 fn brep_selection(
     project: &Project,
@@ -991,15 +1044,6 @@ fn brep_selection(
     brep: &BrepModel,
 ) -> Result<BrepChoice, AppError> {
     let fail = |reason: String| missing(operation, &reason);
-    let limited =
-        operation.boundary.is_some() || !operation.avoid.is_empty() || !operation.check.is_empty();
-    if limited && operation.strategy != swarf::NAME {
-        return Err(fail(
-            "boundaries, avoid and check surfaces on a STEP model are built for swarf only so \
-             far; remove them from the operation"
-                .to_owned(),
-        ));
-    }
     let options = &operation.restriction_options;
     let limit = |id: SelectionSetId, on_break: OnBreak| -> Result<LimitSet, AppError> {
         Ok(LimitSet {
@@ -1063,13 +1107,6 @@ fn brep_selection(
                 part.path.as_str()
             )));
         }
-        if set.stock_to_leave.is_some() {
-            return Err(bad(
-                "a stock to leave per selection set is not built for STEP parts yet; \
-                 clear it on the set and set the operation's stock to leave"
-                    .to_owned(),
-            ));
-        }
         match &set.target {
             SelectionTarget::Faces(faces) if faces.is_empty() => {
                 return Err(bad(if operation.strategy == swarf::NAME {
@@ -1127,23 +1164,6 @@ fn brep_selection(
     choice.faces.dedup();
     choice.edges.sort_unstable();
     choice.edges.dedup();
-    if !choice.faces.is_empty()
-        && operation.strategy != drill::NAME
-        && operation.strategy != swarf::NAME
-    {
-        return Err(fail(format!(
-            "the strategy '{}' cannot yet be limited to faces of a STEP model (OP-02); only \
-             radial drilling, to choose its holes, and swarf, to choose the walls it cuts, use \
-             selected faces",
-            operation.strategy
-        )));
-    }
-    if !choice.edges.is_empty() && operation.strategy != edge_following::NAME {
-        return Err(fail(format!(
-            "the strategy '{}' does not use selected edges; only edge following does",
-            operation.strategy
-        )));
-    }
     // Swarf cuts only the walls the user chose, never every face of the part
     // (the owner's change to decision 0061 item 1, decision 0111 item 1).
     if operation.strategy == swarf::NAME && choice.faces.is_empty() {
@@ -1535,7 +1555,13 @@ mod tests {
         }
 
         fn run(&self) -> Result<OperationPath, AppError> {
-            let placed = PlacedPart::of_brep(
+            self.run_on(false)
+        }
+
+        /// Runs the operation on the placed part, or with `as_mesh` on its
+        /// joined tessellation alone, as a mesh part is read.
+        fn run_on(&self, as_mesh: bool) -> Result<OperationPath, AppError> {
+            let mut placed = PlacedPart::of_brep(
                 &self.brep,
                 &self
                     .project
@@ -1547,6 +1573,9 @@ mod tests {
                 self.hash,
             )
             .unwrap();
+            if as_mesh {
+                placed.brep = None;
+            }
             let cancel = CancelToken::new();
             let context = JobContext::new(&cancel, &NoProgress);
             generate_with_part(
@@ -1653,62 +1682,32 @@ mod tests {
 
     #[test]
     fn req_op_02_req_nfr_07_selections_a_step_part_cannot_use_are_refused() {
-        let faces = || SelectionTarget::Faces([FaceId(1)].into_iter().collect());
+        // The sets that do not fit the part, for the strategies that read
+        // faces and edges themselves; what a strategy cannot use at all is
+        // the shared check's (decision 0209 item 10, tested below).
         let edges = || SelectionTarget::Edges([EdgeId(0)].into_iter().collect());
-        let registry = Registry::builtin();
+        let faces = || SelectionTarget::Faces([FaceId(1)].into_iter().collect());
         let mut cases: Vec<(String, SelectionTarget, Role, bool, &str)> = Vec::new();
-        for choice in registry.iter() {
-            let strategy = choice.name().to_owned();
-            if strategy != drill::NAME && strategy != swarf::NAME {
-                cases.push((
-                    strategy.clone(),
-                    faces(),
-                    Role::Machine,
+        let swarf = || swarf::NAME.to_owned();
+        for role in [Role::Boundary, Role::Avoid, Role::Check] {
+            cases.extend([
+                (swarf(), edges(), role, true, "takes faces, not edges"),
+                (
+                    swarf(),
+                    SelectionTarget::Faces([FaceId(9999)].into_iter().collect()),
+                    role,
                     true,
-                    "limited to faces",
-                ));
-            }
-            if strategy != edge_following::NAME {
-                cases.push((
-                    strategy.clone(),
-                    edges(),
-                    Role::Machine,
+                    "face 9999 is not in the model",
+                ),
+                (
+                    swarf(),
+                    SelectionTarget::Faces(BTreeSet::new()),
+                    role,
                     true,
-                    "only edge following",
-                ));
-            }
-            // Boundaries, avoid and check surfaces on a STEP part are built
-            // for swarf only (decision 0176; OI-233 for the others).
-            for role in [Role::Boundary, Role::Avoid, Role::Check] {
-                if strategy == swarf::NAME {
-                    cases.extend([
-                        (strategy.clone(), edges(), role, true, "selects faces"),
-                        (
-                            strategy.clone(),
-                            SelectionTarget::Faces([FaceId(9999)].into_iter().collect()),
-                            role,
-                            true,
-                            "face 9999 is not in the model",
-                        ),
-                        (
-                            strategy.clone(),
-                            SelectionTarget::Faces(BTreeSet::new()),
-                            role,
-                            true,
-                            "selects no faces",
-                        ),
-                        (strategy.clone(), faces(), role, false, "different version"),
-                    ]);
-                } else {
-                    cases.push((
-                        strategy.clone(),
-                        faces(),
-                        role,
-                        true,
-                        "built for swarf only",
-                    ));
-                }
-            }
+                    "selects no faces",
+                ),
+                (swarf(), faces(), role, false, "different version"),
+            ]);
         }
         let drill = || drill::NAME.to_owned();
         let edge = || edge_following::NAME.to_owned();
@@ -2346,5 +2345,445 @@ mod tests {
                 && err.contains("face 0 is in the face set it cuts and in the check set 'chosen'"),
             "{err}"
         );
+    }
+
+    /// The banded bar of decision 0209 item 3: a round bar of `BAR` about
+    /// the rotary axis whose side is three faces, 0 (X 0 to 20), 1 (20 to
+    /// 40) and 2 (40 to 60), cut by a ball of `BALL`, from the STEP file
+    /// `file`, or the same triangles from an STL when `file` is one.
+    const BAR: f64 = 10.0;
+    const BALL: f64 = 3.0;
+
+    fn bar_fixture(strategy: &str, file: &str) -> Fixture {
+        // Roughing has no cutting data without a stock material.
+        let stepdown = [(STEPDOWN, Value::Number(1.0))];
+        let parameters: &[(&str, Value)] = if strategy == roughing::NAME {
+            &stepdown
+        } else {
+            &[]
+        };
+        let brep = openchuck_testkit::brep::banded_cylinder(BAR, LENGTH, &[20.0, 40.0]);
+        let ball = Tool {
+            shape: ToolShape::BallEnd,
+            diameter: Millimetres(BALL),
+            flute_length: Millimetres(15.0),
+            overall_length: Millimetres(60.0),
+            shank_diameter: Millimetres(BALL),
+            flute_count: 2,
+            material: None,
+            centre_cutting: None,
+        };
+        fixture_on(strategy, parameters, brep, Vec::new(), file, ball, BAR)
+    }
+
+    impl Fixture {
+        /// The triangles of `faces` in the part's joined tessellation.
+        fn triangles_of(&self, faces: &[u32]) -> BTreeSet<u32> {
+            self.brep
+                .joined_tessellation()
+                .1
+                .iter()
+                .zip(0_u32..)
+                .filter(|(f, _)| faces.contains(&f.0))
+                .map(|(_, t)| t)
+                .collect()
+        }
+
+        /// Gives selection set `set` a stock to leave of its own (OP-11).
+        fn set_stock(&mut self, set: SelectionSetId, leave: f64) {
+            let mut edited = self
+                .project
+                .selection_sets()
+                .iter()
+                .find(|s| s.id == set)
+                .unwrap()
+                .clone();
+            edited.stock_to_leave = Some(leave);
+            self.project.replace(Item::SelectionSet(edited)).unwrap();
+        }
+    }
+
+    /// The X of the tool tip on the cutting moves of `path`, in the part's
+    /// frame.
+    fn cut_xs(path: &OperationPath) -> Vec<f64> {
+        path.group
+            .segments
+            .iter()
+            .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+            .map(|s| s.end.tip.x - SHIFT)
+            .collect()
+    }
+
+    /// Where the cutting moves of `path` lie against the banded bar's faces,
+    /// for each case of the face set tests: `Err` says what is wrong. A ball
+    /// dropped on a bar about the rotary axis touches it straight below its
+    /// centre, so a tip's X is its contact's X.
+    fn keeps_to_faces(
+        path: &OperationPath,
+        case: &str,
+        whole: &OperationPath,
+    ) -> Result<(), String> {
+        let eps = 0.05;
+        let reach = 0.5 * BALL + eps;
+        let cuts: Vec<(f64, f64)> = path
+            .group
+            .segments
+            .iter()
+            .filter(|s| s.kind == openchuck_types::ir::MoveKind::Cutting)
+            .map(|s| (s.end.tip.x - SHIFT, s.end.tip.y.hypot(s.end.tip.z)))
+            .collect();
+        if cuts.is_empty() {
+            return Err("no cutting move".to_owned());
+        }
+        // Roughing leaves stock above the part, so a check set on it has
+        // nothing to keep the tool from.
+        if case == "check, kept clear" {
+            return if path.group.segments == whole.group.segments {
+                Ok(())
+            } else {
+                Err("a check set the tool never reaches changed the cut".to_owned())
+            };
+        }
+        if path.group.segments == whole.group.segments {
+            return Err("the set changed nothing".to_owned());
+        }
+        let outside = |lo: f64, hi: f64| cuts.iter().find(|(x, _)| !(lo..=hi).contains(x));
+        match case {
+            "cut on" | "contain within" | "avoid" => match outside(20.0 - reach, 40.0 + reach) {
+                Some((x, _)) => Err(format!("a cut at X {x}, outside face 1")),
+                None => Ok(()),
+            },
+            "check" => match outside(-reach, 40.0 + eps) {
+                Some((x, _)) => Err(format!("a cut at X {x} touches face 2")),
+                None => Ok(()),
+            },
+            // Face 1 is left 0.25 mm and the others none: the ball's tip
+            // over face 1 is 0.25 mm further from the axis than over face 0.
+            _ => {
+                let over = |lo: f64, hi: f64| {
+                    cuts.iter()
+                        .filter(|(x, _)| (lo..=hi).contains(x))
+                        .map(|(_, r)| *r)
+                        .fold(f64::MAX, f64::min)
+                };
+                let (one, zero) = (over(21.0, 39.0), over(1.0, 19.0));
+                if (one - BAR - 0.25).abs() < 0.02 && (zero - BAR).abs() < 0.02 {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "the nearest tips: {one} over face 1, {zero} over face 0"
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Decision 0209 item 3 (OI-233): on a STEP part, `strategy` takes a face
+    /// set as the region (Cut on), the boundary (Contain within), an avoid
+    /// or a check set, and a stock to leave per set, as the triangles of its
+    /// faces; the cut keeps to the faces as the same triangles make it keep
+    /// to them as a triangle set on a mesh.
+    fn face_sets_limit_the_cut_as_on_a_mesh(strategy: &str) {
+        type Case = (&'static str, Role, &'static [u32], Option<f64>);
+        let cases: [Case; 5] = [
+            ("cut on", Role::Machine, &[1], None),
+            ("contain within", Role::Boundary, &[1], None),
+            ("avoid", Role::Avoid, &[0, 2], None),
+            ("check", Role::Check, &[2], None),
+            ("stock to leave", Role::Machine, &[1], Some(0.25)),
+        ];
+        let registry = Registry::builtin();
+        {
+            for as_mesh in [false, true] {
+                let file = if as_mesh { "bar.stl" } else { "bar.step" };
+                let whole = bar_fixture(strategy, file).run_on(as_mesh).unwrap();
+                for (what, role, faces, leave) in cases {
+                    let mut f = bar_fixture(strategy, file);
+                    let target = if as_mesh {
+                        SelectionTarget::Triangles(f.triangles_of(faces))
+                    } else {
+                        SelectionTarget::Faces(faces.iter().map(|f| FaceId(*f)).collect())
+                    };
+                    let set = f.select_as(target, f.hash, f.model, role);
+                    if let Some(leave) = leave {
+                        f.set_stock(set, leave);
+                        // The other faces are cut too, with the operation's
+                        // stock to leave.
+                        let others = if as_mesh {
+                            SelectionTarget::Triangles(f.triangles_of(&[0, 2]))
+                        } else {
+                            SelectionTarget::Faces([FaceId(0), FaceId(2)].into())
+                        };
+                        f.select_as(others, f.hash, f.model, Role::Machine);
+                    }
+                    let operation = f.project.operation(f.operation).unwrap();
+                    assert!(
+                        crate::step_sets::refusals(&f.project, &registry, operation).is_empty(),
+                        "{strategy} {what}"
+                    );
+                    let path = f
+                        .run_on(as_mesh)
+                        .unwrap_or_else(|e| panic!("{strategy} {file} {what}: {e}"));
+                    if strategy == roughing::NAME && leave.is_some() {
+                        // Roughing leaves the largest amount wherever it cuts
+                        // (decision 0058), and says so.
+                        assert!(
+                            path.notes
+                                .iter()
+                                .any(|n| n.contains("roughing leaves 0.25 mm")),
+                            "{file}: {:?}",
+                            path.notes
+                        );
+                        continue;
+                    }
+                    let what = if strategy == roughing::NAME && what == "check" {
+                        "check, kept clear"
+                    } else {
+                        what
+                    };
+                    if let Err(why) = keeps_to_faces(&path, what, &whole) {
+                        panic!("{strategy} {file} {what}: {why}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh() {
+        face_sets_limit_the_cut_as_on_a_mesh(openchuck_path::helical::NAME);
+    }
+
+    #[test]
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_axial_on_a_step_part_as_on_a_mesh() {
+        face_sets_limit_the_cut_as_on_a_mesh(openchuck_path::axial::NAME);
+    }
+
+    #[test]
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_indexed_on_a_step_part_as_on_a_mesh() {
+        face_sets_limit_the_cut_as_on_a_mesh(openchuck_path::indexed::NAME);
+    }
+
+    #[test]
+    fn req_op_23_req_op_02_req_op_11_face_sets_limit_rotary_roughing_on_a_step_part_as_on_a_mesh() {
+        face_sets_limit_the_cut_as_on_a_mesh(roughing::NAME);
+    }
+
+    #[test]
+    fn req_op_23_req_op_05_simultaneous_finishing_is_limited_to_chosen_faces_of_a_step_part() {
+        // Decision 0209 item 3: simultaneous finishing reads its drive
+        // points from the exact faces (decision 0036), so its cut is not the
+        // mesh's move for move; a face set still limits it to those faces.
+        let whole = bar_fixture(openchuck_path::simultaneous::NAME, "bar.step")
+            .run()
+            .unwrap();
+        assert!(cut_xs(&whole).iter().any(|x| *x < 15.0));
+        let mut f = bar_fixture(openchuck_path::simultaneous::NAME, "bar.step");
+        f.select_as(
+            SelectionTarget::Faces([FaceId(1)].into()),
+            f.hash,
+            f.model,
+            Role::Machine,
+        );
+        let xs = cut_xs(&f.run().unwrap());
+        assert!(!xs.is_empty());
+        let reach = 0.5 * BALL + 0.05;
+        assert!(
+            xs.iter().all(|x| (20.0 - reach..=40.0 + reach).contains(x)),
+            "{:?}",
+            xs.iter()
+                .copied()
+                .fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)))
+        );
+    }
+
+    #[test]
+    fn req_op_23_req_nfr_12_an_operation_on_a_step_part_names_the_surface_it_dropped_on() {
+        // Decision 0209 item 4.4 (OI-830): a strategy that drops the tool on
+        // the tessellation says so in its notes, by its label; one that
+        // reads the exact faces, and any on a mesh part, does not.
+        let note = |path: &OperationPath| {
+            path.notes
+                .iter()
+                .find(|n| n.contains("tessellation"))
+                .cloned()
+        };
+        let helical = bar_fixture(openchuck_path::helical::NAME, "bar.step");
+        let said = note(&helical.run().unwrap()).unwrap();
+        assert!(
+            said.starts_with("Helical finishing drops the tool on the STEP part's tessellation")
+                && said.contains("0.01 mm")
+                && said.contains("not built yet"),
+            "{said}"
+        );
+        assert_eq!(note(&helical.run_on(true).unwrap()), None);
+        assert_eq!(note(&fixture(drill::NAME, &[]).run().unwrap()), None);
+    }
+
+    #[test]
+    fn req_op_23_req_op_11_req_nfr_07_one_check_refuses_sets_before_and_at_generation() {
+        // Decision 0209 item 10: what a strategy cannot use on a STEP part is
+        // one check, worded with the strategy's label and what to do, with
+        // no internal name or requirement ID; generation refuses with the
+        // check's first answer.
+        let registry = Registry::builtin();
+        let faces = || SelectionTarget::Faces([FaceId(1)].into());
+        let edges = || SelectionTarget::Edges([EdgeId(0)].into());
+        let mut cases: Vec<(String, SelectionTarget, Role, Option<f64>, &str)> = Vec::new();
+        for choice in registry.iter() {
+            let name = choice.name().to_owned();
+            let regions = choice.honours_region();
+            let takes_faces = regions || name == drill::NAME;
+            if !takes_faces {
+                cases.push((
+                    name.clone(),
+                    faces(),
+                    Role::Machine,
+                    None,
+                    "works on the whole part and cannot be limited to chosen faces. Take the \
+                     set 'chosen' out of the operation.",
+                ));
+            }
+            if name != edge_following::NAME {
+                cases.push((
+                    name.clone(),
+                    edges(),
+                    Role::Machine,
+                    None,
+                    "Only edge following follows chosen edges. Take the edge set 'chosen' out \
+                     of the operation, or use edge following.",
+                ));
+            }
+            for role in [Role::Boundary, Role::Avoid, Role::Check] {
+                if regions {
+                    cases.push((name.clone(), edges(), role, None, "takes faces, not edges"));
+                } else {
+                    cases.push((
+                        name.clone(),
+                        faces(),
+                        role,
+                        None,
+                        "does not use a boundary, avoid or check set. Take the set 'chosen' out \
+                         of the operation.",
+                    ));
+                }
+                cases.push((
+                    name.clone(),
+                    SelectionTarget::Triangles([0].into()),
+                    role,
+                    None,
+                    "selects triangles, but this setup's part is now a STEP file",
+                ));
+            }
+            let takes_stock = choice.honours_leave_zones() || name == roughing::NAME;
+            if takes_faces && !takes_stock {
+                cases.push((
+                    name.clone(),
+                    faces(),
+                    Role::Machine,
+                    Some(0.2),
+                    "does not leave a stock of its own on a selection set. Clear the stock to \
+                     leave on the set 'chosen'",
+                ));
+            }
+        }
+        for (strategy, target, role, leave, said) in cases {
+            let mut f = fixture(&strategy, &[("depth", Value::Number(0.2))]);
+            // A triangle set comes from the mesh the setup's part was before
+            // it became a STEP file.
+            let model = if matches!(target, SelectionTarget::Triangles(_)) {
+                let old = ModelId::new();
+                f.project
+                    .insert(
+                        Item::Model(ModelRef::new(
+                            old,
+                            RelativePath::new("old.stl").unwrap(),
+                            f.hash,
+                        )),
+                        Placement::End,
+                    )
+                    .unwrap();
+                old
+            } else {
+                f.model
+            };
+            let set = f.select_as(target, f.hash, model, role);
+            if let Some(leave) = leave {
+                f.set_stock(set, leave);
+            }
+            let operation = f.project.operation(f.operation).unwrap();
+            let refused = crate::step_sets::refusals(&f.project, &registry, operation);
+            let label = registry.get(&strategy).unwrap().label().to_owned();
+            assert_eq!(refused.len(), 1, "{strategy} {role:?}: {refused:?}");
+            let text = &refused[0].text;
+            assert!(text.contains(said), "{strategy} {role:?}: {text}");
+            assert!(
+                !text.contains(&strategy) && !text.contains("OP-") && !text.contains("(OP"),
+                "{strategy}: {text}"
+            );
+            if !said.starts_with("Only") && !said.contains("triangles") && !said.contains("takes") {
+                assert!(text.starts_with(&label), "{strategy}: {text}");
+            }
+            match f.run().unwrap_err() {
+                AppError::Operation { name, reason } => {
+                    assert_eq!(
+                        (name.as_str(), &reason),
+                        ("Op", text),
+                        "{strategy} {role:?}"
+                    );
+                }
+                other => panic!("{strategy} {role:?}: {other}"),
+            }
+        }
+        // A mesh part is not judged by this check.
+        let mut f = bar_fixture(openchuck_path::rest::NAME, "bar.stl");
+        f.select_as(
+            SelectionTarget::Triangles([0].into()),
+            f.hash,
+            f.model,
+            Role::Machine,
+        );
+        let operation = f.project.operation(f.operation).unwrap();
+        assert!(crate::step_sets::refusals(&f.project, &registry, operation).is_empty());
+    }
+
+    #[test]
+    fn req_op_23_req_nfr_07_a_face_set_that_does_not_fit_the_step_part_is_refused() {
+        // A region strategy's face sets are checked against the part as
+        // swarf's are (decision 0176): the faces exist, the set selects some,
+        // and it was made on this version of this part.
+        let cases: [(SelectionTarget, bool, &str); 3] = [
+            (
+                SelectionTarget::Faces([FaceId(9999)].into()),
+                true,
+                "face 9999 is not in the model",
+            ),
+            (
+                SelectionTarget::Faces(BTreeSet::new()),
+                true,
+                "selects no faces",
+            ),
+            (
+                SelectionTarget::Faces([FaceId(1)].into()),
+                false,
+                "different version",
+            ),
+        ];
+        for role in [Role::Machine, Role::Boundary, Role::Avoid, Role::Check] {
+            for (target, same, said) in &cases {
+                let mut f = bar_fixture(openchuck_path::helical::NAME, "bar.step");
+                let hash = if *same {
+                    f.hash
+                } else {
+                    ContentHash::of_bytes(b"other")
+                };
+                f.select_as(target.clone(), hash, f.model, role);
+                let err = f.run().unwrap_err().to_string();
+                assert!(
+                    err.contains(said) && err.contains("'chosen'") && err.contains("'Op'"),
+                    "{role:?}: {err}"
+                );
+            }
+        }
     }
 }

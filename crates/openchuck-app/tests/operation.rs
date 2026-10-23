@@ -1181,6 +1181,63 @@ fn req_gc_07_a_rename_after_reuse_names_the_operations_as_they_are_now() {
 }
 
 #[test]
+fn req_nfr_04_req_sim_05_simulating_again_with_nothing_changed_does_not_compare_again() {
+    // OI-627: the comparison of a setup's final stock with the part is kept
+    // with the cached stock it was made from, under the same key, so a run
+    // whose final stock comes from the cache does not compare it again.
+    let (dir, mut app, ids) = ring_then_rest("reuse-compare");
+    let setup = app.project().operation(ids[0]).unwrap().setup;
+    let first = app.simulate().unwrap();
+    assert_eq!(first.compared, [setup]);
+    let deviation = first.simulation.as_ref().unwrap().setups[0]
+        .deviation
+        .clone();
+    assert!(deviation.is_some(), "the cube is compared with its part");
+
+    // Nothing changed: the same numbers, without comparing again.
+    let again = app.simulate().unwrap();
+    assert_eq!(again.reused, ids);
+    assert!(again.simulated.is_empty(), "{:?}", again.simulated);
+    assert!(again.compared.is_empty(), "{:?}", again.compared);
+    assert_eq!(again.simulation, first.simulation);
+
+    // A rename is not an input: still not compared, and named as it is now.
+    let mut renamed = app.project().operation(ids[1]).unwrap().clone();
+    renamed.name = "Renamed rest".into();
+    app.execute(Command::Replace(Item::Operation(renamed)))
+        .unwrap();
+    let after_rename = app.simulate().unwrap();
+    assert!(after_rename.compared.is_empty());
+    let report = after_rename.simulation.unwrap();
+    assert_eq!(report.setups[0].operations[1].operation, "Renamed rest");
+    assert_eq!(report.setups[0].deviation, deviation);
+
+    // A change to the last operation leaves a new stock, which is compared.
+    app.execute(Command::SetParameter {
+        operation: ids[1],
+        name: parameter::MIN_REMAINING.into(),
+        value: Some(ParameterValue::Number(0.2)),
+    })
+    .unwrap();
+    let edited = app.simulate().unwrap();
+    assert_eq!(edited.simulated, [ids[1]]);
+    assert_eq!(edited.compared, [setup]);
+
+    // Generating without a simulation compares nothing.
+    assert!(app.regenerate().unwrap().compared.is_empty());
+
+    // With the cache off every simulation compares, and gives the same
+    // numbers as the kept comparison (NFR-06).
+    let kept = app.simulate().unwrap();
+    assert!(kept.compared.is_empty());
+    app.set_cache_versions(0);
+    let fresh = app.simulate().unwrap();
+    assert_eq!(fresh.compared, [setup]);
+    assert_eq!(fresh.simulation, kept.simulation);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn req_op_11_a_plunge_is_refused_for_a_tool_that_states_it_cannot_cut_straight_down() {
     let (dir, mut app, op) = project("centre-cutting");
     let mut operation = app.project().operation(op).unwrap().clone();
@@ -1324,6 +1381,90 @@ fn req_op_16_req_op_07_req_op_10_strategies_that_need_a_step_part_are_disabled_w
         "{}",
         status.cause
     );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn req_op_23_req_nfr_07_a_set_a_strategy_cannot_use_on_a_step_part_is_an_error_before_generating() {
+    // Decision 0209 item 10: on a STEP part, a set the strategy cannot use
+    // puts the operation in error at once, with the reason in Messages and
+    // a Show link, from the same check generation makes; the Geometry
+    // section reads it too. The part is only named as a STEP file: the
+    // check reads the project, never the model.
+    use openchuck_app::overview::{ItemRef, ItemState, MessageAction, Severity};
+    use openchuck_app::project::{RelativePath, SelectionSet, SelectionTarget};
+    use openchuck_app::selection::SelectionRole;
+    let (dir, mut app, op) = project("step-set-refused");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation.strategy = "helical_finishing".into();
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    let mut model = app.project().models()[0].clone();
+    model.path = RelativePath::new("models/blade.step").unwrap();
+    app.execute(Command::Replace(Item::Model(model.clone())))
+        .unwrap();
+    let set = openchuck_app::project::id::SelectionSetId::new();
+    app.execute(Command::Add {
+        item: Item::SelectionSet(SelectionSet {
+            id: set,
+            order: OrderKey::default(),
+            name: "Rims".into(),
+            model: model.id,
+            model_hash: model.hash,
+            target: SelectionTarget::Edges([openchuck_app::pick::EdgeId(3)].into()),
+            descriptors: Vec::new(),
+            stock_to_leave: None,
+            colour: None,
+            keep_tangent_edges: None,
+        }),
+        placement: Placement::End,
+    })
+    .unwrap();
+    app.set_operation_selection(op, SelectionRole::Machine, set, true)
+        .unwrap();
+    let said = "Only edge following follows chosen edges. Take the edge set 'Rims' out of the \
+                operation, or use edge following.";
+    let refusals = app.set_refusals(op);
+    assert_eq!(refusals.len(), 1);
+    assert_eq!(
+        (refusals[0].role, refusals[0].set, refusals[0].text.as_str()),
+        (SelectionRole::Machine, set, said)
+    );
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    let status = &overview.items[&ItemRef::Operation(op)];
+    assert_eq!(status.state, ItemState::Error, "{status:?}");
+    assert!(status.cause.ends_with(said), "{}", status.cause);
+    let message = overview
+        .messages
+        .iter()
+        .find(|m| m.text == said)
+        .expect("the refusal is in Messages");
+    assert_eq!(message.severity, Severity::Error);
+    assert_eq!(message.source, Some(ItemRef::Operation(op)));
+    assert_eq!(
+        message.action,
+        Some(MessageAction::Show(ItemRef::Operation(op)))
+    );
+    // Generating refuses with the same words.
+    let e = app.start_regenerate().wait().unwrap_err().to_string();
+    assert!(e.contains(said), "{e}");
+    // After that generation, Messages says it once.
+    let overview = app.overview(None, &openchuck_app::JobLog::default());
+    assert_eq!(
+        overview
+            .messages
+            .iter()
+            .filter(|m| m.text.contains(said))
+            .count(),
+        1,
+        "{:?}",
+        overview.messages
+    );
+    // Taken out, nothing is refused.
+    app.set_operation_selection(op, SelectionRole::Machine, set, false)
+        .unwrap();
+    assert!(app.set_refusals(op).is_empty());
+    assert!(app.set_refusals(OperationId::new()).is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

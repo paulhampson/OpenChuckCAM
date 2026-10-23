@@ -1738,6 +1738,38 @@ fn req_set_05_the_overview_gives_the_model_extent_for_the_position_row() {
 }
 
 #[test]
+fn req_ui_10_req_nfr_12_skipping_the_stock_simulation_a_turned_off_operation_asks_only_for_toolpaths()
+ {
+    // Decision 0168 with 0192: while the project skips the stock simulation,
+    // a run that holds an operation now turned off asks to generate again,
+    // never to run the stock simulation it skips.
+    let (mut f, [_, _, three]) = three_operations("skip-stock-off");
+    f.app
+        .execute(Command::SetSkipStockSimulation(true))
+        .unwrap();
+    f.app.start_generate().wait().unwrap();
+    assert_eq!(
+        f.overview().primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
+    f.app
+        .execute(Command::SetOperationEnabled {
+            operation: three,
+            enabled: false,
+        })
+        .unwrap();
+    let primary = f.overview().primary(Step::Simulate);
+    assert_eq!(primary.kind, PrimaryKind::Generate);
+    assert_eq!(primary.label, "Generate toolpaths");
+    let run = f.app.start_generate().wait().unwrap();
+    assert!(run.simulation.is_none());
+    assert_eq!(
+        f.overview().primary(Step::Simulate).kind,
+        PrimaryKind::Continue(Step::Export)
+    );
+}
+
+#[test]
 fn req_nfr_12_req_ui_11_a_simulation_out_of_date_says_why() {
     // Issue 260: a simulation that no longer matches the project says so, in
     // plain words, with the same stale set the export check uses.

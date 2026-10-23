@@ -296,6 +296,17 @@ pub enum SetupWarningKind {
         /// The X extent of the part inside the held region.
         x: (f64, f64),
     },
+    /// A tab placed automatically lies over a tab placed by hand. The
+    /// G-code is not wrong (the target is the union of the tabs); the user
+    /// may want to remove one (OP-21, decision record 0202, OI-841).
+    TabsOverlap {
+        /// Position of the automatic tab in the setup's list, from 1.
+        auto_tab: usize,
+        /// Position of the hand-placed tab in the setup's list, from 1.
+        hand_tab: usize,
+        /// The X extent they share.
+        x: (f64, f64),
+    },
 }
 
 impl std::fmt::Display for SetupWarning {
@@ -339,6 +350,17 @@ impl std::fmt::Display for SetupWarning {
                         "held region at the end (or the end of the stock)"
                     }
                 }
+            )?,
+            SetupWarningKind::TabsOverlap {
+                auto_tab,
+                hand_tab,
+                x,
+            } => write!(
+                f,
+                "tab {auto_tab} (placed automatically) overlaps tab {hand_tab} (placed by hand) \
+                 from X {:.3} to {:.3}; the part is held by both, so the G-code is not wrong, but \
+                 you may want to remove one",
+                x.0, x.1
             )?,
             SetupWarningKind::PartOutsideStock => {
                 f.write_str("some of the part lies outside the stock")?

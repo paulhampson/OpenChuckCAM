@@ -18,6 +18,7 @@ use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
 use openchuck_app::requirements::RequirementField;
 use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
+use openchuck_app::step_sets::SetRefusal;
 use openchuck_app::tool_library;
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
@@ -164,15 +165,15 @@ impl Shell {
             Some(Selection::Setup(id)) => self.setup_properties(ui, id),
             Some(Selection::Set(id)) => self.set_properties(ui, id),
             Some(Selection::Picking) => {
-                ui.heading("Selecting on the part");
-                ui.label(
-                    "Click the part to select. The Selection sets tab of the dock saves and \
-                     edits sets; Esc stops picking.",
-                );
-                if let Some(app) = &mut self.app
-                    && let Some(error) = self.selection.options(ui, app)
-                {
-                    self.dialog = Some(Dialog::Error(error));
+                // New selection (12.2; decision 0215 item 3).
+                if let Some(app) = &mut self.app {
+                    let error = self
+                        .selection
+                        .new_selection(ui, app, self.viewport.view())
+                        .or_else(|| self.selection.options(ui, app));
+                    if let Some(error) = error {
+                        self.dialog = Some(Dialog::Error(error));
+                    }
                 }
             }
             None => {
@@ -197,6 +198,8 @@ impl Shell {
         if self.results.show(ui, app, run.as_ref(), stale) {
             self.play
                 .set_colour_by(self.results.colour_by, &mut self.viewport);
+            self.play
+                .set_band_filter(&self.results.filter, &mut self.viewport);
         }
     }
 
@@ -215,7 +218,9 @@ impl Shell {
         frame::status_chip(ui, self.overview.status(item));
     }
 
-    /// A selection set: its size, its problem and where it is used.
+    /// A selection set (12.2; decision 0215 item 4): its size, its problem
+    /// and where it is used, then how to change it on the part, Pick again,
+    /// its colour and the options of picking.
     fn set_properties(&mut self, ui: &mut egui::Ui, id: SelectionSetId) {
         let Some(app) = &self.app else { return };
         let summaries = app.selection_summaries(&[]);
@@ -233,7 +238,7 @@ impl Shell {
                 ui,
                 "This set can't be used",
                 &form_panel::refusal(problem).replace(" Not applied.", ""),
-                &[("Reselect in the view", BannerAction::Reselect(id))],
+                &[("Pick again", BannerAction::Reselect(id))],
             )
         {
             self.message_action(MessageAction::Reselect(set));
@@ -242,15 +247,21 @@ impl Shell {
             ui.label(RichText::new("No operation uses it.").color(DARK.muted));
         } else {
             for u in &s.uses {
-                ui.label(format!("Used by {}", u.name));
+                let roles: Vec<&str> = u.roles.iter().map(|r| r.name()).collect();
+                ui.label(format!("Used by {} ({})", u.name, roles.join(", ")));
             }
         }
-        // A set that is selected also turns picking on, so the angles and
-        // options stay in reach here (decision 0153).
-        if let Some(app) = &mut self.app
-            && let Some(error) = self.selection.options(ui, app)
-        {
-            self.dialog = Some(Dialog::Error(error));
+        ui.separator();
+        // A set that is selected also turns picking on: Shift and Ctrl change
+        // it, and the angles and options stay in reach here (decision 0215).
+        if let Some(app) = &mut self.app {
+            let error = self
+                .selection
+                .set_section(ui, app, &s)
+                .or_else(|| self.selection.options(ui, app));
+            if let Some(error) = error {
+                self.dialog = Some(Dialog::Error(error));
+            }
         }
     }
 
@@ -778,6 +789,7 @@ impl Shell {
         let strategy = app.strategy_label(&operation.strategy);
         let strategy_text = app.strategy_description(&operation.strategy);
         let set_options = app.strategy_takes_set_options(&operation.strategy);
+        let refusals = app.set_refusals(id);
         let mut delete = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -891,7 +903,18 @@ impl Shell {
             open,
             false,
             |_| {},
-            |ui| geometry(ui, &operation, &summaries, &reach, set_options),
+            |ui| {
+                geometry(
+                    ui,
+                    &operation,
+                    &summaries,
+                    &Notes {
+                        reach: &reach,
+                        refusals: &refusals,
+                    },
+                    set_options,
+                )
+            },
         );
         if let Some((edit, action)) = section.body {
             role_edit = edit;
@@ -967,7 +990,6 @@ impl Shell {
             Some(BannerAction::Reselect(set)) => self.message_action(MessageAction::Reselect(set)),
             Some(BannerAction::ShowMissing(set)) => {
                 self.selection.show_set(Some(set));
-                self.dock_tab = super::dock::DockTab::SelectionSets;
                 self.viewport.fit();
             }
             None => {}
@@ -1184,19 +1206,32 @@ fn limits_nothing(ui: &mut egui::Ui, indent: f32, set: &str) {
     });
 }
 
+/// What the Geometry section says under the role that holds a set.
+struct Notes<'a> {
+    /// The warnings of sets reaching a held region or a tab (11.7).
+    reach: &'a [String],
+    /// The sets the strategy cannot use on this part (decision record 0209
+    /// item 10).
+    refusals: &'a [SetRefusal],
+}
+
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
 /// With `with_options`, each set's options under its role (decision record
 /// 0176 item 3). Under the role that holds a set reaching a held region or a
-/// tab, the warning of 11.7 with "Show in view" and "Edit workholding".
+/// tab, the warning of 11.7 with "Show in view" and "Edit workholding"; under
+/// the role that holds a set the strategy cannot use on this part, the
+/// warning with the reason and what to do, before anything is generated
+/// (decision record 0209 item 10).
 fn geometry(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
-    reach: &[String],
+    notes: &Notes<'_>,
     with_options: bool,
 ) -> (Option<GeometryEdit>, Option<ReachAction>) {
+    let reach = notes.reach;
     let mut edit = None;
     let mut action = None;
     if summaries.is_empty() {
@@ -1277,6 +1312,15 @@ fn geometry(
         // record 0176).
         if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
             edit = Some(e);
+        }
+        // A set the strategy cannot use here, under the role that holds it
+        // (decision record 0209 item 10).
+        for refusal in notes.refusals.iter().filter(|r| r.role == role) {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x);
+                marks::mark(ui, ItemState::Warning, "Warning");
+                ui.label(RichText::new(&refusal.text).color(DARK.warning));
+            });
         }
         // The selection warning under the role that holds the set (11.7).
         for id in &sets {
