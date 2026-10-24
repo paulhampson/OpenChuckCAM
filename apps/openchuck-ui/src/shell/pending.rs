@@ -13,6 +13,7 @@ pub(super) struct Guard {
     focus: Option<Id>,
     resolving: bool,
     dispatching: bool,
+    problem: Option<String>,
     pick: Option<super::pending_pick::Intent>,
 }
 
@@ -71,6 +72,7 @@ impl Shell {
                 .filter(|id| entries.iter().any(|e| e.id == *id))
                 .or_else(|| entries.first().map(|e| e.id));
             self.edit_guard.action = Some(Box::new(action));
+            self.edit_guard.problem = None;
             edits::set_mode(ctx, Mode::Frozen);
         }
         true
@@ -99,6 +101,9 @@ impl Shell {
             for entry in &entries {
                 ui.label(&entry.label);
             }
+            if let Some(reason) = &self.edit_guard.problem {
+                ui.colored_label(crate::theme::DARK.error, reason);
+            }
             ui.label("Keep the changes or discard them?");
             ui.horizontal(|ui| {
                 if ui.button("Keep").clicked() {
@@ -117,29 +122,21 @@ impl Shell {
         }
         match answer {
             Some(0) => {
-                // Preflight the entire form before a widget can return a
-                // Commit. In particular an invalid earlier field must stop
-                // a valid active field from applying partially.
-                if let Err((id, reason)) = edits::validate(&entries) {
-                    edits::refuse(ctx, id, reason);
-                    edits::focus(ctx, id);
-                    self.edit_guard.action = None;
-                    edits::resolve_local(ctx, false);
-                    edits::set_mode(ctx, Mode::Normal);
-                } else {
-                    self.edit_guard.resolving = true;
-                    if let Some(entry) = entries.first() {
-                        edits::set_mode(ctx, Mode::Keep(entry.id));
-                    }
-                }
+                // Give every field a draw pass to reopen sections and
+                // refresh its checks, without committing anything yet.
+                self.edit_guard.problem = None;
+                self.edit_guard.resolving = true;
+                edits::set_mode(ctx, Mode::PrepareKeep);
             }
             Some(1) => {
+                self.edit_guard.problem = None;
                 edits::discard(ctx);
                 self.edit_guard.resolving = true;
                 // Frozen until the next frame has restored all drawn
                 // buffers; hidden ones keep a discard token for next draw.
             }
             Some(2) => {
+                self.edit_guard.problem = None;
                 if let Some(id) = self.edit_guard.focus {
                     edits::focus(ctx, id);
                 }
@@ -159,9 +156,22 @@ impl Shell {
         }
         let entries = edits::entries(ctx);
         if let Some(entry) = entries.first() {
-            if let Err(reason) = &entry.checked {
-                edits::refuse(ctx, entry.id, reason.clone());
-                edits::focus(ctx, entry.id);
+            // A conditional control or collapsed pane can remove a field
+            // entirely. Never wait for an undrawn widget to consume Keep,
+            // and never discard its buffer as a side effect of recovery.
+            // Check all fields before the first commit as well as between
+            // commits, in case confirming a value changes the form.
+            if let Some(hidden) = entries.iter().find(|e| !edits::drawn(ctx, e.id)) {
+                self.edit_guard.problem = Some(format!(
+                    "{} is not shown. Cancel to return to the form and show it, or Discard the \
+                     unconfirmed changes.",
+                    hidden.label
+                ));
+                self.edit_guard.resolving = false;
+                edits::set_mode(ctx, Mode::Frozen);
+            } else if let Err((id, reason)) = edits::validate(&entries) {
+                edits::refuse(ctx, id, reason);
+                edits::focus(ctx, id);
                 self.edit_guard.action = None;
                 edits::resolve_local(ctx, false);
                 self.edit_guard.resolving = false;

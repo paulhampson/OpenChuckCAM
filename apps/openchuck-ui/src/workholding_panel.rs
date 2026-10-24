@@ -1255,10 +1255,15 @@ impl WorkholdingPanel {
         } = tab.layout
         {
             let validate_count = |text: &str| {
-                text.trim()
+                let count = text
+                    .trim()
                     .parse::<u32>()
-                    .map(|_| ())
-                    .map_err(|_| "Not a whole number. Not applied.".to_owned())
+                    .map_err(|_| "Not a whole number. Not applied.".to_owned())?;
+                if (1..=64).contains(&count) {
+                    Ok(())
+                } else {
+                    Err("From 1 to 64. Not applied.".to_owned())
+                }
             };
             let outcome = field_row::text_row(
                 ui,

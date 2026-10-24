@@ -89,6 +89,8 @@ pub enum Mode {
     #[default]
     Normal,
     Frozen,
+    /// Reveal pending sections and refresh every validator before any commit.
+    PrepareKeep,
     Keep(Id),
 }
 
@@ -122,6 +124,14 @@ pub fn form<T>(ctx: &egui::Context, id: Id, draw: impl FnOnce() -> T) -> T {
     let out = draw();
     read(ctx, |s| s.form = previous);
     out
+}
+
+/// A field keeps its identity when conditional rows or inspection results
+/// change the layout around it. Keys are unique within their enclosing form.
+pub fn field_id(ui: &egui::Ui, kind: &str, key: &str) -> Id {
+    read(ui.ctx(), |s| {
+        s.form.unwrap_or_else(|| ui.layer_id().id).with((kind, key))
+    })
 }
 
 /// Detects external focus loss before any widget or action is drawn. It
@@ -229,6 +239,13 @@ pub fn is_pending(ctx: &egui::Context, id: Id) -> bool {
     })
 }
 
+pub fn drawn(ctx: &egui::Context, id: Id) -> bool {
+    let pass = ctx.cumulative_pass_nr();
+    read(ctx, |s| {
+        s.fields.get(&id.value()).is_some_and(|f| f.seen == pass)
+    })
+}
+
 pub fn discard(ctx: &egui::Context) {
     read(ctx, |s| {
         for (id, field) in &mut s.fields {
@@ -284,6 +301,10 @@ pub fn section<T>(ctx: &egui::Context, id: Id, draw: impl FnOnce() -> T) -> T {
 
 pub fn needs_section(ctx: &egui::Context, section: Id) -> bool {
     read(ctx, |s| match s.mode {
+        Mode::PrepareKeep => s
+            .fields
+            .values()
+            .any(|f| f.pending.is_some() && f.sections.contains(&section)),
         Mode::Keep(id) => s
             .fields
             .get(&id.value())
@@ -428,7 +449,11 @@ fn checked_text_edit(
     validate: impl FnOnce(&str) -> Result<String, String>,
 ) -> egui::Response {
     let before = text.clone();
-    let response = ui.text_edit_singleline(text);
+    // Conditional controls can change auto IDs, stranding the original
+    // draft even when its field is shown again. These dialog labels are
+    // unique within their form, independent of the current layout.
+    let id = field_id(ui, "draft field", label);
+    let response = ui.add(egui::TextEdit::singleline(text).id(id));
     draft_text(ui, &response, label, &before, text, validate);
     if let Some(reason) = take_refusal(ui.ctx(), response.id) {
         read(ui.ctx(), |s| {

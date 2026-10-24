@@ -92,6 +92,194 @@ fn click(rig: &mut Rig, text: &str) {
     }
 }
 
+fn choose_export_post(rig: &mut Rig, choice: &str) {
+    let posts = openchuck_app::builtin_post_summaries();
+    let label = rig
+        .visible_text_rects()
+        .into_iter()
+        .find(|(text, _)| text == "A post folder" || posts.iter().any(|p| p.name == *text))
+        .unwrap()
+        .1;
+    rig.click(label.center());
+    for _ in 0..2 {
+        rig.frame(Vec::new());
+    }
+    click(rig, choice);
+}
+
+#[test]
+fn req_ui_07_req_ui_10_req_nfr_07_keep_of_a_hidden_field_preserves_drafts_and_allows_recovery() {
+    for answer in ["Cancel", "Escape", "Discard"] {
+        let mut rig = generated(&format!("pending-hidden-export-{answer}"));
+        let before = rig.shell.app.as_ref().unwrap().project().clone();
+        rig.shell.open_export();
+        for _ in 0..4 {
+            rig.frame(Vec::new());
+        }
+        choose_export_post(&mut rig, "A post folder");
+        let post = rig
+            .visible_text_rects()
+            .into_iter()
+            .find(|(text, _)| text == "Post")
+            .unwrap()
+            .1;
+        let entry = rig
+            .painted()
+            .into_iter()
+            .filter(|(text, r, _)| {
+                text.is_none()
+                    && r.height() < 45.0
+                    && r.center().y > post.bottom() + 2.0
+                    && r.center().y < post.bottom() + 50.0
+                    && r.left() < post.left()
+                    && r.right() > post.left()
+            })
+            .map(|(_, _, clipped)| clipped)
+            .min_by(|a, b| a.top().total_cmp(&b.top()))
+            .unwrap();
+        rig.click(entry.center());
+        rig.frame(vec![Event::Text("/unconfirmed/post".into())]);
+        assert!(
+            crate::pending_edits::entries(&rig.ctx)
+                .iter()
+                .any(|e| e.label == "Post folder"),
+            "{:?}",
+            crate::pending_edits::entries(&rig.ctx)
+        );
+        let builtin = openchuck_app::builtin_post_summaries()[0].name.clone();
+        choose_export_post(&mut rig, &builtin);
+        // A different choice hides the custom path without confirming it.
+        assert!(!rig.shows("/unconfirmed/post"));
+        type_unconfirmed(&mut rig, "Output folder", "/unconfirmed/output");
+        let drafts = crate::pending_edits::entries(&rig.ctx);
+        assert_eq!(drafts.len(), 2);
+        click(&mut rig, "Cancel"); // export's close action
+        assert!(rig.shows("Unconfirmed changes"));
+        click(&mut rig, "Keep");
+        for _ in 0..8 {
+            rig.frame(Vec::new());
+        }
+        assert!(rig.shows("Unconfirmed changes"), "{:?}", rig.texts());
+        assert!(rig.shows("not shown"), "{:?}", rig.texts());
+        // Keep must check availability before applying even a visible field.
+        let retained = crate::pending_edits::entries(&rig.ctx);
+        assert_eq!(retained.len(), drafts.len());
+        for original in &drafts {
+            let entry = retained.iter().find(|e| e.id == original.id).unwrap();
+            assert_eq!(entry.checked, original.checked);
+        }
+        assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+        if answer == "Escape" {
+            rig.press(Key::Escape, Modifiers::NONE);
+            for _ in 0..3 {
+                rig.frame(Vec::new());
+            }
+        } else {
+            click(&mut rig, answer);
+        }
+        assert!(!rig.shell.edit_guard.active());
+        if answer != "Discard" {
+            assert!(rig.shell.export.is_open());
+            assert_eq!(crate::pending_edits::entries(&rig.ctx).len(), 2);
+            choose_export_post(&mut rig, "A post folder");
+            assert!(rig.shows("/unconfirmed/post"));
+            click(&mut rig, "Cancel");
+            click(&mut rig, "Keep");
+            for _ in 0..8 {
+                rig.frame(Vec::new());
+            }
+        }
+        assert!(
+            !rig.shell.export.is_open(),
+            "{answer}: {:?}; {:?}",
+            crate::pending_edits::entries(&rig.ctx),
+            rig.texts()
+        );
+        assert!(crate::pending_edits::entries(&rig.ctx).is_empty());
+        assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+        rig.shell.open_export();
+        for _ in 0..4 {
+            rig.frame(Vec::new());
+        }
+        choose_export_post(&mut rig, "A post folder");
+        assert_eq!(rig.shows("/unconfirmed/post"), answer != "Discard");
+        assert_eq!(rig.shows("/unconfirmed/output"), answer != "Discard");
+        assert!(crate::pending_edits::entries(&rig.ctx).is_empty());
+    }
+}
+
+#[test]
+fn req_ui_07_req_ui_25_req_nfr_07_keep_checks_the_tab_count_range_before_changing_the_draft() {
+    for (text, valid) in [
+        ("0", false),
+        ("65", false),
+        ("bad", false),
+        ("1.5", false),
+        ("1", true),
+        ("64", true),
+    ] {
+        let mut rig = Rig::cube(&format!("pending-tab-count-{text}"), None);
+        crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
+        rig.size = egui::vec2(1920.0, 1800.0);
+        let before = rig.shell.app.as_ref().unwrap().project().clone();
+        rig.shell
+            .choose_setup(before.setups()[0].id, Some(super::SetupPart::Workholding));
+        rig.shell.open_step(Step::Setup);
+        for _ in 0..6 {
+            rig.frame(Vec::new());
+        }
+        click(&mut rig, "Add tab");
+        if !rig.shows("Around the axis") {
+            click(&mut rig, "On the axis");
+        }
+        click(&mut rig, "Around the axis");
+        let draft = rig
+            .shell
+            .workholding_panel
+            .as_mut()
+            .unwrap()
+            .draft_mut()
+            .clone();
+        type_unconfirmed(&mut rig, "Count", text);
+        click(&mut rig, "Operations");
+        assert!(rig.shows("Unconfirmed changes"));
+        click(&mut rig, "Keep");
+        assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+        if valid {
+            assert_eq!(rig.shell.step, Step::Operations);
+            let tab = &rig
+                .shell
+                .workholding_panel
+                .as_mut()
+                .unwrap()
+                .draft_mut()
+                .tabs[0];
+            assert!(
+                matches!(tab.layout, openchuck_app::setup::TabLayout::AroundAxis { count, .. }
+                if count == text.parse::<u32>().unwrap())
+            );
+        } else {
+            assert_eq!(rig.shell.step, Step::Setup);
+            assert_eq!(
+                rig.shell.workholding_panel.as_mut().unwrap().draft_mut(),
+                &draft
+            );
+            assert!(
+                rig.shows(if text == "bad" {
+                    "Cannot read 'bad'"
+                } else if text == "1.5" {
+                    "Not a whole number"
+                } else {
+                    "From 1 to 64"
+                }),
+                "{:?}",
+                rig.texts()
+            );
+            assert!(rig.ctx.egui_wants_keyboard_input());
+        }
+    }
+}
+
 #[test]
 fn req_ui_07_req_ui_10_req_nfr_12_continue_with_unconfirmed_stepover_asks_first() {
     let mut rig = generated("pending-stepover-continue");
@@ -945,7 +1133,14 @@ fn req_ui_07_req_ui_04_keep_placement_rebuilds_before_resuming_a_direction_pick(
     let picked = rig.shell.selection.working_triangles();
     assert!(
         picked.contains(&0),
-        "the intended face must survive rotation: {picked:?}"
+        "the intended face must survive rotation: {picked:?}; guard={}, scene={}, selected={:?}, \
+         entries={:?}, status={}, texts={:?}",
+        rig.shell.edit_guard.active(),
+        rig.shell.scene_job.is_some(),
+        rig.shell.selected,
+        crate::pending_edits::entries(&rig.ctx),
+        rig.shell.status,
+        rig.texts()
     );
     assert_eq!(picked.len(), 2);
 }

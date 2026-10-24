@@ -254,6 +254,7 @@ fn reason_line(ui: &mut egui::Ui, reason: &str, colour: egui::Color32) {
 /// Draws a text or number row. Returns what the user did.
 pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) -> Outcome {
     let mut outcome = Outcome::None;
+    let id = crate::pending_edits::field_id(ui, "field row", row.key);
     let error = state.error(row.key).map(str::to_owned);
     let marked = error.is_some() || row.problem.is_some();
     let needed = row.needs.is_some() && !marked && row.applied.trim().is_empty();
@@ -299,6 +300,7 @@ pub fn text_row(ui: &mut egui::Ui, state: &mut FieldState, row: &TextRow<'_>) ->
                 .as_ref()
                 .map_or(0.0, |g| g.size().x + ui.spacing().item_spacing.x);
             let mut edit = egui::TextEdit::singleline(&mut typed)
+                .id(id)
                 .frame(egui::Frame::NONE)
                 .font(egui::TextStyle::Monospace)
                 .desired_width((ui.available_width() - unit_width).max(0.0))
@@ -498,6 +500,7 @@ pub fn name_field(ui: &mut egui::Ui, state: &mut FieldState, key: &str, applied:
         .map_or_else(|| applied.to_owned(), str::to_owned);
     let response = ui.add(
         egui::TextEdit::singleline(&mut typed)
+            .id(crate::pending_edits::field_id(ui, "name field", key))
             .font(egui::TextStyle::Heading)
             .desired_width(ui.available_width() - 90.0),
     );

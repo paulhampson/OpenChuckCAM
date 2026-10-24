@@ -2,7 +2,7 @@
 
 - **Status:** accepted by the project owner (24 Oct 2026, directly in the BUG-EDIT lane session, after reviewing the complete record). The owner previously chose "Auto-confirm between fields; ask when leaving the form" on 23 Oct 2026, relayed by the coordinator under decision 0049 (OI-983).
 - **Date:** 23 Oct 2026.
-- **Implementation status:** implemented. The full 421-test UI suite and the additional inspector-header regression pass locally, covering all 422 UI tests and 37 BUG-EDIT requirement tests. Coverage and uncovered lines are recorded below.
+- **Implementation status:** implemented. The full 425-test UI suite passes locally, including 39 BUG-EDIT requirement tests. Coverage and uncovered lines are recorded below.
 - **Requirements:** UI-07 (validated fields), UI-08 (commands and undo), UI-10 (workflow navigation), UI-11 (staleness and errors), UI-26 (number-box confirmation), NFR-07 (clear refusal), NFR-12 (the user verifies generated output), GC-07 and NFR-06 (output follows committed inputs).
 - **Amends:** the focus-loss wording of decisions 0123 item 1 and 0206 item 3, and interface specification sections 8 and 10: ordinary field-to-field confirmation remains; departure from a form first resolves uncommitted input. Existing Save and Apply boundaries of decisions 0127 and 0104 remain.
 - **Open items:** OI-983 is the owner's interaction choice, answered as above.
@@ -101,6 +101,15 @@ pending field. Only after preflight succeeds do the ordinary field handlers
 execute their commands; the guard refreshes the overview before dispatching
 the requested action.
 
+Before any confirmation, a preparation frame reopens all pending sections and
+refreshes the fields' checks. If a pending field is still not drawn, the guard
+returns to the warning with its name and the pending values preserved. Cancel
+or Esc returns to the form so the field can be shown again; Discard remains an
+explicit choice. There is no timeout that discards input. Fields use the form
+and semantic row key as their identity (plain dialog fields use their label),
+so conditional controls and asynchronous inspection details cannot strand a
+draft under an old layout-generated widget ID.
+
 Operation and setup forms retain every edit returned in a frame. A focus-loss
 confirmation followed by a shape, material or other control change therefore
 keeps both edits and their existing commands. Drop-downs participate in the
@@ -134,7 +143,18 @@ pending (0.781 s), a lost setup shape choice (0.616 s), a preset drop-down
 that did not confirm the active field (1.511 s), and a draft held-region pick
 that could not resume (0.939 s), and a reused Rename widget restoring the previous item's name on Discard (1.445 s). Project-folder Browse (0.409 s), model replacement (0.589 s) and the full model report (0.367 s) also bypassed confirmation and failed their regressions before being routed through the shared guard. These are uninstrumented times.
 
-The module contains 37 requirement tests. They include real pointer and
+The review regressions reproduced an indefinite "Confirming changes…" modal
+after a custom post folder was hidden by choosing a built-in post (2.206 s),
+and Keep accepting a tab count of zero and leaving the form (1.031 s), before
+their fixes. The recovery test also exposed an output-folder widget ID that
+changed when the custom post field was shown again. It now checks that a
+hidden field blocks every pending commit, Cancel and Esc preserve both drafts,
+Keep can resume after the field is restored, and Discard restores the hidden
+buffer when it is drawn again. Count tests cover zero, 65, invalid arithmetic,
+a fractional count, and the accepted boundaries 1 and 64; Keep changes only
+the workholding draft and never applies it.
+
+The module contains 39 requirement tests. They include real pointer and
 keyboard frames, native viewport close events, interacting box bounds, tool
 constraints, section collapse and focus recovery, scene rebuilding after a
 rotation, edge identity after scene reordering, library Save, and the
@@ -150,40 +170,39 @@ its old eligibility or old primary-button meaning.
 
 ### Local verification and coverage
 
-- Uninstrumented: the full 421-test UI suite passed in 111.200 s, followed by the added inspector-header regression in 6.338 s (all 422 tests; 37 BUG-EDIT tests). The slowest BUG-EDIT test in the full run took 23.973 s; none needs a long-test profile.
+- Uninstrumented after the review corrections: all 425 UI tests passed in 131.501 s, including 39 BUG-EDIT tests. The slowest test took 19.833 s; the new hidden-field and count tests took 16.879 s and 11.069 s. None needs a long-test profile. The previously intermittent placement-pick regression passed 20 consecutive runs after shared field identities were stabilised.
 - Clippy (`openchuck-ui`, all targets, warnings denied), formatting, whitespace and all repository checks passed: deps, licences, records, conflicts, testdata, publish and trace (99/99 P1 requirements have tests).
-- Instrumented: all 419 tests present at the start of coverage passed in 383.468 s. The two additional dialog-owned-action tests passed with profiles retained (1.348 s), followed by the added inspector-header test (139.440 s). Only tests were added between these runs; product code was unchanged. This covers all 422 UI tests without treating instrumented timings as long-test measurements.
-- `cargo llvm-cov report --summary-only --show-missing-lines --ignore-filename-regex '/(tests|examples|benches)/'`: **85.93% UI lines (23,636/27,505)**. UI is report-only under decision 0102; this is below the 95% development target. Shared field rows are 95.52%, the pending-entry registry 98.22%, the shell guard 91.77%, and deferred-pick identity resolution 80.47%. No product code was excluded to raise the figure.
+- Instrumented after the review corrections: all 425 UI tests passed in 449.266 s. Instrumented timings do not classify long tests.
+- `cargo llvm-cov report --summary-only --show-missing-lines --ignore-filename-regex '/(tests|examples|benches)/'`: **86.44% UI lines (23,822/27,560)**. UI is report-only under decision 0102; this is below the 95% development target. Shared field rows are 96.68%, the pending-entry registry 98.31%, the shell guard 95.86%, and deferred-pick identity resolution 80.47%. No product code was excluded to raise the figure.
 
 The uncovered new lines were read against the requirements. Remaining gaps
-include export/custom-post/tool-number and import-path dialog variations,
-cutting-data refusals, around-axis workholding count/check/revert controls,
+include export tool-number and successful custom-post variations, import-path
+dialog variations, cutting-data refusals, workholding check/revert controls,
 other shortcut/menu/drop-file entry points, native picker success paths,
 STEP face/edge rebinding, and stored end/tab selection variants. The cube's
 scene rebuild completed before deferred dispatch, so the explicit wait/repaint
 branch was not forced. Defensive missing-context/identity/type checks,
-post-preflight refusal handling, Debug formatting, and ordinary header Enter/Esc
-condition arms also remain. These are verification limits, not a claim that all
+Debug formatting, and ordinary field Enter/Esc condition arms also remain. These are verification limits, not a claim that all
 uncovered code is defensive. The generic dialog-owned ticket protocol is
 exercised by real New operation Add (Keep/Discard/Cancel) and explicit
 workholding Apply, including project state and undo.
 
-New uncovered executable line ranges, relative to this lane's base `a260549`:
+New uncovered executable line ranges, relative to the merged PR base `e590f4d`:
 
 | UI source file (under `apps/openchuck-ui/src/`) | New uncovered lines |
 | --- | --- |
-| `export_panel.rs` | 389, 428, 443-444, 458-462, 623, 734-736, 738-749 |
-| `field_row.rs` | 148-155, 525-526 |
+| `export_panel.rs` | 458-462, 734-736, 738-749 |
+| `field_row.rs` | 148-155, 528-529 |
 | `form_panel.rs` | 302-306, 309-310, 312-315, 317 |
 | `import_panel.rs` | 324, 512, 514, 516-519, 522-527, 529, 531-533, 536-537 |
 | `model_panel.rs` | 611 |
-| `pending_edits.rs` | 28-30, 43, 156, 158, 384 |
+| `pending_edits.rs` | 28-30, 43, 166, 168, 405 |
 | `results_panel.rs` | 718 |
 | `selection_panel.rs` | 1534-1535, 1558-1559 |
 | `shell.rs` | 556, 608, 624, 642, 682, 691, 715, 737, 945, 988, 1001, 1006-1011, 1016, 1053, 1086, 1108, 1223, 1438, 1504, 1556-1564, 1566, 1569, 1808-1815, 1836-1841, 1846, 1856-1858, 1861, 1871-1872, 1884-1885, 1961, 1982, 2006, 2109-2110 |
 | `shell/frame.rs` | 145, 652, 823, 859, 863, 867 |
-| `shell/inspector.rs` | 412, 505, 508-512, 514-516, 634-642, 819, 1080, 1665-1667, 1715-1716 |
-| `shell/pending.rs` | 28-30, 50-51, 62, 75, 163-168 |
+| `shell/inspector.rs` | 412, 505, 508-512, 514-516, 634-642, 819, 1080, 1696-1698, 1746-1747 |
+| `shell/pending.rs` | 29-31, 51-52, 63, 77 |
 | `shell/pending_pick.rs` | 94, 99-102, 108-109, 114-115, 134-136, 138, 166-169, 171-174, 197 |
 | `tool_library_window.rs` | 937-949, 1846, 1853, 1897, 1902-1903 |
-| `workholding_panel.rs` | 913-914, 916, 1257-1262, 1274, 1353, 1395, 1404, 1408, 1414 |
+| `workholding_panel.rs` | 913-914, 916, 1358, 1400, 1409, 1413, 1419 |
