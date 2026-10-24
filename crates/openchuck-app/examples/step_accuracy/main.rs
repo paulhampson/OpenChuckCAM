@@ -17,11 +17,14 @@
 //!   against points sampled on the exact faces. The forms compared are
 //!   (a) the owner's `blisk.stl`, when its path is given, (b) the STEP part
 //!   as built today, dropping on the import's tessellation, and (c) the STEP
-//!   part dropping on a finer tessellation.
-//! - **M3**, time: each form's generation, its drops and the stock
-//!   simulation, the median of `--runs` runs at 1 thread and at all threads,
-//!   and, for the ball-end operations, what an exact ball drop would cost,
-//!   from a probe that refines sampled drops against the exact faces.
+//!   part dropping on a finer tessellation. Raw samples are printed, but M2
+//!   exits unqualified until its physical sampling error is proven below
+//!   0.001 mm; nominal grid spacing is not that proof.
+//! - **M3**, time: each form's generation, drops, fitting, assembly and stock
+//!   simulation, plus complete job wall time. At 1 thread and at all threads,
+//!   medians require at least five successful runs. For ball-end operations,
+//!   an optional probe estimates exact-drop cost by refining sampled drops
+//!   against the exact faces.
 //! - **M4**, determinism: each form's toolpath at 1, 2 and all threads, and
 //!   each form's posted G-code, with (a) and (b) checked through the application, byte
 //!   for byte (GC-07, NFR-06); and the library's path of form (b) against
