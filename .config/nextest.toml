@@ -167,7 +167,7 @@ priority = 79
 
 [profile.coverage]
 # SIMUI whole-dock matrix: 62.592 s uninstrumented in the full UI run
-# (24 Oct 2026, four-core cloud quota, two test threads; decision 0237).
+# (24 Oct 2026, four-core cloud quota, two test threads; decision 0238).
 # A later full UI run alongside app coverage took 116.400 s for this matrix.
 # Corrected fixed-physical-size matrix: 107.678 s alongside UI coverage.
 # Existing CLI blisk_helical_2 end-to-end: 78.996 s alongside UI coverage;

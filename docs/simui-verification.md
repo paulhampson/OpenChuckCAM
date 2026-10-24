@@ -1,6 +1,6 @@
-# SIMUI verification (decision 0237)
+# SIMUI verification (decision 0238)
 
-Completed local SIMUI implementation and verification on `codex/lane-simui-display-and-navigation`, starting at `1a90435`, prepared for one combined draft PR and Merge Manager handoff. Decision 0237 remains proposed; OI-985 remains open for owner/reference hardware.
+Completed local SIMUI implementation and verification on `codex/lane-simui-display-and-navigation`, starting at `1a90435`, prepared for one combined draft PR and Merge Manager handoff. The owner accepted decision 0238 on 24 Oct 2026 after full-text presentation as SIMUI 0237; the Merge Manager’s renumbering preserves that acceptance; OI-987 remains open for owner/reference hardware.
 
 ## Requirement-first evidence
 
@@ -30,7 +30,7 @@ Uninstrumented development build (unoptimised Rust, reduced debug information). 
 | Mapped translucent | 20.197 ms | 21.518 ms |
 | Mapped solid | 19.752 ms | 20.440 ms |
 
-Offscreen pixels check internal model/toolpath occlusion, actual transparency and mapped palette levels, normal and simulated colour-vision separation, contrast and ordered lightness on the tested front view. The 98% mapped translucent fill passes the same palette thresholds as solid on this view. Plain stock retains its existing 30% alpha. These checks do not establish all-view/monitor/reference-hardware readability; OI-985 remains open.
+Offscreen pixels check internal model/toolpath occlusion, actual transparency and mapped palette levels, normal and simulated colour-vision separation, contrast and ordered lightness on the tested front view. The 98% mapped translucent fill passes the same palette thresholds as solid on this view. Plain stock retains its existing 30% alpha. These checks do not establish all-view/monitor/reference-hardware readability; OI-987 remains open.
 
 ## Changed-crate coverage
 
