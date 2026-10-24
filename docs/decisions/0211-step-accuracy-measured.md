@@ -337,6 +337,20 @@ Two new requirement-based timing tests failed before implementation, then passed
 
 **Still outstanding:** full-sequence five-run timings, separately measured fitting and assembly stages, bounded physical sampling error, the 0.005 mm allocation, full-stepover M4 and replay correction OI-984 / issue #324. The public progress messages do not supply complete stage boundaries; no fitting/assembly time is inferred by subtracting summed parallel drop time from wall time. PR 321 stays draft. This evidence update does not amend the accepted choices or waive a criterion.
 
+## Optional stage timing for the required M3 rerun (24 Oct 2026)
+
+To perform the owner's retained five-run/per-stage verification, `ProgressSink` gains default methods `wants_timings` (false) and `timing`; `JobContext::time_stage` returns a scope guard. Existing hosts need no change and read no timing clock. The measurement example opts in, collecting durations without changing progress counters, cancellation or path output. This is an additive library API; the library version and schemas are unchanged.
+
+Fitting is measured directly in `wrap_fit::fit_curve` after initial drops, in simultaneous finishing after initial curve pieces, and in pencil after its initial drop pass while constructing/checking each crease path. Roughing has no corresponding fitting scope, so its fitting column is zero. Assembly surrounds the shared `assemble_with_entry` call. Query/drop time includes calls made inside fitting; parallel fitting scopes overlap. Both are inclusive summed durations, not additive wall-time components. Generation includes the remaining preparation/validation, including B-rep pencil corner construction. Simulation is measured separately, and a new job timer measures the sequential job from stock construction through its final simulation. Medians are computed from complete run totals; refused sequences cannot qualify as successful jobs.
+
+The scope test was first compiled against the missing API and failed, then passed with the implementation. Tests cover early error returns, default opt-out and equality of generated paths with timing enabled/disabled. The full uninstrumented path/types suite passed all 382 then-existing tests; the new/default-host/path-invariance selection passed three tests. All twelve native measurement tests pass. Local clippy, format, register, dependency, licence and traceability checks pass (99/99 P1 requirements traced).
+
+Focused coverage covers the timing guard, opt-in/opt-out, callback, shared assembly and helical fitting. Pencil/simultaneous scope lines and diagnostic Debug formatting were not reached by that focused coverage selection; their existing paths passed the full uninstrumented suite. Coverage lower bounds and the exact selection are in [0234's evidence](0234-replay-output-evidence.txt); no 95% claim is made. Three observed long tests are added to both coverage-exclusion and nightly-long profiles, as AGENTS.md requires; none exceeded ten minutes.
+
+A five-run cylinder/helical smoke (`--only m3 --part cylinder --forms b --ops helical --runs 5 --threads 1 --quick --skip-probe --fine 0.01 --angular 0.02`) completed successfully and printed all three new columns and both job medians. It overlapped M1/M4 validation and is not performance evidence. Its raw output is [stage-timing smoke evidence](0211-stage-timing-smoke.txt).
+
+The isolated pencil measurements above remain measurements of the previous harness. Full-sequence benchmarks below must use the instrumented release harness with no concurrent CPU workload; fitting/drop columns must not be subtracted from wall time or summed to invent an exclusive breakdown.
+
 ## Replay correction included by the owner (24 Oct 2026)
 
 The owner instructed: "Complete all steps and also include changes for #324 in this work." This authorises the OI-984 correction in PR 321 and supersedes its former pending-lane restriction. [Implementation record 0234](0234-replay-output-rounding-correction.md) remains proposed; the output-correction policy in this record is already accepted.

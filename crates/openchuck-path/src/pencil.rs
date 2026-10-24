@@ -717,6 +717,7 @@ impl Strategy for PencilFinishing {
             context.check_cancelled()?;
             let placed: Vec<Option<CutPoint>> =
                 parallel::map_in_order(points, |(c, t)| placement.rest(*c, *t));
+            let _timing = context.time_stage("fitting");
             let last_index = placed.len().saturating_sub(1);
             let mut run: Vec<CutPoint> = Vec::new();
             let mut runs: Vec<Vec<CutPoint>> = Vec::new();

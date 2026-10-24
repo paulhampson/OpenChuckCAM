@@ -939,6 +939,7 @@ impl Plan<'_> {
             pieces.push(current);
         }
 
+        let _timing = context.time_stage("fitting");
         let mut passes = Vec::new();
         for piece in &pieces {
             context.check_cancelled()?;

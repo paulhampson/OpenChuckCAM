@@ -427,7 +427,7 @@ fn main() -> Result<(), Error> {
             if wants("m3") {
                 println!("### M3: time (median of {} runs)", args.runs);
                 println!(
-                    "operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | status"
+                    "operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | fitting s (inclusive summed scopes) | assembly s | status"
                 );
                 for &threads in &args.threads {
                     // Each run is printed as it ends, so a run cut short
@@ -437,7 +437,7 @@ fn main() -> Result<(), Error> {
                         let run = job.run(form, threads)?;
                         for ((op, t), result) in ops.iter().zip(&run.timings).zip(&run.groups) {
                             println!(
-                                "run {} | {} | {} | {:.6} | {} | {:.6} | {} | {:.6} | {}",
+                                "run {} | {} | {} | {:.6} | {} | {:.6} | {} | {:.6} | {:.6} | {:.6} | {}",
                                 k + 1,
                                 op.label,
                                 threads_name(threads, cores),
@@ -446,6 +446,8 @@ fn main() -> Result<(), Error> {
                                 t.drop_time.as_secs_f64(),
                                 t.exact_queries,
                                 t.simulate.as_secs_f64(),
+                                t.fitting.as_secs_f64(),
+                                t.assembly.as_secs_f64(),
                                 if result.is_ok() {
                                     "success"
                                 } else {
@@ -453,6 +455,17 @@ fn main() -> Result<(), Error> {
                                 },
                             );
                         }
+                        println!(
+                            "run {} | job wall time | {} | {:.6} s | {}",
+                            k + 1,
+                            threads_name(threads, cores),
+                            run.total.as_secs_f64(),
+                            if run.groups.iter().all(Result::is_ok) {
+                                "success"
+                            } else {
+                                "REFUSED sequence"
+                            }
+                        );
                         runs.push(run);
                     }
                     for (i, op) in ops.iter().enumerate() {
@@ -473,7 +486,7 @@ fn main() -> Result<(), Error> {
                         };
                         let t = runs.first().and_then(|r| r.timings.get(i));
                         println!(
-                            "{} | {} | {} | {} | {} | {} | {}",
+                            "{} | {} | {} | {} | {} | {} | {} | {} | {}",
                             op.label,
                             threads_name(threads, cores),
                             pick(&|t| t.generate.as_secs_f64()),
@@ -481,6 +494,8 @@ fn main() -> Result<(), Error> {
                             pick(&|t| t.drop_time.as_secs_f64()),
                             t.map_or(0, |t| t.exact_queries),
                             pick(&|t| t.simulate.as_secs_f64()),
+                            pick(&|t| t.fitting.as_secs_f64()),
+                            pick(&|t| t.assembly.as_secs_f64()),
                         );
                     }
                     let totals: Vec<Option<f64>> = runs
@@ -494,6 +509,22 @@ fn main() -> Result<(), Error> {
                         "job generation median | {} | {}",
                         threads_name(threads, cores),
                         timing::successful_median(&totals).map_or_else(
+                            || "unavailable: requires at least five complete successful runs"
+                                .to_owned(),
+                            |v| format!("{v:.6} s")
+                        )
+                    );
+                    let wall: Vec<Option<f64>> = runs
+                        .iter()
+                        .map(|r| {
+                            (!r.groups.is_empty() && r.groups.iter().all(Result::is_ok))
+                                .then_some(r.total.as_secs_f64())
+                        })
+                        .collect();
+                    println!(
+                        "job wall median | {} | {}",
+                        threads_name(threads, cores),
+                        timing::successful_median(&wall).map_or_else(
                             || "unavailable: requires at least five complete successful runs"
                                 .to_owned(),
                             |v| format!("{v:.6} s")
@@ -1193,6 +1224,30 @@ impl SurfaceSource for Timed<'_> {
     }
 }
 
+/// Optional diagnostic scopes; fitting scopes can overlap across worker threads.
+#[derive(Default)]
+struct StageTimes {
+    fitting: AtomicU64,
+    assembly: AtomicU64,
+}
+impl openchuck_types::job::ProgressSink for StageTimes {
+    fn report(&self, _: openchuck_types::job::Progress) {}
+    fn wants_timings(&self) -> bool {
+        true
+    }
+    fn timing(&self, stage: &str, elapsed: Duration) {
+        let counter = match stage {
+            "fitting" => &self.fitting,
+            "assembly" => &self.assembly,
+            _ => return,
+        };
+        counter.fetch_add(
+            u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
+    }
+}
+
 /// What the run of one operation took.
 #[derive(Debug, Clone, Default)]
 struct Timing {
@@ -1201,6 +1256,8 @@ struct Timing {
     drop_time: Duration,
     exact_queries: u64,
     simulate: Duration,
+    fitting: Duration,
+    assembly: Duration,
     lines: Vec<Line>,
 }
 
@@ -1209,6 +1266,8 @@ struct Run {
     /// refused operation cuts nothing and the next works on the same stock.
     groups: Vec<Result<ToolpathGroup, String>>,
     timings: Vec<Timing>,
+    /// Entire sequential job, including stock construction and simulation.
+    total: Duration,
 }
 
 /// Everything the library needs for the operations, from the project.
@@ -1286,8 +1345,10 @@ impl Job<'_> {
     }
 
     fn run_here(&self, form: &Form<'_>) -> Result<Run, Error> {
+        let job_started = Instant::now();
         let cancel = CancelToken::new();
-        let context = JobContext::new(&cancel, &NoProgress);
+        let stages = StageTimes::default();
+        let context = JobContext::new(&cancel, &stages);
         let setup = self.project.setups().first().ok_or("no setup")?;
         let stock_def = setup.stock.as_ref().ok_or("no stock")?;
         let cell = self.project.simulation().cell.0;
@@ -1359,11 +1420,17 @@ impl Job<'_> {
                 drop_time: Duration::from_nanos(timed.drop_nanos.load(Ordering::Relaxed)),
                 exact_queries: timed.exact.load(Ordering::Relaxed),
                 simulate: simulated,
+                fitting: Duration::from_nanos(stages.fitting.swap(0, Ordering::Relaxed)),
+                assembly: Duration::from_nanos(stages.assembly.swap(0, Ordering::Relaxed)),
                 lines,
             });
             groups.push(path.map(|p| p.group).map_err(|e| e.to_string()));
         }
-        Ok(Run { groups, timings })
+        Ok(Run {
+            groups,
+            timings,
+            total: job_started.elapsed(),
+        })
     }
 }
 

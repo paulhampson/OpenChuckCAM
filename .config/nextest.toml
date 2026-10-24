@@ -165,6 +165,10 @@ priority = 80
 filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)'
 priority = 79
 
+# STEPALL-M / #324, 24 Oct 2026, 4-core quota, uninstrumented with
+# concurrent validation: walls determinism 98.6 s, unroll hole grid 65.6 s,
+# reference replay/golden comparison 87.4 s when regenerating the corrected
+# references (61.6 s on the subsequent verification). Keep these in default Tests and nightly long; exclude from coverage.
 [profile.coverage]
 default-filter = '''not (
     test(~finest_setting_is_within)
@@ -184,6 +188,9 @@ default-filter = '''not (
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
+  | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
+  | test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
+  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
 )'''
 
 [profile.long]
@@ -205,4 +212,7 @@ default-filter = '''
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
+  | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
+  | test(=req_op_04_the_hole_grid_that_defeats_successive_offsetting_passes_from_the_original)
+  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
 '''
