@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; decision approval and conflicting record allocation pending |
+| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; renumber to reserved 0235; owner approval pending |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -165,3 +165,13 @@ At unchanged head `4c2d728ef51678c0ab9a5154dc1c361ea236c51a`, CI run 40072534316
 ## Owner priority override — BUG-SELSET2, 24 October 2026
 
 Owner instructed that #321 is still work in progress and #325 may jump ahead. Queue order is now #325 first, #321 second. This supersedes #325's previous behind-#321 placement. #325's full-record approval and conflicting 0234/OI-984 allocation holds remain; no ready transition or decision acceptance is inferred. #321 remains explicitly BLOCKED / IN PROGRESS and draft. Hourly monitoring continues.
+
+## Numbering authority and collision resolution — 24 October 2026
+
+Owner instructed merge coordinator to resolve numbering via PR comments; do NOT route numbering to task coordinator. This supersedes all earlier task-coordinator numbering referrals above. Lanes retain all branch/PR edit responsibility.
+
+Audit: fully enumerated remote branches (26; cursor exhausted), read main/active non-spike decision indexes and compared work/spike branches against main for added/modified decision files. Main highest indexed 0233; both #321/#325 use 0234; no 0235 found in indexed or changed decision files. The unrelated cla-signatures ref cannot compare with main; it is the standalone signatures branch, not a work lane. No new OI is needed.
+
+Allocation reserved now: **0235 — BUG-SELSET2 #325, confirmed selection overlay**. Preserve **0234 / OI-984 — STEPALL-M #321, replay output correction / issue #324**. #325 must rename its proposed overlay record from 0234 to 0235, update heading, allocation note, decision index, every affected cross-reference and PR text, remove its unused OI-984 reservation claim, and run records/whitespace checks. Keep proposed status; renumbering does not approve a record or release the PR.
+
+This narrow metadata reconciliation is authorised for one bundled push while retaining draft status, so the owner can review a concrete collision-free full record before release. It does not authorise merging main, product changes, ready transition or extra minor-only pushes. Lane must acknowledge in PR comments and report corrected head plus checks. Queue remains #325 first, #321 held second. Future number reservations and acknowledgements must be persisted here and communicated on the relevant PR.
