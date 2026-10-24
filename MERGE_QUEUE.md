@@ -23,9 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | OPCREATE2 | [#327](https://github.com/paulhampson/OpenChuckCAM/pull/327) | `codex/lane-opcreate2-strategy-picker` | Released; 6d1981c CI running; review/end-to-end green |
-| 2 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; 0238 / OI-987–988 reconciled; owner acceptance recorded |
-| 3 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; renumber accepted export record to 0240 |
+| 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; 0238 / OI-987–988 reconciled; owner acceptance recorded |
+| 2 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; renumber accepted export record to 0240 |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -307,3 +306,11 @@ Collision: OUTPUT-1 old0238 duplicates earlier reserved/now corrected SIMUI0238.
 Audit fully enumerated29 remote branches (cursor exhausted); new ROUGHPATH branch index uses0238/0239, conflicting with existing SIMUI/FINSTEP claims. This unsubmitted lane is not intake; flag collisions when handed over, do not silently free existing reservations. No0240 found in indexes/queue; highest actual/reserved before this assignment0239. Other work-branch/spike baseline audits retained. No other eligible new draft beyond#329, queued after#328.
 
 #327 remains sole ready; #328 next, #329 after it; #321 held outside active order. Original issue feedback labels remain merge requirements. Hourly checks enabled.
+
+## OPCREATE2 completion — 24 October 2026
+
+#327 merged exact verified head `6d1981c9a6fa683d489bbc427b37b0949b0970f0` using SHA guard. Merge commit `31d47a207459e136bcc676401415dfe7e16225f8`. Latest main was ancestor (behind_by0). CI40105945171 and end-to-end40105945173 completed SUCCESS; all due platform/STEP/library/UI/fast jobs and CI required checks passed; fuzz/Gate3 skipped by filter. CodeRabbit SUCCESS; no review threads or actionable findings. Accepted0237, closedOI985–986 and all11 approved strings unchanged; allocations against SIMUI0238/OI987–988 and persisted reservations verified. No new acceptance/protection bypass/auto-merge.
+
+**Original issues #289 and #290 labelled awaiting-fix-feedback**, additive results verified; remain open for owner native/Windows layout, keyboard and displayed-wording confirmation. CI and headless frames do not replace that trial. Owner closes original trial issues after testing.
+
+Active queue advances to #328, then #329; #321 stays held pending owner's notification. Next release still requires current allocation/approval check and sole-ready gate. Hourly checks remain enabled.
