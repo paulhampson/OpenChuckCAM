@@ -255,3 +255,5 @@ Await both current-head full CI and CodeRabbit before bundled necessary correcti
 When merging any PR, inspect its linked/fixed issues, verification evidence and stated limits. If a fixed issue still needs human testing or confirmation (for example reproduction on the owner's native platform, GPU, STEP trial, machine or user workflow), add **awaiting-fix-feedback** to that issue. This applies to referenced fixes as well as automatically closing issue links. Automated/local test success does not establish the missing human confirmation.
 
 Record the affected issue numbers and pending human check in the merge outcome here. Do not label unrelated issues or issues with no remaining human-confirmation requirement. Preserve existing labels; do not infer owner confirmation from merge. Use GitHub issue tools and verify label application. Apply as part of the merge process without a separate permission request.
+
+Owner clarification: apply `awaiting-fix-feedback` to the **original issue that reported the problem**, not the PR or a new tracking issue. When multiple original issues need human confirmation, label each applicable original issue.
