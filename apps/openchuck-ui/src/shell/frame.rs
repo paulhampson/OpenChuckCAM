@@ -141,6 +141,9 @@ pub(crate) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> e
 impl Shell {
     /// Collapses or opens `region` (Ctrl 1, 2 and 3; the chevrons).
     pub(super) fn toggle_region(&mut self, region: Region) {
+        if region == Region::Inspector && self.defer(move |s| s.toggle_region(region)) {
+            return;
+        }
         let layout = match region {
             Region::Project => &mut self.settings.project_panel,
             Region::Inspector => &mut self.settings.inspector,
@@ -416,7 +419,14 @@ impl Shell {
                         .id_salt("inspector scroll")
                         // The pane's width is the user's, not the content's.
                         .auto_shrink([false, false])
-                        .show(ui, |ui| self.properties(ui));
+                        .show(ui, |ui| {
+                            let ctx = ui.ctx().clone();
+                            crate::pending_edits::form(
+                                &ctx,
+                                egui::Id::new("inspector form"),
+                                || self.properties(ui),
+                            );
+                        });
                 }
             }
         });
@@ -639,7 +649,7 @@ impl Shell {
                 }
                 ui.separator();
                 if ui.button("Settings…").clicked() {
-                    self.dialog = Some(Dialog::Settings);
+                    self.open_dialog(Dialog::Settings);
                     ui.close();
                 }
                 if ui.button("Quit").clicked() {
@@ -810,7 +820,7 @@ impl Shell {
                     .add_enabled(open, egui::Button::new("Results…"))
                     .clicked()
                 {
-                    self.run.show_results();
+                    self.show_results();
                     ui.close();
                 }
             });
@@ -846,15 +856,15 @@ impl Shell {
             });
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard shortcuts…").clicked() {
-                    self.dialog = Some(Dialog::Keys);
+                    self.open_dialog(Dialog::Keys);
                     ui.close();
                 }
                 if ui.button("Settings…").clicked() {
-                    self.dialog = Some(Dialog::Settings);
+                    self.open_dialog(Dialog::Settings);
                     ui.close();
                 }
                 if ui.button("About OpenChuckCAM…").clicked() {
-                    self.dialog = Some(Dialog::About);
+                    self.open_dialog(Dialog::About);
                     ui.close();
                 }
             });
@@ -1333,7 +1343,7 @@ fn step_note(step: Step) -> &'static str {
     match step {
         Step::Model => "Placement steps run in order; undo with Ctrl Z",
         Step::Setup | Step::Operations => {
-            "Edits are applied when you leave a field; undo with Ctrl Z"
+            "Enter confirms; leaving a form asks about unconfirmed changes; undo with Ctrl Z"
         }
         Step::Simulate => "Results show the latest simulation",
         Step::Export => "Write G-code from the export dialog",

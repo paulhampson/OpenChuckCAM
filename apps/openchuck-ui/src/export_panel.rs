@@ -93,6 +93,7 @@ pub struct Outcome {
 
 /// The export dialog's state.
 pub struct ExportPanel {
+    deferred: Option<(crate::pending_edits::Ticket, Act)>,
     open: bool,
     posts: Vec<PostSummary>,
     /// Index into `posts`; `posts.len()` means the post folder in `custom`.
@@ -134,6 +135,7 @@ impl ExportPanel {
     /// in which case the box is asked every time).
     pub fn new(ack: Option<Acknowledgements>) -> Self {
         Self {
+            deferred: None,
             open: false,
             posts: builtin_post_summaries(),
             post_index: 0,
@@ -378,6 +380,14 @@ impl ExportPanel {
                 }
             }
         }
+        // The custom post path is a dialog draft. Do not start a posting
+        // job from it until the field has been confirmed.
+        if crate::pending_edits::entries(ctx)
+            .iter()
+            .any(|e| e.label == "Post folder")
+        {
+            return;
+        }
         let Some(key) = self.key(app) else { return };
         if self.files_current(app).is_some() || self.attempted.as_ref() == Some(&key) {
             return;
@@ -414,6 +424,9 @@ impl ExportPanel {
         let acknowledged = self.ack_lookup.acknowledged || self.ticked;
         let blocker = self.write_blocker(app, &checks, acknowledged);
         let mut acts = Vec::new();
+        if let Some(action) = crate::pending_edits::take_local(ctx, &mut self.deferred) {
+            acts.push(action);
+        }
         let (_, event) = floating_unscrolled(
             ctx,
             "export dialog",
@@ -427,6 +440,9 @@ impl ExportPanel {
             acts.push(Act::Close);
         }
         for act in acts {
+            let Some(act) = crate::pending_edits::defer_local(ctx, &mut self.deferred, act) else {
+                continue;
+            };
             match act {
                 Act::Close => self.open = false,
                 Act::ChooseFolder => {
@@ -438,7 +454,14 @@ impl ExportPanel {
                         self.folder = picked.display().to_string();
                     }
                 }
-                Act::ApplyNumbers(numbering) => {
+                Act::ApplyNumbers(_) => {
+                    let numbering = match self.numbering() {
+                        Ok(numbering) => numbering,
+                        Err(error) => {
+                            outcome.error = Some(error);
+                            continue;
+                        }
+                    };
                     let max = app.project().machine().map(|m| m.max_tool_number);
                     match tool_numbering_command(app.project(), &numbering, max) {
                         Ok(Some(command)) => match app.execute(command) {
@@ -597,7 +620,7 @@ impl ExportPanel {
                 ui.selectable_value(&mut self.post_index, self.posts.len(), "A post folder");
             });
         if self.post_index >= self.posts.len() {
-            ui.text_edit_singleline(&mut self.custom)
+            crate::pending_edits::text_edit(ui, &mut self.custom, "Post folder")
                 .on_hover_text("The folder that holds the post's files.");
         }
         match self.summary().cloned() {
@@ -666,7 +689,7 @@ impl ExportPanel {
         }
         ui.horizontal(|ui| {
             ui.label("Output folder");
-            ui.text_edit_singleline(&mut self.folder);
+            crate::pending_edits::text_edit(ui, &mut self.folder, "Output folder");
             if ui.button("Choose…").clicked() {
                 acts.push(Act::ChooseFolder);
             }
@@ -708,7 +731,23 @@ impl ExportPanel {
                             if let Some((_, text)) =
                                 self.by_hand.iter_mut().find(|(id, _)| *id == row.tool)
                             {
-                                ui.add(egui::TextEdit::singleline(text).desired_width(48.0));
+                                let before = text.clone();
+                                let response = ui.add(
+                                    egui::TextEdit::singleline(&mut *text).desired_width(48.0),
+                                );
+                                crate::pending_edits::draft_text(
+                                    ui,
+                                    &response,
+                                    "Tool number",
+                                    &before,
+                                    text,
+                                    |text| {
+                                        text.trim()
+                                            .parse::<u32>()
+                                            .map(|_| text.to_owned())
+                                            .map_err(|_| "Enter a whole tool number.".to_owned())
+                                    },
+                                );
                             }
                         }
                         NumberChoice::InOrder => {
