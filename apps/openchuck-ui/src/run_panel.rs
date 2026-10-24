@@ -305,6 +305,16 @@ impl RunPanel {
         self.job.is_some()
     }
 
+    /// The active pipeline job, for the Playback preparation display.
+    pub fn job_id(&self) -> Option<JobId> {
+        self.job.as_ref().map(|job| job.handle.id())
+    }
+
+    /// Whether the active run includes the stock simulation.
+    pub fn running_simulates(&self) -> bool {
+        self.job.as_ref().is_some_and(|job| job.simulate)
+    }
+
     /// Starts generating, with the stock simulation unless the project skips
     /// it (issue 214), or always when `simulate` ("Generate and simulate").
     /// Does nothing while a job runs.

@@ -37,6 +37,64 @@ pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// record 0066).
 const EDGE_PIXELS: f32 = 6.0;
 
+/// The actual cut surface, with the same triangle IDs used by its CPU picker.
+pub(crate) fn cut_part_scene(
+    surface: &openchuck_app::stockplay::StockSurface,
+    bands: Option<&DeviationBands>,
+    solid: bool,
+) -> Scene {
+    let mut scene = Scene::default();
+    let mut add = |mesh: &TriangleMesh, mut colour: Colour, hatched: bool| {
+        // The mapped palette has narrow contrast margins (0216). Keep its
+        // translucent fill near opaque; plain stock retains today's glass.
+        colour[3] = if solid {
+            1.0
+        } else if bands.is_some() {
+            0.98
+        } else {
+            0.30
+        };
+        scene.add_mesh(mesh, &[], colour, colour);
+        if let Some(item) = scene.meshes.last_mut() {
+            item.slot = Slot::Part;
+            item.translucent = !solid;
+            if hatched {
+                item.hatch = Some(Hatch {
+                    colour: roles::UNMEASURED_HATCH,
+                    cross: false,
+                });
+            }
+        }
+    };
+    if let Some(bands) = bands {
+        let shown: TriangleSet = bands
+            .bands
+            .iter()
+            .flat_map(|(_, set)| set.iter().copied())
+            .collect();
+        let hidden: TriangleSet = (0..surface.mesh.triangles.len() as u32)
+            .filter(|t| !shown.contains(t))
+            .collect();
+        if !hidden.is_empty() {
+            add(
+                &triangles_mesh(&surface.mesh, &hidden),
+                roles::HIDDEN_BAND,
+                false,
+            );
+        }
+        for (band, set) in &bands.bands {
+            add(
+                &triangles_mesh(&surface.mesh, set),
+                band_colour(*band),
+                roles::band_hatched(*band),
+            );
+        }
+    } else {
+        add(&surface.mesh, [0.85, 0.72, 0.45, 1.0], false);
+    }
+    scene
+}
+
 /// Degrees of orbit per pixel dragged.
 const ORBIT_PER_PIXEL: f64 = 0.4;
 /// Zoom per scroll unit: one notch of about 50 points zooms by about 8 %.
@@ -537,6 +595,8 @@ pub struct Viewport {
     pixels: [u32; 2],
     /// The part coloured by deviation, when asked for (SIM-05).
     bands: Option<(ModelId, DeviationBands)>,
+    stock_surface: Option<Arc<openchuck_app::stockplay::StockSurface>>,
+    cut_part_solid: bool,
     /// What the part is coloured by, for the probe's text.
     pub(crate) colour_by: ColourBy,
     /// The deviation bands shown (SIM-15), for the colour scale's marks.
@@ -653,6 +713,8 @@ impl Viewport {
             drawn: 0,
             pixels: [0, 0],
             bands: None,
+            stock_surface: None,
+            cut_part_solid: false,
             colour_by: ColourBy::default(),
             band_filter: crate::results_panel::BandFilter::default(),
             rest: None,
@@ -688,16 +750,85 @@ impl Viewport {
     /// for the next frame.
     fn rebuild(&mut self) {
         let options = SceneOptions {
-            bands: self.bands.as_ref().map(|(m, b)| (*m, b)),
+            bands: self
+                .bands
+                .as_ref()
+                .filter(|_| self.stock_surface.is_none())
+                .map(|(m, b)| (*m, b)),
             outlines_only: self.picking || self.bands.is_some(),
             show: Visibility {
                 part: self.part_shown(),
-                ..self.show
+                ..self.visibility()
             },
             draft: self.draft.as_ref(),
         };
         self.scene = Arc::new(to_scene_with(&self.view, &options));
         self.generation += 1;
+        self.rebuild_stock();
+    }
+
+    /// Display preference only; the project and simulation stay unchanged.
+    pub fn set_cut_part_solid(&mut self, solid: bool) {
+        if self.cut_part_solid != solid {
+            self.cut_part_solid = solid;
+            self.rebuild_stock();
+        }
+    }
+
+    pub fn cut_part_solid(&self) -> bool {
+        self.cut_part_solid
+    }
+
+    #[cfg(test)]
+    pub(crate) fn stock_surface(&self) -> Option<&Arc<openchuck_app::stockplay::StockSurface>> {
+        self.stock_surface.as_ref()
+    }
+
+    /// Geometry, projected values and picker are handed over atomically.
+    pub fn set_stock_surface(
+        &mut self,
+        surface: Option<Arc<openchuck_app::stockplay::StockSurface>>,
+    ) {
+        if self
+            .stock_surface
+            .as_ref()
+            .zip(surface.as_ref())
+            .is_some_and(|(a, b)| Arc::ptr_eq(a, b))
+            || (self.stock_surface.is_none() && surface.is_none())
+        {
+            return;
+        }
+        self.stock_surface = surface;
+        self.bands = None;
+        self.probe_pinned = None;
+        self.probe_hover = None;
+        self.rest = None;
+        self.rebuild();
+    }
+
+    fn rebuild_stock(&mut self) {
+        let scene = self
+            .stock_surface
+            .as_ref()
+            .map_or_else(Scene::default, |surface| {
+                cut_part_scene(
+                    surface,
+                    self.bands.as_ref().map(|(_, bands)| bands),
+                    self.cut_part_solid,
+                )
+            });
+        // Do not repeatedly upload an empty layer in views without stock.
+        if self.stock_surface.is_some() || self.holds(Layer::Stock) {
+            self.set_layer(Layer::Stock, scene);
+        }
+    }
+
+    fn probe_surface_shown(&self) -> bool {
+        if self.stock_surface.is_some() {
+            self.layer_shown(Layer::Stock)
+        } else {
+            self.part_shown()
+        }
     }
 
     /// Shows a new scene. With `fit` the camera is fitted to it.
@@ -764,9 +895,9 @@ impl Viewport {
     /// what the view holds.
     pub fn set_step(&mut self, step: Option<ViewStep>) {
         if self.step != step {
-            let part = self.part_shown();
+            let shown = (self.part_shown(), self.visibility());
             self.step = step;
-            if self.part_shown() != part {
+            if (self.part_shown(), self.visibility()) != shown {
                 self.rebuild();
             }
         }
@@ -776,9 +907,9 @@ impl Viewport {
     pub fn set_simulate_show(&mut self, show: SimulateShow) {
         let show = show.never_empty();
         if self.simulate_show != show {
-            let part = self.part_shown();
+            let shown = (self.part_shown(), self.visibility());
             self.simulate_show = show;
-            if self.part_shown() != part {
+            if (self.part_shown(), self.visibility()) != shown {
                 self.rebuild();
             }
         }
@@ -789,15 +920,16 @@ impl Viewport {
         self.simulate_show
     }
 
-    /// Whether the part is drawn: "Show or hide" says so and, on Simulate,
-    /// "Model" is ticked, or "Cut part" while the part is coloured by
-    /// deviation (what the cut left is shown on the part's surface).
+    /// Whether the part is drawn. On Simulate, both Show controls read the
+    /// same choices: Part, or Cut part while deviation colours are shown.
     pub(crate) fn part_shown(&self) -> bool {
         let simulate = self.simulate_show;
-        self.show.part
-            && (self.step() != ViewStep::Simulate
-                || simulate.model
-                || (simulate.cut_part && self.bands.is_some()))
+        if self.step() == ViewStep::Simulate {
+            simulate.model
+                || (simulate.cut_part && self.bands.is_some() && self.stock_surface.is_none())
+        } else {
+            self.show.part
+        }
     }
 
     /// Tells the view whether the open project holds a model. The toolbar and the View
@@ -843,15 +975,38 @@ impl Viewport {
 
     /// Sets what is shown (7.1, V).
     pub fn set_visibility(&mut self, show: Visibility) {
-        if self.show != show {
+        let before = self.visibility();
+        if self.step() == ViewStep::Simulate {
+            self.simulate_show = SimulateShow {
+                model: show.part,
+                cut_part: show.stock,
+                toolpath: show.toolpaths,
+            }
+            .never_empty();
+            self.show.axes = show.axes;
+            self.show.workholding = show.workholding;
+            self.show.selections = show.selections;
+            self.show.findings = show.findings;
+        } else {
             self.show = show;
+        }
+        if self.visibility() != before {
             self.rebuild();
         }
     }
 
     /// What is shown.
     pub fn visibility(&self) -> Visibility {
-        self.show
+        if self.step() == ViewStep::Simulate {
+            Visibility {
+                part: self.simulate_show.model,
+                stock: self.simulate_show.cut_part,
+                toolpaths: self.simulate_show.toolpath,
+                ..self.show
+            }
+        } else {
+            self.show
+        }
     }
 
     /// Draws `draft` instead of the setup's stored workholding, or the
@@ -1218,7 +1373,7 @@ impl Viewport {
             return;
         };
         // A hidden part is still picked, but is not there to read.
-        if !self.part_shown() {
+        if !self.probe_surface_shown() {
             self.probe_hover = None;
             self.rest = None;
             return;
@@ -1247,11 +1402,12 @@ impl Viewport {
     pub(crate) fn probe_text(&self, triangle: u32) -> Option<String> {
         let (_, bands) = self.bands.as_ref()?;
         let value = bands.values.get(triangle as usize).copied().flatten();
-        Some(crate::results_panel::probe_text(
-            self.colour_by,
-            value,
-            bands.tolerance,
-        ))
+        let text = crate::results_panel::probe_text(self.colour_by, value, bands.tolerance);
+        Some(if self.stock_surface.is_some() {
+            format!("Final result · {text} (nearest target sample)")
+        } else {
+            text
+        })
     }
 
     /// Draws the kept probe value at its point, when the point is in view.
@@ -1259,7 +1415,7 @@ impl Viewport {
         let Some((triangle, at)) = self.probe_pinned else {
             return;
         };
-        if !self.part_shown() {
+        if !self.probe_surface_shown() {
             return;
         }
         let Some(text) = self.probe_text(triangle) else {
@@ -1274,6 +1430,39 @@ impl Viewport {
         };
         if !(0.0..=1.0).contains(&ndc[2]) {
             return;
+        }
+        if let Some(stock) = &self.stock_surface {
+            // Keep the pin, but do not paint its value through a nearer
+            // stock face or a visible model after the camera/view changes.
+            let (origin, direction) = self.camera.ray([ndc[0], ndc[1]], self.aspect);
+            let back = rigid_inverse(&self.part_transform);
+            let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
+            let d = transform(&back, [direction[0], direction[1], direction[2], 0.0]);
+            let (o, d) = ([o[0], o[1], o[2]], [d[0], d[1], d[2]]);
+            let distance: f64 = at
+                .into_iter()
+                .zip(o)
+                .zip(d)
+                .map(|((point, origin), direction)| (point - origin) * direction)
+                .sum();
+            if stock
+                .pick(o, d)
+                .ok()
+                .flatten()
+                .is_none_or(|hit| hit.distance + 1e-5 < distance)
+            {
+                return;
+            }
+            if self.part_shown()
+                && self
+                    .view
+                    .picking
+                    .picker()
+                    .and_then(|p| p.pick(o, d).ok().flatten())
+                    .is_some_and(|hit| hit.distance + 1e-5 < distance)
+            {
+                return;
+            }
         }
         let point = pos2(
             rect.left() + ((ndc[0] + 1.0) * 0.5) as f32 * rect.width(),
@@ -1297,24 +1486,16 @@ impl Viewport {
         painter.galley(at, galley, roles::OVERLAY_TEXT);
     }
 
-    /// Whether a layer other than the scene is drawn, after "Show or hide"
-    /// and Simulate's "Show".
+    /// Whether a layer other than the scene is drawn, from the step's
+    /// shared Show choices.
     fn layer_shown(&self, layer: Layer) -> bool {
         // The Show choice is Simulate's; it hides nothing on the other steps,
         // where the toolbar does not offer it (7.1).
-        let simulate = if self.step() == ViewStep::Simulate {
-            self.simulate_show
-        } else {
-            SimulateShow {
-                model: true,
-                cut_part: true,
-                toolpath: true,
-            }
-        };
+        let show = self.visibility();
         match layer {
-            Layer::Overlay => self.show.selections,
-            Layer::Paths | Layer::Trace => self.show.toolpaths && simulate.toolpath,
-            Layer::Stock => self.show.stock && simulate.cut_part,
+            Layer::Overlay => show.selections,
+            Layer::Paths | Layer::Trace => show.toolpaths,
+            Layer::Stock => show.stock,
             _ => true,
         }
     }
@@ -1372,11 +1553,34 @@ impl Viewport {
         let o = transform(&back, [origin[0], origin[1], origin[2], 1.0]);
         let d = transform(&back, [direction[0], direction[1], direction[2], 0.0]);
         let (o, d) = ([o[0], o[1], o[2]], [d[0], d[1], d[2]]);
-        let surface = self
+        let mut surface = self
             .view
             .picking
             .picker()
             .and_then(|p| p.pick(o, d).ok().flatten());
+        if !self.picking && self.stock_surface.is_some() {
+            if !self.part_shown() {
+                surface = None;
+            }
+            if self.layer_shown(Layer::Stock)
+                && let Some(stock) = self
+                    .stock_surface
+                    .as_ref()
+                    .and_then(|s| s.pick(o, d).ok().flatten())
+                && surface.is_none_or(|part| stock.distance <= part.distance)
+            {
+                surface = Some(stock);
+            } else {
+                // A visible model in front occludes the stock's value.
+                // It carries no mapped stock-triangle identity.
+                if self.bands.is_some() {
+                    surface = surface.map(|mut hit| {
+                        hit.model = None;
+                        hit
+                    });
+                }
+            }
+        }
         self.cursor_point = surface.map(|h| [h.point.x, h.point.y, h.point.z]);
         if !self.picking {
             self.probe(ui, response, pointer, surface.as_ref());
@@ -2291,12 +2495,16 @@ pub(crate) mod tests {
         assert!(viewport.probe_hover.is_some());
         // Hidden, the part gives no value under the pointer, though it is
         // still where the pointer is.
-        viewport.show.part = false;
+        viewport.set_simulate_show(SimulateShow {
+            model: false,
+            cut_part: false,
+            toolpath: true,
+        });
         frame_at(&mut viewport, &ctx, middle, false, 1.0);
         frame_at(&mut viewport, &ctx, middle, false, 1.1 + PROBE_PAUSE);
         assert_eq!(viewport.probe_hover, None);
         // Shown again, the value waits for a new pause.
-        viewport.show.part = true;
+        viewport.set_simulate_show(SimulateShow::default());
         frame_at(&mut viewport, &ctx, middle, false, 2.0);
         assert_eq!(viewport.probe_hover, None);
         frame_at(&mut viewport, &ctx, middle, false, 2.1 + PROBE_PAUSE);
@@ -2486,6 +2694,62 @@ pub(crate) mod tests {
         };
         run_frame(&mut viewport, &ctx, vec![key(egui::Key::V)]);
         assert!(viewport.show_menu_open);
+    }
+
+    #[test]
+    fn req_ui_03_req_sim_01_simulate_show_controls_share_every_visibility_choice() {
+        let mut viewport = Viewport::new(true);
+        viewport.set_step(Some(ViewStep::Simulate));
+        let menu = viewport.visibility();
+        assert_eq!(
+            (menu.part, menu.stock, menu.toolpaths),
+            (false, true, false),
+            "both views of Show start with Cut part only"
+        );
+        for extras in 0..8 {
+            for choices in 1..8 {
+                let menu = Visibility {
+                    part: choices & 1 != 0,
+                    stock: choices & 2 != 0,
+                    toolpaths: choices & 4 != 0,
+                    axes: extras & 1 != 0,
+                    workholding: extras & 2 != 0,
+                    selections: extras & 4 != 0,
+                    ..Visibility::default()
+                };
+                viewport.set_visibility(menu);
+                let expected = SimulateShow {
+                    model: menu.part,
+                    cut_part: menu.stock,
+                    toolpath: menu.toolpaths,
+                };
+                assert_eq!(viewport.simulate_show(), expected, "menu to quick controls");
+                assert_eq!(viewport.layer_shown(Layer::Stock), menu.stock);
+                assert_eq!(viewport.layer_shown(Layer::Paths), menu.toolpaths);
+                assert_eq!(viewport.layer_shown(Layer::Trace), menu.toolpaths);
+                assert_eq!(viewport.part_shown(), menu.part);
+
+                for quick in 1..8 {
+                    let show = SimulateShow {
+                        model: quick & 1 != 0,
+                        cut_part: quick & 2 != 0,
+                        toolpath: quick & 4 != 0,
+                    };
+                    viewport.set_simulate_show(show);
+                    let actual = viewport.visibility();
+                    assert_eq!(
+                        (actual.part, actual.stock, actual.toolpaths),
+                        (show.model, show.cut_part, show.toolpath),
+                        "quick controls to menu"
+                    );
+                    assert_eq!(
+                        (actual.axes, actual.workholding, actual.selections),
+                        (menu.axes, menu.workholding, menu.selections),
+                        "quick controls leave menu-only choices alone"
+                    );
+                }
+            }
+        }
     }
 
     /// Runs one frame of `viewport` on a `size` screen with the pointer at

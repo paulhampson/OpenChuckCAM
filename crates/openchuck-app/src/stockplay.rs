@@ -22,6 +22,8 @@ use openchuck_types::tool::RevolvedProfile;
 
 use crate::pathview::{DeviationBands, deviation_bands};
 use crate::playback::{Cursor, Timeline};
+pub use crate::stock_surface::StockSurface;
+use crate::stock_surface::SurfaceSamples;
 use crate::{AppError, Application, JobHandle, Regeneration};
 
 /// The most memory the checkpoints of one setup may hold, in bytes. Each is a
@@ -41,6 +43,8 @@ struct SetupPlay {
     /// The groups run on this setup's stock, in order, counted across all
     /// groups of the timeline.
     groups: Vec<usize>,
+    model: Option<ModelId>,
+    samples: Option<SurfaceSamples>,
 }
 
 /// The simulation of every setup with its checkpoints, to give the stock at a
@@ -205,6 +209,13 @@ impl Application {
                         id,
                         simulator,
                         groups,
+                        model: project.setup(id).and_then(|s| s.part),
+                        samples: run
+                            .simulation
+                            .as_ref()
+                            .and_then(|r| r.setups.iter().find(|s| s.id == id))
+                            .and_then(|s| s.deviation.as_ref())
+                            .map(|d| SurfaceSamples::new(&d.points, settings.cell.0)),
                     });
                 }
                 Ok(StockPlayback { timeline, setups })
@@ -222,6 +233,42 @@ impl Application {
         self.jobs
             .submit("stock at move", self.events_tx.clone(), move |context| {
                 playback.mesh_at(cursor, context)
+            })
+    }
+
+    /// Actual playback stock with display-only final-result colours and a
+    /// matching CPU picker, prepared together off the interface thread.
+    pub fn start_stock_surface(
+        &self,
+        playback: &Arc<StockPlayback>,
+        cursor: Cursor,
+    ) -> JobHandle<StockSurface> {
+        let playback = Arc::clone(playback);
+        self.jobs
+            .submit("stock at move", self.events_tx.clone(), move |context| {
+                let mesh = playback.mesh_at(cursor, context)?;
+                let group = playback
+                    .timeline
+                    .locate(cursor.done)
+                    .map(|(g, _)| g)
+                    .or_else(|| {
+                        playback
+                            .timeline
+                            .run()
+                            .toolpath
+                            .groups
+                            .iter()
+                            .rposition(|g| !g.segments.is_empty())
+                    })
+                    .unwrap_or(0);
+                let setup = playback
+                    .setups
+                    .iter()
+                    .find(|s| s.groups.contains(&group))
+                    .ok_or_else(|| {
+                        AppError::Playback("no simulation covers this move".to_owned())
+                    })?;
+                StockSurface::new(mesh, setup.id, setup.model, setup.samples.as_ref(), context)
             })
     }
 

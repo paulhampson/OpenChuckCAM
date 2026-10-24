@@ -79,14 +79,14 @@ type Tick = fn(&mut SimulateShow) -> &mut bool;
 /// Simulate's "Show" tick boxes (7.1, as decision record 0168 proposes):
 /// each name, its tooltip and the field it sets.
 pub const SIMULATE_SHOW: [(&str, &str, Tick); 3] = [
-    ("Model", "The part's model", |s| &mut s.model),
+    ("Part", "The part's model", |s| &mut s.model),
     (
         "Cut part",
         "The stock as the simulation cut it, at the play head; with the colours by \
          deviation on, the part coloured by what was left or overcut",
         |s| &mut s.cut_part,
     ),
-    ("Toolpath", "The toolpaths", |s| &mut s.toolpath),
+    ("Toolpaths", "The toolpaths", |s| &mut s.toolpath),
 ];
 
 /// Why the one ticked box cannot be unticked (issue 204).
@@ -132,8 +132,7 @@ pub fn show(ui: &mut egui::Ui, viewport: &mut Viewport, strip: egui::Rect) {
             let inline_show = step == ViewStep::Simulate
                 && ui.available_width()
                     >= text_width(ui, "Show \u{23f7}") + button_extra(ui) + simulate_show_width(ui);
-            let in_menu = step == ViewStep::Simulate && !inline_show;
-            show_or_hide(ui, viewport, in_menu);
+            show_or_hide(ui, viewport);
             if step == ViewStep::Model && viewport.has_findings() {
                 let mut show = viewport.visibility();
                 if ui
@@ -208,7 +207,7 @@ fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, choices: &[(T, &str, &str)],
 }
 
 /// The "Show or hide" button and its list (V).
-fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport, simulate_choices: bool) {
+fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport) {
     let button = ui.button("Show \u{23f7}").on_hover_text(
         "Show or hide: part, stock, axes, held regions and tabs, selections, toolpaths (V)",
     );
@@ -216,20 +215,37 @@ fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport, simulate_choices: bo
         viewport.show_menu_open = !viewport.show_menu_open;
     }
     let mut show = viewport.visibility();
+    let simulate = viewport.step() == ViewStep::Simulate;
     let mut open = viewport.show_menu_open;
     egui::Popup::from_response(&button)
         .open_bool(&mut open)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| {
             for (name, field) in SHOW_OR_HIDE {
-                ui.checkbox(field(&mut show), name);
+                let main = matches!(name, "Part" | "Stock" | "Toolpaths");
+                let last =
+                    usize::from(show.part) + usize::from(show.stock) + usize::from(show.toolpaths)
+                        == 1;
+                let locked = simulate && main && last && *field(&mut show);
+                let name = if simulate && name == "Stock" {
+                    "Cut part"
+                } else {
+                    name
+                };
+                ui.add_enabled(!locked, egui::Checkbox::new(field(&mut show), name))
+                    .on_disabled_hover_text(LAST_TICK);
+            }
+            if simulate {
+                ui.separator();
+                ui.label("Cut part display");
+                let mut solid = viewport.cut_part_solid();
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut solid, false, "Translucent");
+                    ui.radio_value(&mut solid, true, "Solid");
+                });
+                viewport.set_cut_part_solid(solid);
             }
             ui.weak(SHOW_OR_HIDE_NOTE);
-            if simulate_choices {
-                ui.separator();
-                ui.label("Simulate shows");
-                simulate_ticks(ui, viewport);
-            }
         });
     viewport.show_menu_open = open;
     viewport.set_visibility(show);
@@ -238,6 +254,128 @@ fn show_or_hide(ui: &mut egui::Ui, viewport: &mut Viewport, simulate_choices: bo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn req_ui_03_req_sim_01_menu_and_quick_controls_toggle_every_combination_and_protect_the_last()
+    {
+        fn frame(
+            ctx: &egui::Context,
+            viewport: &mut Viewport,
+            events: Vec<egui::Event>,
+        ) -> Vec<(String, egui::Rect)> {
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 500.0));
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| show(ui, viewport, screen.with_max_y(HEIGHT)));
+            output.textures_delta.clear();
+            fn texts(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+                match shape {
+                    egui::Shape::Text(t) => out.push((
+                        t.galley.text().to_owned(),
+                        egui::Rect::from_min_size(t.pos, t.galley.size()),
+                    )),
+                    egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| texts(s, out)),
+                    _ => {}
+                }
+            }
+            let mut out = Vec::new();
+            for shape in output.shapes {
+                texts(&shape.shape, &mut out);
+            }
+            out
+        }
+        for bits in 1u8..8 {
+            for choice in 0..3 {
+                for menu in [false, true] {
+                    let ctx = egui::Context::default();
+                    let mut viewport = Viewport::new(true);
+                    viewport.set_step(Some(ViewStep::Simulate));
+                    let initial = SimulateShow {
+                        model: bits & 1 != 0,
+                        cut_part: bits & 2 != 0,
+                        toolpath: bits & 4 != 0,
+                    };
+                    viewport.set_simulate_show(initial);
+                    let mut flags = viewport.visibility();
+                    flags.axes = false;
+                    flags.workholding = false;
+                    flags.selections = false;
+                    viewport.set_visibility(flags);
+                    viewport.show_menu_open = menu;
+                    let mut painted = Vec::new();
+                    for _ in 0..3 {
+                        painted = frame(&ctx, &mut viewport, Vec::new());
+                    }
+                    let label = ["Part", "Cut part", "Toolpaths"][choice];
+                    let choices = painted.iter().filter(|(t, _)| t == label);
+                    let at = if menu {
+                        choices.max_by(|a, b| a.1.top().total_cmp(&b.1.top()))
+                    } else {
+                        choices.min_by(|a, b| a.1.top().total_cmp(&b.1.top()))
+                    }
+                    .unwrap_or_else(|| panic!("missing {label}, menu={menu}: {painted:?}"))
+                    .1
+                    .center();
+                    frame(
+                        &ctx,
+                        &mut viewport,
+                        vec![
+                            egui::Event::PointerMoved(at),
+                            egui::Event::PointerButton {
+                                pos: at,
+                                button: egui::PointerButton::Primary,
+                                pressed: true,
+                                modifiers: egui::Modifiers::NONE,
+                            },
+                        ],
+                    );
+                    frame(
+                        &ctx,
+                        &mut viewport,
+                        vec![egui::Event::PointerButton {
+                            pos: at,
+                            button: egui::PointerButton::Primary,
+                            pressed: false,
+                            modifiers: egui::Modifiers::NONE,
+                        }],
+                    );
+                    let toggled = bits ^ (1 << choice);
+                    let expected = if toggled == 0 {
+                        initial
+                    } else {
+                        SimulateShow {
+                            model: toggled & 1 != 0,
+                            cut_part: toggled & 2 != 0,
+                            toolpath: toggled & 4 != 0,
+                        }
+                    };
+                    assert_eq!(
+                        viewport.simulate_show(),
+                        expected,
+                        "bits={bits}, choice={label}, menu={menu}"
+                    );
+                    let effective = viewport.visibility();
+                    assert_eq!(
+                        (effective.part, effective.stock, effective.toolpaths),
+                        (expected.model, expected.cut_part, expected.toolpath)
+                    );
+                    assert!(
+                        !effective.axes && !effective.workholding && !effective.selections,
+                        "main choices preserve menu-only flags"
+                    );
+                    // The opposite control renders and acts from exactly the same state.
+                    viewport.show_menu_open = !menu;
+                    for _ in 0..3 {
+                        frame(&ctx, &mut viewport, Vec::new());
+                    }
+                    assert_eq!(viewport.simulate_show(), expected);
+                }
+            }
+        }
+    }
 
     #[test]
     fn req_ui_02_the_view_directions_apply_to_every_3d_view_and_not_to_the_setup_panes() {
@@ -287,7 +425,7 @@ mod tests {
     fn req_ui_03_simulates_show_choices_are_never_cut_off_they_move_into_the_show_menu() {
         // OI-529. Wide: the choices are in the strip, each inside it.
         let wide = strip_texts(1100.0, false);
-        for name in ["Model", "Cut part", "Toolpath"] {
+        for name in ["Part", "Cut part", "Toolpaths"] {
             let (_, rect) = wide
                 .iter()
                 .find(|(t, _)| t == name)
@@ -305,7 +443,15 @@ mod tests {
         // They are in the Show menu instead.
         let open = strip_texts(583.0, true);
         assert!(open.iter().any(|(t, _)| t == "Cut part"), "{open:?}");
-        assert!(open.iter().any(|(t, _)| t == "Simulate shows"));
+        assert!(!open.iter().any(|(t, _)| t == "Simulate shows"));
+        assert!(!open.iter().any(|(t, _)| t == "Stock"));
+        for name in ["Part", "Cut part", "Toolpaths"] {
+            assert_eq!(
+                open.iter().filter(|(t, _)| t == name).count(),
+                1,
+                "{name} appears once"
+            );
+        }
     }
 
     /// Draws the wide strip on Simulate with `events`, and returns where
@@ -372,8 +518,8 @@ mod tests {
             viewport.simulate_show().cut_part,
             "the last box stays ticked"
         );
-        click_box(&ctx, &mut viewport, "Toolpath");
-        click_box(&ctx, &mut viewport, "Model");
+        click_box(&ctx, &mut viewport, "Toolpaths");
+        click_box(&ctx, &mut viewport, "Part");
         assert_eq!(
             viewport.simulate_show(),
             SimulateShow {
@@ -383,7 +529,7 @@ mod tests {
             }
         );
         click_box(&ctx, &mut viewport, "Cut part");
-        click_box(&ctx, &mut viewport, "Model");
+        click_box(&ctx, &mut viewport, "Part");
         assert_eq!(
             viewport.simulate_show(),
             SimulateShow {
@@ -392,7 +538,7 @@ mod tests {
                 toolpath: true
             }
         );
-        click_box(&ctx, &mut viewport, "Toolpath");
+        click_box(&ctx, &mut viewport, "Toolpaths");
         assert!(
             viewport.simulate_show().toolpath,
             "the last box stays ticked"
@@ -446,7 +592,7 @@ mod tests {
             1
         );
         let names: Vec<&str> = SIMULATE_SHOW.iter().map(|(n, ..)| *n).collect();
-        assert_eq!(names, ["Model", "Cut part", "Toolpath"]);
+        assert_eq!(names, ["Part", "Cut part", "Toolpaths"]);
         // Each box sets its own field.
         for (name, _, field) in SIMULATE_SHOW {
             let mut s = SimulateShow::default();

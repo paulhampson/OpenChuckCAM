@@ -189,6 +189,8 @@ pub struct Shell {
     text_had_focus: bool,
     /// The toolpath display and playback (slice 9).
     play: PlaybackPanel,
+    /// The Simulate camera to restore while its run remains available.
+    simulate_camera: Option<(Arc<openchuck_app::Regeneration>, openchuck_viewport::Camera)>,
     /// The results inspector of the Simulate step (SIM-05, SIM-07).
     results: ResultsPanel,
     /// The workflow step open (UI-10).
@@ -282,6 +284,7 @@ impl Shell {
             export: ExportPanel::default(),
             text_had_focus: false,
             play: PlaybackPanel::default(),
+            simulate_camera: None,
             step: Step::Model,
             jobs: JobLog::default(),
             checks: None,
@@ -314,6 +317,7 @@ impl Shell {
     /// (decision records 0168 and 0169).
     fn apply_simulate_settings(&mut self) {
         let simulate = self.settings.simulate;
+        self.viewport.set_cut_part_solid(simulate.cut_part_solid);
         self.play.set_turn_part_with_a(simulate.turn_part_with_a);
         self.play
             .set_hide_outside_window(simulate.hide_outside_window);
@@ -330,6 +334,7 @@ impl Shell {
     fn keep_simulate_settings(&mut self) {
         let show = self.viewport.simulate_show();
         let now = openchuck_app::settings::SimulateSettings {
+            cut_part_solid: self.viewport.cut_part_solid(),
             turn_part_with_a: self.play.turns_part_with_a(),
             show_model: show.model,
             show_cut_part: show.cut_part,
@@ -418,6 +423,7 @@ impl Shell {
         self.run.clear();
         self.export.clear();
         self.play.clear();
+        self.simulate_camera = None;
         self.jobs.clear();
         self.checks = None;
         if let Some(job) = self.checks_job.take() {
@@ -753,6 +759,23 @@ impl Shell {
             return;
         }
         if self.overview.step(step).is_available() {
+            if self.step == Step::Simulate && step != Step::Simulate {
+                self.play.pause();
+                self.simulate_camera = self
+                    .run
+                    .last()
+                    .filter(|_| self.play.has_run())
+                    .map(|run| (Arc::clone(run), self.viewport.camera));
+            } else if step == Step::Simulate
+                && self.play.has_run()
+                && let Some((run, camera)) = &self.simulate_camera
+                && self
+                    .run
+                    .last()
+                    .is_some_and(|current| Arc::ptr_eq(current, run))
+            {
+                self.viewport.camera = *camera;
+            }
             // Another step ends selection mode, and its highlight with it
             // (issue 261).
             if step != self.step
@@ -1134,6 +1157,10 @@ impl Shell {
         let command = match action {
             TreeAction::Select(id) => {
                 self.select(Selection::Operation(id));
+                if self.step == Step::Simulate {
+                    self.open_step(Step::Operations);
+                    self.reveal_operation_inspector();
+                }
                 return;
             }
             TreeAction::SelectModel(id, section) => {
@@ -1239,6 +1266,7 @@ impl Shell {
         let windowed = self.window_open();
         if let Some(app) = &mut self.app {
             if let Some((run, job)) = self.run.poll(&self.jobs, ctx) {
+                self.simulate_camera = None;
                 self.jobs.set_summary(job, run_summary(&run));
                 self.play.set_run(app, run);
                 self.overview_dirty = true;

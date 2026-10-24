@@ -101,6 +101,8 @@ pub mod region {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SimulateSettings {
+    /// Opaque cut stock; false retains the translucent default (issue 300).
+    pub cut_part_solid: bool,
     /// "Turn part with A": the tool stands upright and the part turns, as on
     /// the machine (SIM-02). On by default, also for projects made before
     /// it was (issue 203).
@@ -123,6 +125,7 @@ pub struct SimulateSettings {
 impl Default for SimulateSettings {
     fn default() -> Self {
         Self {
+            cut_part_solid: false,
             turn_part_with_a: true,
             show_model: false,
             show_cut_part: true,
