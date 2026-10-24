@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; 0238 / OI-987–988 reconciled; owner acceptance recorded |
+| 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Released; sole ready PR; latest-main integration pending |
 | 2 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; renumber accepted export record to 0240 |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
@@ -314,3 +314,11 @@ Audit fully enumerated29 remote branches (cursor exhausted); new ROUGHPATH branc
 **Original issues #289 and #290 labelled awaiting-fix-feedback**, additive results verified; remain open for owner native/Windows layout, keyboard and displayed-wording confirmation. CI and headless frames do not replace that trial. Owner closes original trial issues after testing.
 
 Active queue advances to #328, then #329; #321 stays held pending owner's notification. Next release still requires current allocation/approval check and sole-ready gate. Hourly checks remain enabled.
+
+## SIMUI owner readiness and release — 24 October 2026
+
+Owner directly confirmed **"328 is ready."** Verified accepted0238 with former0237 full-text acceptance provenance at exact head `44bc56915654010c8754ef0e81a777f330b6941a`; metadata correction/records/whitespace acknowledged. #327 merged; no other ready PR. Successfully marked #328 READY FIRST, then posted latest-main integration instructions, including shared-shell/OUTPUT-1 boundaries, whole-shell/dock/guard regressions, allocation checks, required checks and ONE push/exact-head report.
+
+Current main `31d47a207459e136bcc676401415dfe7e16225f8` includes0237/closedOI985–986. SIMUI keeps0238/OI987OPEN/OI988CLOSED; OUTPUT-1 branch now corrected to0240 (index verified), FINSTEP reservation0239; no SIMUI schema. Unsubmitted ROUGHPATH stale0238/0239 files still require replacement when handed over and do not revoke earlier allocations. Lane instructed to preserve assigned map and flag new collisions; no work on unsubmitted lane branch is performed here.
+
+At merge reverify current-head CI/CodeRabbit/allocation map and label applicable ORIGINAL fixed issues297/293/299/300/302/305 awaiting-fix-feedback for owner/native/reference checks. OI987 remains open. #329 waits draft; #321 remains held outside active order pending owner notification. Hourly monitoring continues.
