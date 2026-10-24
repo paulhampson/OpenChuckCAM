@@ -89,3 +89,11 @@ Decision 0211 remains PROPOSED; OI-834, STEPALL-X order and OI-835 remain unreso
 ## Periodic-check continuity
 
 Owner instruction on 24 October 2026: periodic checks must remain set. Automation `Coordinate OpenChuckCAM merge queue` verified enabled and reaffirmed with an hourly RRULE, Europe/London timezone, no end date. Keep enabled after merges and when queue is empty; notify only for meaningful changes, failures, completion or required owner action.
+
+## Latest draft check — 24 October 2026
+
+No new intake beyond already queued #323; bounded owner-draft search returned one existing entry. No open PR is ready. #321 remains at `9e981c2149ed9f8637b7bf06f9edecb7fd2f3dd5`, draft with its explicit replay/decision hold. #323 remains at `4b6ffa93feb40a60aa179b14da2f9ddc0d8a66bc`, draft pending full-record owner approval of 0233, with main conflicts to resolve only after release. No owner approval or new lane handoff appears in PR comments. CodeRabbit skips both drafts; no inline review threads exist.
+
+Draft CI runs 40042502111 (#321) and 40042638209 (#323) completed failure. Heavy jobs and end-to-end were skipped as expected for draft; required-check aggregators intentionally fail on drafts. Separately, both fast-check jobs genuinely fail cargo audit on Tokio 1.53.2 / RUSTSEC-2026-0386 (confirmed in logs), while their other fast checks pass. Main now contains the 1.53.3 patch merged via #320. Reconcile it during each authorised main update and verify audit, bundled with the permitted push; no standalone lockfile push, ready transition or gate waiver is requested now.
+
+Full decision 0233 was fetched and read at its exact current head; it remains proposed. The owner still must be shown the complete record before acceptance is requested. No acceptance is inferred from OI-983, queue intake or this inspection.
