@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Decision 0209 M4: a differing path or posted program must reject the
+//! Decision 0209 M2/M4: an unproven sampling bound, differing path or posted program rejects the
 //! measurement, as must a failed replay gate or a different application path.
 //! These are rejection-policy tests, not geometry or dispatch equivalence
 //! tests. They need no STEP kernel; the full M4 run must establish equivalence.
@@ -34,4 +34,23 @@ fn req_gc_09_m4_rejects_unclean_replay_even_when_output_is_identical() {
     let result = checks::clean(false, "form a replay gates");
     assert!(result.is_err());
     assert!(result.is_err_and(|message| message.contains("form a replay gates")));
+}
+
+#[test]
+fn req_op_12_m2_requires_a_finite_proven_sub_micron_sampling_bound() {
+    for bound in [
+        None,
+        Some(-0.1),
+        Some(f64::NAN),
+        Some(f64::INFINITY),
+        Some(0.001),
+        Some(0.006666667),
+    ] {
+        assert!(
+            checks::sampling_bound(bound).is_err(),
+            "invalid bound: {bound:?}"
+        );
+    }
+    assert!(checks::sampling_bound(Some(0.0)).is_ok());
+    assert!(checks::sampling_bound(Some(0.0009)).is_ok());
 }

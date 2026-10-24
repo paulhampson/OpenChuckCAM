@@ -100,7 +100,8 @@ const SHARE: f64 = 0.005;
 /// Spacing of the points on the exact faces and on the tessellations for
 /// M2, mm. A ball of radius `r` between points `h` apart reaches at most
 /// `h^2 / (8 r)` past them: 0.0003 mm for the 2 mm ball, 0.0013 mm for the
-/// tapered ball's 0.25 mm tip.
+/// tapered ball's 0.25 mm tip. This is not a generic sampling bound: a
+/// flat-cutter/plane counterexample misses 0.00667 mm (decision 0211).
 const SPACING: f64 = 0.05;
 
 /// Points within this of the tool are seen by the pose check, mm: enough to
@@ -679,6 +680,12 @@ fn main() -> Result<(), Error> {
     } else {
         app.save()?;
         println!("project kept in {}", dir.display());
+    }
+    if wants("m2") {
+        // Keep raw measurements available, but never turn this nominal grid
+        // into a successful decision-0209 verification. A proven bound must
+        // come from a replacement checker, not from the requested spacing.
+        checks::sampling_bound(None)?;
     }
     Ok(())
 }

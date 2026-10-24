@@ -1,0 +1,87 @@
+OP-12 / decision 0209 M2 sampling counterexample, 24 Oct 2026 (Europe/London)
+Measurement helper source: 88f8d5c (uncapped M1 change does not alter Cloud).
+This is an analytic diagnostic of the current production measurement helper, not a blisk measurement and not a sampling certificate.
+
+Exact plane: z = x - 0.98, 0.95 <= x <= 1.05, 0 <= y <= 0.05.
+Tool: flat end, radius 1 mm, tip (0,0,0), axis +Z, flute length 8 mm.
+For points inside the cutter, signed clearance is max(r - 1, -z).
+Since r >= x here, clearance >= max(x - 1, 0.98 - x), whose minimum is -0.01 at x=0.99. The face contains (0.99,0,0.01), which attains that minimum. Points outside the cutter have nonnegative clearance and cannot improve it.
+
+The actual Cloud::of_faces / Cloud::clearance result follows. In particular the current nominal 0.05 mm grid misses 0.006666667 mm of depth, and a finer grid is not monotonically better as its phase changes. Ball-tip sagitta is therefore not a generic bound for M2's cutter set: pencil uses a flat end. This failure occurs on a uniform analytic plane, independently of the nonuniform B-spline concern.
+
+Command (the diagnostic source below was temporarily placed at crates/openchuck-app/examples/step_sampling_diagnostic.rs, then removed):
+cargo run --release -p openchuck-app --example step_sampling_diagnostic --locked
+
+   Compiling openchuck-import v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-import)
+   Compiling openchuck-app v0.20.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `release` profile [optimized + debuginfo] target(s) in 43.78s
+     Running `target/release/examples/step_sampling_diagnostic`
+spacing 0.050000 | points 8 | sampled clearance -0.003333333 | analytic clearance -0.010000000 | missed depth 0.006666667
+spacing 0.025000 | points 21 | sampled clearance -0.003333333 | analytic clearance -0.010000000 | missed depth 0.006666667
+spacing 0.020000 | points 36 | sampled clearance -0.007500000 | analytic clearance -0.010000000 | missed depth 0.002500000
+spacing 0.010000 | points 96 | sampled clearance -0.010000000 | analytic clearance -0.010000000 | missed depth -0.000000000
+spacing 0.005000 | points 330 | sampled clearance -0.008620690 | analytic clearance -0.010000000 | missed depth 0.001379310
+spacing 0.000500 | points 28684 | sampled clearance -0.009929329 | analytic clearance -0.010000000 | missed depth 0.000070671
+
+Diagnostic source:
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! OP-12 / decision 0209: analytic diagnostic of the current M2 sample grid.
+#![allow(dead_code, clippy::print_stdout, clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[path = "step_accuracy/measure.rs"]
+mod measure;
+use openchuck_types::brep::{BrepFace, BrepModel, FaceId, Frame, Surface, SurfaceKind};
+use openchuck_types::geometry::{Point3, Vec3};
+use openchuck_types::mesh::TriangleMesh;
+use openchuck_types::tool::{Tool, ToolShape};
+use openchuck_types::units::Millimetres;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s=0.5_f64.sqrt();
+    let face=BrepFace {
+        id: FaceId(0), surface: SurfaceKind::Plane, body: 0, edges: vec![], reversed: false,
+        geometry: Surface::Plane { frame: Frame { origin: Point3::new(0.95,0.0,-0.03),
+            x:Vec3::new(s,0.0,s), y:Vec3::new(0.0,1.0,0.0), z:Vec3::new(-s,0.0,s) } },
+        uv_bounds:[0.0, 0.1*2.0_f64.sqrt(),0.0,0.05], trims:vec![],
+        tessellation:TriangleMesh { vertices:vec![Point3::new(0.95,0.0,-0.03),Point3::new(1.05,0.0,0.07),Point3::new(1.05,0.05,0.07),Point3::new(0.95,0.05,-0.03)], triangles:vec![[0,1,2],[0,2,3]] }
+    };
+    let model=BrepModel { faces:vec![face], ..BrepModel::default() };
+    let tool=Tool { shape:ToolShape::FlatEnd, diameter:Millimetres(2.0), flute_length:Millimetres(8.0), overall_length:Millimetres(40.0), shank_diameter:Millimetres(2.0), flute_count:2, material:None, centre_cutting:Some(true) };
+    let outline=openchuck_testkit::gouge::Outline::new(&tool.profile()?);
+    // On z=x-0.98, y>=0, r>=x. The signed clearance inside a unit-radius
+    // flat cutter is max(r-1,-z) >= max(x-1,0.98-x), minimized at x=0.99.
+    // (0.99,0,0.01) is on this face and attains exactly -0.01 mm.
+    for spacing in [0.05,0.025,0.02,0.01,0.005,0.0005] {
+        let cloud=measure::Cloud::of_faces(&model,spacing);
+        let measured=cloud.clearance(&outline,Point3::ORIGIN,Vec3::new(0.0,0.0,1.0),8.0,1.0);
+        println!("spacing {spacing:.6} | points {} | sampled clearance {measured:.9} | analytic clearance -0.010000000 | missed depth {:.9}",cloud.len(),measured+0.01);
+    }
+    Ok(())
+}
+
+Verification guard added after this diagnostic:
+The test for a finite, proven bound below 0.001 mm first failed to compile because the sampling-bound check did not exist. After implementation, all 14 native harness tests passed in 5.879 s and native clippy passed. The current M2 caller passes None, prints its raw readings, then returns a nonzero result. This does not repair or certify the sampler.
+
+Integration command:
+OPENCHUCK_STEP_WORKER=target/release/openchuck-step-worker RAYON_NUM_THREADS=4 target/release/examples/step_accuracy --only m2 --part cylinder --forms b --ops indexed --quick --fine 0.01 --angular 0.02
+
+# step_accuracy (decision 0211)
+cpu:   AMD EPYC 9V74 80-Core Processor
+cores: 4
+build: release
+
+part: /workspace/OpenChuckCAM/crates/openchuck-app/../../testdata/step/valid/cylinder.step
+part placed: X 10.000 to 60.000, Y -9.997 to 9.997, Z -10.000 to 10.000
+form c deflection: 0.01 mm and 0.02 rad
+exact samples: 1505222 points; nominal UV-grid target 0.05 mm (physical coverage bound not established)
+
+## form b (STEP, import tessellation 0.01 mm): 500 triangles
+### M2: the cut against the exact faces
+operation | stock mm | poses | deepest cut mm | (at ends) | largest gap mm | drop error: deepest in | furthest out | contact poses
+indexed | 0 | 944 | 0.0050 | 0.0031 | 0.0007 | 0.0036 | 0.0003 | 912
+Error: "M2 unqualified: physical sampling error must be proven below 0.001 mm; the current nominal grid has no such bound (decision 0211)"
+exit_status=1
+
+Focused coverage:
+cargo llvm-cov nextest --release --profile coverage -p openchuck-app --test step_accuracy_checks --locked --no-report
+cargo llvm-cov report --release --summary-only --ignore-filename-regex '/(tests|examples|benches)/'
+cargo llvm-cov clean --workspace
+Four tests passed, 0.018 s instrumented. The helper is example/test code and the product-source summary has zero lines; this is not a whole-crate coverage claim. Artifacts cleaned.
