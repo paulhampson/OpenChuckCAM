@@ -23,9 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Released; sole ready PR; lane main verification/update pending |
-| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
-| 3 | TOOLLIB2 | [#326](https://github.com/paulhampson/OpenChuckCAM/pull/326) | `codex/lane-toollib2-remove-unused-tools` | Draft; awaiting serial release; owner acceptance of 0236 reported |
+| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+| 2 | TOOLLIB2 | [#326](https://github.com/paulhampson/OpenChuckCAM/pull/326) | `codex/lane-toollib2-remove-unused-tools` | Draft; awaiting serial release; owner acceptance of 0236 reported |
 
 ## SWARF3 / #320 — MERGED
 
@@ -228,3 +227,11 @@ The release PR comment must instruct the lane, after the ready-first transition,
 Merge coordinator resolves collisions directly through PR comments, gives concrete replacement allocations after auditing free numbers, persists the resolution here, and requires lane acknowledgement, corrected head and check results. Lane performs all branch/PR changes, bundled into the authorised main-update/correction push. Administrative renumbering preserves explicit acceptance of unchanged reviewed content with transparent provenance; substantive record changes still require owner approval. No schema renumbering or migration rewrite is treated as merely administrative without checking persisted-format implications and raising a genuine product decision if needed.
 
 Do not merge with unresolved conflicting allocations even if CI passes. Recheck when main or relevant claims change during the release cycle.
+
+## BUG-SELSET2 completion — 24 October 2026
+
+#325 merged verified head `1fe0869aa7aaf35dae5ae803b78927ac966af91e` with exact-head guard; merge commit `049c70ab1c456ceadad5339b09167e81fafd29ec`. Latest main was an ancestor (behind_by 0). No new merge/trigger commit was needed for lane release because head already included latest main.
+
+Full release CI 40086855916 and end-to-end 40086856180 completed SUCCESS, including CI required checks, all platform tests, UI smoke, libraries-alone and fast checks. STEP/Gate3/fuzz skipped by filter. CodeRabbit SUCCESS, no actionable findings or review threads. Local lane release records/xtask-all/99-of-99 P1 traceability/clippy/format/regressions/audit passed. Owner acceptance/release was directly confirmed in this chat. Final numbering audited: overlay 0235, #321 replay 0234/OI-984, #326 cleanup 0236; #325 claims no new OI/schema. No conflicting allocations remain for merged PR.
+
+No new eligible owner drafts. Next queued #321 remains explicitly BLOCKED/draft with no new completion handoff; it is not released. #326 is the next potentially eligible draft, with accepted 0236 reported; inspect its release prerequisites without lifting #321's hold. Hourly checks remain enabled; webhook discovery unavailable.
