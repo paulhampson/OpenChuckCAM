@@ -216,3 +216,15 @@ Confirmed remote head `1fe0869aa7aaf35dae5ae803b78927ac966af91e`, open/draft, wi
 - Lane reports combined app/UI 910 tests and final 432 UI tests pass; focused 4 app/7 UI tests pass; changed-crate clippy, formatting and all xtask checks including 99/99 P1 traceability pass. Nine existing long machining tests classified in coverage/long profiles while default PR runs retained; no >10-minute uninstrumented tests.
 - Own-crate coverage app 92.40%, UI 86.52%, both below report-only development target. New lines app 37/37 and UI 114/117; three defensive UI action paths uncovered. Artifacts cleaned; native OS/GPU and Windows/macOS interaction not locally exercised. OI-493/OI-773 remain open.
 - Added behind current entries (#325 released; #321 explicitly held). Keep #326 draft until serial release. Lane to monitor PR comments; ready FIRST then main update/records/required checks and one push only when released; full CI and CodeRabbit pending.
+
+## Allocation verification for every release — owner instruction, 24 October 2026
+
+Lanes select their own decision, open-item and project-schema numbers. Merge coordinator verifies ALL number allocations for each PR when it reaches the top of the queue and as part of the released update from main. Earlier centrally assigned/reserved numbers remain valid unless explicitly reconciled.
+
+Before release, inspect the PR's claimed IDs and persisted reservations against current main, other unmerged work branches/PRs and known lane reservations. Confirm each number identifies exactly one intended record/item/schema; shared existing IDs must retain the same meaning. A locally clean records check alone cannot detect cross-branch collisions. Respect explicit owner decision approval and sole-ready-PR gates.
+
+The release PR comment must instruct the lane, after the ready-first transition, to merge latest main, reconcile all allocation conflicts and register unions, update every affected filename/heading/index/reference/schema claim and PR metadata, and run cargo xtask records plus required checks. Verify its reported allocation map and exact pushed head against updated main and active claims before accepting the release update or merging.
+
+Merge coordinator resolves collisions directly through PR comments, gives concrete replacement allocations after auditing free numbers, persists the resolution here, and requires lane acknowledgement, corrected head and check results. Lane performs all branch/PR changes, bundled into the authorised main-update/correction push. Administrative renumbering preserves explicit acceptance of unchanged reviewed content with transparent provenance; substantive record changes still require owner approval. No schema renumbering or migration rewrite is treated as merely administrative without checking persisted-format implications and raising a genuine product decision if needed.
+
+Do not merge with unresolved conflicting allocations even if CI passes. Recheck when main or relevant claims change during the release cycle.
