@@ -24,6 +24,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
 | 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+| 2 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; decision approval and conflicting record allocation pending |
 
 ## SWARF3 / #320 — MERGED
 
@@ -150,3 +151,13 @@ Replay issue #324 is tracked by OI-984 and proposed implementation record 0234; 
 ## STEPALL-M draft CI check — 24 October 2026
 
 At unchanged head `4c2d728ef51678c0ab9a5154dc1c361ea236c51a`, CI run 40072534316 fails only the intentional draft required-check gate; fast checks have no failed job. End-to-end skips for draft, CodeRabbit skips review with success status, and no review threads or new release handoff exist. This supersedes old-head cargo-audit failure notes for the current checkpoint; it is not full CI validation or release eligibility. No new owner drafts or open ready PRs found. Existing replay/verification hold remains; no action requested from lane.
+
+## BUG-SELSET2 / #325 — queued draft, holds pending
+
+- Owner explicitly requested intake on 24 October 2026. PR created 2026-10-24T09:21:06Z by paulhampson (ID 528002); draft verified. Branch `codex/lane-bug-selset2-selection-colours`, head `9eb0c417c20e21346718864000c8b1b9dd20cf61`, based on main `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`.
+- Fixes late completed selection edits being stored after overlay publication; confines changes to UI publication ordering and preserves current selection identity/colours, undo/redo, departure guard and staleness. References #298; historical Windows/STEP persistent symptom not verified and not automatically closed.
+- Lane reports red regression 2 drawn vs 3 stored; 427 UI, 41 focused application and 5 viewport tests pass (including required-adapter pixel readback), UI clippy and repository checks/99-of-99 P1 traceability pass. UI coverage 86.80% is below report-only development target; moved error routes/guard closing remain uncovered; artifacts cleaned. Native Windows/macOS/physical GPU/native STEP-worker edits not locally exercised.
+- Proposed overlay decision currently numbered 0234; full-record owner approval pending. Intake is not acceptance or release.
+- ALLOCATION COLLISION: #321 already carries proposed `0234-replay-output-rounding-correction.md` and OI-984 tracking replay issue #324. #325 carries proposed `0234-confirmed-selection-overlay.md` and calls reserved OI-984 unused. Both allocation claims require task-coordinator reconciliation across active lanes before release.
+- Recommendation sent to lane: preserve existing #321 replay 0234/OI-984 and obtain a confirmed free record number for #325's proposed overlay record; task coordinator decides conflicting reservation priority. Merge coordinator allocates/accepts nothing. Correct links/index/PR metadata and run records checks; respect one-push discipline.
+- #325 remains draft behind held #321. Lane to monitor PR comments. Hourly intake/queue checks remain enabled.
