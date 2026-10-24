@@ -87,7 +87,7 @@ and sequencing before changes. No extra integration or refactor PR.
 OUTPUT-1's #311 fix uses the existing reserved-scrollbar helper only within
 the export body and keeps its fixed footer, leaving the body available for
 OUTPUT-3's preview. OUTPUT-2 retains filename templates, hashes and setup-sheet
-expansion. #307's explicit-confirmation policy was approved by the owner on 24 October 2026; record 0238 was accepted directly after full-text review on that date.
+expansion. #307's explicit-confirmation policy was approved by the owner on 24 October 2026; the export record was accepted directly after full-text review as 0238 on that date, and is now [0240](../decisions/0240-export-write-results-and-replacement-confirmation.md) after administrative renumbering by Merge Manager; content and acceptance are unchanged.
 
 ## Local validation of the #311 layout fix
 
@@ -167,5 +167,11 @@ Final validation after the central guard fix:
 These are headless Linux frame checks, not native
 Windows/macOS or GPU screenshots; native checks remain in OI-580. No workflow
 removal, filename change, setup-sheet expansion or full preview is built.
-Record 0238 was selected under the owner's delegated numbering instruction
-and was accepted directly after full-text review on 24 October 2026. No new OI or schema.
+Record [0240](../decisions/0240-export-write-results-and-replacement-confirmation.md)
+was administratively assigned by Merge Manager on 24 October 2026 to resolve
+the collision with SIMUI's 0238. The owner's direct acceptance of unchanged
+export content under original 0238 is retained; this is not new acceptance.
+The metadata-only correction compares the normalized record with the
+accepted source at `ff3cf897`: only the heading number and allocation
+metadata are normalized; substantive content and Status are unchanged.
+No new OI or schema.

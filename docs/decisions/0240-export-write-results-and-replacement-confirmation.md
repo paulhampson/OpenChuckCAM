@@ -1,10 +1,10 @@
-# 0238: Actual export results and explicit replacement confirmation
+# 0240: Actual export results and explicit replacement confirmation
 
 - **Status:** accepted by the project owner in the OUTPUT-1 chat on 24 October 2026, after the full text was shown ("Accept 0238"). The described behaviour had already been approved directly ("accept the proposed approach"). The owner subsequently assigned the narrowly scoped central modal-keyboard fix in item 7 after the failing regression was explained ("Complete the fix if we have a test failure as we will need that before PR").
 - **Date:** 24 October 2026.
 - **Lane/issues:** OUTPUT-1, #306 (assessment), #307 (write feedback), #311 (layout).
 - **Requirements:** UI-07/10/12/14/16, GC-05/07/12/15/16, NFR-06/07/12.
-- **Number:** selected on the owner's instruction to select a number and let the Merge Manager check conflicts; main and all 27 remote branch refs and their register claims were checked before selecting 0238.
+- **Number:** 0240, administratively assigned by the Merge Manager on 24 October 2026 in [PR #329](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6386146099) because SIMUI #328 already held 0238. This record was originally selected as 0238 under the owner's delegated numbering instruction after main/all 27 remote branch refs/register checks. The owner's acceptance of the unchanged export content under original 0238 is retained; this allocation is not new acceptance.
 - **Amends:** 0071's export feedback, 0189's folder-only status, UI-12, GC-15's desktop overwrite policy, and UI specification 11.6. Existing stale checks, setup-sheet coupling and acknowledgements remain.
 - **Open items:** native dialog/display verification stays with existing OI-580. No new OI or schema number.
 

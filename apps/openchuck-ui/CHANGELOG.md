@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
+  is administratively renumbered from original 0238 by Merge Manager to
+  resolve the SIMUI collision; substantive content and owner acceptance are
+  unchanged. No product change in this correction.
+
 - OUTPUT-1, UI-12, GC-15, issue #307: export results stay visible until
   dismissed, list actual full written/failed/not-attempted destinations,
   include both setup sheets and offer Copy paths. Messages retains results

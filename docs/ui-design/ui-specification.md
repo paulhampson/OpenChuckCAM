@@ -566,7 +566,7 @@ including long paths, validation errors and expanded tool-number controls
 (UI-16, issue 311). The dialog remains inside the main window (decision 0164).
 
 **Replacement and write results (UI-12, GC-15; behaviour approved by the owner
-24 Oct 2026, accepted decision 0238).** Write G-code preflights the complete
+24 Oct 2026, accepted decision 0240).** Write G-code preflights the complete
 same-run NC/HTML/PDF batch without creating files or folders. If destinations
 exist, an in-main-window confirmation lists every existing full path with
 Replace files (primary) and Cancel. Cancel or Esc writes nothing. After the

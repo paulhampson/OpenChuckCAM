@@ -4,6 +4,11 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
+  is administratively renumbered from original 0238 by Merge Manager to
+  resolve the SIMUI collision; substantive content and owner acceptance are
+  unchanged. No product change in this correction.
+
 - OUTPUT-1 (#307; UI-12, GC-05/12/15, NFR-07): `prepare_output` returns a
   read-only `OutputPlan` of same-run bytes and full destinations;
   `write_output` now takes the reviewed plan and replacement approval and

@@ -159,7 +159,7 @@ Built as if it already belonged to another project (INT-01): small public API, p
   Desktop preflight freezes the same-run bytes and returns full destinations
   without writing; application-side writes return actual completed/failed/not
   attempted paths and retain reports for the project's Messages query
-  (UI-12, GC-15; owner-approved behaviour, accepted decision 0238). Replacement
+  (UI-12, GC-15; owner-approved behaviour, accepted decision 0240). Replacement
   approval belongs to the UI, with application-side destination/readiness
   revalidation. A batch is sequential, without atomic rollback. The UI only
   draws, confirms, copies paths and reopens reports. CLI facilities are unchanged.
