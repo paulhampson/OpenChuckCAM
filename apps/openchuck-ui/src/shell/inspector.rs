@@ -11,7 +11,6 @@
 //! `openchuck-app`; every change is one undoable command.
 
 use eframe::egui::{self, RichText, Stroke};
-use openchuck_app::Command;
 use openchuck_app::overview::{ItemRef, ItemState, MessageAction, SetupPart, Severity, Step};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
@@ -20,6 +19,7 @@ use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
 use openchuck_app::step_sets::SetRefusal;
 use openchuck_app::tool_library;
+use openchuck_app::{Command, SetOptionsShown};
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
 use crate::field_row::{self, Outcome, TextRow};
@@ -822,7 +822,7 @@ impl Shell {
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
         let strategy_text = app.strategy_description(&operation.strategy);
-        let set_options = app.strategy_takes_set_options(&operation.strategy);
+        let set_options = app.strategy_set_options(&operation.strategy);
         let refusals = app.set_refusals(id);
         let mut delete = false;
         ui.horizontal(|ui| {
@@ -1130,7 +1130,7 @@ enum GeometryEdit {
 }
 
 /// The choices of an avoid or check set's option, as the Geometry section
-/// names them (decision record 0176 item 3).
+/// names them (decision records 0176 item 3 and 0229 item 1).
 const ON_BREAK: [(OnBreak, &str, &str); 3] = [
     (
         OnBreak::CutShort,
@@ -1141,8 +1141,8 @@ const ON_BREAK: [(OnBreak, &str, &str); 3] = [
     (
         OnBreak::Warn,
         "Warn only",
-        "The path is kept where the tool would break this set, with a warning saying how far \
-         along the face it does.",
+        "The path is kept where the tool would break this set: the tool is not kept clear of \
+         it. A warning says how far along the path it breaks the set.",
     ),
     (
         OnBreak::Ignore,
@@ -1152,15 +1152,24 @@ const ON_BREAK: [(OnBreak, &str, &str); 3] = [
     ),
 ];
 
-/// The options of the sets in `role` (decision record 0176 item 3), under
-/// its row: the boundary's two limits, or each avoid or check set's choice.
-/// A set whose options leave it limiting nothing says so.
+/// Cut short's tooltip on a check set of rotary roughing, which keeps the
+/// tool above the set rather than stopping the pass (decision record 0043
+/// item 3; decision record 0229 item 1).
+const CUT_SHORT_LIFTS: &str = "Where the tool would touch this set, it is lifted to stay the \
+                               stock to leave above it; the material over the set is still \
+                               roughed.";
+
+/// The options of the sets in `role` that the strategy takes (decision
+/// records 0176 item 3 and 0229), under its row: the boundary's two limits,
+/// or each avoid or check set's choice. A set whose options leave it
+/// limiting nothing says so.
 fn set_options(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     role: SelectionRole,
     sets: &[SelectionSetId],
     summaries: &[SelectionSummary],
+    shown: SetOptionsShown,
 ) -> Option<GeometryEdit> {
     let mut edit = None;
     let indent = crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x;
@@ -1172,7 +1181,7 @@ fn set_options(
             .map_or_else(|| "(missing set)".to_owned(), |s| s.name.clone())
     };
     match role {
-        SelectionRole::Boundary => {
+        SelectionRole::Boundary if shown.boundary => {
             let id = sets.first()?;
             let mut boundary = options.boundary;
             ui.horizontal_wrapped(|ui| {
@@ -1198,7 +1207,7 @@ fn set_options(
                 limits_nothing(ui, indent, &name(id));
             }
         }
-        SelectionRole::Avoid | SelectionRole::Check => {
+        SelectionRole::Avoid | SelectionRole::Check if shown.avoid_and_check => {
             for id in sets {
                 let current = if role == SelectionRole::Avoid {
                     options.avoid(*id)
@@ -1211,6 +1220,14 @@ fn set_options(
                     ui.add_space(indent);
                     ui.label(RichText::new(&set).color(DARK.muted));
                     for (choice, label, tip) in ON_BREAK {
+                        let tip = if choice == OnBreak::CutShort
+                            && role == SelectionRole::Check
+                            && shown.check_lifts_tool
+                        {
+                            CUT_SHORT_LIFTS
+                        } else {
+                            tip
+                        };
                         if ui
                             .selectable_label(current == choice, label)
                             .on_hover_text(tip)
@@ -1223,6 +1240,20 @@ fn set_options(
                 });
                 if current == OnBreak::Ignore {
                     limits_nothing(ui, indent, &set);
+                } else if current == OnBreak::Warn && !shown.boundary {
+                    // These strategies use the shared sampled measurement
+                    // (OI-970). Explain its limitation even without a hit.
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(indent);
+                        marks::mark(ui, ItemState::Warning, "Warning");
+                        ui.label(
+                            RichText::new(
+                                "Warn only samples the path and can miss a narrow set. No warning \
+                                 does not establish clearance; verify the cut before running G-code.",
+                            )
+                            .color(DARK.warning),
+                        );
+                    });
                 }
             }
         }
@@ -1252,8 +1283,8 @@ struct Notes<'a> {
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
-/// With `with_options`, each set's options under its role (decision record
-/// 0176 item 3). Under the role that holds a set reaching a held region or a
+/// Each set's options that the strategy takes (`with_options`), under its
+/// role (decision records 0176 item 3 and 0229). Under the role that holds a set reaching a held region or a
 /// tab, the warning of 11.7 with "Show in view" and "Edit workholding"; under
 /// the role that holds a set the strategy cannot use on this part, the
 /// warning with the reason and what to do, before anything is generated
@@ -1263,7 +1294,7 @@ fn geometry(
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
     notes: &Notes<'_>,
-    with_options: bool,
+    with_options: SetOptionsShown,
 ) -> (Option<GeometryEdit>, Option<ReachAction>) {
     let reach = notes.reach;
     let mut edit = None;
@@ -1344,7 +1375,7 @@ fn geometry(
         });
         // The sets' options, for a strategy that takes them (decision
         // record 0176).
-        if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
+        if let Some(e) = set_options(ui, operation, role, &sets, summaries, with_options) {
             edit = Some(e);
         }
         // A set the strategy cannot use here, under the role that holds it

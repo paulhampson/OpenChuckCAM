@@ -14,7 +14,7 @@ mod support;
 use std::collections::BTreeMap;
 
 use openchuck_path::params::names;
-use openchuck_path::region::{RegionConstraint, Window};
+use openchuck_path::region::{Protection, RegionConstraint, WatchedSurface, Window};
 use openchuck_path::roughing::{NAME, parameter};
 use openchuck_path::{
     GeneratedPath, MeshSurface, ParameterValue, PathError, RotaryRoughing, generate,
@@ -315,5 +315,59 @@ fn req_op_02_a_check_surface_beyond_the_part_still_keeps_roughing_above_it() {
         assert!(!over.is_empty(), "{form}: nothing is cut over the surface");
         let lowest = over.iter().copied().fold(f64::MAX, f64::min);
         assert!(lowest >= 12.5 - 0.05, "{form}: tool at radius {lowest}");
+    }
+}
+
+#[test]
+fn req_op_02_roughing_takes_sets_that_only_warn() {
+    // Warn only (decision 0229 item 1): roughing is made as if the set were
+    // not there, so a check set does not lift the tool, and a warning names
+    // the set. The wider cylinder is 2 mm above the part, inside the stock.
+    let mesh = cylinder();
+    let f = fixture(&mesh);
+    let wide = Cylinder {
+        radius: 12.0,
+        length: LENGTH,
+    }
+    .mesh(41, 360);
+    let over =
+        MeshSurface::new(&pick(&wide, |c| (8.0 - 1e-9..12.0 + 1e-9).contains(&c.x))).unwrap();
+    let strip =
+        MeshSurface::new(&pick(&mesh, |c| (8.0 - 1e-9..12.0 + 1e-9).contains(&c.x))).unwrap();
+    for (protection, surface, said) in [
+        (
+            Protection::Check,
+            &over,
+            "The tool comes closer than the stock to leave to the check set 'Band' along about ",
+        ),
+        (
+            Protection::Avoid,
+            &strip,
+            "The tool cuts into the avoid set 'Band' along about ",
+        ),
+    ] {
+        let watch = [WatchedSurface {
+            name: "Band",
+            protection,
+            surface,
+        }];
+        let region = RegionConstraint {
+            watch: &watch,
+            ..Default::default()
+        };
+        for form in ["continuous", "indexed"] {
+            let whole = rough(&f, form, &RegionConstraint::default()).unwrap();
+            let path = rough(&f, form, &region).unwrap();
+            assert_eq!(
+                path.group, whole.group,
+                "{form} {protection:?}: the path changed"
+            );
+            assert_eq!(path.warnings.len(), 1, "{form}: {:?}", path.warnings);
+            assert!(
+                path.warnings[0].message.starts_with(said),
+                "{form}: {}",
+                path.warnings[0].message
+            );
+        }
     }
 }

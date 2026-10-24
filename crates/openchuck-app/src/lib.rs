@@ -105,7 +105,7 @@ pub use openchuck_project as project;
 pub use openchuck_project::new_folder;
 pub use openchuck_sim as sim;
 pub use openchuck_types::notice::VERIFY_GCODE_NOTICE;
-pub use opflow::StrategyChoice;
+pub use opflow::{SetOptionsShown, StrategyChoice};
 pub use pipeline::{GroupInfo, Regeneration, STAGE_GENERATE, STAGE_SIMULATE};
 pub use posting::{GcodeComparison, GcodeReport, OutputGrouping, PlannedFile, PostSelection};
 pub use selection::{
