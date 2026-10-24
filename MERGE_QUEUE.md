@@ -23,8 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; f6aeb9d corrections pushed; current-head CI/review pending |
-| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
 
@@ -131,3 +130,19 @@ New head `f6aeb9d322a8065a5fbee046130e36ef00e0bec9`; [lane report](https://githu
 Lane reports 425/425 UI tests passing uninstrumented (131.501 seconds), 39 BUG-EDIT tests, placement-pick regression 20 consecutive passes; clippy/formatting/repository checks, traceability 99/99 P1 and audit pass. Instrumented suite 425/425; UI coverage 86.44% (report-only), shell guard 95.86%; artifacts cleaned and documentation updated without accepting any new record.
 
 Current-head CI 40071939548 and end-to-end 40071939553 are IN PROGRESS; CodeRabbit is PENDING. Do not merge based on parent-head green checks. Hourly monitor verified enabled; last recorded run 24 October 2026 at 06:14 UTC (07:14 Europe/London). Keep checks enabled after completion.
+
+## BUG-EDIT completion — 24 October 2026
+
+#323 merged successfully with exact-head SHA guard on `f6aeb9d322a8065a5fbee046130e36ef00e0bec9`. Merge commit `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`. Current main verified as ancestor before merge (behind_by 0). No protection bypass or auto-merge.
+
+CI 40071939548 and end-to-end 40071939553 completed SUCCESS on this exact head, including all platform builds/tests, UI smoke, standalone libraries, fast checks and CI required checks. STEP kernel, Gate 3 and fuzz skipped by path filter. CodeRabbit status SUCCESS; both original findings resolved and CodeRabbit explicitly confirmed the fixes. No unresolved review threads or blocking review requests remain. Accepted 0233 and its semantics preserved; 425 local UI tests and 99/99 P1 traceability reported passing. No new record acceptance was performed by merge coordinator.
+
+Remaining queue: #321 only, explicitly BLOCKED / IN PROGRESS and draft. No new eligible drafts found; hourly monitoring continues.
+
+## STEPALL-M accepted-record update — 24 October 2026
+
+Current draft head `4c2d728ef51678c0ab9a5154dc1c361ea236c51a`. Owner acceptance of the complete revised 0211 verified in its Status at this head: direct lane-session "Accept 0211" on 24 October after full-text review and individual substantive choices. This supersedes earlier proposed-status notes, but explicitly DOES NOT release #321, adopt a new default, waive methodology, or start another lane.
+
+PR reports isolated pencil timing follow-up (five successful runs at one/four threads, no quick stepover) and twelve passing harness tests. Four-thread a/b/c medians 3.462898 / 3.193163 / 6.320591 seconds; c/b 1.98× applies only to the isolated case. Full-sequence/per-stage timing, other outstanding verification and replay failure remain unresolved. Do not represent historical 1.24× as current successful-job performance.
+
+Replay issue #324 is tracked by OI-984 and proposed implementation record 0234; lane reports explicit owner permission to allocate these and preserve existing 0233/OI-983. No allocation or approval is made by merge coordinator. FINSTEP's allocation/ownership request is for the task coordinator; it does not authorise release or cross-lane work here. Keep draft and await verified completion and resolution of all explicit holds before reassessing release. New main now includes #323; no main-update instruction issued to this held lane.
