@@ -48,7 +48,7 @@ impl Strategy for Facing {
     }
 
     fn description(&self) -> &str {
-        "Cuts the stock down to a flat face, or round to a diameter, along its whole length, and can carry on past the ends of the stock so no thin skin is left at its edges. Use it to square up stock before roughing."
+        "Reduces the stock along its length to flat faces at chosen rotary angles, or to a round diameter. Use it to prepare stock before roughing. The part and workholding can limit the cut."
     }
 
     fn group(&self) -> StrategyGroup {

@@ -175,3 +175,87 @@ The metadata-only correction compares the normalized record with the
 accepted source at `ff3cf897`: only the heading number and allocation
 metadata are normalized; substantive content and Status are unchanged.
 No new OI or schema.
+
+## Released-main integration (24 October 2026)
+
+Merge Manager [released PR 329](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6387837764)
+after marking it ready first. Integrated main
+`1687d4f3d69d067bdaf7a61d343bff459e472eef`, including merged BUG-SELSET2,
+TOOLLIB2, OPCREATE2 and SIMUI. Executable sources merged automatically;
+manual reconciliation retains both application changelog entries, both UI-16
+verification matrices, ordered decision-index unions and distinct long-test
+filters. There are no executable conflict-resolution edits. Accepted 0240,
+including its original-0238 acceptance provenance, is byte-identical to the
+pre-integration record. The assessment direction and separate build #322 are
+unchanged. SIMUI 0238 now supplies the consolidated viewport stale warning;
+its export restrictions, guarded navigation and Playback ownership remain.
+
+The allocation audit enumerated 27 fresh remote heads (25 project refs),
+actual decision files and indexes, OI register rows, work-breakdown claims,
+project/machine schema constants and the persisted management reservations:
+
+| Allocation | Current authority/state |
+| --- | --- |
+| 0235 | Merged selection-overlay decision |
+| 0236 | Merged unused-project-tool cleanup |
+| 0237; OI-985/986 | Merged OPCREATE2; both OIs closed |
+| 0238; OI-987/988 | Merged SIMUI; 987 open, 988 closed |
+| 0239 | FINSTEP reservation in the management queue |
+| 0240; existing OI-580 | OUTPUT-1 accepted export content; native checks still open |
+| 0234; OI-984 | Held STEPALL-M replay claim; no unmerged prerequisite imported |
+
+No new 0240/OI conflict or OUTPUT-1 schema claim was found. Actual schema
+constants top out at project 18 and machine 4; old pre-renumber schema rows
+on the historical CI branch do not replace the current allocations. The
+known unsubmitted ROUGHPATH 0238/0239 files and reported FACING 0237 claim
+remain separate reconciliation work and cannot displace accepted assignments.
+
+Fresh integrated checks:
+
+- All **962 app/UI tests pass in 736.208 s**, zero skips or failures. The
+  slowest individual uninstrumented test is 136.749 s; none exceeds ten
+  minutes. The existing automatic-tab outline case took 72.987 s and is
+  now selected by exact binary/name in `long` and excluded from `coverage`;
+  all other slow cases already match the long profile. Default still runs it.
+- Explicit required-adapter rendering and stock-picking checks pass **2/2 in
+  32.647 s**, using llvmpipe CPU/Mesa 25.0.7 on GL; no adapter skip. This is
+  software rendering, not owner/reference hardware performance evidence.
+- Workspace all-target clippy with warnings denied, formatting, whitespace,
+  `cargo audit --deny warnings` and all seven xtask checks pass; traceability
+  is 99/99 P1. The missing audit executable was installed as validation
+  tooling outside the workspace; project dependencies and lockfile are unchanged.
+- Fresh own-app instrumented run: **480/480 pass in 640.673 s**, with 12
+  classified long cases excluded. Both LCOV LF/LH and JSON line summaries
+  give **92.29% (16,271/17,630)**; writer remains 79.39% (181/228).
+  Below the report-only 95% development target. Uncovered export paths are
+  the previously documented defensive I/O/name/cleanup/readiness branches;
+  the UI-facing result lookup is exercised by the UI suite. Inherited
+  stock-surface gaps at `stock_surface.rs:228–229` and `stockplay.rs:269–270`
+  were read: invalid immutable geometry and a setup already required earlier.
+  No executable conflict-resolution line exists to leave uncovered. No
+  product exclusions were added; the own-app dataset was reported and
+  cleaned before starting UI coverage.
+- Fresh own-UI instrumented run: **469/469 pass in 635.630 s**, with the
+  classified long dock matrix excluded (it passed uninstrumented above).
+  Required-adapter GL checks were enabled throughout. LCOV and JSON agree on
+  **87.54% (25,031/28,595)**; export panel is 91.47% (1,062/1,161) and feedback
+  is 99.21% (126/127). The 95% development target remains unmet/report-only.
+  Changed-line inspection confirms the modal guard, Messages refresh and
+  retained-result dispatch are covered. The documented defensive replacement,
+  non-I/O preflight, acknowledgement-store and native-picker/numbering paths
+  remain uncovered; opposite-kind Esc arms in the generic modal remain
+  unreachable for each fixed dialog key. There are no new executable
+  conflict-resolution gaps. No product exclusions were added.
+- After reporting and reading uncovered lines, both
+  `cargo llvm-cov clean --workspace` and final `cargo llvm-cov clean` completed;
+  no instrumented build artifacts are retained.
+
+The native/physical-GPU limitations above remain. Original #307 and #311
+still require owner feedback on Windows display and actual interaction;
+apply `awaiting-fix-feedback` at merge as instructed. #306 is the completed
+assessment; the approved four-step/two-button build remains #322. SIMUI's
+nonblocking colour-availability follow-up #330 and minor stale-banner wording
+remain deferred; no follow-up implementation is included here. After the
+single released integration push, wait for both current-head full CI and
+CodeRabbit before one bundled required correction; the lane never merges or
+enables auto-merge.

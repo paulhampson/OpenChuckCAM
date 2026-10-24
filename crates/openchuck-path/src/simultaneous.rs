@@ -162,7 +162,7 @@ impl Strategy for SimultaneousFinishing {
     }
 
     fn description(&self) -> &str {
-        "Moves the tool and turns the part at the same time so the tool leans to follow the surface. It suits curved shapes such as blades, but its movements are the hardest to follow by eye, so check it in the simulation."
+        "Moves the tool while turning the part to approach the surface from different directions. Use it for curved shapes that need the cutting angle to change along a pass. Four-axis motion cannot follow every surface direction; check the resulting path and simulation."
     }
 
     fn schema(&self) -> ParameterSchema {

@@ -80,7 +80,7 @@ impl Strategy for HelicalFinishing {
     }
 
     fn description(&self) -> &str {
-        "Cuts the whole surface in one continuous spiral around the part, like a thread winding round a bolt, with the part turning steadily as the tool moves along it. A general-purpose finish for round shapes. It cannot reach into tight inside corners."
+        "Follows the surface in a spiral around the part as the tool moves along its length. Use it for a general finish on round shapes. Selections and gaps can split the spiral into separate cuts, and the tool may not reach tight inside corners."
     }
 
     fn schema(&self) -> ParameterSchema {

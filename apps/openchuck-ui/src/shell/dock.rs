@@ -331,15 +331,20 @@ impl Shell {
     /// Playback: the transport and timeline (SIM-04; its rework is lane
     /// X6's).
     fn playback_tab(&mut self, ui: &mut egui::Ui) {
+        // Keep Playback's denser readout rows within the existing dock,
+        // including a preparation line. Interactive targets retain their size.
+        ui.spacing_mut().item_spacing.y = 2.0;
         // The project's stock simulation choice (issue 214; decision record
         // 0168) is in the tab with or without a run, as one undoable step.
-        // A result out of date says so here, with the way to simulate again,
-        // under the controls it still has or the ones it lost (issues 259
-        // and 260): the banner never lies over a control or pushes one out
-        // of the dock (the owner's feedback on issue 260).
+        // The viewport owns the single stale message and rerun action
+        // (issue 297). Retain the dimmed playback identification without
+        // consuming dock space or duplicating that message.
         let stale = self.out_of_date.reason().is_some();
-        let banner = self.app.as_ref().and_then(|_| self.banner());
-        let mut again = false;
+        let progress = self.play.preparation_progress(
+            &self.jobs,
+            self.run.job_id(),
+            self.run.running_simulates(),
+        );
         let rest = || {
             egui::ScrollArea::vertical()
                 .id_salt("playback")
@@ -367,25 +372,21 @@ impl Shell {
                             if stale {
                                 ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
                             }
-                            play.show_strip(ui, app)
+                            play.show_strip(ui, app, progress.as_ref())
                         })
                         .inner;
                     let height = ui.cursor().top() - top;
                     ui.data_mut(|d| d.insert_temp(strip_id, height));
                     skip
                 };
-                let mut below =
-                    |ui: &mut egui::Ui, play: &mut crate::playback_panel::PlaybackPanel| {
-                        if let Some(banner) = &banner {
-                            again |= banner.show(ui);
+                let below = |ui: &mut egui::Ui, play: &mut crate::playback_panel::PlaybackPanel| {
+                    ui.scope(|ui| {
+                        if stale {
+                            ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
                         }
-                        ui.scope(|ui| {
-                            if stale {
-                                ui.multiply_opacity(super::out_of_date::STALE_OPACITY);
-                            }
-                            play.show_rest(ui, app);
-                        });
-                    };
+                        play.show_rest(ui, app);
+                    });
+                };
                 if fits {
                     let skip = strip(ui, play);
                     crate::theme::solid_scroll_bar(ui);
@@ -405,19 +406,7 @@ impl Shell {
             Some(app) => {
                 crate::theme::solid_scroll_bar(ui);
                 rest()
-                    .show(ui, |ui| {
-                        let skip = crate::playback_panel::waiting_row(ui, app);
-                        match &banner {
-                            Some(banner) => again |= banner.show(ui),
-                            None => {
-                                ui.label(
-                                    RichText::new("Run the simulation to play the cut.")
-                                        .color(DARK.muted),
-                                );
-                            }
-                        }
-                        skip
-                    })
+                    .show(ui, |ui| self.play.show_strip(ui, app, progress.as_ref()))
                     .inner
             }
             None => {
@@ -425,9 +414,6 @@ impl Shell {
                 None
             }
         };
-        if again {
-            self.primary();
-        }
         if let Some(skip) = skip {
             self.tree_action(super::TreeAction::Command(Box::new(
                 Command::SetSkipStockSimulation(skip),

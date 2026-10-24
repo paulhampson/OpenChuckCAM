@@ -1727,9 +1727,8 @@ fn req_op_16_req_ui_07_the_inspector_shows_the_strategy_apart_from_the_name() {
     assert!(rig.shows(&text[..40]), "{text}");
 }
 
-/// New operation is one list of strategies, roughing first and the specialist
-/// strategies last, each with its description under it (issue 195; decision
-/// record 0204; OP-16, UI-06).
+/// New operation shows the selected strategy's explanation and keeps the
+/// other choices in a dropdown (decision 0237 supersedes 0204's full list).
 #[test]
 fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descriptions() {
     let mut rig = Rig::cube("new-operation-list", None);
@@ -1740,8 +1739,7 @@ fn req_op_16_req_ui_06_the_new_operation_list_groups_the_strategies_with_descrip
     rig.frame(Vec::new());
     rig.frame(Vec::new());
     assert!(rig.shows("Strategy"));
-    assert!(rig.shows("Roughing"));
-    assert!(rig.shows("Finishing"));
+    assert!(!rig.shows("Finishing"));
     assert!(rig.shows("Rotary roughing"));
     // The list scrolls, so only the first entries are drawn; the first
     // entry's description is under its name.

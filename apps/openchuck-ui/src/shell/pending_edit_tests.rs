@@ -65,7 +65,7 @@ fn field(rig: &Rig, label: &str) -> egui::Pos2 {
         .center()
 }
 
-fn type_unconfirmed(rig: &mut Rig, label: &str, text: &str) {
+pub(super) fn type_unconfirmed(rig: &mut Rig, label: &str, text: &str) {
     let at = field(rig, label);
     rig.click(at);
     rig.press(Key::A, Modifiers::COMMAND);
@@ -1779,6 +1779,52 @@ fn req_ui_07_req_ui_08_inspector_header_name_obeys_keep_discard_cancel_and_valid
                     "Pending name"
                 }));
             }
+        }
+    }
+}
+
+#[test]
+fn req_ui_07_req_tl_01_req_tl_07_cleanup_guards_pending_library_fields_without_saving() {
+    use crate::tool_library_window::{Chosen, Purpose, ToolLibraryWindow};
+    use openchuck_app::tool_library::{self, ToolType};
+    use openchuck_app::tools::ToolLibrary;
+    for answer in ["Keep", "Discard", "Cancel"] {
+        let mut rig = Rig::cube(&format!("cleanup-pending-{answer}"), None);
+        let folder = rig.dirs[0].join("library");
+        let mut library = ToolLibrary::open(&folder).unwrap();
+        let mut draft = tool_library::new_draft(&library, ToolType::FlatEnd).unwrap();
+        tool_library::edit_name(&mut draft, "Library original").unwrap();
+        tool_library::save_draft(&mut library, &draft, &[]).unwrap();
+        let id = draft.id;
+        rig.shell.tool_library = ToolLibraryWindow::new(Some(folder.clone()));
+        rig.shell
+            .open_tool_library(Purpose::Browse, Some(Chosen::Library(id)));
+        for _ in 0..4 {
+            rig.frame(Vec::new());
+        }
+        let before = rig.shell.app.as_ref().unwrap().project().clone();
+        type_unconfirmed(&mut rig, "Name", "Pending library name");
+        click(&mut rig, "Remove unused tools…");
+        assert!(rig.shows("Unconfirmed changes"));
+        click(&mut rig, answer);
+        for _ in 0..4 {
+            rig.frame(Vec::new());
+        }
+        assert_eq!(
+            ToolLibrary::open(&folder).unwrap().get(id).unwrap().name,
+            "Library original"
+        );
+        assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
+        assert_eq!(rig.shows("No unused project tools."), answer != "Cancel");
+        if answer == "Cancel" {
+            assert!(!crate::pending_edits::entries(&rig.ctx).is_empty());
+        } else {
+            click(&mut rig, "Close");
+            assert!(rig.shows(if answer == "Keep" {
+                "Pending library name"
+            } else {
+                "Library original"
+            }));
         }
     }
 }
