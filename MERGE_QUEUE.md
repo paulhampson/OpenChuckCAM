@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; 0240 correction verified; awaiting serial release |
+| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Released; sole ready PR; 85d4a1d metadata head; latest-main integration pending |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -351,3 +351,12 @@ Lane assessed deviation-colour failure case as nonblocking UX availability gap, 
 Original issues **#297/#293/#299/#300/#302/#305** each received additive **awaiting-fix-feedback**, application verified with existing in-progress labels retained. Native Windows/reference hardware, real display/scale, stock colour/visibility/picking and navigation/progress/layout confirmation remain pending; OI987 stays open. Original issues automatically closed by PR fix links; closure does not imply human confirmation.
 
 #329 advances to queue head for allocation/approval/serial-release checks. #321 remains held until owner's readiness notification. Hourly monitoring stays enabled.
+
+
+## OUTPUT-1 #329 release — 24 October 2026
+
+After confirmed #328 merge, verified all other open PRs #131/#284/#321 draft and #329 completion/owner-accepted0240 with unchanged original0238 provenance at `85d4a1d4d63c9613bc9ee75b2db5ea5309d7dc3a`. Successful READY FIRST transition, followed by [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6387837764). #329 now sole release slot. Lane must integrate latest main `1687d4f3d69d067bdaf7a61d343bff459e472eef`, reconcile shared-shell/register unions and allocations, run required combined regressions/checks/traceability, and push ONCE reporting exact head/results. Conflicts suppressing CI do not delay this released update.
+
+Fresh branch enumeration returned27 refs plus exhausted cursor; decision indexes reviewed across all25 relevant refs (signature/management excluded). No conflicting0240 indexed claim. Keep main0238/OI987OPEN/OI988CLOSED,0237/OI985–986; held0234/OI984; reserved FINSTEP0239; OUTPUT-10240/existingOI580/no new OI/schema. Known unsubmitted ROUGHPATH0238/0239 and FACING0237 remain separate stale claims requiring reconciliation at handoff; do not silently renumber existing accepted assignments. Lane must verify actual allocation map as part of main update, with corrected exact head/checks; records checker alone insufficient. No new acceptance.
+
+Both full CI and CodeRabbit must finish on updated head before one bundled required correction; no auto-merge/protection bypass. Original#306 assessment/#307/#311 human-feedback labels assessed at merge; workflow#322 separate. #330/Minor SIMUI wording remain deferred, not assigned to OUTPUT-1. #321 stays draft/held pending OWNER readiness. Post-cutoff intake search returned existing six entries only. Hourly monitoring remains enabled for intake/reconciliation after merges.
