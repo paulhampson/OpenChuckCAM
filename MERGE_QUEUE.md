@@ -23,8 +23,9 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | OPCREATE2 | [#327](https://github.com/paulhampson/OpenChuckCAM/pull/327) | `codex/lane-opcreate2-strategy-picker` | Released; sole ready PR; latest-main/allocation verification pending |
-| 2 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; renumber to 0238 / OI-987–988; full-record approval pending |
+| 1 | OPCREATE2 | [#327](https://github.com/paulhampson/OpenChuckCAM/pull/327) | `codex/lane-opcreate2-strategy-picker` | Released; 6d1981c CI running; review/end-to-end green |
+| 2 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; 0238 / OI-987–988 reconciled; owner acceptance recorded |
+| 3 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; renumber accepted export record to 0240 |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -288,3 +289,21 @@ Owner directly instructed on 24 October 2026: **"You can release PRs ahead of 32
 Confirmed #327 draft at `7dd051de01c4bf80222da869974d321d482f2c5e`, owner-accepted 0237 and exact text approvals recorded; no other open ready PR. Successfully marked #327 READY FIRST, then posted release instructions for latest main (including #325/#326), allocation/register reconciliation, required checks/traceability/audit, ONE integration push and exact-head/results/allocation-map report. Keep accepted0237/OI985–986; SIMUI reassignment0238/OI987–988 and FINSTEP replacement0239 are persisted. No schema claim. Any residual/new allocation conflict requires coordinator comment resolution before merge.
 
 #327 now sole release slot; #328 next draft with numbering/full-record holds; #321 held. Full CI/CodeRabbit must finish before any bundled required corrections. Original #289/#290 feedback labels at merge where human/native trial remains unconfirmed. Monitoring remains enabled.
+
+## OPCREATE2 released head and SIMUI reconciliation — 24 October 2026
+
+#327 pushed released integration ONCE at `6d1981c9a6fa683d489bbc427b37b0949b0970f0`, merging latest main `8b27023147af541d2b14b9fc9b1b77275069ed9f`. No product-code conflict edits; index ordering reconciled. Accepted0237/closedOI985–986 and all11 exact approved strings unchanged; no schema claim. Lane audited remote refs/queue and reports 769 uninstrumented UI/path tests, workspace clippy/format/records/all xtask/99-of-99 P1/audit pass. Existing65.709-second wall-determinism regression classified long/coverage with default retained; prior coverage remains report-only baseline.
+
+CI40105945171 is IN PROGRESS: no failed job; macOS build/test and Windows shard1 still run, other due jobs green. End-to-end40105945173 SUCCESS. CodeRabbit SUCCESS, no review threads. Do not merge until current-head CI fully green.
+
+#328 metadata correction `44bc56915654010c8754ef0e81a777f330b6941a` acknowledged in comment6385591762. Verified accepted0238 Status: owner directly "Accept0237" after full SIMUI-text review; unchanged content renumbered with provenance. OI987 hardware OPEN; OI988 mapping CLOSED; no schema. Records/whitespace pass; product diff empty. Earlier proposed/numbering holds superseded by this evidence; keep draft until sole release slot available. Native human checks still pending.
+
+## OUTPUT-1 / #329 intake and number0240 reservation
+
+Owner-authored draft created2026-10-24T15:21:54Z, branch `codex/lane-output-1-export-feedback`, head `ff3cf8972708d737ac7b3db9170daef32b225be2`. BaseBUG-EDIT main1a90435. Adds persistent actual per-file export results, replacement confirmation, partial-write accounting and fixed-footer/scrollbar layout plus narrow owner-assigned modal shortcut guard. References #306 assessment (workflow build remains#322), #307/#311; no OI/schema; native checks remainOI580. Lane reports915 app/UI tests and final434 UI tests pass, clippy/all xtask99-of-99 P1, own-app92.18%/UI86.69% report-only coverage; no source exclusions; native clipboard/Windows/macOS/GPU unverified. Full record accepted by owner under old0238 after full-text review; no acceptance inferred from renumbering.
+
+Collision: OUTPUT-1 old0238 duplicates earlier reserved/now corrected SIMUI0238. Assign **0240 — OUTPUT-1 actual export results/replacement confirmation**. Keep SIMUI0238/OI987–988, OPCREATE20237/OI985–986, heldSTEPALL-M0234/OI984, FINSTEP reservation0239. No new OI/schema for OUTPUT-1. Lane must acknowledge, rename file/title/index/all links/PR metadata, preserve unchanged substantive acceptance with former-number provenance, verify records/whitespace and normalized-content comparison, then one authorised metadata-only draft push. No main update/product change/ready action from this numbering instruction.
+
+Audit fully enumerated29 remote branches (cursor exhausted); new ROUGHPATH branch index uses0238/0239, conflicting with existing SIMUI/FINSTEP claims. This unsubmitted lane is not intake; flag collisions when handed over, do not silently free existing reservations. No0240 found in indexes/queue; highest actual/reserved before this assignment0239. Other work-branch/spike baseline audits retained. No other eligible new draft beyond#329, queued after#328.
+
+#327 remains sole ready; #328 next, #329 after it; #321 held outside active order. Original issue feedback labels remain merge requirements. Hourly checks enabled.
