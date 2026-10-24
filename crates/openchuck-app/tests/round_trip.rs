@@ -290,3 +290,63 @@ fn req_op_13_req_gc_10_a_small_feed_is_written_to_keep_its_moves_time_within_gat
     let e = gate_2_of(&text, Dialect::Linuxcnc, TimingRule::Linuxcnc).unwrap_err();
     assert!(e.to_string().contains("time"), "{e}");
 }
+
+#[test]
+fn req_gc_09_req_gc_10_rotary_rounding_keeps_tip_within_existing_linear_budget() {
+    use openchuck_types::ir::MoveKind;
+    use openchuck_types::kinematics::{MachinePosition, tool_axis_in_model, tool_tip_in_model};
+    use openchuck_types::units::Degrees;
+    for axis in [RotaryAxis::X, RotaryAxis::Y] {
+        for sense in [ASense::Positive, ASense::Negative] {
+            let mut context = job();
+            context.frame = RotaryFrame {
+                axis,
+                sense,
+                origin: Point3::new(0.0, 2.0, 3.0),
+            };
+            let a = Degrees(120.93751838129586);
+            let position = MachinePosition {
+                xyz: Point3::new(
+                    21.558251369535647,
+                    -0.016498447475797207,
+                    45.000000000000014,
+                ),
+                a,
+            };
+            let tip = tool_tip_in_model(&context.frame, &position);
+            let mut path = small_part();
+            let start = openchuck_types::ir::ToolPose {
+                tip,
+                axis: tool_axis_in_model(&context.frame, a),
+                a,
+            };
+            path.groups[0].start = start;
+            let end_a = Degrees(a.0 + 0.314159);
+            let end = openchuck_types::ir::ToolPose {
+                tip: start.tip + openchuck_types::geometry::Vec3::new(1.0, 0.0, 0.0),
+                axis: tool_axis_in_model(&context.frame, end_a),
+                a: end_a,
+            };
+            path.groups[0].segments = vec![
+                seg(MoveKind::Rapid, start, 0.1, 0.0),
+                seg(MoveKind::Cutting, end, 1.0, 1.0),
+            ];
+            for (post, dialect, rule) in [
+                ("makera-z1", Dialect::MakeraZ1, TimingRule::Makera),
+                ("linuxcnc", Dialect::Linuxcnc, TimingRule::Linuxcnc),
+            ] {
+                let text = builtin_post(post).post(&path, &context).unwrap().text;
+                let parsed = read(&text).unwrap();
+                let replayed = replay(&parsed, dialect).unwrap();
+                let result = compare(
+                    &replayed,
+                    &path,
+                    &context.frame,
+                    rule,
+                    Tolerances::for_decimals(3, 3),
+                );
+                assert!(result.is_ok(), "{post} {axis:?} {sense:?}: {result:?}");
+            }
+        }
+    }
+}

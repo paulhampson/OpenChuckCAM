@@ -4,6 +4,7 @@ All notable changes to `openchuck-gcode` are recorded here.
 
 ## Unreleased
 
+- Use the written rotary angle when identifying rounded-away moves; keep tip comparison against the original IR and unchanged tolerances (issue #324).
 - Version 0.20.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`, and `ProfileField` gains `SpindleRange`, breaking changes; decision 0231).
 - Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.

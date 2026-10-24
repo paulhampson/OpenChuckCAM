@@ -337,6 +337,14 @@ Two new requirement-based timing tests failed before implementation, then passed
 
 **Still outstanding:** full-sequence five-run timings, separately measured fitting and assembly stages, bounded physical sampling error, the 0.005 mm allocation, full-stepover M4 and replay correction OI-984 / issue #324. The public progress messages do not supply complete stage boundaries; no fitting/assembly time is inferred by subtracting summed parallel drop time from wall time. PR 321 stays draft. This evidence update does not amend the accepted choices or waive a criterion.
 
+## Replay correction included by the owner (24 Oct 2026)
+
+The owner instructed: "Complete all steps and also include changes for #324 in this work." This authorises the OI-984 correction in PR 321 and supersedes its former pending-lane restriction. [Implementation record 0234](0234-replay-output-rounding-correction.md) remains proposed; the output-correction policy in this record is already accepted.
+
+The post now rounds A first, transforms the original model tip at that written angle, then rounds XYZ. Precision and replay limits are unchanged. The original saved form-a quick project passes production CLI replay: 66,076 moves, maximum tip error printed as 0.0008 mm against the unchanged 0.000867 mm limit. The direct regression covers both axes/senses and both posts, including a fed move; a separate reader test still rejects the original bad output. The two lobed reference goldens are updated for corrected Y/Z rounding and the corresponding feed calculation, and pass the independent golden audit. See [correction evidence](0234-replay-output-evidence.txt).
+
+This fixes the demonstrated output defect; it does not turn the earlier quick measurements into full-stepover evidence or establish the geometric error budget. The full-stepover M4 run, further M1 investigation and full-sequence timings are recorded separately when complete. PR 321 remains draft.
+
 ## Owner choices made before record acceptance (24 Oct 2026)
 
 The owner requested: "Take me through the decisions. Ask me about the decision record last." The following answers were given directly in this lane session, rather than relayed. They select the directions and conditions below. The owner subsequently accepted the full revised record directly in this session on 24 Oct 2026: "Accept 0211".
