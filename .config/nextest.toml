@@ -170,8 +170,11 @@ priority = 79
 # reference replay/golden comparison 87.4 s when regenerating the corrected
 # references (61.6 s on the subsequent verification). Keep these in default Tests and nightly long; exclude from coverage.
 [profile.coverage]
+# The narrow avoid-patch regression took 67.238 s uninstrumented in the
+# SWARF3 cloud container (23 Oct 2026); keep it in default and nightly tests.
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)
@@ -194,8 +197,10 @@ default-filter = '''not (
 )'''
 
 [profile.long]
+# 67.238 s uninstrumented; see the coverage profile above.
 default-filter = '''
     test(~finest_setting_is_within)
+  | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
   | test(~a_gouging_path_is_reported_as_overcut)

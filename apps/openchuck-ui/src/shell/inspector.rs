@@ -11,7 +11,6 @@
 //! `openchuck-app`; every change is one undoable command.
 
 use eframe::egui::{self, RichText, Stroke};
-use openchuck_app::Command;
 use openchuck_app::overview::{ItemRef, ItemState, MessageAction, SetupPart, Severity, Step};
 use openchuck_app::project::id::{ModelId, OperationId, SelectionSetId, SetupId, ToolId};
 use openchuck_app::project::{BoundaryOptions, Item, OnBreak, Setup};
@@ -20,6 +19,7 @@ use openchuck_app::selection::{SelectionRole, SelectionSummary};
 use openchuck_app::setup_form::{self, SetupRow, StockShape};
 use openchuck_app::step_sets::SetRefusal;
 use openchuck_app::tool_library;
+use openchuck_app::{Command, SetOptionsShown};
 
 use super::{Dialog, Selection, Shell, TreeAction, frame, marks};
 use crate::field_row::{self, Outcome, TextRow};
@@ -277,6 +277,13 @@ impl Shell {
             return;
         };
         self.header(ui, ItemRef::Setup(id), &setup.name, true);
+        // Focus transfer from the name can have renamed this setup already.
+        let setup = self
+            .app
+            .as_ref()
+            .and_then(|app| app.project().setup(id))
+            .cloned()
+            .unwrap_or(setup);
         // What the setup still needs (issues 210 and 224): a count with a jump
         // to the first one, and the words under the section that holds it.
         let needs = self
@@ -308,9 +315,14 @@ impl Shell {
             });
         }
         let focus = self.setup_section.take().or(jump_to);
-        let mut edited: Option<(Setup, Option<String>)> = None;
+        let mut edited: Vec<(Setup, Option<String>)> = Vec::new();
         let mut command = None;
         for part in SetupPart::ALL {
+            let setup = edited
+                .last()
+                .map(|(setup, _)| setup)
+                .unwrap_or(&setup)
+                .clone();
             let key = section_key(part);
             let open = self.settings.section_open("setup", key, true);
             let status = self.overview.status(ItemRef::SetupPart(id, part)).cloned();
@@ -379,16 +391,14 @@ impl Shell {
                                 Some(app.project()),
                                 self.tool_library.library(),
                             );
-                            if let Some(e) = stock_section(
+                            edited.extend(stock_section(
                                 ui,
                                 &mut self.form,
                                 &setup,
                                 copy.as_ref(),
                                 part_extent,
                                 &known,
-                            ) {
-                                edited = Some(e);
-                            }
+                            ));
                         }
                         SetupPart::PartPosition => {
                             if let Some(e) = rows(
@@ -399,7 +409,7 @@ impl Shell {
                                 &setup_form::part_position_rows(&setup),
                                 &[],
                             ) {
-                                edited = Some(e);
+                                edited.push(e);
                             }
                             // The part as this setup places it, once the
                             // checks have read it (decision record 0201).
@@ -426,11 +436,12 @@ impl Shell {
                             );
                         }
                         SetupPart::WorkOffset => {
-                            if let Some(e) =
-                                clearance_section(ui, &mut self.form, &setup, copy.as_ref())
-                            {
-                                edited = Some(e);
-                            }
+                            edited.extend(clearance_section(
+                                ui,
+                                &mut self.form,
+                                &setup,
+                                copy.as_ref(),
+                            ));
                         }
                         SetupPart::Workholding => {
                             let context = workholding_context(&self.overview, app.project(), id);
@@ -453,19 +464,20 @@ impl Shell {
                 self.settings_touched();
             }
         }
-        if let Some((setup, key)) = edited {
-            command = Some(Command::Replace(Item::Setup(setup)));
-            self.pending_field = key;
-        }
-        if let Some(command) = command {
-            let key = self.pending_field.take();
+        let mut commands: Vec<_> = edited
+            .into_iter()
+            .map(|(setup, key)| (Command::Replace(Item::Setup(setup)), key))
+            .collect();
+        commands.extend(command.map(|command| (command, self.pending_field.take())));
+        let mut changed = false;
+        for (command, key) in commands {
             let Some(app) = &mut self.app else { return };
             match app.execute(command) {
                 Ok(()) => {
                     if let Some(key) = key {
                         self.form.result(&key, Ok(()));
                     }
-                    self.rebuild_scene(false);
+                    changed = true;
                 }
                 Err(e) => match key {
                     Some(key) => self
@@ -474,6 +486,48 @@ impl Shell {
                     None => self.dialog = Some(Dialog::Error(e.to_string())),
                 },
             }
+        }
+        if changed {
+            self.rebuild_scene(false);
+        }
+    }
+
+    fn choose_model_replacement(&mut self, id: ModelId) {
+        if self.defer(move |shell| shell.choose_model_replacement(id)) {
+            return;
+        }
+        let Some(reference) = self
+            .app
+            .as_ref()
+            .and_then(|app| app.project().models().iter().find(|m| m.id == id))
+            .cloned()
+        else {
+            return;
+        };
+        if let Some(file) = super::pick_model(reference.path.as_str(), self.app.as_ref())
+            && let Some(app) = &self.app
+            && let Some(panel) = self
+                .model_panel
+                .as_mut()
+                .filter(|panel| panel.model() == id)
+        {
+            panel.replace_with(
+                app.start_replace_model(id, std::path::Path::new(&file))
+                    .map_err(|e| format!("The file was not replaced: {e}")),
+            );
+        }
+    }
+
+    fn open_model_report(&mut self, id: ModelId) {
+        if self.defer(move |shell| shell.open_model_report(id)) {
+            return;
+        }
+        if let Some(panel) = self
+            .model_panel
+            .as_mut()
+            .filter(|panel| panel.model() == id)
+        {
+            panel.show_report();
         }
     }
 
@@ -502,15 +556,11 @@ impl Shell {
         if outcome.settings_changed {
             self.settings_touched();
         }
-        if outcome.choose_replacement
-            && let Some(file) = super::pick_model(reference.path.as_str(), self.app.as_ref())
-            && let Some(app) = &self.app
-            && let Some(panel) = &mut self.model_panel
-        {
-            panel.replace_with(
-                app.start_replace_model(id, std::path::Path::new(&file))
-                    .map_err(|e| format!("The file was not replaced: {e}")),
-            );
+        if outcome.choose_replacement {
+            self.choose_model_replacement(id);
+        }
+        if outcome.show_report {
+            self.open_model_report(id);
         }
         let Some(app) = &mut self.app else { return };
         if let Some(prepared) = outcome.replaced
@@ -580,6 +630,16 @@ impl Shell {
                     Some(tool) => {
                         ui.label(RichText::new(&tool.name).strong());
                         ui.label(RichText::new(&tool.description).color(DARK.muted));
+                        let validate_number = |text: &str| {
+                            let number = text
+                                .trim()
+                                .trim_start_matches(['T', 't'])
+                                .parse::<u32>()
+                                .map_err(|_| "Type a whole tool number. Not applied.".to_owned())?;
+                            tool_library::set_project_tool_number(project, tool.id, number)
+                                .map(|_| ())
+                                .map_err(|e| form_panel::refusal(&e.to_string()))
+                        };
                         let row = TextRow {
                             key: TOOL_NUMBER,
                             label: "Tool number",
@@ -589,6 +649,7 @@ impl Shell {
                             range: Some("1 or more, not another project tool's number"),
                             applied: tool.controller.number.to_string(),
                             enabled: true,
+                            validate: Some(&validate_number),
                             ..TextRow::default()
                         };
                         if let Outcome::Commit(typed) = field_row::text_row(ui, form, &row) {
@@ -600,6 +661,16 @@ impl Shell {
                             act = Some(ToolAct::Preset(chosen));
                         }
                         if let Some(spindle) = &spindle {
+                            let validate_spindle = |text: &str| {
+                                tool_library::set_operation_spindle(
+                                    project,
+                                    app.strategies(),
+                                    operation.id,
+                                    Some(text),
+                                )
+                                .map(|_| ())
+                                .map_err(|e| form_panel::refusal(&e.to_string()))
+                            };
                             let row = TextRow {
                                 key: SPINDLE_SPEED,
                                 label: "Spindle speed",
@@ -634,6 +705,7 @@ impl Shell {
                                         .then_some("Outside the machine's range")
                                 },
                                 scroll_to: jump_to_spindle,
+                                validate: Some(&validate_spindle),
                                 ..TextRow::default()
                             };
                             match field_row::text_row(ui, form, &row) {
@@ -738,6 +810,15 @@ impl Shell {
 
     /// Does what the Tool section asked.
     pub(super) fn tool_act(&mut self, operation: OperationId, act: ToolAct) {
+        if matches!(
+            act,
+            ToolAct::Library | ToolAct::Edit(_) | ToolAct::SaveToLibrary(_)
+        ) {
+            let deferred = act.clone();
+            if self.defer(move |s| s.tool_act(operation, deferred)) {
+                return;
+            }
+        }
         if act == ToolAct::Library {
             let current = self
                 .app
@@ -822,7 +903,7 @@ impl Shell {
         let summaries = app.selection_summaries(&[]);
         let strategy = app.strategy_label(&operation.strategy);
         let strategy_text = app.strategy_description(&operation.strategy);
-        let set_options = app.strategy_takes_set_options(&operation.strategy);
+        let set_options = app.strategy_set_options(&operation.strategy);
         let refusals = app.set_refusals(id);
         let mut delete = false;
         ui.horizontal(|ui| {
@@ -976,7 +1057,7 @@ impl Shell {
                 .take_if(|(op, _)| *op == id)
                 .map(|(_, name)| name),
         };
-        let edit = match app.parameter_form(id) {
+        let edits = match app.parameter_form(id) {
             Ok(form) => {
                 let need_refs: Vec<&openchuck_app::requirements::Requirement> =
                     needs.iter().collect();
@@ -992,16 +1073,16 @@ impl Shell {
                 if outcome.settings_changed {
                     self.settings_changed = Some(std::time::Instant::now());
                 }
-                outcome.edit
+                outcome.edits
             }
             Err(e) => {
                 ui.label(RichText::new(e.to_string()).color(DARK.error));
-                None
+                Vec::new()
             }
         };
         // The jump has been drawn this frame.
         self.requirement_jump = None;
-        if let Some(edit) = edit {
+        for edit in edits {
             let result = app
                 .set_parameter(id, &edit.name, edit.value)
                 .map_err(|e| form_panel::refusal(&e.user_message()));
@@ -1130,7 +1211,7 @@ enum GeometryEdit {
 }
 
 /// The choices of an avoid or check set's option, as the Geometry section
-/// names them (decision record 0176 item 3).
+/// names them (decision records 0176 item 3 and 0229 item 1).
 const ON_BREAK: [(OnBreak, &str, &str); 3] = [
     (
         OnBreak::CutShort,
@@ -1141,8 +1222,8 @@ const ON_BREAK: [(OnBreak, &str, &str); 3] = [
     (
         OnBreak::Warn,
         "Warn only",
-        "The path is kept where the tool would break this set, with a warning saying how far \
-         along the face it does.",
+        "The path is kept where the tool would break this set: the tool is not kept clear of \
+         it. A warning says how far along the path it breaks the set.",
     ),
     (
         OnBreak::Ignore,
@@ -1152,15 +1233,24 @@ const ON_BREAK: [(OnBreak, &str, &str); 3] = [
     ),
 ];
 
-/// The options of the sets in `role` (decision record 0176 item 3), under
-/// its row: the boundary's two limits, or each avoid or check set's choice.
-/// A set whose options leave it limiting nothing says so.
+/// Cut short's tooltip on a check set of rotary roughing, which keeps the
+/// tool above the set rather than stopping the pass (decision record 0043
+/// item 3; decision record 0229 item 1).
+const CUT_SHORT_LIFTS: &str = "Where the tool would touch this set, it is lifted to stay the \
+                               stock to leave above it; the material over the set is still \
+                               roughed.";
+
+/// The options of the sets in `role` that the strategy takes (decision
+/// records 0176 item 3 and 0229), under its row: the boundary's two limits,
+/// or each avoid or check set's choice. A set whose options leave it
+/// limiting nothing says so.
 fn set_options(
     ui: &mut egui::Ui,
     operation: &openchuck_app::project::Operation,
     role: SelectionRole,
     sets: &[SelectionSetId],
     summaries: &[SelectionSummary],
+    shown: SetOptionsShown,
 ) -> Option<GeometryEdit> {
     let mut edit = None;
     let indent = crate::theme::width::LABEL_COLUMN + ui.spacing().item_spacing.x;
@@ -1172,7 +1262,7 @@ fn set_options(
             .map_or_else(|| "(missing set)".to_owned(), |s| s.name.clone())
     };
     match role {
-        SelectionRole::Boundary => {
+        SelectionRole::Boundary if shown.boundary => {
             let id = sets.first()?;
             let mut boundary = options.boundary;
             ui.horizontal_wrapped(|ui| {
@@ -1198,7 +1288,7 @@ fn set_options(
                 limits_nothing(ui, indent, &name(id));
             }
         }
-        SelectionRole::Avoid | SelectionRole::Check => {
+        SelectionRole::Avoid | SelectionRole::Check if shown.avoid_and_check => {
             for id in sets {
                 let current = if role == SelectionRole::Avoid {
                     options.avoid(*id)
@@ -1211,6 +1301,14 @@ fn set_options(
                     ui.add_space(indent);
                     ui.label(RichText::new(&set).color(DARK.muted));
                     for (choice, label, tip) in ON_BREAK {
+                        let tip = if choice == OnBreak::CutShort
+                            && role == SelectionRole::Check
+                            && shown.check_lifts_tool
+                        {
+                            CUT_SHORT_LIFTS
+                        } else {
+                            tip
+                        };
                         if ui
                             .selectable_label(current == choice, label)
                             .on_hover_text(tip)
@@ -1223,6 +1321,20 @@ fn set_options(
                 });
                 if current == OnBreak::Ignore {
                     limits_nothing(ui, indent, &set);
+                } else if current == OnBreak::Warn && !shown.boundary {
+                    // These strategies use the shared sampled measurement
+                    // (OI-970). Explain its limitation even without a hit.
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(indent);
+                        marks::mark(ui, ItemState::Warning, "Warning");
+                        ui.label(
+                            RichText::new(
+                                "Warn only samples the path and can miss a narrow set. No warning \
+                                 does not establish clearance; verify the cut before running G-code.",
+                            )
+                            .color(DARK.warning),
+                        );
+                    });
                 }
             }
         }
@@ -1252,8 +1364,8 @@ struct Notes<'a> {
 /// The Geometry section (section 8): Cut on, Contain within, Avoid and Check,
 /// the roles of decision record 0032 item 5, each with its sets, a list to
 /// add from and a button to remove. A set with a problem has a red border.
-/// With `with_options`, each set's options under its role (decision record
-/// 0176 item 3). Under the role that holds a set reaching a held region or a
+/// Each set's options that the strategy takes (`with_options`), under its
+/// role (decision records 0176 item 3 and 0229). Under the role that holds a set reaching a held region or a
 /// tab, the warning of 11.7 with "Show in view" and "Edit workholding"; under
 /// the role that holds a set the strategy cannot use on this part, the
 /// warning with the reason and what to do, before anything is generated
@@ -1263,7 +1375,7 @@ fn geometry(
     operation: &openchuck_app::project::Operation,
     summaries: &[SelectionSummary],
     notes: &Notes<'_>,
-    with_options: bool,
+    with_options: SetOptionsShown,
 ) -> (Option<GeometryEdit>, Option<ReachAction>) {
     let reach = notes.reach;
     let mut edit = None;
@@ -1344,7 +1456,7 @@ fn geometry(
         });
         // The sets' options, for a strategy that takes them (decision
         // record 0176).
-        if with_options && let Some(e) = set_options(ui, operation, role, &sets, summaries) {
+        if let Some(e) = set_options(ui, operation, role, &sets, summaries, with_options) {
             edit = Some(e);
         }
         // A set the strategy cannot use here, under the role that holds it
@@ -1402,6 +1514,14 @@ fn rows(
     let mut edited = None;
     for row in rows {
         let key = setup_key(row);
+        let validate = |text: &str| setup_form::apply(setup, machine, row.field, text).map(|_| ());
+        let field = row.field;
+        let machine_copy = machine.cloned();
+        let preflight = crate::pending_edits::preflight(
+            egui::Id::new(("setup fields", setup.id)),
+            setup.clone(),
+            move |setup, text| setup_form::apply(setup, machine_copy.as_ref(), field, text),
+        );
         let outcome = field_row::text_row(
             ui,
             state,
@@ -1421,6 +1541,8 @@ fn rows(
                 needs: None,
                 scroll_to: false,
                 number: !row.unit.is_empty(),
+                validate: Some(&validate),
+                preflight: Some(preflight),
             },
         );
         if let Outcome::Commit(typed) = outcome {
@@ -1534,7 +1656,7 @@ fn stock_section(
     machine: Option<&openchuck_app::setup::MachineProfile>,
     part: Option<openchuck_app::setup::PartExtent>,
     known_materials: &[String],
-) -> Option<(Setup, Option<String>)> {
+) -> Vec<(Setup, Option<String>)> {
     let shapes: Vec<&str> = StockShape::ALL.iter().map(|s| s.name()).collect();
     let current = StockShape::of(setup.stock.as_ref())
         .and_then(|s| StockShape::ALL.iter().position(|a| *a == s));
@@ -1544,7 +1666,7 @@ fn stock_section(
     } else if setup.stock.is_none() {
         ui.label(RichText::new("No stock yet: choose its shape.").color(DARK.warning));
     }
-    let mut edited = None;
+    let mut chosen_shape = None;
     if !imported
         && let Some(i) = field_row::choice_row(
             ui,
@@ -1557,21 +1679,32 @@ fn stock_section(
         )
         && let Some(shape) = StockShape::ALL.get(i)
     {
-        edited = Some((
-            setup_form::with_stock_shape(setup, *shape, part.as_ref()),
-            None,
-        ));
+        chosen_shape = Some(*shape);
     }
-    let typed = rows(
+    let mut edited: Vec<_> = rows(
         ui,
         state,
         setup,
         machine,
         &setup_form::stock_rows(setup),
         known_materials,
-    );
+    )
+    .into_iter()
+    .collect();
     let picked = material_pick(ui, setup, known_materials);
-    typed.or(picked).or(edited)
+    if let Some((picked, _)) = picked {
+        let mut current = edited.last().map(|(s, _)| s).unwrap_or(setup).clone();
+        current.material = picked.material;
+        edited.push((current, None));
+    }
+    if let Some(shape) = chosen_shape {
+        let current = edited.last().map(|(s, _)| s).unwrap_or(setup);
+        edited.push((
+            setup_form::with_stock_shape(current, shape, part.as_ref()),
+            None,
+        ));
+    }
+    edited
 }
 
 /// The Work offset and clearance section (SET-05, SET-06; 11.3): the
@@ -1582,9 +1715,9 @@ fn clearance_section(
     state: &mut field_row::FieldState,
     setup: &Setup,
     machine: Option<&openchuck_app::setup::MachineProfile>,
-) -> Option<(Setup, Option<String>)> {
+) -> Vec<(Setup, Option<String>)> {
     let (names, current) = setup_form::registers(setup);
-    let mut edited = field_row::choice_row(
+    let chosen_register = field_row::choice_row(
         ui,
         "work offset",
         "Work offset",
@@ -1592,23 +1725,26 @@ fn clearance_section(
         &names,
         Some(current),
         true,
-    )
-    .map(|i| (setup_form::with_register(setup, i), None));
+    );
     field_row::read_only_row(
         ui,
         "Zero position",
         "The work zero lies on the rotary axis.",
         "On the A axis (Y0 Z0)",
     );
-    if let Some(e) = rows(
+    let mut edited: Vec<_> = rows(
         ui,
         state,
         setup,
         machine,
         &setup_form::clearance_rows(setup, machine),
         &[],
-    ) {
-        edited = Some(e);
+    )
+    .into_iter()
+    .collect();
+    if let Some(register) = chosen_register {
+        let current = edited.last().map(|(s, _)| s).unwrap_or(setup);
+        edited.push((setup_form::with_register(current, register), None));
     }
     edited
 }

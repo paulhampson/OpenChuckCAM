@@ -55,7 +55,12 @@ mod frame;
 mod inspector;
 pub(crate) mod marks;
 mod out_of_date;
+mod pending;
+mod pending_pick;
 mod tree;
+
+#[cfg(test)]
+mod pending_edit_tests;
 
 use dock::DockTab;
 pub(crate) use frame::{chip, primary_button};
@@ -134,6 +139,8 @@ enum Dialog {
 
 /// The shell's state.
 pub struct Shell {
+    edit_context: Option<egui::Context>,
+    edit_guard: pending::Guard,
     app: Option<Application>,
     /// The window title last sent to the system (#218).
     sent_title: String,
@@ -246,6 +253,8 @@ impl Shell {
             None => (UserSettings::default(), None),
         };
         let mut shell = Self {
+            edit_context: None,
+            edit_guard: pending::Guard::default(),
             app: None,
             sent_title: String::new(),
             setting_jump: None,
@@ -399,6 +408,9 @@ impl Shell {
     }
 
     fn set_app(&mut self, app: Application) {
+        if let Some(ctx) = &self.edit_context {
+            crate::pending_edits::clear(ctx);
+        }
         self.status = format!("Opened {}", app.location().display());
         // Changed or missing model files are messages now (PRJ-02, OI-45;
         // specification section 9), from the project checks.
@@ -540,6 +552,9 @@ impl Shell {
     /// (specification section 16; decision record 0117, OI-351). A turned-off
     /// operation goes to the run too, which refuses it and says why (OI-352).
     fn generate_selected(&mut self) {
+        if self.defer(Self::generate_selected) {
+            return;
+        }
         let Some(app) = &self.app else { return };
         match self.selected {
             Some(Selection::Operation(id)) => {
@@ -552,6 +567,9 @@ impl Shell {
 
     /// Starts generating, and simulating when asked (UI-09).
     fn generate(&mut self, simulate: bool) {
+        if self.defer(move |s| s.generate(simulate)) {
+            return;
+        }
         if let Some(app) = &self.app {
             self.run.start(app, simulate);
             self.overview_dirty = true;
@@ -559,6 +577,11 @@ impl Shell {
     }
 
     fn save(&mut self) -> bool {
+        if self.defer(|s| {
+            s.save();
+        }) {
+            return false;
+        }
         let Some(app) = &self.app else { return true };
         match app.save() {
             Ok(()) => {
@@ -581,6 +604,9 @@ impl Shell {
     }
 
     fn undo(&mut self) {
+        if self.defer(Self::undo) {
+            return;
+        }
         if let Some(app) = &mut self.app {
             match app.undo() {
                 Ok(true) => {
@@ -594,6 +620,9 @@ impl Shell {
     }
 
     fn redo(&mut self) {
+        if self.defer(Self::redo) {
+            return;
+        }
         if let Some(app) = &mut self.app {
             match app.redo() {
                 Ok(true) => {
@@ -608,6 +637,10 @@ impl Shell {
 
     /// Runs `next`, first asking about unsaved changes.
     fn request(&mut self, next: Next, ctx: &egui::Context) {
+        let deferred_ctx = ctx.clone();
+        if self.defer(move |s| s.request(next, &deferred_ctx)) {
+            return;
+        }
         if self.app.as_ref().is_some_and(Application::is_modified) {
             self.dialog = Some(Dialog::Unsaved(next));
         } else {
@@ -634,6 +667,9 @@ impl Shell {
 
     /// Opens the import dialog (Ctrl I, the Model "+", the workflow bar).
     fn import_model(&mut self) {
+        if self.defer(Self::import_model) {
+            return;
+        }
         if self.app.is_some() && self.import.is_none() {
             self.import = Some(ImportSession::blank());
         }
@@ -642,12 +678,18 @@ impl Shell {
     /// Opens the tool library window (specification 12.1) for `purpose`,
     /// with `tool` chosen when given.
     pub(super) fn open_tool_library(&mut self, purpose: Purpose, tool: Option<Chosen>) {
+        if self.defer(move |s| s.open_tool_library(purpose, tool)) {
+            return;
+        }
         self.tool_library.open(purpose, tool);
     }
 
     /// Opens the new-operation dialog on the Operations step (N, the
     /// Operations "+", the workflow bar).
     fn new_operation(&mut self) {
+        if self.defer(Self::new_operation) {
+            return;
+        }
         if let Some(app) = &self.app
             && self.overview.step(Step::Operations).is_available()
         {
@@ -669,6 +711,9 @@ impl Shell {
     /// decision record 0144). With a setup already there, or no model yet, it
     /// does nothing.
     fn add_setup(&mut self) {
+        if self.defer(Self::add_setup) {
+            return;
+        }
         let Some(app) = &mut self.app else { return };
         if !openchuck_app::can_add_setup(app.project()) {
             return;
@@ -688,6 +733,9 @@ impl Shell {
     /// Starts picking on the part with an empty working selection (the
     /// Selection sets "+", decision record 0037 item 7).
     fn start_picking(&mut self) {
+        if self.defer(Self::start_picking) {
+            return;
+        }
         if self.app.is_some() {
             if self.overview.step(Step::Operations).is_available() {
                 self.step = Step::Operations;
@@ -701,6 +749,9 @@ impl Shell {
 
     /// Opens `step` if it is available (UI-10).
     fn open_step(&mut self, step: Step) {
+        if step != self.step && self.defer(move |s| s.open_step(step)) {
+            return;
+        }
         if self.overview.step(step).is_available() {
             // Another step ends selection mode, and its highlight with it
             // (issue 261).
@@ -726,6 +777,9 @@ impl Shell {
 
     /// Does what the footer's primary button says (specification section 5).
     fn primary(&mut self) {
+        if self.defer(Self::primary) {
+            return;
+        }
         let action = self.overview.primary(self.step);
         if action.blocked.is_some() || self.run.is_running() {
             self.highlight = action.message;
@@ -747,7 +801,7 @@ impl Shell {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if self.dialog.is_some() {
+        if self.dialog.is_some() || self.edit_guard.active() {
             return;
         }
         let (save, undo, redo) = ctx.input_mut(edit_shortcuts);
@@ -887,6 +941,9 @@ impl Shell {
 
     /// Opens the rename dialog for `item`, if it has a name of its own.
     fn begin_rename(&mut self, item: ItemRef) {
+        if self.defer(move |s| s.begin_rename(item)) {
+            return;
+        }
         let Some(app) = &self.app else { return };
         let project = app.project();
         let name = match item {
@@ -927,6 +984,9 @@ impl Shell {
     }
 
     fn open_export(&mut self) {
+        if self.defer(Self::open_export) {
+            return;
+        }
         if self.post_blocker().is_some() {
             return;
         }
@@ -935,8 +995,26 @@ impl Shell {
         }
     }
 
+    fn open_dialog(&mut self, dialog: Dialog) {
+        let deferred = dialog.clone();
+        if self.defer(move |s| s.open_dialog(deferred)) {
+            return;
+        }
+        self.dialog = Some(dialog);
+    }
+
+    fn show_results(&mut self) {
+        if self.defer(Self::show_results) {
+            return;
+        }
+        self.run.show_results();
+    }
+
     /// Carries out a message's action link (specification section 9).
     fn message_action(&mut self, action: MessageAction) {
+        if self.defer(move |s| s.message_action(action)) {
+            return;
+        }
         match action {
             MessageAction::Show(item) => self.show_item(item),
             MessageAction::Reselect(set) => {
@@ -971,6 +1049,9 @@ impl Shell {
     /// Takes the user to the first problem: the step it belongs to, the item
     /// in the tree and, for a missing value, the field (issue 210).
     fn go_to_first_problem(&mut self) {
+        if self.defer(Self::go_to_first_problem) {
+            return;
+        }
         use openchuck_app::requirements::RequirementField;
         let Some(item) = self.overview.first_problem() else {
             return;
@@ -1001,6 +1082,9 @@ impl Shell {
 
     /// Selects `item` in the tree and the inspector (a message's source).
     fn show_item(&mut self, item: ItemRef) {
+        if self.defer(move |s| s.show_item(item)) {
+            return;
+        }
         match item {
             ItemRef::Model(id) => self.select(Selection::Model(id)),
             ItemRef::Setup(id) => self.choose_setup(id, None),
@@ -1020,6 +1104,9 @@ impl Shell {
     /// Chooses `setup` (the view shows it) and opens its inspector at
     /// `section`.
     fn choose_setup(&mut self, setup: SetupId, section: Option<SetupPart>) {
+        if self.defer(move |s| s.choose_setup(setup, section)) {
+            return;
+        }
         if self
             .workholding_panel
             .as_ref()
@@ -1040,6 +1127,10 @@ impl Shell {
 
     /// Runs a project tree action through a command, so it can be undone.
     fn tree_action(&mut self, action: TreeAction) {
+        let deferred = action.clone();
+        if self.defer(move |s| s.tree_action(deferred)) {
+            return;
+        }
         let command = match action {
             TreeAction::Select(id) => {
                 self.select(Selection::Operation(id));
@@ -1128,6 +1219,9 @@ impl Shell {
     }
 
     fn select(&mut self, selection: Selection) {
+        if self.selected != Some(selection) && self.defer(move |s| s.select(selection)) {
+            return;
+        }
         // A model's Placement or Mesh check row is chosen only by its own
         // tree row, which sets it again after this.
         self.model_section = None;
@@ -1211,15 +1305,8 @@ impl Shell {
     /// highlights (slice 10 item 1).
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
-        // A click on a held region or tab selects its setup and opens the
-        // workholding section at it, its first field focused (7.5).
-        if let Some(item) = input.solid_click {
-            self.select_solid(item);
-        }
+        self.pick_intent(input, ctx);
         let Some(app) = &self.app else { return };
-        if self.selection.frame(app, self.viewport.view(), input) {
-            ctx.request_repaint();
-        }
         // Q, W, E and R choose the click; Esc leaves picking (specification
         // 15). Not while a dialog or a floating window is open: its keys are
         // its own, and Esc must not leave picking behind it.
@@ -1279,6 +1366,32 @@ impl Shell {
         self.follow_selection_panel();
     }
 
+    /// A viewport pick retains model/face/edge identity, never a pointer
+    /// coordinate. It shares the same departure guard as tree selection.
+    fn pick_intent(&mut self, input: crate::viewport::PickInput, ctx: &egui::Context) {
+        if input.click.is_some() || input.edge_click.is_some() || input.solid_click.is_some() {
+            let deferred_ctx = ctx.clone();
+            let intent = self
+                .app
+                .as_ref()
+                .and_then(|app| pending_pick::Intent::capture(app, self.viewport.view(), input));
+            if self.defer(move |s| {
+                if let Some(intent) = intent {
+                    s.resume_pick(intent, &deferred_ctx);
+                }
+            }) {
+                return;
+            }
+        }
+        if let Some(item) = input.solid_click {
+            self.select_solid(item);
+        }
+        let Some(app) = &self.app else { return };
+        if self.selection.frame(app, self.viewport.view(), input) {
+            ctx.request_repaint();
+        }
+    }
+
     /// Selects what the selection panel chose or left (decision 0215): a new
     /// set once it is saved, or New selection after a plain click left the
     /// chosen set.
@@ -1321,6 +1434,9 @@ impl Shell {
     /// in the inspector at the workholding section, its row open with the
     /// first field focused, and its solid outlined (7.5).
     fn select_solid(&mut self, item: openchuck_app::scene::WorkholdingItem) {
+        if self.defer(move |s| s.select_solid(item)) {
+            return;
+        }
         let Some(setup) = self.setup else { return };
         self.choose_setup(setup, Some(SetupPart::Workholding));
         if let Some(panel) = &mut self.workholding_panel {
@@ -1385,14 +1501,7 @@ impl Shell {
                 .filter(|p| !p.as_os_str().is_empty())
         });
         if let Some(file) = dropped {
-            match (&self.app, &mut self.import) {
-                (Some(app), None) => self.import = Some(ImportSession::new(app, file)),
-                (Some(app), Some(session)) if !session.is_adding() => session.set_path(app, file),
-                (Some(_), Some(_)) => {}
-                (None, _) => {
-                    self.status = "Open or create a project before importing a model.".to_owned();
-                }
-            }
+            self.dropped_model(file);
         }
         let (Some(app), Some(session)) = (&self.app, &mut self.import) else {
             return;
@@ -1444,11 +1553,28 @@ impl Shell {
         }
     }
 
+    fn dropped_model(&mut self, file: PathBuf) {
+        let deferred = file.clone();
+        if self.defer(move |s| s.dropped_model(deferred)) {
+            return;
+        }
+        match (&self.app, &mut self.import) {
+            (Some(app), None) => self.import = Some(ImportSession::new(app, file)),
+            (Some(app), Some(session)) if !session.is_adding() => session.set_path(app, file),
+            (Some(_), Some(_)) => {}
+            (None, _) => {
+                self.status = "Open or create a project before importing a model.".to_owned()
+            }
+        }
+    }
+
     fn dialogs(&mut self, ctx: &egui::Context) {
         let Some(dialog) = self.dialog.clone() else {
             return;
         };
         let mut close = false;
+        let mut form_submit = false;
+        let mut form_browse = false;
         let mut action: Option<Action> = None;
         egui::Modal::new(egui::Id::new("openchuck dialog")).show(ctx, |ui| match dialog {
             Dialog::Folder {
@@ -1467,12 +1593,8 @@ impl Shell {
                     "Project folder:"
                 });
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut folder);
-                    if ui.button("Browse…").clicked()
-                        && let Some(picked) = pick_folder(&folder)
-                    {
-                        folder = picked;
-                    }
+                    crate::pending_edits::text_edit(ui, &mut folder, "Project folder");
+                    form_browse = ui.button("Browse…").clicked();
                 });
                 // What a new project would get: the cleaned folder name, and
                 // whether it can be made there (#219).
@@ -1482,7 +1604,7 @@ impl Shell {
                 // (OI-694).
                 if create {
                     ui.label("Project name:");
-                    ui.text_edit_singleline(&mut name);
+                    crate::pending_edits::name_edit(ui, &mut name, "Project name");
                     if name.trim().is_empty() {
                         ui.colored_label(DARK.error, "Give the project a name.");
                     } else if !folder.trim().is_empty() {
@@ -1509,39 +1631,9 @@ impl Shell {
                     if ui.button("Cancel").clicked() {
                         close = true;
                     }
-                    if ok {
-                        close = true;
-                        match found.take() {
-                            // The folder exists and is usable: ask first.
-                            Some(f) if f.state == new_folder::FolderState::ExistsUsable => {
-                                self.dialog = Some(Dialog::FolderExists {
-                                    parent: folder.trim().to_owned(),
-                                    name: name.trim().to_owned(),
-                                    folder: f.path,
-                                });
-                                close = false;
-                            }
-                            Some(f) => {
-                                let name = name.trim().to_owned();
-                                action = Some(Box::new(move |s: &mut Self| s.create(f.path, &name)));
-                            }
-                            None => {
-                                let path = PathBuf::from(folder.trim());
-                                action = Some(Box::new(move |s: &mut Self| s.open(path)));
-                            }
-                        }
-                    }
+                    if ok { form_submit = true; }
                 });
-                if !close {
-                    // `FolderExists` replaced the dialog above when it was asked for.
-                    if !matches!(self.dialog, Some(Dialog::FolderExists { .. })) {
-                        self.dialog = Some(Dialog::Folder {
-                            create,
-                            folder,
-                            name,
-                        });
-                    }
-                }
+                self.dialog = Some(Dialog::Folder { create, folder, name });
             }
             Dialog::FolderExists {
                 parent,
@@ -1621,7 +1713,7 @@ impl Shell {
             }
             Dialog::Rename { item, mut name } => {
                 ui.heading("Rename");
-                let field = ui.text_edit_singleline(&mut name);
+                let field = crate::pending_edits::name_edit(ui, &mut name, "Name");
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 // The field has the keyboard when the dialog opens.
                 if !enter && ui.memory(|m| m.focused().is_none()) {
@@ -1629,17 +1721,13 @@ impl Shell {
                 }
                 ui.horizontal(|ui| {
                     if ui.button("Rename").clicked() || enter {
-                        close = true;
-                        let name = name.clone();
-                        action = Some(Box::new(move |s: &mut Self| s.rename(item, &name)));
+                        form_submit = true;
                     }
                     if ui.button("Cancel").clicked() {
                         close = true;
                     }
                 });
-                if !close {
-                    self.dialog = Some(Dialog::Rename { item, name });
-                }
+                self.dialog = Some(Dialog::Rename { item, name });
             }
             Dialog::Keys => {
                 ui.heading("Keyboard shortcuts");
@@ -1704,7 +1792,28 @@ impl Shell {
                 }
             }
         });
+        if form_browse {
+            self.browse_form_dialog();
+            return;
+        }
+        if form_submit {
+            if !self.defer(Self::accept_form_dialog) {
+                self.accept_form_dialog();
+            }
+            return;
+        }
         if close {
+            let deferred_ctx = ctx.clone();
+            if !crate::pending_edits::entries(ctx).is_empty() {
+                self.defer(move |s| {
+                    s.dialog = None;
+                    deferred_ctx.memory_mut(egui::Memory::stop_text_input);
+                    if let Some(action) = action {
+                        action(s);
+                    }
+                });
+                return;
+            }
             self.dialog = None;
             // A field of the closed dialog must not keep the keyboard.
             ctx.memory_mut(egui::Memory::stop_text_input);
@@ -1714,9 +1823,66 @@ impl Shell {
         }
     }
 
+    /// Re-reads an accepted dialog's restored or confirmed draft, so a
+    /// deferred action never captures a value later discarded by the user.
+    fn accept_form_dialog(&mut self) {
+        match self.dialog.take() {
+            Some(Dialog::Folder {
+                create,
+                folder,
+                name,
+            }) => {
+                if folder.trim().is_empty() || (create && name.trim().is_empty()) {
+                    self.dialog = Some(Dialog::Folder {
+                        create,
+                        folder,
+                        name,
+                    });
+                    return;
+                }
+                if create {
+                    let found = new_folder::inspect(Path::new(folder.trim()), name.trim());
+                    if let Some(problem) = new_folder_problem(&found) {
+                        self.dialog = Some(Dialog::Error(problem));
+                    } else if found.state == new_folder::FolderState::ExistsUsable {
+                        self.dialog = Some(Dialog::FolderExists {
+                            parent: folder.trim().to_owned(),
+                            name: name.trim().to_owned(),
+                            folder: found.path,
+                        });
+                    } else {
+                        self.create(found.path, name.trim());
+                    }
+                } else {
+                    self.open(PathBuf::from(folder.trim()));
+                }
+            }
+            Some(Dialog::Rename { item, name }) => self.rename(item, &name),
+            other => self.dialog = other,
+        }
+    }
+
+    fn browse_form_dialog(&mut self) {
+        if self.defer(Self::browse_form_dialog) {
+            return;
+        }
+        if let Some(Dialog::Folder { folder, .. }) = &mut self.dialog
+            && let Some(picked) = pick_folder(folder)
+        {
+            *folder = picked;
+        }
+    }
+
     /// Stops the window closing while there are unsaved changes, and asks.
     fn guard_close(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested()) {
+            if !self.quitting {
+                let deferred_ctx = ctx.clone();
+                if self.defer(move |s| s.request(Next::Quit, &deferred_ctx)) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                    return;
+                }
+            }
             if !self.quitting && self.app.as_ref().is_some_and(Application::is_modified) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.dialog = Some(Dialog::Unsaved(Next::Quit));
@@ -1789,6 +1955,10 @@ Nothing is overwritten. Choose another name.",
 }
 
 fn pick_folder(current: &str) -> Option<String> {
+    #[cfg(test)]
+    if stub_picker(current) {
+        return None;
+    }
     let mut dialog = rfd::FileDialog::new().set_title("Project folder");
     if let Some(start) = existing_dir(current) {
         dialog = dialog.set_directory(start);
@@ -1806,6 +1976,10 @@ pub(crate) const MODEL_FILTER: (&str, &[&str]) = (
 );
 
 pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<String> {
+    #[cfg(test)]
+    if stub_picker(current) {
+        return None;
+    }
     let mut dialog = rfd::FileDialog::new()
         .set_title("Import model")
         .add_filter(MODEL_FILTER.0, MODEL_FILTER.1);
@@ -1814,6 +1988,24 @@ pub(crate) fn pick_model(current: &str, app: Option<&Application>) -> Option<Str
         dialog = dialog.set_directory(start);
     }
     dialog.pick_file().map(|p| p.display().to_string())
+}
+
+#[cfg(test)]
+thread_local! {
+    static PICKER_INPUTS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn stub_picker(current: &str) -> bool {
+    PICKER_INPUTS.with(|inputs| {
+        let mut inputs = inputs.borrow_mut();
+        if let Some(inputs) = inputs.as_mut() {
+            inputs.push(current.to_owned());
+            true
+        } else {
+            false
+        }
+    })
 }
 
 /// The folder `text` names, or its parent, if it exists.
@@ -1912,9 +2104,15 @@ impl Shell {
     /// the eframe frame it does not use, so a test can run it.
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.edit_context = Some(ctx.clone());
+        if let Some(target) = crate::pending_edits::begin(&ctx) {
+            let deferred_ctx = ctx.clone();
+            self.defer(move |_| deferred_ctx.memory_mut(|m| m.request_focus(target)));
+        }
         self.guard_close(&ctx);
         self.update_window_title(&ctx);
         self.poll_scene(&ctx);
+        self.finish_pick(&ctx);
         self.overview_frame(&ctx);
         // Before anything is drawn, so a result is never drawn as current
         // in the frame after the change that made it out of date.
@@ -1927,6 +2125,8 @@ impl Shell {
         self.run_frame(&ctx);
         self.import_frame(&ctx);
         self.dialogs(&ctx);
+        self.finish_pending(&ctx);
+        self.pending_dialog(&ctx);
         self.keep_simulate_settings();
         self.settings_frame(&ctx);
         self.text_had_focus = ctx.egui_wants_keyboard_input();

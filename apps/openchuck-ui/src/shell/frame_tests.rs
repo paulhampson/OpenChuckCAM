@@ -682,9 +682,10 @@ fn req_ui_11_an_operation_in_error_shows_the_banner_and_its_actions() {
 /// A swarf operation's Geometry section shows its sets' options beside them
 /// (decision record 0176 item 3): the boundary's two limits and each avoid
 /// or check set's choice, and a set whose options leave it limiting nothing
-/// says so. A strategy without such options shows none.
+/// says so. Another strategy that takes a region shows each avoid or check
+/// set's choice and no boundary options (decision record 0229).
 #[test]
-fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() {
+fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options() {
     use openchuck_app::project::{BoundaryOptions, Item, OnBreak, SelectionTarget};
     use openchuck_app::selection::SelectionRole;
     let mut rig = Rig::cube("inspector-set-options", None);
@@ -702,14 +703,28 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
         .unwrap();
     app.set_operation_selection(op.id, SelectionRole::Avoid, rib, true)
         .unwrap();
-    // Not swarf: no options.
+    // Helical finishing: the avoid set's choice, no boundary options; the
+    // rib on Ignore says it limits nothing.
+    app.set_on_break(op.id, SelectionRole::Avoid, rib, OnBreak::Ignore)
+        .unwrap();
     rig.settle();
     rig.shell.select(Selection::Operation(op.id));
     rig.frame(Vec::new());
     rig.frame(Vec::new());
     assert!(rig.shows("Contain within"));
     assert!(!rig.shows("Limits the pass"));
-    assert!(!rig.shows("Cut short"));
+    assert!(!rig.shows("Limits the tip"));
+    for needle in [
+        "Cut short",
+        "Warn only",
+        "Ignore",
+        "The set 'Rib' limits nothing.",
+    ] {
+        assert!(
+            rig.shows(needle),
+            "{needle} is not shown for helical finishing"
+        );
+    }
     // As swarf: the options, with the boundary's limits both off and the
     // rib ignored, each saying it limits nothing.
     let app = rig.shell.app.as_mut().unwrap();
@@ -725,8 +740,6 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
         },
     )
     .unwrap();
-    app.set_on_break(op.id, SelectionRole::Avoid, rib, OnBreak::Ignore)
-        .unwrap();
     rig.settle();
     rig.frame(Vec::new());
     rig.frame(Vec::new());
@@ -740,6 +753,52 @@ fn req_op_02_req_ui_07_the_geometry_section_shows_each_sets_options_for_swarf() 
         "The set 'Rib' limits nothing.",
     ] {
         assert!(rig.shows(needle), "{needle} is not shown");
+    }
+}
+
+#[test]
+fn req_op_02_req_nfr_12_warn_only_explains_sampling_before_generation() {
+    // OI-970, owner choice relayed 23 Oct 2026: an absent hit warning must
+    // not suggest clearance. Explain the limitation as soon as Warn only is
+    // selected, without relying on generation or a detected intersection.
+    use openchuck_app::project::{OnBreak, SelectionTarget};
+    use openchuck_app::selection::SelectionRole;
+    let mut rig = Rig::cube("inspector-watch-sampling", None);
+    rig.size = egui::vec2(1440.0, 2400.0);
+    let app = rig.shell.app.as_mut().unwrap();
+    let op = app.project().operations()[0].id;
+    let model = app.project().models()[0].id;
+    let set = app
+        .save_selection("Narrow set", model, SelectionTarget::Triangles([1].into()))
+        .unwrap();
+    rig.shell.select(Selection::Operation(op));
+    let limitation = "Warn only samples the path and can miss a narrow set. No warning does not \
+                      establish clearance; verify the cut before running G-code.";
+    for role in [SelectionRole::Avoid, SelectionRole::Check] {
+        let app = rig.shell.app.as_mut().unwrap();
+        app.set_operation_selection(op, role, set, true).unwrap();
+        for choice in [OnBreak::Warn, OnBreak::CutShort, OnBreak::Ignore] {
+            rig.shell
+                .app
+                .as_mut()
+                .unwrap()
+                .set_on_break(op, role, set, choice)
+                .unwrap();
+            rig.settle();
+            rig.frame(Vec::new());
+            rig.frame(Vec::new());
+            assert_eq!(
+                rig.shows(limitation),
+                choice == OnBreak::Warn,
+                "{role:?} {choice:?}"
+            );
+        }
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .set_operation_selection(op, role, set, false)
+            .unwrap();
     }
 }
 

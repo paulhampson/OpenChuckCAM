@@ -73,6 +73,7 @@ pub struct Context {
 
 /// The section's state: the draft being edited.
 pub struct WorkholdingPanel {
+    deferred: Option<(crate::pending_edits::Ticket, u8)>,
     setup: SetupId,
     draft: Draft,
     /// Typed text and refused text of the rows.
@@ -266,6 +267,7 @@ impl WorkholdingPanel {
             setup: setup.id,
             draft: Draft::new(&setup.workholding),
             fields: FieldState::default(),
+            deferred: None,
             facts: Facts::None,
             checking: None,
             findings: Vec::new(),
@@ -299,6 +301,11 @@ impl WorkholdingPanel {
     #[cfg(test)]
     pub fn draft_mut(&mut self) -> &mut Workholding {
         self.draft.edit()
+    }
+
+    /// The current draft also supplies the identities of selectable solids.
+    pub(crate) fn workholding(&self) -> &Workholding {
+        self.draft.workholding()
     }
 
     /// The row with keyboard focus, whose solid the view outlines (7.5).
@@ -793,7 +800,12 @@ impl WorkholdingPanel {
                 false,
             );
             let opened = self.open_request == Some(HeldItem::Tab(i));
-            if (focus && i == last) || opened || marked || !finding.is_empty() && self.refused {
+            if (focus && i == last)
+                || opened
+                || marked
+                || !finding.is_empty() && self.refused
+                || crate::pending_edits::needs_section(ui.ctx(), id)
+            {
                 state.set_open(true);
             }
             let mut menu = None;
@@ -895,19 +907,26 @@ impl WorkholdingPanel {
                 }
             }
             header_row.body(|ui| {
-                for text in &finding {
-                    ui.label(RichText::new(text).color(if self.refused { ERROR } else { NOTE }));
-                }
-                self.tab_editor(
-                    ui,
-                    i,
-                    *tab,
-                    zone,
-                    problem,
-                    tools,
-                    focus && i == last || opened,
-                );
-                reached_line(ui, &context.reach, HeldItem::Tab(i));
+                let ctx = ui.ctx().clone();
+                crate::pending_edits::section(&ctx, id, || {
+                    for text in &finding {
+                        ui.label(RichText::new(text).color(if self.refused {
+                            ERROR
+                        } else {
+                            NOTE
+                        }));
+                    }
+                    self.tab_editor(
+                        ui,
+                        i,
+                        *tab,
+                        zone,
+                        problem,
+                        tools,
+                        focus && i == last || opened,
+                    );
+                    reached_line(ui, &context.reach, HeldItem::Tab(i));
+                });
             });
             match menu {
                 Some(true) => remove = Some(i),
@@ -1235,6 +1254,17 @@ impl WorkholdingPanel {
             radial_offset,
         } = tab.layout
         {
+            let validate_count = |text: &str| {
+                let count = text
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|_| "Not a whole number. Not applied.".to_owned())?;
+                if (1..=64).contains(&count) {
+                    Ok(())
+                } else {
+                    Err("From 1 to 64. Not applied.".to_owned())
+                }
+            };
             let outcome = field_row::text_row(
                 ui,
                 &mut self.fields,
@@ -1246,6 +1276,7 @@ impl WorkholdingPanel {
                     problem: problem_of(problem, Field::TabCount(i)),
                     enabled: true,
                     number: true,
+                    validate: Some(&validate_count),
                     ..TextRow::default()
                 },
             );
@@ -1316,14 +1347,15 @@ impl WorkholdingPanel {
         let changed = self.draft.is_changed();
         let idle = self.checking.is_none();
         let refused_text = self.fields.has_errors();
-        let mut apply = false;
+        let resumed = crate::pending_edits::take_local(ui.ctx(), &mut self.deferred);
+        let mut action = resumed;
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(idle, egui::Button::new("Check against the part and tools"))
                 .on_hover_text("Tabs lie in the head or tail zone and are wider than the tools")
                 .clicked()
             {
-                self.start_check(app, setup, false);
+                action = Some(0);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if idle {
@@ -1336,17 +1368,21 @@ impl WorkholdingPanel {
                     } else {
                         "Store the held regions and tabs in the setup (it can be undone)".to_owned()
                     };
-                    let can = changed && problem.is_none() && !refused_text;
+                    let can = (changed || !crate::pending_edits::entries(ui.ctx()).is_empty())
+                        && problem.is_none()
+                        && !refused_text;
                     let response = ui.add_enabled(can, egui::Button::new("Apply"));
                     let response = if response.enabled() {
                         response.on_hover_text(reason)
                     } else {
                         response.on_disabled_hover_text(reason)
                     };
-                    apply = response.clicked()
+                    if response.clicked()
                         || (can
-                            && ui
-                                .input(|k| k.key_pressed(egui::Key::Enter) && k.modifiers.command));
+                            && ui.input(|k| k.key_pressed(egui::Key::Enter) && k.modifiers.command))
+                    {
+                        action = Some(1);
+                    }
                 } else {
                     if ui.button("Cancel").clicked()
                         && let Some(checking) = self.checking.take()
@@ -1361,15 +1397,27 @@ impl WorkholdingPanel {
                     .add_enabled(changed, egui::Button::new("Revert"))
                     .clicked()
                 {
+                    action = Some(2);
+                }
+            });
+        });
+        if let Some(action) = action
+            && let Some(action) =
+                crate::pending_edits::defer_local(ui.ctx(), &mut self.deferred, action)
+        {
+            match action {
+                0 => self.start_check(app, setup, false),
+                1 if changed && problem.is_none() && !refused_text => {
+                    self.start_check(app, setup, true)
+                }
+                2 => {
                     self.draft.revert();
                     self.fields.clear();
                     self.findings.clear();
                     self.refused = false;
                 }
-            });
-        });
-        if apply {
-            self.start_check(app, setup, true);
+                _ => {}
+            }
         }
         None
     }
