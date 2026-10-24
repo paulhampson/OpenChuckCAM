@@ -65,7 +65,7 @@ fn field(rig: &Rig, label: &str) -> egui::Pos2 {
         .center()
 }
 
-fn type_unconfirmed(rig: &mut Rig, label: &str, text: &str) {
+pub(super) fn type_unconfirmed(rig: &mut Rig, label: &str, text: &str) {
     let at = field(rig, label);
     rig.click(at);
     rig.press(Key::A, Modifiers::COMMAND);

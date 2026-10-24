@@ -188,11 +188,9 @@ impl Shell {
     /// The results inspector of the Simulate step (specification 11.5).
     fn results_inspector(&mut self, ui: &mut egui::Ui) {
         let run = self.run.last().cloned();
-        // An out-of-date result says so first, with the way to simulate
-        // again, and its numbers are dimmed (issue 260).
-        if self.out_of_date_banner(ui) {
-            self.primary();
-        }
+        self.play.show_deviation_choice(ui);
+        // The viewport carries the single actionable stale message (297).
+        // Keep the result identification and dimmed values here.
         let stale = self
             .out_of_date
             .reason()
