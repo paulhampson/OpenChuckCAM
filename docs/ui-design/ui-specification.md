@@ -135,7 +135,7 @@ Each group header shows a count and a "+" button (22 pixels):
 | Model | Opens the import dialog (11.2) |
 | Setups | Opens Setup with a new setup, "Setup 1", with the project's first model as its part (decision 0144). It is disabled with the tooltip "Import a model first" until the project has a model. It creates exactly one: once a setup exists the "+" stays visible but disabled, with the tooltip "More than one setup per project is not supported yet (SET-07)", until SET-07 (P2) is built |
 | Selection sets | Opens Operations with picking on and the inspector's New selection (12.2) |
-| Operations | Opens Operations and the New operation menu, which lists the registered strategies (OP-16) |
+| Operations | Opens Operations and the New operation dialog, with its registered-strategy dropdown and information panel (OP-16; decision 0237) |
 
 **Rows** are 28 high. Columns, left to right:
 
@@ -460,7 +460,11 @@ Boards 3 and 3b.
   - The footer and the "Generate" item in a row's menu start a job. Its row shows progress and cancel.
   - Several operations generate in chain order. An operation served from the cache shows "reused" in the Jobs tab.
   - Cancelling leaves no partial result: the operation stays stale.
-- **New operation.** Choose a strategy from the menu; the new operation takes the selection and the last tool used. Its dialog lists the project's tools and offers "From the library…", which opens the tool library and gives the new operation the tool added (decision 0127). A strategy that cannot honour a region (decision 0032 item 6) is listed with "ignores selections" and cannot take one.
+- **New operation** ([decision 0237](../decisions/0237-strategy-dropdown-and-information-panel.md), accepted). Keep one creation dialog. After the name, a Strategy dropdown shows the selected strategy's plain name. Choices follow the registry's Roughing, Finishing and Specialist groups and order. Unavailable choices remain visible and disabled, with their full reasons readable in the open list without hover. The application supplies eligibility; the UI does not list STEP-only strategies itself. Strategies that ignore selections say so.
+  - An always-visible, text-only information panel below the dropdown shows the selected strategy's name and complete wrapped explanation on one left edge. There is no explanation checkbox or preference. Repainting and resizing retain the choice. A setup change that makes the choice unavailable retains it, shows why and disables Add.
+  - The operation takes the selection and last tool used. Setup, tools, material preset and "From the library…" retain their existing behaviour (decisions 0127 and 0230). Choosing a strategy edits only the creation draft; Add creates the operation. Ordinary field-to-field confirmation and guarded form departures follow decision 0233.
+  - Long content scrolls within the bounded dialog without covering its footer. All controls remain keyboard accessible, in reading order; explanations wrap within the available width at supported scales.
+- **Inspector strategy** (decision 0237). Under the operation's name and status, show a Strategy heading, plain strategy name and the same information-panel presentation. The strategy is read-only; the operation name remains independently editable.
 - **An operation in error** (board 3b):
   - **Banner:** "This operation can't be generated", then the cause in one sentence, for example "The selection 'Lettering' no longer matches the model. 12 of its 40 edges were not found after the model file changed".
   - **Actions:** "Reselect in the view" (primary in the banner) and "Show missing". "Use the N matching edges" is *(UI-24)*.
