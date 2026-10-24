@@ -23,8 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
-| 2 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Draft; awaiting owner approval of complete decision 0233 |
+| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; ready first; lane main update and single push pending |
+| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
 
@@ -97,3 +97,9 @@ No new intake beyond already queued #323; bounded owner-draft search returned on
 Draft CI runs 40042502111 (#321) and 40042638209 (#323) completed failure. Heavy jobs and end-to-end were skipped as expected for draft; required-check aggregators intentionally fail on drafts. Separately, both fast-check jobs genuinely fail cargo audit on Tokio 1.53.2 / RUSTSEC-2026-0386 (confirmed in logs), while their other fast checks pass. Main now contains the 1.53.3 patch merged via #320. Reconcile it during each authorised main update and verify audit, bundled with the permitted push; no standalone lockfile push, ready transition or gate waiver is requested now.
 
 Full decision 0233 was fetched and read at its exact current head; it remains proposed. The owner still must be shown the complete record before acceptance is requested. No acceptance is inferred from OI-983, queue intake or this inspection.
+
+## Owner priority and BUG-EDIT release — 24 October 2026
+
+Owner instructed "#323 is good jump in front": #323 is now first, ahead of blocked #321. At new head `0c28d6d4db8532d06d20d74c24c753332dfb6d56`, PR body and decision 0233 Status record the owner's explicit "Accept decision record 0233" after reviewing the complete record directly in the lane session, with acceptance/doc updates pushed on owner instruction. This supersedes the earlier proposed-status hold; no other decision acceptance is inferred.
+
+No other PR was ready. Coordinator marked #323 ready FIRST, then posted release instructions for lane main update, conflict/register reconciliation, required checks including records/traceability/audit, and one push with exact-head report. Main includes SWARF3 and Tokio 1.53.3. Wait for full CI and CodeRabbit on that updated head before batching any necessary corrections. Lane retains branch/code ownership; coordinator handles verified-green merge. #321 retains its explicit draft/blocker hold. Hourly monitoring remains enabled.
