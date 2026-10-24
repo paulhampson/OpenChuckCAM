@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Released; sole ready PR; lane acknowledged integration; updated head pending |
+| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Released; sole ready PR; ffb5891 integrated; CI running; publication decision pending |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -367,3 +367,14 @@ Both full CI and CodeRabbit must finish on updated head before one bundled requi
 Lane acknowledged release in [comment6387873038](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6387873038), confirming latest-main integration, full allocation audit, combined checks and ONE push/exact-head report. Current GitHub head remains `85d4a1d4d63c9613bc9ee75b2db5ea5309d7dc3a`, ready, conflicts present; released integration has not been pushed. No current-head PR Actions workflows, CodeRabbit pending, no reviews/inline threads. Wait for authorised main-update push; do not delay it for suppressed workflows or request an early correction push.
 
 Intake search again returned existing six post-cutoff owner PRs only, below100 result bound; no new intake. #321 remains held. Hourly monitor verified enabled; webhook discovery remains unavailable. No further instruction or owner action needed at this checkpoint.
+
+
+## OUTPUT-1 integrated head and publication concern — 24 October 2026
+
+Released integration pushed ONCE at `ffb58911d33de978937b249f9b7ec5549729cf54`, main `1687d4f3d69d067bdaf7a61d343bff459e472eef` independently verified ancestor (behind_by0). Lane report6388396278:962/962 app/UI tests pass736.208s, adapter-required rendering/picking2/2 pass32.647s; workspace clippy/format/audit/xtask all99/99P1 pass. Sources merged automatically with no executable conflict-resolution edits. Fresh own-app coverage92.29%, UI87.54%, below report-only95% target; gaps/cleanup documented. Existing72.987s test classified long/coverage while default retained. Lane audited27 remote heads, actual files/indexes/OI/claims/schema constants/reservations: map unchanged accepted0240/existingOI580/no new OI/schema, project18/machine4; main0235–0238/OI985–988, held0234/OI984, FINSTEP0239. Recheck before merge.
+
+Current-head CI40124271555 still IN PROGRESS: Linux shard1, Windows shard1 and macOS build/test pending; due completed jobs green, fuzz skipped. End-to-end40124271525 SUCCESS. CodeRabbit status SUCCESS; no new current-head inline findings, one earlier Minor Messages-path punctuation finding remains (discussion_r4368058089); raw Copy paths/modal paths remain correct, so no separate push for it. Docs/scope advisories addressed in comment6388614451; private-helper documentation remains nonblocking.
+
+Lane raised per-file publication regression in comment6388567827. Coordinator inspected current writer: new destinations use create_new at final path then write_all; approved replacements stage then rename. Termination during new-file write can leave incomplete final-name output, unlike prior staged writer; distinct from accepted non-atomic batch. [Coordinator6388622256](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6388622256) holds merge pending concrete remedy/disposition and recommends completed-file no-clobber publication. Lane asked to post COMPLETE proposed unnumbered NFR-14 record for tempfile3.27.0 option, alternatives/fallback/platform/cleanup/verification and dependency scope. Coordinator must fresh-audit and assign number before claim; no new number reserved yet, no owner acceptance/dependency/source/metadata push authorised. Present complete record to owner individually with recommendation/risks. Both full CI/review must finish before any bundled required correction; Minor punctuation may ride required bundle.
+
+Original#307/#311 need native confirmation/awaiting-fix-feedback at eventual merge; #306 assessment only, separate workflow#322 unimplemented. ExistingOI580/SIMUIOI987 stay open. No new eligible drafts in six-result post-cutoff search. #321 remains held; hourly monitoring remains enabled, webhook discovery absent.
