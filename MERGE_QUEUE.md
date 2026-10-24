@@ -25,6 +25,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 | --- | --- | --- | --- | --- |
 | 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Released; sole ready PR; lane main verification/update pending |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+| 3 | TOOLLIB2 | [#326](https://github.com/paulhampson/OpenChuckCAM/pull/326) | `codex/lane-toollib2-remove-unused-tools` | Draft; awaiting serial release; owner acceptance of 0236 reported |
 
 ## SWARF3 / #320 — MERGED
 
@@ -205,3 +206,13 @@ Owner directly confirmed in merge-coordinator chat: **"My acceptance applies to 
 Confirmed remote head `1fe0869aa7aaf35dae5ae803b78927ac966af91e`, open/draft, with no other open ready PR. Successfully marked #325 READY FIRST, then posted lane release instructions: acknowledge, verify/merge latest main, reconcile conflicts/register unions, preserve numbering and accepted content, run records and required checks/traceability/audit, push once if changes needed and report exact head/results. No empty commit required if already up to date. Update PR release status. Wait for both CI and CodeRabbit before one required correction push.
 
 #325 occupies sole release slot; #321 remains work in progress and draft. Hourly monitoring remains enabled; webhook preference unchanged.
+
+## TOOLLIB2 / #326 — draft intake, 24 October 2026
+
+- Owner notified merge coordinator of draft. PR created 2026-10-24T10:31:15Z by paulhampson (ID 528002), draft/open verified.
+- Branch `codex/lane-toollib2-remove-unused-tools`, head `13fa263ac44cc6303529c81dd2e6e397eb15af8b`. Base main `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`; lane reports TOOLLIB #266, OPSPEED #318 and BUG-EDIT #323 ancestry verified.
+- Adds manual Remove unused tools checklist, confirmation and one undoable project-snapshot batch command; cross-setup/disabled references protected, confirmation revalidates all candidates, library files and current paths/output preserved. No schema/dependency change.
+- Decision **0236** owner acceptance reported after complete unnumbered-text review in TOOLLIB2 lane, with independent-numbering authority. 0235 reserved for BUG-SELSET2; no new OI/schema claims. Record Status inspected at intake head. No record acceptance performed by merge coordinator.
+- Lane reports combined app/UI 910 tests and final 432 UI tests pass; focused 4 app/7 UI tests pass; changed-crate clippy, formatting and all xtask checks including 99/99 P1 traceability pass. Nine existing long machining tests classified in coverage/long profiles while default PR runs retained; no >10-minute uninstrumented tests.
+- Own-crate coverage app 92.40%, UI 86.52%, both below report-only development target. New lines app 37/37 and UI 114/117; three defensive UI action paths uncovered. Artifacts cleaned; native OS/GPU and Windows/macOS interaction not locally exercised. OI-493/OI-773 remain open.
+- Added behind current entries (#325 released; #321 explicitly held). Keep #326 draft until serial release. Lane to monitor PR comments; ready FIRST then main update/records/required checks and one push only when released; full CI and CodeRabbit pending.
