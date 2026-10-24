@@ -1149,6 +1149,12 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
         .start_stock_at(&before, Cursor::default())
         .wait()
         .unwrap();
+    let first_surface = app
+        .start_stock_surface(&before, Cursor::default())
+        .wait()
+        .unwrap();
+    assert_eq!(first_surface.mesh, first);
+    let comparison = run.simulation.clone();
 
     // The stock is made much bigger after the run.
     let mut setup = app.project().setups()[0].clone();
@@ -1158,6 +1164,9 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
         x_start: Millimetres(-15.0),
     });
     app.execute(Command::Replace(Item::Setup(setup))).unwrap();
+    let mut settings = app.project().simulation();
+    settings.cell = Millimetres(0.2);
+    app.execute(Command::SetSimulation(settings)).unwrap();
 
     let after = Arc::new(app.start_stock_playback(Arc::clone(&t)).wait().unwrap());
     let second = app
@@ -1165,6 +1174,46 @@ fn req_sim_04_stock_playback_uses_the_stock_the_run_was_made_with() {
         .wait()
         .unwrap();
     assert_eq!(first, second, "the stock shown changed with the project");
+    let second_surface = app
+        .start_stock_surface(&after, Cursor::default())
+        .wait()
+        .unwrap();
+    assert_eq!(
+        first_surface, second_surface,
+        "mesh, projected final values and picker stay with the stored run, including its cell"
+    );
+    let end = Cursor {
+        done: t.move_count(),
+        fraction: 0.0,
+    };
+    let final_surface = app.start_stock_surface(&after, end).wait().unwrap();
+    let final_mesh = app.start_stock_at(&after, end).wait().unwrap();
+    assert_eq!(
+        final_surface.mesh, final_mesh,
+        "the terminal cursor shows fully cut stock"
+    );
+    assert_ne!(
+        final_surface.mesh, first,
+        "the cut changed the starting stock"
+    );
+    let bands = final_surface.bands.as_ref().unwrap();
+    assert_eq!(bands.values.len(), final_surface.mesh.triangles.len());
+    assert!(
+        bands.values.iter().any(Option::is_some),
+        "the finished surface carries measured final-result values"
+    );
+    let hit = final_surface
+        .pick([0.0, -50.0, 0.0], [0.0, 1.0, 0.0])
+        .unwrap()
+        .unwrap();
+    assert!(
+        bands.values.get(hit.triangle as usize).is_some(),
+        "the final picker uses those same surface triangle IDs"
+    );
+    assert_eq!(
+        run.simulation, comparison,
+        "display queries never alter the measured comparison"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -11,11 +11,15 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Event, Key, Modifiers};
 use openchuck_app::overview::Step;
+use openchuck_viewport::Layer;
 
 use super::frame_tests::Rig;
 use super::*;
 use crate::import_panel::ImportSession;
 use crate::results_panel::bin_slot;
+
+#[path = "simulate_render_tests.rs"]
+mod rendering;
 
 /// The cube project, simulated, on the Simulate step.
 fn simulated(name: &str) -> Rig {
@@ -43,6 +47,520 @@ fn simulated(name: &str) -> Rig {
     }
     rig.settle();
     rig
+}
+
+#[test]
+fn req_ui_06_req_ui_10_req_sim_04_simulate_row_opens_its_inspector_and_preserves_return_state() {
+    for (keyboard, width, height) in [
+        (false, 1920.0, 1080.0),
+        (true, 1920.0, 1080.0),
+        (false, 900.0, 700.0),
+        (true, 900.0, 700.0),
+    ] {
+        let mut rig = simulated(&format!("simui-row-{keyboard}-{width}"));
+        rig.size = egui::vec2(width, height);
+        let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+        rig.shell
+            .play
+            .set_window(Some(openchuck_app::playback::MoveWindow {
+                first: 20,
+                last: 150,
+            }));
+        rig.shell.viewport.camera.orbit(13.0, 7.0);
+        rig.shell.settings.inspector.collapsed = true;
+        rig.settle();
+        let cursor = rig.shell.play.pose().unwrap().cursor;
+        let camera = rig.shell.viewport.camera;
+        if keyboard {
+            let row = rig
+                .ctx
+                .data(|d| d.get_temp::<egui::Id>(egui::Id::new(("operation row focus", operation))))
+                .unwrap();
+            rig.ctx.memory_mut(|m| m.request_focus(row));
+            rig.press(Key::Enter, Modifiers::NONE);
+        } else {
+            rig.click(at(&rig, "1 Finish"));
+        }
+        rig.settle();
+        assert_eq!(rig.shell.step, Step::Operations, "row activation navigates");
+        assert_eq!(rig.shell.selected, Some(Selection::Operation(operation)));
+        assert!(!rig.shell.settings.inspector.collapsed);
+        assert!(!rig.shell.collapsed(super::frame::Region::Inspector));
+        let inspector = egui::PanelState::load(&rig.ctx, egui::Id::new("properties"))
+            .unwrap()
+            .outer_rect;
+        assert!(rig.painted().iter().any(|(text, whole, seen)| {
+            text.as_deref() == Some("Finish")
+                && inspector.contains_rect(*whole)
+                && seen.contains_rect(whole.shrink(0.5))
+        }));
+        if height >= 1080.0 {
+            assert!(rig.shows("Stepover"));
+        }
+        assert_eq!(rig.shell.play.window(), None, "accepted 0169 reset");
+        // Operations may use its own view while the Simulate camera is kept.
+        rig.shell.viewport.camera.orbit(29.0, 11.0);
+        rig.shell.open_step(Step::Simulate);
+        rig.settle();
+        assert_eq!(rig.shell.play.pose().unwrap().cursor, cursor);
+        assert_eq!(rig.shell.viewport.camera, camera);
+        rig.shell.open_step(Step::Operations);
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .set_parameter(
+                operation,
+                "stepover",
+                Some(openchuck_app::project::ParameterValue::Number(0.6)),
+            )
+            .unwrap();
+        rig.shell.open_step(Step::Simulate);
+        rig.settle();
+        assert_eq!(count(&rig, super::out_of_date::TITLE), 1);
+        assert_eq!(rig.shell.play.pose().unwrap().cursor, cursor);
+    }
+}
+
+#[test]
+fn req_ui_07_req_ui_10_simulate_row_navigation_uses_pending_edit_cancel_and_keep() {
+    let mut rig = simulated("simui-row-pending");
+    rig.size = egui::vec2(1920.0, 1080.0);
+    rig.settle();
+    let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    let selected = rig.shell.selected;
+    super::pending_edit_tests::type_unconfirmed(&mut rig, "Cell size", "0.05");
+    rig.click(at(&rig, "1 Finish"));
+    rig.settle();
+    assert!(rig.shows("Unconfirmed changes"));
+    assert_eq!(rig.shell.step, Step::Simulate);
+    rig.click(at(&rig, "Cancel"));
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Simulate);
+    assert_eq!(rig.shell.selected, selected);
+    assert_eq!(crate::pending_edits::entries(&rig.ctx).len(), 1);
+    assert!(
+        (rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .simulation()
+            .cell
+            .0
+            - 0.1)
+            .abs()
+            < 1e-12
+    );
+    rig.click(at(&rig, "1 Finish"));
+    rig.settle();
+    rig.click(at(&rig, "Discard"));
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Operations);
+    assert!(
+        (rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .simulation()
+            .cell
+            .0
+            - 0.1)
+            .abs()
+            < 1e-12
+    );
+    rig.shell.open_step(Step::Simulate);
+    rig.settle();
+    super::pending_edit_tests::type_unconfirmed(&mut rig, "Cell size", "0.05");
+    rig.click(at(&rig, "1 Finish"));
+    rig.settle();
+    rig.click(at(&rig, "Keep"));
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Operations);
+    assert_eq!(rig.shell.selected, Some(Selection::Operation(operation)));
+    assert!(
+        (rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .simulation()
+            .cell
+            .0
+            - 0.05)
+            .abs()
+            < 1e-12
+    );
+    rig.shell.open_step(Step::Simulate);
+    rig.settle();
+    assert_eq!(count(&rig, super::out_of_date::TITLE), 1);
+}
+
+#[test]
+fn req_ui_06_req_sim_01_row_controls_do_not_navigate_and_toolpath_visibility_combines() {
+    let mut rig = simulated("simui-row-controls");
+    let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    let run = rig.shell.run.last().unwrap().clone();
+    let click_control = |rig: &mut Rig, kind: &str| {
+        let rect = rig
+            .ctx
+            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new((kind, operation))))
+            .unwrap();
+        rig.click(rect.center());
+        rig.settle();
+        assert_eq!(rig.shell.step, Step::Simulate, "{kind} must not navigate");
+    };
+    for overall in [true, false, true] {
+        rig.shell
+            .viewport
+            .set_simulate_show(crate::viewport::SimulateShow {
+                model: false,
+                cut_part: true,
+                toolpath: overall,
+            });
+        for shown in [false, true] {
+            click_control(&mut rig, "operation eye");
+            assert_eq!(
+                rig.shell
+                    .app
+                    .as_ref()
+                    .unwrap()
+                    .project()
+                    .path_shown(operation),
+                shown
+            );
+            assert_eq!(rig.shell.play.draws_group(0), shown);
+            assert_eq!(rig.shell.viewport.visibility().toolpaths, overall);
+            assert!(Arc::ptr_eq(rig.shell.run.last().unwrap(), &run));
+            assert!(
+                rig.shell.out_of_date.reason().is_none(),
+                "display changes keep results current"
+            );
+        }
+    }
+    click_control(&mut rig, "operation enable");
+    assert!(
+        !rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .operation(operation)
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        !rig.shell.play.has_run(),
+        "disabled operations keep the accepted run-drop rule"
+    );
+    rig.shell.undo();
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Simulate);
+    // The row's context menu duplicates without activating its row.
+    let row = at(&rig, "1 Finish");
+    rig.frame(vec![
+        Event::PointerMoved(row),
+        Event::PointerButton {
+            pos: row,
+            button: egui::PointerButton::Secondary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        },
+    ]);
+    rig.frame(vec![Event::PointerButton {
+        pos: row,
+        button: egui::PointerButton::Secondary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    rig.frame(Vec::new());
+    rig.click(at(&rig, "Duplicate"));
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Simulate);
+    assert_eq!(
+        rig.shell.app.as_ref().unwrap().project().operations().len(),
+        2
+    );
+    let order: Vec<_> = rig
+        .shell
+        .app
+        .as_ref()
+        .unwrap()
+        .project()
+        .operations()
+        .iter()
+        .map(|op| op.id)
+        .collect();
+    // Select the second operation without activating its row, then use the
+    // actual reorder shortcut. Verify that it reorders, not just that the
+    // step happens to remain Simulate.
+    rig.shell.select(Selection::Operation(order[1]));
+    rig.press(Key::ArrowUp, Modifiers::ALT);
+    rig.settle();
+    assert_eq!(
+        rig.shell.app.as_ref().unwrap().project().operations()[0].id,
+        order[1]
+    );
+    assert_eq!(
+        rig.shell.step,
+        Step::Simulate,
+        "reorder shortcut must not navigate"
+    );
+    let handle = |id| {
+        rig.ctx
+            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new(("operation reorder", id))))
+            .unwrap()
+    };
+    let from = handle(order[1]).center();
+    let to = handle(order[0]).center() + egui::vec2(0.0, 8.0);
+    rig.frame(vec![
+        Event::PointerMoved(from),
+        Event::PointerButton {
+            pos: from,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        },
+    ]);
+    rig.frame(vec![Event::PointerMoved(to)]);
+    rig.frame(Vec::new());
+    rig.frame(vec![Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    rig.settle();
+    assert_eq!(
+        rig.shell.step,
+        Step::Simulate,
+        "the drag handle must not activate its row"
+    );
+    assert_eq!(
+        rig.shell.app.as_ref().unwrap().project().operations()[1].id,
+        order[1],
+        "the actual drag reordered the operations"
+    );
+}
+
+#[test]
+fn req_gc_07_req_nfr_06_display_and_navigation_preserve_project_paths_and_posted_bytes() {
+    let mut rig = simulated("simui-output-preserved");
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_post(Some(openchuck_app::PostSelection::parse("linuxcnc")));
+    rig.shell.generate(true);
+    rig.settle();
+    let before = rig.shell.run.last().unwrap().clone();
+    assert!(!before.gcode.is_empty(), "compare actual posted output");
+    let project = rig.shell.app.as_ref().unwrap().project().clone();
+    for bits in 1u8..8 {
+        rig.shell
+            .viewport
+            .set_simulate_show(crate::viewport::SimulateShow {
+                model: bits & 1 != 0,
+                cut_part: bits & 2 != 0,
+                toolpath: bits & 4 != 0,
+            });
+        rig.frame(Vec::new());
+    }
+    rig.shell.viewport.set_cut_part_solid(true);
+    rig.click(at(&rig, "Deviation colours"));
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    rig.click(at(&rig, "Deviation colours"));
+    rig.shell.viewport.set_cut_part_solid(false);
+    rig.click(at(&rig, "1 Finish"));
+    rig.settle();
+    assert_eq!(rig.shell.step, Step::Operations);
+    rig.shell.open_step(Step::Simulate);
+    rig.settle();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &project);
+    // Generate again from the unchanged project, rather than merely check
+    // the retained run's identity. Compare neutral moves, posted bytes and
+    // simulation values from the independent execution of the pipeline.
+    rig.shell.generate(true);
+    rig.settle();
+    let after = rig.shell.run.last().unwrap();
+    assert!(!Arc::ptr_eq(&before, after));
+    assert_eq!(after.toolpath, before.toolpath);
+    assert_eq!(after.gcode, before.gcode);
+    assert_eq!(after.simulation, before.simulation);
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &project);
+    assert_eq!(rig.shell.play.window(), None);
+    assert_eq!(
+        rig.shell.play.pose().unwrap().cursor.done,
+        0,
+        "a new run starts normally"
+    );
+}
+
+#[test]
+fn req_sim_05_req_ui_15_cut_part_opacity_defaults_to_translucent_and_changes_current_and_stale_surfaces()
+ {
+    let mut rig = simulated("simui-opacity");
+    rig.size = egui::vec2(1920.0, 1080.0);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while !rig
+        .shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Stock)
+        .is_some_and(|s| !s.meshes.is_empty())
+    {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        rig.shell
+            .viewport
+            .layer(openchuck_viewport::Layer::Stock)
+            .unwrap()
+            .meshes
+            .iter()
+            .all(|m| m.translucent)
+    );
+    let project = rig.shell.app.as_ref().unwrap().project().clone();
+    rig.click(at(&rig, "Show ⏷"));
+    rig.settle();
+    assert!(
+        rig.shows("Translucent") && rig.shows("Solid"),
+        "opacity choices are beside the Show settings"
+    );
+    rig.click(at(&rig, "Solid"));
+    rig.settle();
+    assert!(
+        rig.shell
+            .viewport
+            .layer(openchuck_viewport::Layer::Stock)
+            .unwrap()
+            .meshes
+            .iter()
+            .all(|m| !m.translucent && m.colour[3].to_bits() == 1.0_f32.to_bits())
+    );
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &project);
+    rig.press(Key::Escape, Modifiers::NONE);
+    let operation = project.operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_parameter(
+            operation,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(0.6)),
+        )
+        .unwrap();
+    rig.settle();
+    rig.click(at(&rig, "Deviation colours"));
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while rig.shell.viewport.bands().is_none() {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let scene = rig
+        .shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Stock)
+        .unwrap();
+    assert!(
+        scene.meshes.len() > 1,
+        "the actual cut stock carries the colour bands"
+    );
+    assert!(
+        scene
+            .meshes
+            .iter()
+            .all(|m| !m.translucent && m.colour[3].to_bits() == 1.0_f32.to_bits())
+    );
+    assert_eq!(count(&rig, super::out_of_date::TITLE), 1);
+    rig.click(at(&rig, "Show ⏷"));
+    rig.settle();
+    rig.click(at(&rig, "Translucent"));
+    rig.settle();
+    assert!(
+        rig.shell
+            .viewport
+            .layer(openchuck_viewport::Layer::Stock)
+            .unwrap()
+            .meshes
+            .iter()
+            .all(|m| m.translucent && m.colour[3] < 1.0)
+    );
+    assert_eq!(count(&rig, super::out_of_date::TITLE), 1);
+}
+
+#[test]
+fn req_nfr_04_req_ui_11_preparation_failure_removes_progress_and_keeps_old_results_stale() {
+    let mut rig = simulated("simui-progress-failed");
+    let run = rig.shell.run.last().unwrap().clone();
+    let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    let app = rig.shell.app.as_mut().unwrap();
+    let mut edited = app.project().operation(operation).unwrap().clone();
+    edited.tool = None;
+    app.execute(Command::Replace(openchuck_app::project::Item::Operation(
+        edited,
+    )))
+    .unwrap();
+    rig.shell.generate(true);
+    rig.settle();
+    assert!(
+        rig.shell.run.last_error().is_some(),
+        "the missing tool failed the real pipeline"
+    );
+    assert!(Arc::ptr_eq(&run, rig.shell.run.last().unwrap()));
+    assert!(!rig.shows("Preparing simulation"));
+    assert_eq!(count(&rig, super::out_of_date::TITLE), 1);
+    let app = rig.shell.app.as_ref().unwrap();
+    assert!(
+        !app.export_checks(Some(&run), None, rig.shell.run.last_error())
+            .can_write()
+    );
+}
+
+#[test]
+fn req_nfr_12_req_nfr_04_skipped_stock_progress_does_not_claim_to_simulate() {
+    let mut rig = simulated("simui-skip-progress");
+    rig.shell.tree_action(TreeAction::Command(Box::new(
+        Command::SetSkipStockSimulation(true),
+    )));
+    let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell
+        .app
+        .as_mut()
+        .unwrap()
+        .set_parameter(
+            operation,
+            "stepover",
+            Some(openchuck_app::project::ParameterValue::Number(0.6)),
+        )
+        .unwrap();
+    rig.settle();
+    rig.shell.generate(false);
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut seen = false;
+    while rig.shell.run.is_running() {
+        rig.frame(Vec::new());
+        if rig.shell.run.is_running() {
+            assert!(rig.shows("Preparing toolpaths"));
+            assert!(!rig.shows("Preparing simulation"));
+            seen = true;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(seen);
+    rig.settle();
+    assert!(rig.shell.run.last().unwrap().simulation.is_none());
+    assert!(!rig.shows("Preparing toolpaths"));
 }
 
 #[test]
@@ -82,7 +600,8 @@ fn req_sim_05_req_sim_07_the_results_inspector_shows_the_numbers_and_the_resolut
     rig.shell.results.apply(app, 0.001);
     assert!(rig.shell.results.error.is_some());
     assert!((app.project().simulation().cell.0 - 0.05).abs() < 1e-12);
-    rig.frame(Vec::new());
+    // The viewport banner gets its layout frame before it is painted.
+    rig.settle();
     assert!(rig.shows("The simulation settings have changed since this simulation."));
     assert!(rig.shows("times the time"));
 }
@@ -333,6 +852,9 @@ fn req_ui_15_req_sim_02_the_simulate_choices_are_remembered_and_the_window_is_no
     rig.shell.settings_file = Some(file.clone());
     rig.dirs.push(config.clone());
     assert!(rig.shell.play.turns_part_with_a(), "on by default");
+    assert!(!rig.shell.viewport.cut_part_solid());
+    let before = rig.shell.app.as_ref().unwrap().project().clone();
+    rig.shell.viewport.set_cut_part_solid(true);
     rig.shell.play.set_turn_part_with_a(false);
     rig.shell.play.set_hide_outside_window(true);
     rig.shell
@@ -351,6 +873,8 @@ fn req_ui_15_req_sim_02_the_simulate_choices_are_remembered_and_the_window_is_no
     rig.frame(Vec::new());
     rig.shell.save_settings();
     let kept = file.load().settings.simulate;
+    assert!(kept.cut_part_solid);
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &before);
     assert!(!kept.turn_part_with_a && kept.hide_outside_window);
     assert!(kept.show_model && !kept.show_cut_part && kept.show_toolpath);
     // A restart starts from them.
@@ -358,6 +882,7 @@ fn req_ui_15_req_sim_02_the_simulate_choices_are_remembered_and_the_window_is_no
     assert!(!shell.play.turns_part_with_a());
     assert!(shell.play.hides_outside_window());
     assert!(shell.viewport.simulate_show().toolpath);
+    assert!(shell.viewport.cut_part_solid());
     // The window is not remembered: leaving Simulate lifts it.
     assert!(rig.shell.play.window().is_some());
     rig.shell.open_step(Step::Operations);
@@ -432,6 +957,67 @@ fn count(rig: &Rig, needle: &str) -> usize {
     rig.texts().iter().filter(|(t, _)| t == needle).count()
 }
 
+#[test]
+fn req_sim_05_req_nfr_12_deviation_colours_can_be_hidden_on_current_and_stale_results() {
+    let mut rig = simulated("simui-colours");
+    // Playback data and the cut-part checkpoints are separate jobs. Wait
+    // for the stock mesh this test reads, not merely the timeline.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while !rig
+        .shell
+        .viewport
+        .layer(openchuck_viewport::Layer::Stock)
+        .is_some_and(|s| !s.meshes.is_empty())
+    {
+        rig.frame(Vec::new());
+        assert!(Instant::now() < deadline, "the cut part was never ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    for stale in [false, true] {
+        if stale {
+            let app = rig.shell.app.as_mut().unwrap();
+            let operation = app.project().operations()[0].id;
+            app.set_parameter(
+                operation,
+                "stepover",
+                Some(openchuck_app::project::ParameterValue::Number(0.6)),
+            )
+            .unwrap();
+            rig.settle();
+        }
+        assert!(
+            rig.shows("Deviation colours"),
+            "display choice stays accessible"
+        );
+        rig.click(at(&rig, "Deviation colours"));
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while rig.shell.viewport.bands().is_none() {
+            rig.frame(Vec::new());
+            assert!(
+                Instant::now() < deadline,
+                "deviation colours did not appear"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        rig.settle();
+        assert_eq!(count(&rig, super::out_of_date::TITLE), usize::from(stale));
+        rig.click(at(&rig, "Deviation colours"));
+        rig.frame(Vec::new());
+        assert!(rig.shell.viewport.bands().is_none());
+        assert_eq!(count(&rig, super::out_of_date::TITLE), usize::from(stale));
+        let stock = rig.shell.viewport.layer(openchuck_viewport::Layer::Stock);
+        assert!(
+            stock.is_some_and(|s| !s.meshes.is_empty()),
+            "the plain cut part stays drawn"
+        );
+        if stale {
+            let app = rig.shell.app.as_ref().unwrap();
+            let run = rig.shell.run.last().unwrap();
+            assert!(!app.export_checks(Some(run), None, None).can_write());
+        }
+    }
+}
+
 /// Draws until the run started is done and its playback is ready.
 fn until_simulated_again(rig: &mut Rig) {
     let deadline = Instant::now() + Duration::from_secs(120);
@@ -464,10 +1050,10 @@ fn req_nfr_12_req_ui_11_req_sim_04_a_changed_parameter_marks_the_simulation_out_
         )
         .unwrap();
     rig.settle();
-    // The view, the Playback tab and the results inspector.
+    // Issue 297: one actionable message, on the viewport only.
     assert_eq!(
         count(&rig, super::out_of_date::TITLE),
-        3,
+        1,
         "{:?}",
         rig.texts()
     );
@@ -475,10 +1061,8 @@ fn req_nfr_12_req_ui_11_req_sim_04_a_changed_parameter_marks_the_simulation_out_
         "Operation 'Finish' has changed since this simulation. Simulate again to see the effect."
     ));
     assert!(rig.shows("Results of the out-of-date simulation:"));
-    let label = rig.shell.overview.primary(Step::Simulate).label;
-    assert_eq!(label, "Generate and simulate op 1");
-    // Three banner buttons and the footer's primary.
-    assert_eq!(count(&rig, &label), 4);
+    let label = "Run simulation again";
+    assert_eq!(count(&rig, label), 1);
     assert!(rig.shell.play.has_run());
     for text in ["Go to move", "Speed", "Whole program"] {
         assert!(rig.shows(text), "{text}");
@@ -486,13 +1070,13 @@ fn req_nfr_12_req_ui_11_req_sim_04_a_changed_parameter_marks_the_simulation_out_
     let (drawn, asked) = dock_heights(&rig);
     assert!((drawn - asked).abs() < 0.5, "{drawn} of {asked}");
 
-    // Simulating again from the dock's banner brings the result up to date.
+    // The viewport action brings the result up to date.
     rig.shell.dock_tab = DockTab::Playback;
     rig.settle();
     let at = rig
         .text_rects()
         .into_iter()
-        .filter(|(t, _)| *t == label)
+        .filter(|(t, _)| t == label)
         .map(|(_, r)| r)
         .max_by(|a, b| a.top().total_cmp(&b.top()))
         .unwrap();
@@ -540,7 +1124,7 @@ fn req_nfr_12_req_ui_11_turning_off_an_operation_in_simulate_offers_to_simulate_
     assert!(!rig.shell.play.has_run(), "decision 0172 item 3");
     assert_eq!(
         count(&rig, super::out_of_date::TITLE),
-        3,
+        1,
         "{:?}",
         rig.texts()
     );
@@ -576,8 +1160,8 @@ fn req_nfr_12_req_ui_11_turning_off_an_operation_in_simulate_offers_to_simulate_
     )));
     assert_eq!(
         count(&rig, "Generate toolpaths"),
-        4,
-        "three banners and the footer"
+        2,
+        "one viewport action and the footer; stock simulation stays skipped"
     );
     skip(&mut rig, false);
 
@@ -652,6 +1236,199 @@ fn req_ui_16_req_sim_04_the_playback_tab_keeps_its_place_while_the_simulation_ru
     assert_eq!(top(&rig), Some(before));
 }
 
+#[test]
+fn req_ui_15_req_ui_16_simulation_choices_are_adjacent_without_a_labelled_group() {
+    let mut rig = simulated("simui-grouping");
+    rig.size = egui::vec2(1920.0, 1080.0);
+    rig.settle();
+    let texts = rig.text_rects();
+    let rect = |text| texts.iter().find(|(t, _)| t == text).unwrap().1;
+    let skip = rect("Skip stock simulation");
+    let turn = rect("Turn part with A");
+    assert!(
+        (skip.center().y - turn.center().y).abs() < 1.0,
+        "both choices share one row"
+    );
+    assert!(
+        turn.left() > skip.right(),
+        "turn choice follows the skip choice"
+    );
+    let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
+        .unwrap()
+        .outer_rect;
+    assert!(dock.contains_rect(turn));
+
+    // The regrouped controls must remain independently usable, including
+    // the tool choice on the denser speed/display row.
+    let project = rig.shell.app.as_ref().unwrap().project().clone();
+    assert!(rig.shell.play.turns_part_with_a());
+    rig.click(turn.center());
+    rig.settle();
+    assert!(!rig.shell.play.turns_part_with_a());
+    assert!(!rig.shell.settings.simulate.turn_part_with_a);
+    assert!(
+        !rig.shell
+            .viewport
+            .layer(Layer::Tool)
+            .unwrap()
+            .meshes
+            .is_empty()
+    );
+    rig.click(at(&rig, "Tool"));
+    rig.settle();
+    assert!(
+        rig.shell
+            .viewport
+            .layer(Layer::Tool)
+            .unwrap()
+            .meshes
+            .is_empty()
+    );
+    rig.click(at(&rig, "Tool"));
+    rig.settle();
+    assert!(
+        !rig.shell
+            .viewport
+            .layer(Layer::Tool)
+            .unwrap()
+            .meshes
+            .is_empty()
+    );
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &project);
+
+    rig.click(at(&rig, "Skip stock simulation"));
+    rig.settle();
+    assert!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .project()
+            .skip_stock_simulation()
+    );
+    assert!(!rig.shell.play.turns_part_with_a());
+    rig.shell.undo();
+    rig.settle();
+    assert_eq!(rig.shell.app.as_ref().unwrap().project(), &project);
+    assert!(!rig.shell.settings.simulate.turn_part_with_a);
+}
+
+#[test]
+fn req_nfr_04_req_ui_16_req_sim_04_real_preparation_progress_initial_and_regeneration() {
+    let mut rig = Rig::cube("simui-progress", None);
+    rig.size = egui::vec2(1920.0, 1080.0);
+    // Operations must have toolpaths before Simulate is available. Make
+    // those without stock first, then exercise the first stock simulation.
+    rig.shell.tree_action(TreeAction::Command(Box::new(
+        Command::SetSkipStockSimulation(true),
+    )));
+    rig.shell.generate(false);
+    rig.settle();
+    rig.shell.tree_action(TreeAction::Command(Box::new(
+        Command::SetSkipStockSimulation(false),
+    )));
+    rig.settle();
+    rig.shell.open_step(Step::Simulate);
+    assert_eq!(rig.shell.step, Step::Simulate);
+    for regeneration in [false, true] {
+        if regeneration {
+            let operation = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+            rig.shell
+                .app
+                .as_mut()
+                .unwrap()
+                .set_parameter(
+                    operation,
+                    "stepover",
+                    Some(openchuck_app::project::ParameterValue::Number(0.6)),
+                )
+                .unwrap();
+            rig.settle();
+        }
+        rig.shell.generate(true);
+        let deadline = Instant::now() + Duration::from_secs(120);
+        let mut saw_progress = false;
+        let mut saw_numeric = false;
+        while rig.shell.run.is_running() {
+            rig.frame(Vec::new());
+            if rig.shell.run.is_running() {
+                assert!(
+                    rig.shows("Preparing simulation"),
+                    "progress is in Playback, initial/regeneration={regeneration}, step={:?}, tab={:?}, texts={:?}",
+                    rig.shell.step,
+                    rig.shell.dock_tab,
+                    rig.texts()
+                );
+                saw_progress = true;
+                if let Some(entry) = rig
+                    .shell
+                    .jobs
+                    .running()
+                    .iter()
+                    .find(|e| Some(e.id) == rig.shell.run.job_id())
+                    && let Some(percent) = entry.percent()
+                {
+                    assert!(
+                        rig.shows(&format!("Preparing simulation · {percent} %")),
+                        "display uses the pipeline's actual progress"
+                    );
+                    saw_numeric = true;
+                }
+                let dock = egui::PanelState::load(&rig.ctx, egui::Id::new("dock"))
+                    .unwrap()
+                    .outer_rect;
+                let progress = rig
+                    .text_rects()
+                    .into_iter()
+                    .find(|(t, _)| t.starts_with("Preparing simulation"))
+                    .unwrap()
+                    .1;
+                assert!(
+                    dock.contains_rect(progress),
+                    "progress stays inside Playback"
+                );
+                let position = rig
+                    .painted()
+                    .into_iter()
+                    .filter(|(t, whole, _)| {
+                        t.is_none()
+                            && dock.contains_rect(*whole)
+                            && (whole.height() - 26.0).abs() < 1.0
+                            && whole.width() > 100.0
+                    })
+                    .map(|(_, whole, _)| whole)
+                    .max_by(|a, b| a.width().total_cmp(&b.width()))
+                    .unwrap();
+                assert!(
+                    progress.top() >= position.bottom()
+                        && progress.bottom() < position.bottom() + 28.0,
+                    "progress directly follows the position bar"
+                );
+                let (drawn, asked) = dock_heights(&rig);
+                assert!((drawn - asked).abs() < 0.5);
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            saw_progress && saw_numeric,
+            "the real run reported preparation progress: seen={saw_progress}, numeric={saw_numeric}, regeneration={regeneration}"
+        );
+        loop {
+            rig.frame(Vec::new());
+            if rig.shell.play.pose().is_some()
+                && !rig.shows("Preparing simulation")
+                && !rig.shows("Preparing cut part")
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!rig.shows("Preparing simulation"), "ready removes progress");
+    }
+}
+
 /// Checks the Playback tab as a whole (issue 262): the strip that does not
 /// scroll (the transport row, "Skip stock simulation" and the timeline) is
 /// wholly in the dock, and so is every row in `rows`; no two texts overlap;
@@ -699,20 +1476,10 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
         !timeline.is_empty(),
         "{what}: the timeline is not wholly in the dock"
     );
-    // The out-of-date banner comes under the controls, never over them.
-    if let Some((_, title)) = texts.iter().find(|(t, _)| *t == super::out_of_date::TITLE) {
-        let controls = texts
-            .iter()
-            .filter(|(t, _)| ["⏮", "⏭", "Skip stock simulation"].contains(t))
-            .map(|(_, r)| *r)
-            .chain(timeline.iter().copied());
-        for control in controls {
-            assert!(
-                title.top() >= control.bottom() - 0.5,
-                "{what}: the banner {title:?} is above a control {control:?}"
-            );
-        }
-    }
+    assert!(
+        !texts.iter().any(|(t, _)| *t == super::out_of_date::TITLE),
+        "{what}: the dock must not duplicate the viewport stale message"
+    );
     for (i, (a, ra)) in texts.iter().enumerate() {
         for (b, rb) in texts.iter().skip(i + 1) {
             assert!(
@@ -744,29 +1511,98 @@ fn check_dock(rig: &Rig, rows: &[&str], what: &str) {
 
 #[test]
 fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
-    // Issue 262 (seen maximised at 1920 x 1080): at the default dock height,
-    // at 100% and 120%, every playback control fits without scrolling; with
-    // the out-of-date banner (issue 260) or in a shorter dock the transport
-    // and the timeline stay in their strip and the rest scrolls, its bar in a
-    // strip of its own; a playback window (issue 205) changes nothing. The
-    // banner comes under the controls at every dock height, and the dock
-    // never grows past the height it was given.
+    // Fixed physical windows at 100% and 120%: the expanded dock keeps its
+    // bounds, progress never covers controls, and the viewport stale message
+    // is not repeated here. Below the supported logical minimum, first use
+    // the existing small-window rule and reopen the dock as the user can.
     let all = [
         "Speed",
         "Go to move",
         "Turn part with A",
-        "Colour the part by deviation",
         "Hide path outside window",
     ];
-    for zoom in [1.0, 1.2] {
-        let mut rig = simulated(&format!("sim-dock-layout-{}", (zoom * 10.0) as u32));
+    for (width, height, zoom) in [
+        (1366.0, 768.0, 1.0),
+        (1366.0, 768.0, 1.2),
+        (1440.0, 900.0, 1.0),
+        (1440.0, 900.0, 1.2),
+        (1920.0, 1080.0, 1.0),
+        (1920.0, 1080.0, 1.2),
+    ] {
+        let mut rig = simulated(&format!("sim-dock-layout-{width}-{}", (zoom * 10.0) as u32));
         crate::theme::install_style(&rig.ctx, crate::theme::Theme::Dark);
-        rig.size = egui::vec2(1920.0, 1080.0);
+        // RawInput uses logical points. Keep the physical window fixed as
+        // scaling increases, just as the native integration does.
+        rig.size = egui::vec2(width / zoom, height / zoom);
         rig.ctx.set_zoom_factor(zoom);
         rig.shell.dock_tab = DockTab::Playback;
         rig.settle();
+        if rig.size.x < 1366.0 || rig.size.y < 768.0 {
+            assert!(rig.shell.collapsed(super::frame::Region::Dock));
+            rig.press(egui::Key::Num3, egui::Modifiers::COMMAND);
+            rig.settle();
+            assert!(!rig.shell.collapsed(super::frame::Region::Dock));
+        }
         assert!((rig.shell.settings.dock.size - 260.0).abs() < 1e-6);
         check_dock(&rig, &all, &format!("{zoom}: current"));
+
+        let ready = |rig: &mut Rig| {
+            let deadline = Instant::now() + Duration::from_secs(120);
+            while rig
+                .shell
+                .play
+                .preparation_progress(&rig.shell.jobs, None, false)
+                .is_some()
+            {
+                rig.frame(Vec::new());
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            rig.settle();
+        };
+        ready(&mut rig);
+        check_dock(
+            &rig,
+            &all,
+            &format!("{width}×{height}@{zoom}: ready without progress"),
+        );
+        let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+        rig.shell
+            .app
+            .as_mut()
+            .unwrap()
+            .set_parameter(
+                op,
+                "stepover",
+                Some(openchuck_app::project::ParameterValue::Number(0.7)),
+            )
+            .unwrap();
+        rig.settle();
+        rig.shell.generate(true);
+        let deadline = Instant::now() + Duration::from_secs(120);
+        let mut preparing = false;
+        while rig.shell.run.is_running() {
+            rig.frame(Vec::new());
+            if rig.shell.run.is_running() {
+                preparing = true;
+                assert!(rig.shows("Preparing simulation"));
+                check_dock(
+                    &rig,
+                    &all,
+                    &format!("{width}×{height}@{zoom}: stale results and pipeline progress"),
+                );
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(preparing);
+        ready(&mut rig);
+        assert!(!rig.shows("Preparing simulation"));
+        check_dock(
+            &rig,
+            &all,
+            &format!("{width}×{height}@{zoom}: regenerated without progress"),
+        );
 
         rig.shell
             .play
@@ -790,15 +1626,9 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
             .unwrap();
         rig.settle();
         assert!(rig.shows(super::out_of_date::TITLE));
-        check_dock(
-            &rig,
-            &[super::out_of_date::TITLE],
-            &format!("{zoom}: out of date"),
-        );
-        // The owner's feedback on issue 260: in a shorter dock the banner
-        // neither covers a control nor pushes one out of the dock; it
-        // scrolls under them. Down to the shortest dock, the dock keeps its
-        // height and its controls stay in it.
+        check_dock(&rig, &all, &format!("{zoom}: out of date"));
+        // Down to the shortest dock, the dock keeps its height and its
+        // controls remain accessible through the existing scroll area.
         for dock in [200.0, 170.0] {
             rig.shell.settings.dock.size = dock;
             rig.settle();
@@ -821,10 +1651,8 @@ fn req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state() {
         rig.settle();
         assert!(!rig.shows(super::out_of_date::TITLE));
         check_dock(&rig, &[], &format!("{zoom}: short dock"));
-        assert!(
-            !rig.bar_rects().is_empty(),
-            "{zoom}: the rest scrolls, with a bar to say so"
-        );
+        // The denser SIMUI layout may fit this height. The shortest case
+        // above still requires and checks an accessible scroll bar.
     }
 }
 
@@ -835,8 +1663,7 @@ fn req_sim_15_a_band_unticked_or_a_range_set_hides_its_deviation_and_says_so() {
     // and the histogram follow, the views say "Some bands are hidden", and
     // the worst values and counts stay those of the whole part.
     let mut rig = simulated("sim-bands");
-    scroll_dock_to(&mut rig, "Colour the part by deviation");
-    let colour = at(&rig, "Colour the part by deviation");
+    let colour = at(&rig, "Deviation colours");
     rig.click(colour);
     let deadline = Instant::now() + Duration::from_secs(120);
     while rig.shell.viewport.bands().is_none() {

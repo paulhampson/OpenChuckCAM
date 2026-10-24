@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! A Simulate result that no longer matches the project (issue 260; NFR-12,
 //! UI-11; decision record 0192). While the latest run is out of date, the
-//! view, the dock and the results inspector each say so in one banner, with
+//! viewport carries the single actionable banner (issue 297), with
 //! the stale mark as its shape, the reason in plain words and the Simulate
-//! step's primary action as its button, so a stale result never looks
+//! step's guarded primary action as its button, so a stale result never looks
 //! current and the user can simulate again from where they are. The test is
 //! the one the export check uses ([`openchuck_app::simulation_out_of_date`]).
 
@@ -76,8 +76,7 @@ impl Shell {
         self.banner().is_some_and(|banner| banner.show(ui))
     }
 
-    /// What the banner says while the result is out of date, so it can be
-    /// drawn while a panel of the shell is borrowed.
+    /// What the viewport banner says while the result is out of date.
     pub(super) fn banner(&self) -> Option<Banner> {
         let reason = self.out_of_date.reason()?.to_owned();
         let primary = self.overview.primary(Step::Simulate);
@@ -96,7 +95,11 @@ impl Shell {
         );
         Some(Banner {
             reason,
-            label: primary.label,
+            label: if toolpaths_only {
+                primary.label
+            } else {
+                "Run simulation again".to_owned()
+            },
             blocked: primary.blocked,
             runs,
             toolpaths_only,

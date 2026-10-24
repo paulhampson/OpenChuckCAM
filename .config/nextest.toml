@@ -166,6 +166,15 @@ filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_nfr_06_simultaneo
 priority = 79
 
 [profile.coverage]
+# SIMUI whole-dock matrix: 62.592 s uninstrumented in the full UI run
+# (24 Oct 2026, four-core cloud quota, two test threads; decision 0238).
+# A later full UI run alongside app coverage took 116.400 s for this matrix.
+# Corrected fixed-physical-size matrix: 107.678 s alongside UI coverage.
+# Existing CLI blisk_helical_2 end-to-end: 78.996 s alongside UI coverage;
+# existing cone_held_tabs end-to-end: 131.726 s in the same run.
+# Retain default execution and select both in the nightly long profile.
+# Existing app workholding both-direction roughing regression: 92.703 s
+# in the same full uninstrumented app run; retain default/nightly execution.
 
 # TOOLLIB2 validation (24 Oct 2026): existing machining regressions exceeded
 # a minute uninstrumented in the contended four-test run. Default still runs
@@ -189,6 +198,10 @@ priority = 79
 # req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh: 66.114 s uninstrumented in the full app/UI run.
 default-filter = '''not (
     test(~finest_setting_is_within)
+  | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
@@ -214,15 +227,21 @@ default-filter = '''not (
   | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
   | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
   | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
-  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
   | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
 )'''
 
 [profile.long]
+# SIMUI whole-dock matrix: 62.592 s, matching the coverage exclusion above.
+# Existing app both-direction roughing regression: 92.703 s, also above.
+# Existing CLI blisk_helical_2 / cone_held_tabs end-to-end: 78.996 / 131.726 s.
 # 67.238 s uninstrumented; see the coverage profile above.
 default-filter = '''
     test(~finest_setting_is_within)
+  | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
+  | (binary_id(=openchuck-cli::e2e) & test(=cone_held_tabs::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
   | test(~simulation_is_identical_at_1_2_and_n_threads)
   | test(~finer_resolution_lowers_the_error)
@@ -248,7 +267,6 @@ default-filter = '''
   | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
   | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
   | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
-  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
   | test(=req_nfr_06_req_gc_07_walls_are_merged_identically_at_1_2_and_n_threads)
 '''

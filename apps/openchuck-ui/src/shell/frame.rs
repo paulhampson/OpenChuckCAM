@@ -139,6 +139,15 @@ pub(crate) fn primary_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> e
 }
 
 impl Shell {
+    /// Reveal the operation inspector after guarded Simulate-row navigation,
+    /// including when the small-window rule would otherwise close it again.
+    pub(super) fn reveal_operation_inspector(&mut self) {
+        self.settings.inspector.collapsed = false;
+        self.auto_collapsed.inspector = false;
+        self.auto_collapsed.inspector_kept_open = true;
+        self.settings_touched();
+    }
+
     /// Collapses or opens `region` (Ctrl 1, 2 and 3; the chevrons).
     pub(super) fn toggle_region(&mut self, region: Region) {
         if region == Region::Inspector && self.defer(move |s| s.toggle_region(region)) {
