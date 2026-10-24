@@ -372,6 +372,8 @@ Focused coverage covers the timing guard, opt-in/opt-out, callback, shared assem
 
 A five-run cylinder/helical smoke (`--only m3 --part cylinder --forms b --ops helical --runs 5 --threads 1 --quick --skip-probe --fine 0.01 --angular 0.02`) completed successfully and printed all three new columns and both job medians. It overlapped M1/M4 validation and is not performance evidence. Its raw output is [stage-timing smoke evidence](0211-stage-timing-smoke.txt).
 
+The first isolated full-sequence attempt exposed missing fitting callbacks in axial/indexed finishing: their private quiet context also suppressed timing. It was stopped after one complete timed run, with no accepted samples. A private adapter now preserves timing opt-in/callbacks while suppressing inner progress. Red/green regression checks both strategies at one/four threads for unchanged paths and progress, and all 18 axial/indexed tests pass. Every added forwarding line is covered by the focused regression. The release smoke reports positive fitting/assembly for both; its single run correctly cannot supply medians. [Raw validation and limitations](0211-quiet-pass-timing-evidence.txt). All six five-run batches restart on the corrected integrated source.
+
 The isolated pencil measurements above remain measurements of the previous harness. Full-sequence benchmarks below must use the instrumented release harness with no concurrent CPU workload; fitting/drop columns must not be subtracted from wall time or summed to invent an exclusive breakdown.
 
 ## Integration validation after the main update (24 Oct 2026)

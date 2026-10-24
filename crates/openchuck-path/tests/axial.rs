@@ -668,6 +668,72 @@ impl openchuck_types::job::ProgressSink for Reports {
 }
 
 #[test]
+fn req_nfr_04_req_ui_09_req_nfr_06_quiet_passes_keep_timings_without_changing_progress_or_paths() {
+    use openchuck_path::IndexedFinishing;
+    use openchuck_types::job::{CancelToken, JobContext, Progress, ProgressSink};
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct TimedReports {
+        enabled: bool,
+        progress: Reports,
+        stages: Mutex<Vec<String>>,
+    }
+    impl ProgressSink for TimedReports {
+        fn report(&self, progress: Progress) {
+            self.progress.report(progress);
+        }
+        fn wants_timings(&self) -> bool {
+            self.enabled
+        }
+        fn timing(&self, stage: &str, _: Duration) {
+            self.stages.lock().unwrap().push(stage.to_owned());
+        }
+    }
+
+    let part = Cylinder {
+        radius: 5.0,
+        length: 2.0,
+    };
+    let f = fixture(&part, 3, 90, &ball(2.0));
+    let v = values(2.0, &[]);
+    for strategy in [&AxialFinishing as &dyn Strategy, &IndexedFinishing] {
+        for threads in [1, 4] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            pool.install(|| {
+                let cancel = CancelToken::new();
+                let off = TimedReports::default();
+                let on = TimedReports {
+                    enabled: true,
+                    ..TimedReports::default()
+                };
+                let baseline =
+                    generate(strategy, &f.input(), &v, &JobContext::new(&cancel, &off)).unwrap();
+                let timed =
+                    generate(strategy, &f.input(), &v, &JobContext::new(&cancel, &on)).unwrap();
+                assert_eq!(baseline, timed);
+                assert_eq!(
+                    off.progress.0.into_inner().unwrap(),
+                    on.progress.0.into_inner().unwrap()
+                );
+                assert!(off.stages.into_inner().unwrap().is_empty());
+                let stages = on.stages.into_inner().unwrap();
+                assert!(
+                    stages.iter().any(|s| s == "fitting"),
+                    "{} at {threads} threads: {stages:?}",
+                    strategy.name()
+                );
+                assert!(stages.iter().any(|s| s == "assembly"));
+            });
+        }
+    }
+}
+
+#[test]
 fn req_ui_09_axial_finishing_counts_its_passes_with_one_total_that_only_goes_up() {
     // Issue #248: each pass reported its own counts (its points, then its
     // pieces), so the progress shown jumped between totals as the passes

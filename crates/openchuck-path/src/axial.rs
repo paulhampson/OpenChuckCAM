@@ -11,8 +11,9 @@
 //! helical finishing ([`crate::wrap_fit`]).
 
 use std::sync::Mutex;
+use std::time::Duration;
 
-use openchuck_types::job::{JobContext, NoProgress};
+use openchuck_types::job::{JobContext, Progress, ProgressSink};
 use openchuck_types::tool::profile::RevolvedProfile;
 use openchuck_types::units::Degrees;
 
@@ -33,6 +34,21 @@ use crate::wrap_fit::{
 /// Axial finishing of the whole model, or of a region.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AxialFinishing;
+
+/// Keep one outer progress count while forwarding the host's optional timings.
+struct QuietPassProgress<'a>(&'a dyn ProgressSink);
+
+impl ProgressSink for QuietPassProgress<'_> {
+    fn report(&self, _: Progress) {}
+
+    fn wants_timings(&self) -> bool {
+        self.0.wants_timings()
+    }
+
+    fn timing(&self, stage: &str, elapsed: Duration) {
+        self.0.timing(stage, elapsed);
+    }
+}
 
 /// The registry name of [`AxialFinishing`].
 pub const NAME: &str = "axial_finishing";
@@ -362,7 +378,8 @@ impl<'a> AlongX<'a> {
         context.report(&stage, 0, Some(total));
         // The passes report nothing of their own: their counts, from many
         // threads at once, would replace each other in the progress shown.
-        let quiet = JobContext::new(context.cancel, &NoProgress);
+        let diagnostics = QuietPassProgress(context.progress);
+        let quiet = JobContext::new(context.cancel, &diagnostics);
         let done = Mutex::new(0_u64);
         let indexed: Vec<(usize, f64)> = angles.iter().copied().enumerate().collect();
         let fitted = parallel::map_each_in_order(&indexed, |&(i, a)| {
