@@ -29,7 +29,7 @@
 //!
 //! ```text
 //! cargo run --release -p openchuck-app --features kernel-tests --example step_accuracy -- \
-//!     [--stl OWNER_BLISK_STL] [--runs N] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
+//!     [--stl OWNER_BLISK_STL] [--runs N] [--skip-probe] [--only m1,m2,m3,m4] [--ops roughing,helical,...] \
 //!     [--quick] [--parts cylinder,blisk,...] [--deflections 0.01,0.001] [--angular RAD] [--fine MM] [--forms a,b,c] [--threads 1,all] [--sim-tilt DEG] [--sim-step DEG] [--part NAME] [--keep DIR]
 //! ```
 //!
@@ -51,6 +51,7 @@
 mod checks;
 mod measure;
 mod posting;
+mod timing;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -115,6 +116,7 @@ fn repo(path: &str) -> PathBuf {
 struct Args {
     stl: Option<PathBuf>,
     runs: usize,
+    skip_probe: bool,
     only: Vec<String>,
     ops: Vec<String>,
     quick: bool,
@@ -134,6 +136,7 @@ fn args() -> Result<Args, Error> {
     let mut out = Args {
         stl: None,
         runs: 5,
+        skip_probe: false,
         only: vec!["m1".into(), "m2".into(), "m3".into(), "m4".into()],
         ops: Vec::new(),
         quick: false,
@@ -181,6 +184,7 @@ fn args() -> Result<Args, Error> {
                     .collect();
             }
             "--quick" => out.quick = true,
+            "--skip-probe" => out.skip_probe = true,
             "--parts" => {
                 out.parts = it
                     .next()
@@ -224,6 +228,9 @@ fn args() -> Result<Args, Error> {
             "--fine" => out.fine = Some(it.next().ok_or("--fine MM")?.parse()?),
             other => return Err(format!("unknown argument {other}").into()),
         }
+    }
+    if out.runs == 0 {
+        return Err("--runs must be positive".into());
     }
     Ok(out)
 }
@@ -339,8 +346,13 @@ fn main() -> Result<(), Error> {
     }
     println!("form c deflection: {fine} mm and {} rad", args.angular);
 
-    let exact = Cloud::of_faces(&placed_b, SPACING);
-    println!("exact samples: {} points, {SPACING} mm apart", exact.len());
+    let exact = wants("m2").then(|| Cloud::of_faces(&placed_b, SPACING));
+    if let Some(exact) = &exact {
+        println!(
+            "exact samples: {} points; nominal UV-grid target {SPACING} mm (physical coverage bound not established)",
+            exact.len()
+        );
+    }
     let job = Job {
         project: app.project(),
         registry: app.strategies(),
@@ -359,7 +371,8 @@ fn main() -> Result<(), Error> {
         .iter()
         .filter(|(name, _)| name.chars().next().is_some_and(|c| args.forms.contains(&c)))
     {
-        let tessellation = Cloud::of_mesh(form.surface().tessellation(), SPACING);
+        let tessellation =
+            wants("m2").then(|| Cloud::of_mesh(form.surface().tessellation(), SPACING));
         println!(
             "\n## form {name}: {} triangles",
             form.surface().tessellation().triangles.len()
@@ -390,7 +403,13 @@ fn main() -> Result<(), Error> {
                             continue;
                         }
                     };
-                    let m = m2(&job, op, group, &exact, &tessellation)?;
+                    let m = m2(
+                        &job,
+                        op,
+                        group,
+                        exact.as_ref().ok_or("missing M2 face cloud")?,
+                        tessellation.as_ref().ok_or("missing M2 mesh cloud")?,
+                    )?;
                     println!(
                         "{} | {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {}",
                         op.label,
@@ -408,7 +427,7 @@ fn main() -> Result<(), Error> {
             if wants("m3") {
                 println!("### M3: time (median of {} runs)", args.runs);
                 println!(
-                    "operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s"
+                    "operation | threads | generate s | drops | drop s (summed over threads) | exact queries | simulate s | status"
                 );
                 for &threads in &args.threads {
                     // Each run is printed as it ends, so a run cut short
@@ -416,9 +435,9 @@ fn main() -> Result<(), Error> {
                     let mut runs: Vec<Run> = Vec::new();
                     for k in 0..args.runs {
                         let run = job.run(form, threads)?;
-                        for (op, t) in ops.iter().zip(&run.timings) {
+                        for ((op, t), result) in ops.iter().zip(&run.timings).zip(&run.groups) {
                             println!(
-                                "run {} | {} | {} | {:.2} | {} | {:.2} | {} | {:.2}",
+                                "run {} | {} | {} | {:.6} | {} | {:.6} | {} | {:.6} | {}",
                                 k + 1,
                                 op.label,
                                 threads_name(threads, cores),
@@ -427,22 +446,34 @@ fn main() -> Result<(), Error> {
                                 t.drop_time.as_secs_f64(),
                                 t.exact_queries,
                                 t.simulate.as_secs_f64(),
+                                if result.is_ok() {
+                                    "success"
+                                } else {
+                                    "REFUSED (time to refusal)"
+                                },
                             );
                         }
                         runs.push(run);
                     }
                     for (i, op) in ops.iter().enumerate() {
                         let pick = |f: &dyn Fn(&Timing) -> f64| {
-                            median(
-                                runs.iter()
-                                    .filter_map(|r| r.timings.get(i))
-                                    .map(f)
-                                    .collect(),
+                            timing::successful_median(
+                                &runs
+                                    .iter()
+                                    .map(|r| {
+                                        r.groups
+                                            .get(i)
+                                            .filter(|g| g.is_ok())
+                                            .and_then(|_| r.timings.get(i))
+                                            .map(f)
+                                    })
+                                    .collect::<Vec<_>>(),
                             )
+                            .map_or_else(|| "unavailable".to_owned(), |v| format!("{v:.6}"))
                         };
                         let t = runs.first().and_then(|r| r.timings.get(i));
                         println!(
-                            "{} | {} | {:.2} | {} | {:.2} | {} | {:.2}",
+                            "{} | {} | {} | {} | {} | {} | {}",
                             op.label,
                             threads_name(threads, cores),
                             pick(&|t| t.generate.as_secs_f64()),
@@ -452,8 +483,26 @@ fn main() -> Result<(), Error> {
                             pick(&|t| t.simulate.as_secs_f64()),
                         );
                     }
+                    let totals: Vec<Option<f64>> = runs
+                        .iter()
+                        .map(|r| {
+                            (!r.groups.is_empty() && r.groups.iter().all(Result::is_ok))
+                                .then(|| r.timings.iter().map(|t| t.generate.as_secs_f64()).sum())
+                        })
+                        .collect();
+                    println!(
+                        "job generation median | {} | {}",
+                        threads_name(threads, cores),
+                        timing::successful_median(&totals).map_or_else(
+                            || "unavailable: requires at least five complete successful runs"
+                                .to_owned(),
+                            |v| format!("{v:.6} s")
+                        )
+                    );
                 }
-                if let Form::Brep(surface, _) = form {
+                if let Form::Brep(surface, _) = form
+                    && !args.skip_probe
+                {
                     println!("### M3: an exact ball drop, probed on sampled drop lines");
                     println!(
                         "operation | drops kept | refined | not bracketed | drop on tessellation us | distance query us | exact ball drop us | offset p50 mm | p99 | exact above, max | below, max | estimated exact-surface generate s (all threads) | ratio"
