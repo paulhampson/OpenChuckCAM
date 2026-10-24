@@ -66,3 +66,11 @@ Both reports use the prescribed test/example/bench exclusion pattern. The change
 Rust 1.97.0, cargo-nextest 0.9.149, cargo-llvm-cov 0.9.1. The app and UI coverage datasets were separate; all own-crate selected cases completed. Instrumentation timings are not used to classify long tests or claim rendering speed.
 
 A full default-debuginfo workspace build exhausted the 32 GiB disk before tests started. Generated artifacts were cleaned, validation logs retained, and the rerun uses reduced debug information with incremental compilation disabled and two build jobs. This changes no product source or optimisation settings.
+
+## Released-main integration (24 Oct 2026)
+
+Merge Manager release [6386630559](https://github.com/paulhampson/OpenChuckCAM/pull/328#issuecomment-6386630559) marked PR 328 ready first, then authorised merging main `31d47a207459e136bcc676401415dfe7e16225f8` (BUG-SELSET2 325, TOOLLIB2 326 and OPCREATE2 327). Executable sources merged automatically. Manual conflicts were confined to nextest comments/long-test lists and the work-breakdown lane table; both sides were retained, duplicate long-test entries removed, and the union decision index sorted.
+
+Incoming selection publication ordering, project-tool cleanup and strategy information remain present. SIMUI playback/viewport/dock and stock-surface code is unchanged from its checked implementation. The accepted record's original-number acceptance provenance is unchanged. Allocation audit: SIMUI 0238 / OI-987 OPEN / OI-988 CLOSED; main OPCREATE2 0237 / OI-985 and OI-986 CLOSED; FINSTEP reserved 0239 and OUTPUT-1 assigned 0240 per the release. No schema allocation or new decision.
+
+No executable conflict-resolution changes required new coverage: earlier own-crate coverage is retained as historical evidence, not re-labelled as a fresh integrated-head aggregate. Fresh integrated app/UI run: **947/947 passed in 764.752 s**, with no skips or failures. No individual test exceeded ten minutes. Existing long-test classifications remain in both development-coverage and nightly-long profiles. Workspace all-target Clippy with warnings denied, formatting, audit (`cargo audit --deny warnings`), whitespace and all seven xtask checks pass, including 99/99 P1 traceability. No new product changes were needed after the merge.

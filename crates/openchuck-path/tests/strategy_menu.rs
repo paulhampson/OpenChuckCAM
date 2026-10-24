@@ -7,7 +7,7 @@
 
 use openchuck_path::{Registry, StrategyGroup};
 
-/// Every registered strategy explains itself in a sentence or two, in words
+/// Every registered strategy explains itself with its limits, in words
 /// a reader who is not a machinist can follow, and none promises safe output.
 #[test]
 fn req_op_16_every_strategy_has_a_plain_description() {
@@ -19,6 +19,60 @@ fn req_op_16_every_strategy_has_a_plain_description() {
             !text.to_lowercase().contains("safe to run"),
             "{}: {text:?}",
             s.name()
+        );
+    }
+}
+
+/// OP-07, OP-16, NFR-12: choosing swarf must explain curved wall length,
+/// straight flank contact across height, selected STEP faces and overcut
+/// warnings, without promising that one pass finishes every wall (#290).
+#[test]
+fn req_op_07_req_op_16_req_nfr_12_swarf_information_explains_curved_selected_step_walls_and_warnings()
+ {
+    let registry = Registry::builtin();
+    let swarf = registry.iter().find(|s| s.name() == "swarf").unwrap();
+    let text = swarf.description();
+    for required in [
+        "selected wall faces",
+        "side of the tool",
+        "curve along its length",
+        "across its height",
+        "STEP",
+        "tolerance",
+        "warning",
+        "depth",
+        "location",
+        "before running the program",
+    ] {
+        assert!(
+            text.contains(required),
+            "swarf information must explain {required:?}: {text}"
+        );
+    }
+    assert!(!text.contains("one pass finishes"));
+    assert!(!text.contains("walls that are made of straight lines"));
+}
+
+/// OP-16, NFR-12: explanations must not promise complete coverage which
+/// selections, gaps, reach or unsupported corners can prevent (OI-986).
+#[test]
+fn req_op_16_req_nfr_12_strategy_information_does_not_promise_every_surface_or_corner() {
+    for strategy in Registry::builtin().iter() {
+        let text = strategy.description();
+        assert!(
+            !text.contains("Cuts the whole surface in one continuous spiral"),
+            "{}: {text}",
+            strategy.name()
+        );
+        assert!(
+            !text.contains("Follows each sharp inside corner"),
+            "{}: {text}",
+            strategy.name()
+        );
+        assert!(
+            !text.contains("one pass finishes a tall surface"),
+            "{}: {text}",
+            strategy.name()
         );
     }
 }

@@ -553,7 +553,7 @@ impl Strategy for PencilFinishing {
     }
 
     fn description(&self) -> &str {
-        "Follows each sharp inside corner of the part with one pass to clear the ridge of material that other finishing leaves there. Use it as a final clean-up, not to cut large areas."
+        "Follows supported sharp inside corners to remove ridges of material left by other finishing operations. Use it as a final clean-up, rather than to cut large areas. It does not cover every inside corner or smooth transition."
     }
 
     fn schema(&self) -> ParameterSchema {

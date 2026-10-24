@@ -1334,7 +1334,9 @@ impl Shell {
     fn pick_frame(&mut self, ctx: &egui::Context) {
         let input = self.viewport.take_input();
         self.pick_intent(input, ctx);
-        let Some(app) = &self.app else { return };
+        if self.app.is_none() {
+            return;
+        }
         // Q, W, E and R choose the click; Esc leaves picking (specification
         // 15). Not while a dialog or a floating window is open: its keys are
         // its own, and Esc must not leave picking behind it.
@@ -1344,6 +1346,20 @@ impl Shell {
         {
             self.selected = None;
         }
+        if let Some(app) = &mut self.app {
+            // Keep keyboard handling first, including Esc during Pick again.
+            // A check can finish after the inspector polled it during layout:
+            // store it before deriving the shown set, legend and overlay
+            // (UI-05, issue 298).
+            if let Some(e) = self.selection.poll(app) {
+                self.dialog = Some(Dialog::Error(e));
+            }
+            if let Some(e) = self.selection.reset_dialog(ctx, app) {
+                self.dialog = Some(Dialog::Error(e));
+            }
+        }
+        self.follow_selection_panel();
+        let Some(app) = &self.app else { return };
         // The highlights follow the selection state (issue 261): the working
         // selection is drawn only in selection mode, and a set shown for one
         // item goes when another is selected, however the selection changed
@@ -1380,18 +1396,6 @@ impl Shell {
             self.viewport.set_overlay(overlay);
             ctx.request_repaint();
         }
-        if let Some(app) = &mut self.app {
-            // A save or an edit that ended, whether or not its tab is shown.
-            if let Some(e) = self.selection.poll(app) {
-                self.dialog = Some(Dialog::Error(e));
-            }
-            // The warning before a click of the other kind resets the
-            // selection.
-            if let Some(e) = self.selection.reset_dialog(ctx, app) {
-                self.dialog = Some(Dialog::Error(e));
-            }
-        }
-        self.follow_selection_panel();
     }
 
     /// A viewport pick retains model/face/edge identity, never a pointer
@@ -2363,6 +2367,8 @@ mod keys_tests;
 
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod strategy_picker_tests;
 
 #[cfg(test)]
 mod numbox_tests;
