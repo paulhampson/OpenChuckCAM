@@ -181,6 +181,8 @@ priority = 79
 # req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count: 72.458 s uninstrumented.
 # req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2: 70.961 s uninstrumented.
 # req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab: 71.132 s uninstrumented.
+# Released TOOLLIB2 reconciliation (24 Oct 2026):
+# req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh: 66.114 s uninstrumented in the full app/UI run.
 default-filter = '''not (
     test(~finest_setting_is_within)
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
@@ -209,6 +211,7 @@ default-filter = '''not (
   | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
   | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
   | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
 )'''
 
 [profile.long]
@@ -241,4 +244,5 @@ default-filter = '''
   | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
   | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
   | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
 '''

@@ -5,7 +5,7 @@
 - **Requirements:** TL-01, TL-07, TL-11, GC-14, UI-08, UI-14, UI-16, GC-07 and NFR-06.
 - **Amends:** UI specification section 12.1 and the corresponding verification-plan entries.
 - **Dependencies:** TOOLLIB #266, OPSPEED #318 and BUG-EDIT #323, all verified merged into `main`.
-- **Numbering:** the owner instructed this lane to choose a number and let the Merge Manager resolve collisions. An audit of fetched remote branches found 0234 as the highest claimed file number; the Merge Manager queue reserves 0235 for BUG-SELSET2, so this record takes 0236. No project schema change or new open-item number.
+- **Numbering:** the owner instructed this lane to choose a number and let the Merge Manager resolve collisions. The initial remote-branch audit found 0234 as the highest claimed file number; the Merge Manager reserved 0235 for BUG-SELSET2, so this record takes 0236. The released main update reconfirmed merged overlay record 0235 and held STEPALL-M replay record 0234 / OI-984; this record retains 0236 and its accepted content. No project schema change or new open-item number.
 - **Implementation:** implemented for Merge Manager review on `codex/lane-toollib2-remove-unused-tools`; local verification below.
 
 ## Context
@@ -160,3 +160,25 @@ Native OS picker/close behavior, GPU drawing and Windows/macOS interaction
 were not exercised locally. The layout and keyboard evidence comes from
 headless Linux frames; this does not close the tool library's wider native
 display/accessibility follow-ups (OI-493 and OI-773).
+
+## Released-main reconciliation (24 Oct 2026)
+
+Merge Manager marked PR 326 ready first and explicitly released its main update.
+Merged main `049c70ab1c456ceadad5339b09167e81fafd29ec` (including PR 325),
+without product conflicts. Reordered the union decision index: merged overlay
+0235 precedes cleanup 0236. Refreshed all remote heads and checked persisted
+reservations: TOOLLIB2 retains accepted 0236; STEPALL-M retains proposed replay
+0234 / OI-984; no TOOLLIB2 OI or schema allocation. Acceptance and substantive
+cleanup behavior are unchanged. Separate other-lane 0237 claims were reported
+to Merge Manager for coordination through the PR conversation.
+
+The full uninstrumented app/UI suite passed **915 tests in 616.386 s**, with
+no skips or failures. Its slowest test took **107.977 s**. The existing STEP
+helical face-set regression took **66.114 s**; its exact qualified test name is
+now excluded from development coverage and selected by nightly long, verified
+using both profile lists. It remains in default. No test exceeded ten minutes.
+Both changed crates pass all-target clippy with warnings denied; formatting,
+whitespace, all xtask checks (including records and 99/99 P1 traceability) and
+`cargo audit --deny warnings` pass. The original coverage evidence and native
+display limitations above remain applicable; no cleanup product code changed
+in this reconciliation and coverage was not remeasured.
