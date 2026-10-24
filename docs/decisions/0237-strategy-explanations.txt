@@ -1,6 +1,7 @@
-OPCREATE2 final explanation proposal — OI-986
-Status: proposed; separate owner approval is required. Acceptance of decision
-0237 does not accept these strings. Presented in full on 24 Oct 2026.
+OPCREATE2 approved strategy explanations — OI-986
+Status: accepted separately by the project owner on 24 Oct 2026, directly in
+the OPCREATE2 session: "Accept the explanation texts for OI-986".
+Presented in full before approval; decision 0237 was accepted separately.
 
 Rotary roughing
 Removes most of the material from the stock in layers, working from the outside in. The part can turn continuously or be held at chosen angles. Use it before finishing; stock to leave sets how much material to keep for the finishing tool.

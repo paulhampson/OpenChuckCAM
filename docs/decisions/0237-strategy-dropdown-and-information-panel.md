@@ -1,10 +1,10 @@
 # 0237: Strategy dropdown and information panel (lane OPCREATE2; issues 289 and 290)
 
-- **Status:** accepted by the project owner (24 Oct 2026, directly in the OPCREATE2 session, after the complete record was shown). The owner instructed: "I accept 0237". The owner also directly chose always-visible explanations with no tick box and a read-only inspector strategy. Final strategy strings still require separate approval (OI-986).
+- **Status:** accepted by the project owner (24 Oct 2026, directly in the OPCREATE2 session, after the complete record was shown). The owner instructed: "I accept 0237". The owner also directly chose always-visible explanations with no tick box and a read-only inspector strategy. The owner separately accepted all eleven explanation texts for OI-986 on 24 Oct 2026: "Accept the explanation texts for OI-986".
 - **Date:** 24 Oct 2026.
 - **Requirements:** OP-16, UI-06, UI-07, UI-14, UI-16, NFR-15; NFR-12 for wording; GC-07 and NFR-06 for unchanged output.
 - **Amends:** decision 0204 item 1 and its proposed specification entry for New operation; interface specification sections 6 and 11.4. Decision 0204's read-only inspector and registration-owned descriptions remain.
-- **Open items:** OI-985 (closed by acceptance of this record), OI-986 (approval of the complete final strategy explanation text).
+- **Open items:** OI-985 (closed by acceptance of this record), OI-986 (closed by separate approval of the complete final strategy explanation text).
 
 Numbering: allocated by the lane on the owner's direct instruction to allocate its own numbers and allow the Merge Manager to report conflicts in PR review. Checked main and all fetched remote branches on 24 Oct 2026: the highest decision was 0236 and highest registered open item OI-984. No schema number is taken.
 
@@ -50,9 +50,10 @@ Update the specification, verification plan, work breakdown and registers in the
 
 ## UI checkpoint verification (24 Oct 2026)
 
-The presentation is implemented locally. Final registration strings remain unchanged;
-the complete replacement proposal is in [0237-strategy-explanations.txt](0237-strategy-explanations.txt),
-presented separately for OI-986 approval. No PR is opened at this checkpoint.
+At the UI-only checkpoint, registration strings were unchanged while OI-986 was
+open. The owner subsequently accepted all eleven strings in
+[0237-strategy-explanations.txt](0237-strategy-explanations.txt); they are now applied.
+No PR was opened at that earlier checkpoint.
 
 Requirement-first regressions failed before fixes: the closed list showed multiple
 explanations; disabled reasons required hover; the old creation window lacked the
@@ -87,3 +88,42 @@ pending-edit actions, not native Windows/macOS interaction, GPU rendering or a
 screen-reader session. STEP/STL UI coverage uses the application's eligibility
 metadata; it does not claim to import a synthetic STEP file or validate swarf
 geometry. Those limits remain explicit for later platform and release checks.
+
+## Approved wording and final handoff checks (24 Oct 2026)
+
+The owner directly instructed "Accept the explanation texts for OI-986" after
+all eleven complete proposed strings had been shown. OI-986 is closed. Each
+registration now exactly matches its approved companion-file entry. The trait's
+documentation now asks for use and limits in plain language rather than assuming
+the explanation must fit in one or two sentences. There is no API change.
+
+The new wording regressions first failed against the old swarf description and
+its unsupported single-pass promise, and the helical description's claim to cut
+the whole surface in one continuous spiral. They now pass. The review also
+removed the pencil promise to cover each sharp corner and clarified axial and
+indexed surface-following passes. A ruled non-developable face retains straight
+rulings; swarf's approved text explains length versus height and the measured
+overcut warning without claiming that all curved blades can be followed exactly.
+
+- Final approved-text UI run: **436 passed in 198.799 s**.
+- Uninstrumented path run, using the existing non-long `coverage` profile:
+  **324 passed in 224.809 s; 11 existing long tests excluded**. The slowest run
+  test took 51.821 s; each new wording regression took at most 0.020 s. No new
+  long-test classification or ten-minute owner decision is needed.
+- Path coverage run on the same profile: **324 passed in 480.480 s; 11 excluded**.
+  Path source line coverage is **12,517 / 13,585 (92.14%)**, below the report-only
+  95% development target. All eleven changed description-return lines are
+  reached; there are no uncovered new executable path lines. Other coverage gaps
+  are existing code, and the excluded long tests make this a lower bound.
+- UI executable source is unchanged from the UI checkpoint above; its retained
+  coverage is 86.55%. The final 436-test run checks the approved longer text.
+- Required summary/LCOV reports were read and instrumented artifacts cleaned with
+  `cargo llvm-cov clean --workspace`, then the remaining coverage cache removed.
+- Workspace-wide clippy, all targets with warnings denied; formatting and
+  whitespace; and `cargo xtask all` passed. No project or machine schema,
+  dependency, public API, generation algorithm, toolpath or G-code golden changes.
+
+The native-platform, GPU and screen-reader limits stated above remain. The draft
+PR is handed to the Merge Manager through its Conversation comments. The lane
+neither marks it ready nor merges or enables auto-merge; main updates and review
+fixes follow decision 0055.
