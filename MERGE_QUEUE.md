@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; renumber to reserved 0235; owner approval pending |
+| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; owner acceptance reported; 0235 reconciliation push pending |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -181,3 +181,11 @@ This narrow metadata reconciliation is authorised for one bundled push while ret
 Owner directs use of webhooks/event triggers wherever available to reduce response time. Prefer supported GitHub events for new owner-authored drafts, lane comments, head updates, review completion and check completion. Discover the actual webhook schema and configure only supported events and repository/owner/PR filters; fetch current GitHub state after each wake-up and preserve serial release and merge gates.
 
 Current tool discovery exposes neither discover_webhook_schema nor a triggers field on Automations create/update, so no event subscription can presently be configured for this chat. Do not claim webhook activation or remove monitoring prematurely. Existing hourly checks remain enabled to cover this capability gap. Recheck event support when available tools change and migrate supported events, preserving a periodic reconciliation check under the owner's always-on monitoring instruction.
+
+## BUG-SELSET2 continuation — accepted content, draft reconciliation required
+
+PR body now reports explicit owner acceptance "Accept 0234" after full OVERLAY-record review in the lane, with acceptance-only local commit `42e14e28a9c12b433a13c2fc74f242668871ac6d` held. This is acceptance of the overlay content, not STEPALL-M's replay record. Preserve acceptance provenance when overlay becomes reserved **0235**; STEPALL-M retains **0234/OI-984**. No substantive record change or new acceptance is made by coordinator.
+
+Remote head remains `9eb0c417c20e21346718864000c8b1b9dd20cf61`, still draft; lane has not acknowledged the allocation instruction. Coordinator posted an explicit instruction to carry the acceptance metadata with the already authorised ONE metadata-only numbering correction push, run records/whitespace checks, correct file/heading/index/references/PR body and report head/results. No main update or product change is authorised in this draft-reconciliation step.
+
+Automatic approval review rejected the attempted ready transition because "Continue" does not authorise release while accepted-record metadata and numbering reconciliation remain pending. Ready transition did NOT occur; no bypass or indirect alternative attempted. Keep draft and obtain concrete corrected head/checks; release remains blocked pending prerequisites and owner approval of the release. #325 stays first; #321 stays held.
