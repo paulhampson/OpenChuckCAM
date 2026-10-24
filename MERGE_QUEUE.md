@@ -23,8 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
-| 2 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; decision approval and conflicting record allocation pending |
+| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; decision approval and conflicting record allocation pending |
+| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
 
@@ -161,3 +161,7 @@ At unchanged head `4c2d728ef51678c0ab9a5154dc1c361ea236c51a`, CI run 40072534316
 - ALLOCATION COLLISION: #321 already carries proposed `0234-replay-output-rounding-correction.md` and OI-984 tracking replay issue #324. #325 carries proposed `0234-confirmed-selection-overlay.md` and calls reserved OI-984 unused. Both allocation claims require task-coordinator reconciliation across active lanes before release.
 - Recommendation sent to lane: preserve existing #321 replay 0234/OI-984 and obtain a confirmed free record number for #325's proposed overlay record; task coordinator decides conflicting reservation priority. Merge coordinator allocates/accepts nothing. Correct links/index/PR metadata and run records checks; respect one-push discipline.
 - #325 remains draft behind held #321. Lane to monitor PR comments. Hourly intake/queue checks remain enabled.
+
+## Owner priority override — BUG-SELSET2, 24 October 2026
+
+Owner instructed that #321 is still work in progress and #325 may jump ahead. Queue order is now #325 first, #321 second. This supersedes #325's previous behind-#321 placement. #325's full-record approval and conflicting 0234/OI-984 allocation holds remain; no ready transition or decision acceptance is inferred. #321 remains explicitly BLOCKED / IN PROGRESS and draft. Hourly monitoring continues.
