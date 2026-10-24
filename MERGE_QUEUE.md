@@ -24,7 +24,6 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
 | 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
-
 | 2 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Draft; awaiting owner approval of complete decision 0233 |
 
 ## SWARF3 / #320 — MERGED
