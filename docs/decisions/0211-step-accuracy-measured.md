@@ -319,6 +319,24 @@ M1 and M3 were not refreshed. There is no new five-run, per-stage timing measure
 
 Record 0211 is **accepted by the project owner**, directly in this lane session on 24 Oct 2026 after the full revised record was shown ("Accept 0211"). The owner has now made the substantive choices directly in this lane session, individually and in the requested order; those choices are recorded below. No methodology deviation is accepted. PR 321 stays draft and is not released to the Merge Manager. The form-a replay gate, sampling/error-budget, five-run timing and full-stepover determinism criteria remain unresolved. Full platform CI and external review remain for the authorised release sequence. Replay tracking and the next-number audit are now recorded in OI-984 / issue #324 / proposed implementation record 0234 under the owner's new lane-allocation instruction. Coordinator lane scheduling and release remain separate; this session starts no other lane.
 
+## Follow-up: successful-run timing and isolated pencil remeasurement (24 Oct 2026)
+
+Source `f7a770d044169ff0e03d8c9feabeb389ff3afe49` makes M3 distinguish successful benchmarks from time to refusal: medians require at least five successful samples, refused attempts remain labelled, and the whole-job generation median is computed from each complete run's total rather than the sum of operation medians. Missing, non-finite and negative samples cannot qualify. Timing-only runs skip unused M2 clouds; `--skip-probe` skips the expensive exact-ball diagnostic explicitly. M2 now describes its grid spacing as a nominal target with no established physical coverage bound.
+
+The owner chose pencil remeasurement before separate performance tracking. Five successful runs at each of one/four threads, for each form, now cover **an isolated pencil operation on initial stock**. No `--quick` was used; the current B-rep preparation remains inside generation timing. This is not the full sequence with stock carried from preceding operations. Same pinned release build, four-CPU quota and 16 GiB allocation as above; no concurrent compilation, tests or coverage during timing. Raw output, exact command and validation are in [the pencil timing evidence](0211-step-accuracy-pencil-timing.txt).
+
+| Form | One-thread median generation, s | Four-thread median generation, s | Speed-up |
+| --- | --- | --- | --- |
+| a: trial STL | 6.861560 | 3.462898 | 1.98 times |
+| b: import STEP mesh | 8.204402 | 3.193163 | 2.57 times |
+| c: finer STEP mesh | 12.555629 | 6.320591 | 1.99 times |
+
+All 30 trials succeeded. Form c/b's four-thread generation ratio is **1.98 times**, narrowly below 2 for this isolated case. Current pencil benefits from threads on every measured form; the historical no-speed-up observation is not current evidence for this case. No separate pencil-performance issue is opened by this result; confirm performance in the full sequence before concluding the broader requirement is met. These numbers establish neither whole-sequence performance nor a tessellation default.
+
+Two new requirement-based timing tests failed before implementation, then passed. All twelve native geometry/posting/rejection/timing tests passed uninstrumented in 5.164 s; native example/test clippy with warnings denied, formatting and `cargo xtask all` passed. Focused coverage tests passed; the product-source summary excludes the example helper and supports no whole-crate coverage claim. Instrumented artifacts were cleaned.
+
+**Still outstanding:** full-sequence five-run timings, separately measured fitting and assembly stages, bounded physical sampling error, the 0.005 mm allocation, full-stepover M4 and replay correction OI-984 / issue #324. The public progress messages do not supply complete stage boundaries; no fitting/assembly time is inferred by subtracting summed parallel drop time from wall time. PR 321 stays draft. This evidence update does not amend the accepted choices or waive a criterion.
+
 ## Owner choices made before record acceptance (24 Oct 2026)
 
 The owner requested: "Take me through the decisions. Ask me about the decision record last." The following answers were given directly in this lane session, rather than relayed. They select the directions and conditions below. The owner subsequently accepted the full revised record directly in this session on 24 Oct 2026: "Accept 0211".
