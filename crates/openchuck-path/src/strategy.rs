@@ -25,7 +25,7 @@ use crate::error::{PathError, Result};
 use crate::params::{
     CommonParameters, EntryParameters, ParameterSchema, ParameterValue, Parameters,
 };
-use crate::region::RegionConstraint;
+use crate::region::{BoundaryLimits, RegionConstraint};
 use crate::rotary::RotaryMapping;
 use crate::stock::{CollisionOracle, StockModel};
 use crate::surface::SurfaceSource;
@@ -220,8 +220,11 @@ pub trait Strategy: Send + Sync + std::fmt::Debug {
     /// Whether the strategy takes a region's restriction options
     /// ([`RegionConstraint::boundary_limits`] and
     /// [`RegionConstraint::watch`]; decision record 0176). A region that
-    /// sets any is refused for a strategy that does not, rather than
-    /// ignored. Swarf does; the others not yet (OI-637).
+    /// sets a boundary limit is refused for a strategy that does not, rather
+    /// than ignored. Swarf does. For a strategy that does not but honours a
+    /// region, the shared services measure the watched surfaces after its
+    /// passes are made and warn for each one the tool breaks (decision
+    /// record 0229).
     fn honours_restriction_options(&self) -> bool {
         false
     }
@@ -356,15 +359,23 @@ fn generate_with(
             bad.leave
         )));
     }
-    if region.is_some_and(RegionConstraint::has_restriction_options)
-        && !strategy.honours_restriction_options()
+    // A strategy that does not take restriction options still takes watched
+    // surfaces if it honours a region: the shared services measure them
+    // (decision record 0229 item 1). A boundary limit turned off has a
+    // meaning for swarf only (item 2).
+    if !strategy.honours_restriction_options()
+        && region.is_some_and(|r| r.boundary_limits != BoundaryLimits::default())
     {
         return Err(PathError::Strategy(format!(
-            "{} takes no options on its boundary, avoid or check sets: a boundary limit turned \
-             off, or a set that only warns, is built for swarf only so far",
+            "{} takes no options on its boundary set: a boundary limit turned off is built for \
+             swarf only",
             strategy.label()
         )));
     }
+    let watched = region
+        .filter(|_| !strategy.honours_restriction_options())
+        .map_or(&[][..], |r| r.watch);
+    let operation_leave = common.stock_to_leave.0;
     context.check_cancelled()?;
     let mut warnings = Vec::new();
     let (passes, notes): (Vec<Pass>, Vec<String>) = if zones.is_empty() {
@@ -379,6 +390,15 @@ fn generate_with(
         let passes = strategy.passes_in_zones(input, region, zones, &parameters, context)?;
         (passes, Vec::new())
     };
+    context.check_cancelled()?;
+    warnings.extend(crate::region::watched_warnings(
+        &passes,
+        input,
+        watched,
+        operation_leave,
+        common.tolerance.get().0,
+        context,
+    )?);
     context.check_cancelled()?;
     let mid = part_middle(input);
     let (passes, notes) = keep_clear(passes, notes, input.keep_out, mid)?;
