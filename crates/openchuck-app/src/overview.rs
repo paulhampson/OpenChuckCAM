@@ -317,6 +317,8 @@ impl Severity {
 /// What a message's action link does. The front end carries it out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MessageAction {
+    /// Reopen a historical export result; the index is stable for this project session.
+    ReviewExport(usize),
     /// Select the item, in the tree and the view.
     Show(ItemRef),
     /// Pick the selection set again on the part.
@@ -336,6 +338,7 @@ impl MessageAction {
     /// The link's words.
     pub fn label(self) -> &'static str {
         match self {
+            Self::ReviewExport(_) => "Show result",
             Self::Show(_) => "Show",
             Self::Reselect(_) => "Reselect",
             Self::ReviewSetup(_) => "Review setup",
@@ -789,6 +792,7 @@ pub(crate) struct GenerationRecord(Mutex<RecordState>);
 
 #[derive(Debug, Default, Clone)]
 struct RecordState {
+    output_reports: Vec<crate::OutputReport>,
     generated: BTreeMap<OperationId, Made>,
     simulated: BTreeMap<OperationId, Key>,
     exported: BTreeMap<OperationId, Key>,
@@ -1243,6 +1247,19 @@ impl Application {
         self.record.exported(&run.project);
     }
 
+    /// Retains an actual write result or a preflight refusal for this project
+    /// session (UI-12). Historical failures never block current readiness.
+    pub fn record_output_report(&self, report: crate::OutputReport) {
+        self.record.with(|state| state.output_reports.push(report));
+    }
+
+    /// A retained export result, independent of the current project inputs.
+    pub fn output_report(&self, index: usize) -> Option<crate::OutputReport> {
+        self.record
+            .with(|state| state.output_reports.get(index).cloned())
+            .flatten()
+    }
+
     /// Asks the running job `id` to stop (the Jobs tab's Cancel). Returns
     /// false when no such job is running.
     pub fn cancel_job(&self, id: crate::JobId) -> bool {
@@ -1390,6 +1407,18 @@ fn build(app: &Application, checks: Option<&Checks>, jobs: &JobLog) -> Overview 
     // Each source's messages, gathered apart so they can be ordered: the
     // newest kind of news first within a severity (decision record 0117).
     let mut messages: Vec<Message> = Vec::new();
+    for (index, report) in record.output_reports.iter().enumerate().rev() {
+        messages.push(Message::new(
+            if report.failed.is_some() {
+                Severity::Error
+            } else {
+                Severity::Info
+            },
+            report.text(),
+            None,
+            Some(MessageAction::ReviewExport(index)),
+        ));
+    }
     let mut setup_checks = Vec::new();
     let mut blocked_sets = Vec::new();
 

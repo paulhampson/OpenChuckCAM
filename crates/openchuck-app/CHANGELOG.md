@@ -4,6 +4,22 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
+  is administratively renumbered from original 0238 by Merge Manager to
+  resolve the SIMUI collision; substantive content and owner acceptance are
+  unchanged. No product change in this correction.
+
+- OUTPUT-1 (#307; UI-12, GC-05/12/15, NFR-07): `prepare_output` returns a
+  read-only `OutputPlan` of same-run bytes and full destinations;
+  `write_output` now takes the reviewed plan and replacement approval and
+  returns an `OutputReport` of completed/failed/not-attempted paths. Results
+  are retained in the session overview with `MessageAction::ReviewExport`.
+  A changed destination or stale input refuses the batch, a later I/O failure
+  retains earlier successes, and only a full batch records export completion.
+  New paths are exclusively created; approved replacements use unique
+  temporary files. Existing filenames, output bytes and CLI helpers stay
+  unchanged. No library-family or project-schema change.
+
 - Lane TOOLLIB2 (decision 0236; issue #313): manual project-only unused-tool cleanup with selected-snapshot revalidation, one undoable batch, freed tool numbers, unchanged library and generated output. The tool library window provides a guarded checklist and confirmation, including disabled-operation retention and changed-candidate refresh.
 
 - Lane SWARF3 (decisions 0228 and 0229, OI-634 and OI-637; OP-02, NFR-12): the avoid and check sets of rotary roughing and helical, axial, indexed and simultaneous finishing take their choice (schema 14's `on_break`), on a mesh part and as face sets on a STEP part: Cut short is the path as before, Warn only keeps the whole path with a warning naming the set and how far the tool breaks it, and Ignore leaves the set out with the warning that it limits nothing. Their boundary set takes no options. `Application::strategy_set_options` and `SetOptionsShown` (which options the Geometry section shows: the boundary's limits for swarf only, each avoid or check set's choice for every strategy that takes a region, and whether Cut short lifts the tool over a check set) replace `Application::strategy_takes_set_options` (breaking).

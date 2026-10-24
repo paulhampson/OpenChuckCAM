@@ -70,7 +70,10 @@ pub(super) fn type_unconfirmed(rig: &mut Rig, label: &str, text: &str) {
     rig.click(at);
     rig.press(Key::A, Modifiers::COMMAND);
     rig.frame(vec![Event::Text(text.to_owned())]);
-    assert!(rig.ctx.egui_wants_keyboard_input());
+    assert!(
+        rig.ctx.egui_wants_keyboard_input(),
+        "{label} must have keyboard focus"
+    );
     assert!(
         !crate::pending_edits::entries(&rig.ctx).is_empty(),
         "{label}: {:?}",
@@ -105,6 +108,138 @@ fn choose_export_post(rig: &mut Rig, choice: &str) {
         rig.frame(Vec::new());
     }
     click(rig, choice);
+}
+
+#[test]
+fn req_ui_07_req_ui_12_req_gc_15_export_writes_and_history_use_the_departure_guard() {
+    let mut rig = generated("output-pending-history");
+    // Never write the host's per-user acknowledgement file in a test.
+    rig.shell.export = crate::export_panel::ExportPanel::new(None);
+    let out = rig.dirs[0].join("guarded-output");
+    rig.shell.open_export();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while !rig.shows("Start of") {
+        rig.frame(Vec::new());
+        assert!(
+            std::time::Instant::now() < deadline,
+            "export files prepared"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    type_unconfirmed(&mut rig, "Output folder", &out.display().to_string());
+    let at = rig
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new(("dialog", "export dialog"))))
+        .unwrap()
+        .center();
+    for _ in 0..12 {
+        if rig
+            .visible_text_rects()
+            .iter()
+            .any(|(text, _)| text == openchuck_app::EXPORT_ACKNOWLEDGE_LABEL)
+        {
+            break;
+        }
+        rig.frame(vec![
+            Event::PointerMoved(at),
+            Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                delta: egui::vec2(0.0, -160.0),
+                modifiers: Modifiers::NONE,
+            },
+        ]);
+    }
+    click(&mut rig, openchuck_app::EXPORT_ACKNOWLEDGE_LABEL);
+    click(&mut rig, "Write G-code");
+    assert!(rig.shows("Unconfirmed changes"));
+    assert!(!out.exists(), "pending typed destination cannot write");
+    click(&mut rig, "Cancel");
+    assert!(!out.exists());
+    click(&mut rig, "Write G-code");
+    click(&mut rig, "Keep");
+    for _ in 0..8 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Export result"));
+    assert!(
+        rig.shell
+            .overview
+            .messages
+            .iter()
+            .any(|m| m.action == Some(openchuck_app::overview::MessageAction::ReviewExport(0)))
+    );
+    let paths = rig
+        .shell
+        .app
+        .as_ref()
+        .unwrap()
+        .output_report(0)
+        .unwrap()
+        .written;
+    assert_eq!(paths.len(), 3);
+    assert!(
+        paths
+            .iter()
+            .all(|path| path.starts_with(&out) && path.is_file())
+    );
+    click(&mut rig, "Dismiss");
+    click(&mut rig, "Cancel"); // Close the export form, retaining history.
+    assert!(
+        !rig.shell.export.is_open(),
+        "export closed: {:?}",
+        rig.texts()
+    );
+    let op = rig.shell.app.as_ref().unwrap().project().operations()[0].id;
+    rig.shell.select(Selection::Operation(op));
+    rig.shell.open_step(Step::Operations);
+    for _ in 0..4 {
+        rig.frame(Vec::new());
+    }
+    type_unconfirmed(&mut rig, "Stepover", "1.6");
+    let action = openchuck_app::overview::MessageAction::ReviewExport(0);
+    rig.shell.message_action(action);
+    rig.frame(Vec::new());
+    assert!(rig.shows("Unconfirmed changes"));
+    assert!(!rig.shows("Export result"));
+    click(&mut rig, "Cancel");
+    assert!(!rig.shows("Export result"));
+    rig.shell.message_action(action);
+    rig.frame(Vec::new());
+    click(&mut rig, "Discard");
+    for _ in 0..5 {
+        rig.frame(Vec::new());
+    }
+    assert!(rig.shows("Export result"));
+    assert_eq!(
+        rig.shell
+            .app
+            .as_ref()
+            .unwrap()
+            .output_report(0)
+            .unwrap()
+            .written,
+        paths
+    );
+    assert_eq!(
+        std::fs::read_dir(&out).unwrap().count(),
+        3,
+        "history never writes again"
+    );
+    rig.press(Key::Num4, Modifiers::ALT);
+    assert_eq!(
+        rig.shell.step,
+        Step::Operations,
+        "global step keys stay behind the modal"
+    );
+    // A background job must not steal the result modal's explicit Esc.
+    rig.shell.generate(true);
+    assert!(rig.shell.run.is_running());
+    rig.press(Key::Escape, Modifiers::NONE);
+    assert!(
+        !rig.shell.export.is_open(),
+        "Esc dismisses the result before global shortcuts"
+    );
 }
 
 #[test]
