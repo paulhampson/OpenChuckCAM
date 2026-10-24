@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Released; sole ready PR; latest-main integration pending |
+| 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Released; sole ready PR; head 61177c7 CI/review complete; failure-path finding awaiting lane assessment |
 | 2 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; 0240 correction verified; awaiting serial release |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
@@ -330,3 +330,14 @@ At merge reverify current-head CI/CodeRabbit/allocation map and label applicable
 #328 remains sole ready at `44bc56915654010c8754ef0e81a777f330b6941a`, with no release acknowledgement or main-integration push since comment6386630559. No current-head PR workflow run exists while main conflicts persist; no review threads. Wait for lane's released main update; do not request early correction or rerun stale draft checks.
 
 Held#321 head advanced to `b375262526492737ff609a6968a5501fe6d88b8e`, still draft; no owner readiness notification or new PR-comment handoff. Do not infer release from progress. No new eligible drafts beyond already queued#328/#329. Current tooling still has no webhook-discovery action; hourly checks remain enabled.
+
+
+## SIMUI #328 — integration and review checkpoint, 24 October 2026
+
+Current head: `61177c795e0c949627b39606ea4732064973c388`; lane reports main `31d47a207459e136bcc676401415dfe7e16225f8` integrated in the single released push ([report](https://github.com/paulhampson/OpenChuckCAM/pull/328#issuecomment-6386840108)). 947/947 uninstrumented app/UI tests passed (486 app, 461 UI); formatting, workspace all-target clippy, audit and all seven xtask checks including 99/99 P1 traceability passed. Executable sources merged automatically; manual configuration/register unions preserved both sides. Earlier coverage remains historical, not a newly measured aggregate.
+
+Full current-head CI run 40112861353 and end-to-end run 40112861358 completed SUCCESS; CI required checks succeeded. CodeRabbit status SUCCESS and latest review identifies current head 61177c7 with no new actionable comments. Two earlier unresolved threads remain: Major deviation-colour loss after stock preparation/surface failure (discussion_r4367749610), and Minor counted stale-banner wording (discussion_r4367749624). Current update_bands code still contains the reported unconditional Simulate path. Coordinator [requested lane assessment](https://github.com/paulhampson/OpenChuckCAM/pull/328#issuecomment-6387231135): severity Major alone does not mandate correction; establish whether the failure-path regression genuinely blocks release. If blocking, one bundled correction push with regression evidence/required checks/exact head; otherwise evidence-backed disposition and defer. Minor wording is nonblocking and rides a required push or next PR. Both CI and review have finished before this request. No merge yet; #328 retains sole release slot.
+
+Allocations unchanged: accepted SIMUI0238 with original-number acceptance provenance, OI987 OPEN/OI988 CLOSED; merged OPCREATE2 0237/OI985–986; FINSTEP reserved0239; OUTPUT-1#329 corrected0240. No new record acceptance/schema. Known stale unsubmitted ROUGHPATH/FACING claims remain subject to reconciliation before their intake; they cannot displace persisted assignments. At merge inspect original #297/#293/#299/#300/#302/#305 and apply awaiting-fix-feedback where human confirmation remains; OI987 stays open.
+
+Intake reconciliation returned all six post-cutoff owner PRs #323/#325/#326/#327/#328/#329 (below 100-result bound), with no new entry. #329 stays draft next; #321 stays draft/held until owner readiness notification. Hourly automation 6adbdd741cec8191848ce1bc80a97eb3 verified enabled without end date; no supported webhook discovery tool exposed, so no event subscription claimed.
