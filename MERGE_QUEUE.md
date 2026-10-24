@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; cb35309 CI running; review findings await assessment |
+| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; cb35309 CI green; lane review assessment/corrections requested |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -115,3 +115,11 @@ Release head `cb35309c27e2386ddec8bea0ee21938491c8a751` is pushed, merging main 
 CodeRabbit status SUCCESS for current head; incremental review reports no new actionable comments. Two earlier unresolved threads still require lane assessment: Major possible Keep stall for hidden pending fields (discussion_r4365353688), Minor tab-count validation (discussion_r4365353698). The possible indefinite modal stall is a potential genuine blocker regardless of the severity threshold; do not merge until verified or resolved. Lane acknowledges both and waits for BOTH full CI and review before a bundled required correction push. No early correction push requested. Minor/nonblocking changes follow next-PR policy unless riding an already required push.
 
 #323 is the sole ready PR. #321 remains unchanged and draft on its explicit hold. No new eligible owner drafts found (bounded search below 100 results). Hourly monitoring continues.
+
+## BUG-EDIT correction stage — 24 October 2026
+
+CI run 40046712026 and offline end-to-end run 40046711977 are now completed SUCCESS for `cb35309c27e2386ddec8bea0ee21938491c8a751`. CodeRabbit status SUCCESS; both prior review threads remain unresolved, with no lane response yet. Full CI and review have both reported, so coordinator posted the bundled-correction instruction.
+
+Lane must verify the hidden-field Keep-stall finding against accepted 0233, reproduce with a requirement-based regression, and fix if genuinely blocking without silently discarding pending values or changing accepted interaction semantics. If invalid, give concrete evidence and resolve appropriately. Assess tab-count Minor too; no independent minor-only push, but it may ride an already required correction push. Report exact head, checks and thread dispositions after ONE bundled push. Merge stays blocked on disposition/correction of the possible indefinite modal stall despite green CI.
+
+No new eligible drafts; #321 unchanged and explicitly held. Hourly checks continue.
