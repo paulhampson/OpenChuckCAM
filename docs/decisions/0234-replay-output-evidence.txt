@@ -91,3 +91,5 @@ lobed_linuxcnc.ngc: running in the LinuxCNC simulator (real time)
 /workspace/OpenChuckCAM/testdata/golden/reference/lobed_linuxcnc.ngc: the simulator reached all 1806 moves (largest difference 0.0552, 105.6 s of motion) and reported no fault
 replay: ok
 Report SHA-256: 6a5706af03b13f126ae2fbc58fc8fc651b0f6bc6e96b14f0c3f5d1390a11e5b4
+
+Full-stepover M4 after this correction: PASS, exit 0. See 0211-full-stepover-m4-evidence.txt for the exact command, source/fixture provenance and all output. All a/b/c library comparisons pass at 1/2/4 threads; STEP and STL application jobs have clean replay, identical bytes and library equivalence at all three counts. The unchanged tip/angular limits are retained.

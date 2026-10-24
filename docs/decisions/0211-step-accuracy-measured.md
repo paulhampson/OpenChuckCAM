@@ -386,7 +386,17 @@ The owner instructed: "Complete all steps and also include changes for #324 in t
 
 The post now rounds A first, transforms the original model tip at that written angle, then rounds XYZ. Precision and replay limits are unchanged. The original saved form-a quick project passes production CLI replay: 66,076 moves, maximum tip error printed as 0.0008 mm against the unchanged 0.000867 mm limit. The direct regression covers both axes/senses and both posts, including a fed move; a separate reader test still rejects the original bad output. The two lobed reference goldens are updated for corrected Y/Z rounding and the corresponding feed calculation, and pass the independent golden audit. See [correction evidence](0234-replay-output-evidence.txt).
 
-This fixes the demonstrated output defect; it does not turn the earlier quick measurements into full-stepover evidence or establish the geometric error budget. The full-stepover M4 run, further M1 investigation and full-sequence timings are recorded separately when complete. PR 321 remains draft.
+This fixes the demonstrated output defect; it does not turn the earlier quick measurements into full-stepover evidence or establish the geometric error budget. The completed full-stepover M4 and uncapped M1 investigation are recorded in this report; the isolated full-sequence timings follow when complete. PR 321 remains draft.
+
+## Full-stepover M4 after the replay correction (24 Oct 2026)
+
+The full run completed with **exit 0**, without `--quick`, at the requested original form-c setting **0.01 mm / 0.02 rad**. [Command, source/input provenance and complete output](0211-full-stepover-m4-evidence.txt).
+
+- On **all three forms (a/b/c)**, serialized library generation results and production-posted G-code are identical at **1, 2 and 4 threads**. The serialized comparison includes refusal results; the post emits successful operations.
+- The **STEP and STL application jobs (b/a)** both have **clean replay gates at every thread count**, byte-identical output across counts and posted output matching the corresponding library result at each count. Form-b application IR also matches the library at four threads.
+- Simultaneous finishing is explicitly disabled for each application job after its library refusal. The application checks cover the six successful operations, with their original stepovers and stock carried in sequence; they do not establish a successful seven-operation job.
+
+This passes the previously failing form-a replay check under the **unchanged** gate-2 tip/angular limits. The corrected saved quick-project CLI result and independent regression/golden checks remain separate supporting evidence. The M4 binary's correction source is `f052ee8`, built before the optional timing hooks and later main integration; integrated-source tests are reported above. This run overlapped other correctness work and was paused for LinuxCNC replay, so its printed application durations are not the required M3 medians. M3 remains an isolated five-run measurement on the integrated source. The M2 sampling failure and tessellation qualifications remain unchanged; PR 321 stays draft.
 
 ## Owner choices made before record acceptance (24 Oct 2026)
 
