@@ -560,6 +560,32 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 
 **Footer:** Cancel, and "Write G-code" (primary) on the right. "Write G-code" is disabled until the checks pass and the boxes are ticked, and its tooltip says which is missing. It writes the G-code files and, beside them, the setup sheet as HTML and PDF (GC-12), made from the same run; there is no separate setup sheet button ([decision 0189](../decisions/0189-setup-sheet-written-with-the-g-code.md)).
 
+The footer stays outside the scrolling body. The body's scrollbar occupies
+its own strip: text, file rows and controls never extend underneath it,
+including long paths, validation errors and expanded tool-number controls
+(UI-16, issue 311). The dialog remains inside the main window (decision 0164).
+
+**Replacement and write results (UI-12, GC-15; behaviour approved by the owner
+24 Oct 2026, accepted decision 0238).** Write G-code preflights the complete
+same-run NC/HTML/PDF batch without creating files or folders. If destinations
+exist, an in-main-window confirmation lists every existing full path with
+Replace files (primary) and Cancel. Cancel or Esc writes nothing. After the
+pending-edit guard resolves, replacement revalidates readiness, choices and
+destination existence; changed inputs require another review.
+
+After writing, an in-main-window Export result modal lists actual Written
+paths, a Failed path and reason when applicable, and Not attempted paths.
+Its count includes setup sheets. Files are written in order; a failure stops
+later writes, and earlier completed writes remain. The result stays until
+Dismiss (primary) or Esc; clicking the backdrop does not dismiss it. Copy
+paths copies only actual written destinations and is disabled if none were
+written. The fixed NFR-12 notice is shown. Result/confirmation actions remain
+outside scrolling content, whose scrollbar has its own strip. Messages keeps
+each result for the open project session and offers Show result through the
+shared pending-edit guard. Dismissal and project edits do not remove history;
+historical failures do not block present readiness. Full batch success marks
+export complete. The existing unattended CLI behaviour is unchanged.
+
 ### 11.7 Workholding and retaining tabs
 
 UI-25, with SET-09 and OP-21 ([decision 0104](../decisions/0104-held-regions-and-tabs-in-the-interface.md); the data is decision 0041, the defaults and checks decision 0035 and its owner's answers, the wiring decision 0045). Board "Workholding and tabs" (section 20). The viewport display is section 7.5.

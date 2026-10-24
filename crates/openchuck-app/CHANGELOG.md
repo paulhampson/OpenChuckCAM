@@ -4,6 +4,17 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- OUTPUT-1 (#307; UI-12, GC-05/12/15, NFR-07): `prepare_output` returns a
+  read-only `OutputPlan` of same-run bytes and full destinations;
+  `write_output` now takes the reviewed plan and replacement approval and
+  returns an `OutputReport` of completed/failed/not-attempted paths. Results
+  are retained in the session overview with `MessageAction::ReviewExport`.
+  A changed destination or stale input refuses the batch, a later I/O failure
+  retains earlier successes, and only a full batch records export completion.
+  New paths are exclusively created; approved replacements use unique
+  temporary files. Existing filenames, output bytes and CLI helpers stay
+  unchanged. No library-family or project-schema change.
+
 - Lane SWARF3 (decisions 0228 and 0229, OI-634 and OI-637; OP-02, NFR-12): the avoid and check sets of rotary roughing and helical, axial, indexed and simultaneous finishing take their choice (schema 14's `on_break`), on a mesh part and as face sets on a STEP part: Cut short is the path as before, Warn only keeps the whole path with a warning naming the set and how far the tool breaks it, and Ignore leaves the set out with the warning that it limits nothing. Their boundary set takes no options. `Application::strategy_set_options` and `SetOptionsShown` (which options the Geometry section shows: the boundary's limits for swarf only, each avoid or check set's choice for every strategy that takes a region, and whether Cut short lifts the tool over a check set) replace `Application::strategy_takes_set_options` (breaking).
 - Lane OPSPEED (decisions 0230 and 0231; issues #197 and #249): the new `preset` module (`MaterialPreset`, `PresetChoice`, `PresetState`, `preset_for`, `operation_preset`, `set_operation_preset`), a material preset per operation; `Application::add_operation_on` takes the preset's material; `tool_library::set_operation_spindle` takes the strategy registry, and a cutting value set on an operation drops its preset; `OperationSpindle` gains `out_of_range`, and a spindle speed outside the machine's range is a required value and blocks posting. `machine_view::machine_values` lists the spindle speed range when the profile gives one.
 - Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.

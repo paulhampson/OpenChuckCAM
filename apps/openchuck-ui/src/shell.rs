@@ -801,7 +801,12 @@ impl Shell {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        if self.dialog.is_some() || self.edit_guard.active() {
+        // Global shortcuts run before widgets. Leave input to the modal
+        // shown last frame, including export and tool-library confirmations.
+        if self.dialog.is_some()
+            || self.edit_guard.active()
+            || ctx.memory(|memory| memory.top_modal_layer().is_some())
+        {
             return;
         }
         let (save, undo, redo) = ctx.input_mut(edit_shortcuts);
@@ -1016,6 +1021,11 @@ impl Shell {
             return;
         }
         match action {
+            MessageAction::ReviewExport(index) => {
+                if let Some(report) = self.app.as_ref().and_then(|app| app.output_report(index)) {
+                    self.export.show_report(report);
+                }
+            }
             MessageAction::Show(item) => self.show_item(item),
             MessageAction::Reselect(set) => {
                 // Waits, as the Pick again button does, while a change is
@@ -1250,6 +1260,9 @@ impl Shell {
             let outcome = self
                 .export
                 .frame(ctx, app, self.run.last(), self.run.last_error());
+            if outcome.reported {
+                self.overview_dirty = true;
+            }
             if let Some(status) = outcome.status {
                 self.status = status;
             }
