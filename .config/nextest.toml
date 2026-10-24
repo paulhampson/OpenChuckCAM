@@ -166,8 +166,23 @@ filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_nfr_06_simultaneo
 priority = 79
 
 [profile.coverage]
+
+# TOOLLIB2 validation (24 Oct 2026): existing machining regressions exceeded
+# a minute uninstrumented in the contended four-test run. Default still runs
+# them; coverage excludes and nightly long selects them.
+# req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region: 117.339 s.
+# req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region: 128.797 s.
+# req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region: 93.617 s.
+# req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region: 95.625 s.
 # The narrow avoid-patch regression took 67.238 s uninstrumented in the
 # SWARF3 cloud container (23 Oct 2026); keep it in default and nightly tests.
+# req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region: 127.844 s uninstrumented.
+# req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files: 83.161 s uninstrumented.
+# req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count: 72.458 s uninstrumented.
+# req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2: 70.961 s uninstrumented.
+# req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab: 71.132 s uninstrumented.
+# Released TOOLLIB2 reconciliation (24 Oct 2026):
+# req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh: 66.114 s uninstrumented in the full app/UI run.
 default-filter = '''not (
     test(~finest_setting_is_within)
   | test(=req_op_02_a_small_avoid_patch_between_two_default_seeds_is_not_missed)
@@ -187,6 +202,16 @@ default-filter = '''not (
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
+  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
 )'''
 
 [profile.long]
@@ -210,4 +235,14 @@ default-filter = '''
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
+  | test(=req_set_09_req_nfr_12_req_op_03_continuous_roughing_along_the_length_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_req_op_03_indexed_roughing_around_the_part_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_rest_machining_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_roughing_keeps_clear_of_the_held_region)
+  | test(=req_set_09_req_nfr_12_simultaneous_finishing_keeps_clear_of_the_held_region)
+  | test(=req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
+  | test(=operation::tests::req_op_23_req_op_02_req_op_11_face_sets_limit_helical_on_a_step_part_as_on_a_mesh)
 '''
