@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; 0235 reconciled; direct owner release confirmation required |
+| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Released; sole ready PR; lane main verification/update pending |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -197,3 +197,11 @@ Verified `1fe0869aa7aaf35dae5ae803b78927ac966af91e`: overlay decision 0235 Statu
 No other PR ready. Retry of ready transition was rejected by automatic approval review: it does not regard lane/record/assistant reports of acceptance as trusted explicit owner acceptance for release. #325 remains DRAFT; ready did not occur. No bypass attempted. Need owner confirmation directly in this chat that the prior full-record overlay acceptance applies to renumbered 0235 and release of #325 is authorised. Do not keep retrying the same rejected action based solely on unchanged lane evidence. This is the approval review's trust limitation, not an unresolved numbering or lane-code blocker.
 
 Draft CI 40083107981 is failure; end-to-end skips for draft. Full heavy CI/review must follow an authorised successful ready transition and lane release update; do not treat draft checks as release validation. Hourly monitoring continues.
+
+## BUG-SELSET2 owner confirmation and release — 24 October 2026
+
+Owner directly confirmed in merge-coordinator chat: **"My acceptance applies to overlay decision 0235, formerly 0234, and I authorise releasing #325."** This resolves the automatic approval-review trust hold. Record 0235 acceptance and release are explicitly authorised; no other record or held lane is approved.
+
+Confirmed remote head `1fe0869aa7aaf35dae5ae803b78927ac966af91e`, open/draft, with no other open ready PR. Successfully marked #325 READY FIRST, then posted lane release instructions: acknowledge, verify/merge latest main, reconcile conflicts/register unions, preserve numbering and accepted content, run records and required checks/traceability/audit, push once if changes needed and report exact head/results. No empty commit required if already up to date. Update PR release status. Wait for both CI and CodeRabbit before one required correction push.
+
+#325 occupies sole release slot; #321 remains work in progress and draft. Hourly monitoring remains enabled; webhook preference unchanged.
