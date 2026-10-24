@@ -249,3 +249,9 @@ Owner directly instructed: **"I authorise 326 ahead of 321. I will notify you wh
 Verified #326 open/draft at `13fa263ac44cc6303529c81dd2e6e397eb15af8b` and no other open ready PR. Successfully marked #326 READY FIRST, then posted lane instructions for latest-main update (including #325), conflict/register reconciliation, all decision/OI/schema allocation checks, records/required checks/traceability/audit and ONE push with exact head/results/allocation map. Initial audit: cleanup 0236, main overlay 0235, held replay 0234/OI-984; no new OI/schema claimed by #326.
 
 Await both current-head full CI and CodeRabbit before bundled necessary corrections; lane owns all branch/PR edits. No new decision acceptance or #321 readiness is inferred. Hourly checks continue and event-trigger preference remains.
+
+## Human fix confirmation labels — owner instruction, 24 October 2026
+
+When merging any PR, inspect its linked/fixed issues, verification evidence and stated limits. If a fixed issue still needs human testing or confirmation (for example reproduction on the owner's native platform, GPU, STEP trial, machine or user workflow), add **awaiting-fix-feedback** to that issue. This applies to referenced fixes as well as automatically closing issue links. Automated/local test success does not establish the missing human confirmation.
+
+Record the affected issue numbers and pending human check in the merge outcome here. Do not label unrelated issues or issues with no remaining human-confirmation requirement. Preserve existing labels; do not infer owner confirmation from merge. Use GitHub issue tools and verify label application. Apply as part of the merge process without a separate permission request.
