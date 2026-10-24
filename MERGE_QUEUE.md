@@ -23,8 +23,9 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | TOOLLIB2 | [#326](https://github.com/paulhampson/OpenChuckCAM/pull/326) | `codex/lane-toollib2-remove-unused-tools` | Released; sole ready PR; lane main update/allocation checks pending |
-| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
+| 2 | OPCREATE2 | [#327](https://github.com/paulhampson/OpenChuckCAM/pull/327) | `codex/lane-opcreate2-strategy-picker` | Draft; accepted 0237 reported; pending serial release |
+| 3 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; renumber to 0238 / OI-987–988; full-record approval pending |
 
 ## SWARF3 / #320 — MERGED
 
@@ -257,3 +258,25 @@ When merging any PR, inspect its linked/fixed issues, verification evidence and 
 Record the affected issue numbers and pending human check in the merge outcome here. Do not label unrelated issues or issues with no remaining human-confirmation requirement. Preserve existing labels; do not infer owner confirmation from merge. Use GitHub issue tools and verify label application. Apply as part of the merge process without a separate permission request.
 
 Owner clarification: apply `awaiting-fix-feedback` to the **original issue that reported the problem**, not the PR or a new tracking issue. When multiple original issues need human confirmation, label each applicable original issue.
+
+## TOOLLIB2 completion — 24 October 2026
+
+#326 merged verified head `d78dc36210e4b464b508ee1369a53ad6849110ef` with exact-head guard; merge commit `8b27023147af541d2b14b9fc9b1b77275069ed9f`. Current main verified ancestor (behind_by 0). CI 40100285569 and end-to-end 40100285635 SUCCESS, including all required platform/STEP/Gate3 jobs and aggregator; fuzz skipped by path filter. CodeRabbit SUCCESS, no actionable findings/review threads. Nonblocking docstring-coverage warning rides later work; no standalone docs push.
+
+Lane reports 915/915 app/UI tests after clean main merge, records/all xtask/99-of-99 P1 traceability/clippy/format/audit pass. Accepted cleanup 0236 retained; no new OI/schema. TOOLLIB2 retains 0236 despite FINSTEP's uncommitted conflicting claim; FINSTEP replacement 0239 assigned through #326 comments with no TOOLLIB2 edit required. Human author and coauthor preserved.
+
+**Original issue #313 labelled awaiting-fix-feedback**, additive application verified, for Windows/native cleanup UI, keyboard and real-display confirmation. CI/local frames do not substitute for that human check.
+
+## New draft intake and allocation reconciliation — 24 October 2026
+
+Bounded owner-draft search returned #327/#328 (below 100); no additional eligible entries. Queued once in creation order behind held #321. #321 stays draft until owner's readiness notification.
+
+**OPCREATE2 #327**: owner paulhampson, created 2026-10-24T13:08:24Z; branch `codex/lane-opcreate2-strategy-picker`; head `7dd051de01c4bf80222da869974d321d482f2c5e`. Draft implementation complete, decision 0237 explicitly owner-accepted per Status/full-text review; exact eleven strategy explanations separately approved. Keeps 0237 and OI-985/OI-986 for its two closed owner choices. No schema/dependency/API/generation change. Lane reports 436 UI and 324 non-long path tests, clippy/all xtask/99-of-99 P1 traceability passing; coverage path92.14/UI86.55 report-only, native OS/GPU/screen-reader limits. Original issues #289/#290 need owner trial confirmation when merged. Pending serial release; no ready transition authorised here.
+
+**SIMUI #328**: owner paulhampson, created 2026-10-24T14:34:17Z; branch `codex/lane-simui-display-and-navigation`; head `ca39d1047810cfa9be9f7cfeaac27afcc3922c07`. Draft; full decision remains proposed despite separately accepted navigation/mapping choices. Fixes #297/#293/#299/#300/#302/#305; native/reference hardware/all-view checks remain open. Existing 0237/OI-985/OI-986 collide with #327. Reserve **0238 / OI-987 / OI-988** for SIMUI, mapping old0237→0238, oldOI-985→OI-987 (hardware remains open), oldOI-986→OI-988 (mapping closed with original owner-choice provenance). No schema number. Lane owns all edits, preserve substantive proposals/accepted subchoices, verify refs and records; no new acceptance/main update/release inferred.
+
+Allocation audit: main latest 0235 before #326 merge, TOOLLIB20236, OPCREATE2/SIMUI highest indexed0237 and maxOI986, held STEPALL-M0234/OI984; enumerated remote branch list and persisted claims show no 0238/0239 or OI987/988 use. Earlier old-branch/spike audit remains the baseline; no additional work branch above these numbers present.
+
+**FINSTEP replacement reservation 0239** assigned via its explicit request in #326 comments (owner-directed coordination). FINSTEP must acknowledge and update its uncommitted/local claim, no record acceptance/product implementation/release authorised. Reported unsubmitted **FACING 0237** reservation conflicts with submitted accepted #327; flag for reassignment when handed over, do not promise that number remains free. No FACING branch/PR work is undertaken here. No OI/schema allocated to FINSTEP or FACING.
+
+Hourly monitoring remains enabled; preserve original-issue feedback labels at merge.
