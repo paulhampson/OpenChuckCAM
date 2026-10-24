@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; ready first; lane main update and single push pending |
+| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; cb35309 CI running; review findings await assessment |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -76,7 +76,7 @@ Refreshed quick M2/M4 evidence is reported: production-posted bytes/library IR i
 
 Decision 0211 remains PROPOSED; OI-834, STEPALL-X order and OI-835 remain unresolved. M1/M3, sampling bounds, unmet 0.005 mm tessellation allocation, five-run stage timings and full-stepover determinism remain unresolved/unwaived. Historical 1.24× remains invalid as current successful-job performance. Keep BLOCKED / IN PROGRESS and draft until verified completion and owner decisions resolve the explicit hold.
 
-## BUG-EDIT / #323 — draft, decision approval pending
+## BUG-EDIT / #323 — intake history (superseded by release below)
 
 - Automatically queued under new-owner-draft intake policy: created 2026-10-23T23:59:07Z by paulhampson (ID 528002).
 - Branch `codex/lane-bug-edit-pending-edits`; intake head `4b6ffa93feb40a60aa179b14da2f9ddc0d8a66bc`. Owner/draft state verified.
@@ -103,3 +103,15 @@ Full decision 0233 was fetched and read at its exact current head; it remains pr
 Owner instructed "#323 is good jump in front": #323 is now first, ahead of blocked #321. At new head `0c28d6d4db8532d06d20d74c24c753332dfb6d56`, PR body and decision 0233 Status record the owner's explicit "Accept decision record 0233" after reviewing the complete record directly in the lane session, with acceptance/doc updates pushed on owner instruction. This supersedes the earlier proposed-status hold; no other decision acceptance is inferred.
 
 No other PR was ready. Coordinator marked #323 ready FIRST, then posted release instructions for lane main update, conflict/register reconciliation, required checks including records/traceability/audit, and one push with exact-head report. Main includes SWARF3 and Tokio 1.53.3. Wait for full CI and CodeRabbit on that updated head before batching any necessary corrections. Lane retains branch/code ownership; coordinator handles verified-green merge. #321 retains its explicit draft/blocker hold. Hourly monitoring remains enabled.
+
+## BUG-EDIT release progress — 24 October 2026
+
+Release head `cb35309c27e2386ddec8bea0ee21938491c8a751` is pushed, merging main `e590f4de67bbde573edf30982982d6d0c5d92707` after the ready transition. No manual merge conflicts; lane verified register unions contain no duplicate rows, accepted 0228/0229/0233 and open-item changes preserved, SWARF3 Geometry and Tokio 1.53.3 retained.
+
+[Lane verification](https://github.com/paulhampson/OpenChuckCAM/pull/323#issuecomment-6377740077): 423/423 UI tests pass uninstrumented (171.074 seconds; slowest 31.214 seconds), UI clippy/formatting/whitespace and repository checks pass, full traceability 99/99 P1, cargo audit passes. Fresh instrumented UI suite 423/423 passes, 85.94% lines (23,653/27,522); below report-only development target, documented verification gaps retained and artifacts cleaned.
+
+[Current-head CI 40046712026](https://github.com/paulhampson/OpenChuckCAM/actions/runs/40046712026) remains in progress: fast checks, Linux/Windows build-tests, all UI smoke and standalone-library jobs succeed; macOS build/test still runs. STEP kernel, fuzz and Gate 3 skip by filter. End-to-end run 40046711977 succeeds.
+
+CodeRabbit status SUCCESS for current head; incremental review reports no new actionable comments. Two earlier unresolved threads still require lane assessment: Major possible Keep stall for hidden pending fields (discussion_r4365353688), Minor tab-count validation (discussion_r4365353698). The possible indefinite modal stall is a potential genuine blocker regardless of the severity threshold; do not merge until verified or resolved. Lane acknowledges both and waits for BOTH full CI and review before a bundled required correction push. No early correction push requested. Minor/nonblocking changes follow next-PR policy unless riding an already required push.
+
+#323 is the sole ready PR. #321 remains unchanged and draft on its explicit hold. No new eligible owner drafts found (bounded search below 100 results). Hourly monitoring continues.
