@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; owner acceptance reported; 0235 reconciliation push pending |
+| 1 | BUG-SELSET2 | [#325](https://github.com/paulhampson/OpenChuckCAM/pull/325) | `codex/lane-bug-selset2-selection-colours` | Draft; 0235 reconciled; direct owner release confirmation required |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -189,3 +189,11 @@ PR body now reports explicit owner acceptance "Accept 0234" after full OVERLAY-r
 Remote head remains `9eb0c417c20e21346718864000c8b1b9dd20cf61`, still draft; lane has not acknowledged the allocation instruction. Coordinator posted an explicit instruction to carry the acceptance metadata with the already authorised ONE metadata-only numbering correction push, run records/whitespace checks, correct file/heading/index/references/PR body and report head/results. No main update or product change is authorised in this draft-reconciliation step.
 
 Automatic approval review rejected the attempted ready transition because "Continue" does not authorise release while accepted-record metadata and numbering reconciliation remain pending. Ready transition did NOT occur; no bypass or indirect alternative attempted. Keep draft and obtain concrete corrected head/checks; release remains blocked pending prerequisites and owner approval of the release. #325 stays first; #321 stays held.
+
+## BUG-SELSET2 corrected head verified; approval review hold
+
+Verified `1fe0869aa7aaf35dae5ae803b78927ac966af91e`: overlay decision 0235 Status preserves owner acceptance of the identical full content under original number 0234; no OI/schema claimed. Lane acknowledges coordinator allocation, confirms metadata-only diff, and reports records/whitespace checks pass in comment 6382695796. #321 retains 0234/OI-984. Numbering reconciliation is complete.
+
+No other PR ready. Retry of ready transition was rejected by automatic approval review: it does not regard lane/record/assistant reports of acceptance as trusted explicit owner acceptance for release. #325 remains DRAFT; ready did not occur. No bypass attempted. Need owner confirmation directly in this chat that the prior full-record overlay acceptance applies to renumbered 0235 and release of #325 is authorised. Do not keep retrying the same rejected action based solely on unchanged lane evidence. This is the approval review's trust limitation, not an unresolved numbering or lane-code blocker.
+
+Draft CI 40083107981 is failure; end-to-end skips for draft. Full heavy CI/review must follow an authorised successful ready transition and lane release update; do not treat draft checks as release validation. Hourly monitoring continues.
