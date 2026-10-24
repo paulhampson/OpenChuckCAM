@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Released; sole ready PR; 85d4a1d metadata head; latest-main integration pending |
+| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Released; sole ready PR; lane acknowledged integration; updated head pending |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -360,3 +360,10 @@ After confirmed #328 merge, verified all other open PRs #131/#284/#321 draft and
 Fresh branch enumeration returned27 refs plus exhausted cursor; decision indexes reviewed across all25 relevant refs (signature/management excluded). No conflicting0240 indexed claim. Keep main0238/OI987OPEN/OI988CLOSED,0237/OI985–986; held0234/OI984; reserved FINSTEP0239; OUTPUT-10240/existingOI580/no new OI/schema. Known unsubmitted ROUGHPATH0238/0239 and FACING0237 remain separate stale claims requiring reconciliation at handoff; do not silently renumber existing accepted assignments. Lane must verify actual allocation map as part of main update, with corrected exact head/checks; records checker alone insufficient. No new acceptance.
 
 Both full CI and CodeRabbit must finish on updated head before one bundled required correction; no auto-merge/protection bypass. Original#306 assessment/#307/#311 human-feedback labels assessed at merge; workflow#322 separate. #330/Minor SIMUI wording remain deferred, not assigned to OUTPUT-1. #321 stays draft/held pending OWNER readiness. Post-cutoff intake search returned existing six entries only. Hourly monitoring remains enabled for intake/reconciliation after merges.
+
+
+## OUTPUT-1 release acknowledgement — 24 October 2026
+
+Lane acknowledged release in [comment6387873038](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6387873038), confirming latest-main integration, full allocation audit, combined checks and ONE push/exact-head report. Current GitHub head remains `85d4a1d4d63c9613bc9ee75b2db5ea5309d7dc3a`, ready, conflicts present; released integration has not been pushed. No current-head PR Actions workflows, CodeRabbit pending, no reviews/inline threads. Wait for authorised main-update push; do not delay it for suppressed workflows or request an early correction push.
+
+Intake search again returned existing six post-cutoff owner PRs only, below100 result bound; no new intake. #321 remains held. Hourly monitor verified enabled; webhook discovery remains unavailable. No further instruction or owner action needed at this checkpoint.
