@@ -1,10 +1,10 @@
-# 0234: Publish confirmed selection membership before its overlay (lane BUG-SELSET2; issue 298)
+# 0235: Publish confirmed selection membership before its overlay (lane BUG-SELSET2; issue 298)
 
-- **Status:** Accepted by the project owner on 24 Oct 2026 in the BUG-SELSET2 lane session, after presentation of the complete record: "Accept 0234."
+- **Status:** Accepted by the project owner on 24 Oct 2026 in the BUG-SELSET2 lane session, after presentation of the complete record under its original number 0234: "Accept 0234." Renumbered to 0235 by the merge coordinator through PR 325; the decision and verification are unchanged.
 - **Date:** 24 Oct 2026.
 - **Requirements:** UI-05; PRJ-06 for stable membership and save/load; NFR-15 for approved colours and framed outlines.
 - **Dependencies:** SELSET PRs 282 and 316, STEPALL-F PR 274 and BUG-EDIT PR 323 verified merged into `main` before design, implementation or tests. Work starts at `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`.
-- **Number:** 0234 reserved by the coordinator. No schema number and no new open item; BUG-SELSET2 does not use OI-984.
+- **Number:** 0235 assigned by the merge coordinator through [PR 325, comment 6382588604](https://github.com/paulhampson/OpenChuckCAM/pull/325#issuecomment-6382588604), replacing the conflicting original 0234 reservation. STEPALL-M retains 0234 and OI-984. BUG-SELSET2 claims no open-item or schema number.
 - **Amends:** no accepted interaction or palette decision. Implements decisions 0215 and 0216 and the existing interface specification, sections 7.4, 11.4 and 12.2.
 
 ## Context and reproduction
