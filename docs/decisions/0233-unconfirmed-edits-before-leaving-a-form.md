@@ -1,8 +1,8 @@
 # 0233: Confirm uncommitted edits before leaving a form (lane BUG-EDIT; issue 304)
 
-- **Status:** proposed. The owner chose "Auto-confirm between fields; ask when leaving the form" on 23 Oct 2026, relayed by the coordinator under decision 0049 (OI-983). That interaction choice authorises implementation; it is not acceptance of this record.
+- **Status:** accepted by the project owner (24 Oct 2026, directly in the BUG-EDIT lane session, after reviewing the complete record). The owner previously chose "Auto-confirm between fields; ask when leaving the form" on 23 Oct 2026, relayed by the coordinator under decision 0049 (OI-983).
 - **Date:** 23 Oct 2026.
-- **Implementation status:** implemented. The full 421-test UI suite and the additional inspector-header regression pass locally, covering all 422 UI tests and 37 BUG-EDIT requirement tests. Coverage and uncovered lines are recorded below. This record remains proposed.
+- **Implementation status:** implemented. The full 421-test UI suite and the additional inspector-header regression pass locally, covering all 422 UI tests and 37 BUG-EDIT requirement tests. Coverage and uncovered lines are recorded below.
 - **Requirements:** UI-07 (validated fields), UI-08 (commands and undo), UI-10 (workflow navigation), UI-11 (staleness and errors), UI-26 (number-box confirmation), NFR-07 (clear refusal), NFR-12 (the user verifies generated output), GC-07 and NFR-06 (output follows committed inputs).
 - **Amends:** the focus-loss wording of decisions 0123 item 1 and 0206 item 3, and interface specification sections 8 and 10: ordinary field-to-field confirmation remains; departure from a form first resolves uncommitted input. Existing Save and Apply boundaries of decisions 0127 and 0104 remain.
 - **Open items:** OI-983 is the owner's interaction choice, answered as above.
@@ -37,7 +37,7 @@ Relevant accepted records: 0172 and 0173 (staleness and required values), 0190
 0102 and 0130. This is an interface change; CAM calculations, cache inputs,
 project schema and dependency rules do not change.
 
-## Decision proposed
+## Decision
 
 1. **A form departure is guarded in one shared place.** Navigation, changing
    the selected item or selection, generation, opening another dialog,
