@@ -81,3 +81,13 @@ The application round-trip test directly composes library APIs; it executes no a
 Changed post rounding and checker written-angle lines are covered (1056 and 289 executions respectively). Existing fallback/error branches retain gaps; no coverage exclusion was added to hide product lines.
 14c40ac1d93736fec6d9b24c80a8feb79bab26376c0cccc0496e3fc8b340e835  crates/openchuck-post/src/convert.rs
 21a05627cf30efa93fe2ade1cd6d7a051a1585e9d6c2ba3c0e9b7934fc13bdb2  crates/openchuck-gcode/src/compare.rs
+
+Gate 3, corrected lobed LinuxCNC golden:
+cargo xtask replay testdata/golden/reference/lobed_linuxcnc.ngc --docker ghcr.io/paulhampson/openchuckcam-linuxcnc:2.9.10 --keep-reports /workspace/stepall-evidence/replay324-linuxcnc
+Image digest: sha256:22d8b9f0acb8a0fd7a02bf47be7fd9e864e671bd510ca27ab35ff214d1489546
+Source fcbec119c3835519e124ac67fb07ee707defde77; only the newly changed LinuxCNC reference was replayed, not the entire release gate.
+Both background geometry measurements were paused for real-time simulation and resumed afterward. The initial attempt produced no report because the image's cnc UID 1001 could not read checkout files owned by UID 1000 with mode 0600. Restoring ordinary read permissions on the public simulator inputs and executable permission on its driver resolved this environment issue; no simulator or comparison threshold was changed.
+lobed_linuxcnc.ngc: running in the LinuxCNC simulator (real time)
+/workspace/OpenChuckCAM/testdata/golden/reference/lobed_linuxcnc.ngc: the simulator reached all 1806 moves (largest difference 0.0552, 105.6 s of motion) and reported no fault
+replay: ok
+Report SHA-256: 6a5706af03b13f126ae2fbc58fc8fc651b0f6bc6e96b14f0c3f5d1390a11e5b4

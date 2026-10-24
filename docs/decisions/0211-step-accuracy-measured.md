@@ -337,6 +337,12 @@ Two new requirement-based timing tests failed before implementation, then passed
 
 **Still outstanding:** full-sequence five-run timings, separately measured fitting and assembly stages, bounded physical sampling error, the 0.005 mm allocation, full-stepover M4 and replay correction OI-984 / issue #324. The public progress messages do not supply complete stage boundaries; no fitting/assembly time is inferred by subtracting summed parallel drop time from wall time. PR 321 stays draft. This evidence update does not amend the accepted choices or waive a criterion.
 
+## Measuring every M1 triangle (24 Oct 2026)
+
+The historical 20,000-triangle-per-face cap was a methodological departure from decision 0209. It is removed: M1 now measures every triangle's corners, edge midpoints and barycentric grid. A regression places the only 0.02 mm deviation at a triangle index skipped by the old stride. It failed with a reported maximum of zero before the change, then passed after it. All 13 native harness tests pass uninstrumented in 3.086 s; native clippy also passes. The focused instrumented regression also passes; the changed example code is outside the product coverage report, whose application product-line coverage is zero for this selection. Instrumented artifacts were cleaned. [Commands and red/green evidence](0211-m1-triangle-coverage.txt).
+
+The initially launched tighter-setting investigation used the capped method and was stopped without producing a measurement table. The replacement investigations use the uncapped method at the original candidate (0.01 mm / 0.02 rad) and a tighter setting (0.001 mm / 0.01 rad). Neither setting is adopted by running these measurements. The M2 physical-coverage bound and the exact closest-query limitation OI-839 remain separate; removing the triangle cap does not solve them.
+
 ## Optional stage timing for the required M3 rerun (24 Oct 2026)
 
 To perform the owner's retained five-run/per-stage verification, `ProgressSink` gains default methods `wants_timings` (false) and `timing`; `JobContext::time_stage` returns a scope guard. Existing hosts need no change and read no timing clock. The measurement example opts in, collecting durations without changing progress counters, cancellation or path output. This is an additive library API; the library version and schemas are unchanged.

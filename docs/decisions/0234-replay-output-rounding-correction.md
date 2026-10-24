@@ -51,6 +51,8 @@ The G-code crate also reads hand-written original and corrected programs for the
 
 On the saved form-a quick-stepover project that reproduced the defect, the production CLI reports 6 toolpath groups, 1 file and 66,076 moves; replay matches at a printed maximum tip error of 0.0008 mm and A error of 0.0005 degrees, with cut time 7597.8 s against IR 7597.9 s. The STL remains outside the repository. Full-stepover determinism and the final validation results are recorded with the evidence update in decision 0211; the quick project alone does not establish them.
 
+The corrected lobed LinuxCNC reference also passes gate 3 in LinuxCNC 2.9.10: all 1,806 moves reached, no fault, 105.6 s of motion. The simulator/replay comparison's largest sampled difference is 0.0552 against its existing 0.1 threshold; that gate-3 metric is separate from gate 2's model-tip rounding limit. The geometry measurements were paused during the real-time replay. The exact command, image digest and report hash are in [the evidence file](0234-replay-output-evidence.txt).
+
 ## Scope and release
 
 The owner's instruction to include #324 in this work supersedes the former pending-lane restriction for this correction. It does not authorise STEPALL-T/X implementation or a tessellation default. Keep OI-839 in STEPALL-X and keep sampling, accuracy allocation and performance verification separate.

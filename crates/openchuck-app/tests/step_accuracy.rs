@@ -277,3 +277,39 @@ fn req_op_12_a_mesh_is_sampled_by_its_area_and_read_like_the_exact_faces() {
     );
     assert!((0.0..=0.0032).contains(&c), "{c}");
 }
+
+#[test]
+fn req_imp_06_m1_cannot_skip_a_bad_triangle_on_a_large_face() {
+    // Put the only deviation at an index a fixed stride would skip. Decision
+    // 0209 requires the corners, edge midpoints and grid of every triangle.
+    let mut model = cylinder(0.01);
+    let mut face = model
+        .faces
+        .iter()
+        .find(|f| matches!(f.geometry, openchuck_types::brep::Surface::Plane { .. }))
+        .unwrap()
+        .clone();
+    let openchuck_types::brep::Surface::Plane { frame } = &face.geometry else {
+        panic!("expected a plane");
+    };
+    let normal = frame.z;
+    let triangle = face.tessellation.triangles[0];
+    let corners = triangle.map(|i| face.tessellation.vertices[i as usize]);
+    let centre = corners[0] + ((corners[1] - corners[0]) + (corners[2] - corners[0])) * (1.0 / 3.0);
+    let first = face.tessellation.vertices.len() as u32;
+    face.tessellation
+        .vertices
+        .extend(corners.map(|p| centre + (p - centre) * 0.1 + normal * 0.02));
+    face.tessellation.triangles = vec![triangle; 20_002];
+    *face.tessellation.triangles.last_mut().unwrap() = [first, first + 1, first + 2];
+    face.trims.clear();
+    model.faces = vec![face];
+    let rows = measure::tessellation_error(&model, 4);
+    let plane = rows.iter().find(|r| r.kind == "plane").unwrap();
+    assert!(
+        plane.max > 0.01999,
+        "missed the bad triangle: {}",
+        plane.max
+    );
+    assert_eq!(plane.measured, plane.triangles);
+}

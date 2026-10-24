@@ -43,7 +43,7 @@ pub struct KindError {
     pub faces: usize,
     /// Their triangles.
     pub triangles: usize,
-    /// Triangles measured (every one, up to [`MAX_TRIANGLES`] a face).
+    /// Triangles measured (every one, including large faces).
     pub measured: usize,
     /// Points measured.
     pub samples: usize,
@@ -150,9 +150,6 @@ fn mid(a: Point3, b: Point3) -> Point3 {
     a + (b - a) * 0.5
 }
 
-/// The most triangles of one face that M1 measures.
-pub const MAX_TRIANGLES: usize = 20_000;
-
 /// M1 for one face.
 struct FaceError {
     kind: SurfaceKind,
@@ -240,11 +237,10 @@ fn face_error(face: &BrepFace, grid: usize) -> FaceError {
         return out;
     };
     let mesh = &face.tessellation;
-    // A face of many triangles is measured on every `stride`th of them, a
-    // fixed choice, so the run stays within minutes.
-    let stride = mesh.triangles.len().div_ceil(MAX_TRIANGLES).max(1);
-    out.measured = mesh.triangles.len().div_ceil(stride);
-    for t in mesh.triangles.iter().step_by(stride) {
+    // Every triangle is required by decision 0209. A fixed stride can miss
+    // the only bad triangle and understate the face's measured maximum.
+    out.measured = mesh.triangles.len();
+    for t in &mesh.triangles {
         let [a, b, c] = t.map(|i| {
             mesh.vertices
                 .get(i as usize)

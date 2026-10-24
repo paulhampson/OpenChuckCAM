@@ -272,7 +272,7 @@ fn main() -> Result<(), Error> {
         println!(
             "finest needed: {}",
             fine.map_or(
-                "none of the four is within the 0.005 mm share".to_owned(),
+                "none of the tested settings is within the 0.005 mm share".to_owned(),
                 |d| format!(
                     "{d} mm is the coarsest deflection within the 0.005 mm share on every face"
                 )
