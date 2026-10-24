@@ -23,9 +23,9 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
-| 2 | OPCREATE2 | [#327](https://github.com/paulhampson/OpenChuckCAM/pull/327) | `codex/lane-opcreate2-strategy-picker` | Draft; accepted 0237 reported; pending serial release |
-| 3 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; renumber to 0238 / OI-987–988; full-record approval pending |
+| 1 | OPCREATE2 | [#327](https://github.com/paulhampson/OpenChuckCAM/pull/327) | `codex/lane-opcreate2-strategy-picker` | Released; sole ready PR; latest-main/allocation verification pending |
+| 2 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Draft; renumber to 0238 / OI-987–988; full-record approval pending |
+| Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
 
@@ -280,3 +280,11 @@ Allocation audit: main latest 0235 before #326 merge, TOOLLIB20236, OPCREATE2/SI
 **FINSTEP replacement reservation 0239** assigned via its explicit request in #326 comments (owner-directed coordination). FINSTEP must acknowledge and update its uncommitted/local claim, no record acceptance/product implementation/release authorised. Reported unsubmitted **FACING 0237** reservation conflicts with submitted accepted #327; flag for reassignment when handed over, do not promise that number remains free. No FACING branch/PR work is undertaken here. No OI/schema allocated to FINSTEP or FACING.
 
 Hourly monitoring remains enabled; preserve original-issue feedback labels at merge.
+
+## Standing authority to skip held STEPALL-M and OPCREATE2 release
+
+Owner directly instructed on 24 October 2026: **"You can release PRs ahead of 321 without permission until I say 321 is ready."** #321 is held outside active release order until OWNER readiness notification. Do not repeatedly ask permission to pass it; process other eligible queued PRs serially under existing decision-approval, numbering and verification gates. This supersedes per-PR priority approval holds caused solely by #321's position.
+
+Confirmed #327 draft at `7dd051de01c4bf80222da869974d321d482f2c5e`, owner-accepted 0237 and exact text approvals recorded; no other open ready PR. Successfully marked #327 READY FIRST, then posted release instructions for latest main (including #325/#326), allocation/register reconciliation, required checks/traceability/audit, ONE integration push and exact-head/results/allocation-map report. Keep accepted0237/OI985–986; SIMUI reassignment0238/OI987–988 and FINSTEP replacement0239 are persisted. No schema claim. Any residual/new allocation conflict requires coordinator comment resolution before merge.
+
+#327 now sole release slot; #328 next draft with numbering/full-record holds; #321 held. Full CI/CodeRabbit must finish before any bundled required corrections. Original #289/#290 feedback labels at merge where human/native trial remains unconfirmed. Monitoring remains enabled.
