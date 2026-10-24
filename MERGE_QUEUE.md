@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; cb35309 CI green; lane review assessment/corrections requested |
+| 1 | BUG-EDIT | [#323](https://github.com/paulhampson/OpenChuckCAM/pull/323) | `codex/lane-bug-edit-pending-edits` | Released; f6aeb9d corrections pushed; current-head CI/review pending |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -123,3 +123,11 @@ CI run 40046712026 and offline end-to-end run 40046711977 are now completed SUCC
 Lane must verify the hidden-field Keep-stall finding against accepted 0233, reproduce with a requirement-based regression, and fix if genuinely blocking without silently discarding pending values or changing accepted interaction semantics. If invalid, give concrete evidence and resolve appropriately. Assess tab-count Minor too; no independent minor-only push, but it may ride an already required correction push. Report exact head, checks and thread dispositions after ONE bundled push. Merge stays blocked on disposition/correction of the possible indefinite modal stall despite green CI.
 
 No new eligible drafts; #321 unchanged and explicitly held. Hourly checks continue.
+
+## BUG-EDIT bundled corrections pushed — 24 October 2026
+
+New head `f6aeb9d322a8065a5fbee046130e36ef00e0bec9`; [lane report](https://github.com/paulhampson/OpenChuckCAM/pull/323#issuecomment-6381146437). Lane reproduced the hidden-field Keep stall (red in 2.206 seconds), fixed recovery while preserving drafts and accepted Keep/Discard/Cancel semantics, and added stable semantic field identities. Tab-count range regression also failed first (1.031 seconds) and its fix rides this required push. Both original review threads are now resolved with evidence.
+
+Lane reports 425/425 UI tests passing uninstrumented (131.501 seconds), 39 BUG-EDIT tests, placement-pick regression 20 consecutive passes; clippy/formatting/repository checks, traceability 99/99 P1 and audit pass. Instrumented suite 425/425; UI coverage 86.44% (report-only), shell guard 95.86%; artifacts cleaned and documentation updated without accepting any new record.
+
+Current-head CI 40071939548 and end-to-end 40071939553 are IN PROGRESS; CodeRabbit is PENDING. Do not merge based on parent-head green checks. Hourly monitor verified enabled; last recorded run 24 October 2026 at 06:14 UTC (07:14 Europe/London). Keep checks enabled after completion.
