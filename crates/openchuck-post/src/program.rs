@@ -60,16 +60,12 @@ pub enum Step {
         /// The feed word under the post's feed rule.
         feed: FeedWord,
     },
-    /// Whole turns of A removed without moving the tool tip: `from` and `to`
-    /// differ by a whole number of turns and name the same machine position.
-    /// A post writes it as a real rotation or as a controller command that
-    /// drops the turns (decision 0007 item 4).
-    Unwind {
-        /// A before.
-        from: f64,
-        /// A after.
-        to: f64,
-        /// The machine position the tool stays at.
+    /// Safe operation boundary on a continuous axis. A supporting post may
+    /// rebase the live rotary counter by whole turns here, without motion;
+    /// other posts omit it. Never substitute a physical return (decision 0238).
+    RotaryBoundary {
+        /// The physical position in the unwrapped program. During rendering,
+        /// `a` becomes the controller's counter after the non-moving reset.
         at: Target,
     },
 }

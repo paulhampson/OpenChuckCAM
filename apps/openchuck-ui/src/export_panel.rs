@@ -364,7 +364,7 @@ impl ExportPanel {
                     let key = key.clone();
                     self.job = None;
                     match result.and_then(|run| {
-                        let plan = app.planned_files(&run.toolpath, &key.post, key.grouping)?;
+                        let plan = app.planned_files(&run, &key.post, key.grouping)?;
                         Ok((Arc::new(run), plan))
                     }) {
                         Ok((run, plan)) => {

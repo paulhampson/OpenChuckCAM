@@ -18,6 +18,7 @@ use openchuck_post::{
 };
 use openchuck_project::Project;
 use openchuck_types::ir::{Toolpath, ToolpathGroup};
+use openchuck_types::job::{CancelToken, JobContext, NoProgress};
 use openchuck_types::kinematics::RotaryFrame;
 
 use crate::error::AppError;
@@ -188,13 +189,15 @@ pub struct PlannedFile {
 /// names [`post_toolpath`] gives them. A project file across setups is refused
 /// as it is when posting (OI-92).
 pub(crate) fn plan_files(
-    project: &Project,
-    toolpath: &Toolpath,
+    run: &crate::Regeneration,
     selection: &PostSelection,
     grouping: OutputGrouping,
 ) -> Result<Vec<PlannedFile>, AppError> {
+    let project = &run.project;
+    let cancel = CancelToken::new();
+    let context = JobContext::new(&cancel, &NoProgress);
     let extension = selection.load()?.options.file_extension;
-    split_units(project, toolpath, grouping)?
+    split_units(project, &run.canonical_toolpath, grouping)?
         .into_iter()
         .enumerate()
         .map(|(index, unit)| {
@@ -208,6 +211,8 @@ pub(crate) fn plan_files(
                         unit.setup
                     ))
                 })?;
+            let assembled =
+                crate::connections::assemble(project, unit.groups, &run.groups, &context)?;
             Ok(PlannedFile {
                 name: file_name(
                     project,
@@ -219,7 +224,7 @@ pub(crate) fn plan_files(
                 ),
                 setup: setup.name.clone(),
                 label: unit.label.as_ref().map(|(title, _)| title.clone()),
-                programmed_seconds: unit
+                programmed_seconds: assembled
                     .groups
                     .iter()
                     .flat_map(|g| g.segments.iter())
@@ -475,11 +480,13 @@ fn split_units(
 /// Posts `toolpath` and returns the files as (name, text), their reports and notes.
 #[allow(clippy::type_complexity)]
 pub(crate) fn post_toolpath(
-    project: &Project,
-    toolpath: &Toolpath,
+    run: &crate::Regeneration,
     selection: &PostSelection,
     grouping: OutputGrouping,
+    context: &JobContext<'_>,
 ) -> Result<(Vec<(String, String)>, Vec<GcodeReport>, Vec<String>), AppError> {
+    let project = &run.project;
+    let toolpath = &run.canonical_toolpath;
     let post = TemplatePost::new(selection.load()?);
     if toolpath.groups.is_empty() {
         return Ok((Vec::new(), Vec::new(), Vec::new()));
@@ -568,6 +575,8 @@ pub(crate) fn post_toolpath(
             );
         }
         let job = PostJob {
+            a_range: machine.a_range,
+            safe_z: setup.clearance.unwrap_or(machine.clearance).safe_z.0,
             frame: RotaryFrame::work(machine, &setup.frame),
             tools,
             operation_names: operation_names.clone(),
@@ -580,7 +589,7 @@ pub(crate) fn post_toolpath(
             generator: Some(generator_comment()),
             work_offset: Some(format!("{:?}", setup.frame.work_offset.register)),
         };
-        let part = Toolpath { groups };
+        let part = crate::connections::assemble(project, groups, &run.groups, context)?;
         let output = post
             .post(&part, &job)
             .map_err(|e| AppError::Post(format!("setup '{}': {e}", setup.name)))?;

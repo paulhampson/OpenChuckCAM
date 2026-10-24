@@ -73,7 +73,7 @@ fn req_gc_01_req_gc_10_linuxcnc_post_round_trips_within_rounding() {
 
 #[test]
 fn req_gc_01_req_gc_09_z1_post_round_trips_under_the_makera_rule() {
-    // The unwind is `G92.4 A0 S0`: no motion, and the IR's whole-turn rapid is matched by it.
+    // The boundary reset is bookkeeping: no physical IR move is consumed.
     let text = builtin_post("makera-z1")
         .post(&small_part(), &job())
         .unwrap()

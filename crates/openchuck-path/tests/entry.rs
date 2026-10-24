@@ -484,3 +484,37 @@ fn req_op_11_entry_moves_are_fed_moves_with_positive_durations() {
         assert!(s.contact_feed.is_some());
     }
 }
+
+#[test]
+fn req_op_11_back_and_forth_ramp_descends_on_multiple_legs() {
+    use openchuck_path::entry_safety::EntrySafety;
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        20.0,
+        &ball(6.0),
+    );
+    let safety = EntrySafety {
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    let path = run(|ctx| generate(&Line, &input, &v, ctx)).unwrap();
+    let ramps = of_kind(&path.group, MoveKind::LeadIn);
+    assert!(ramps.len() > 2, "expected repeated descent");
+}

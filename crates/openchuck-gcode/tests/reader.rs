@@ -256,6 +256,48 @@ fn req_gc_09_the_z1_drop_turns_command_changes_a_without_motion() {
 }
 
 #[test]
+fn req_gc_09_z1_reset_preserves_xyz_and_the_next_absolute_a_move() {
+    // Firmware 1.1.2 only drops turns when |A| > 360. In particular,
+    // exactly +/-360 is NOT zeroed. S0 belongs to this command, not the spindle.
+    for (before, after) in [
+        (0.0, 0.0),
+        (355.0, 355.0),
+        (360.0, 360.0),
+        (-360.0, -360.0),
+        (370.0, 10.0),
+        (-370.0, -10.0),
+        (1080.0, 0.0),
+        (-1080.0, 0.0),
+        (593275.0, 355.0),
+        (-593275.0, -355.0),
+    ] {
+        let source = format!(
+            "G54\nG21 G90\nS13000 M3\nG0 X7 Y2 Z50 A{before}\nG92.4 A0 S0\nG1 A{} F100\nM3\n",
+            after + 10.0
+        );
+        let replay = replay(&read(&source).unwrap(), Dialect::MakeraZ1).unwrap();
+        let resets: Vec<_> = replay
+            .steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Event(Event::DropTurns { from, to, .. }) => Some((*from, *to)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(resets, [(before, after)], "A{before}");
+        let moves: Vec<_> = replay.moves().collect();
+        assert_eq!(moves.len(), 2, "reset must not create motion: A{before}");
+        assert_eq!(moves[1].from, [7.0, 2.0, 50.0, after]);
+        assert_eq!(moves[1].to, [7.0, 2.0, 50.0, after + 10.0]);
+        assert!(moves[1].spindle_on);
+        assert!(matches!(
+            replay.steps.last(),
+            Some(Step::Event(Event::SpindleOn { rpm: 13000.0, .. }))
+        ));
+    }
+}
+
+#[test]
 fn req_gc_08_feed_limits_apply_by_the_axes_a_move_changes() {
     let c = config();
     // 3000 mm/min on an XY move is over the 1200 linear limit.

@@ -9,8 +9,9 @@
 //!    allows; a pass that spans more than the range is refused, naming it,
 //!    since the axis cannot unwind in the middle of a cut. Passes start at
 //!    the nearest equivalent, so links take the shorter way round. At the
-//!    end of the group A unwinds to (-180, 180] at the safe Z: a rapid to the
-//!    same tip with A changed by whole turns (decision record 0001 item 1).
+//!    end of the group A retains its accumulated position after safe retract.
+//!    [`crate::program`] connects operations without a canonical return
+//!    (decision 0238); controller counter resets are not physical moves.
 //! 2. **Linking (OP-14).** In coordinates fixed to the machine with the
 //!    rotary axis through the origin, every link moves in the plane at the
 //!    retract height above the axis: the safe cylinder's radius, or the safe
@@ -37,6 +38,7 @@
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
 mod entry;
+mod ramp;
 mod walls;
 
 use openchuck_types::geometry::Point3;
@@ -46,7 +48,7 @@ use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
 use crate::error::{PathError, Result};
 use crate::params::{CommonParameters, EntryParameters, Retract};
-use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwind_turns, unwrap_continuous};
+use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwrap_continuous};
 use crate::stock::{CollisionOracle, StockModel};
 use crate::strategy::{CutPoint, Pass, PassStock, StrategyInput};
 use openchuck_types::machine::{MaxFeeds, RotaryInFeed};
@@ -447,7 +449,7 @@ pub fn assemble_with_entry(
             let end = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, end, None, None)?;
         }
-        entry.enter(&mut b, input, stock, common, i, points)?;
+        entry.enter(&mut b, input, stock, common, i, points, context)?;
         let doubling = rapids.get(i).filter(|r| !r.is_empty());
         let contacts = match doubling {
             Some(_) => points.iter().map(|p| p.contact).collect(),
@@ -475,11 +477,6 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
-    let turns = unwind_turns(b.pose.a);
-    if turns.abs() > EPS {
-        let end = b.pose(b.pose.tip, Degrees(b.pose.a.0 + turns));
-        b.push(MoveKind::Rapid, end, None, None)?;
-    }
     context.report("assemble passes", total, Some(total));
     Ok(GeneratedPath {
         group: ToolpathGroup {

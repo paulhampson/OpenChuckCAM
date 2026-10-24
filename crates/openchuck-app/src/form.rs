@@ -125,9 +125,18 @@ impl FormSection {
             | "max_tilt" | "axis_tolerance" | "max_angle_step" | "tip_end" | "tip_extension" => {
                 Self::ToolAxisAndA
             }
-            "retract" | "approach_distance" | "entry" | "ramp_angle" | "helix_diameter"
-            | "lead_radius" | "reentry_clearance" | "retract_height" | "chip_break_retract"
-            | "peck_mode" | "peck_depth" => Self::EntryLinksAndRetract,
+            "retract"
+            | "approach_distance"
+            | "entry"
+            | "ramp_back_and_forth"
+            | "ramp_angle"
+            | "helix_diameter"
+            | "lead_radius"
+            | "reentry_clearance"
+            | "retract_height"
+            | "chip_break_retract"
+            | "peck_mode"
+            | "peck_depth" => Self::EntryLinksAndRetract,
             "diameter_tolerance" | "crease_angle" | "min_length" | "min_remaining" | "min_cut"
             | "max_material_left" | "through_allowance" | "max_step" | "max_x_step"
             | "depth_reference" => Self::Advanced,

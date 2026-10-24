@@ -165,6 +165,11 @@ priority = 80
 filter = 'binary_id(=openchuck-path::simultaneous) & test(=req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)'
 priority = 79
 
+# ROUGHPATH 24 Oct 2026, four test workers: req_op_21_default_tabs_follow_the_owners_answers, 62.697 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count, 96.301 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2, 97.045 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target, 80.216 s uninstrumented.
+# ROUGHPATH 24 Oct 2026, four test workers: req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab, 76.749 s uninstrumented.
 [profile.coverage]
 # The narrow avoid-patch regression took 67.238 s uninstrumented in the
 # SWARF3 cloud container (23 Oct 2026); keep it in default and nightly tests.
@@ -187,6 +192,11 @@ default-filter = '''not (
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
+  | test(=req_op_21_default_tabs_follow_the_owners_answers)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
 )'''
 
 [profile.long]
@@ -210,4 +220,9 @@ default-filter = '''
   | test(~req_op_05_on_a_surface_of_revolution_the_path_is_the_helical_one)
   | test(~req_op_05_axial_passes_follow_the_normal_and_fit_a_limited_a_range)
   | test(~req_nfr_06_simultaneous_finishing_is_identical_at_1_2_and_n_threads)
+  | test(=req_op_21_default_tabs_follow_the_owners_answers)
+  | test(=req_gc_07_req_nfr_06_workholding_gives_the_same_gcode_at_any_thread_count)
+  | test(=req_op_13_req_op_14_req_gc_07_req_nfr_06_default_tabs_pass_gates_1_and_2)
+  | test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target)
+  | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
 '''

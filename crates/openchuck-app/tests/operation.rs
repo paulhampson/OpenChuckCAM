@@ -1588,6 +1588,16 @@ fn req_op_24_req_nfr_12_a_path_past_the_machines_travel_is_refused() {
     use openchuck_path::extend::parameter as extend;
     use openchuck_types::kinematics::RotaryFrame;
     let (dir, mut app, op) = project("extend-travel");
+    // Put the far stock edge beyond the part. The extension must be what
+    // exceeds travel; the unextended part and safe boundary must still fit.
+    let setup_id = app.project().operation(op).unwrap().setup;
+    let mut setup = app.project().setup(setup_id).unwrap().clone();
+    setup.stock = Some(Stock::Cylinder {
+        diameter: Millimetres(20.0),
+        length: Millimetres(24.0),
+        x_start: Millimetres(-7.0),
+    });
+    app.execute(Command::Replace(Item::Setup(setup))).unwrap();
     let far = [(extend::EXTEND, ParameterValue::Text(extend::FAR_END.into()))];
     set_strategy(&mut app, op, "helical_finishing", &far);
     let first = app.regenerate().unwrap();
@@ -1610,6 +1620,6 @@ fn req_op_24_req_nfr_12_a_path_past_the_machines_travel_is_refused() {
     );
     // Not extended, the same operation fits.
     set_strategy(&mut app, op, "helical_finishing", &[]);
-    assert!(app.regenerate().is_ok());
+    app.regenerate().unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
 }

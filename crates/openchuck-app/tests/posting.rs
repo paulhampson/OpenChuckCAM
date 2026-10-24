@@ -446,8 +446,8 @@ fn req_gc_11_a_toolpath_that_starts_away_from_a_zero_passes_gate_2() {
 
 #[test]
 fn req_gc_11_two_operations_with_a_turn_between_them_pass_gate_2() {
-    // The rapid from one group's end to the next group's start turns A in
-    // the G-code, and the IR counts that turn too; only the program's first
+    // The explicit connection at the start of the second group turns A in
+    // both the IR and G-code; only the program's first
     // move, from wherever the controller is, counts on neither side.
     let (dir, mut app, op) = project("post-two-operations");
     let mut second = app.project().operation(op).unwrap().clone();
@@ -467,11 +467,15 @@ fn req_gc_11_two_operations_with_a_turn_between_them_pass_gate_2() {
         let groups = &result.toolpath.groups;
         assert_eq!(groups.len(), 2);
         let end = groups[0].segments.last().unwrap().end.a.0;
+        assert_eq!(groups[1].start.a.0, end);
+        let connection = groups[1].segments.first().unwrap();
+        assert_eq!(connection.kind, openchuck_types::ir::MoveKind::Rapid);
+        let turn = (connection.end.a.0 - end).abs();
         assert!(
-            (groups[1].start.a.0 - end).abs() > 1.0,
-            "{end} {}",
-            groups[1].start.a.0
+            turn > 1.0 && turn <= 180.0,
+            "connection turns {turn} degrees"
         );
+        assert!(connection.duration.0 > 0.0);
         let report = &result.reports[0];
         assert!(report.is_clean(), "{post}: {report:?}");
     }
@@ -644,5 +648,44 @@ fn req_gc_14_req_nfr_12_a_spindle_speed_outside_the_machines_range_is_refused() 
     app.execute(Command::Replace(Item::Operation(o))).unwrap();
     spindle_range(&mut app, None, None);
     assert_eq!(app.regenerate().unwrap().gcode[0].1, before);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn req_gc_07_req_op_11_ramp_option_off_posts_identical_bytes() {
+    let (dir, mut app, op) = project("ramp-off-identity");
+    let mut operation = app.project().operation(op).unwrap().clone();
+    operation
+        .parameters
+        .insert("entry".into(), ParameterValue::Text("ramp".into()));
+    operation
+        .parameters
+        .insert("ramp_angle".into(), ParameterValue::Number(45.0));
+    app.execute(Command::Replace(Item::Operation(operation)))
+        .unwrap();
+    for post in ["makera-z1", "linuxcnc"] {
+        with_post(&mut app, post);
+        app.execute(Command::SetParameter {
+            operation: op,
+            name: "ramp_back_and_forth".into(),
+            value: None,
+        })
+        .unwrap();
+        let absent = app.regenerate().unwrap();
+        app.execute(Command::SetParameter {
+            operation: op,
+            name: "ramp_back_and_forth".into(),
+            value: Some(ParameterValue::Flag(false)),
+        })
+        .unwrap();
+        let off = app.regenerate().unwrap();
+        assert_eq!(absent.toolpath, off.toolpath);
+        assert_eq!(absent.gcode, off.gcode, "{post}");
+        assert!(
+            off.reports.iter().all(|r| r.is_clean()),
+            "{:?}",
+            off.reports
+        );
+    }
     std::fs::remove_dir_all(dir).unwrap();
 }

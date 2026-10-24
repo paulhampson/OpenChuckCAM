@@ -39,10 +39,10 @@
 {% elif opt.coolant == "mist" %}
 {{ line("M7") }}
 {% endif %}
-{% elif it.step == "unwind" %}
-{# The controller drops whole turns with no motion and keeps the remainder in `it.to`. #}
+{% elif it.step == "rotary_boundary" %}
+{# The controller drops whole turns with no motion and keeps the remainder in `it.at.a`. #}
 {{ line(opt.unwind_command) }}
-{% set st.a = it.to|fixed(opt.decimals.a) %}
+{% set st.a = it.at.a|fixed(opt.decimals.a) %}
 {% else %}
 {% set t = it.target %}
 {% set want = "G1" if it.step == "feed" else "G0" %}

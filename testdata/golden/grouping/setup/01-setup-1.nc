@@ -2,7 +2,7 @@
 (OpenChuckCAM <version>)
 G90 G21 G17
 G54
-(operation Finish A, tool T1 4 mm ball, about 20 s)
+(operation Finish A, tool T1 4 mm ball, about 17 s)
 M5
 T1 M6
 S10000 M3
@@ -315,7 +315,7 @@ X9.961 Z5.008 A717.188 F552.4
 X10.000 Z5.000 A720.000 F554.4
 G0 Z50.000
 G92.4 A0 S0
-(operation Finish B, tool T2 6 mm ball, about 20 s)
+(operation Finish B, tool T2 6 mm ball, about 17 s)
 M5
 T2 M6
 S10000 M3
@@ -708,7 +708,7 @@ X9.974 Z5.004 A718.125 F485.3
 X10.000 Z5.000 A720.000 F486.2
 G0 Z50.000
 G92.4 A0 S0
-(operation Touch up A, tool T1 4 mm ball, about 18 s)
+(operation Touch up A, tool T1 4 mm ball, about 15 s)
 M5
 T1 M6
 S10000 M3

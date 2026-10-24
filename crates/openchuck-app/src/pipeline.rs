@@ -93,6 +93,9 @@ pub struct GroupInfo {
 /// The result of regenerating a project.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Regeneration {
+    /// Context-independent operation paths, before program links and A
+    /// placement. File splitting must start here (decision 0238).
+    pub canonical_toolpath: Toolpath,
     /// The toolpath of every operation, in machining order.
     pub toolpath: Toolpath,
     /// Where each group of `toolpath` came from, in the same order
@@ -273,6 +276,13 @@ pub(crate) fn regenerate(
             (made, None)
         };
         previous = key;
+        let linked = crate::connections::connect(
+            project,
+            regeneration.toolpath.groups.last(),
+            &path.group,
+            path.part_bounds,
+            context,
+        )?;
         for note in &path.notes {
             regeneration
                 .notes
@@ -320,7 +330,7 @@ pub(crate) fn regenerate(
                     Arc::make_mut(state).run(
                         operation.id,
                         &operation.name,
-                        &path.group,
+                        &linked.group,
                         &path.tool,
                         &within,
                     )?;
@@ -341,7 +351,11 @@ pub(crate) fn regenerate(
                 ));
             }
         }
-        regeneration.toolpath.groups.push(path.group.clone());
+        regeneration
+            .canonical_toolpath
+            .groups
+            .push(path.group.clone());
+        regeneration.toolpath.groups.push(linked.group);
         regeneration.groups.push(GroupInfo {
             operation: operation.id,
             setup: operation.setup,
@@ -421,7 +435,7 @@ pub(crate) fn regenerate(
     if let Some((selection, grouping)) = post {
         context.check_cancelled()?;
         let (files, reports, notes) =
-            crate::posting::post_toolpath(project, &regeneration.toolpath, selection, grouping)?;
+            crate::posting::post_toolpath(&regeneration, selection, grouping, context)?;
         regeneration.gcode = files;
         regeneration.reports = reports;
         regeneration.notes.extend(notes);
@@ -507,6 +521,25 @@ mod tests {
     struct Spy {
         record: Arc<GenerationRecord>,
         seen: Mutex<Vec<(OperationId, PipelineActivity)>>,
+    }
+
+    #[test]
+    fn req_op_15_req_gc_05_pipeline_keeps_continuous_a_across_operations_and_cache() {
+        let mut p = TestProject::new("continuous-program-a");
+        p.app.register_strategy(Arc::new(OneRing)).unwrap();
+        p.add_operation("First ring", "one_ring");
+        p.add_operation("Second ring", "one_ring");
+        let first = p.app.regenerate().unwrap();
+        let end = first.toolpath.groups[0].segments.last().unwrap().end;
+        assert_eq!(end.a, Degrees(360.0));
+        assert_eq!(first.toolpath.groups[1].start, end);
+        assert_eq!(
+            first.toolpath.groups[1].segments.last().unwrap().end.a,
+            Degrees(720.0)
+        );
+        let again = p.app.regenerate().unwrap();
+        assert_eq!(first.toolpath, again.toolpath);
+        assert_eq!(again.reused.len(), 2);
     }
 
     impl ProgressSink for Spy {

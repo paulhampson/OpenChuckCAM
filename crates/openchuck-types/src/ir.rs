@@ -12,8 +12,9 @@
 //!
 //! and, through its group, tags back to the operation, setup and tool. The IR
 //! names no controller, axis letter or dialect: machine XYZ is derived only in
-//! the post, from the machine profile. Unwinding needs no field of its own: it
-//! is a rapid to the same tip with A changed by whole turns.
+//! the post, from the machine profile. Every segment is physical motion,
+//! including a whole-turn rapid. Non-moving controller counter resets are
+//! post actions and consume no segment or duration (decision 0238).
 //!
 //! The post chooses the feed mode per move from the contact feed and duration
 //! (OP-13, GC-04).

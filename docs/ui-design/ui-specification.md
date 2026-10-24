@@ -550,6 +550,8 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189);
 - a preview of the first lines.
 
+The read-only post summary explains rotary boundary behavior (decision 0238). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
+
 **Safety notice band** (NFR-12; GC-16):
 
 - **Always shown** at export, in an amber box. The text is fixed: "Verify this G-code before you run it. It was produced from your project and has not been tested on your machine. Check the origin, axis height, tool lengths, A direction and unwinding at the controller, and run an air cut first."

@@ -346,6 +346,9 @@ pub mod names {
     /// The entry style (decision record 0026).
     pub const ENTRY: &str = "entry";
     /// The descent angle of a ramp or helix entry.
+    /// Optional repeated descending ramp legs.
+    pub const RAMP_BACK_AND_FORTH: &str = "ramp_back_and_forth";
+    /// Descent angle for ramp and helix entry.
     pub const RAMP_ANGLE: &str = "ramp_angle";
     /// The helix entry's circle, as a fraction of the tool diameter.
     pub const HELIX_DIAMETER: &str = "helix_diameter";
@@ -461,6 +464,7 @@ pub fn common_parameters() -> Vec<ParameterSpec> {
                 default: EntryStyle::Plunge.name().to_owned(),
             },
         },
+        ParameterSpec { name: RAMP_BACK_AND_FORTH.to_owned(), label: "Back-and-forth ramp (ramp entry only)".to_owned(), description: "Only for ramp entry. Repeated descending passes may cut a full-width slot; verify tool suitability and this G-code before machining.".to_owned(), kind: ParameterKind::Flag { default: false } },
         ParameterSpec {
             name: RAMP_ANGLE.to_owned(),
             label: "Ramp angle".to_owned(),
@@ -549,6 +553,8 @@ pub struct EntryParameters {
     pub style: EntryStyle,
     /// Descent angle of a ramp or helix.
     pub ramp_angle: Degrees,
+    /// Repeated descending legs; inactive for other entry styles.
+    pub back_and_forth: bool,
     /// The helix circle as a fraction of the tool diameter.
     pub helix_diameter: f64,
     /// Radius of the lead arcs, or zero for the tool radius.
@@ -560,6 +566,7 @@ impl EntryParameters {
     pub const PLUNGE: Self = Self {
         style: EntryStyle::Plunge,
         ramp_angle: Degrees(DEFAULT_RAMP_ANGLE),
+        back_and_forth: false,
         helix_diameter: DEFAULT_HELIX_DIAMETER,
         lead_radius: Millimetres(0.0),
     };
@@ -585,6 +592,7 @@ impl EntryParameters {
         Ok(Self {
             style: EntryStyle::parse(p.text(ENTRY)?),
             ramp_angle: Degrees(p.number(RAMP_ANGLE)?),
+            back_and_forth: p.flag(RAMP_BACK_AND_FORTH)?,
             helix_diameter: p.number(HELIX_DIAMETER)?,
             lead_radius: Millimetres(p.number(LEAD_RADIUS)?),
         })

@@ -10,7 +10,7 @@
 //! rules, so a mistake in one is caught by the other (architecture section 9).
 
 use openchuck_types::geometry::Point3;
-use openchuck_types::ir::{MoveKind, Toolpath};
+use openchuck_types::ir::Toolpath;
 use openchuck_types::kinematics::{
     AsRotaryFrame, MachinePosition, axis_direction, machine_xyz, tool_tip_in_model,
 };
@@ -102,10 +102,6 @@ fn whole_turns(delta: f64) -> bool {
     delta.abs() > 1e-9 && ((delta / 360.0) - (delta / 360.0).round()).abs() * 360.0 < 1e-9
 }
 
-fn wrap180(delta: f64) -> f64 {
-    delta - 360.0 * (delta / 360.0).round()
-}
-
 fn gcode_seconds(m: &Move, rule: TimingRule, axis: [f64; 3]) -> Option<f64> {
     let f = m.feed?;
     if f <= 0.0 {
@@ -174,12 +170,12 @@ pub fn compare(
         ]
     };
 
-    // The poses the program must reach, in order, with whether each is an
-    // unwind (same machine position as before, A changed by whole turns).
+    // Every IR segment is physical motion. Non-moving controller resets
+    // may occur only after an operation boundary, consuming no IR pose.
     struct Expected {
         tip: Point3,
         a: f64,
-        unwind: bool,
+        boundary_after: bool,
         fed: Option<f64>,
         group: usize,
         /// The program's first move, from wherever the controller is to the
@@ -202,7 +198,7 @@ pub fn compare(
             expected.push(Expected {
                 tip: group.start.tip,
                 a: group.start.a.0,
-                unwind: false,
+                boundary_after: false,
                 fed: None,
                 group: g,
                 start: before.is_none(),
@@ -212,20 +208,12 @@ pub fn compare(
             let to = machine_of(segment.end.tip, segment.end.a.0);
             let moved = !same(&prev, &to);
             if moved {
-                let xyz_same = (0..3).all(|i| {
-                    (prev.get(i).copied().unwrap_or(0.0) - to.get(i).copied().unwrap_or(0.0)).abs()
-                        < 1e-9
-                });
-                let unwind =
-                    segment.kind == MoveKind::Rapid && xyz_same && whole_turns(to[3] - prev[3]);
-                if !unwind {
-                    ir_travel += (to[3] - prev[3]).abs();
-                }
+                ir_travel += (to[3] - prev[3]).abs();
                 let fed = segment.kind.is_fed().then_some(segment.duration.0);
                 expected.push(Expected {
                     tip: segment.end.tip,
                     a: segment.end.a.0,
-                    unwind,
+                    boundary_after: false,
                     fed,
                     group: g,
                     start: false,
@@ -233,37 +221,30 @@ pub fn compare(
             }
             prev = to;
         }
+        if let Some(last) = expected.last_mut() {
+            last.boundary_after = true;
+        }
     }
 
     let mut out = Comparison {
         ir_a_travel: ir_travel,
         ..Comparison::default()
     };
-    let mut steps = replay.steps.iter().filter(|s| match s {
-        Step::Move(m) => !m.machine,
-        Step::Event(Event::DropTurns { .. }) => true,
-        Step::Event(_) => false,
-    });
+    let mut steps = replay.steps.iter();
+    let mut coordinate_shift = 0.0;
+    let mut boundary = None;
     for e in &expected {
-        let Some(step) = steps.next() else {
+        let Some(mv) = next_move(
+            &mut steps,
+            &mut coordinate_shift,
+            boundary,
+            tolerances.a_deg,
+        )?
+        else {
             return Err(CompareError::Structure(format!(
                 "the G-code ends before the IR does: group {} needs a move to tip ({:.3}, {:.3}, {:.3}) A {:.3}",
                 e.group, e.tip.x, e.tip.y, e.tip.z, e.a
             )));
-        };
-        let mv = match step {
-            Step::Event(Event::DropTurns { .. }) => {
-                if !e.unwind {
-                    return Err(CompareError::Structure(format!(
-                        "a command that drops turns appears where the IR moves to ({:.3}, {:.3}, {:.3})",
-                        e.tip.x, e.tip.y, e.tip.z
-                    )));
-                }
-                out.poses += 1;
-                continue;
-            }
-            Step::Move(m) => m,
-            Step::Event(_) => continue,
         };
         let tip = tool_tip_in_model(
             &frame,
@@ -273,18 +254,12 @@ pub fn compare(
             },
         );
         let position_error = tip.distance(e.tip);
-        let a_error = wrap180(mv.to[3] - e.a).abs();
+        let a_error = (mv.to[3] + coordinate_shift - e.a).abs();
         out.max_position_error = out.max_position_error.max(position_error);
         out.max_a_error = out.max_a_error.max(a_error);
         out.poses += 1;
-        if !(e.unwind || e.start) {
+        if !e.start {
             out.gcode_a_travel += (mv.to[3] - mv.from[3]).abs();
-        }
-        if e.unwind && !whole_turns(mv.to[3] - mv.from[3]) {
-            return Err(CompareError::Structure(format!(
-                "line {}: the IR unwinds here but the G-code turns A by a part turn",
-                mv.line
-            )));
         }
         if let (Some(ir_seconds), Some(seconds)) = (e.fed, gcode_seconds(mv, rule, axis)) {
             out.ir_cut_seconds += ir_seconds;
@@ -302,8 +277,16 @@ pub fn compare(
                 mv.line
             )));
         }
+        boundary = e.boundary_after.then_some(e.a);
     }
-    if steps.next().is_some() {
+    if next_move(
+        &mut steps,
+        &mut coordinate_shift,
+        boundary,
+        tolerances.a_deg,
+    )?
+    .is_some()
+    {
         return Err(CompareError::Structure(
             "the G-code has moves beyond the end of the IR".into(),
         ));
@@ -336,4 +319,41 @@ pub fn compare(
         )));
     }
     Ok(out)
+}
+
+/// Counter resets are bookkeeping at a reached operation boundary. Track
+/// their offset explicitly so even a whole-turn error in a later command
+/// cannot be hidden by comparing only equivalent orientations.
+fn next_move<'a>(
+    steps: &mut impl Iterator<Item = &'a Step>,
+    shift: &mut f64,
+    boundary: Option<f64>,
+    tolerance: f64,
+) -> Result<Option<&'a Move>, CompareError> {
+    for step in steps.by_ref() {
+        match step {
+            Step::Move(m) if !m.machine => return Ok(Some(m)),
+            Step::Event(Event::DropTurns { line, from, to }) => {
+                let delta = from - to;
+                let expected_to = if from.abs() > 360.0 {
+                    from % 360.0
+                } else {
+                    *from
+                };
+                if !from.is_finite()
+                    || !to.is_finite()
+                    || !boundary.is_some_and(|a| (from + *shift - a).abs() <= tolerance)
+                    || (delta.abs() > tolerance && !whole_turns(delta))
+                    || (to - expected_to).abs() > tolerance
+                {
+                    return Err(CompareError::Structure(format!(
+                        "line {line}: rotary counter reset is not at the reached operation boundary or does not match the controller"
+                    )));
+                }
+                *shift += delta;
+            }
+            _ => {}
+        }
+    }
+    Ok(None)
 }
