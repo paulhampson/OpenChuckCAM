@@ -23,8 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Released; sole ready PR; head 61177c7 CI/review complete; failure-path finding awaiting lane assessment |
-| 2 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; 0240 correction verified; awaiting serial release |
+| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; 0240 correction verified; awaiting serial release |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -341,3 +340,14 @@ Full current-head CI run 40112861353 and end-to-end run 40112861358 completed SU
 Allocations unchanged: accepted SIMUI0238 with original-number acceptance provenance, OI987 OPEN/OI988 CLOSED; merged OPCREATE2 0237/OI985–986; FINSTEP reserved0239; OUTPUT-1#329 corrected0240. No new record acceptance/schema. Known stale unsubmitted ROUGHPATH/FACING claims remain subject to reconciliation before their intake; they cannot displace persisted assignments. At merge inspect original #297/#293/#299/#300/#302/#305 and apply awaiting-fix-feedback where human confirmation remains; OI987 stays open.
 
 Intake reconciliation returned all six post-cutoff owner PRs #323/#325/#326/#327/#328/#329 (below 100-result bound), with no new entry. #329 stays draft next; #321 stays draft/held until owner readiness notification. Hourly automation 6adbdd741cec8191848ce1bc80a97eb3 verified enabled without end date; no supported webhook discovery tool exposed, so no event subscription claimed.
+
+
+## SIMUI completion — 24 October 2026
+
+Merged exact verified head `61177c795e0c949627b39606ea4732064973c388` with SHA guard; confirmed merge commit `1687d4f3d69d067bdaf7a61d343bff459e472eef`. Latest main `31d47a207459e136bcc676401415dfe7e16225f8` verified ancestor (behind_by 0). Full CI40112861353/end-to-end40112861358 SUCCESS and CodeRabbit SUCCESS on this head; required aggregator passed. Accepted0238/OI987OPEN/OI988CLOSED unchanged. No bypass/auto-merge/new acceptance.
+
+Lane assessed deviation-colour failure case as nonblocking UX availability gap, with actual error already displayed; targeted failure-path tests 2/2 PASS in6.677s. CodeRabbit acknowledged the explanation, withdrew target-model fallback and accepted deferral to original follow-up #330. No source push; mapping/picking semantics unchanged. Minor stale-banner wording also deferred. These are deferred, not fixed; inline threads remain unresolved administratively but contain no release blocker. Evidence: comment6387803608 and discussion_r4368029075.
+
+Original issues **#297/#293/#299/#300/#302/#305** each received additive **awaiting-fix-feedback**, application verified with existing in-progress labels retained. Native Windows/reference hardware, real display/scale, stock colour/visibility/picking and navigation/progress/layout confirmation remain pending; OI987 stays open. Original issues automatically closed by PR fix links; closure does not imply human confirmation.
+
+#329 advances to queue head for allocation/approval/serial-release checks. #321 remains held until owner's readiness notification. Hourly monitoring stays enabled.
