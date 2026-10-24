@@ -23,8 +23,8 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
-| 2 | TOOLLIB2 | [#326](https://github.com/paulhampson/OpenChuckCAM/pull/326) | `codex/lane-toollib2-remove-unused-tools` | Draft; awaiting serial release; owner acceptance of 0236 reported |
+| 1 | TOOLLIB2 | [#326](https://github.com/paulhampson/OpenChuckCAM/pull/326) | `codex/lane-toollib2-remove-unused-tools` | Released; sole ready PR; lane main update/allocation checks pending |
+| 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
 
@@ -241,3 +241,11 @@ No new eligible owner drafts. Next queued #321 remains explicitly BLOCKED/draft 
 After #325 merged, checked #326's 0236 record/index against current main (0235), #321 (0234/OI-984), active other work-branch decision indexes (highest 0232), persisted reservations and the enumerated branch list (pagination exhausted). #326 claims no new OI/schema; changed filenames show only 0236 as new record and no schema migration. No allocation collision detected. Recheck during released main update and run records, as required by owner.
 
 Attempted ready transition for #326 was rejected by automatic approval review: only draft intake is explicitly authorised, #321 remains the next held queue item, and no trusted owner message releases #326 ahead of it. #326 remains DRAFT; no release/CI cycle was initiated and no bypass attempted. Need owner instruction to release #326 ahead of held #321. #321 hold remains unchanged. Decision 0236 owner acceptance is reported in record/PR, not newly accepted by coordinator. Do not retry the same rejected action without new authority.
+
+## TOOLLIB2 owner priority and release — 24 October 2026
+
+Owner directly instructed: **"I authorise 326 ahead of 321. I will notify you when 321 is ready."** This resolves #326 release-order approval hold. #326 moves first and #321 stays explicitly held until owner readiness notification; do not infer #321 release from record acceptance or later lane progress.
+
+Verified #326 open/draft at `13fa263ac44cc6303529c81dd2e6e397eb15af8b` and no other open ready PR. Successfully marked #326 READY FIRST, then posted lane instructions for latest-main update (including #325), conflict/register reconciliation, all decision/OI/schema allocation checks, records/required checks/traceability/audit and ONE push with exact head/results/allocation map. Initial audit: cleanup 0236, main overlay 0235, held replay 0234/OI-984; no new OI/schema claimed by #326.
+
+Await both current-head full CI and CodeRabbit before bundled necessary corrections; lane owns all branch/PR edits. No new decision acceptance or #321 readiness is inferred. Hourly checks continue and event-trigger preference remains.
