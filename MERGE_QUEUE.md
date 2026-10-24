@@ -24,7 +24,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
 | 1 | SIMUI | [#328](https://github.com/paulhampson/OpenChuckCAM/pull/328) | `codex/lane-simui-display-and-navigation` | Released; sole ready PR; latest-main integration pending |
-| 2 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; renumber accepted export record to 0240 |
+| 2 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Draft; 0240 correction verified; awaiting serial release |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -322,3 +322,11 @@ Owner directly confirmed **"328 is ready."** Verified accepted0238 with former02
 Current main `31d47a207459e136bcc676401415dfe7e16225f8` includes0237/closedOI985–986. SIMUI keeps0238/OI987OPEN/OI988CLOSED; OUTPUT-1 branch now corrected to0240 (index verified), FINSTEP reservation0239; no SIMUI schema. Unsubmitted ROUGHPATH stale0238/0239 files still require replacement when handed over and do not revoke earlier allocations. Lane instructed to preserve assigned map and flag new collisions; no work on unsubmitted lane branch is performed here.
 
 At merge reverify current-head CI/CodeRabbit/allocation map and label applicable ORIGINAL fixed issues297/293/299/300/302/305 awaiting-fix-feedback for owner/native/reference checks. OI987 remains open. #329 waits draft; #321 remains held outside active order pending owner notification. Hourly monitoring continues.
+
+## OUTPUT-1 correction verified; SIMUI release awaiting lane — 24 October 2026
+
+#329 completed authorised metadata-only correction at `85d4a1d4d63c9613bc9ee75b2db5ea5309d7dc3a`, acknowledged in comment6386480960. Verified0240 Status preserves owner's full-text acceptance under original0238; all current refs corrected with allocation provenance, no new OI/schema, OI580 unchanged and workflow#322 separate. Lane reports records/whitespace and normalized substantive-content comparison passing (SHA256778f9022e860a77c68694753be933d57c759d605688345ca009ebfd7280cf14d), product/tests/config unchanged. Draft remains next after#328; no release/main update authorised yet.
+
+#328 remains sole ready at `44bc56915654010c8754ef0e81a777f330b6941a`, with no release acknowledgement or main-integration push since comment6386630559. No current-head PR workflow run exists while main conflicts persist; no review threads. Wait for lane's released main update; do not request early correction or rerun stale draft checks.
+
+Held#321 head advanced to `b375262526492737ff609a6968a5501fe6d88b8e`, still draft; no owner readiness notification or new PR-comment handoff. Do not infer release from progress. No new eligible drafts beyond already queued#328/#329. Current tooling still has no webhook-discovery action; hourly checks remain enabled.
