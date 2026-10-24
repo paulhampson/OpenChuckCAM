@@ -2339,6 +2339,8 @@ mod keys_tests;
 
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod strategy_picker_tests;
 
 #[cfg(test)]
 mod numbox_tests;

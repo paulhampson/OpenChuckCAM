@@ -4,6 +4,8 @@ All notable changes to `openchuck-path` are recorded here.
 
 ## Unreleased
 
+- Clarify all eleven strategy explanations (OPCREATE2, #289/#290, accepted decision 0237 and OI-986): describe curved swarf walls, selected STEP faces and overcut warnings; remove unsupported promises about complete surfaces, every corner or one-pass completion. Wording only; generation and the public API are unchanged.
+
 - Warning measurement checks cancellation between surface queries (UI-09, INT-04); a cancel request no longer waits for all watched surfaces of the path to be measured. No public API change.
 
 - Lane SWARF3 (decision 0229, OI-637; OP-02, NFR-12): an avoid or check surface that only warns (`RegionConstraint::watch`) is taken by rotary roughing and helical, axial, indexed and simultaneous finishing, not only swarf. The shared generation makes the passes as if it were not there, then follows each move between cut points as the machine makes it, samples it at a nominal eighth of the tool's cutting radius (with a minimum spacing and interval cap; narrow crossings can be missed, OI-970), and drops the tool (grown by the stock to leave) onto each watched surface alone: where the tool rests on the surface, or reaches into it where it is, the length counts. Each surface broken is named in a warning ("The tool cuts into the avoid set 'Rib' along about 3.000 mm of the toolpath. ..."), said first in the notes too. A boundary limit turned off is still refused for a strategy other than swarf, now saying "takes no options on its boundary set". With no watched surface every path and note is unchanged. No public item changed.
