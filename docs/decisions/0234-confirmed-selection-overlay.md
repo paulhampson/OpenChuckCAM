@@ -1,10 +1,10 @@
 # 0234: Publish confirmed selection membership before its overlay (lane BUG-SELSET2; issue 298)
 
-- **Status:** PROPOSED; awaiting explicit project-owner acceptance after review of the complete record.
+- **Status:** Accepted by the project owner on 24 Oct 2026 in the BUG-SELSET2 lane session, after presentation of the complete record: "Accept 0234."
 - **Date:** 24 Oct 2026.
 - **Requirements:** UI-05; PRJ-06 for stable membership and save/load; NFR-15 for approved colours and framed outlines.
 - **Dependencies:** SELSET PRs 282 and 316, STEPALL-F PR 274 and BUG-EDIT PR 323 verified merged into `main` before design, implementation or tests. Work starts at `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`.
-- **Number:** 0234 reserved by the coordinator. No schema number and no new open item; reserved OI-984 is unused.
+- **Number:** 0234 reserved by the coordinator. No schema number and no new open item; BUG-SELSET2 does not use OI-984.
 - **Amends:** no accepted interaction or palette decision. Implements decisions 0215 and 0216 and the existing interface specification, sections 7.4, 11.4 and 12.2.
 
 ## Context and reproduction
@@ -33,7 +33,7 @@ another dirty flag is not the source fix.
 BUG-EDIT's accepted final record 0233 and integration were read. Its semantic
 pick/departure guard and selection-name Save/Clear tickets remain in use.
 
-## Proposed decision
+## Decision
 
 1. Keep keyboard handling in its existing position, including Esc during
    Pick again. Apply finished selection checks and confirmed reset answers,
