@@ -55,3 +55,24 @@ Verification plan 4.1: the two limits of item 8 and the budget of item 9. The wo
 - **OI-178:** the path is drawn as the tool tip's polyline. A tool axis that tilts (simultaneous finishing, lane I) is shown only by the tool at the cursor, and the part of the path already done is not drawn differently from what is to come.
 - **OI-179:** the machine view assumes the rotary axis is X; the tool and stock are drawn without a tool holder, and the stock mesh is blocky at the cell size (OI-115: colouring is done, smoothing is not).
 - **Progressed:** OI-115 (the stock mesh is drawn and the part coloured by deviation; smoothing is not), OI-116 (the cut and the comparison watch the cancel flag; not yet measured on a large job), OI-132 (playback re-simulates for its checkpoints, OI-174).
+
+
+## Issue 333 correction (25 Oct 2026)
+
+The owner's instruction to fix issue 333 supersedes item 11's deliberate
+lag and whole-move-only display. SIM-02/03/04 playback now includes the
+machine-linear swept prefix of the current move. Completed moves still replay
+from checkpoints; the prefix is cut on a temporary stock and never changes
+pipeline simulation results, checkpoints or posted output.
+
+The viewport publishes a completed stock surface together with the tool pose,
+A rotation and tool readout for that exact cursor. While the next surface job
+runs, it retains the previous matching pair. Playback time can continue advancing,
+so expensive stock preparation limits visual update frequency without placing
+the tool ahead of the displayed material removal. With Cut part hidden, tool
+animation follows the clock directly as before.
+
+Verification: the checkpoint playback test requires removal before a cutting
+move finishes; the UI regression deliberately blocks a surface job and checks
+that the tool remains at the displayed stock cursor, then advances with the
+completed surface.

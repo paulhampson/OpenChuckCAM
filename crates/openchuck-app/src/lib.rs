@@ -31,6 +31,7 @@ mod cache;
 pub mod checkpoint_schedule;
 pub mod checkpoints;
 mod command;
+mod connections;
 mod error;
 mod export;
 pub mod form;
@@ -1092,15 +1093,15 @@ impl Application {
         self.grouping
     }
 
-    /// The files `grouping` would write for `toolpath` with `post`, with their
+    /// The files `grouping` would write for `run` with `post`, with their
     /// names, setups and programmed times, before anything is posted (GC-05).
     pub fn planned_files(
         &self,
-        toolpath: &openchuck_types::ir::Toolpath,
+        run: &Regeneration,
         post: &PostSelection,
         grouping: OutputGrouping,
     ) -> Result<Vec<PlannedFile>, AppError> {
-        posting::plan_files(&self.document.project, toolpath, post, grouping)
+        posting::plan_files(run, post, grouping)
     }
 
     /// Starts regenerating with `post` and `grouping` for this one run, leaving

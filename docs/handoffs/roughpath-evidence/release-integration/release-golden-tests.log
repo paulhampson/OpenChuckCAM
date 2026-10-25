@@ -1,0 +1,39 @@
+   Compiling serde v1.0.229
+   Compiling occt-sys v7.8.1
+   Compiling cmake v0.1.58
+   Compiling openchuck-buildinfo v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-buildinfo)
+   Compiling openchuck-import v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-import)
+   Compiling openchuck-types v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling minijinja v3.0.1
+   Compiling openchuck-testkit v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+   Compiling openchuck-geom v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-geom)
+   Compiling openchuck-project v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-project)
+   Compiling openchuck-sim v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-sim)
+   Compiling openchuck-gcode v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-gcode)
+   Compiling openchuck-post v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-post)
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+   Compiling insta v1.49.0
+   Compiling openchuck-viewport v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-viewport)
+   Compiling ciborium v0.2.2
+   Compiling tinytemplate v1.2.1
+   Compiling criterion v0.8.2
+   Compiling openchuck-benches v0.21.0 (/workspace/OpenChuckCAM/benches)
+   Compiling openchuck-cli v0.21.0 (/workspace/OpenChuckCAM/apps/openchuck-cli)
+   Compiling openchuck-ui v0.21.0 (/workspace/OpenChuckCAM/apps/openchuck-ui)
+    Finished `test` profile [unoptimized] target(s) in 1m 07s
+────────────
+ Nextest run ID d50d1ddc-f276-474f-9fd8-7f3a4554a296 with nextest profile: default
+    Starting 10 tests across 119 binaries (1844 tests skipped)
+        PASS [   0.006s] ( 1/10) openchuck-app::golden_audit req_gc_09_req_gc_10_req_nfr_08_small_part_golden_files_match_their_closed_forms
+        PASS [   0.162s] ( 2/10) openchuck-app::golden_audit req_op_04_baseline_finishing_golden_files_pass_the_audit
+        PASS [   1.286s] ( 3/10) openchuck-app::output_options req_gc_05_req_nfr_08_each_grouping_matches_its_golden_files
+        PASS [   5.316s] ( 4/10) openchuck-app::golden_audit req_gc_09_req_gc_10_req_nfr_08_reference_job_golden_files_pass_the_audit
+        PASS [   0.078s] ( 5/10) openchuck-app::step_pipeline req_op_07_req_gc_09_req_gc_10_the_swarf_reference_job_passes_gates_1_and_2_and_matches_its_golden_files
+        PASS [   0.072s] ( 6/10) openchuck-app::step_pipeline req_op_10_req_gc_09_req_gc_10_the_drilling_reference_job_passes_gates_1_and_2_and_matches_its_golden_files
+        PASS [   0.087s] ( 7/10) openchuck-path::helical req_nfr_08_the_helical_toolpath_matches_its_golden_file
+        PASS [   0.008s] ( 8/10) openchuck-post::posts req_gc_09_req_nfr_08_z1_post_matches_its_golden_file
+        PASS [   0.007s] ( 9/10) openchuck-post::posts req_gc_10_req_nfr_08_linuxcnc_post_matches_its_golden_file
+        PASS [  31.716s] (10/10) openchuck-app::reference_jobs req_gc_09_req_gc_10_req_nfr_08_reference_jobs_pass_gates_1_and_2_and_match_their_golden_files
+────────────
+     Summary [  33.171s] 10 tests run: 10 passed, 1844 skipped

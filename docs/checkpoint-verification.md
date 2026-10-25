@@ -5,6 +5,10 @@ The lane starts from `dc610e26dd260d69b5fc859270e7bf5fc913a3bb`;
 BUG-EDIT merged at `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`.
 Project schema stays 18. Recovery containers have their independent version 1.
 
+This document records the initial implementation validation. Fresh released-main
+integration results and allocation/compatibility evidence are in
+[CHECKPOINT released verification](checkpoint-release-verification.md).
+
 ## Requirement-based regressions
 
 The first scheduler, snapshot reader, store, worker, interval-setting and

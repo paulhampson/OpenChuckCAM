@@ -519,6 +519,7 @@ Board 4 (SIM-01 to SIM-07).
 
 - **Transport:** previous operation, step back, play or pause (Space), step forward, next operation. With nothing to play (no run, or a run being prepared), the buttons stay in their places, disabled, so the tab does not move (issue 215; decision 0192 item 6).
 - **Preparation progress** (owner direction, issue 305; accepted 0238): directly below the playback position bar, during initial loading and regeneration. Read the existing monotonic pipeline progress; show its reported percentage without a time estimate. Other preparation stages without a stable total show activity without a percentage. Remove the display on readiness or failure; a disabled position bar provides the anchor before a timeline exists. Dock bounds stay fixed.
+- **Synchronized cut playback** (SIM-02/03/04, issue 333): Cut part includes the swept portion of the current move. The viewport's stock, tool pose, A rotation and tool readout share the exact same cursor. While a stock surface is being prepared, retain the previous matching pair; expensive work stays off the UI thread. With Cut part hidden, tool motion follows playback time directly.
 - **Speed:** 1×, 10×, 100×, 1000×, 10 000×, or the whole program in 10 s or 60 s. Speed and path-display choices share a row where they fit, with their existing target sizes; Playback uses denser row gaps and the drawing-detail note uses remaining row space.
 - **Timeline:** one segment per enabled operation, sized by moves. A segment not generated is dashed amber and labelled. The playhead is a vertical line, with move numbers under it.
 - **Go to move** N, and the feed at the current move.
@@ -556,6 +557,8 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 
 - the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189);
 - a preview of the first lines.
+
+The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
 
 **Safety notice band** (NFR-12; GC-16):
 
@@ -964,3 +967,7 @@ Images of the design canvas boards, rendered at 100% scale in headless Chromium 
 ![Operations step](mockups/03-operations.png)
 
 Known gaps in the images: the footer omits the short G-code notice of section 10 (D2), and the tree check boxes are drawn without a tick.
+
+### Optional back-and-forth ramp
+
+The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0242). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.

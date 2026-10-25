@@ -68,9 +68,7 @@ impl StockPlayback {
         &self.timeline
     }
 
-    /// The stock at `cursor`: after the whole moves done, not part-way into
-    /// the next (the dexel stock changes at samples a cell apart, and the
-    /// part of a move already cut is shown by the tool drawn at the cursor).
+    /// The stock at `cursor`, including the swept part of the current move.
     pub fn stock_at(
         &self,
         cursor: Cursor,
@@ -105,7 +103,44 @@ impl StockPlayback {
             .iter()
             .filter_map(|g| Some((path.groups.get(*g)?, &infos.get(*g)?.tool)))
             .collect();
-        Ok(setup.simulator.stock_at(local, moves, &groups, context)?)
+        let stock = setup.simulator.stock_at(local, moves, &groups, context)?;
+        let Some(original) = path.groups.get(group) else {
+            return Ok(stock);
+        };
+        let Some(segment) = original.segments.get(moves) else {
+            return Ok(stock);
+        };
+        if cursor.fraction <= 0.0 {
+            return Ok(stock);
+        }
+        let pose = timeline.sample(cursor)?;
+        let start = moves
+            .checked_sub(1)
+            .and_then(|i| original.segments.get(i))
+            .map_or(original.start, |s| s.end);
+        let mut partial = *segment;
+        partial.end = openchuck_types::ir::ToolPose {
+            tip: pose.tip,
+            axis: openchuck_types::geometry::UnitVec3::new(pose.axis)?,
+            a: openchuck_types::units::Degrees(pose.a),
+        };
+        let fraction = cursor.fraction.clamp(0.0, 1.0);
+        partial.duration.0 *= fraction;
+        partial.contact_length.0 *= fraction;
+        let partial = openchuck_types::ir::ToolpathGroup {
+            tags: original.tags.clone(),
+            start,
+            segments: vec![partial],
+        };
+        let frame = timeline
+            .work_frame(group)
+            .ok_or_else(|| AppError::Playback("no frame covers this move".to_owned()))?;
+        let mut simulator = Simulator::without_checkpoints(stock, &frame);
+        let info = infos
+            .get(group)
+            .ok_or_else(|| AppError::Playback("no tool covers this move".to_owned()))?;
+        simulator.run_group(&partial, &info.tool, context)?;
+        Ok(simulator.into_stock())
     }
 
     /// The stock at `cursor` as a closed mesh for the viewport.

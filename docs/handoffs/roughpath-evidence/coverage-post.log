@@ -1,0 +1,101 @@
+info: cargo-llvm-cov currently setting cfg(coverage); you can opt-out it by passing --no-cfg-coverage
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.26
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling crossbeam-utils v0.8.23
+   Compiling crossbeam-epoch v0.9.21
+   Compiling serde v1.0.229
+   Compiling thiserror v2.0.21
+   Compiling crossbeam-deque v0.8.8
+   Compiling find-msvc-tools v0.1.14
+   Compiling shlex v2.0.1
+   Compiling syn v3.0.7
+   Compiling cc v1.8.0
+   Compiling rayon-core v1.13.0
+   Compiling winnow v1.0.4
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling serde_spanned v1.1.2
+   Compiling blake3 v1.8.7
+   Compiling constant_time_eq v0.4.2
+   Compiling cfg-if v1.0.5
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling arrayvec v0.7.8
+   Compiling cpufeatures v0.3.1
+   Compiling either v1.19.0
+   Compiling toml_writer v1.1.3+spec-1.1.0
+   Compiling toml v1.1.8+spec-1.1.0
+   Compiling rayon v1.12.0
+   Compiling openchuck-types v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling minijinja v3.0.1
+   Compiling openchuck-testkit v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+   Compiling openchuck-post v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-post)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.48s
+────────────
+ Nextest run ID e83dafaf-006a-4466-985b-136fc31e60e2 with nextest profile: coverage
+    Starting 30 tests across 3 binaries
+        PASS [   0.005s] ( 1/30) openchuck-post::machine_program req_gc_04_max_feed_lowers_and_counts
+        PASS [   0.004s] ( 2/30) openchuck-post::machine_program req_gc_04_req_op_13_linuxcnc_rule_uses_xyz_length_or_a_travel
+        PASS [   0.009s] ( 3/30) openchuck-post::machine_program req_gc_04_inverse_time_and_contact_rules
+        PASS [   0.009s] ( 4/30) openchuck-post::machine_program req_gc_01_converts_moves_to_work_frame_positions_with_a
+        PASS [   0.006s] ( 5/30) openchuck-post::machine_program req_gc_04_req_op_13_makera_rule_matches_the_firmware_formula
+        PASS [   0.012s] ( 6/30) openchuck-post::machine_program req_gc_01_req_op_15_a_physical_whole_turn_rapid_stays_motion
+        PASS [   0.008s] ( 7/30) openchuck-post::machine_program req_gc_07_converting_twice_gives_the_same_program
+        PASS [   0.011s] ( 8/30) openchuck-post::machine_program req_gc_14_an_operation_spindle_speed_overrides_the_tools
+        PASS [   0.012s] ( 9/30) openchuck-post::machine_program req_nfr_07_bad_input_is_refused_with_a_message
+        PASS [   0.009s] (10/30) openchuck-post::posts req_gc_03_an_unknown_variable_is_an_error_naming_the_line
+        PASS [   0.018s] (11/30) openchuck-post::posts req_gc_02_built_in_posts_load_by_id_and_unknown_ids_are_none
+        PASS [   0.019s] (12/30) openchuck-post::posts req_gc_03_crlf_in_a_definition_gives_the_same_output
+        PASS [   0.011s] (13/30) openchuck-post::posts req_gc_03_req_nfr_07_a_syntax_error_is_found_when_the_post_is_loaded
+        PASS [   0.015s] (14/30) openchuck-post::posts req_gc_03_loading_from_a_folder_equals_the_embedded_post
+        PASS [   0.041s] (15/30) openchuck-post::posts req_gc_03_editing_a_post_changes_the_output_without_recompiling
+        PASS [   0.035s] (16/30) openchuck-post::posts req_gc_04_g93_and_line_numbers_and_direction_and_coolant_options
+        PASS [   0.009s] (17/30) openchuck-post::posts req_gc_04_req_op_13_a_feed_word_keeps_three_significant_figures
+        PASS [   0.013s] (18/30) openchuck-post::posts req_gc_04_req_nfr_07_bad_options_are_refused_naming_the_option
+        PASS [   0.025s] (19/30) openchuck-post::posts req_gc_04_req_gc_09_z1_reset_adjusts_following_a_at_signed_turn_boundaries
+        PASS [   0.012s] (20/30) openchuck-post::posts req_gc_09_req_gc_10_the_two_posts_share_one_template
+        PASS [   0.008s] (21/30) openchuck-post::posts req_gc_09_req_nfr_08_z1_post_matches_its_golden_file
+        PASS [   0.021s] (22/30) openchuck-post::posts req_gc_04_the_z1_unwind_drops_turns_and_keeps_the_machine_position
+        PASS [   0.011s] (23/30) openchuck-post::posts req_gc_09_z1_output_follows_the_sp_12_conventions
+        PASS [   0.034s] (24/30) openchuck-post::posts req_gc_07_posting_twice_and_on_four_threads_gives_the_same_bytes
+        PASS [   0.014s] (25/30) openchuck-post::posts req_gc_10_req_nfr_08_linuxcnc_post_matches_its_golden_file
+        PASS [   0.024s] (26/30) openchuck-post::posts req_gc_09_safe_group_end_resets_counter_without_a_physical_unwind
+        PASS [   0.011s] (27/30) openchuck-post::posts req_gc_14_a_tool_without_a_number_is_refused
+        PASS [   0.016s] (28/30) openchuck-post::posts req_nfr_07_comments_from_project_text_are_made_safe
+        PASS [   0.014s] (29/30) openchuck-post::posts req_nfr_16_req_nfr_07_the_generator_comment_is_made_safe
+        PASS [   0.053s] (30/30) openchuck-post::posts req_nfr_16_both_posts_name_the_tool_and_version_after_the_title
+────────────
+     Summary [   0.169s] 30 tests run: 30 passed, 0 skipped
+Filename                                 Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+openchuck-post/src/builtin.rs                 18                 0   100.00%           4                 0   100.00%          13                 0   100.00%           0                 0         -
+openchuck-post/src/convert.rs                222                21    90.54%           6                 1    83.33%         161                22    86.34%           0                 0         -
+openchuck-post/src/definition.rs             142                25    82.39%          12                 2    83.33%          91                12    86.81%           0                 0         -
+openchuck-post/src/engine.rs                 204                67    67.16%          22                 9    59.09%         109                39    64.22%           0                 0         -
+openchuck-post/src/error.rs                    3                 3     0.00%           1                 1     0.00%           3                 3     0.00%           0                 0         -
+openchuck-post/src/feed.rs                    44                 0   100.00%           5                 0   100.00%          35                 0   100.00%           0                 0         -
+openchuck-post/src/options.rs                100                 9    91.00%           5                 0   100.00%          74                 9    87.84%           0                 0         -
+openchuck-post/src/render.rs                 177                13    92.66%          15                 2    86.67%         111                 4    96.40%           0                 0         -
+openchuck-testkit/src/brep.rs                822               822     0.00%          39                39     0.00%         544               544     0.00%           0                 0         -
+openchuck-testkit/src/determinism.rs          48                48     0.00%           5                 5     0.00%          31                31     0.00%           0                 0         -
+openchuck-testkit/src/golden.rs              140                63    55.00%          15                 7    53.33%          78                31    60.26%           0                 0         -
+openchuck-testkit/src/gouge.rs               467               467     0.00%          24                24     0.00%         261               261     0.00%           0                 0         -
+openchuck-testkit/src/region.rs              927               927     0.00%          45                45     0.00%         502               502     0.00%           0                 0         -
+openchuck-types/src/brep.rs                  432               432     0.00%          32                32     0.00%         259               259     0.00%           0                 0         -
+openchuck-types/src/error.rs                  32                13    59.38%           4                 1    75.00%          32                18    43.75%           0                 0         -
+openchuck-types/src/geometry.rs              156                90    42.31%          22                11    50.00%          91                53    41.76%           0                 0         -
+openchuck-types/src/ir.rs                     70                 8    88.57%           8                 0   100.00%          40                 8    80.00%           0                 0         -
+openchuck-types/src/kinematics.rs            116                38    67.24%          14                 4    71.43%          67                21    68.66%           0                 0         -
+openchuck-types/src/machine.rs               204               182    10.78%          17                15    11.76%         177               143    19.21%           0                 0         -
+openchuck-types/src/mesh.rs                   50                50     0.00%           4                 4     0.00%          21                21     0.00%           0                 0         -
+openchuck-types/src/setup.rs                 436               436     0.00%          26                26     0.00%         290               290     0.00%           0                 0         -
+openchuck-types/src/stock.rs                  28                28     0.00%           1                 1     0.00%          12                12     0.00%           0                 0         -
+openchuck-types/src/tool/mod.rs              360               360     0.00%          22                22     0.00%         296               296     0.00%           0                 0         -
+openchuck-types/src/tool/profile.rs          443               443     0.00%          28                28     0.00%         272               272     0.00%           0                 0         -
+openchuck-types/src/transform.rs              76                76     0.00%           7                 7     0.00%          41                41     0.00%           0                 0         -
+openchuck-types/src/units.rs                 117               113     3.42%          19                18     5.26%          78                75     3.85%           0                 0         -
+openchuck-types/src/workholding.rs           467               467     0.00%          21                21     0.00%         301               301     0.00%           0                 0         -
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                       6301              5201    17.46%         423               325    23.17%        3990              3268    18.10%           0                 0         -

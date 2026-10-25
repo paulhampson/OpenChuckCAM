@@ -62,6 +62,8 @@ fn options(rule: FeedRule) -> ConvertOptions<MachineProfile> {
         },
     );
     ConvertOptions {
+        a_range: openchuck_types::machine::ARange::Continuous,
+        safe_z: 30.0,
         frame: MachineProfile::example_x_rotary(),
         feed_rule: rule,
         max_feed: None,
@@ -164,18 +166,18 @@ fn req_gc_01_converts_moves_to_work_frame_positions_with_a() {
 }
 
 #[test]
-fn req_gc_01_a_rapid_by_whole_turns_at_the_same_tip_is_an_unwind() {
+fn req_gc_01_req_op_15_a_physical_whole_turn_rapid_stays_motion() {
     let toolpath = path(vec![
         seg(MoveKind::Rapid, pose(0.0, 0.0, 30.0, 720.0), 0.5),
         seg(MoveKind::Rapid, pose(0.0, 0.0, 30.0, 740.0), 0.5),
     ]);
     let program = to_machine_program(&toolpath, &options(FeedRule::Linuxcnc)).unwrap();
-    let unwinds = program
+    let physical = program
         .steps
         .iter()
-        .filter(|s| matches!(s, Step::Unwind { .. }))
+        .filter(|s| matches!(s, Step::Rapid { target } if target.a == 720.0))
         .count();
-    assert_eq!(unwinds, 1, "{:?}", program.steps);
+    assert_eq!(physical, 1, "{:?}", program.steps);
     // A 20 degree turn is a real rapid.
     assert!(
         matches!(program.steps.last(), Some(Step::Rapid { target }) if (target.a - 740.0).abs() < 1e-12)

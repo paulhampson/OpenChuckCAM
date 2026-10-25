@@ -27,7 +27,7 @@ BT /F1 8.5 Tf 40 749.50 Td (Machine          Example X rotary) Tj ET
 BT /F1 8.5 Tf 40 738.50 Td (Setups           2) Tj ET
 BT /F1 8.5 Tf 40 727.50 Td (Operations       4) Tj ET
 BT /F1 8.5 Tf 40 716.50 Td (Tools used       2) Tj ET
-BT /F1 8.5 Tf 40 705.50 Td (Programmed time  1:17) Tj ET
+BT /F1 8.5 Tf 40 705.50 Td (Programmed time  1:05) Tj ET
 BT /F2 11 Tf 40 683.50 Td (Setup: Setup 1) Tj ET
 BT /F1 8.5 Tf 40 672.50 Td (Part            models/cube.stl) Tj ET
 BT /F1 8.5 Tf 40 661.50 Td (Stock           cylinder, diameter 20 mm, length 14 mm, from X -7 mm) Tj ET
@@ -48,13 +48,13 @@ BT /F1 8.5 Tf 40 485.50 Td (T2    6 mm ball  ball end  6       2       10       
 BT /F2 11 Tf 40 463.50 Td (Operations) Tj ET
 BT /F2 8.5 Tf 40 452.50 Td (No  Operation   Strategy      Setup         Tool          Spindle rpm  Speed from    Tolerance  Time) Tj ET
 BT /F1 8.5 Tf 40 441.50 Td (----------------------------------------------------------------------------------------------------) Tj ET
-BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 430.50 Td (1   Finish A    Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:17) Tj ET
 BT /F1 8.5 Tf 40 419.50 Td (                finishing                                              oak) Tj ET
-BT /F1 8.5 Tf 40 408.50 Td (2   Finish B    Helical       Setup 1       T2 6 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 408.50 Td (2   Finish B    Helical       Setup 1       T2 6 mm ball  10000        tool data:    0.01 mm    0:17) Tj ET
 BT /F1 8.5 Tf 40 397.50 Td (                finishing                                              oak) Tj ET
-BT /F1 8.5 Tf 40 386.50 Td (3   Touch up A  Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:18) Tj ET
+BT /F1 8.5 Tf 40 386.50 Td (3   Touch up A  Helical       Setup 1       T1 4 mm ball  10000        tool data:    0.01 mm    0:15) Tj ET
 BT /F1 8.5 Tf 40 375.50 Td (                finishing                                              oak) Tj ET
-BT /F1 8.5 Tf 40 364.50 Td (4   Side two    Helical       Flip / side   T1 4 mm ball  10000        tool data:    0.01 mm    0:20) Tj ET
+BT /F1 8.5 Tf 40 364.50 Td (4   Side two    Helical       Flip / side   T1 4 mm ball  10000        tool data:    0.01 mm    0:17) Tj ET
 BT /F1 8.5 Tf 40 353.50 Td (                finishing     2                                        oak) Tj ET
 BT /F2 11 Tf 40 331.50 Td (Notes) Tj ET
 BT /F1 8.5 Tf 40 320.50 Td (Time is the sum of the toolpath's move durations at their programmed feeds. It leaves out) Tj ET

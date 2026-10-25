@@ -358,11 +358,7 @@ fn req_gc_05_the_planned_files_are_the_files_that_are_written() {
     for grouping in OutputGrouping::ALL {
         let run = post(&mut app, grouping);
         let plan = app
-            .planned_files(
-                &run.toolpath,
-                &PostSelection::Builtin("makera-z1".into()),
-                grouping,
-            )
+            .planned_files(&run, &PostSelection::Builtin("makera-z1".into()), grouping)
             .unwrap();
         let planned: Vec<&str> = plan.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(planned, names(&run), "{grouping:?}");
@@ -376,7 +372,16 @@ fn req_gc_05_the_planned_files_are_the_files_that_are_written() {
             .flat_map(|g| g.segments.iter())
             .map(|s| s.duration.0)
             .sum();
-        assert!((total - sheet).abs() < 1e-9, "{grouping:?}");
+        // An operation file starts independently: no generated connection
+        // from a previous file is included in its programmed time.
+        let canonical = run.canonical_toolpath.total_duration().0;
+        match grouping {
+            OutputGrouping::Operation => assert!((total - canonical).abs() < 1e-9),
+            OutputGrouping::Project | OutputGrouping::Setup => {
+                assert!((total - sheet).abs() < 1e-9)
+            }
+            OutputGrouping::Tool => assert!(total >= canonical - 1e-9 && total <= sheet + 1e-9),
+        }
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -387,7 +392,7 @@ fn req_gc_05_a_project_file_across_two_setups_is_refused_in_the_plan_too() {
     let run = post(&mut app, OutputGrouping::Setup);
     let e = app
         .planned_files(
-            &run.toolpath,
+            &run,
             &PostSelection::Builtin("makera-z1".into()),
             OutputGrouping::Project,
         )

@@ -443,3 +443,43 @@ fn req_prj_08_req_nfr_07_generated_ignore_and_lock_cannot_follow_external_symlin
         assert_eq!(std::fs::read_to_string(&outside).unwrap(), "user content");
     }
 }
+
+#[test]
+fn req_prj_08_req_prj_04_schema_18_options_survive_format_1_and_future_project_schema_is_refused() {
+    use openchuck_project::ParameterValue;
+    assert_eq!(file::SCHEMA, 18);
+    assert_eq!(openchuck_project::recovery::FORMAT, 1);
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/schema-1");
+    for flag in [None, Some(false), Some(true)] {
+        let mut project = file::load(&fixture).unwrap();
+        let mut operation = project.operations()[0].clone();
+        if let Some(flag) = flag {
+            operation
+                .parameters
+                .insert("ramp_back_and_forth".into(), ParameterValue::Flag(flag));
+        }
+        project.replace(Item::Operation(operation)).unwrap();
+        let saved = file::render(&project).unwrap();
+        let encoded = Snapshot::capture(&project, metadata(Kind::Periodic))
+            .unwrap()
+            .encode()
+            .unwrap();
+        let recovered = Snapshot::decode(&encoded).unwrap();
+        assert_eq!(recovered.project().unwrap(), project);
+        assert_eq!(recovered.files(), &saved);
+        assert_eq!(file::render(&recovered.project().unwrap()).unwrap(), saved);
+
+        let mut envelope: toml::Value = toml::from_str(&encoded).unwrap();
+        let mut payload: toml::Value =
+            toml::from_str(envelope["payload"].as_str().unwrap()).unwrap();
+        let mut newer: toml::Value =
+            toml::from_str(payload["files"]["project.toml"].as_str().unwrap()).unwrap();
+        newer["schema"] = toml::Value::Integer(file::SCHEMA + 1);
+        payload["files"]["project.toml"] = toml::Value::String(toml::to_string(&newer).unwrap());
+        let payload = toml::to_string(&payload).unwrap();
+        envelope["checksum"] =
+            toml::Value::String(blake3::hash(payload.as_bytes()).to_hex().to_string());
+        envelope["payload"] = toml::Value::String(payload);
+        assert!(Snapshot::decode(&toml::to_string(&envelope).unwrap()).is_err());
+    }
+}

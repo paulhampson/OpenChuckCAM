@@ -102,6 +102,7 @@ fn req_op_10_a_step_blank_with_a_radial_hole_is_found_and_drilled() {
         },
         max_feeds: machine.max_feeds,
         tags: &tags,
+        entry_safety: None,
         keep_out: &[],
     };
     let values: BTreeMap<String, ParameterValue> =

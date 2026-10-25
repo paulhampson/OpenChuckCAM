@@ -1,0 +1,13 @@
+     Cloning dc610e26dd260d69b5fc859270e7bf5fc913a3bb
+    Building openchuck-post v0.21.0 (current)
+       Built [   3.679s] (current)
+     Parsing openchuck-post v0.21.0 (current)
+      Parsed [   0.007s] (current)
+    Building openchuck-post v0.20.0 (baseline)
+       Built [  15.482s] (baseline)
+     Parsing openchuck-post v0.20.0 (baseline)
+      Parsed [   0.003s] (baseline)
+    Checking openchuck-post v0.20.0 -> v0.21.0 (major change)
+     Checked [   0.000s] 0 checks: 0 pass, 260 skip
+     Summary no semver update required
+    Finished [  24.929s] openchuck-post

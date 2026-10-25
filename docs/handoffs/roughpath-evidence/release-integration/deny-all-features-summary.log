@@ -1,0 +1,32 @@
+cargo deny --all-features check: success; final warning/output excerpt below. Complete 155375-byte warning log retained outside git at /workspace/roughpath-evidence/release-integration/deny-all-features.log. No licence/advisory exception was changed.
+
+      └── windows-targets v0.52.6
+          ├── windows-sys v0.52.0
+          │   └── winit v0.30.13
+          │       ├── eframe v0.36.2
+          │       │   └── openchuck-ui v0.21.0
+          │       ├── egui-wgpu v0.36.2
+          │       │   └── eframe v0.36.2 (*)
+          │       └── egui-winit v0.36.2
+          │           └── eframe v0.36.2 (*)
+          └── windows-sys v0.59.0
+              └── rustix v0.38.44
+                  ├── calloop v0.13.0
+                  │   ├── calloop-wayland-source v0.3.0
+                  │   │   └── smithay-client-toolkit v0.19.2
+                  │   │       └── winit v0.30.13 (*)
+                  │   ├── smithay-client-toolkit v0.19.2 (*)
+                  │   └── winit v0.30.13 (*)
+                  ├── calloop-wayland-source v0.3.0 (*)
+                  ├── smithay-client-toolkit v0.19.2 (*)
+                  └── winit v0.30.13 (*)
+    ├ windows_x86_64_msvc v0.53.1
+      └── windows-targets v0.53.5
+          └── windows-sys v0.60.2
+              ├── arboard v3.6.1
+              │   └── egui-winit v0.36.2
+              │       └── eframe v0.36.2
+              │           └── openchuck-ui v0.21.0
+              └── openchuck-ui v0.21.0 (*)
+
+advisories ok, bans ok, licenses ok, sources ok
