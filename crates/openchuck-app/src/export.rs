@@ -47,8 +47,10 @@ pub fn post_summary(selection: &PostSelection) -> Result<PostSummary, AppError> 
         ADirection::Reversed => "positive A written reversed",
     };
     let wrap = match options.unwind {
-        UnwindMode::Rotate => "whole turns removed by a rotation of A",
-        UnwindMode::DropTurns => "whole turns dropped without motion",
+        UnwindMode::Rotate => "continuous A retained at operation boundaries",
+        UnwindMode::DropTurns => {
+            "whole turns dropped without motion at safe operation boundaries; the A counter changes, preserving angular zero, XYZ and saved work offsets"
+        }
     };
     Ok(PostSummary {
         selection: selection.clone(),

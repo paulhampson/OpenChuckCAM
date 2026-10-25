@@ -51,6 +51,7 @@ type Dir = (f64, f64);
 
 pub(super) struct Entry {
     style: EntryStyle,
+    back_and_forth: bool,
     ramp_tan: f64,
     helix_radius: f64,
     lead_radius: f64,
@@ -75,6 +76,7 @@ impl Entry {
         };
         Ok(Self {
             style: e.style,
+            back_and_forth: e.back_and_forth,
             ramp_tan: e.ramp_angle.0.to_radians().tan(),
             helix_radius: e.helix_diameter * radius,
             lead_radius: if e.lead_radius.0 > 0.0 {
@@ -90,6 +92,7 @@ impl Entry {
     }
 
     /// Moves from above the pass's first point to that point.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn enter(
         &self,
         b: &mut Builder<'_>,
@@ -98,6 +101,7 @@ impl Entry {
         common: &CommonParameters,
         pass: usize,
         points: &[CutPoint],
+        context: &openchuck_types::job::JobContext<'_>,
     ) -> Result<()> {
         let Some(head) = points.first() else {
             return Ok(());
@@ -105,6 +109,9 @@ impl Entry {
         match self.style {
             EntryStyle::Plunge => plunge(b, stock, common, head),
             EntryStyle::Lead => self.lead_in(b, input, stock, common, pass, head, points),
+            EntryStyle::Ramp if self.back_and_forth => {
+                self.repeated_ramp(b, input, stock, common, pass, head, points, context)
+            }
             EntryStyle::Ramp => self.ramp(b, input, stock, common, pass, head, points),
             EntryStyle::Helix => self.helix(b, input, stock, common, pass, head, points),
         }
@@ -254,6 +261,161 @@ impl Entry {
             &format!("an arc of radius {r:.3} mm"),
             refusal.unwrap_or_default(),
         ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn repeated_ramp(
+        &self,
+        b: &mut Builder<'_>,
+        input: &StrategyInput<'_>,
+        stock: View<'_>,
+        common: &CommonParameters,
+        pass: usize,
+        head: &CutPoint,
+        points: &[CutPoint],
+        context: &openchuck_types::job::JobContext<'_>,
+    ) -> Result<()> {
+        let safety=input.entry_safety.ok_or_else(|| PathError::Strategy("back-and-forth ramp needs whole-target, complete-tool and machine clearance inputs".into()))?;
+        let d = direction_at_start(b, points).ok_or_else(|| {
+            PathError::Strategy(format!(
+                "pass {}: back-and-forth ramp has no usable straight entry direction",
+                pass + 1
+            ))
+        })?;
+        let goal = b.rotary.to_axis(head.tip, head.a);
+        let radius = input.stock.max_radius().ok_or_else(|| {
+            PathError::Strategy(
+                "back-and-forth ramp cannot establish a stock-clear approach height".into(),
+            )
+        })?;
+        let top =
+            stop_height(b, stock, common, goal.height).max(radius + common.approach_distance.0);
+        if top > b.at().height + EPS {
+            return Err(PathError::Strategy(
+                "back-and-forth ramp needs a larger setup clearance for its approach".into(),
+            ));
+        }
+        let rise = top - goal.height;
+        if rise <= EPS {
+            return Err(PathError::Strategy(
+                "back-and-forth ramp has no descending entry to make".into(),
+            ));
+        }
+        let length = 2.0 * input.tool.cutting_radius();
+        let position = |distance: f64, height: f64| {
+            b.rotary.to_model(
+                AxisPosition {
+                    along: goal.along - d.0 * distance,
+                    across: goal.across - d.1 * distance,
+                    height,
+                },
+                head.a,
+            )
+        };
+        let pose = |distance: f64, height: f64| openchuck_types::ir::ToolPose {
+            tip: position(distance, height),
+            axis: b.rotary.tool_axis(head.a),
+            a: head.a,
+        };
+        let mut budget = 100_000;
+        // Prove the complete corridor at target depth before planning any leg.
+        // Every descending leg, reversal and final connection is checked again.
+        safety.verify(pose(0.0,goal.height),pose(length,goal.height),self.leave,self.tolerance,&mut budget,context).map_err(|error| if matches!(error,PathError::Cancelled) {error} else {PathError::Strategy(format!("Back-and-forth ramp needs at least {length:.3} mm of usable tool-centre travel; only 0.000 mm could be verified. Choose another entry or change the entry geometry."))})?;
+        let legs = super::ramp::plan(
+            rise,
+            length,
+            length,
+            self.ramp_tan.atan().to_degrees(),
+            || context.cancel.is_cancelled(),
+        )
+        .map_err(|e| {
+            if e == super::ramp::Refusal::Cancelled {
+                PathError::Cancelled
+            } else {
+                let reason=match e {
+                    super::ramp::Refusal::TooMany=>"needs more than 10000 descending legs",
+                    super::ramp::Refusal::NoProgress=>"cannot make a descending move at the supported output precision",
+                    super::ramp::Refusal::TooShort=>"has less than one cutting diameter of usable travel",
+                    _=>"has invalid descent dimensions",
+                };
+                PathError::Strategy(format!("pass {}: back-and-forth ramp {reason}; choose another entry or change the entry geometry",pass+1))
+            }
+        })?;
+        let mut motions = Vec::new();
+        let mut previous = b.pose;
+        let start = pose(0.0, top);
+        safety.verify(
+            previous,
+            start,
+            self.leave,
+            self.tolerance,
+            &mut budget,
+            context,
+        )?;
+        motions.push((MoveKind::Rapid, start));
+        previous = start;
+        let mut height = top;
+        for leg in legs {
+            context.check_cancelled()?;
+            height = (height - leg.drop).max(goal.height);
+            let end = pose(leg.to, height);
+            safety.verify(
+                previous,
+                end,
+                self.leave,
+                self.tolerance,
+                &mut budget,
+                context,
+            )?;
+            motions.push((MoveKind::LeadIn, end));
+            previous = end;
+        }
+        let end = pose(0.0, goal.height);
+        safety.verify(
+            previous,
+            end,
+            self.leave,
+            self.tolerance,
+            &mut budget,
+            context,
+        )?;
+        motions.push((MoveKind::LeadIn, end));
+        // Retain the existing target/refusal checks for approach, every leg,
+        // reversal and final connection, in addition to the continuous proof.
+        // Chunking bounds cancellation latency in the older parallel query.
+        let mut previous = b.pose;
+        for (_, end) in &motions {
+            let from = b.rotary.to_axis(previous.tip, head.a);
+            let to = b.rotary.to_axis(end.tip, head.a);
+            let distance = (to.along - from.along).hypot(to.across - from.across);
+            let positions =
+                lerp_positions(from, to, distance / (0.25 * input.tool.cutting_radius()));
+            if positions.len() > budget {
+                return Err(PathError::Strategy(
+                    "back-and-forth ramp clearance budget exhausted by target checks".into(),
+                ));
+            }
+            budget -= positions.len();
+            for chunk in positions.chunks(64) {
+                context.check_cancelled()?;
+                if let Some(g) = self.gouge(b, input, head.a, chunk) {
+                    return Err(self.refuse(
+                        input,
+                        pass,
+                        "back-and-forth ramp",
+                        "a verified entry move",
+                        g,
+                    ));
+                }
+            }
+            previous = *end;
+        }
+        // All geometry is established before any part of this entry is emitted.
+        for (kind, end) in motions {
+            context.check_cancelled()?;
+            b.push(kind, end, None, kind.is_fed().then_some(common.plunge_feed))?;
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]

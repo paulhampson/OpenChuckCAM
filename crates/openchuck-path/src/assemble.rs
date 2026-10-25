@@ -9,8 +9,9 @@
 //!    allows; a pass that spans more than the range is refused, naming it,
 //!    since the axis cannot unwind in the middle of a cut. Passes start at
 //!    the nearest equivalent, so links take the shorter way round. At the
-//!    end of the group A unwinds to (-180, 180] at the safe Z: a rapid to the
-//!    same tip with A changed by whole turns (decision record 0001 item 1).
+//!    end of the group A retains its accumulated position after safe retract.
+//!    [`crate::program`] connects operations without a canonical return
+//!    (decision 0241); controller counter resets are not physical moves.
 //! 2. **Linking (OP-14).** In coordinates fixed to the machine with the
 //!    rotary axis through the origin, every link moves in the plane at the
 //!    retract height above the axis: the safe cylinder's radius, or the safe
@@ -37,6 +38,7 @@
 //!    (rapids, plunges, retracts) use the tool tip for the length.
 
 mod entry;
+mod ramp;
 mod walls;
 
 use openchuck_types::geometry::Point3;
@@ -46,7 +48,7 @@ use openchuck_types::units::{Degrees, FeedRate, Millimetres, Seconds};
 
 use crate::error::{PathError, Result};
 use crate::params::{CommonParameters, EntryParameters, Retract};
-use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwind_turns, unwrap_continuous};
+use crate::rotary::{AxisPosition, RotaryMapping, fit_range, unwrap_continuous};
 use crate::stock::{CollisionOracle, StockModel};
 use crate::strategy::{CutPoint, Pass, PassStock, StrategyInput};
 use openchuck_types::machine::{MaxFeeds, RotaryInFeed};
@@ -415,6 +417,7 @@ pub fn assemble_with_entry(
         notes: Vec::new(),
     };
 
+    let reversing_ramp = entry.style == crate::params::EntryStyle::Ramp && entry.back_and_forth;
     let entry = entry::Entry::new(input, common, entry)?;
     let total = placed.len() as u64;
     for (i, points) in placed.iter().enumerate() {
@@ -429,8 +432,10 @@ pub fn assemble_with_entry(
             // above that stock, where the whole link is clear of it, instead
             // of at the clearance cylinder (OP-14, decision record 0033).
             let local = match stocks.get(i).and_then(Option::as_ref) {
-                Some(_) => local_link_height(&b, stock.stock, common, head, link_height),
-                None => None,
+                Some(_) if !reversing_ramp => {
+                    local_link_height(&b, stock.stock, common, head, link_height)
+                }
+                _ => None,
             };
             let height = local.unwrap_or(link_height);
             leave(&mut b, view(&stocks, i - 1, input), common, height)?;
@@ -447,7 +452,7 @@ pub fn assemble_with_entry(
             let end = b.pose(tip, head.a);
             b.push(MoveKind::Rapid, end, None, None)?;
         }
-        entry.enter(&mut b, input, stock, common, i, points)?;
+        entry.enter(&mut b, input, stock, common, i, points, context)?;
         let doubling = rapids.get(i).filter(|r| !r.is_empty());
         let contacts = match doubling {
             Some(_) => points.iter().map(|p| p.contact).collect(),
@@ -475,11 +480,6 @@ pub fn assemble_with_entry(
         safe_height,
     )?;
     b.retract(safe_height)?;
-    let turns = unwind_turns(b.pose.a);
-    if turns.abs() > EPS {
-        let end = b.pose(b.pose.tip, Degrees(b.pose.a.0 + turns));
-        b.push(MoveKind::Rapid, end, None, None)?;
-    }
     context.report("assemble passes", total, Some(total));
     Ok(GeneratedPath {
         group: ToolpathGroup {

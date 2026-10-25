@@ -281,6 +281,76 @@ fn req_gc_04_the_z1_unwind_drops_turns_and_keeps_the_machine_position() {
 }
 
 #[test]
+fn req_gc_04_req_gc_09_z1_reset_adjusts_following_a_at_signed_turn_boundaries() {
+    use openchuck_types::ir::{MoveKind, Toolpath, ToolpathGroup};
+
+    use openchuck_types::geometry::Point3;
+    use openchuck_types::kinematics::{MachinePosition, tool_axis_in_model, tool_tip_in_model};
+    use openchuck_types::units::Degrees;
+    let fixed = |a| {
+        let frame = job().frame;
+        openchuck_types::ir::ToolPose {
+            tip: tool_tip_in_model(
+                &frame,
+                &MachinePosition {
+                    xyz: Point3::new(7.0, 2.0, 50.0),
+                    a: Degrees(a),
+                },
+            ),
+            axis: tool_axis_in_model(&frame, Degrees(a)),
+            a: Degrees(a),
+        }
+    };
+    for (before, reset) in [
+        (360.0, 360.0),
+        (-360.0, -360.0),
+        (370.0, 10.0),
+        (-370.0, -10.0),
+        (1080.0, 0.0),
+        (-1080.0, 0.0),
+        (593275.0, 355.0),
+        (-593275.0, -355.0),
+    ] {
+        let path = Toolpath {
+            groups: vec![
+                ToolpathGroup {
+                    tags: small_part().groups[0].tags.clone(),
+                    start: fixed(before - 10.0),
+                    segments: vec![seg(MoveKind::Rapid, fixed(before), 1.0, 0.0)],
+                },
+                ToolpathGroup {
+                    tags: small_part().groups[0].tags.clone(),
+                    start: fixed(before),
+                    segments: vec![seg(MoveKind::Rapid, fixed(before + 10.0), 1.0, 0.0)],
+                },
+            ],
+        };
+        let text = builtin_post("makera-z1").post(&path, &job()).unwrap().text;
+        assert!(
+            text.lines().any(|line| line
+                .split_whitespace()
+                .any(|word| word == format!("A{:.3}", reset + 10.0))),
+            "A{before}: {text}"
+        );
+    }
+}
+
+#[test]
+fn req_gc_09_safe_group_end_resets_counter_without_a_physical_unwind() {
+    // The canonical operation ends at its safe retract, with accumulated A.
+    let path = small_part();
+    let text = builtin_post("makera-z1").post(&path, &job()).unwrap().text;
+    assert!(text.contains("\nG92.4 A0 S0\nM5\n"), "{text}");
+    let linux = builtin_post("linuxcnc").post(&path, &job()).unwrap().text;
+    let last_a = linux
+        .lines()
+        .rev()
+        .find(|line| line.split_whitespace().any(|w| w.starts_with('A')))
+        .unwrap();
+    assert!(last_a.contains("A1080.000"), "{linux}");
+}
+
+#[test]
 fn req_gc_07_posting_twice_and_on_four_threads_gives_the_same_bytes() {
     let reference = post_text("makera-z1");
     assert_eq!(reference, post_text("makera-z1"));

@@ -1,0 +1,15 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized] target(s) in 3.63s
+     Running unittests src/lib.rs (target/debug/deps/openchuck_path-eb1ed5e7fa7df339)
+
+running 6 tests
+test assemble::ramp::tests::req_nfr_04_ramp_planning_cancels_during_generation ... ok
+test assemble::ramp::tests::req_op_11_every_written_leg_descends_and_sub_resolution_entries_refuse ... ok
+test assemble::ramp::tests::req_op_11_half_unit_rounding_must_not_remove_all_descent ... ok
+test assemble::ramp::tests::req_op_11_posted_three_decimal_legs_never_exceed_ramp_angle ... ok
+test assemble::ramp::tests::req_op_11_req_op_13_multiple_descending_legs_and_partial_final_leg ... ok
+test assemble::ramp::tests::req_op_11_minimum_length_is_inclusive_and_impossible_entries_refuse ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s

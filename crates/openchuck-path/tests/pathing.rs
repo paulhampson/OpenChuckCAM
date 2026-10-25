@@ -207,7 +207,7 @@ fn req_op_15_angles_stay_continuous_and_fit_the_range() {
 }
 
 #[test]
-fn req_op_15_generated_rings_keep_a_continuous_and_unwind_at_the_end() {
+fn req_op_15_generated_rings_keep_accumulated_a_after_safe_retract() {
     let (_, fixture) = cylinder_fixture();
     let group = rings(&fixture, &ring_values(5.0, 8.0, 1.0, 0.0));
     let mut previous = group.start.a;
@@ -225,7 +225,7 @@ fn req_op_15_generated_rings_keep_a_continuous_and_unwind_at_the_end() {
     assert!(span > 4.0 * 360.0 - 10.0, "span {span}");
     assert_eq!(reversals(&cut, 1e-9), 0);
     let last = group.segments.last().unwrap();
-    assert!(last.end.a.0 > -180.0 && last.end.a.0 <= 180.0);
+    assert_eq!(last.end.a, *cut.last().unwrap());
 }
 
 #[test]

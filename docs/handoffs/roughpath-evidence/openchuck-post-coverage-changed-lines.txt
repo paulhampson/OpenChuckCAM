@@ -1,0 +1,7 @@
+crates/openchuck-post/src/convert.rs: 143/157 lines; added lines uncovered 4/9
+75: return Err(PostError::Setting {
+76: name: "safe_z".into(),
+77: reason: "must be finite".into(),
+78: });
+crates/openchuck-post/src/render.rs: 101/103 lines; added lines uncovered 0/14
+OWN 490/558 = 87.81%

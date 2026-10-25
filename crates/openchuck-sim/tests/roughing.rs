@@ -120,6 +120,7 @@ impl Rig {
             },
             max_feeds: self.machine.max_feeds,
             tags: &self.tags,
+            entry_safety: None,
             keep_out: &[],
         };
         generate(&RotaryRoughing, &input, v, &ctx)
@@ -145,6 +146,7 @@ impl Rig {
             },
             max_feeds: self.machine.max_feeds,
             tags: &self.tags,
+            entry_safety: None,
             keep_out: &[],
         };
         generate_in_region(&RotaryRoughing, &input, region, v, &ctx)

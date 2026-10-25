@@ -229,8 +229,8 @@ pub fn reversals(angles: &[Degrees], dead_band: f64) -> usize {
     count
 }
 
-/// Whole turns that bring `a` into `(-180, 180]`: the unwind at the end of a
-/// toolpath group (decision record 0018 item 5).
+/// Whole turns that bring `a` into `(-180, 180]`, as a legacy utility.
+/// Shared assembly retains accumulated A at boundaries instead (decision 0241).
 pub fn unwind_turns(a: Degrees) -> f64 {
     let wrapped = a.0 - TURN * ((a.0 + 180.0) / TURN).floor();
     // `wrapped` is in [-180, 180); keep +180 rather than -180.

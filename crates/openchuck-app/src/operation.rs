@@ -495,6 +495,51 @@ pub(crate) fn generate_with_part(
         setup: setup.id.to_string(),
         tool: snapshot.id.to_string(),
     };
+    let reversing = matches!(
+        operation.parameters.get(names::RAMP_BACK_AND_FORTH),
+        Some(openchuck_project::ParameterValue::Flag(true))
+    ) && matches!(operation.parameters.get(names::ENTRY), Some(openchuck_project::ParameterValue::Text(style)) if style=="ramp");
+    let entry_geometry = if reversing && placed.brep.is_none() {
+        use openchuck_types::tool::profile::{
+            ProfilePiece, ProfilePoint, ProfileSegment, ToolProfile,
+        };
+        if snapshot.tool.shank_diameter.0 > 2.0 * profile.cutting_radius() {
+            return Err(missing(
+                operation,
+                "back-and-forth ramp cannot certify this larger shank with a convex complete-tool envelope",
+            ));
+        }
+        let mut segments = profile
+            .pieces()
+            .iter()
+            .map(|piece| match *piece {
+                ProfilePiece::Line { end, .. } => ProfileSegment::Line { to: end },
+                ProfilePiece::Arc { end, centre, .. } => ProfileSegment::Arc { to: end, centre },
+            })
+            .collect::<Vec<_>>();
+        if snapshot.tool.overall_length.0 > profile.top() {
+            segments.push(ProfileSegment::Line {
+                to: ProfilePoint::new(profile.cutting_radius(), snapshot.tool.overall_length.0),
+            });
+        }
+        let body = ToolProfile { segments }.validate()?;
+        let part = openchuck_geom::part_extent(mesh)
+            .ok_or_else(|| missing(operation, "the whole target has no bounds"))?;
+        let protected =
+            crate::workholding::solids(&setup.workholding, setup.stock.as_ref(), &part)?;
+        Some((MeshSurface::new(mesh)?, body, protected))
+    } else {
+        None
+    };
+    let entry_safety = entry_geometry.as_ref().map(|(target, body, protected)| {
+        openchuck_path::entry_safety::EntrySafety {
+            rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+            target,
+            body,
+            protected,
+            machine,
+        }
+    });
     let input = StrategyInput {
         surface,
         stock,
@@ -504,6 +549,7 @@ pub(crate) fn generate_with_part(
         clearance: setup.clearance.unwrap_or(machine.clearance),
         max_feeds: machine.max_feeds,
         tags: &tags,
+        entry_safety: entry_safety.as_ref(),
         keep_out: &keep_out,
     };
     let resolved = parameter_values(project, operation, registry)?;

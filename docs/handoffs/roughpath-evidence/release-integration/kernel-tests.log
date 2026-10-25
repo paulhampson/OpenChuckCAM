@@ -1,0 +1,151 @@
+   Compiling num-traits v0.2.19
+   Compiling serde_core v1.0.229
+   Compiling cfg-if v1.0.5
+   Compiling libc v0.2.190
+   Compiling bitflags v2.13.2
+   Compiling approx v0.5.1
+   Compiling crossbeam-utils v0.8.23
+   Compiling num-complex v0.4.6
+   Compiling crossbeam-epoch v0.9.21
+   Compiling simba v0.10.2
+   Compiling glam v0.33.12
+   Compiling serde v1.0.229
+   Compiling openchuck-types v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-types)
+   Compiling once_cell v1.21.4
+   Compiling crossbeam-deque v0.8.8
+   Compiling rand_core v0.10.1
+   Compiling rstar v0.13.0
+   Compiling ordered-float v5.5.0
+   Compiling getrandom v0.4.3
+   Compiling rayon-core v1.13.0
+   Compiling cpufeatures v0.3.1
+   Compiling glamx v0.3.1
+   Compiling blake3 v1.8.7
+   Compiling getrandom v0.3.4
+   Compiling parry3d-f64 v0.31.1
+   Compiling rustix v1.1.5
+   Compiling serde_json v1.0.154
+   Compiling rayon v1.12.0
+   Compiling constant_time_eq v0.4.2
+   Compiling linux-raw-sys v0.12.1
+   Compiling fastrand v2.5.0
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling bit-vec v0.10.1
+   Compiling fnv v1.0.7
+   Compiling bit-set v0.11.1
+   Compiling tempfile v3.27.0
+   Compiling rand v0.10.3
+   Compiling rusty-fork v0.3.1
+   Compiling chacha20 v0.10.2
+   Compiling rand_xorshift v0.5.0
+   Compiling openchuck-geom v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-geom)
+   Compiling core_detect v1.0.0
+   Compiling unarray v0.1.4
+   Compiling zerocopy v0.8.62
+   Compiling version_check v0.9.5
+   Compiling openchuck-import v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-import)
+   Compiling regex-syntax v0.8.11
+   Compiling ahash v0.8.12
+   Compiling openchuck-testkit v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-testkit)
+   Compiling proptest v1.12.0
+   Compiling winnow v1.0.4
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling serde_spanned v1.1.2
+   Compiling static_aabb2d_index v2.1.0
+   Compiling toml_writer v1.1.3+spec-1.1.0
+   Compiling toml v1.1.8+spec-1.1.0
+   Compiling uuid v1.28.0
+   Compiling cavalier_contours v0.9.0
+   Compiling minijinja v3.0.1
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+   Compiling openchuck-post v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-post)
+   Compiling openchuck-sim v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-sim)
+   Compiling openchuck-project v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-project)
+   Compiling openchuck-gcode v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-gcode)
+   Compiling openchuck-app v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-app)
+    Finished `test` profile [unoptimized] target(s) in 46.28s
+────────────
+ Nextest run ID 80978b4a-0976-40f9-9e74-a0b2eff1f3a2 with nextest profile: default
+    Starting 76 tests across 10 binaries (35 binaries skipped)
+        PASS [   0.018s] ( 1/76) openchuck-app::brep_edges_step req_op_08_step_a_box_has_twelve_open_chains
+        PASS [   0.047s] ( 2/76) openchuck-app::brep_edges_step req_op_08_step_chain_points_are_on_the_edge_curve_not_the_tessellation
+        PASS [   0.137s] ( 3/76) openchuck-app::brep_edges_step req_op_08_step_a_rotary_blank_is_engraved_along_its_b_rep_edges_at_constant_depth
+        PASS [   0.683s] ( 4/76) openchuck-app::brep_edges_step req_op_08_step_chains_are_the_same_on_every_call
+        PASS [   2.040s] ( 5/76) openchuck-app::brep_edges_step req_op_08_step_every_edge_curve_runs_where_the_kernels_polyline_runs
+        PASS [   1.494s] ( 6/76) openchuck-app::brep_edges_step req_op_08_step_seams_poles_and_degenerate_edges_are_no_edges
+        PASS [   0.046s] ( 7/76) openchuck-app::brep_edges_step req_op_08_step_the_kernel_gives_the_curve_kinds_of_the_corpus_edges
+        PASS [   0.031s] ( 8/76) openchuck-app::step_drilling req_op_10_a_step_blank_with_a_radial_hole_is_found_and_drilled
+        PASS [   0.500s] ( 9/76) openchuck-app::brep_edges_step req_op_08_step_the_boundaries_of_fillets_are_edges_only_at_crease_angle_zero
+        PASS [   0.179s] (10/76) openchuck-app::step_exact req_imp_02_exact_surface_beats_the_tessellation_it_was_built_from
+        PASS [   0.148s] (11/76) openchuck-app::step_pipeline req_gc_07_req_nfr_06_the_drilling_reference_job_is_identical_at_1_and_n_threads
+        PASS [   0.139s] (12/76) openchuck-app::step_pipeline req_gc_07_req_nfr_06_the_swarf_reference_job_is_identical_at_1_and_n_threads
+        PASS [   0.064s] (13/76) openchuck-app::step_pipeline req_imp_02_req_imp_05_a_step_model_is_added_inspected_and_placed
+        PASS [   1.032s] (14/76) openchuck-app::step_pipeline req_imp_04_a_closed_step_part_is_checked_closed_and_an_open_one_shows_its_holes
+        PASS [   0.078s] (15/76) openchuck-app::step_pipeline req_op_07_req_gc_09_req_gc_10_the_swarf_reference_job_passes_gates_1_and_2_and_matches_its_golden_files
+        PASS [   2.545s] (16/76) openchuck-app::step_exact req_imp_02_exact_faces_agree_with_the_kernel
+        PASS [   0.281s] (17/76) openchuck-app::step_pipeline req_op_08_a_step_part_is_engraved_along_its_b_rep_edges_through_the_application
+        PASS [   0.072s] (18/76) openchuck-app::step_pipeline req_op_10_req_gc_09_req_gc_10_the_drilling_reference_job_passes_gates_1_and_2_and_matches_its_golden_files
+        PASS [   1.052s] (19/76) openchuck-app::step_pipeline req_op_07_req_sim_05_the_swarf_reference_job_cuts_the_flats_and_nothing_of_the_part
+        PASS [   1.763s] (20/76) openchuck-app::step_selection req_op_08_the_tangent_edge_choice_of_a_set_or_the_project_reaches_edge_following_on_a_step_part
+        PASS [   1.872s] (21/76) openchuck-app::step_selection req_ui_04_req_prj_06_faces_and_edges_of_a_step_file_are_the_same_after_reopening_and_a_second_import
+        PASS [   4.377s] (22/76) openchuck-app::step_strategies req_imp_02_req_op_04_axial_and_indexed_finishing_on_step_parts_do_not_gouge
+        PASS [  24.817s] (23/76) openchuck-app::step_strategies req_imp_02_req_op_04_helical_finishing_on_step_parts_does_not_gouge_the_exact_surface
+        PASS [  15.780s] (24/76) openchuck-app::step_strategies req_imp_02_req_op_05_simultaneous_finishing_on_a_step_part_does_not_gouge
+        PASS [   0.294s] (25/76) openchuck-app::step_strategies req_imp_02_tool_drops_on_a_step_part_agree_with_the_exact_surface_within_tolerance
+        PASS [   0.028s] (26/76) openchuck-app::step_strategies req_nfr_07_a_damaged_step_part_is_an_error_not_a_crash
+        PASS [   0.899s] (27/76) openchuck-app::step_strategies req_op_08_keeping_tangent_edges_follows_the_fillet_boundaries_of_a_step_part
+        PASS [   0.103s] (28/76) openchuck-app::step_strategies req_op_08_req_nfr_07_a_step_parts_seam_alone_is_no_edge_and_a_rim_is_followed
+        PASS [   7.473s] (29/76) openchuck-app::step_strategies req_op_09_req_imp_02_pencil_on_a_step_part_follows_its_inside_corner_without_gouging
+        PASS [   0.004s] (30/76) openchuck-import step::tests::req_imp_02_a_file_without_faces_is_an_error
+        PASS [   0.004s] (31/76) openchuck-import step::tests::req_imp_03_file_unit_is_reported_and_applied
+        PASS [   0.003s] (32/76) openchuck-import step::tests::req_imp_03_file_units_map_to_known_units
+        PASS [   0.004s] (33/76) openchuck-import step::tests::req_imp_03_unknown_file_unit_is_converted_and_said
+        PASS [   0.003s] (34/76) openchuck-import step::tests::req_imp_03_user_unit_overrides_the_file_unit
+        PASS [   0.003s] (35/76) openchuck-import step::tests::req_imp_06_tessellation_tolerances_must_be_positive
+        PASS [   0.003s] (36/76) openchuck-import step::tests::req_nfr_07_a_cancelled_import_stops_before_the_worker_starts
+        PASS [   0.003s] (37/76) openchuck-import step::tests::req_nfr_07_a_malformed_answer_is_an_error
+        PASS [   0.003s] (38/76) openchuck-import step::tests::req_nfr_07_a_missing_worker_is_an_error_not_a_crash
+        PASS [   0.003s] (39/76) openchuck-import step::tests::req_nfr_07_inconsistent_answer_is_an_error
+        PASS [   0.003s] (40/76) openchuck-import step::tests::req_nfr_07_worker_error_reaches_the_user
+        PASS [   0.004s] (41/76) openchuck-import step::tests::req_nfr_07_worker_messages_reach_the_error
+        PASS [   0.003s] (42/76) openchuck-import step::tests::req_nfr_17_helper_programs_start_without_a_console_window
+        PASS [   0.003s] (43/76) openchuck-import step::tests::req_op_23_req_imp_02_req_nfr_12_the_notice_says_which_strategies_use_the_tessellation
+        PASS [   0.034s] (44/76) openchuck-import::step req_imp_02_a_drilled_cylinder_has_a_hole_loop
+        PASS [   0.626s] (45/76) openchuck-import::step req_imp_02_analytic_faces_carry_their_exact_parameters
+        PASS [   0.016s] (46/76) openchuck-import::step req_imp_02_box_matches_its_cad_dimensions
+        PASS [   0.744s] (47/76) openchuck-import::step req_imp_02_every_face_has_uv_bounds_trims_and_a_tessellation
+        PASS [   1.532s] (48/76) openchuck-import::step req_imp_02_every_nonanalytic_face_is_a_clamped_patch
+        PASS [   0.087s] (49/76) openchuck-import::step req_imp_02_face_and_edge_ids_are_their_positions
+        PASS [   0.680s] (50/76) openchuck-import::step req_imp_02_ids_are_identical_across_two_imports_and_a_save
+        PASS [   0.105s] (51/76) openchuck-import::step req_imp_02_separate_solids_are_separate_bodies
+        PASS [   0.037s] (52/76) openchuck-import::step req_imp_03_a_file_in_inches_is_converted_and_can_be_overridden
+        PASS [   0.039s] (53/76) openchuck-import::step req_imp_06_tolerance_controls_triangle_count_and_deviation
+        PASS [   0.152s] (54/76) openchuck-import::step req_imp_06_triangles_wind_outward_and_belong_to_one_face
+        PASS [   0.056s] (55/76) openchuck-import::step req_nfr_06_the_answer_is_byte_identical_between_runs
+        PASS [   0.005s] (56/76) openchuck-import::step req_nfr_07_a_worker_that_takes_too_long_is_stopped
+        PASS [   0.009s] (57/76) openchuck-import::step req_nfr_07_an_unknown_entity_gives_an_empty_shell_and_that_is_an_error
+        PASS [   0.104s] (58/76) openchuck-import::step req_nfr_07_files_that_crash_the_reader_do_not_crash_the_application
+        PASS [   0.047s] (59/76) openchuck-import::step req_nfr_07_malformed_files_give_errors_not_crashes
+        PASS [   0.014s] (60/76) openchuck-import::step req_nfr_13_the_worker_exits_cleanly
+        PASS [   0.009s] (61/76) openchuck-import::step req_nfr_13_the_worker_reports_a_bad_file_with_exit_code_two
+        PASS [   0.005s] (62/76) openchuck-import::stl import_can_be_cancelled
+        PASS [   0.059s] (63/76) openchuck-import::stl req_imp_01_ascii_and_binary_agree_for_any_facets
+        PASS [   0.006s] (64/76) openchuck-import::stl req_imp_01_ascii_and_binary_give_identical_meshes
+        PASS [   0.005s] (65/76) openchuck-import::stl req_imp_01_corpus_counts_and_bounds_match_references
+        PASS [   0.004s] (66/76) openchuck-import::stl req_imp_01_every_stl_says_its_tessellation_is_fixed
+        PASS [   0.004s] (67/76) openchuck-import::stl req_imp_03_a_unit_the_file_names_is_asked_not_applied
+        PASS [   0.004s] (68/76) openchuck-import::stl req_imp_03_an_implausible_size_asks_for_the_unit
+        PASS [   0.005s] (69/76) openchuck-import::stl req_imp_03_millimetres_by_default_and_the_users_unit_when_chosen
+        PASS [   0.004s] (70/76) openchuck-import::stl req_imp_03_unit_words_in_headers
+        PASS [   0.005s] (71/76) openchuck-import::stl req_imp_04_known_bad_samples_report_the_right_counts
+        PASS [   0.021s] (72/76) openchuck-import::stl req_nfr_07_any_bytes_never_panic
+        PASS [   0.010s] (73/76) openchuck-import::stl req_nfr_07_damaged_corpus_files_never_panic
+        PASS [   0.004s] (74/76) openchuck-import::stl req_nfr_07_damaged_files_give_clear_errors
+        PASS [   0.009s] (75/76) openchuck-import::stl req_nfr_07_wrong_formats_and_missing_files_give_clear_errors
+        SLOW [> 60.000s] (─────) openchuck-app::step_strategies req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part_do_not_gouge
+        SLOW [>120.000s] (─────) openchuck-app::step_strategies req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part_do_not_gouge
+        PASS [ 121.966s] (76/76) openchuck-app::step_strategies req_imp_02_req_op_03_req_op_09_roughing_then_rest_and_pencil_on_a_step_part_do_not_gouge
+────────────
+     Summary [ 128.947s] 76 tests run: 76 passed (1 slow), 0 skipped

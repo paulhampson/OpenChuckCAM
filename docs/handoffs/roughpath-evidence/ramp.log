@@ -1,0 +1,2 @@
+error: pass 1563: the ramp starts 37.506 mm back from the first cut point, where the stock is 0.078 mm higher than the 27.049 mm the rapid stops at; use a steeper angle, another entry style or a larger approach distance
+elapsed_seconds=263.514

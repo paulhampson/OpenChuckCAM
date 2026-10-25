@@ -84,6 +84,30 @@ fn cone() -> Cone {
     }
 }
 
+/// Issue #292: a continuous axis needs no terminal whole-turn return.
+#[test]
+fn req_op_03_req_op_15_continuous_roughing_retract_keeps_accumulated_a() {
+    let part = Cylinder {
+        radius: 8.0,
+        length: 6.0,
+    };
+    let f = fixture(&part, 10.0, &flat(3.0));
+    let path = rough(&f, &values(&[]));
+    let last_cut = path
+        .group
+        .segments
+        .iter()
+        .rev()
+        .find(|s| s.kind == MoveKind::Cutting)
+        .unwrap();
+    let end = path.group.segments.last().unwrap();
+    assert!(last_cut.end.a.0.abs() > 360.0, "case must accumulate turns");
+    assert_eq!(
+        end.end.a, last_cut.end.a,
+        "safe retract must not discard accumulated turns on a continuous axis"
+    );
+}
+
 #[test]
 fn req_op_11_req_op_16_the_roughing_schema_lists_every_parameter_with_unit_range_and_default() {
     use openchuck_path::{ParameterKind, Strategy, Unit};
