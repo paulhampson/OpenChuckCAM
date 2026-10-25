@@ -1,0 +1,22 @@
+   Compiling openchuck-path v0.21.0 (/workspace/OpenChuckCAM/crates/openchuck-path)
+    Finished `test` profile [unoptimized] target(s) in 0.97s
+     Running tests/entry.rs (target/debug/deps/entry-2c647fc712ae0797)
+
+running 1 test
+test req_op_11_back_and_forth_ramp_descends_on_multiple_legs ... FAILED
+
+failures:
+
+---- req_op_11_back_and_forth_ramp_descends_on_multiple_legs stdout ----
+
+thread 'req_op_11_back_and_forth_ramp_descends_on_multiple_legs' (72452) panicked at crates/openchuck-path/tests/entry.rs:497:5:
+expected repeated descent
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    req_op_11_back_and_forth_ramp_descends_on_multiple_legs
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p openchuck-path --test entry`

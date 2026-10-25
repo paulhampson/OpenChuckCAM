@@ -1,0 +1,6 @@
+ROUGHPATH release acceptance reconciliation, 25 October 2026
+Authority: PR340 comment6400352887; unchanged full-record acceptance reaffirmed after complete renumbered presentation.
+Status metadata only; no new motion policy, allocation, OI or schema.
+
+0241: normalized substantive SHA256 1297f087049ec8b3c448b2534d2a39e8a4d0771d3d9c419a2f95a82540d915b4 unchanged.
+0242: normalized substantive SHA256 c8ec3b7fb82b4c5304dd45909f6f111328c260e7e20c5319f6f0a15c86512995 unchanged.

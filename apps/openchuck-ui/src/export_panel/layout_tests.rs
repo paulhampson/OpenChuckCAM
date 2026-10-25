@@ -226,9 +226,7 @@ fn layout(files: bool) {
                 panel.by_hand[0].1 = "not a tool number".to_owned();
                 if let Some(run) = &run {
                     let key = panel.key(&app).unwrap();
-                    let plan = app
-                        .planned_files(&run.toolpath, &key.post, key.grouping)
-                        .unwrap();
+                    let plan = app.planned_files(run, &key.post, key.grouping).unwrap();
                     assert!(
                         plan.iter()
                             .all(|file| run.gcode.iter().any(|(name, _)| name == &file.name)),

@@ -125,9 +125,18 @@ impl FormSection {
             | "max_tilt" | "axis_tolerance" | "max_angle_step" | "tip_end" | "tip_extension" => {
                 Self::ToolAxisAndA
             }
-            "retract" | "approach_distance" | "entry" | "ramp_angle" | "helix_diameter"
-            | "lead_radius" | "reentry_clearance" | "retract_height" | "chip_break_retract"
-            | "peck_mode" | "peck_depth" => Self::EntryLinksAndRetract,
+            "retract"
+            | "approach_distance"
+            | "entry"
+            | "ramp_back_and_forth"
+            | "ramp_angle"
+            | "helix_diameter"
+            | "lead_radius"
+            | "reentry_clearance"
+            | "retract_height"
+            | "chip_break_retract"
+            | "peck_mode"
+            | "peck_depth" => Self::EntryLinksAndRetract,
             "diameter_tolerance" | "crease_angle" | "min_length" | "min_remaining" | "min_cut"
             | "max_material_left" | "through_allowance" | "max_step" | "max_x_step"
             | "depth_reference" => Self::Advanced,
@@ -211,6 +220,10 @@ pub fn parameter_form(
     {
         notes.insert(0, format!("{}.", reason.replacen("swarf", "Swarf", 1)));
     }
+    let reversing_inactive = matches!(
+        op.parameters.get(names::RAMP_BACK_AND_FORTH),
+        Some(ParameterValue::Flag(true))
+    ) && !matches!(op.parameters.get(names::ENTRY),Some(ParameterValue::Text(style)) if style=="ramp");
     let from_data = [names::FEED, names::PLUNGE_FEED, names::STEPOVER];
     let fields = schema
         .parameters
@@ -274,7 +287,11 @@ pub fn parameter_form(
             Field {
                 section: FormSection::of(&spec.name),
                 name: spec.name.clone(),
-                label: spec.label.clone(),
+                label: if spec.name == names::RAMP_BACK_AND_FORTH && reversing_inactive {
+                    format!("{} (inactive)", spec.label)
+                } else {
+                    spec.label.clone()
+                },
                 description: spec.description.clone(),
                 kind,
                 set,

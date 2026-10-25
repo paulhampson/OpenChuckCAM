@@ -352,7 +352,12 @@ fn replay_block(
             ));
         }
         let from = s.pos[3];
-        s.pos[3] = from - 360.0 * (from / 360.0).trunc();
+        // Z1 firmware 1.1.2 uses fabs(wa) > 360 before fmodf. Exactly
+        // +/-360 remains unchanged; treating it as zero misreads the next
+        // absolute A move by a full turn (decision 0241).
+        if from.abs() > 360.0 {
+            s.pos[3] = from % 360.0;
+        }
         out.steps.push(Step::Event(Event::DropTurns {
             line: block.line,
             from,

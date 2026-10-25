@@ -484,3 +484,111 @@ fn req_op_11_entry_moves_are_fed_moves_with_positive_durations() {
         assert!(s.contact_feed.is_some());
     }
 }
+
+#[test]
+fn req_op_11_back_and_forth_ramp_descends_on_multiple_legs() {
+    use openchuck_path::entry_safety::EntrySafety;
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        20.0,
+        &ball(6.0),
+    );
+    let safety = EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        30.0,
+        &[
+            entry("ramp"),
+            number(names::RAMP_ANGLE, 3.0),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    let path = run(|ctx| generate(&Line, &input, &v, ctx)).unwrap();
+    let ramps = of_kind(&path.group, MoveKind::LeadIn);
+    assert!(ramps.len() > 2, "expected repeated descent");
+    let mut previous = path.group.start;
+    let mut descending = 0;
+    let mut reversals = 0;
+    let mut direction = 0.0_f64;
+    for segment in &path.group.segments {
+        if segment.kind == MoveKind::LeadIn {
+            let a = fixture.rotary.to_axis(previous.tip, previous.a);
+            let z = fixture.rotary.to_axis(segment.end.tip, segment.end.a);
+            assert_eq!(segment.end.a, previous.a);
+            assert_eq!(segment.contact_feed.unwrap().0, 100.0);
+            let travel = (z.along - a.along).hypot(z.across - a.across);
+            let drop = a.height - z.height;
+            assert!(drop >= -1e-10 && drop <= travel * 3.0_f64.to_radians().tan() + 1e-10);
+            assert!(segment.duration.0 > 0.0);
+            if drop > 1e-10 {
+                descending += 1;
+            }
+            let next = (z.along - a.along).signum();
+            if direction * next < 0.0 {
+                reversals += 1;
+            }
+            direction = next;
+        }
+        previous = segment.end;
+    }
+    assert!(descending > 2 && reversals > 1);
+    let last = ramps.last().unwrap().end;
+    let first_cut = path
+        .group
+        .segments
+        .iter()
+        .find(|s| s.kind == MoveKind::Cutting)
+        .unwrap();
+    assert!((fixture.rotary.to_axis(last.tip, last.a).height - 15.0).abs() < 1e-9);
+    assert!(first_cut.end.tip.x > last.tip.x);
+}
+
+#[test]
+fn req_op_11_req_nfr_07_reversing_ramp_refusal_names_pass_with_no_direction() {
+    use openchuck_path::entry_safety::EntrySafety;
+    let part = Cylinder {
+        radius: 15.0,
+        length: 40.0,
+    };
+    let fixture = Fixture::new(
+        MeshSurface::new(&part.mesh(3, 36)).unwrap(),
+        20.0,
+        &ball(6.0),
+    );
+    let safety = EntrySafety {
+        rotary_precision: openchuck_path::entry_safety::RotaryPrecision::Float32,
+        target: &fixture.surface,
+        protected: &[],
+        body: &fixture.tool,
+        machine: &fixture.machine,
+    };
+    let mut input = fixture.input();
+    input.entry_safety = Some(&safety);
+    let v = values(
+        20.0,
+        20.0,
+        &[
+            entry("ramp"),
+            (names::RAMP_BACK_AND_FORTH, ParameterValue::Flag(true)),
+        ],
+    );
+    let error = run(|ctx| generate(&Line, &input, &v, ctx))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("pass 1") && error.contains("no usable straight entry direction"),
+        "{error}"
+    );
+}

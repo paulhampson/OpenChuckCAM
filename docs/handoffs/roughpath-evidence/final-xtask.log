@@ -1,0 +1,8 @@
+trace: 99 of 99 P1 requirements have tests; report in /workspace/OpenChuckCAM/target/traceability.md
+deps: ok
+licences: ok
+records: ok
+testdata: ok
+conflicts: ok
+publish: ok
+trace: ok

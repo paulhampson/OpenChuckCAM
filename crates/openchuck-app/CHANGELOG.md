@@ -4,6 +4,11 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- Reversing-ramp export refuses unsupported post decimals, excessive float-coordinate error or a rotary counter offset outside the canonical clearance certificate. The shipped Z1 counter resets remain supported; work zero is not changed.
+
+- ROUGHPATH maps optional reversing-ramp clearance from the whole STL target and configured full cutter/shank body, retaining held regions/tabs independently of selections. Unsupported exact STEP certificates and shanks wider than the cutting profile refuse the option. The entry form identifies the ramp-only flag, labels a retained true flag inactive for other styles, and explains full-width-slot engagement. Optional-ramp posting refuses uncertified low decimal precision or float-controller WCS/MCS magnitudes; it never changes the work zero.
+
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 - OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
   is administratively renumbered from original 0238 by Merge Manager to
   resolve the SIMUI collision; substantive content and owner acceptance are

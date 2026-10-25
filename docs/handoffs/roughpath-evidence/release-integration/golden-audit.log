@@ -1,0 +1,29 @@
+reference/groove_makera-z1.nc:
+  reference/groove_makera-z1.nc: 1098 cutting moves, deepest gouge 0.0019 mm, median clearance 0.0018 mm, contact feed error median 0.10 % / 90th 0.62 % / worst 1.58 % over 807 moves away from the ends
+reference/groove_linuxcnc.ngc:
+  reference/groove_linuxcnc.ngc: 1098 cutting moves, deepest gouge 0.0019 mm, median clearance 0.0018 mm, contact feed error median 0.14 % / 90th 0.83 % / worst 1.61 % over 807 moves away from the ends
+reference/cone_makera-z1.nc:
+  reference/cone_makera-z1.nc: 1080 cutting moves, deepest gouge 0.0005 mm, median clearance 0.0001 mm, contact feed error median 0.00 % / 90th 0.03 % / worst 1.98 % over 401 moves away from the ends
+reference/cone_linuxcnc.ngc:
+  reference/cone_linuxcnc.ngc: 1080 cutting moves, deepest gouge 0.0005 mm, median clearance 0.0001 mm, contact feed error median 0.15 % / 90th 0.27 % / worst 1.94 % over 403 moves away from the ends
+reference/cone_held_tabs_makera-z1.nc:
+  reference/cone_held_tabs_makera-z1.nc: 1585 cutting moves, deepest gouge 0.0005 mm, median clearance 0.0001 mm, contact feed error median 0.01 % / 90th 0.05 % / worst 1.98 % over 877 moves away from the ends
+reference/cone_held_tabs_linuxcnc.ngc:
+  reference/cone_held_tabs_linuxcnc.ngc: 1585 cutting moves, deepest gouge 0.0005 mm, median clearance 0.0001 mm, contact feed error median 0.12 % / 90th 0.33 % / worst 1.94 % over 878 moves away from the ends
+reference/sphere_makera-z1.nc:
+  reference/sphere_makera-z1.nc: 720 cutting moves, deepest gouge 0.0015 mm, median clearance 0.0019 mm, contact feed error median 0.01 % / 90th 0.04 % / worst 0.10 % over 497 moves away from the ends
+reference/sphere_linuxcnc.ngc:
+  reference/sphere_linuxcnc.ngc: 720 cutting moves, deepest gouge 0.0015 mm, median clearance 0.0019 mm, contact feed error median 0.15 % / 90th 0.26 % / worst 0.37 % over 497 moves away from the ends
+reference/lobed_makera-z1.nc:
+  reference/lobed_makera-z1.nc: 1800 cutting moves, deepest gouge 0.0006 mm, median clearance 0.0007 mm, contact feed error median 0.08 % / 90th 0.20 % / worst 1.96 % over 894 moves away from the ends
+reference/lobed_linuxcnc.ngc:
+  reference/lobed_linuxcnc.ngc: 1800 cutting moves, deepest gouge 0.0006 mm, median clearance 0.0007 mm, contact feed error median 0.08 % / 90th 0.20 % / worst 1.96 % over 894 moves away from the ends
+.post_makera_z1_small_part.ngc: 24 cutting moves match their closed forms; every move takes 1 s under the controller's rule
+post_linuxcnc_small_part.ngc: 24 cutting moves match their closed forms; every move takes 1 s under the controller's rule
+.reference/cone_axial_makera-z1.nc: 448 fed moves along X, deepest gouge 0.0026 mm, minimum clearance -0.0026 mm
+reference/cone_axial_linuxcnc.ngc: 448 fed moves along X, deepest gouge 0.0026 mm, minimum clearance -0.0026 mm
+reference/cone_indexed_makera-z1.nc: 56 fed moves along X, deepest gouge 0.0002 mm, minimum clearance -0.0002 mm
+reference/cone_indexed_linuxcnc.ngc: 56 fed moves along X, deepest gouge 0.0002 mm, minimum clearance -0.0002 mm
+reference/cone_axial_lead_makera-z1.nc: 1152 fed moves along X, deepest gouge 0.0026 mm, minimum clearance -0.0026 mm
+reference/cone_axial_lead_linuxcnc.ngc: 1152 fed moves along X, deepest gouge 0.0026 mm, minimum clearance -0.0026 mm
+golden: ok

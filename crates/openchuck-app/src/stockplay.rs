@@ -104,14 +104,16 @@ impl StockPlayback {
             .filter_map(|g| Some((path.groups.get(*g)?, &infos.get(*g)?.tool)))
             .collect();
         let stock = setup.simulator.stock_at(local, moves, &groups, context)?;
-        let Some(segment) = path.groups.get(group).and_then(|g| g.segments.get(moves)) else {
+        let Some(original) = path.groups.get(group) else {
+            return Ok(stock);
+        };
+        let Some(segment) = original.segments.get(moves) else {
             return Ok(stock);
         };
         if cursor.fraction <= 0.0 {
             return Ok(stock);
         }
         let pose = timeline.sample(cursor)?;
-        let original = &path.groups[group];
         let start = moves
             .checked_sub(1)
             .and_then(|i| original.segments.get(i))
@@ -134,7 +136,10 @@ impl StockPlayback {
             .work_frame(group)
             .ok_or_else(|| AppError::Playback("no frame covers this move".to_owned()))?;
         let mut simulator = Simulator::without_checkpoints(stock, &frame);
-        simulator.run_group(&partial, &infos[group].tool, context)?;
+        let info = infos
+            .get(group)
+            .ok_or_else(|| AppError::Playback("no tool covers this move".to_owned()))?;
+        simulator.run_group(&partial, &info.tool, context)?;
         Ok(simulator.into_stock())
     }
 

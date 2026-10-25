@@ -26,9 +26,7 @@ impl Rig {
         panel.folder = dir.join("out").display().to_string();
         panel.ticked = true;
         let key = panel.key(&app).unwrap();
-        let plan = app
-            .planned_files(&run.toolpath, &key.post, key.grouping)
-            .unwrap();
+        let plan = app.planned_files(&run, &key.post, key.grouping).unwrap();
         panel.files = Some(Files {
             key,
             run: Arc::clone(&run),

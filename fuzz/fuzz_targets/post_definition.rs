@@ -59,6 +59,8 @@ fn toolpath() -> Toolpath {
 
 fn job() -> PostJob {
     PostJob {
+        a_range: openchuck_types::machine::ARange::Continuous,
+        safe_z: 30.0,
         frame: RotaryFrame {
             axis: RotaryAxis::X,
             sense: ASense::Positive,
