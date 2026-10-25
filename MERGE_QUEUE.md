@@ -23,7 +23,6 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | OUTPUT-1 | [#329](https://github.com/paulhampson/OpenChuckCAM/pull/329) | `codex/lane-output-1-export-feedback` | Released; sole ready PR; ffb5891 integrated; CI running; publication decision pending |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
 ## SWARF3 / #320 — MERGED
@@ -378,3 +377,14 @@ Current-head CI40124271555 still IN PROGRESS: Linux shard1, Windows shard1 and m
 Lane raised per-file publication regression in comment6388567827. Coordinator inspected current writer: new destinations use create_new at final path then write_all; approved replacements stage then rename. Termination during new-file write can leave incomplete final-name output, unlike prior staged writer; distinct from accepted non-atomic batch. [Coordinator6388622256](https://github.com/paulhampson/OpenChuckCAM/pull/329#issuecomment-6388622256) holds merge pending concrete remedy/disposition and recommends completed-file no-clobber publication. Lane asked to post COMPLETE proposed unnumbered NFR-14 record for tempfile3.27.0 option, alternatives/fallback/platform/cleanup/verification and dependency scope. Coordinator must fresh-audit and assign number before claim; no new number reserved yet, no owner acceptance/dependency/source/metadata push authorised. Present complete record to owner individually with recommendation/risks. Both full CI/review must finish before any bundled required correction; Minor punctuation may ride required bundle.
 
 Original#307/#311 need native confirmation/awaiting-fix-feedback at eventual merge; #306 assessment only, separate workflow#322 unimplemented. ExistingOI580/SIMUIOI987 stay open. No new eligible drafts in six-result post-cutoff search. #321 remains held; hourly monitoring remains enabled, webhook discovery absent.
+
+
+## OUTPUT-1 #329 — externally merged; queue reconciliation
+
+GitHub reports **merged** at `dc610e26dd260d69b5fc859270e7bf5fc913a3bb`, merged_at `2026-10-24T20:20:37Z` (24 October 2026,21:20 Europe/London). Head unchanged `ffb58911d33de978937b249f9b7ec5549729cf54`. This merge was performed outside this coordinator; do not claim a coordinator exact-head guarded merge or that its publication hold was resolved. Full CI40124271555 and end-to-end40124271525 ultimately completed SUCCESS. Prior CodeRabbit SUCCESS; retained Minor Messages-path punctuation thread still unresolved/deferred, not fixed. Accepted0240 unchanged; no new decision acceptance inferred.
+
+The owner opened original follow-up **#332 Risk of incomplete file write during export** at2026-10-24T20:20:23Z, currently open/bug/awaiting-planning, carrying the new-file final-path publication concern. No complete proposed NFR-14 record, new allocation, production tempfile adoption or correction push was posted. Preserve concern as unresolved follow-up; merge/issue creation is not acceptance of a dependency or waiver. Coordinator posted reconciliation in PRcomment6394603005; no post-merge lane source/dependency push authorised. Future follow-up uses a separately completed draft PR and normal owner-decision gates.
+
+**Original#307 and#311 awaiting-fix-feedback verified**: #311 already had label; #307 missing label was added and verified, preserving any existing labels additively. Both need native Windows/export-result/clipboard/dialog-layout confirmation (existingOI580). #306 is completed assessment, so no human-fix label added; workflow implementation remains separate#322. ExistingSIMUIOI987 remains open.
+
+Removed merged#329 from active queue. No eligible pending PR besides held#321: post-cutoff owner search returned only six previously processed entries, below100 bound; no new draft silently omitted. Other open#131/#284 predate cutoff and are unassigned; do not intake. #321 remains draft at b375262526492737ff609a6968a5501fe6d88b8e, held until OWNER readiness notification. No new number claims or record acceptance. Hourly automation6adbdd741cec8191848ce1bc80a97eb3 verified enabled; no webhook discovery tool available, no event activation claimed. Continue intake monitoring despite empty active queue.
