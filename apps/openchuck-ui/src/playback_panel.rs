@@ -200,10 +200,10 @@ struct StockState {
     show: bool,
     prepare: Option<JobHandle<StockPlayback>>,
     playback: Option<Arc<StockPlayback>>,
-    mesh: Option<(JobHandle<StockSurface>, usize)>,
+    mesh: Option<(JobHandle<StockSurface>, Cursor)>,
     surface: Option<Arc<StockSurface>>,
-    /// The number of moves done that the stock on screen is for.
-    shown: Option<usize>,
+    /// The exact cursor shared by the stock and tool on screen.
+    shown: Option<Cursor>,
     error: Option<String>,
 }
 
@@ -598,7 +598,18 @@ impl PlaybackPanel {
             busy |= self.playback.is_playing();
         }
         busy |= self.playback.is_playing();
-        if let Ok(pose) = data.timeline.sample(self.playback.cursor()) {
+        if let Ok(requested) = data.timeline.sample(self.playback.cursor()) {
+            busy |= self.update_stock(app, viewport, &requested);
+            // Publish the tool transform and cut surface for the same cursor.
+            // Keep the last complete pair while the next surface is prepared.
+            let cursor = if self.stock.show {
+                self.stock.shown.unwrap_or(requested.cursor)
+            } else {
+                requested.cursor
+            };
+            let Ok(pose) = data.timeline.sample(cursor) else {
+                return busy;
+            };
             self.update_tool(viewport, &data, &pose);
             viewport.set_part_turn(pose.part_rotation(self.view));
             let placement = pose.placement(self.view);
@@ -607,7 +618,6 @@ impl PlaybackPanel {
                 work: pose.work,
                 move_number: pose.cursor.done + 1,
             }));
-            busy |= self.update_stock(app, viewport, &pose);
         }
         busy |= self.update_bands(app, viewport);
         busy
@@ -860,22 +870,13 @@ impl PlaybackPanel {
             }
             return busy;
         }
-        let done = pose.cursor.done;
+        let done = pose.cursor;
         if let Some(playback) = &stock.playback
             && stock.mesh.is_none()
             && stock.error.is_none()
             && stock.shown != Some(done)
         {
-            stock.mesh = Some((
-                app.start_stock_surface(
-                    playback,
-                    Cursor {
-                        done,
-                        fraction: 0.0,
-                    },
-                ),
-                done,
-            ));
+            stock.mesh = Some((app.start_stock_surface(playback, done), done));
             busy = true;
         }
         busy
@@ -1926,7 +1927,7 @@ mod tests {
             .expect("the stock layer is set");
         assert_eq!(stock.meshes.len(), 1);
         assert!(stock.meshes[0].translucent && stock.meshes[0].slot == Slot::Part);
-        assert_eq!(panel.stock.shown, Some(panel.playback.cursor().done));
+        assert_eq!(panel.stock.shown, Some(panel.playback.cursor()));
         // Unticking "Cut part" empties the layer.
         viewport.set_simulate_show(SimulateShow {
             model: true,
@@ -1946,6 +1947,51 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(panel.bands.is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn req_sim_02_req_sim_03_tool_and_stock_share_a_cursor_while_a_job_is_pending() {
+        let (app, mut panel, mut viewport, dir) = prepared("synchronized-stock");
+        viewport.set_step(Some(crate::viewport::ViewStep::Simulate));
+        let data = panel.data.clone().unwrap();
+        let started = Instant::now();
+        while panel.frame(&app, &mut viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let shown = panel.stock.shown.unwrap();
+        let old_pose = data.timeline.sample(shown).unwrap();
+        panel.playback.seek(&data.timeline, 0.6);
+        let target = panel.playback.cursor();
+        assert_ne!(shown, target);
+        let surface = app
+            .start_stock_surface(panel.stock.playback.as_ref().unwrap(), target)
+            .wait()
+            .unwrap();
+        let pool = openchuck_app::JobManager::new(openchuck_app::Threads::Exactly(1)).unwrap();
+        let (events, _) = std::sync::mpsc::channel();
+        let (release, blocked) = std::sync::mpsc::channel();
+        panel.stock.mesh = Some((
+            pool.submit("delayed surface", events, move |_| {
+                blocked.recv().unwrap();
+                Ok(surface)
+            }),
+            target,
+        ));
+        panel.frame(&app, &mut viewport, 0.0);
+        assert_eq!(panel.stock.shown, Some(shown));
+        assert_eq!(viewport.tool_readout.as_ref().unwrap().work, old_pose.work);
+        release.send(()).unwrap();
+        while panel.frame(&app, &mut viewport, 0.0) {
+            assert!(started.elapsed() < Duration::from_secs(120));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(panel.stock.shown, Some(target));
+        assert_eq!(
+            viewport.tool_readout.as_ref().unwrap().work,
+            data.timeline.sample(target).unwrap().work
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1970,7 +2016,7 @@ mod tests {
                     "The cut surface could not be prepared".to_owned(),
                 ))
             }),
-            0,
+            Cursor::default(),
         ));
         panel.frame(&app, &mut viewport, 0.0);
         assert!(
