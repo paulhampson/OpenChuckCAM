@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | ROUGHPATH | [#340](https://github.com/paulhampson/OpenChuckCAM/pull/340) | `codex/lane-roughpath-unwind-and-ramp` | Draft; metadata renumber 0241/0242 authorised; awaiting corrected head/checks |
+| 1 | ROUGHPATH | [#340](https://github.com/paulhampson/OpenChuckCAM/pull/340) | `codex/lane-roughpath-unwind-and-ramp` | RELEASED / sole ready slot; head `32d081254489a02709671c2f63c3f2b6f0d07158`; awaiting latest-main integration, one push, full CI and CodeRabbit |
 | 2 | BUG-SIMSYNC | [#341](https://github.com/paulhampson/OpenChuckCAM/pull/341) | `codex/bug-simsync-333` | Draft; owner says ready; queued behind #340 |
 | Held | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | BLOCKED / IN PROGRESS — draft; not authorised for release |
 
@@ -403,3 +403,12 @@ Fresh complete remote-ref index audit (27 refs, cursor exhausted) confirms colli
 **#341 BUG-SIMSYNC** intake head `e17e65e4012780f2aa31acb2c9b15c6573f99e9e`, branch `codex/bug-simsync-333`, created2026-10-25T16:22:17Z, DRAFT. Owner directly said **"341 is ready for review"**, recorded as readiness signal; created after#340 so queued second. Fixes#333 by synchronising partial-move stock surfaces/tool pose, amends accepted0040, claims no new decision/OI/schema. Lane reports30 app+19 UI focused tests pass, requirement regression failed before fix; format/whitespace pass. nextest/llvm-cov unavailable, coverage and reference-hardware smoothness/performance unverified. [Intake comment6400186721](https://github.com/paulhampson/OpenChuckCAM/pull/341#issuecomment-6400186721) keeps it draft until sole slot reaches it; no early main update/push. At release re-audit allocations, integrate latest main, records/traceability/required checks and push once; wait full CI+CodeRabbit. At merge label original#333 awaiting-fix-feedback if hardware confirmation remains.
 
 Only one PR may be ready. Neither new PR is released yet; #340 metadata reconciliation is the current action. No new acceptance inferred beyond recorded complete-record acceptances. No branch/code edits by coordinator.
+
+
+## ROUGHPATH #340 — owner confirmation and release, 25 October 2026
+
+The owner directly confirmed acceptance after the coordinator presented each complete administratively renumbered record individually: provisional 0238 carries unchanged as **0241 Continuous rotary operation boundaries**, and provisional 0239 carries unchanged as **0242 Optional back-and-forth ramp**. This confirms acceptance provenance for the unchanged records at metadata head `32d081254489a02709671c2f63c3f2b6f0d07158`; it does not approve substantive changes or any other record. The lane's normalized-content hashes remain 0241 `1297f087049ec8b3c448b2534d2a39e8a4d0771d3d9c419a2f95a82540d915b4` and 0242 `c8ec3b7fb82b4c5304dd45909f6f111328c260e7e20c5319f6f0a15c86512995`.
+
+No other PR was ready. The coordinator successfully marked #340 READY FIRST, making it the sole release slot, then posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400352887). The lane must integrate latest main `dc610e26dd260d69b5fc859270e7bf5fc913a3bb`, resolve and review semantic unions, re-audit allocations across main/all unmerged refs/persisted reservations, run records/traceability and all applicable required integration/security/coverage/semver checks, and push ONCE with the exact head and results. Current allocation map keeps held STEPALL 0234/OI-984, merged 0235–0238 and 0240, FINSTEP reservation 0239, and ROUGHPATH 0241/0242 with no OI/schema claim.
+
+Wait for both full CI and CodeRabbit on that exact integrated head before any one bundled correction request. Do not merge or enable auto-merge. At eventual merge, assess original issues #292/#291 and add `awaiting-fix-feedback` where material/hardware confirmation remains. #341 stays draft second; #321 remains held until explicit owner readiness notice. Automatic monitoring remains paused by owner instruction; subsequent checks are manual triggers only.
