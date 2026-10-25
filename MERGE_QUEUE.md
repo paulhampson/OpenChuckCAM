@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | CI-MACSHARD | [#345](https://github.com/paulhampson/OpenChuckCAM/pull/345) | `codex/ci-macos-test-shards` | RELEASED / sole ready slot; awaiting latest-main integration, one push, full CI and CodeRabbit |
+| 1 | CI-MACSHARD | [#345](https://github.com/paulhampson/OpenChuckCAM/pull/345) | `codex/ci-macos-test-shards` | RELEASED / sole ready slot; stale green head is behind main by 5; awaiting authorised latest-main integration push and fresh CI/CodeRabbit |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | Hold removed by owner; completed and eligible; remains draft behind #345 |
 
 ## SWARF3 / #320 — MERGED
@@ -496,3 +496,10 @@ Original issue **#295** received additive **`awaiting-fix-feedback`**, verified 
 With #342 merged, owner-prioritised #345 advanced first. Coordinator marked **#345 READY FIRST** and posted [release instructions](https://github.com/paulhampson/OpenChuckCAM/pull/345#issuecomment-6404239403). It is the sole ready PR. Lane must integrate latest main `89c232227e18251c6c6cb1daa0beb330e1505e79`, preserve all current workflows/gates, refresh allocation audit, validate exactly two nonempty macOS hash shards with shard-specific caches/one-time auxiliary steps/required matrix aggregation, and push ONCE reporting exact head/results. It amends existing decision0052 and claims no new decision/OI/schema. Wait for both full CI and CodeRabbit before exact-head merge.
 
 #321 remains next/draft with its hold removed. Automatic monitoring remains paused; follow-up is manual.
+
+
+## CI-MACSHARD #345 — stale-head green; merge blocked, 25 October 2026
+
+Current head remains original `7c7063b9f892112779ce068deecb60cc34c5d902`. CI40240111876 SUCCESS, end-to-end40240111877 SUCCESS and CodeRabbit SUCCESS/no threads on that head. However comparison to current main `89c232227e18251c6c6cb1daa0beb330e1505e79` is **diverged, behind_by5**; merge base remains older `dafef455d5c31a2db032cff5eeaa4b689821247a`. No lane acknowledgement or released integration push followed comment6404239403. Green stale-head checks do not satisfy the latest-main gate.
+
+[Coordinator comment6404760242](https://github.com/paulhampson/OpenChuckCAM/pull/345#issuecomment-6404760242) blocks merge and directs the lane to perform the already-authorised latest-main merge and ONE released push, preserving workflow/document/register unions and reporting exact head/ancestry/checks. Fresh full CI and CodeRabbit are required on the new head. No empty trigger commit, merge or auto-merge. #321 remains next/draft. Automatic monitoring remains paused.
