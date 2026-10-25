@@ -23,7 +23,7 @@ The lane owns its branch, code, register reconciliation and review corrections; 
 
 | Position | Lane | PR | Branch | Status |
 | --- | --- | --- | --- | --- |
-| 1 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | RELEASED / sole ready slot; accepted0243/OI-989; awaiting latest-main integration, one push, full CI and CodeRabbit |
+| 1 | CHECKPOINT | [#342](https://github.com/paulhampson/OpenChuckCAM/pull/342) | `codex/lane-checkpoint-crash-recovery` | RELEASED / sole ready slot; correction authorised for Windows Clippy blocker; awaiting one correction push and fresh full CI/CodeRabbit |
 | 2 | STEPALL-M | [#321](https://github.com/paulhampson/OpenChuckCAM/pull/321) | `claude/lane-stepall-m-measure` | Hold removed by owner; completed and eligible; remains draft NEXT behind released #342 |
 
 ## SWARF3 / #320 — MERGED
@@ -467,3 +467,12 @@ Owner directly instructed: **“321 work has completed, so it can be released fr
 Current draft head `1b86de003f0c4f8f167d4ea29488fbf5dd30f0ce`; base/main integration remains historical `1a90435654c734c05e4fa3f110c4a7f3f8e5859f`. Accepted decision0211 and accepted decision0234 are recorded; 0234/OI-984 remain reserved to #321. OI-834/OI-835 and OI-839 remain accurately recorded outstanding qualification/follow-up items; #344/OI-990 is separate. Removing the hold does not infer a new default/schema/methodology waiver, successful full qualification, STEPALL-T/X release or acceptance of any other record.
 
 [Coordinator comment6402567199](https://github.com/paulhampson/OpenChuckCAM/pull/321#issuecomment-6402567199) records the new active order and tells the lane to remain draft without main integration or push. When #321 reaches queue head, re-audit all decision/OI/schema allocations against current main/unmerged refs/reservations, preserve measurement failures and scope limitations, mark ready FIRST, then issue the one latest-main integration/check push. All serial CI/CodeRabbit/exact-head gates remain. Automatic monitoring remains paused; follow-up is manual.
+
+
+## CHECKPOINT #342 — bundled correction authorised, 25 October 2026
+
+Released integration head `31964ad95eb7fbd60e52e3145a8f5d88a0db9424` includes latest main and preserves accepted0243/OI-989/schema18/recovery-format1 allocations. Lane's full local integration, allocation, compatibility, recovery/race/fuzz/security/coverage evidence is recorded. Exact-head CodeRabbit completed SUCCESS with no new actionable incremental comments; its two existing findings are Minor: handled-failure staging cleanup and bounded busy-lock retry. Both are deferred and do not justify a push.
+
+CI40232949059 completed FAILURE with one genuine blocker: Windows shard1 Clippy rejects unused `dir` in `sync_dir` because its use is Unix-only; required aggregator fails consequentially. Every other CI job passed, including final macOS. End-to-end40232948955 SUCCESS. Both required reports are therefore complete.
+
+[Coordinator comment6403691172](https://github.com/paulhampson/OpenChuckCAM/pull/342#issuecomment-6403691172) authorises ONE bundled correction push limited to `#[cfg(not(unix))] let _ = dir;` inside the existing helper. No lint allowance, I/O/durability/schema/format/dependency/allocation/record/product change and no CodeRabbit Minor may ride. Lane must preserve its strict non-Unix red/green probe, formatting, records/conflicts/whitespace, workspace Clippy, 166 project tests and coverage evidence; report exact corrected head and wait for fresh full CI and CodeRabbit, including actual Windows success. No merge/auto-merge. #321 remains next/draft. Automatic monitoring remains paused.
