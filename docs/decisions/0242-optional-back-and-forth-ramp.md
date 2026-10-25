@@ -1,10 +1,10 @@
-# 0239: Optional back-and-forth ramp entry
+# 0242: Optional back-and-forth ramp entry
 
-- **Status:** accepted directly by the project owner on 24 October 2026 after complete-record review: "Accept 0239". The one-cutting-diameter minimum and refusal wording were approved directly beforehand.
+- **Status:** accepted directly by the project owner on 24 October 2026 after complete-record review: "Accept 0239". The one-cutting-diameter minimum and refusal wording were approved directly beforehand. Administratively renumbered from provisional 0239 to 0242 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance.
 - **Date:** 24 October 2026.
-- **Lane / issue:** ROUGHPATH, #291; rotary boundaries follow accepted 0238.
+- **Lane / issue:** ROUGHPATH, #291; rotary boundaries follow accepted 0241.
 - **Requirements:** OP-03, OP-11/12/13/14, SET-09, OP-21, GC-07, NFR-04/06/07/12 and configured machine/post limits.
-- **Allocation:** provisional 0239 under the owner's lane-numbering direction. Current main, fetched unmerged branch records and repository issue/PR comments were checked; no other 0239 claim was found. Later merged OUTPUT-1 work also uses 0239; Merge Manager has been notified in PR320 comment6398493524 and will resolve the metadata collision at merge under the owner's numbering direction. Substantive acceptance is unchanged. No OI or project-schema number is claimed by this proposal.
+- **Allocation:** 0242, assigned by [Merge Manager on 25 October 2026](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400185337), replacing this lane's former provisional 0239. The coordinator's audit confirms merged SIMUI owns 0238, FINSTEP retains reservation 0239, and merged OUTPUT-1 owns 0240. This administrative reconciliation changes no substantive rule or owner acceptance. No OI or project-schema number is claimed.
 
 ## Evidence
 

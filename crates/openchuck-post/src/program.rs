@@ -62,7 +62,7 @@ pub enum Step {
     },
     /// Safe operation boundary on a continuous axis. A supporting post may
     /// rebase the live rotary counter by whole turns here, without motion;
-    /// other posts omit it. Never substitute a physical return (decision 0238).
+    /// other posts omit it. Never substitute a physical return (decision 0241).
     RotaryBoundary {
         /// The physical position in the unwrapped program. During rendering,
         /// `a` becomes the controller's counter after the non-moving reset.

@@ -4,9 +4,9 @@ All notable changes to `openchuck-post` are recorded here.
 
 ## Unreleased
 
-- Version 0.21.0 with the library family (decision 0238): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
-- Fix the Makera Z1's A-coordinate adjustment after `G92.4 A0 S0` at exactly +360 or -360 degrees (GC-04/09, decision 0238, #292). Firmware retains these values; following absolute A words now retain that offset too, avoiding an unintended full turn. The command remains a non-moving whole-turn counter reset, not a change to the saved work offset.
+- Fix the Makera Z1's A-coordinate adjustment after `G92.4 A0 S0` at exactly +360 or -360 degrees (GC-04/09, decision 0241, #292). Firmware retains these values; following absolute A words now retain that offset too, avoiding an unintended full turn. The command remains a non-moving whole-turn counter reset, not a change to the saved work offset.
 - Version 0.20.0 with the library family (`MachineProfile` in `openchuck-types` gains `min_spindle_rpm` and `max_spindle_rpm`, and `ProfileField` gains `SpindleRange`, breaking changes; decision 0231).
 - Version 0.19.0 with the library family (`BrepEdge` in `openchuck-types` gains `curve`, a breaking change; decision 0227); no change to this crate's items.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, no longer `Copy` or `Eq`, a breaking change; decision 0226); no change to this crate's items.

@@ -230,7 +230,7 @@ pub fn reversals(angles: &[Degrees], dead_band: f64) -> usize {
 }
 
 /// Whole turns that bring `a` into `(-180, 180]`, as a legacy utility.
-/// Shared assembly retains accumulated A at boundaries instead (decision 0238).
+/// Shared assembly retains accumulated A at boundaries instead (decision 0241).
 pub fn unwind_turns(a: Degrees) -> f64 {
     let wrapped = a.0 - TURN * ((a.0 + 180.0) / TURN).floor();
     // `wrapped` is in [-180, 180); keep +180 rather than -180.

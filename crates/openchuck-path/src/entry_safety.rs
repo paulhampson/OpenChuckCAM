@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Continuous swept-envelope certificates for fixed-A entry moves (0239).
+//! Continuous swept-envelope certificates for fixed-A entry moves (0242).
 use crate::cutter::{ToolLine, grow_profile};
 use crate::error::{PathError, Result};
 use crate::{MeshSurface, Solid, SurfaceSource};

@@ -1,6 +1,6 @@
 # ROUGHPATH historical checkpoint — 24 October 2026
 
-**Resumed by the owner on 25 October 2026.** This document preserves the published paused checkpoint (`3c8b10a`); its remaining-work list and test status are historical. Use the [implementation, integration and verification report](../roughpath-verification.md) for the resumed work and current limitations. No replacement branch or implementation was created. The environment/network observations below describe the original checkpoint, not a fresh assertion about the resumed runtime.
+**Resumed by the owner on 25 October 2026.** This document preserves the published paused checkpoint (`3c8b10a`); its remaining-work list and test status are historical. Use the [implementation, integration and verification report](../roughpath-verification.md) for the resumed work and current limitations. No replacement branch or implementation was created. Record labels/links below were administratively updated to 0241/0242 on 25 October 2026; their original accepted identifiers were provisional 0238/0239. The environment/network observations below describe the original checkpoint, not a fresh assertion about the resumed runtime.
 
 ## Workspace and authorization
 
@@ -8,12 +8,12 @@
 - The owner explicitly requested pushing the handoff on this branch after pausing work. This checkpoint includes the unfinished implementation, accepted records and this handoff so a fresh checkout can resume it. **It is not ready for merge and required validation is incomplete.** No ROUGHPATH PR exists. Continue this branch rather than replacing it. No validation processes remain running. The owner's explicit checkpoint-push instruction authorizes this push before the original completion gate; it does not waive the remaining implementation/validation gates.
 - Fetched main is `049c70a`; it has NOT been merged. Follow accepted 0055 and Merge Manager release instructions before updating the branch from main.
 - Dependencies already in base: OPCREATE #271 `adb07bf1a7abc0a209ea82c4656cbe9484eff204`, CUTOPTS #277 `ba829c1677c74bf90aec61c39aba8201cd5f5350`, SWARF3 #320 `e590f4de67bbde573edf30982982d6d0c5d92707`.
-- Decisions 0238 and 0239 were shown completely and **explicitly accepted directly by the owner**. Their local records/index say accepted. One-diameter minimum and refusal wording also accepted beforehand. No owner approval is pending. No schema/OI number claimed; numbers provisional until merge.
-- ROUGHPATH owns existing roughing/layers and goes first on shared overlaps. FACING owns new facing planning/coverage/targets/completion; FINSTEP owns adaptive finishing. They consume these interfaces only after merge into main, no cherry-picks or unmerged prerequisites. Shared inventory is in PR320 comment6385263681; accepted0239 follow-up comment6385414469. The initial inventory is comment6383427410.
+- Decisions 0241 and 0242 were shown completely and **explicitly accepted directly by the owner**. Their local records/index say accepted. One-diameter minimum and refusal wording also accepted beforehand. No owner approval is pending. No schema/OI number claimed. Current references use coordinator allocations 0241/0242; original full-text acceptance was under former provisional 0238/0239.
+- ROUGHPATH owns existing roughing/layers and goes first on shared overlaps. FACING owns new facing planning/coverage/targets/completion; FINSTEP owns adaptive finishing. They consume these interfaces only after merge into main, no cherry-picks or unmerged prerequisites. Shared inventory is in PR320 comment6385263681; accepted0242 follow-up comment6385414469. The initial inventory is comment6383427410.
 
 ## Implemented locally
 
-### #292 / accepted0238
+### #292 / accepted0241
 
 - `openchuck-path/src/assemble.rs` retains accumulated A after safe retract; cuts remain unwrapped.
 - New public `program.rs`: `ConnectionOptions`, `ConnectedGroup`, `connect_group`. Whole-group constant turn offset, positive-machine-A ties, complete-group A limits, explicit required orientation, cancellation. Explicit timed incoming link. Conservative enclosing-cylinder half-space proves full supported vertical-tool clearance. Linear travel checks apply to new connection/boundaries, not a newly invented cut validator.
@@ -22,7 +22,7 @@
 - Fixed the existing ±360 mismatch: firmware does NOT reset exactly ±360. G92.4 A0 S0 changes live numeric A by whole turns, without motion, XYZ reset or saved-work-offset changes. Existing firmware1.1.2 evidence and air-cut record0007 support this; no new hardware trial.
 - Library family bumped to 0.21.0; changelogs/migration notes started. Accepted narrow legacy Facing boundary-output exception; planning/defaults/size/equal-depth layers stay unchanged.
 
-### #291 / accepted0239 — in progress
+### #291 / accepted0242 — in progress
 
 - Added common `ramp_back_and_forth` flag, false by default; `EntryParameters.back_and_forth`; form grouping/label identifies ramp-only option.
 - Added `StrategyInput.entry_safety`; literals updated. New public `entry_safety.rs::EntrySafety` separates whole mesh target, protected solids, complete body and machine constraints.
@@ -33,7 +33,7 @@
 
 ## Remaining work, priority order
 
-1. Review the new ramp implementation against0239 before broadening it. Strengthen integration tests: every-leg slope/feed/final-depth/connection assertions, later-leg obstacle, unsafe reversal, shank collision, missing direction/safety, minimum boundaries, budget/no-progress and cancellation. Ensure original target/refusal checks cover approach and final connection as well as descending legs; current `.gouge` loop is on descending legs, while full safety verifier covers all motions.
+1. Review the new ramp implementation against0242 before broadening it. Strengthen integration tests: every-leg slope/feed/final-depth/connection assertions, later-leg obstacle, unsafe reversal, shank collision, missing direction/safety, minimum boundaries, budget/no-progress and cancellation. Ensure original target/refusal checks cover approach and final connection as well as descending legs; current `.gouge` loop is on descending legs, while full safety verifier covers all motions.
 2. Add application end-to-end **option-on** tests for roughing and other applicable shared-entry strategies. Exercise complete-body/protected-target inputs and honest unsupported-format refusals. Current application test covers off/absent identity only.
 3. Re-run the historical blisk at3 degrees with option on, using the exported owner data below. Report actual generation or specific refusal; do not promise it fits. Bound diagnostics to600 seconds and stop/raise an individual uninstrumented test over ten minutes.
 4. Verify determinism at1/2/available-N threads for new ramp and connected/cached/file-split rotary behavior, tool changes, continuous/limited axes. Strengthen simulation/playback/post agreement tests and inspect link segment indices in cached simulation notes/reports.

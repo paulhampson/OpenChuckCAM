@@ -4,7 +4,7 @@ All notable changes to `openchuck-import` are recorded here.
 
 ## Unreleased
 
-- Version 0.21.0 with the library family (decision 0238): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
+- Version 0.21.0 with the library family (decision 0241): `PostJob` and `ConvertOptions` require `a_range` and work-frame `safe_z`; `Step::Unwind` is replaced by the non-moving `RotaryBoundary`. `Regeneration` keeps `canonical_toolpath`, and `Application::planned_files` takes the regeneration. Hosts connect canonical groups through `openchuck_path::program::connect_group` in file order before posting.
 
 - Version 0.19.0 with the library family (decision 0227). The kernel wrapper writes each edge's exact curve (line, circle, ellipse, clamped B-spline) beside its polyline.
 - Version 0.18.0 with the library family (`PencilFinishing` in `openchuck-path` becomes a struct with a private field, a breaking change; decision 0226). The STEP import notice says pencil clean-up finds its inside corners on the exact edges and drops the tool on the tessellation.

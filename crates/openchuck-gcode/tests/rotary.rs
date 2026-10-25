@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Physical turns and controller counter changes are distinct (decision 0238).
+//! Physical turns and controller counter changes are distinct (decision 0241).
 #![allow(clippy::unwrap_used, clippy::float_cmp)]
 use openchuck_gcode::{Dialect, TimingRule, Tolerances, compare, read, replay};
 use openchuck_types::geometry::Point3;

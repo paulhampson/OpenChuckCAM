@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Connections between context-independent operation groups (decision 0238).
+//! Connections between context-independent operation groups (decision 0241).
 
 use openchuck_types::geometry::Point3;
 use openchuck_types::ir::{MoveKind, Segment, ToolPose, ToolpathGroup};

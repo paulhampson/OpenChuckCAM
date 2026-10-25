@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Application inputs to shared operation-boundary assembly (decision 0238).
+//! Application inputs to shared operation-boundary assembly (decision 0241).
 
 use openchuck_path::program::{ConnectedGroup, ConnectionOptions, connect_group};
 use openchuck_path::{AnalyticStock, StockModel};

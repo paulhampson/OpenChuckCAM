@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Operation boundaries, not cutting-pass angle unwrapping (decision 0238).
+//! Operation boundaries, not cutting-pass angle unwrapping (decision 0241).
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::float_cmp)]
 
 mod support;

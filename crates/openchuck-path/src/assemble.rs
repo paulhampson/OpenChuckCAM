@@ -11,7 +11,7 @@
 //!    the nearest equivalent, so links take the shorter way round. At the
 //!    end of the group A retains its accumulated position after safe retract.
 //!    [`crate::program`] connects operations without a canonical return
-//!    (decision 0238); controller counter resets are not physical moves.
+//!    (decision 0241); controller counter resets are not physical moves.
 //! 2. **Linking (OP-14).** In coordinates fixed to the machine with the
 //!    rotary axis through the origin, every link moves in the plane at the
 //!    retract height above the axis: the safe cylinder's radius, or the safe

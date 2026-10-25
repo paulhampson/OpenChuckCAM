@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Bounded fixed-axis ramp descent planning (decision 0239). Geometry must
+//! Bounded fixed-axis ramp descent planning (decision 0242). Geometry must
 //! certify the corridor and every emitted sweep before these legs are used.
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -550,7 +550,7 @@ Board 5. Opened from step 5, or with Ctrl E. Built in lane S ([decision 0071](..
 - the files to write, each with its name (decision 0028 item 1), setup, line count and programmed time, and a line naming the setup sheet's two files, written with them (decision 0189);
 - a preview of the first lines.
 
-The read-only post summary explains rotary boundary behavior (decision 0238). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
+The read-only post summary explains rotary boundary behavior (decision 0241). The Z1 summary states that a non-moving whole-turn reset changes the A counter while preserving angular zero, XYZ and saved work offsets. The rotate-only summary states that continuous A is retained at operation boundaries.
 
 **Safety notice band** (NFR-12; GC-16):
 
@@ -930,4 +930,4 @@ Known gaps in the images: the footer omits the short G-code notice of section 10
 
 ### Optional back-and-forth ramp
 
-The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0239, provisional identifier). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.
+The common Entry, links and retract section includes "Back-and-forth ramp (ramp entry only)", default off (accepted decision 0242). Its description says that it applies only to ramp entry and repeated descending passes may engage the full tool width as a slot. Other entry styles ignore the flag; a retained true flag is labelled inactive in their parameter form. Show the shared refusal when the complete tool envelope, whole target, protected geometry or machine constraints cannot be certified. State the required diameter and verified usable travel when the corridor fails. The existing NFR-12 verification notice remains; a successful geometric certificate does not validate feeds, tool suitability or machining.

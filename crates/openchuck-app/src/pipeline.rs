@@ -94,7 +94,7 @@ pub struct GroupInfo {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Regeneration {
     /// Context-independent operation paths, before program links and A
-    /// placement. File splitting must start here (decision 0238).
+    /// placement. File splitting must start here (decision 0241).
     pub canonical_toolpath: Toolpath,
     /// The toolpath of every operation, in machining order.
     pub toolpath: Toolpath,

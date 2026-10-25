@@ -23,7 +23,7 @@ pub struct PostJob {
     /// Allowed rotary travel; limited axes never receive counter resets.
     pub a_range: openchuck_types::machine::ARange,
     /// Required safe Z in the output work frame, for operation-boundary
-    /// counter resets (decision 0238).
+    /// counter resets (decision 0241).
     pub safe_z: f64,
     /// The work frame the program is written in.
     pub frame: RotaryFrame,

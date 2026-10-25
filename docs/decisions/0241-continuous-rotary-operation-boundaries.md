@@ -1,10 +1,10 @@
-# 0238: Continuous rotary position at operation boundaries
+# 0241: Continuous rotary position at operation boundaries
 
-- **Status:** accepted by the project owner directly in the ROUGHPATH lane on 24 October 2026 after reviewing the complete record: "Accept 0238." Shared scope, including legacy Facing, was approved in the preceding turn. The owner also asked for clarification of Makera coordinate-reset semantics; this does not change the accepted rule.
+- **Status:** accepted by the project owner directly in the ROUGHPATH lane on 24 October 2026 after reviewing the complete record: "Accept 0238." Shared scope, including legacy Facing, was approved in the preceding turn. The owner also asked for clarification of Makera coordinate-reset semantics; this does not change the accepted rule. Administratively renumbered from provisional 0238 to 0241 by Merge Manager on 25 October 2026; this preserves the original full-text acceptance and is not new acceptance.
 - **Date:** 24 October 2026.
 - **Lane / issue:** ROUGHPATH, #292. The optional ramp (#291) has a separate decision.
 - **Requirements:** OP-03, OP-11, OP-13, OP-14, OP-15, SET-01/06/09, OP-21, GC-04/07/09/10, NFR-06/07/12.
-- **Numbering:** provisional 0238, selected under the owner's lane-numbering authority. Published branch records, open PRs and coordination comments were checked: 0234–0236 are in use and FACING claims 0237; no 0238 claim was found. Later merged SIMUI work also uses 0238; Merge Manager has been notified in PR320 comment6398493524 and will resolve the metadata collision at merge under the owner's numbering direction. Substantive acceptance is unchanged. No new OI or project-schema number is claimed.
+- **Numbering:** 0241, assigned by [Merge Manager on 25 October 2026](https://github.com/paulhampson/OpenChuckCAM/pull/340#issuecomment-6400185337), replacing this lane's former provisional 0238. The coordinator's audit confirms merged SIMUI owns 0238, FINSTEP retains reservation 0239, and merged OUTPUT-1 owns 0240. This administrative reconciliation changes no substantive rule or owner acceptance. No OI or project-schema number is claimed.
 
 ## Evidence
 
