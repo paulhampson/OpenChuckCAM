@@ -28,6 +28,8 @@
 mod acknowledgement;
 mod action_log;
 mod cache;
+pub mod checkpoint_schedule;
+pub mod checkpoints;
 mod command;
 mod error;
 mod export;
@@ -198,6 +200,7 @@ pub struct Application {
     /// The project as last opened, created or saved, for
     /// [`Application::is_modified`]. Behind a lock so `save` can stay `&self`.
     saved: std::sync::Mutex<Project>,
+    recovered_unsaved: std::sync::atomic::AtomicBool,
     jobs: JobManager,
     cache: cache::PipelineCache,
     strategies: Registry,
@@ -290,6 +293,7 @@ impl Application {
         let (events_tx, events_rx) = channel();
         Ok(Self {
             saved: std::sync::Mutex::new(project.clone()),
+            recovered_unsaved: std::sync::atomic::AtomicBool::new(false),
             document: Document {
                 location: folder.to_path_buf(),
                 project,
@@ -316,6 +320,8 @@ impl Application {
         if let Ok(mut saved) = self.saved.lock() {
             saved.clone_from(&self.document.project);
         }
+        self.recovered_unsaved
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
@@ -323,9 +329,12 @@ impl Application {
     /// saved, so a front end can ask before discarding changes. Undoing back
     /// to the saved state makes it unmodified again.
     pub fn is_modified(&self) -> bool {
-        self.saved
-            .lock()
-            .map_or(true, |saved| *saved != self.document.project)
+        self.recovered_unsaved
+            .load(std::sync::atomic::Ordering::Relaxed)
+            || self
+                .saved
+                .lock()
+                .map_or(true, |saved| *saved != self.document.project)
     }
 
     /// One sentence per model file that has changed or is missing since it

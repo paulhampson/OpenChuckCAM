@@ -168,6 +168,9 @@ priority = 79
 # OUTPUT-1 released-main run, 24 Oct 2026: automatic-tab outline regression
 # took 72.987 s uninstrumented; retain default/long and exclude coverage.
 [profile.coverage]
+# CHECKPOINT validation (25 Oct 2026): existing cut-surface rendering matrix
+# took 63.867 s uninstrumented alongside tooling builds. Keep it in default
+# and nightly long; exclude it from local coverage under the long-test rule.
 # SIMUI whole-dock matrix: 62.592 s uninstrumented in the full UI run
 # (24 Oct 2026, four-core cloud quota, two test threads; decision 0238).
 # A later full UI run alongside app coverage took 116.400 s for this matrix.
@@ -201,6 +204,7 @@ priority = 79
 default-filter = '''not (
     test(~finest_setting_is_within)
   | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
+  | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
   | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))
@@ -242,6 +246,7 @@ default-filter = '''not (
 default-filter = '''
     test(~finest_setting_is_within)
   | test(=shell::simulate_tests::req_ui_16_req_sim_04_the_playback_dock_lays_out_whole_in_every_state)
+  | test(=shell::simulate_tests::rendering::req_sim_05_req_nfr_15_cut_surface_pixels_preserve_occlusion_and_distinguishable_deviation_levels)
   | test(=req_set_09_req_op_21_req_op_03_roughing_in_either_new_direction_never_cuts_a_tab)
   | (binary_id(=openchuck-app::workholding) & test(=req_op_21_req_gc_07_an_automatic_tab_follows_the_part_offset_into_the_target))
   | (binary_id(=openchuck-cli::e2e) & test(=blisk_helical_2::req_gc_07_req_nfr_06_req_nfr_08_req_gc_11_runs_end_to_end_at_1_2_and_n_threads))

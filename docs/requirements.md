@@ -228,6 +228,8 @@ Every strategy must produce toolpaths in XYZA. Geometry selected on the model (f
 | PRJ-07 | Selections also store descriptors (position, normal, area) so they can be matched again after the model is re-exported. | P2 |
 | PRJ-08 | Autosave and crash recovery. | P2 |
 
+**PRJ-08 scope (owner's CHECKPOINT answers, 24–25 Oct 2026; implementation design in accepted [0241](decisions/0241-project-recovery-checkpoints.md)).** Capture committed project state only, excluding unconfirmed fields, generated data and running-generation state. Retain three periodic checkpoints and one independently replaced interim checkpoint in an ignored recovery directory inside the project. The per-user periodic interval defaults to three minutes, configurable from one to fifteen whole minutes; confirmed edits also trigger the interim checkpoint after fifteen seconds of inactivity. After unexpected termination, present the retained valid choices with their project, timestamp and type. Recovery changes unsaved memory only; explicit Save changes the saved project. Save and clean-exit retirement must preserve newer states. Keep saved and explicitly discard recovery data are separate choices. Corrupt/partial data gives a clear error and preserves other recovery choices.
+
 ## 4. Secondary requirements
 
 These follow the core release. The core architecture should leave room for them: collision checking needs the tool assembly (TL-08) and machine geometry, in-app version control builds on the project file rules in section 3.8, and library integration builds on the separation of engine and UI in NFR-01.

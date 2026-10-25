@@ -4,6 +4,8 @@ All notable changes to `openchuck-app` are recorded here.
 
 ## Unreleased
 
+- CHECKPOINT (PRJ-08, UI-15): independent periodic/interim scheduling, serialized background recovery jobs, canonical per-user startup discovery/Locate, model-reference warnings and recovery into explicitly unsaved project memory. Interval defaults to three minutes and is configurable from one to fifteen.
+
 - OUTPUT-1 documentation: accepted export decision [0240](../../docs/decisions/0240-export-write-results-and-replacement-confirmation.md)
   is administratively renumbered from original 0238 by Merge Manager to
   resolve the SIMUI collision; substantive content and owner acceptance are
